@@ -1,0 +1,29 @@
+# @lando/proxy-traefik — Traefik-backed ProxyService.
+
+name: "@lando/proxy-traefik"
+version: "0.0.0"
+api: 4
+description: "Traefik-backed ProxyService implementation."
+enabled: true
+updateable: true
+
+provides:
+  proxyServices:
+    - id: traefik
+      module: ./src/proxy.ts
+  routeFilters:
+    - id: requestHeader
+      module: ./src/filters/request-header.ts
+    - id: responseHeader
+      module: ./src/filters/response-header.ts
+    - id: redirect
+      module: ./src/filters/redirect.ts
+    - id: rewritePath
+      module: ./src/filters/rewrite-path.ts
+    - id: stripPrefix
+      module: ./src/filters/strip-prefix.ts
+    - id: addPrefix
+      module: ./src/filters/add-prefix.ts
+
+requires:
+  "@lando/core": "^4.0.0"

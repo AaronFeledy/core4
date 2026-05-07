@@ -1,0 +1,20 @@
+# @lando/logger-pretty — pretty-printed Logger plugin.
+#
+# Optional in the bundle — Effect's default `Logger.pretty` is built in.
+# Installing this plugin replaces the built-in Effect Logger.pretty with
+# Lando-specific styling.
+
+name: "@lando/logger-pretty"
+version: "0.0.0"
+api: 4
+description: "Pretty-printed Logger plugin."
+enabled: true
+updateable: true
+
+provides:
+  loggers:
+    - id: pretty
+      module: ./src/logger.ts
+
+requires:
+  "@lando/core": "^4.0.0"

@@ -1,0 +1,39 @@
+# Build output
+dist/
+**/dist/
+*.tsbuildinfo
+**/*.tsbuildinfo
+
+# OCLIF
+oclif.manifest.json
+**/oclif.manifest.json
+
+# Dependencies (Bun-only)
+node_modules/
+**/node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Logs
+*-debug.log
+*-error.log
+
+# OS
+.DS_Store
+
+# Editors
+.idea/
+*.swp
+
+# Tmp
+/tmp/
+.tmp/
+.cache/
+
+# Compiled binaries (release artifacts)
+/dist-bin/
+
+# Local development
+.local/
+.lando.local.yml

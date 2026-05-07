@@ -1,0 +1,28 @@
+{
+  "name": "@lando/monorepo",
+  "version": "0.0.0",
+  "description": "Lando v4 monorepo: @lando/core, @lando/sdk, and bundled plugins.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": "lando-community/core4",
+  "bugs": "https://github.com/lando-community/core4/issues",
+  "workspaces": ["core", "sdk", "plugins/*"],
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
+    "@types/bun": "latest",
+    "typescript": "^5.6.0"
+  },
+  "scripts": {
+    "build": "bun run --filter='*' build",
+    "test": "bun test",
+    "typecheck": "tsc -b",
+    "lint": "biome check .",
+    "format": "biome format --write .",
+    "clean": "bun run --filter='*' clean"
+  }
+}

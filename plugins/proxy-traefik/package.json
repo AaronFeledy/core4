@@ -1,0 +1,34 @@
+{
+  "name": "@lando/proxy-traefik",
+  "description": "Traefik-backed `ProxyService` implementation.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lando-community/core4.git",
+    "directory": "plugins/proxy-traefik"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "files": ["./src", "./dist", "./plugin.yaml"],
+  "keywords": ["lando", "lando-plugin", "lando-proxy", "traefik"],
+  "lando": {
+    "manifest": "./plugin.yaml"
+  },
+  "dependencies": {
+    "@lando/sdk": "workspace:*",
+    "effect": "^3.21.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc -b"
+  }
+}

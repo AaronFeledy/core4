@@ -1,0 +1,18 @@
+# @lando/provider-docker — reference Docker RuntimeProvider.
+
+name: "@lando/provider-docker"
+version: "0.0.0"
+api: 4
+description: "Reference Docker RuntimeProvider implementation."
+enabled: true
+updateable: true
+
+provides:
+  providers:
+    - id: docker
+      module: ./src/provider.ts
+      defaultFor:
+        platform: [darwin, linux, win32, wsl]
+
+requires:
+  "@lando/core": "^4.0.0"

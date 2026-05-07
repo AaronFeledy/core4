@@ -1,0 +1,53 @@
+# @lando/service-lando — opinionated `lando` service base.
+
+name: "@lando/service-lando"
+version: "0.0.0"
+api: 4
+description: "The opinionated `lando` service base."
+enabled: true
+updateable: true
+
+# This plugin contributes the `lando` service base + the built-in feature
+# priority list.
+provides:
+  serviceTypes:
+    - name: lando
+      module: ./src/service-type.ts
+  features:
+    - id: lando.boot
+      module: ./src/features/boot.ts
+    - id: lando.system
+      module: ./src/features/system.ts
+    - id: lando.user-mapping
+      module: ./src/features/user-mapping.ts
+    - id: lando.tooling
+      module: ./src/features/tooling.ts
+    - id: lando.storage
+      module: ./src/features/storage.ts
+    - id: lando.config
+      module: ./src/features/config.ts
+    - id: lando.env
+      module: ./src/features/env.ts
+    - id: lando.app-mount
+      module: ./src/features/app-mount.ts
+    - id: lando.healthcheck
+      module: ./src/features/healthcheck.ts
+    - id: lando.certs
+      module: ./src/features/certs.ts
+    - id: lando.security
+      module: ./src/features/security.ts
+    - id: lando.ssh-agent
+      module: ./src/features/ssh-agent.ts
+    - id: lando.git
+      module: ./src/features/git.ts
+    - id: lando.sudo
+      module: ./src/features/sudo.ts
+    - id: lando.proxy
+      module: ./src/features/proxy.ts
+    - id: lando.user-image
+      module: ./src/features/user-image.ts
+    - id: lando.user-run
+      module: ./src/features/user-run.ts
+
+requires:
+  "@lando/core": "^4.0.0"

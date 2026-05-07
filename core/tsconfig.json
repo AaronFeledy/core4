@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "./",
+    "outDir": "./dist",
+    "tsBuildInfoFile": "./.tsbuildinfo",
+    "composite": true,
+    "noEmit": false,
+    "paths": {
+      "@lando/sdk": ["../sdk/src/index.ts"],
+      "@lando/sdk/*": ["../sdk/src/*/index.ts"]
+    }
+  },
+  "include": ["./src/**/*.ts", "./bin/**/*.ts"],
+  "exclude": ["./dist", "./node_modules", "./test"],
+  "references": [{ "path": "../sdk" }]
+}

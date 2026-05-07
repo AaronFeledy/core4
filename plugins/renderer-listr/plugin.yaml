@@ -1,0 +1,16 @@
+# @lando/renderer-listr — Listr-style interactive Renderer.
+
+name: "@lando/renderer-listr"
+version: "0.0.0"
+api: 4
+description: "Listr-style interactive Renderer plugin."
+enabled: true
+updateable: true
+
+provides:
+  renderers:
+    - id: listr
+      module: ./src/renderer.ts
+
+requires:
+  "@lando/core": "^4.0.0"

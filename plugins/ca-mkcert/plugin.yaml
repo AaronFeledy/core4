@@ -1,0 +1,16 @@
+# @lando/ca-mkcert — mkcert-backed CertificateAuthority.
+
+name: "@lando/ca-mkcert"
+version: "0.0.0"
+api: 4
+description: "mkcert-backed CertificateAuthority implementation."
+enabled: true
+updateable: true
+
+provides:
+  certificateAuthorities:
+    - id: mkcert
+      module: ./src/ca.ts
+
+requires:
+  "@lando/core": "^4.0.0"

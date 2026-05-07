@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./core" },
+    { "path": "./sdk" },
+    { "path": "./plugins/service-lando" },
+    { "path": "./plugins/provider-docker" },
+    { "path": "./plugins/proxy-traefik" },
+    { "path": "./plugins/ca-mkcert" },
+    { "path": "./plugins/logger-pretty" },
+    { "path": "./plugins/renderer-listr" }
+  ]
+}

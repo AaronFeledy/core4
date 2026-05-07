@@ -1,0 +1,64 @@
+{
+  "name": "@lando/core",
+  "description": "Lando v4 core: runtime, planner, OCLIF adapter, and library API.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": "lando-community/core4",
+  "bugs": "https://github.com/lando-community/core4/issues",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "bin": {
+    "lando": "./bin/lando.ts"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./errors": "./src/errors/index.ts",
+    "./events": "./src/lifecycle/index.ts",
+    "./services": "./src/services/index.ts",
+    "./testing": "./src/testing/index.ts",
+    "./cli": "./src/cli/index.ts",
+    "./oclif": "./src/cli/oclif/index.ts"
+  },
+  "files": ["./bin", "./dist", "./src", "./oclif.manifest.json"],
+  "keywords": ["lando", "lando-core", "oclif", "effect", "bun"],
+  "dependencies": {
+    "@lando/sdk": "workspace:*",
+    "@oclif/core": "^4",
+    "@oclif/plugin-help": "^6",
+    "effect": "^3.21.0"
+  },
+  "devDependencies": {
+    "@oclif/test": "^4",
+    "oclif": "^4"
+  },
+  "oclif": {
+    "bin": "lando",
+    "dirname": "lando",
+    "commands": "./src/cli/oclif/commands",
+    "plugins": ["@oclif/plugin-help"],
+    "topicSeparator": " ",
+    "flexibleTaxonomy": true,
+    "additionalHelpFlags": ["-h"],
+    "additionalVersionFlags": ["-v"],
+    "topics": {}
+  },
+  "scripts": {
+    "build": "bun run build:bin && bun run build:manifest",
+    "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
+    "build:manifest": "bunx oclif manifest",
+    "build:compile": "bun build ./bin/lando.ts --compile --outfile ./dist/lando --minify --sourcemap=external",
+    "clean": "rm -rf dist oclif.manifest.json *.tsbuildinfo",
+    "test": "bun test",
+    "typecheck": "tsc -b",
+    "postpack": "rm -f oclif.manifest.json",
+    "prepack": "bunx oclif manifest"
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "@lando/sdk",
+  "description": "Type-only contracts for Lando v4 plugin authors: Effect Schemas, Effect Service tags, and tagged-error classes.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lando-community/core4.git",
+    "directory": "sdk"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.2"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./src/schema/index.ts",
+    "./errors": "./src/errors/index.ts",
+    "./services": "./src/services/index.ts",
+    "./events": "./src/events/index.ts",
+    "./test": "./src/test/index.ts"
+  },
+  "files": ["./src", "./dist"],
+  "keywords": ["lando", "lando-sdk", "effect"],
+  "dependencies": {
+    "effect": "^3.21.0"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist *.tsbuildinfo",
+    "typecheck": "tsc -b"
+  }
+}
