@@ -1,6 +1,6 @@
 # Lando v4 — Embedding and Library Use
 
-> **Part 9 of 15** · [Index](./README.md)
+> **Part 9 of 16** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
 This part defines what it means to consume Lando v4 as a library from another Bun program. The CLI (§8) is one imperative shell over the runtime; an embedding host is another (§3.6). Both build the same `LandoRuntimeLive` Layer, run Effect programs against it, and tear down through `Scope`. There is no separate "library mode" of core — embedding is a peer use case to the CLI.
@@ -148,6 +148,16 @@ export const LandoRuntimeOptions = Schema.Struct({
 - The factory MUST run the same bootstrap sequence (§3.2) up to the requested level. Lifecycle events fire identically (§16.6).
 - The Layer's outer scope owns all resource handles; closing the scope tears everything down (§16.6).
 
+**Runtime reuse for performance.** A single `LandoRuntime` MAY be reused across many sequential Effect programs by the same host. This is the **recommended pattern** for embedding hosts that perform repeated small operations — TUIs, dashboards, IDE/editor extensions, long-lived web servers, monorepo orchestrators driving dozens of apps — and is the perf shape that closes the gap between transactional CLI invocations and the deferred persistent-agent decision (§14.2):
+
+- Build the runtime once at host startup at the **lowest** `bootstrap` level the host needs (e.g., `tooling` for an editor extension that only triggers cached tooling tasks; reserve `app` for hosts that genuinely need full app planning).
+- Provide it to every program with `Effect.provide` and run each program with `Effect.runPromise` / `Effect.runFork` against the same Layer instance.
+- Close the host's outer scope only when the host shuts down.
+
+Reuse skips bootstrap, plugin discovery, AOT layer instantiation, and cache loading on every operation past the first; in a warm host, sequential operations pay only the per-operation work the program itself does. The §2.1 hot-path budgets are written assuming this reuse pattern: an embedding host that constructs a fresh runtime per operation MUST budget for cold-start latency every time, while one that reuses a runtime hits the hot column. The library-API contract suite (§13.1) gates this with a reuse-mode perf test that asserts operations 2..N each meet the §2.1 hot budget at p95 against a single retained runtime.
+
+Hosts that need *isolation* across operations (per-request isolation in a multi-tenant server, parallel-test isolation, scenarios that mutate `<userCacheRoot>`) construct multiple runtimes per §16.5's cache-root override. The two patterns are not in tension — the host picks one per logical context.
+
 **Difference from CLI defaults:**
 
 | Concern | CLI default | Embedding default |
@@ -280,7 +290,7 @@ const program = Effect.gen(function* () {
 - The Layer returned by `makeLandoRuntime` is a `Layer.scoped`. The host MUST run it under `Effect.scoped` (or an equivalent scope-bearing context) so finalizers run.
 - Anything the runtime opens — provider connections, file watchers, log streams, network listeners, plugin module handles — is acquired in this scope. Closing the scope tears down everything in LIFO order. The CLI relies on the same guarantee.
 - Cancellation propagates: an `Effect.interrupt` (whether from a host signal handler, a test timeout, or an outer fiber) finalizes the runtime cleanly. Provider operations honor `Effect.interrupt` per §5.3.
-- Hosts SHOULD construct one runtime per logical app; sharing one runtime across unrelated app contexts is supported but is the host's choice.
+- Hosts SHOULD construct one runtime per logical app and reuse it across sequential operations within that app's lifetime; sharing one runtime across unrelated app contexts is supported but is the host's choice. The reuse pattern (see §16.3 "Runtime reuse for performance") is how long-lived hosts meet the §2.1 hot-path budgets — cold-start cost is paid once at host startup, not on every operation.
 
 ### 16.7 Programmatic CLI invocation
 

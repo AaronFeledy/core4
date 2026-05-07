@@ -1,6 +1,6 @@
 # Lando v4 — Caches and Persistence
 
-> **Part 12 of 15** · [Index](./README.md)
+> **Part 12 of 16** · [Index](./README.md)
 > **Read next:** [13 Testing and Distribution](./13-testing-and-distribution.md)
 
 This part defines what Lando writes to disk and how. Caches are the mechanism by which the hot path stays hot: tooling commands at `bootstrap: tooling` read the command + app-plan caches in under 30ms on a warm filesystem and skip provider initialization until the command actually executes.

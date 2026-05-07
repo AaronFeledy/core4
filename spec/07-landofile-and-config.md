@@ -1,6 +1,6 @@
 # Lando v4 — Landofile and Configuration
 
-> **Part 7 of 15** · [Index](./README.md)
+> **Part 7 of 16** · [Index](./README.md)
 > **Read next:** [08 CLI and Tooling](./08-cli-and-tooling.md)
 
 This part defines the user-facing configuration system. A Landofile is committed to a project repo and any developer can produce an identical, networked environment from it. Global config sits at `<userConfRoot>/config.yml` with optional `config.d/*.yml` overlays, and every key is overridable by environment variables.
@@ -197,7 +197,7 @@ Rules:
 - Top-level Compose project keys including `services:`, `volumes:`, `networks:`, `configs:`, `secrets:`, `include:`, and `x-*` extension fields are accepted when their shapes are in the supported subset.
 - Compose service keys are accepted under `services.<name>` alongside Lando service extensions (§6.2) when their shapes are in the supported subset.
 - The supported subset MUST be published as a schema-backed key matrix in the docs. Unsupported Compose keys fail closed with remediation pointing to a Lando key, provider extension, or config translator.
-- Compose's obsolete top-level `version:` is accepted for compatibility, ignored for behavior, and SHOULD produce a deprecation warning in `lando config` output.
+- Compose's obsolete top-level `version:` is accepted for compatibility, ignored for behavior, and MUST emit a `DeprecationNotice` per §18 (kind: `landofile-key`, id: `version`); the notice is shown by `lando config --format yaml` and recorded by `DeprecationService` (§18.3) so `lando doctor --deprecations` lists it.
 - Compose fields that normalize cleanly become provider-neutral `AppPlan` fields (§5.5.1).
 - Compose fields without provider-neutral semantics are preserved in plan extensions and require a provider that declares the needed Compose capability. They MUST NOT be silently dropped.
 - Lando-specific keys win over equivalent Compose shorthand during normalization. For example, `services.web.endpoints:` wins over endpoint intent inferred from `services.web.ports:`.
@@ -409,6 +409,9 @@ NO_PROXY=localhost,127.0.0.1,.lndo.site
 LANDO_NETWORK_CA_CERTS='["/etc/ssl/certs/CorpRootCA.pem"]'
 ```
 
+
+**Deprecation.** Any key defined in §7.4 (top-level Landofile keys and the supported Compose subset), §7.5 (global config), or §7.6 (env-var overrides) MAY carry a `deprecated:` schema annotation per the surface deprecation matrix in §18.5. The annotation propagates to JSON Schema (`deprecated: true` plus `x-deprecation`), the generated docs callout, and `DeprecationService` (§18.3); it produces a runtime `message.warn` on first observation and is recorded by `lando doctor --deprecations`. Removing a deprecated key is gated by the release-pipeline `removeIn` enforcement in §18.7.
+
 ### 7.7 Includes and fragments
 
 `includes:` is the runtime composition primitive for Landofiles. It loads partial Landofile fragments from local paths, git, npm, or a future registry, and merges them into the including file before merge across files (§7.2). Fragments are pure config — they are never code.
@@ -487,7 +490,7 @@ Network access is required only when an include or app-declared plugin is missin
 
 ### 7.8 Schema and documentation publication
 
-Effect Schemas for the Landofile, global config, service config, expression AST/resolution errors, tooling config, route config, healthcheck config, plugin manifest, and event payloads are published from `@lando/sdk` and re-exported from `@lando/core/schema`. `@lando/sdk/schema` exposes a central public schema registry so build tooling can enumerate every schema that is part of the public contract.
+Effect Schemas for the Landofile, global config, service config, expression AST/resolution errors, tooling config, route config, healthcheck config, plugin manifest, and event payloads are published from `@lando/sdk` and re-exported from `@lando/core/schema`. `@lando/sdk/schema` exposes a central public schema registry so build tooling can enumerate every schema that is part of the public contract. Schemas and individual fields MAY carry a `deprecated:` annotation per §18.5; the build pipeline propagates this to JSON Schema (`deprecated: true` plus `x-deprecation`) and to the generated reference MDX as a "Deprecated since X" callout (§17.2 codegen).
 
 Build-time schema publication produces:
 

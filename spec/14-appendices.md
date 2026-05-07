@@ -1,6 +1,6 @@
 # Lando v4 — Appendices
 
-> **Part 14 of 15** · [Index](./README.md)
+> **Part 14 of 16** · [Index](./README.md)
 > **Read next:** [15 Binary Build and Release Engineering](./15-binary-build-and-release.md)
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
@@ -121,10 +121,16 @@ The v4 implementation must satisfy:
 - A Bun program can `import { makeLandoRuntime } from "@lando/core"` and obtain a fully-typed `Layer` without pulling OCLIF into the import graph.
 - A Bun program can import `EmbeddedAssetService` from `@lando/core/services` and override it in tests without exposing it as a plugin contribution surface.
 - A Bun program can plan, start, info, exec, and stop an app programmatically using `@lando/core/cli` operations (e.g., `appStart`, `appInfo`, `appStop`) and receive tagged errors with remediation messages.
+- A long-lived embedding host (TUI, editor extension, dashboard, web server) can construct one `LandoRuntime`, execute many sequential `runTooling`, `appInfo`, and `appConfig.get`-style operations against it, and have operations 2..N each meet their respective §2.1 hot-path budget at p95 without paying repeat bootstrap cost. The library-mode reuse-perf test class in §13.1 asserts this on per-PR CI.
 - A `bun test` suite can construct an isolated Lando runtime via `@lando/core/testing`, run lifecycle assertions, and tear down deterministically.
 - An embedding host can opt into bundled, system, user, and app-local plugin discovery independently; the default in library mode is none.
 - Multiple `makeLandoRuntime` instances coexist in one process without shared caches or cross-instance event bleed.
 - The library package and the compiled binary ship at the same version from the same source.
+- Every public surface in the §18.5 surface deprecation matrix is deprecable through the canonical mechanism for its kind (schema annotation, contract field, manifest field, or TSDoc tag), and a representative deprecation per kind has an end-to-end test exercising it (§18.8).
+- The `DeprecationService` registry walk (§18.5) merges built-in contracts, schema annotations, and plugin manifests into a single registry; runtime lookups, `lando doctor --deprecations`, generated docs callouts, and JSON Schema `x-deprecation` extensions all derive from the same registry and never disagree.
+- The release pipeline rejects any release whose `removeIn` notices have not been cleaned up: `DeprecationStaleError` for current-release stale notices, `DeprecationOverdueError` for past-release notices still on disk (§18.7).
+- `--no-deprecation-warnings` and `LANDO_DEPRECATION_WARNINGS=0` suppress only the renderer's per-`(kind, id)` line; recording, the `deprecation-used` event, telemetry, `lando doctor`, and `lando config --format yaml` always include deprecations (§18.6).
+- A non-deprecated alias of a deprecated canonical command is rejected at registration with `DeprecationContradictionError` (§18.1, §18.3).
 
 Binary-shipping criteria — items the v4.0.0 release pipeline (rather than the source) must satisfy — are catalogued separately in §17.9 (signing, notarization, SBOM, provenance, self-update, installer, codegen drift gates).
 
@@ -158,6 +164,9 @@ The `CommandFramework` abstraction exists so that if `@effect/cli` reaches featu
 - **Command namespace** — One of the three core namespaces (`app`, `apps`, `meta`) or a plugin-owned topic. Each namespace is a top-level OCLIF topic and the prefix segment of every canonical id within it.
 - **Command step** — A `cmds[].command:` entry in a tooling task (§8.5.2.1) that invokes another canonical command (built-in, plugin, or tooling) by id. The structured way to wrap or compose around a built-in. Inputs are validated against the target's `LandoCommandSpec`; lifecycle events for the target still publish; bootstrap level auto-escalates to the target's requirement.
 - **Config translator** — A plugin contribution that detects external configuration files and returns a partial Landofile fragment plus diagnostics. Translators are invoked explicitly by `lando app config translate` or embedding hosts; they never run during normal app startup.
+- **DeprecationNotice** — The canonical Effect Schema (§18.2) attached to a public surface to declare its deprecation. Carries `since`, `removeIn`, `severity`, `replacement`, `note`, optional `docsUrl` and `ticket`. Expressed across surfaces through schema annotations, contract fields, manifest fields, or TSDoc tags per the surface deprecation matrix in §18.5.
+- **DeprecationService** — Core Effect service (§3.4, §18.3) that records deprecated-surface usage, dedupes per `(kind, id)` per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build.
+- **`deprecation-used` event** — Cross-cutting lifecycle event (§3.5, §18.4) published whenever a registered deprecated surface is used at runtime. Renderer subscribers emit `message.warn` once per unique `(kind, id)` per process.
 - **Effect** — The TypeScript framework used for all runtime composition.
 - **Embedding host** — A Bun program that imports `@lando/core` and constructs its own `LandoRuntimeLive` Layer instead of (or in addition to) invoking the `lando` binary. See §16.
 - **End-to-end suite** — Test layer that drives the compiled `lando` binary against a real provider on a real OS (§13.1). Lives in `test/e2e/` with internal fixtures under `test/e2e/fixtures/`; user-facing scenarios are exercised through the canonical recipe scaffold flow. Replaces the Lando 3 Leia format.

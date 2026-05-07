@@ -1,6 +1,6 @@
 # Lando v4 — CLI, Tasks, and Tooling
 
-> **Part 8 of 15** · [Index](./README.md)
+> **Part 8 of 16** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
 This part defines the CLI surface. OCLIF is consumed in exactly one place — `src/cli/oclif/` — and the moment a command's `run()` is invoked, control crosses into Effect and never goes back.
@@ -19,7 +19,7 @@ Every command in Lando v4 belongs to exactly one of four **kinds** and is regist
 |---|---|---|
 | **Built-in command** | Core package | Static OCLIF `Command` subclass adapting Effect |
 | **Plugin command** | Plugin manifest `provides.commands` | Lazy-loaded OCLIF `Command` subclass |
-| **Tooling command** | Landofile `tooling:` | Generated OCLIF command spec, materialized at bootstrap-`commands` |
+| **Tooling command** | Landofile `tooling:` | Generated OCLIF command shim metadata, read from the app command index during router bootstrap |
 | **Management command** | Core or plugin, `hidden: true` | Hidden OCLIF command |
 
 #### 8.1.1 Command namespaces
@@ -106,6 +106,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 
 | Canonical id | Default top-level alias | Bootstrap | Summary |
 |---|---|---|---|
+| `app:cache:refresh` | *(none)* | `app` | Rebuild the app plan, tooling graph, and app command index without starting services |
 | `app:config` | *(none — `config` is reserved by `meta:config`)* | `app` | Read/write the current app's Landofile (§8.2.1) |
 | `app:config:translate` | *(none)* | `app` | Run config translators and optionally apply generated Landofile fragments (§8.2.1) |
 | `app:destroy` | `destroy` | `app` | Destroy the current app's resources |
@@ -114,6 +115,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:logs` | `logs` | `app` | Stream service logs |
 | `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
 | `app:restart` | `restart` | `app` | Stop then start the app |
+| `app:shell` | `shell` | `app` | Open an interactive Bun Shell with the current app's `LANDO_*` env, host paths, and provider-exec aliases pre-set (§8.2.3) |
 | `app:ssh` | `ssh` | `app` | Alias of `app:exec` with default `--interactive --tty` |
 | `app:start` | `start` | `app` | Start the current app |
 | `app:stop` | `stop` | `app` | Stop the current app |
@@ -122,28 +124,34 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `apps:poweroff` | `poweroff` | `provider` | Stop every Lando-managed service across apps |
 | `meta:config` | `config` | `minimal` | Read/write global Lando config (§8.2.2) |
 | `meta:doctor` | `doctor` | `plugins` | Run diagnostics for app config, host/provider setup, and plugin-contributed checks (§10.9) |
+| `meta:events:follow` | `events` | `minimal` | Follow the lifecycle event trace stream for diagnostics and e2e tests |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install a plugin |
 | `meta:plugin:remove` | `plugin:remove` | `plugins` | Remove a plugin |
 | `meta:plugin:login` | `plugin:login` | `minimal` | Authenticate with a plugin source |
 | `meta:plugin:logout` | `plugin:logout` | `minimal` | Forget plugin source authentication |
 | `meta:recipes:describe` | *(none)* | `minimal` | Print a recipe's prompts and metadata without running it (§8.8.11) |
-| `meta:recipes:list` | `recipes` | `minimal` | List canonical recipes shipped with the binary |
+| `meta:recipes:list` | `recipes` | `none` | List canonical recipes shipped with the binary; served from compile-time embedded recipe registry, no Effect runtime constructed (§3.2) |
 | `meta:recipes:validate` | *(none)* | `minimal` | Validate a `recipe.yml` against the published schema (§8.8.11) |
 | `meta:setup` | `setup` | `provider` | Run host setup (provider, CA, proxy, shell integration) |
-| `meta:shellenv` | `shellenv` | `minimal` | Print shell-profile snippets |
+| `meta:shellenv` | `shellenv` | `none` | Print shell-profile snippets from compile-time embedded templates; no Effect runtime constructed (§3.2) |
+| `meta:uninstall` | `uninstall` | `minimal` | Remove Lando-owned installed files after confirmation (§17.7) |
 | `meta:update` | `update` | `plugins` | Update Lando core and plugins |
-| `meta:version` | `version` | `minimal` | Print Lando version information |
+| `meta:version` | `version` | `none` | Print Lando version information; served from compile-time embedded constant, no Effect runtime constructed (§3.2) |
 
 **Command requirements** (canonical ids; the same behaviors apply when invoked through a top-level alias):
 
 - `app:info` supports `--deep`, repeated `--filter`, `--path`, `--service`, `--format json|table|yaml`.
+- `app:cache:refresh` performs full app bootstrap, rebuilds the app plan cache, compiled tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.json`, then exits without contacting the provider unless app materialization needs missing Lando-managed dependencies.
 - `apps:list` works inside and outside an app context, supports `--all`, filters, `--path`, JSON, table.
 - `app:logs` streams app logs and supports `--service`, `--follow`, `--tail`, `--since`.
 - `app:stop` stops the current app.
 - `apps:poweroff` stops every Lando-managed service across apps (across providers when capability allows).
 - `app:restart` is `app:stop` + `app:start`.
 - `app:exec` runs a command in a service. `app:ssh` is `app:exec` with default `--interactive --tty`.
+- `app:shell` requires a TTY; with `--no-interactive` it errors with `ShellRequiresTtyError`. Defaults to host mode (a `Bun.$`-backed REPL via `ShellRunner`) so ad-hoc commands run cross-platform without leaving the project's env; `--service <name>` runs the REPL inside a service via provider exec instead. Behavioral details in §8.2.3.
 - `app:destroy` requires confirmation unless `--yes` is passed.
+- `meta:events:follow` supports `--follow`, `--format json|table`, repeated `--event`, `--scope`, and `--since`; it reads the EventService trace sink used by diagnostics/e2e and does not subscribe to plugin events itself.
+- `meta:uninstall` requires confirmation unless `--yes` is passed, supports `--dry-run`, removes the binary when Lando owns the install path, removes `<userDataRoot>` and `<userCacheRoot>`, and leaves provider-owned runtime resources to provider-specific cleanup docs.
 - `--clear` is accepted at any level and purges relevant caches.
 - `app:start` and `app:rebuild` materialize app-declared Lando dependencies when needed: app-scoped plugins from `plugins:`, remote includes without warm cache entries, provider artifacts, and provider/runtime metadata. After a successful materialization/build, repeating `app:start` for the same app MUST NOT require network access unless a declared source is missing from the cache, the lockfile changed, or the app's own build/tooling commands require network.
 
@@ -216,6 +224,24 @@ Subcommands mirror `app config` (§8.2.1), with these specifics:
 - The command runs at bootstrap level `minimal` and is callable outside any app context.
 - Plugin-config keys (`pluginConfig.<plugin>.…`) and provider extensions (`providers.<provider>.…`) are first-class write targets and are validated against each contributing schema (§9.4) before being persisted.
 
+#### 8.2.3 The `app shell` command
+
+`lando app shell` (default top-level alias `lando shell`) opens an interactive Bun Shell scoped to the current Lando app. The host-mode shell is intentionally lightweight: it gives developers a one-key way to run ad-hoc commands in the app's resolved environment without retyping `LANDO_HOST_IP=… composer install` or jumping into a service for host-only tooling.
+
+```text
+lando app shell [--service=<name>] [--no-history]
+```
+
+Behaviors:
+
+- **Host mode (default).** A `Bun.$`-backed REPL runs on the host through `ShellRunner` (§3.4) with the app's `LANDO_*` env vars (§6.9) injected, the working directory set to the app root, and `host.lando.internal` resolution active. Interactive commands compose with Bun Shell's pipes, redirection, globs, and built-ins so the same syntax works on Linux, macOS, and Windows.
+- **Service mode.** With `--service <name>`, the REPL runs *inside* the named service via `RuntimeProvider.exec` with TTY allocation (the same mechanism `app:exec` and `app:ssh` use). The user's shell of choice (`SHELL` env var inside the service, falling back to `/bin/bash`) is invoked. Cancellation propagates through `Effect.interrupt` (§3.4).
+- **Secrets.** `${secret:…}` references resolve through `SecretStore` (§4.2) only when explicitly used in a command typed at the prompt; the shell does NOT preload secret values into the environment. Secrets that *are* resolved during the session redact in lifecycle events and the active `Logger` per §3.4.
+- **History.** Host-mode history is persisted at `<userCacheRoot>/shell/<app-id>/history`. `--no-history` disables persistence for the session. Lines that contain a resolved `${secret:…}` value are redacted before write regardless of `--no-history`.
+- **Bootstrap level:** `app`. Runtime resources (provider connection in service mode, the `ShellRunner` `Scope` in host mode) are released by `Effect.scoped` when the user exits the REPL.
+- **Lifecycle events** publish `cli-app:shell-init` / `cli-app:shell-run` / `cli-app:shell-error` per §3.5/§11.4. Per-command shell invocations *inside* the REPL publish `pre-shell-exec` / `post-shell-exec` (host mode) or `pre-provider-exec` / `post-provider-exec` (service mode); subscribers receive the redacted command shape, not the raw line.
+- **Errors.** Without a TTY (`--no-interactive`, redirected stdin, CI), the command fails with `ShellRequiresTtyError` and remediation pointing at `app:exec --interactive --tty -- <command>` for non-interactive use cases.
+
 ### 8.3 Command contract
 
 Every command, whether built-in or contributed by a plugin, conforms to the `LandoCommandSpec` shape. The OCLIF adapter compiles this into an OCLIF `Command` subclass.
@@ -228,13 +254,21 @@ export interface LandoCommandSpec<A = void, E = LandoCommandError> {
   readonly namespace: CommandNamespace;                  // "app" | "apps" | "meta" | a plugin cspace topic
   readonly summary: string;
   readonly description?: string;
-  readonly aliases?: ReadonlyArray<string>;              // additional namespaced aliases (e.g. "apps:halt" → "apps:poweroff")
-  readonly topLevelAlias?: boolean | string | ReadonlyArray<string>;
+  readonly aliases?: ReadonlyArray<string | { name: string; deprecated?: DeprecationNotice }>;
+  readonly topLevelAlias?:
+    | boolean
+    | string
+    | ReadonlyArray<string>
+    | { name: string | ReadonlyArray<string>; deprecated?: DeprecationNotice };
   readonly examples?: ReadonlyArray<string>;
   readonly hidden?: boolean;
   readonly bootstrap: BootstrapLevel;                    // declares what the command needs
   readonly flags?: ReadonlyArray<FlagSpec>;
   readonly args?: ReadonlyArray<ArgSpec>;
+  readonly deprecated?: DeprecationNotice;               // command-wide deprecation; see §18
+  readonly recipePostInitAllowed?: boolean;              // true only for commands in the generated recipe allowlist (§8.8.8)
+  readonly docs?: CommandDocsMetadata;
+  readonly acceptance?: ReadonlyArray<AcceptanceCheckId>;
   readonly run: (input: CommandInput) => Effect.Effect<A, E, LandoCommandRequirements>;
 }
 
@@ -252,8 +286,12 @@ Rules:
 
 - `id` is the canonical id including the namespace prefix (`app:start`, `meta:plugin:add`). The OCLIF adapter parses the prefix to derive the topic path.
 - `namespace` MUST equal the prefix segment of `id`. Mismatches are rejected at registration with a tagged `CommandRegistrationError`.
-- `aliases` is a list of additional **namespaced** aliases (for example, `apps:halt` aliasing `apps:poweroff`). Top-level aliases use `topLevelAlias` instead and are interpreted per §8.1.2.
-- `topLevelAlias` defaults to `false`. The shipped built-ins in §8.2 declare their default top-level aliases explicitly.
+- `aliases` is a list of additional **namespaced** aliases (for example, `apps:halt` aliasing `apps:poweroff`). Each entry may be a bare string (the alias name) or an object `{ name, deprecated? }` declaring a per-alias `DeprecationNotice` (§18.5). Top-level aliases use `topLevelAlias` instead and are interpreted per §8.1.2.
+- `topLevelAlias` defaults to `false`. The shipped built-ins in §8.2 declare their default top-level aliases explicitly. The object form `{ name, deprecated }` declares a `DeprecationNotice` for the top-level alias independently of the canonical command (§18.5).
+- `deprecated` declares a command-wide `DeprecationNotice` (§18.2). When set, every invocation of the command (canonical id or any alias) records a `deprecation-used` event with `kind: "command"` and `id: <canonical-id>`. A non-deprecated alias of a deprecated canonical raises `DeprecationContradictionError` at registration (§18.3).
+- `FlagSpec.deprecated?` and `ArgSpec.deprecated?` declare `DeprecationNotice`s scoped to the flag or arg. Using a deprecated flag/arg records `kind: "flag"` / `kind: "arg"` with `id: "<canonical-id>.<flag-or-arg-name>"`.
+- `recipePostInitAllowed` defaults to `false`. Setting it to `true` adds the command to the generated recipe post-init command allowlist, subject to §8.8.8 constraints and tests.
+- `docs` and `acceptance` metadata feed generated command reference docs and acceptance coverage checks; public commands MUST provide both.
 
 The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` instances so commands compose cleanly with Effect's IO.
 
@@ -261,12 +299,14 @@ The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` inst
 
 OCLIF is consumed in *one place only*: `src/cli/oclif/`. Outside that directory, no module imports `@oclif/core`. The integration policies:
 
-- **Manifest-first.** `oclif.manifest.json` is generated at build time. The user's installed plugin manifests are cached at `<userCacheRoot>/oclif-manifest.json` and refreshed on `meta:plugin:add` / `meta:plugin:remove`.
+- **Pre-OCLIF level-`none` fast path.** Before any `import("@oclif/core")` resolves, `bin/lando.ts` MUST argv-sniff for the level-`none` shapes enumerated in §3.2 and short-circuit to a static-print exit on match. The fast path is hand-rolled string matching against `process.argv`; it never imports OCLIF, the Effect runtime, or any plugin code. An argv shape that *looks* like a level-`none` command but carries unrecognized flags falls through to the OCLIF path.
+- **Manifest-first.** `oclif.manifest.json` is generated at build time for built-in command shims. Lando's plugin and app command indexes (`plugin-command`, `app-command`; §12.1) provide runtime command metadata and are refreshed on plugin install/remove/update, app planning, and `app:cache:refresh`.
 - **Hooks bridge to Effect.**
-  - OCLIF `init` hook runs the Lando bootstrap at level `commands` (or below if the command opts out).
-  - OCLIF `prerun` hook publishes the `cli-<canonical-id>-init` lifecycle event (e.g., `cli-app:start-init`).
+  - OCLIF `init` hook runs the router phase only: load embedded command metadata, read command indexes from cache, consult the `cwd-app-map` cache (§12.1), register command shims and aliases, and avoid full Effect runtime construction.
+  - After OCLIF resolves the canonical command id, the command base class provides the AOT-composed bootstrap layer (§17.2 codegen, "Bootstrap layers") for that command's declared/effective `BootstrapLevel` and then publishes the `cli-<canonical-id>-init` lifecycle event (e.g., `cli-app:start-init`).
   - OCLIF `postrun` hook publishes the `cli-<canonical-id>-run` event on success (e.g., `cli-app:start-run`).
   - OCLIF error path / `command_not_found` publishes `cli-<canonical-id>-error`. The full mapping is in §11.4.
+- **No live discovery in the router.** Router bootstrap reads the generated OCLIF manifest plus Lando's command indexes. It MUST NOT parse Landofiles, resolve includes, contact plugin sources, import plugin command modules, or initialize providers. Plugin command modules are imported only after their shim has been resolved and the command runtime bootstrap has completed.
 - **`SIGINT` → Effect interruption.** The OCLIF entrypoint installs a signal handler that calls `Effect.interrupt` on the running fiber. Providers' resource scopes finalize automatically.
 - **Help rendering** uses OCLIF's standard help class, customized to:
   - Group built-in commands by namespace (`app`, `apps`, `meta`) and plugin-owned topic.
@@ -395,10 +435,12 @@ tooling:
     failFast: true | false
     disabled: true | false
 
+    deprecated: <DeprecationNotice>      # task-wide deprecation notice; see §18
+
     flags:
-      <name>: <FlagSpec>                 # Effect Schema-defined
+      <name>: <FlagSpec>                 # Effect Schema-defined; FlagSpec accepts `deprecated` per §18.5
     args:
-      <name>: <ArgSpec>
+      <name>: <ArgSpec>                  # ArgSpec accepts `deprecated` per §18.5
 ```
 
 Shorthands:
@@ -544,7 +586,7 @@ tooling:
     cmd: echo "{{ .vars.GIT_SHA }}"
 ```
 
-Dynamic `sh` values run through the task's selected engine. For `service: :host` they run through `ProcessRunner`; for service tasks they run through provider exec. Dynamic vars are not written to the command cache or app-plan cache.
+Dynamic `sh` values run through the task's selected engine. For `service: :host` they run through `ShellRunner` (the `Bun.$`-backed primitive; §3.4) so multi-line `sh:` snippets, pipes, redirection, and built-in `rm`/`mkdir`/glob behavior work cross-platform without a per-OS code path; for service tasks they run through provider exec. Interpolated values inside `sh:` (including `{{ … }}` expression results and `${secret:…}` references) are escaped by default per Bun Shell's safe-by-default rules (§3.4); explicit `{ raw: "…" }` is required to opt out, and use of `raw:` is rejected at compile time inside `vars.<name>.sh:` because dynamic vars are not a place that needs unsafe interpolation. Dynamic vars are not written to the command cache or app-plan cache.
 
 #### 8.5.4 Expressions in tooling
 
@@ -587,9 +629,9 @@ Expressions are evaluated before each command step runs, after flags/args, dynam
 
 - `service: <name>` — fixed service.
 - `service: :flag-name` — value from `--flag-name` flag.
-- `service: :host` — bypass the provider, run on host through `ProcessRunner`.
+- `service: :host` — bypass the provider, run on host through the bundled `host` ToolingEngine, which is `ShellRunner`-backed (§8.6, §3.4). Multi-line `cmds:` get pipes, redirection, globs, command substitution, and built-in `rm`/`mkdir`/`cat`/`mv`/`which` that work the same on Linux, macOS, and Windows without `cross-env`, `rimraf`, or PowerShell branches.
 
-Command objects MAY override `service`. Host execution is explicit and potentially dangerous; renderers SHOULD show a warning for first-time host tasks unless `silent: true` or non-interactive mode suppresses prompts. Host tasks still go through `ProcessRunner`, `PrivilegeService` for escalation, redaction, and lifecycle events; they MUST NOT shell out through ad hoc platform APIs.
+Command objects MAY override `service`. Host execution is explicit and potentially dangerous; renderers SHOULD show a warning for first-time host tasks unless `silent: true` or non-interactive mode suppresses prompts. Host tasks still flow through `ShellRunner` for redaction, lifecycle events (`pre-shell-exec` / `post-shell-exec`), and cancellation, and through `PrivilegeService` for escalation when the task declares it needs root/admin; they MUST NOT shell out through ad hoc platform APIs. Tasks that need argv-precise execution against an external binary (no shell parsing) SHOULD pick a `ProcessRunner`-backed engine via `engine:` rather than emulating it through a single-string `cmd:` (§3.4).
 
 #### 8.5.6 Up-to-date checks and run policy
 
@@ -661,6 +703,54 @@ Rules:
 
 Per-include `topLevelAlias` settings on individual tasks within an included file behave identically to top-level Landofile-defined tasks (§8.5.1). An include MAY NOT set a single `topLevelAlias` at the include level that applies to all of its tasks; per-task aliases keep collision detection precise.
 
+#### 8.5.9 `.bun.sh` script-backed tasks
+
+For tooling whose body is "run this multi-line cross-platform shell script," the YAML form gets noisy. The `.bun.sh` source form lets a project ship a script file that becomes a first-class tooling task at compile time without a `tooling:` entry.
+
+**Discovery.**
+
+- `.lando/scripts/<name>.bun.sh` files under the app root are auto-discovered during the tooling compilation pipeline (§8.7).
+- Each file becomes a tooling task at canonical id `app:<name>` (subject to the namespace rules in §8.5.1). Sub-namespaces are encoded by directory: `.lando/scripts/db/wait.bun.sh` registers `app:db:wait`.
+- A `tooling.<name>:` entry in the Landofile of the same canonical id wins over an auto-discovered script and is reported during compilation as an explicit override.
+- `.bun.sh` task discovery is ON by default for the CLI imperative shell when the app root contains a `.lando/scripts/` directory and OFF by default for library mode (the embedding host opts in via `makeLandoRuntime({ autoDiscoverBunShellScripts: true })`; §16.5).
+
+**Front-matter.**
+
+The first contiguous comment block at the top of a `.bun.sh` file is parsed as YAML front-matter when wrapped in `# ---` markers and uniformly prefixed with `# `. The front-matter supplies the same metadata fields a `tooling:` entry would: `desc`, `summary`, `aliases`, `topLevelAlias`, `service`, `bootstrap`, `flags`, `args`, `passThrough`, `sources`, `generates`, `status`, `preconditions`, `run`, `platforms`, `internal`, `disabled`. Front-matter MUST validate against the `BunShellScriptFrontMatter` schema published from `@lando/sdk`; a missing or malformed front-matter block fails the compile pass with `BunShellScriptFrontMatterError`. An empty `.bun.sh` file is rejected with `BunShellScriptEmptyError`.
+
+Without an explicit `service:` field, scripts default to `service: :host` and execute through the `host` ToolingEngine (§8.6).
+
+**Example.**
+
+```sh
+#!/usr/bin/env bun
+# ---
+# desc: Build the app for production
+# topLevelAlias: build
+# sources:
+#   - src/**/*
+#   - package.json
+#   - bun.lock
+# generates:
+#   - dist/manifest.json
+# ---
+import { $ } from "bun";
+
+await $`bun run build`;
+await $`tsc -b && bun build src/index.ts --outdir dist`;
+```
+
+**Execution.**
+
+- Scripts run through `ShellRunner.runScript()` (§3.4). The runner verifies that the resolved file path stays inside the app root (or the user-config-root recipe cache, for recipe-bundled scripts; §8.8.8) and refuses paths whose realpath escapes the permitted base with `ShellScriptOutsideRootError`.
+- The Bun runtime invoked is the `bun` binary on PATH (library-mode) or the binary embedded in the compiled CLI. Scripts MUST NOT depend on host-installed Node.js.
+- Cancellation, redaction, lifecycle events, and `${secret:…}` resolution behave identically to YAML-defined host tasks (§8.5.5).
+- `sources`/`generates`/`status`/`run` (§8.5.6) work the same way as for YAML tasks. The cached fingerprint includes the script's checksum so editing the script invalidates the up-to-date result.
+- Front-matter `flags:` and `args:` produce parsed values available as `process.env.LANDO_FLAG_<NAME>` / `process.env.LANDO_ARG_<NAME>` and as a JSON document on `process.env.LANDO_INPUT` (the same shape as `CommandInput` in §8.3, serialized). Scripts MAY parse the JSON for typed access.
+- The script body MAY use any Bun API. In particular, `Bun.$` is available without import for shell-shaped composition.
+
+Bun.$'s built-in `cd`/`ls`/`rm`/`mkdir`/`mv`/`which` make `.bun.sh` scripts portable to Windows without `cross-env`, `rimraf`, or PowerShell branching (§3.4 ProcessRunner-vs-ShellRunner table).
+
 ### 8.6 The `ToolingEngine` abstraction
 
 The `ToolingEngine` is the pluggable component that turns a compiled Lando task graph into provider or host operations.
@@ -670,15 +760,17 @@ export class ToolingEngine extends Context.Service<ToolingEngine, {
   readonly id: string;
   readonly canHandle: (spec: ToolingSpec) => boolean;
   readonly compile: (spec: ToolingSpec) => Effect.Effect<ToolingProgram, ToolingCompileError>;
-  readonly execute: (program: ToolingProgram, input: CommandInput) => Effect.Effect<ExecResult, ToolingExecError, RuntimeProvider | ProcessRunner>;
+  readonly execute: (program: ToolingProgram, input: CommandInput) => Effect.Effect<ExecResult, ToolingExecError, RuntimeProvider | ProcessRunner | ShellRunner>;
 }>()("@lando/core/ToolingEngine") {}
 ```
 
 **Default engine: `providerExec`.** The default engine prefers `RuntimeProvider.exec` against running services, falling back to `RuntimeProvider.run` (ephemeral) only when explicitly configured. Multi-line scripts are encoded and executed through the engine's choice of mechanism (typically a base64-encoded `sh -c` script, but engines may use mounted files, persistent helpers, or other techniques). The engine receives already-validated task graphs but evaluates invocation-time expressions and dynamic vars only when the corresponding step runs.
 
-**Alternative engines** that plugins may ship:
+**Built-in alternative: the `host` engine.** Core ships a `host` engine alongside `providerExec` for tasks that target `service: :host` or set `engine: host`. The `host` engine is `ShellRunner`-backed (§3.4): it executes each step through `Bun.$` so pipes, redirection, globs, command substitution, and built-in `rm`/`mkdir`/`cat`/`mv`/`which` work the same on Linux, macOS, and Windows without `cross-env`, `rimraf`, or PowerShell branches. Multi-line `cmds:` are concatenated into one Bun Shell template per step; `${…}` interpolation runs through Bun Shell's safe-by-default escaping. The `host` engine is also what backs `.bun.sh` script-backed tasks (§8.5.9), tooling `vars.<name>.sh:` evaluation for host-targeted tasks (§8.5.3), and the `lando shell` REPL (§8.2.3).
 
-- `host` — runs on the host through `ProcessRunner`. Used by tooling that needs host context (e.g., `git`).
+**Other plugin-shipped engines:**
+
+- `processExec` — argv-precise host execution through `ProcessRunner` (no shell parsing). Plugin-supplied for tasks that wrap an external binary whose arguments must NOT be re-interpreted by Bun Shell. Core does not bundle a `processExec` engine in v4.0.0 because every observed core need is shell-shaped; users who need it install a plugin.
 - `remote` — runs against a remote provider (SSH, k8s exec).
 - `dryRun` — prints what would run without executing. Useful for CI.
 
@@ -688,10 +780,14 @@ export class ToolingEngine extends Context.Service<ToolingEngine, {
 
 ```text
 Landofile tooling entries + tooling includes
-  → raw schema validation (Effect Schema accepts expression-bearing values)
+  + .lando/scripts/**/*.bun.sh discovery (§8.5.9)
+      ↳ YAML front-matter parsed against `BunShellScriptFrontMatter` (Effect Schema)
+      ↳ canonical id derived from path (`.lando/scripts/db/wait.bun.sh` → `app:db:wait`)
+      ↳ Landofile `tooling.<id>:` entry of the same canonical id wins; otherwise the script is registered
+  → raw schema validation (Effect Schema accepts expression-bearing values; `.bun.sh` tasks validate against `BunShellScriptFrontMatter` and the common `ToolingTask` shape together)
   → config expression resolution for compile-time values
   → resolved schema validation (Effect Schema)
-  → include flattening / namespace registration
+  → include flattening / namespace registration (script-backed tasks merge in alongside YAML-backed tasks under the same canonical id space)
   → task graph construction + cycle detection
   → command-registry lookup for every `command:` step (compile-time)
   → command-step recursion / cycle detection
@@ -699,20 +795,23 @@ Landofile tooling entries + tooling includes
   → service + flag/arg metadata resolution
   → engine selection
   → engine.compile(spec) → ToolingProgram(s)
-  → OCLIF command spec generation
-  → command cache write
+  → OCLIF command shim metadata generation
+  → app command index + app-plan cache write
   → on invocation: OCLIF parses argv → invocation expressions/dynamic vars → engine.execute(program, input)
 ```
 
-**Cache hot path.** The compiled `ToolingProgram` graph is stored in the app plan cache. It includes task metadata, dependencies, command step plans (including resolved `command:` targets and their input schemas), expression ASTs, static vars/env, source/generate glob specs, status/precondition plans, engine ids, **resolved canonical command ids, namespace assignments, the resolved top-level alias list per task, and the per-task effective bootstrap level**. It excludes dynamic `vars.<name>.sh` results, decrypted secrets, runtime service info, and any provider connection state. Storing the alias, namespace, and bootstrap metadata in the cache means OCLIF command registration at bootstrap level `tooling` is a pure data lookup — no Landofile parse, no expression resolution, no include traversal, no command-registry walk.
+**Cache hot path.** Tooling routing metadata is stored in the app command index, while the compiled `ToolingProgram` graph is stored in the app plan cache. The app command index contains only routing-safe metadata: canonical ids, namespace assignments, summaries, flag/arg specs, aliases, top-level aliases, effective bootstrap levels, and the app-plan cache key. The `ToolingProgram` includes task metadata, dependencies, command step plans (including resolved `command:` targets and their input schemas), expression ASTs, static vars/env, source/generate glob specs, status/precondition plans, engine ids, **resolved canonical command ids, namespace assignments, the resolved top-level alias list per task, and the per-task effective bootstrap level**. It excludes dynamic `vars.<name>.sh` results, decrypted secrets, runtime service info, and any provider connection state. Storing the alias, namespace, and bootstrap metadata in the app command index means OCLIF command registration in the router phase is a pure data lookup — no Landofile parse, no expression resolution, no include traversal, no command-registry walk.
 
 On invocation at bootstrap level `tooling`:
 
-1. Read the cached `ToolingProgram` from `CacheService`.
-2. Parse argv with OCLIF using the cached flag/arg specs.
-3. Resolve invocation-time expressions, dynamic service targets, dependency call vars, status/precondition checks, and dynamic vars.
-4. Build `LandoRuntimeLive` at the task's **effective bootstrap level** (which already accounts for any `command:` step's requirements, §8.5.2.1).
-5. Run `engine.execute(program, input)` and propagate exit code. `command:` steps invoke the target command's Effect program directly; they do not re-parse argv through OCLIF.
+1. Resolve the command from the app command index loaded during router bootstrap.
+2. Read the cached `ToolingProgram` from `CacheService` using the stored app-plan cache key.
+3. Parse argv with OCLIF using the cached flag/arg specs.
+4. Resolve invocation-time expressions, dynamic service targets, dependency call vars, status/precondition checks, and dynamic vars.
+5. Build `LandoRuntimeLive` at the task's **effective bootstrap level** (which already accounts for any `command:` step's requirements, §8.5.2.1).
+6. Run `engine.execute(program, input)` and propagate exit code. `command:` steps invoke the target command's Effect program directly; they do not re-parse argv through OCLIF.
+
+If the app command index is missing or stale, router bootstrap omits app tooling commands rather than reparsing the Landofile. `command_not_found` detects that the current directory is inside a Lando app with a missing/stale command index and prints remediation pointing to `lando app cache refresh` or any full app-planning command such as `lando start` / `lando rebuild`.
 
 Provider initialization is the single hot-path cost when a task needs provider execution. The cached plan is read in microseconds, and no network, plugin install, fragment fetch, or provider contact occurs before invocation semantics require it. A wrapping task whose only escalation cost is a single `command: app:start` pays exactly the same cost as a direct `lando app start` invocation. Tooling hot path MUST remain usable offline after the app's Lando-managed dependencies and task graph are materialized.
 
@@ -779,6 +878,7 @@ description: <string>                    # required; one-line summary
 version: <semver>                        # required; recipe version
 authors: [<string>]                      # optional
 tags: [<string>]                         # optional; surfaced in `lando init` listing
+deprecated: <DeprecationNotice>          # optional; recipe-wide deprecation; see §18
 requires:                                # optional; soft preconditions
   lando: "^4.0.0"                        # core version constraint
   hostTools: [<tool-name>]               # host binaries that must be on PATH (e.g. git, composer)
@@ -789,6 +889,7 @@ prompts:                                 # ordered; later prompts may reference 
     message: <string>
     default: <value | expression>        # optional
     when: <expression>                   # optional; skip prompt when falsy
+    deprecated: <DeprecationNotice>      # optional; per-prompt deprecation; see §18
     validate:                            # optional; per-type validation
       pattern: <regex>                   # text/path
       message: <string>                  # human-readable failure
@@ -819,6 +920,7 @@ Constraints:
 
 - The schema is published from `@lando/sdk` as `RecipeManifest` and exported as JSON Schema (§13.2). Editor integration validates `recipe.yml` files in real time.
 - `id` MUST match the directory basename. Mismatch is a hard error.
+- A `deprecated:` notice on the recipe records `kind: "recipe"` with `id: <recipe-id>`; a `deprecated:` notice on a prompt records `kind: "recipe-prompt"` with `id: "<recipe-id>.<prompt-name>"`. Both are observed at init time, emit a `message.warn`, and are listed by `lando doctor --deprecations` (§18.4–§18.6).
 - Prompt `name` values MUST be unique within a recipe.
 - `default` and `when` strings are recipe expressions (§8.8.6). They MAY reference earlier prompts via `answers.<name>` and the standard recipe context.
 - `postInit` actions are limited to the declarative set above. Recipes MUST NOT execute arbitrary shell. The `command` action MAY only invoke canonical Lando command ids from the recipe post-init allowlist (§8.8.8); the allowlist prevents arbitrary host execution and keeps recipes inert until the user starts the app.
@@ -897,11 +999,21 @@ After every file is written, `postInit:` actions run in declared order:
 |---|---|
 | `gitInit` | `git init` + initial commit "Lando recipe `<id>` v`<version>`" if `git` is on PATH and the destination is not already a git repo. No-op otherwise. |
 | `message` | Print a renderer-aware message; expressions resolve against the recipe context plus `answers`. |
-| `command` | Invoke an allowlisted canonical Lando command (`cmd`) with `args:`. The command runs at its declared bootstrap level. Useful for triggering `meta:setup` or `app:start` when the user opted in. |
+| `command` | Invoke an allowlisted canonical Lando command (`cmd`) with `args:`. The command runs at its declared bootstrap level. Useful for triggering `app:config:translate` or an opt-in `app:start` after scaffolding. |
+| `bunScript` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()` (§3.4). The script's path MUST resolve under the recipe's `templates/` or `assets/` tree; arbitrary host-shipped paths are rejected. Useful for "open the docs URL", "stamp a generated `.gitattributes`", or "print a localized welcome banner" without inflating the canonical-command allowlist for every scaffold. |
 
-Allowed `postInit.command` targets in v4.0.0: `app:config:translate`, `app:start`, `meta:setup`, and `meta:shellenv`. Adding another target requires a spec amendment. Recipes MUST NOT use `postInit.command` to install plugins, update Lando, mutate global config, or run arbitrary tooling tasks.
+Allowed `postInit.command` targets in v4.0.0 are generated from command metadata (`recipePostInitAllowed: true`). The initial allowlist is `app:config:translate` and `app:start`. `app:start` MUST be guarded by an explicit recipe prompt or CLI answer; recipes MUST NOT start services by default. Adding another target requires updating the command registry and generated recipe-action docs. Recipes MUST NOT use `postInit.command` to install plugins, update Lando, mutate global config, run setup/shell-integration commands, or run arbitrary tooling tasks.
 
-Recipes MUST NOT define arbitrary shell hooks. The action set is intentionally small. New action types require a spec change.
+The `bunScript` action is bounded by construction:
+
+- The `script:` field is a path under the recipe's bundled tree (`templates/<…>.bun.sh` or `assets/<…>.bun.sh`); paths outside those bases are rejected with `BunScriptOutsideRecipeError` after realpath resolution.
+- Recipes that bundle `bunScript:` actions MUST ship the script as a `.bun.sh` file. The bundled-recipes generator (§17.2) checksums every script at build time and embeds the checksum into the recipe manifest; runtime execution verifies the checksum before launching the script. A mismatch fails the action with `BunScriptChecksumError`.
+- Arguments are passed via `args: [<string>]` (resolved through the recipe expression engine) and via `LANDO_RECIPE_ANSWER_<NAME>` environment variables (one per resolved prompt answer). `secret`-typed answers are NOT exported as env vars and require explicit `args:` passing through `${secret:…}` reference, which redacts in lifecycle events.
+- The script runs at recipe-init time, after files are written and in declared order with the rest of `postInit:`. `Effect.interrupt` (e.g., user Ctrl+C) cancels the script; its `Scope` finalizers run and the recipe init reports `BunScriptInterruptedError`.
+- Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on script failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
+- Scripts MUST NOT install plugins, mutate global config, or call back into `lando` itself for state-changing operations. The contract is "do one bounded scaffold-time chore and exit." `bunScript` is intentionally NOT a substitute for `postInit.command`; recipes that need to invoke a Lando command after scaffolding still go through the canonical-command allowlist.
+
+Recipes MUST NOT define arbitrary shell hooks outside the `bunScript` action. The action set is intentionally small. New action types require a spec change.
 
 #### 8.8.9 Init flow
 
@@ -921,7 +1033,7 @@ Recipes MUST NOT define arbitrary shell hooks. The action set is intentionally s
 8. Print a final summary including the Next-Steps message from the recipe (or a default).
 ```
 
-Lifecycle events publish at canonical command id `apps:init` per §11. Init does not contact a provider; provider-requiring `postInit.command` actions explicitly escalate to their own bootstrap level.
+Lifecycle events publish at canonical command id `apps:init` per §11. Init itself does not contact a provider; an explicit, opt-in `postInit.command: app:start` action runs as a separate allowlisted command at its own bootstrap level after scaffolding completes.
 
 #### 8.8.10 Canonical recipes shipped in core
 
@@ -968,7 +1080,7 @@ Recipes are versioned independently of core. Core's canonical recipes live along
 - Recipes MUST NOT execute arbitrary code at any point. The Q&A, file rendering, and post-init action set are the entire surface.
 - Recipes MUST NOT install plugins. The generated Landofile MAY declare `plugins:` (§7.4); plugin install happens through the app build/materialization flow when first needed.
 - Recipes MUST NOT mutate global config or `<userConfRoot>`. They write only inside the destination directory.
-- Recipes MUST NOT contact the network outside source resolution (which is cached and lockfile-pinned).
+- Recipes MUST NOT contact the network outside source resolution (which is cached and lockfile-pinned). An explicit, opt-in `postInit.command: app:start` is a separate Lando command after scaffolding and may perform the normal app materialization/build network operations described elsewhere.
 - Recipes are inert after init: once files are written, the recipe is no longer referenced. Lando reads only the resulting `.lando.yml`.
 
 #### 8.8.13 Init sources beyond recipes

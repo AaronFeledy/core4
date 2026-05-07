@@ -3,14 +3,15 @@
 > **Status:** Draft for build kickoff.
 > **Audience:** Lando Core maintainers, plugin authors, contributors building v4 from a clean slate, and embedding hosts integrating `@lando/core` as a library.
 
-The specification lives entirely in this directory as **fifteen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
+The specification lives entirely in this directory as **sixteen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
 
-The split is *almost* one-section-per-file, with a few principled merges and two principled additions:
+The split is *almost* one-section-per-file, with a few principled merges and three principled additions:
 
 - **§1 (Mission and Tenets)** is paired with **§14 (Non-Goals and Open Decisions)** because they answer the same question from opposite sides.
 - **§3 (Architecture)** is paired with **§11 (Lifecycle and Events)** because the lifecycle event bus is part of the runtime architecture and §3.5 already introduces the event taxonomy that §11 specifies in full.
 - **§16 (Embedding and Library Use)** is a new section that wasn't in the original SPEC. It is filed at part 09 (between CLI and Plugins) because it specifies the second imperative shell — the library — which is a peer to the CLI.
 - **§17 (Binary Build and Release Engineering)** is a new section that wasn't in the original SPEC. It is filed at part 15 (after Appendices) because it is the operational counterpart to §13 — covering the build pipeline, codegen, asset embedding, signing, supply-chain artifacts, self-update, installation, and the CI release workflow that §13.5 and §13.7 only sketch.
+- **§18 (Deprecation and Surface Evolution)** is a new section that wasn't in the original SPEC. It is filed at part 16 (after Binary Build and Release Engineering) because it is a cross-cutting governance contract — every other part references §18 for *how* a surface is deprecated, while §18 owns the *what*.
 
 ---
 
@@ -33,6 +34,7 @@ The split is *almost* one-section-per-file, with a few principled merges and two
 | 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | The nine test layers (unit, Effect service, CLI, library API, provider contract, plugin SDK contract, scenario, recipe, end-to-end), Effect testing patterns, the mandatory provider contract suite, the library API contract suite, the recipe suite that exercises every canonical recipe, the scenario / recipe / end-to-end conventions that replace the Lando 3 Leia format, schema and docs gates, type gates, PR merge requirements, the two distribution forms (compiled binary and library package whose `package.json#bin` doubles as a CLI install path) plus bundled-plugin and bundled-recipe generation, the docs site build, the per-PR/nightly/weekly CI matrices, and the release flow with channels. |
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provider-neutral language reference. Forbidden core dependencies. The source-derived acceptance checklist (with embedding criteria). The OCLIF-vs-`@effect/cli` decision rationale. The glossary. |
 | 15 | [`15-binary-build-and-release.md`](./15-binary-build-and-release.md) | §17 | The build pipeline and its single orchestrator. The codegen catalog (every generator, its inputs, outputs, and staleness gate). Asset embedding policy (hybrid: static JSON imports for small data, `Bun.embeddedFiles` for large data). Per-platform signing and notarization (macOS Developer ID + notarytool, Windows Authenticode + cosign, Linux GPG-signed checksum manifests). Supply-chain artifacts (CycloneDX SBOM, SLSA v1.0 provenance, cosign signatures). The self-update protocol (manifest schema, channel resolution, signature verification, atomic replace, Windows rename, rollback). The v4.0.0 install surface (GitHub Releases + curl-pipe installer; Homebrew/scoop/winget/distro deferred). The CI release workflow on GitHub Actions and the binary-shipping acceptance criteria that augment §15.C. |
+| 16 | [`16-deprecation-and-surface-evolution.md`](./16-deprecation-and-surface-evolution.md) | §18 | The cross-cutting deprecation contract: principles, the canonical `DeprecationNotice` schema, the `DeprecationService` and its hot-path rules, the `deprecation-used` lifecycle event, the surface deprecation matrix that maps every public surface to its declaration mechanism (schema annotation, contract field, manifest field, TSDoc tag), the renderer's once-per-process warning behavior and `--no-deprecation-warnings` opt-out, the semver-bound removal policy and the release-pipeline `removeIn` enforcement gate, and the test/lint gates. |
 
 ---
 
@@ -155,6 +157,7 @@ If you are looking for…
 | Embedding concept and use cases | 09 | §16.1 |
 | Public API surface (entry points, stability) | 09 | §16.2 |
 | `makeLandoRuntime` factory | 09 | §16.3 |
+| Runtime reuse for performance (long-lived hosts) | 09 | §16.3, §16.6 |
 | Plugin behavior in library mode | 09 | §16.4 |
 | Configuration in library mode | 09 | §16.5 |
 | Lifecycle and scopes for embedding hosts | 09 | §16.6 |
@@ -223,6 +226,14 @@ If you are looking for…
 | First-run UX and uninstall | 15 | §17.7 |
 | CI release workflow (GitHub Actions, channel-to-tag mapping, matrix) | 15 | §17.8 |
 | Binary-shipping acceptance criteria | 15 | §17.9 |
+| Deprecation policy and surface evolution | 16 | §18 |
+| `DeprecationNotice` schema | 16 | §18.2 |
+| `DeprecationService` interface | 16 | §18.3 |
+| `deprecation-used` lifecycle event | 16 | §18.4 |
+| Surface deprecation matrix | 16 | §18.5 |
+| Renderer deprecation warnings (`--no-deprecation-warnings`) | 16 | §18.6 |
+| `removeIn` release-time enforcement | 16 + 15 | §18.7 + §17.1 |
+| Deprecation test/lint gates | 16 + 13 | §18.8 + §13.4 |
 
 ---
 
@@ -245,6 +256,7 @@ Canonical owners:
 - Package entry points and public library exports: `package.json#exports` plus the API report gate (§2.7, §16.2, §13.4).
 - Recipe action types and `postInit.command` allowlist: generated from command metadata (§8.8.8).
 - Acceptance checklist items: stable checklist ids mapped to tests and public surfaces (§15.C, §17.9).
+- Deprecation notices for every public surface: registered through schema annotations, contract fields, manifest fields, or TSDoc tags per §18.5; published as the merged `DeprecationService` registry (§18.3) and as `dist/schemas/deprecation-notice.json` (§18.2).
 
 Surface change checklist:
 

@@ -1,6 +1,6 @@
 # Lando v4 — Pluggability Catalog
 
-> **Part 4 of 15** · [Index](./README.md)
+> **Part 4 of 16** · [Index](./README.md)
 > **Read next:** [05 Runtime Providers](./05-runtime-providers.md)
 
 This part is the contract index for the entire system. Every replaceable abstraction in v4 is listed here with its Effect Service tag, its responsibility, the default implementation, and the swap mechanism. It also covers the pluggability principles, the selection precedence rules when multiple plugins implement the same abstraction, the manifest contribution shape, and the mandatory guarantees every abstraction interface must satisfy (Effect-typed, Schema-defined, tagged errors, capability-declared, resource-safe, idempotent).
@@ -112,5 +112,6 @@ Every abstraction interface MUST satisfy these guarantees:
 - **Capability-declared.** If the abstraction has multiple feature dimensions (containerization, certs, proxy), capabilities are reported via a typed `capabilities` field, and consumers validate capabilities before invoking optional methods.
 - **Resource-safe.** Methods that acquire resources accept or produce a `Scope`. Long-running operations expose cancellation through `Effect.interrupt`.
 - **Idempotent where possible.** Apply, register, install, setup methods must be safe to call repeatedly with the same input.
+- **Deprecable.** Every public abstraction member supports a `DeprecationNotice` either via schema annotation (data shapes) or a `deprecated?:` field (contract shapes), per the surface deprecation matrix in §18.5. Removing a deprecated member is a release-pipeline-gated event (§18.7).
 
 ---

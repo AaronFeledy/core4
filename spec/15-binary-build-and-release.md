@@ -1,6 +1,6 @@
 # Lando v4 — Binary Build and Release Engineering
 
-> **Part 15 of 15** · [Index](./README.md)
+> **Part 15 of 16** · [Index](./README.md)
 
 This part is the operational counterpart to §13. Where §13 tells you *what* ships, §17 tells you *how* it gets built, signed, embedded, verified, distributed, and updated. Everything here flows from the architectural decisions already made elsewhere — Bun-compiled single-binary (§2.1), two distribution forms (§1.4, §13.5), bundled-plugins and bundled-recipes static-import constraint (§2.1, §13.5), self-update behavior (§13.7) — and pins down the operational mechanics those sections only sketch.
 
@@ -42,6 +42,14 @@ The orchestrator MUST run stages in order. Stages MAY be skipped per artifact fa
 **Local rehearsal.** A maintainer can run any prefix of the pipeline locally without secrets. Stages 9, 10, 11 (signature), 12, and 13 require credentials and are skipped with a clear `LOCAL_REHEARSAL=1` warning if those credentials aren't present. Stage 7 (compile) works locally for the maintainer's own platform target without a cross-compile rig.
 
 **Cold-build budget.** A full pipeline on Linux x64 — codegen through stage 12 — for one platform target on a clean cache MUST complete in under 10 minutes on the reference CI runner spec (§17.8). The all-targets matrix runs stages 1–6 once and parallelizes 7–10 across targets, then runs 11–13 once after all matrix jobs complete.
+
+**Deprecation gate.** Immediately after stage 1 (codegen) completes and before stage 2 (type-check) begins, the orchestrator runs `scripts/check-deprecations.ts` (§18.7). The script loads every `DeprecationNotice` in the codebase and bundled plugins via the same registry walk used at runtime (§18.5), reads the version being released from `package.json`, and:
+
+- Fails the pipeline with `DeprecationStaleError` if any notice's `removeIn` equals the version being released AND the corresponding surface is still present in the source tree.
+- Fails the pipeline with `DeprecationOverdueError` if any notice's `removeIn` is *less than* the version being released (a forgotten removal from a prior major).
+- Emits a "soft" warning (non-fatal) if any notice with no `removeIn` is older than 12 months by `since` date.
+
+The deprecation gate is also part of `bun run codegen:check`, so PRs that introduce the conflict are caught before merge rather than at release time. Failures surface as tagged errors with the offending `(kind, id, removeIn)` triplets and a remediation pointer to §18.7.
 
 ### 17.2 Codegen catalog
 

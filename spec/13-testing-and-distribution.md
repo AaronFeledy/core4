@@ -1,6 +1,6 @@
 # Lando v4 — Testing, Distribution, and Quality Gates
 
-> **Part 13 of 15** · [Index](./README.md)
+> **Part 13 of 16** · [Index](./README.md)
 > **Read next:** [14 Appendices](./14-appendices.md)
 
 This part defines the quality bar and the release pipeline. Tests run under `bun test`. `tsc --noEmit` is a merge gate. The provider contract suite is mandatory for every `RuntimeProvider` plugin. The default release artifact is the Bun-compiled single-binary, one per platform target, alongside the `@lando/core` library package whose `package.json#bin` entry doubles as the package-manager install path for users who already run Bun.
@@ -23,6 +23,7 @@ Covered here: the nine test layers (unit, Effect service, CLI, library API, prov
 | Plugin SDK contract | Type tests + runtime tests | Public API compatibility |
 | Scenario | `bun test` + `@lando/core/testing` | End-to-end through the library API against `TestRuntimeProvider`; no real container runtime |
 | Recipe | `bun test` against `recipes/` | Every canonical recipe scaffolds with default answers and produces a Landofile that passes schema validation; the resulting app starts under the end-to-end suite |
+| Deprecation | `bun test` + `@lando/core/testing` | Per-surface tests that exercise every `DeprecationNotice` in the codebase: triggering the surface emits the `deprecation-used` event, the renderer warns once per `(kind, id)`, `lando doctor --deprecations` lists the entry, and the `removeIn` gate rejects stale notices (§18.7–§18.8) |
 | Perf budget | `bun test` + `Bun.$` driving `dist/lando-${target}` with byte-resolution stdout/stderr capture | Asserts the §2.1 end-to-end and perceived-performance budgets, the §12.5 hot-path read budgets, and the §8.9.1 first-paint contract |
 | End-to-end | `bun test` + `Bun.$` against the compiled binary | The released artifact run on a real OS against a real provider |
 
@@ -54,6 +55,7 @@ Covered here: the nine test layers (unit, Effect service, CLI, library API, prov
 - Lifecycle event sequence (§11.4) is identical between a CLI invocation and a programmatic `startApp` call against the same Landofile + plugin set.
 - Plugin policy honors `discovery.{bundled,system,user,app}` flags independently, including the library-mode default of all-false.
 - Multiple `makeLandoRuntime` instances in one process are isolated (no shared caches, no cross-runtime event leakage).
+- A single `LandoRuntime` reused across N sequential operations performs the per-bootstrap work exactly once: bootstrap, plugin discovery, AOT layer instantiation, and cache loading happen on operation 1; operations 2..N each meet their respective §2.1 **hot-path** budget at p95. The library-mode reuse-perf test class lives under `test/perf/library-reuse/` and is part of the perf-budget suite (gated on Linux x64 per §13.4, advisory on macOS/Windows per-PR CI). The test class asserts the §16.3 "Runtime reuse for performance" contract for `runTooling`, `appInfo`, `appConfig.get`, and a representative `appStart` → `appStop` round-trip.
 - Closing the host scope finalizes every runtime resource (provider connections, file watchers, log streams).
 - Tagged errors crossing the runtime boundary include their full payload schema and remediation field.
 - `runTooling(name, input)` executes the same compiled task graph through CLI and library paths, including deps, expressions, status/precondition behavior, and lifecycle events.
@@ -142,6 +144,9 @@ A PR cannot merge unless:
 - The scenario suite passes on every per-PR platform.
 - The recipe suite passes on every per-PR platform; every canonical recipe under `recipes/` validates and produces a schema-valid Landofile with default answers.
 - The end-to-end smoke subset passes on Linux x64.
+- The deprecation suite passes: every `DeprecationNotice` in the codebase has a corresponding test that exercises the surface and asserts the `deprecation-used` event payload (§18.4); the renderer's per-`(kind, id)` dedup is verified across loops; `--no-deprecation-warnings` and `LANDO_DEPRECATION_WARNINGS=0` suppress renderer output without affecting recording, the event, or `lando doctor` (§18.6).
+- The deprecation lint gate passes: `bun run lint:deprecations` (§18.8) walks the AST and asserts every TS export carrying a TSDoc `@deprecated` tag is wrapped with `markDeprecated(notice, impl)`; mismatches fail the build.
+- The deprecation removal gate passes: `scripts/check-deprecations.ts` (§18.7) loads every notice, fails with `DeprecationStaleError` when a notice's `removeIn` matches the version being released and the surface is still present, and fails with `DeprecationOverdueError` when a notice's `removeIn` is in the past. The check also runs as part of `bun run codegen:check`.
 - The perf-budget suite passes on Linux x64: every command class meets its §2.1 end-to-end budget at p95, every command at level ≥ `plugins` meets the §2.1 perceived-performance first-paint budgets, and the §12.5 hot-path read budgets hold. macOS and Windows perf runs are advisory on per-PR CI but block release on the nightly matrix.
 - Level-`none` commands (§3.2) do not import `@oclif/core` or construct any `Context.Service`, verified by the `LANDO_PERF_TRACE` allowlist snapshot in the perf-budget suite.
 - Top-level module work in any module reachable from `bin/lando.ts` stays under the §2.4 budget; this is asserted as part of the level-`none` perf test class.
@@ -155,6 +160,7 @@ A PR cannot merge unless:
 - Command registry drift checks pass: every built-in command in §8.2 exists in the command registry, every command has canonical namespace metadata, and every recipe post-init allowlisted command declares `recipePostInitAllowed: true`.
 - Service registry drift checks pass: every core service tag listed in §3.4 is exported from `@lando/core/services` or explicitly marked internal.
 - Event registry drift checks pass: every lifecycle event mentioned in §3.5/§11 has a payload schema or an explicit marker that it is a router-only diagnostic event.
+- Deprecation registry drift checks pass: every surface kind in the §18.5 matrix is represented in the merged `DeprecationService` registry walk, every `DeprecationNotice` in the codebase round-trips through schema decode without loss, and every annotated public schema produces a JSON Schema with a valid `x-deprecation` extension.
 - The Starlight docs site builds, including generated schema reference pages.
 - New abstractions are listed in §4 and have at least one bundled implementation.
 - Public API additions to `@lando/core` (any new export from the entry points listed in §16.2) are accompanied by a library-API test under `test/library/` and a JSDoc block on the export.

@@ -1,6 +1,6 @@
 # Lando v4 — Mission, Tenets, and Non-Goals
 
-> **Part 1 of 15** · [Index](./README.md)
+> **Part 1 of 16** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
 This part captures the *why* of Lando v4. It states the mission, the non-negotiable architectural tenets that every PR is reviewed against, the explicit core boundaries (what core owns and what it does not), the default plugin distribution, the explicit non-goals, and the open decisions that remain before GA.
@@ -18,7 +18,7 @@ Lando v4 is a declarative local-development toolchain. A team commits a Landofil
 v4 differs from prior versions on six fundamental axes:
 
 1. **Provider-neutral.** Docker, Podman, Lima, OrbStack, remote runtimes, and lightweight VMs are *runtime providers* implemented by plugins. Core knows nothing about Docker by default.
-2. **Bun-native.** Bun is the runtime, package manager, test runner, subprocess driver, file IO layer, and bundler.
+2. **Bun-native.** Bun is the runtime, package manager, test runner, subprocess driver (`Bun.spawn`), shell substrate (`Bun.$` / Bun Shell), file IO layer, and bundler. The two host-execution primitives are deliberately complementary: `Bun.spawn` is exposed through the `ProcessRunner` service for argv-precise calls, `Bun.$` is exposed through the `ShellRunner` service for shell-shaped pipelines that must work identically on Linux, macOS, and Windows (§3.4, §4.2).
 3. **Effect-driven.** All side effects, errors, resources, concurrency, logging, and dependencies flow through Effect.
 4. **Plug-everything.** Every meaningful capability — containerization, tooling execution, logging, output rendering, certificates, proxy, schema validation, plugin sources, even the CLI parser — lives behind an interface and ships as a replaceable plugin.
 5. **Hard reset.** v3 services, v3 service inheritance, v3 recipes, legacy raw passthrough shims, and Traefik labels are not part of core. Plugins may offer v3 affordances through the config-translation surface (§7.4.1/§9.5); core does not.
@@ -35,7 +35,7 @@ These tenets are non-negotiable. Every PR is reviewed against them.
 | **Tagged errors only** | No thrown exceptions in core. All failures are `Schema.TaggedError` instances with machine-readable `_tag` and human-readable remediation. |
 | **Resource-safe by construction** | Anything that opens a handle, lock, file, port, network, or subprocess is acquired in a `Scope`. Cancellation cleans up automatically. |
 | **Capability before plan, plan before action** | Providers declare capabilities. The planner validates capabilities against the desired state. Only then does the provider execute. |
-| **Performance is a feature** | Every command meets a published end-to-end budget at p95 (§2.1) on the reference runner spec (§17.8). First paint — a banner, action verb, or first table row — lands within 50 ms cold for any command at level ≥ `plugins` (§8.9.1). The perf-budget test suite (§13.1) gates merges. A measurable startup regression is a release-blocking bug, not a polish item. The mechanisms that make this achievable — `--bytecode` (§2.1), AOT-composed bootstrap layers (§2.4, §17.2), the level-`none` pre-OCLIF fast path (§3.2), binary-encoded hot-path caches (§12.2), the `cwd-app-map` cache (§12.1), `Layer.suspend` for non-critical services (§2.4), pre-sorted subscriber lists with zero-subscriber short-circuits (§11.1), intra-level concurrency (§3.2), and fire-and-forget telemetry (§2.4) — are themselves non-negotiable and reviewable per their respective sections. |
+| **Performance is a feature** | Every command meets a published end-to-end budget at p95 (§2.1) on the reference runner spec (§17.8). **Perceived performance is part of the contract**, not a polish item: first paint — a banner, action verb, or first table row — lands within 50 ms cold for any command at level ≥ `plugins` (§8.9.1); renderers stream rather than buffer for TTY output; spinners appear within 100 ms of any operation expected to exceed 200 ms. The perf-budget test suite (§13.1) gates merges. A measurable startup regression is a release-blocking bug. **Embedding hosts (§16) are held to the same hot-path budgets** when they reuse a single `LandoRuntime` across sequential operations (§16.3 "Runtime reuse for performance"); a host that constructs a fresh runtime per operation pays cold-start every time and is correctness-equivalent but performance-irresponsible. The mechanisms that make all of this achievable — `--bytecode` (§2.1), AOT-composed bootstrap layers (§2.4, §17.2), the level-`none` pre-OCLIF fast path (§3.2), binary-encoded hot-path caches (§12.2), the `cwd-app-map` cache (§12.1), `Layer.suspend` for non-critical services (§2.4), pre-sorted subscriber lists with zero-subscriber short-circuits (§11.1), intra-level concurrency (§3.2), fire-and-forget telemetry (§2.4), and library-mode runtime reuse (§16.3) — are themselves non-negotiable and reviewable per their respective sections. |
 | **Hot path stays hot** | Tooling commands that don't need full app init must run from cached plans without provider contact. |
 | **Disconnectable local dev** | Lando may use the network during install, setup, update, app-dependency materialization, and app build. After a successful app build, routine local-dev commands must run from local caches/artifacts unless the user's app or tooling explicitly needs the internet. |
 | **Pluggable beats configurable** | Where two implementations might differ, prefer an interface + plugin over a flag. Reserve flags for behavior tuning of a single implementation. |
@@ -85,6 +85,8 @@ Reference bundle (subject to change in §14):
 | Service base | `@lando/service-lando` | Required for `type: lando` |
 | Logger | `@lando/logger-pretty` | Optional (Effect default `Logger.pretty` is built in) |
 | Renderer | `@lando/renderer-listr` | Optional |
+
+Two `ToolingEngine`s ship **built into core**, not as plugins, and are always available: the default `providerExec` engine (in-service exec via the active `RuntimeProvider`) and the `host` engine (`ShellRunner` / `Bun.$`-backed; powers `service: :host` tooling, `.bun.sh` scripts, `vars.<name>.sh:`, the `lando shell` REPL, recipe `bunScript:` post-init, and host-target healthchecks/scanners). They do not appear in the table above because they are not replaceable via plugin install in v4.0; both selection precedence and engine override remain plugin-replaceable per §4.2 and §8.6.
 
 A user with the default bundle gets a working `lando setup` that downloads and configures the Lando-managed runtime without requiring any pre-existing Docker or Podman installation. Users who prefer a system runtime may install `@lando/provider-docker` or `@lando/provider-podman` and opt in explicitly.
 

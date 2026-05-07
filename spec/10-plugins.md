@@ -1,6 +1,6 @@
 # Lando v4 — Plugin Specification
 
-> **Part 10 of 15** · [Index](./README.md)
+> **Part 10 of 16** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
 This part is the contract for plugin authors. A v4 plugin is a Bun-loadable package with a manifest declaring its public surface entirely through a `provides:` block. Side-effecting top-level code is forbidden and rejected at load.
@@ -72,6 +72,14 @@ enabled: true
 updateable: true
 cspace: example                          # used in plugin command namespacing
 
+# Optional: deprecate the whole plugin (§18). When set, every contribution
+# this plugin provides records a `deprecation-used` event with `kind: "plugin"`.
+deprecated:
+  since: "4.2.0"
+  removeIn: "5.0.0"
+  replacement: "@lando/example-next"
+  note: "Replaced by @lando/example-next which targets the new provider extension API."
+
 # Plugin-level config schema
 config:
   schema: ./src/config.schema.ts         # exports an Effect Schema
@@ -89,6 +97,13 @@ provides:
     - name: php
       module: ./src/services/php.ts
       versions: ["8.2", "8.3"]
+    - name: mailhog
+      module: ./src/services/mailhog.ts
+      deprecated:                        # per-contribution deprecation; see §18.5
+        since: "4.2.0"
+        removeIn: "5.0.0"
+        replacement: mailpit
+        note: "MailHog is unmaintained; use the mailpit service type instead."
   features:
     - id: php-extensions
       module: ./src/features/extensions.ts
@@ -159,6 +174,8 @@ conflicts: {}
 ```
 
 The manifest is itself an Effect Schema. Validation runs before any plugin module is imported.
+
+**Deprecation.** The manifest root and every entry under `provides.<surface>[]` MAY carry a `deprecated:` field of type `DeprecationNotice` (§18.2). A root-level notice deprecates the whole plugin; a per-entry notice deprecates a single contribution. Subscribers under `subscribers:` MAY also carry `deprecated:` per the same shape. The plugin loader registers each notice with `DeprecationService` (§18.3) at install / refresh time, and runtime use records a `deprecation-used` event (§18.4) with the appropriate `kind` (`plugin`, `manifest-contribution`, `command`, `service-type`, etc.) per the surface deprecation matrix in §18.5.
 
 ### 9.5 Contribution surfaces
 

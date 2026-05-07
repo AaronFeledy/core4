@@ -1,6 +1,6 @@
 # Lando v4 — Architecture, Lifecycle, and Events
 
-> **Part 3 of 15** · [Index](./README.md)
+> **Part 3 of 16** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part wires up the runtime. It covers the four concentric layers (imperative shell → Effect runtime → pluggable abstractions → plugin implementations), the bootstrap flow with its declared `BootstrapLevel`s, the on-disk source layout, the catalog of core Effect services, and the lifecycle event scopes published through the runtime.
@@ -251,6 +251,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `EmbeddedAssetService` | Unified access to build-embedded assets and library-mode package assets | `EmbeddedAssetServiceLive` |
 | `Logger` | Structured logging through Effect | `LoggerLive` (Effect `Logger.pretty` by default; `Layer.suspend`-wrapped — built on first `yield* Logger`) |
 | `Renderer` | CLI output strategy | `RendererLive` (default Lando renderer; `Layer.suspend`-wrapped, with a pre-bootstrap direct-write fallback for first-paint banners; §8.9) |
+| `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
 
 Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type errors at the Layer composition boundary catch missing services at compile time. Services in this table are core-provided runtime services; not every one is plugin-replaceable. Plugin-replaceable abstractions are enumerated in §4.2. `EmbeddedAssetService` is overrideable by tests and embedding hosts, but is not a plugin contribution surface because it protects binary/package asset integrity.
@@ -341,7 +342,7 @@ Tagged errors live in `@lando/core/errors`:
 | Level | Services included (eager) | Services included (`Layer.suspend`-wrapped, lazy on first access) | Services NOT in this layer |
 |---|---|---|---|
 | `none` | *none* — no Effect runtime constructed | *none* | every service |
-| `minimal` | `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `EventService` | `Logger`, `Renderer`, `Telemetry`, `ShellRunner` | plugins, commands, providers, app planner, networking subsystems |
+| `minimal` | `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `EventService`, `DeprecationService` | `Logger`, `Renderer`, `Telemetry`, `ShellRunner` | plugins, commands, providers, app planner, networking subsystems |
 | `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry` | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
@@ -365,6 +366,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
 
+| Cross-cutting | `deprecation-used` (published whenever a registered deprecated surface is used at runtime; §18.4) |
 CLI event names use the **canonical command id** (§8.1.1), not the top-level alias the user typed. Subscribing to `cli-app:start-run` catches the event whether the user invoked `lando app start` or `lando start`.
 
 **CLI event mapping to OCLIF lifecycle:**
@@ -440,6 +442,8 @@ export type PreStartEvent = Schema.Schema.Type<typeof PreStartEvent>;
 
 The `EventService.publish` signature is type-narrowed to the exact union of known event payloads; publishing an unknown event is a compile error.
 
+
+`DeprecationUsedEvent` is a cross-cutting event in the same registry. Its payload schema and publication rules are spec'd in §18.4; it is part of the standard event taxonomy here so subscribers can discover it through the same `EventService.subscribe<DeprecationUsedEvent>("deprecation-used")` API as any other event.
 ### 11.3 Subscriber priority
 
 Subscribers register a priority (lower runs first). Priority bands are:

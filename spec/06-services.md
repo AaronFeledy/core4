@@ -1,6 +1,6 @@
 # Lando v4 — Service Specification
 
-> **Part 6 of 15** · [Index](./README.md)
+> **Part 6 of 16** · [Index](./README.md)
 > **Read next:** [07 Landofile and Configuration](./07-landofile-and-config.md)
 
 This part defines what a v4 service is and how it is composed. A v4 service is a planned runtime component built from a **base** plus a sequence of composable **features**. Two bases ship with core: `l337` (raw artifact, the escape hatch) and `lando` (opinionated dev service with boot scaffolding, env layer, packages, app mounts, healthchecks, certs, SSH agent, and run hooks).

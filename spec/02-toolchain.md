@@ -1,6 +1,6 @@
 # Lando v4 — Toolchain
 
-> **Part 2 of 15** · [Index](./README.md)
+> **Part 2 of 16** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
 This part defines the technology stack and the rules each piece imposes. Bun is the runtime, package manager, test runner, subprocess driver, file IO layer, and bundler. TypeScript runs natively under Bun with strict settings. OCLIF is the bundled CLI framework. Effect is the runtime model for every meaningful operation in core. Effect Schema is the single source of truth for every external contract. The section also lists the runtime dependencies that are forbidden in core source.
@@ -18,7 +18,8 @@ Bun is the runtime, the package manager, the test runner, the bundler, and the b
 - `bun.lock` is the lockfile. `package-lock.json` and `yarn.lock` are forbidden.
 - `bun install` is the dependency installer. Plugin install hooks use `Bun.spawn` to invoke it.
 - `bun test` is the unit test runner. Vitest, Jest, and Mocha are forbidden in core (plugins may use what they like).
-- `Bun.spawn` is the subprocess primitive everywhere. `node:child_process` is forbidden in core except behind a `ProcessRunner` adapter that may need it for plugin compatibility.
+- `Bun.spawn` is the argv-precise subprocess primitive (no shell parsing), exposed through the `ProcessRunner` service (§3.4) and used for provider exec, signing tools, `bun add`, and other "exact binary, exact arguments" calls. `node:child_process` is forbidden in core except behind a `ProcessRunner` adapter that may need it for plugin compatibility.
+- `Bun.$` (Bun Shell) is the cross-platform shell substrate, exposed through the `ShellRunner` service (§3.4, §4.2). It backs the bundled `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` evaluation when `service: :host` (§8.5.3), `.bun.sh` script-backed tasks (§8.5.9), the `lando shell` REPL (§8.2.3), recipe `bunScript:` post-init (§8.8.8), host-target healthchecks/scanners (§10.5), and `lando doctor` diagnostic transcripts (§10.9). Use `Bun.$` whenever the work would naturally read as a `bash` one-liner (pipes, redirection, globs, command substitution, built-in `rm`/`mkdir`/`cat`/`mv`/`which`); use `Bun.spawn` for argv-precise calls. Core code MUST NOT use one to imitate the other (no `ProcessRunner.run(["sh", "-c", "…"])`, no `ShellRunner` invocations that just re-encode argv as a literal string; §3.4). The `scripts/release.ts` orchestrator and the codegen scripts under `scripts/` MAY use `Bun.$` directly because they run outside `LandoRuntimeLive` (§17.1).
 - `Bun.file` and `Bun.write` are the filesystem primitives. `node:fs` is allowed only inside the `FileSystem` adapter implementation when Bun lacks a primitive (e.g., `fs.watch` parity).
 - TypeScript executes natively. No `tsc` build step in the development loop. `tsc --noEmit` is allowed for type-checking gates.
 - ESM only. CommonJS is rejected in core source. Plugins may publish CJS; the plugin loader handles the interop.
