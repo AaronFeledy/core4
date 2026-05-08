@@ -24,7 +24,16 @@ Bun is the runtime, the package manager, the test runner, the bundler, and the b
 - TypeScript executes natively. No `tsc` build step in the development loop. `tsc --noEmit` is allowed for type-checking gates.
 - ESM only. CommonJS is rejected in core source. Plugins may publish CJS; the plugin loader handles the interop.
 
-**Bun version floor:** TBD (§14). Aim for the latest stable Bun at the moment of v4.0.0 GA, with a documented minimum.
+**Bun version floor:** TBD (§14). Aim for the latest stable Bun at the moment of v4.0.0 GA, with a documented minimum. The floor MUST be a version that supports both stable `--bytecode` for every cross-compile target listed below *and* the `BUN_BE_BUN` standalone-executable runtime mode (see "The compiled binary is itself Bun" below). If a future Bun version regresses or removes either capability, the floor moves with it; both flags are non-negotiable.
+
+**The compiled binary is itself Bun.** Every Bun-compiled standalone executable is also a complete Bun CLI: setting the environment variable [`BUN_BE_BUN=1`](https://bun.com/docs/bundler/executables#act-as-the-bun-cli) and invoking the binary makes it behave exactly like the upstream `bun` binary (the same parser, the same package manager, the same task runner, the same TS loader, the same `bun build` / `bun install` / `bun x` / `bun test` / `bun create` surface). Lando v4 treats this as a **first-class architectural primitive**, not an implementation detail:
+
+- The compiled `lando` binary published per §17 is *the* Bun runtime as far as Lando is concerned. Anywhere core, plugin code, or recipe scaffolding wants to spawn `bun`, it self-spawns the running binary with `BUN_BE_BUN=1` set in the child environment. Spawning a system `bun` from `$PATH` is forbidden in core source.
+- This removes Bun from the user's prerequisite list. A user with only the `lando` binary on PATH gets a working package manager, TS runner, and bundler for free, on every supported platform. The §17.7 install surface accordingly carries no "you must also install Bun" footnote.
+- The mechanism is exposed through a single core service, **`BunSelfRunner`** (§3.4), which is the only place in core source that constructs a `BUN_BE_BUN=1` child. `ProcessRunner.run(["bun", …])` and `ShellRunner` calls that re-encode `bun` as a literal command name are forbidden — they are a layering bug because they assume a system Bun. The `BunSelfRunner` service is plugin-replaceable per §4.2 (audited / dry-run / sandboxed / mirror-aware variants) and publishes `pre-bun-self-exec` / `post-bun-self-exec` lifecycle events identical in shape to the `pre-shell-exec` / `post-shell-exec` pair (§3.5, §11.2).
+- The library form of `@lando/core` (§1.4, §13.5) does **not** ship with an embedded Bun: when consumed as a library on a system that already has `bun` on PATH, the default `BunSelfRunner` Layer falls back to spawning the host `bun`. This is the same fallback pattern used by `EmbeddedAssetService` for library-mode asset reads (§17.3). An embedding host that wants to forbid host-Bun fallback may provide a strict variant.
+- A small, user-visible surface area is exposed at the CLI: `lando meta bun …` (top-level alias `lando bun`) and `lando meta x …` (top-level alias `lando x`) proxy through to the embedded Bun's CLI for ad-hoc package management, scaffolding, and one-shot bunx invocations (§8.2). Recipes consume the same primitive through declarative `postInit.bunInstall` / `bunAdd` / `bunCreate` / `bunRun` / `bunX` actions (§8.8.8). Plugin authoring (`lando meta plugin new` / `test` / `build` / `link` / `publish`) goes through `BunSelfRunner` (§9.10).
+- The `bin/lando.ts` level-`none` fast path (§3.2) MUST still short-circuit before any Bun-CLI dispatch logic runs. Argv shapes that look like `bun` invocations (`lando bun --version`, `lando install`, `lando x`) are *not* level-`none`: they require at minimum level `minimal` so `BunSelfRunner` and lifecycle events are constructed. The pre-OCLIF argv sniffer never matches them.
 
 **Single-executable distribution.** The default Lando v4 binary is built with `bun build --compile`:
 
@@ -287,7 +296,7 @@ Core's `package.json` `dependencies` (excluding `devDependencies` and `peerDepen
 - `yargs`, `commander` — OCLIF subsumes these.
 - `listr2` — replaced by the `Renderer` abstraction (a renderer plugin may pull listr2 internally).
 - `chalk`, `kleur` — Bun has built-in ANSI color and terminal detection.
-- `pacote`, `@npmcli/arborist` — replaced by `Bun.spawn('bun', ['add', ...])` for plugin installs.
+- `pacote`, `@npmcli/arborist` — replaced by `BunSelfRunner` (§3.4) self-spawning the compiled binary with `BUN_BE_BUN=1` for plugin installs, app-scoped `plugins:` resolution, and `includes:` materialization. Spawning a system `bun` from `$PATH` is forbidden; the compiled binary is itself Bun (§2.1).
 - `nanoid`, `uuid` — Bun provides `crypto.randomUUID` natively.
 - `slugify` — write a small internal helper; this isn't a vendor concern.
 - `object-hash` — `Bun.hash` and `crypto.subtle.digest` are sufficient.

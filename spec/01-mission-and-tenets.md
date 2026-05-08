@@ -58,6 +58,7 @@ Core owns:
 - Provider-neutral subsystem contracts: tooling engine, proxy, certs, SSH, healthcheck, scanner, networking intent.
 - Cache management for commands, plans, plugin metadata, and service info.
 - The **public programmatic API** for embedding hosts: the `LandoRuntime` factory, the exported service tags, schemas, tagged errors, and lifecycle event payloads. Versioning and stability of this surface are owned by core (§16 Embedding, §13 Distribution).
+- The **embedded Bun runtime as a user-visible utility.** The compiled `lando` binary is itself Bun (§2.1) and exposes that capability through `BunSelfRunner` (§3.4), the `lando bun` and `lando x` built-ins (§8.2.4), recipe `bunInstall:` / `bunAdd:` / `bunCreate:` / `bunRun:` / `bunX:` post-init actions (§8.8.8), the plugin authoring toolkit (§9.10), and the host-proxy `runBun` channel (§10.10). Core owns the verb-shape contract, the redaction rules, the recursion guard, and the `runBun` verb allowlist. Plugins MAY contribute alternative `BunSelfRunner` Layers (audited, sandboxed, mirror-aware, air-gapped) per §4.2; they MAY NOT weaken those guarantees. The user-facing promise is that "`lando` on PATH" is a sufficient prerequisite for plugin install, recipe scaffolding, and ad-hoc Bun work on every supported platform.
 
 Core does not own:
 

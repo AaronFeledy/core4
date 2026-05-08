@@ -36,6 +36,7 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 | **Filesystem** | `FileSystem` | Read, write, watch, glob | `Bun.file`/`Bun.write` | Replaceable for sandboxing or remote-FS use cases. |
 | **Process execution** | `ProcessRunner` | Argv-precise subprocess spawn (no shell parsing) | `Bun.spawn` | Replaceable for telemetry, sandboxing, dry-run modes. Used for provider exec, signing tools, and other "exact binary, exact arguments" calls (§3.4 ProcessRunner-vs-ShellRunner table). |
 | **Shell execution** | `ShellRunner` | Cross-platform shell-shaped execution: pipes, redirection, globs, built-in `rm`/`mkdir`/`cat`/`mv`/`which`, command substitution, `.bun.sh` script files | `Bun.$` (Bun Shell) | Replaceable for audited / dry-run / sandboxed shell. Backs the `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` for `service: :host` (§8.5.3), `.bun.sh` script-backed tasks (§8.5.9), the `lando shell` REPL (§8.2.3), host-target healthchecks/scanners (§10.5), recipe `bunScript:` post-init (§8.8.8), and `lando doctor` transcripts (§10.9). Complementary to `ProcessRunner`, not redundant; core code MUST NOT use one to imitate the other (§3.4). |
+| **Bun self-execution** | `BunSelfRunner` | Self-spawn the compiled binary with `BUN_BE_BUN=1` so it acts as the upstream `bun` CLI (§2.1, §3.4). Drives plugin install/update (§9.6), `lando bun` / `lando x` (§8.2.4), recipe `bunInstall` / `bunAdd` / `bunCreate` / `bunRun` / `bunX` post-init actions (§8.8.8), `npm:` / `registry:` `includes:` materialization (§7.7), and the plugin authoring toolkit (§9.10) | The compiled `lando` binary, self-spawned with `BUN_BE_BUN=1`; library-mode fallback to a system `bun` on PATH | Replaceable for audited / dry-run / sandboxed / mirror-aware Bun dispatch, headless CI variants that swallow `x` calls, and air-gapped variants that refuse uncached registry reads. Plugins MUST honor the verb-shape contract from §3.4 (`install`, `add`, `remove`, `x`, `create`, `runScript`, `buildLib`, `publishPkg`) and MUST NOT weaken the §3.4 redaction or recursion-guard contracts. |
 | **Privilege escalation** | `PrivilegeService` | Run a host command as root/admin | Platform-specific (`sudo`, `pkexec`, UAC) | Replaceable to support `polkit`, `doas`, custom credential prompts. |
 | **CA / certificates** | `CertificateAuthority` | Generate/store dev CA, issue leaf certs | `@lando/ca-mkcert` | Plugin contributes `certificateAuthorities:`. |
 | **Proxy / routing** | `ProxyService` | Realize `RoutePlan`s into running ingress | `@lando/proxy-traefik` | Plugin contributes `proxyServices:`. |
@@ -105,6 +106,12 @@ provides:
   shellRunners:
     - id: audited
       module: ./src/shell/audited-runner.ts
+  bunSelfRunners:
+    - id: airgapped
+      module: ./src/bun-self/airgapped.ts
+      capabilities:
+        verbs: [install, add, remove, runScript, buildLib]   # explicitly omits `x`, `create`, `publishPkg`
+        offlineOnly: true                                    # refuses any registry read that misses the local cache
   templateEngines:
     - id: handlebars
       module: ./src/engines/handlebars.ts

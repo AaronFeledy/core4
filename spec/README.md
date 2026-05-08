@@ -53,6 +53,10 @@ If you are looking for…
 | Open decisions before GA | 01 | §14.2 |
 | Persistent agent / daemon (deferred post-v4.0) | 01 | §14.2 |
 | Bun policies, single-binary build | 02 | §2.1 |
+| `BUN_BE_BUN` self-spawn policy (binary is itself Bun) | 02 | §2.1 |
+| `BunSelfRunner` core service | 03 | §3.4 |
+| `BunSelfRunner` pluggability (audited / sandboxed / air-gapped / mirror) | 04 | §4.2 |
+| `pre-bun-self-exec` / `post-bun-self-exec` lifecycle events | 03 | §3.5 + §11.2 |
 | Performance budgets (cold/hot starts) | 02 | §2.1 |
 | Perceived-performance / first-paint budget | 02 | §2.1 |
 | `--bytecode` requirement | 02 | §2.1 |
@@ -133,6 +137,8 @@ If you are looking for…
 | `lando events --follow` command | 08 | §8.2 |
 | `lando meta config` command | 08 | §8.2.2 |
 | `lando app shell` command (interactive Bun Shell REPL) | 08 | §8.2.3 |
+| `lando meta bun` / `lando bun` command (BUN_BE_BUN proxy) | 08 | §8.2.4 |
+| `lando meta x` / `lando x` command (bunx-equivalent) | 08 | §8.2.4 |
 | `lando uninstall` command | 08 + 15 | §8.2 + §17.7 |
 | `LandoCommandSpec` shape (with `namespace` and `topLevelAlias`) | 08 | §8.3 |
 | OCLIF integration policies (hooks, SIGINT, manifest, topic mapping) | 08 | §8.4 |
@@ -165,6 +171,9 @@ If you are looking for…
 | Prompt types (text, select, multiselect, confirm, number, secret, path, editor) | 08 | §8.8.5 |
 | Recipe expressions and control flow | 08 | §8.8.6 |
 | Recipe `postInit.bunScript:` action | 08 | §8.8.8 |
+| Recipe `postInit.bunInstall:` / `bunAdd:` / `bunCreate:` / `bunRun:` / `bunX:` actions | 08 | §8.8.8 |
+| Programmatic recipes (`recipe.ts`) | 08 | §8.8.14 |
+| Programmatic Landofile (`landofile.ts`) | 07 | §7.1.1 |
 | Canonical recipes shipped in core | 08 | §8.8.10 |
 | Renderers and messages | 08 | §8.9 |
 | Renderer first-paint contract | 08 | §8.9.1 |
@@ -186,6 +195,8 @@ If you are looking for…
 | Contribution surfaces table | 10 | §9.5 |
 | Plugin-contributed config translators | 10 | §9.5 |
 | Plugin install/update flow | 10 | §9.6 |
+| Plugin postinstall-script trust policy | 10 | §9.6 |
+| Plugin authoring toolkit (`meta:plugin:new`/`test`/`build`/`link`/`unlink`/`publish`) | 10 | §9.10 |
 | Plugin loading rules | 10 | §9.7 |
 | `LandoPluginContext` | 10 | §9.8 |
 | Networking intent (no shared bridge in core) | 11 | §10.1 |

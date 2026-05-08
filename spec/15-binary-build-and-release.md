@@ -253,6 +253,8 @@ v4.0.0 commits to **two** install surfaces. Everything else is deferred to a fut
 
 **1. GitHub Releases.** The signed binaries, library archive, SBOM, provenance, and signature files are published as a GitHub Release for every tagged version. Users may download the binary directly, verify it with the published cosign command (§17.5), and place it on their PATH. This is the most general, lowest-trust path.
 
+**Zero peer prerequisites.** The compiled `lando` binary embeds a complete Bun runtime (§2.1, §3.4 `BunSelfRunner`). A user installing only the Lando binary needs no separate Bun installation, no Node, and no system package manager. Plugin install (§9.6), recipe `bunCreate:` / `bunInstall:` (§8.8.8), `lando bun` / `lando x` (§8.2.4), and `includes:` registry materialization (§7.7) all self-spawn the running binary with `BUN_BE_BUN=1`. The `@lando/core` library form is the one exception (§1.4): it does not ship an embedded Bun and assumes the consuming Bun program already provides the runtime. The §13.1 plugin-install contract suite includes an end-to-end test that performs `lando plugin add <spec>` on a clean container with **no** prior Bun, Node, npm, or yarn installations, and the §13.6 release-blocking nightly matrix runs the `lando init` canonical-recipe set on the same clean baseline.
+
 **2. Curl-pipe installer.** A small POSIX shell script (`scripts/install.sh`) and a Windows PowerShell script (`scripts/install.ps1`) are published at stable URLs:
 
 - `https://get.lando.dev/install.sh`

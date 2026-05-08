@@ -229,6 +229,12 @@ export const HostProxyRequest = Schema.Union(
     tty:  Schema.Boolean,                                     // whether the caller has a TTY attached
     env:  Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   }),
+  Schema.TaggedStruct("runBun", {                             // forwards `bun <argv>` to the host's BunSelfRunner (§3.4)
+    argv: Schema.Array(Schema.String),                        // bun argv; subject to the verb allowlist below
+    cwd:  AbsolutePath,                                       // host-side cwd; remapped from the container cwd
+    tty:  Schema.Boolean,                                     // whether the caller has a TTY attached
+    env:  Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+  }),
   Schema.TaggedStruct("notify", {
     title: Schema.String,
     body:  Schema.optional(Schema.String),
@@ -254,7 +260,9 @@ export const HostProxyResponse = Schema.Union(
 
 Every other scheme is rejected with `HostProxyOpenUrlSchemeError`. `file://` is **always** rejected because the path's meaning differs between container and host. Plugins may extend the allowlist via the `HostProxyService` Layer; users may extend it through global config (`hostProxy.allowedSchemes:`).
 
-**`runLando` allowlist.** The dispatcher consults the `host-proxy-allowlist` cache (§12.1), which is generated from every `LandoCommandSpec` with `hostProxyAllowed: true` (§8.3), every plugin command with the same flag, and every tooling task with `hostProxyAllowed: true` (§8.5). Requests for canonical ids outside the allowlist are rejected with `HostProxyCommandNotAllowedError`. Lifecycle commands (`app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT be on the allowlist; the spec rejects any plugin or tooling task that attempts to add them with `HostProxyAllowlistConflictError` at registration.
+**`runLando` allowlist.** The dispatcher consults the `host-proxy-allowlist` cache (§12.1), which is generated from every `LandoCommandSpec` with `hostProxyAllowed: true` (§8.3), every plugin command with the same flag, and every tooling task with `hostProxyAllowed: true` (§8.5). Requests for canonical ids outside the allowlist are rejected with `HostProxyCommandNotAllowedError`. Lifecycle commands (`app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT be on the allowlist; the spec rejects any plugin or tooling task that attempts to add them with `HostProxyAllowlistConflictError` at registration. `meta:bun` and `meta:x` (§8.2.4) MUST NOT be on the allowlist either: a container that needs Bun should declare a container-side Bun primitive (e.g., `lando.bun-self` service feature) rather than round-tripping through the host's package manager, which would write to the host user's `~/.bun` cache and registry auth.
+
+**`runBun` verb allowlist.** `runBun` requests dispatch through `BunSelfRunner.run(argv, { cwd, env, mode: "embedded" })` on the host. The dispatcher consults a separate **`host-proxy-bun-verb-allowlist`** (a static list embedded in the binary, NOT plugin-extensible in v4.0). The default allowlist is **`audit`**, **`outdated`**, **`pm`**, **`info`**, and **`why`** — the read-only diagnostic verbs. Mutating verbs (`install`, `add`, `remove`, `update`, `link`, `unlink`, `publish`, `create`, `init`, `run`, `x`, `build`, `test`) are rejected with `HostProxyBunVerbNotAllowedError`. Rationale: a `runBun` call is a *container asking the host to do something*; only verbs that are read-only relative to the host's package state, registry auth, and home directory are safe by default. A container that needs a mutating Bun verb should declare a container-side Bun primitive instead. Plugin-replaceable `BunSelfRunner` Layers (§4.2) reach `runBun` through the same allowlist, so an audited or sandboxed plugin still respects this fence.
 
 **Recursion guard.** Every dispatched `runLando` invocation increments `LANDO_HOST_PROXY_DEPTH` in the env passed into the host re-entry. If the inbound request already carries `LANDO_HOST_PROXY_DEPTH >= 3`, the dispatcher refuses with `HostProxyRecursionLimitError`. This bounds runaway loops in a misbehaving container without preventing legitimate two-hop scenarios.
 
@@ -267,6 +275,7 @@ The `lando.host-proxy` feature ships **one** Bun-compiled static binary at `/usr
 - `/usr/local/bin/xdg-open`
 - `/usr/local/bin/open`
 - `/usr/local/bin/lando`
+- `/usr/local/bin/bun` *(only when no other `bun` is already at this or a higher-priority PATH location; opt-in per-service via the `lando.host-proxy.bun: true` feature option)*
 
 The binary dispatches on `argv[0]` (host-spawn pattern):
 
@@ -274,6 +283,7 @@ The binary dispatches on `argv[0]` (host-spawn pattern):
 |---|---|---|
 | `xdg-open` / `open` | `{ "_tag": "openUrl", url: argv[1] }` | The shim refuses extra arguments to keep `xdg-open <single-url>` semantics intact. Multiple URLs require multiple invocations. |
 | `lando` | `{ "_tag": "runLando", argv: argv.slice(1), cwd: process.cwd(), tty: isatty(0), env: <filtered> }` | `cwd` is the container path; the host dispatcher remaps it to the host app root using the active `AppMountInfo` (§6.4). The shim filters env to a small allowlist (`LANDO_*`, `LC_*`, `LANG`, `TERM`) before forwarding so container-leaked env never poisons the host program. |
+| `bun` | `{ "_tag": "runBun", argv: argv.slice(1), cwd: process.cwd(), tty: isatty(0), env: <filtered> }` | Forwards to host `BunSelfRunner` subject to the `runBun` verb allowlist above. Only enabled when the service's `lando.host-proxy.bun: true` option is set; the symlink is NOT installed otherwise. The shim refuses to forward when an inbound `BUN_BE_BUN` env var is present (which would create a recursion path through the host). For containers that legitimately need full mutating Bun verbs (install, build, run), the `lando.bun-self` service feature is the right primitive — see §6.11. |
 
 The shim is intentionally tiny: no Effect runtime, no plugin loading, no schema validation beyond reading `LANDO_HOST_PROXY_SOCKET` / `LANDO_HOST_PROXY_TOKEN`, opening the socket, writing one HTTP request, and reading the response or NDJSON stream. Cold-start budget for the shim itself is < 20 ms; the user-visible latency floor is dominated by host-side dispatch.
 

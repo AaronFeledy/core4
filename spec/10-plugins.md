@@ -253,14 +253,18 @@ There are no legacy autoload directories. All contributions go through the manif
 1. Resolving the spec through the active `PluginSource` adapter chain.
 2. Validating the manifest against the Effect Schema.
 3. Resolving dependency and API compatibility (rejects on conflict).
-4. Installing the package with `Bun.spawn('bun', ['install', ...])` in the plugin install dir.
+4. Installing the package via `BunSelfRunner` (§3.4): the running binary self-spawns with `BUN_BE_BUN=1` and the resolved Bun verb (`add` for registry/git/tarball specs in the user-global plugin store; `install` for app-scoped `plugins:` resolution against an app's plugin store). The plugin install dir is the spawn `cwd`. Spawning a system `bun` from `$PATH` is forbidden; the compiled binary is itself Bun (§2.1). The library form falls back to a system `bun` when no embedded Bun is available, per the §3.4 contract.
 5. Refreshing the Lando plugin cache, plugin command index, and OCLIF command shim metadata.
 
-`lando meta update` (top-level alias `lando update`) consults each installed plugin's release channel via the `UpdateService`. Channels: `stable`, `next`, `dev`. A plugin's manifest may specify `channels:` to constrain which channels it appears in.
+The user therefore needs no separate Bun installation to install plugins. A user with only the Lando binary on PATH can run `lando plugin add @lando/provider-docker` and the binary self-spawns its embedded Bun to perform the install. This contract is checked by an end-to-end test on a clean container with no prior Bun in the §13.6 CI matrix.
 
-`lando meta plugin login` (top-level alias `lando plugin login`) and `lando meta plugin logout` (top-level alias `lando plugin logout`) write to `<userDataRoot>/plugin-auth.json` and are consumed by the registry plugin source for private packages.
+**Plugin postinstall scripts.** Bun's `lifecycleScripts` policy applies. By default, `BunSelfRunner.add` and `.install` MUST disable arbitrary `postinstall` script execution (`--ignore-scripts`-equivalent behavior) for any plugin not on the trusted-postinstall allowlist (`<userConfRoot>/plugin-trust.yml`, populated explicitly by the user via `lando plugin trust <name>` — TBD §14.2). Trusted postinstall scripts run inside the same `BunSelfRunner` recursion-guarded child (§3.4) and surface as `pre-bun-self-exec` / `post-bun-self-exec` events (§11.2) with `verb: "install"` and the plugin id in `callerSubsystem`. This is the principal user-facing motivation for routing every plugin install through `BunSelfRunner`: untrusted-by-default, lifecycle-observable, redacted, cancellable, and consistent across `meta:plugin:add` and app-scoped `plugins:` resolution.
 
-App-declared `plugins:` do not install into the user-global plugin set. They are scoped to the app that declared them, because they are part of that app's reproducible build. Global `meta:plugin:add` remains the user-level install path for plugins the user wants available across apps.
+`lando meta update` (top-level alias `lando update`) consults each installed plugin's release channel via the `UpdateService`. Channels: `stable`, `next`, `dev`. A plugin's manifest may specify `channels:` to constrain which channels it appears in. Plugin update writes use `BunSelfRunner.add` against the resolved version specifier; the `meta:update` command itself updates the Lando binary via the §17.6 self-update protocol, which is unrelated to `BunSelfRunner`.
+
+`lando meta plugin login` (top-level alias `lando plugin login`) and `lando meta plugin logout` (top-level alias `lando plugin logout`) write to `<userDataRoot>/plugin-auth.json` and are consumed by the registry plugin source for private packages. The `BunSelfRunnerBunLive` reads `plugin-auth.json` to populate `BUN_AUTH_TOKEN` / scoped `_authToken` env vars on the spawned child for `add` / `install` verbs only; tokens never appear in argv, are redacted from `pre-bun-self-exec` / `post-bun-self-exec` events (§11.2), and never reach the `Logger` above debug level.
+
+App-declared `plugins:` do not install into the user-global plugin set. They are scoped to the app that declared them, because they are part of that app's reproducible build. App-scoped install runs through the same `BunSelfRunner` with the app's `<userDataRoot>/apps/<app-id>/plugins/` as `cwd` and writes a `bun.lock` whose entries are mirrored into `.lando.lock.yml` (§7.7.4). Global `meta:plugin:add` remains the user-level install path for plugins the user wants available across apps.
 
 ### 9.7 Plugin loading rules
 
@@ -297,5 +301,81 @@ export interface LandoPluginContext {
 ```
 
 Plugins do not receive the full `LandoRuntimeLive` Layer. They receive precisely the services declared in their contribution requirements; this is enforced by the manifest's `requires.services:` field (TBD, §14).
+
+### 9.10 Plugin authoring toolkit
+
+The compiled `lando` binary is itself Bun (§2.1). That makes it possible to ship a complete plugin-authoring workflow inside the binary without requiring contributors to install a separate Bun, Node, npm, yarn, or any TypeScript toolchain. The toolkit is a small set of `meta:plugin:*` authoring commands (registered alongside the install/update commands in §8.2) that route every spawn through `BunSelfRunner` (§3.4).
+
+The authoring toolkit is **not** a plugin contribution surface. It is core code that ships in core. Plugins MUST NOT contribute commands under `meta:plugin:*`.
+
+#### 9.10.1 Authoring command catalog
+
+| Canonical id | Bootstrap | Verb | Purpose |
+|---|---|---|---|
+| `meta:plugin:new <name> [<destination>]` | `minimal` | `BunSelfRunner.create` | Scaffold a new plugin source tree from a bundled template. |
+| `meta:plugin:test [<paths>...]` | `minimal` | `BunSelfRunner.run(["test", ...paths])` | Run `bun test` in the current plugin source tree. |
+| `meta:plugin:build` | `minimal` | `BunSelfRunner.buildLib` | Run `bun build` per the plugin's declared entry points and emit a publishable artifact tree. |
+| `meta:plugin:link [<path>]` | `plugins` | `BunSelfRunner` | Symlink a local plugin source tree into the user-global plugin store and refresh plugin caches. |
+| `meta:plugin:unlink <name>` | `plugins` | `BunSelfRunner` | Reverse of `link`; the previously installed registry copy is restored when the lockfile records one. |
+| `meta:plugin:publish` | `minimal` | `BunSelfRunner.publishPkg` | Publish the built artifact to a registry. Reads tokens from `<userDataRoot>/plugin-auth.json`; redacts them in lifecycle events. |
+
+None of these commands carries a default top-level alias; they are namespaced under `meta:plugin:` for discoverability and to keep the bare top-level surface uncluttered. OCLIF flexible taxonomy still accepts `lando plugin new <name>`, `lando plugin test`, etc.
+
+#### 9.10.2 `meta:plugin:new` templates
+
+`meta:plugin:new` invokes `BunSelfRunner.create(template, dest)` with a Lando-curated template id. The bundled template set is generated at build time by a new `scripts/build-bundled-plugin-templates.ts` codegen step (added to §17.2) and embedded via `Bun.embeddedFiles` (§17.3):
+
+| Template id | Scaffolds |
+|---|---|
+| `service-type` | A service-type plugin (manifest, `serviceTypes:` entry, schema, scenario fixture) |
+| `provider` | A `RuntimeProvider` plugin (manifest, capability matrix, `apply`/`exec`/`logs` skeletons, contract-suite hookup) |
+| `tooling-engine` | A `ToolingEngine` plugin |
+| `template-engine` | A `TemplateEngine` plugin (capabilities matrix and contract-suite hookup) |
+| `route-filter` | A `RouteFilter` plugin |
+| `config-translator` | A `ConfigTranslator` plugin (detection patterns, options schema, fragment emitter) |
+| `recipe` | A directory tree containing `recipe.yml`, `templates/`, `assets/`; published as an npm package consumable by `--recipe=npm:…` |
+| `bare` | An empty plugin manifest plus a `provides:` skeleton; the user fills in the rest |
+
+Every template emits, at minimum: a `package.json` with the correct `keywords` and `lando` block, a `plugin.yaml` (or `package.json#lando`) with `api: 4`, an `Effect Schema`-typed config schema, a `bun test`-ready test fixture, a `tsconfig.json` aligned with §2.2 strict settings, and a `README.md`. The generated tree is buildable, testable, and linkable with no further setup.
+
+`lando plugin new` prompts interactively for `name`, `template`, `cspace`, and `description` unless `--no-interactive` is passed; `--answer key=value` (repeatable) and `--answers <file>` follow the §8.8.1 init-prompt conventions so an embedding host can scaffold non-interactively.
+
+#### 9.10.3 `meta:plugin:test` and `meta:plugin:build`
+
+Both commands resolve the *current plugin source tree* by walking up from `cwd` looking for a `package.json` whose `keywords` include `lando-plugin` (or whose `package.json#lando` block validates as a manifest). The first match is the plugin root; failure surfaces as `PluginAuthoringRootNotFoundError` with remediation pointing at the directory layout the templates produce.
+
+`meta:plugin:test` runs `BunSelfRunner.run(["test", ...args])` with the plugin root as `cwd`. The argv after `--` is forwarded to Bun unchanged, so `lando plugin test -- --watch` works exactly as a user would expect from `bun test --watch`.
+
+`meta:plugin:build` runs `BunSelfRunner.buildLib({ entrypoints, outdir, target: "bun" })` per the plugin's `package.json#exports` map, with TS declarations emitted via `BunSelfRunner.run(["build", "--declaration", ...])` or an equivalent type-emit pass. Output lands at `<plugin-root>/dist/`. The command refuses to run if a previous build's output is mixed with source files (no `dist/` polluting `src/`).
+
+Both commands publish `cli-meta:plugin:test-*` and `cli-meta:plugin:build-*` lifecycle events alongside the per-spawn `pre-bun-self-exec` / `post-bun-self-exec` pair.
+
+#### 9.10.4 `meta:plugin:link` and `meta:plugin:unlink`
+
+`meta:plugin:link [<path>]` resolves a plugin source tree (defaulting to `cwd` per §9.10.3), validates the manifest, then registers the local path in the user-global plugin store at `<userDataRoot>/plugins/<name>` as a symlink. The plugin command index, OCLIF shim cache, and plugin cache are refreshed (§12.1). Subsequent `lando` invocations import the linked plugin's modules from the live source tree, so plugin authors get a real edit-build-test loop without re-running `meta:plugin:add`.
+
+`meta:plugin:unlink <name>` reverses the operation. If the user's plugin lockfile (`<userDataRoot>/plugins/.lando.lock.yml`) records a registry-installed copy that the link replaced, the registry copy is restored via `BunSelfRunner.add`. Otherwise the plugin is simply removed.
+
+Linked plugins are flagged in the plugin cache with `source: "linked"` and `linkedPath: <abs>`; `lando doctor` reports linked plugins separately so a user investigating an issue knows which plugins are running from local development trees rather than published versions.
+
+`meta:plugin:link` rejects symlinks whose realpath escapes any of the user's permitted authoring roots (`<userDataRoot>/plugins/.authoring-roots/*`, populated by the user via `lando plugin trust-authoring-root <abs>` — TBD §14.2). This prevents a malicious package from pretending to be a plugin during `lando init` flows that recurse through unrelated directories. The default authoring-roots list is empty; users opt in explicitly.
+
+#### 9.10.5 `meta:plugin:publish`
+
+`meta:plugin:publish` runs `BunSelfRunner.publishPkg({ tag, dryRun, registry })` with the plugin's built artifact directory as `cwd`. Pre-publish, the command:
+
+1. Re-runs `meta:plugin:build` if the artifact directory is missing or older than any source file.
+2. Re-runs `meta:plugin:test` unless `--no-test` is passed.
+3. Validates the manifest one more time and asserts that every `module:` path in `provides:` resolves under the artifact directory (no source-only paths leak into the published package).
+4. Reads the active registry token from `<userDataRoot>/plugin-auth.json` (§9.6) for the registry the plugin's `package.json#publishConfig` declares.
+
+The token is passed to the embedded Bun via env (`BUN_AUTH_TOKEN` or scoped `_authToken`); it never appears in argv and is redacted in `pre-bun-self-exec` / `post-bun-self-exec` events (§11.2). `--dry-run` runs the entire flow including `bun publish --dry-run`, prints the package contents, and exits 0 without actually publishing.
+
+#### 9.10.6 Authoring policies
+
+- Authoring commands MUST NOT modify any global Lando state outside `<userDataRoot>/plugins/`. They MUST NOT mutate global config, MUST NOT install user-facing recipes, and MUST NOT run app lifecycle commands.
+- The `.bun.sh` and `.bun.ts` script execution paths from §3.4 / §8.5.9 are reused for any authoring task that needs in-binary scripting (e.g., a template's post-scaffold hook). Templates MUST NOT bundle a freeform shell script outside that contract.
+- Authoring commands route every Bun child through `BunSelfRunner`; arbitrary `Bun.spawn(["bun", …])` calls are forbidden in the authoring command implementations under `src/cli/commands/meta/plugin/*`. The §13.4 lint gate enforces this.
+- The plugin templates MUST keep their top-of-tree imports cheap (§2.4); a freshly-scaffolded plugin MUST cold-start within the level-`plugins` budget on the reference runner (§2.1, §13.1).
 
 ---

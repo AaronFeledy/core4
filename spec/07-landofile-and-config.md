@@ -21,6 +21,54 @@ A Landofile-bearing directory is identified by the presence of any of the merge 
 
 Discovery uses `FileSystem.readdir` and is cached per-CWD for the lifetime of a CLI invocation.
 
+#### 7.1.1 Landofile file forms
+
+Lando v4 accepts the user-editable Landofile in **two file forms**:
+
+| Form | Default basename | Role |
+|---|---|---|
+| **YAML (canonical, default)** | `.lando.yml` | The declarative form. The §7.2 six-file merge order applies as written. This is the form 99% of users will write and edit, and the form `lando init` (§8.8) emits. |
+| **TypeScript (programmatic)** | `.lando.ts` | The programmatic form. Loaded by the embedded Bun runtime (§2.1, §3.4 `BunSelfRunner`) at parse time and required to **default-export an `Effect Schema`-validated `Landofile` value** matching the published Landofile schema (§7.8). Used when the declarative form would force unreasonable repetition (computing N replica services from an array, generating per-developer config from `process.env.USER`, deriving service names from a workspace package list, etc.). |
+
+The two forms are **mutually exclusive within a merge layer**: a directory MAY contain `.lando.yml` *or* `.lando.ts` for the canonical layer, but not both. The same rule applies to every layer position in §7.2 — `.lando.base.{yml,ts}`, `.lando.dist.{yml,ts}`, `.lando.upstream.{yml,ts}`, `.lando.local.{yml,ts}`, `.lando.user.{yml,ts}`. Discovery scans for both extensions per layer; finding both at the same layer fails with a tagged `LandofileFormConflictError` and remediation telling the user which file to remove.
+
+The TypeScript form's contract:
+
+```ts
+// .lando.ts — illustrative
+import { defineLandofile } from "@lando/core/schema";
+import process from "node:process";
+
+export default defineLandofile({
+  name: process.env.LANDO_APP_NAME ?? "myapp",
+  services: Object.fromEntries(
+    ["web-1", "web-2", "web-3"].map((id) => [id, {
+      type: "lando",
+      api: 4,
+      base: "node:20",
+      command: `node server.js --replica=${id}`,
+    }]),
+  ),
+  tooling: {
+    test: { service: "web-1", cmd: "bun test" },
+  },
+});
+```
+
+Required behaviors and constraints:
+
+- `defineLandofile(value)` is a thin identity helper exported from `@lando/core/schema` (and re-exported from `@lando/sdk`) that pins the argument's TS type to the inferred `Landofile` shape, so authors get full editor completion. The runtime decode still goes through the canonical Landofile schema; `defineLandofile` is purely a typing convenience.
+- The default export MUST be either a `Landofile` value or a function `(ctx: LandofileContext) => Landofile | Promise<Landofile> | Effect.Effect<Landofile, LandofileError>`. The function form receives a constrained context: `{ cwd, env, host: { os, arch, platform, isWsl }, layer, mergeAccumulator, secrets }` — equivalent to the §7.3.1 expression scopes plus an explicit accumulator for layered evaluation.
+- The `secrets` field of `LandofileContext` is a deferred-resolver, NOT a populated map: `secrets.read("MY_SECRET")` returns an `Effect` that resolves the secret through `SecretStore` at the same evaluation point a `${secret:MY_SECRET}` expression in the YAML form would resolve. This keeps the redaction guarantees of §7.3.1 intact for the TS form.
+- The module is loaded by `LandofileService` (§3.4) through Bun's TS loader. No build step is required; the same TS-loader path that powers `plugin.ts` (§9.1) and `.bun.ts` tooling scripts (§8.5.9) loads `.lando.ts`. Library-mode embedding hosts (§16) get the same loader through the embedded Bun.
+- Side-effects at module top level are **forbidden**. The module MUST be pure: imports, `defineLandofile(value)`, `export default`. Any I/O happens inside the function form's body and is run inside an `Effect.timeout` (default 5 s; configurable via global `landofile.tsTimeoutMs:`). Top-level `await`, file reads, network calls, or `console.log` calls cause the loader to fail with `LandofileTopLevelSideEffectError`.
+- The decoded result is cached the same way YAML Landofiles are cached: by file mtime and size in the `app-plan` cache (§12.1). Re-decoding only happens when the `.lando.ts` file changes or any file the function explicitly reads through `FileSystem` changes.
+- `lando app config edit` (§8.2.1) refuses to edit a `.lando.ts` file in v4.0 — programmatic Landofiles are author-mode artifacts and the structured `set` / `unset` / `validate` semantics don't translate cleanly to a TypeScript module. `lando app config view --source resolved` works on both forms identically.
+- The `${VAR}` shell-parameter-expansion (§7.3.1) is **not** evaluated against TS-form output: a TS-form Landofile uses native `process.env` access. Embedded `{{ … }}` expression strings *are* still resolved against the merged tree post-evaluation, so a TS-form Landofile can emit `{ env: "{{ host.platform }}" }` and have it resolved at the same staged-bootstrap-level point a YAML Landofile would.
+- Compatibility with `includes:` (§7.7) is full: a TS-form Landofile MAY declare `includes: [...]` in its returned value, and the included fragments merge into its tree per §7.7. The reverse — a YAML Landofile including a TS fragment — is supported via the same loader.
+
+The TS form is **opt-in and intentionally rare**. Recipes ship YAML by default; templates only emit TS when the recipe author needs the programmatic form. The §7.8 schema reference docs and the §13.2 schema gates apply to both forms equally because both decode to the same `Landofile` shape.
+
 ### 7.2 Merge order
 
 Default load order (low → high precedence):
@@ -45,6 +93,7 @@ Rules:
 - The final `name:` is taken from the highest-precedence file that defines it.
 - `.lando.recipe.yml` is **not** part of the merge order in v4. The v3 recipe-as-plugin model is removed; recipes are now init-time scaffolds (§8.8) that produce a fully-visible `.lando.yml` the user owns.
 - `includes:` (§7.7) are resolved per file *before* the merge across files. Each file's `includes:` are merged into that file's tree as if the included content appeared inline, using the same map/array rules.
+- Each layer position above accepts the YAML form (`.lando[.layer].yml`) **or** the TypeScript form (`.lando[.layer].ts`) per §7.1.1, but not both at the same layer. A directory MAY mix forms across layers (e.g., a YAML `.lando.dist.yml` plus a TS `.lando.ts`); the merge happens after both forms decode to the same `Landofile` shape.
 
 ### 7.3 Loading external file content
 

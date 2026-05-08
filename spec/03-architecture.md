@@ -203,6 +203,7 @@ core/
 │   ├── platform/                   # Bun primitive wrappers
 │   │   ├── filesystem.ts           # FileSystem service (Bun.file/Bun.write)
 │   │   ├── process.ts              # ProcessRunner service (Bun.spawn)
+│   │   ├── bun-self.ts             # BunSelfRunner service (BUN_BE_BUN self-spawn)
 │   │   ├── shell.ts                # ShellRunner service (Bun.$ / Bun Shell)
 │   │   ├── privilege.ts            # PrivilegeService (sudo/UAC adapter)
 │   │   └── tty.ts                  # Terminal capability detection
@@ -259,6 +260,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `FileSystem` | `Bun.file` / `Bun.write` wrapper | `FileSystemBunLive` |
 | `ProcessRunner` | Argv-precise subprocess spawn (`Bun.spawn`) | `ProcessRunnerBunLive` |
 | `ShellRunner` | Cross-platform shell-shaped execution (pipes, redirection, globs, built-ins) via `Bun.$` (Bun Shell) | `ShellRunnerBunLive` |
+| `BunSelfRunner` | Self-spawn the compiled `lando` binary with `BUN_BE_BUN=1` so it acts as the upstream `bun` CLI; the only place in core that constructs a `BUN_BE_BUN=1` child. Backs plugin install/update (§9.6), `lando bun` / `lando x` (§8.2.4), recipe `bunInstall` / `bunAdd` / `bunCreate` / `bunRun` / `bunX` post-init actions (§8.8.8), the plugin authoring toolkit (§9.10), and `includes:` materialization for `npm:` / `registry:` schemes (§7.7). Library-mode fallback spawns a system `bun` when one is on PATH | `BunSelfRunnerBunLive` |
 | `PrivilegeService` | sudo/UAC dispatch | `PrivilegeServiceLive` (platform-specific) |
 | `EmbeddedAssetService` | Unified access to build-embedded assets and library-mode package assets | `EmbeddedAssetServiceLive` |
 | `Logger` | Structured logging through Effect | `LoggerLive` (Effect `Logger.pretty` by default; `Layer.suspend`-wrapped — built on first `yield* Logger`) |
@@ -350,19 +352,99 @@ Tagged errors live in `@lando/core/errors`:
 - `ShellScriptOutsideRootError` — `runScript` rejected because the file's realpath escapes the permitted base. Includes both paths.
 - `ShellRunnerUnavailableError` — the active Live Layer cannot satisfy the request (e.g., a dry-run plugin that refuses real execution outside an allowlist).
 
+**`BunSelfRunner` interface (illustrative; canonical schema in `@lando/sdk`):**
+
+```ts
+export class BunSelfRunner extends Context.Service<BunSelfRunner, {
+  readonly id: string;
+
+  // Run the embedded Bun CLI with the given argv. Resolves to a BunSelfResult
+  // on exit code 0; fails the Effect with a tagged BunSelfExecError on non-zero
+  // unless `{ throwOnNonZero: false }` is passed. Equivalent to
+  // `bun <args>` with the user's PATH and the supplied options.
+  readonly run:    (args: ReadonlyArray<string>, options?: BunSelfRunOptions) => Effect.Effect<BunSelfResult,  BunSelfExecError, Scope.Scope>;
+
+  // Streaming variants for long-running output (e.g., bun install logs, bun build progress).
+  readonly stream: (args: ReadonlyArray<string>, options?: BunSelfRunOptions) => Stream.Stream<Uint8Array, BunSelfExecError, Scope.Scope>;
+  readonly lines:  (args: ReadonlyArray<string>, options?: BunSelfRunOptions) => Stream.Stream<string,    BunSelfExecError, Scope.Scope>;
+
+  // Convenience verbs over `run`. Each enforces the verb's known argv shape
+  // and refuses a freeform `args[0]` that contradicts the chosen verb.
+  readonly install: (options?: BunInstallOptions)     => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly add:     (specs: ReadonlyArray<string>,
+                     options?: BunAddOptions)         => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly remove:  (names: ReadonlyArray<string>,
+                     options?: BunRemoveOptions)      => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly x:       (spec: string,
+                     argv: ReadonlyArray<string>,
+                     options?: BunXOptions)           => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly create:  (template: string,
+                     dest: AbsolutePath,
+                     options?: BunCreateOptions)      => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly runScript: (scriptName: string,
+                       options?: BunRunOptions)       => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly buildLib:  (options: BunBuildOptions)      => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+  readonly publishPkg: (options?: BunPublishOptions)  => Effect.Effect<BunSelfResult, BunSelfExecError, Scope.Scope>;
+
+  // Diagnostic — returns the embedded Bun's reported version (the same string
+  // a user would see from `bun --version`). Cached per process; no spawn after
+  // the first call.
+  readonly version: Effect.Effect<string, BunSelfExecError>;
+}>()("@lando/core/BunSelfRunner") {}
+
+export interface BunSelfRunOptions {
+  readonly cwd?: AbsolutePath;
+  readonly env?: Record<string, string>;        // merged onto the inherited env; `BUN_BE_BUN` is always set
+  readonly stdin?: BunSelfInput;                // string | Uint8Array | ReadableStream | "inherit" | "ignore"
+  readonly timeout?: DurationInput;
+  readonly throwOnNonZero?: boolean;            // default true
+  readonly redact?: ReadonlyArray<string>;      // additional redaction tokens for logs/events
+  readonly registry?: BunSelfRegistryConfig;    // `bun install`-style registry overrides without writing a temp .npmrc
+  readonly mode?: "embedded" | "host";          // default "embedded"; "host" forces a system `bun` lookup (library-mode escape hatch)
+}
+
+export interface BunSelfResult {
+  readonly exitCode: number;
+  readonly stdout: Uint8Array;
+  readonly stderr: Uint8Array;
+  readonly signal?: NodeJS.Signals;
+  readonly durationMs: number;
+  readonly bunVersion: string;                  // the embedded Bun's version that handled the call
+}
+```
+
+Required `BunSelfRunner` behaviors:
+
+- The default `BunSelfRunnerBunLive` MUST self-spawn the running binary by `process.execPath` with `BUN_BE_BUN: "1"` set in the child's environment. It MUST NOT resolve a `bun` binary from `PATH` for the embedded path. Library-mode fallback (`mode: "host"` or no embedded Bun at runtime — i.e., `process.execPath` is not the Lando-compiled binary) MAY shell out to a system `bun`; the resulting `bunVersion` field carries the host's version and a `bun-self-exec` event is published with `mode: "host"` so observers can tell which path executed.
+- Self-spawn MUST NOT recurse: the dispatcher MUST set `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1` in the child env; if a `BunSelfRunner` finds that env on entry it MUST refuse with `BunSelfReentryError` instead of starting a third level. This prevents a misbehaving plugin or post-install script from forking unbounded `BUN_BE_BUN` chains.
+- Every invocation MUST publish `pre-bun-self-exec` and `post-bun-self-exec` lifecycle events (§3.5/§11.2) with the redacted argv shape, the calling subsystem id (e.g., `plugin-install:meta:plugin:add`, `recipe:bunCreate:vite`, `tooling-engine:bun-x`), the `cwd`, the registry summary (host + scope, never tokens), the `mode` (`embedded` | `host`), and the result summary.
+- `secret`-resolved values from `SecretStore` (§4.2) and `registry.token` values MUST be passed through env vars (`BUN_AUTH_TOKEN`, scoped `_authToken` entries) and redacted from log/event output. The `Logger` and `EventService` MUST observe redacted forms only.
+- `Effect.interrupt` MUST propagate to `proc.kill()` and the service's `Scope` MUST reap the spawned Bun process before resolving.
+- `install`, `add`, `remove`, `x`, `create`, `runScript`, `buildLib`, `publishPkg` MUST validate their argv before dispatch; passing `{ args: ["install", "--global"] }` to `install()` is rejected with `BunSelfArgvShapeError` because the verb-specific contract forbids `--global` writes outside the plugin install dir. Freeform escape hatch is `run(args)`.
+- `x` (bunx-equivalent) MUST refuse to run an external package when the active runtime is in offline mode (§1.4 disconnectable local-dev) unless the package is already cached in Bun's bunx cache; this prevents a `lando x` call from silently breaching the offline contract.
+- The service MUST be safe to use from `bootstrap: minimal`. Constructing the default Live Layer MUST NOT touch the network, the provider, or any plugin module. The first `version` access spawns once and caches the result for the rest of the process.
+
+Tagged errors live in `@lando/core/errors`:
+
+- `BunSelfExecError` — non-zero exit, signal kill, timeout, or process-spawn failure. Payload includes redacted argv, exitCode, signal, stdout/stderr (truncated and redacted), `bunVersion` if known, the dispatch `mode`, and remediation.
+- `BunSelfArgvShapeError` — a verb-specific call (`install`, `add`, …) was given argv that contradicts its allowed shape. Payload includes the offending verb, the rejected argv, and the contract that was violated.
+- `BunSelfReentryError` — the dispatcher detected `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1` in its inbound env and refused to fork. Payload includes the inbound argv and the upstream caller id.
+- `BunSelfRunnerUnavailableError` — the active Live Layer cannot satisfy the request (e.g., a sandboxed plugin that allowlists specific verbs only). Payload includes the rejected verb and the list of allowed verbs.
+- `BunSelfHostFallbackUnavailableError` — `mode: "host"` was requested (or implied by library-mode use) but no `bun` was found on PATH and no embedded Bun is available. Payload includes the resolved `process.execPath` and remediation.
+
 **Service membership per bootstrap level.** Each `BootstrapLevel` (§3.2) corresponds to an AOT-composed layer (§17.2 codegen, "Bootstrap layers"). The composition is:
 
 | Level | Services included (eager) | Services included (`Layer.suspend`-wrapped, lazy on first access) | Services NOT in this layer |
 |---|---|---|---|
 | `none` | *none* — no Effect runtime constructed | *none* | every service |
-| `minimal` | `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `EventService`, `DeprecationService`, `TemplateEngineRegistry` (built-in `lando` engine pre-registered), `TemplateRenderer` | `Logger`, `Renderer`, `Telemetry`, `ShellRunner` | plugins, commands, providers, app planner, networking subsystems |
+| `minimal` | `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `EventService`, `DeprecationService`, `TemplateEngineRegistry` (built-in `lando` engine pre-registered), `TemplateRenderer` | `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner` | plugins, commands, providers, app planner, networking subsystems |
 | `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry`; plugin-contributed `TemplateEngine` impls register here | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
 | `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService` | *(none — this is the maximal layer)* |
 
-The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, and doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script).
+The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bunInstall:`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither.
 
 `Renderer`'s Layer.suspend wrapping cooperates with the first-paint contract in §8.9 — a pre-bootstrap direct-write fallback prints the initial banner before the suspended `Renderer` Layer is forced.
 
@@ -375,7 +457,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | Lando | `pre-bootstrap-<level>`, `post-bootstrap-<level>`, `post-bootstrap`, `ready`, `pre-setup`, `post-setup`, `before-exit` |
 | App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
-| Process / Shell | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec` |
+| Process / Shell | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec` |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` (published for every container→host RPC dispatched by `HostProxyService`; §10.10) |
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
@@ -472,6 +554,37 @@ export const HostProxyCallEvent = Schema.TaggedStruct("pre-host-proxy-call", {
 });
 export type HostProxyCallEvent = Schema.Schema.Type<typeof HostProxyCallEvent>;
 ```
+
+`BunSelfExecEvent` is published for every `BunSelfRunner` dispatch (§3.4). The `pre-` event fires before the child process is forked; the `post-` event fires after exit and includes the result summary. Both carry the redacted argv shape (verb-known calls store the structured verb plus its arguments; `run()` calls store the raw argv with secret-resolved values and `--*-token` values masked), the calling subsystem id, the registry summary (host + scope, never tokens), the dispatch `mode` (`embedded` for the BUN_BE_BUN self-spawn or `host` for the library-mode fallback), and the embedded Bun version. Argv values that resolve through `SecretStore` (§4.2) are redacted from the event payload and observable in full only by the active `Logger` at debug level, identical to `pre-shell-exec` / `post-shell-exec`.
+
+```ts
+export const BunSelfExecEvent = Schema.TaggedStruct("pre-bun-self-exec", {
+  callId: Schema.String,                                  // ULID; correlation key with the post- event
+  verb: Schema.Union(                                     // structured verb when known
+    Schema.Literal("install"),
+    Schema.Literal("add"),
+    Schema.Literal("remove"),
+    Schema.Literal("x"),
+    Schema.Literal("create"),
+    Schema.Literal("run-script"),
+    Schema.Literal("build"),
+    Schema.Literal("publish"),
+    Schema.Literal("raw"),                                // freeform run() invocation
+  ),
+  argv: Schema.Array(Schema.String),                      // redacted argv as it would appear with BUN_BE_BUN=1
+  cwd: AbsolutePath,
+  callerSubsystem: Schema.String,                         // e.g. "plugin-install:meta:plugin:add", "recipe:bunCreate:vite", "tooling-engine:bun-x"
+  mode: Schema.Union(Schema.Literal("embedded"), Schema.Literal("host")),
+  bunVersion: Schema.String,                              // version reported by the dispatched Bun
+  registry: Schema.optional(Schema.Struct({
+    host: Schema.String,                                  // never includes the auth token
+    scope: Schema.optional(Schema.String),                // e.g. "@lando" for scoped registries
+  })),
+  timestamp: Schema.DateTimeUtc,
+});
+export type BunSelfExecEvent = Schema.Schema.Type<typeof BunSelfExecEvent>;
+```
+
 ### 11.3 Subscriber priority
 
 Subscribers register a priority (lower runs first). Priority bands are:

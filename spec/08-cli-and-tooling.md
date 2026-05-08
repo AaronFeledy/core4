@@ -122,13 +122,20 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `apps:init` | `init` | `minimal` | Generate a new Lando app (§8.8) |
 | `apps:list` | `list` | `minimal` | List apps known to Lando |
 | `apps:poweroff` | `poweroff` | `provider` | Stop every Lando-managed service across apps |
+| `meta:bun` | `bun` | `minimal` | Proxy to the embedded Bun CLI via `BunSelfRunner` (§3.4); the canonical user-visible BUN_BE_BUN entry point (§8.2.4) |
 | `meta:config` | `config` | `minimal` | Read/write global Lando config (§8.2.2) |
 | `meta:doctor` | `doctor` | `plugins` | Run diagnostics for app config, host/provider setup, and plugin-contributed checks (§10.9) |
 | `meta:events:follow` | `events` | `minimal` | Follow the lifecycle event trace stream for diagnostics and e2e tests |
 | `meta:plugin:add` | `plugin:add` | `plugins` | Install a plugin |
-| `meta:plugin:remove` | `plugin:remove` | `plugins` | Remove a plugin |
+| `meta:plugin:build` | *(none)* | `minimal` | Build the current plugin source via `BunSelfRunner.buildLib` (§9.10). Authoring command. |
+| `meta:plugin:link` | *(none)* | `plugins` | Symlink the current plugin into the user-global plugin store via `BunSelfRunner` `link` semantics (§9.10). Authoring command. |
 | `meta:plugin:login` | `plugin:login` | `minimal` | Authenticate with a plugin source |
 | `meta:plugin:logout` | `plugin:logout` | `minimal` | Forget plugin source authentication |
+| `meta:plugin:new` | *(none)* | `minimal` | Scaffold a new plugin from a built-in template via `BunSelfRunner.create` and the plugin authoring toolkit (§9.10). Authoring command. |
+| `meta:plugin:publish` | *(none)* | `minimal` | Publish the current plugin via `BunSelfRunner.publishPkg` (§9.10). Reads `<userDataRoot>/plugin-auth.json` for registry tokens. Authoring command. |
+| `meta:plugin:remove` | `plugin:remove` | `plugins` | Remove a plugin |
+| `meta:plugin:test` | *(none)* | `minimal` | Run the current plugin's tests via `BunSelfRunner.run(["test"])` (§9.10). Authoring command. |
+| `meta:plugin:unlink` | *(none)* | `plugins` | Reverse of `plugin:link`; remove the symlink and (optionally) restore the registry-installed copy (§9.10). Authoring command. |
 | `meta:recipes:describe` | *(none)* | `minimal` | Print a recipe's prompts and metadata without running it (§8.8.11) |
 | `meta:recipes:list` | `recipes` | `none` | List canonical recipes shipped with the binary; served from compile-time embedded recipe registry, no Effect runtime constructed (§3.2) |
 | `meta:recipes:validate` | *(none)* | `minimal` | Validate a `recipe.yml` against the published schema (§8.8.11) |
@@ -137,6 +144,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `meta:uninstall` | `uninstall` | `minimal` | Remove Lando-owned installed files after confirmation (§17.7) |
 | `meta:update` | `update` | `plugins` | Update Lando core and plugins |
 | `meta:version` | `version` | `none` | Print Lando version information; served from compile-time embedded constant, no Effect runtime constructed (§3.2) |
+| `meta:x` | `x` | `minimal` | One-shot package execution via `BunSelfRunner.x` (bunx-equivalent); the canonical npm/jsr-package runner (§8.2.4) |
 
 **Command requirements** (canonical ids; the same behaviors apply when invoked through a top-level alias):
 
@@ -241,6 +249,29 @@ Behaviors:
 - **Bootstrap level:** `app`. Runtime resources (provider connection in service mode, the `ShellRunner` `Scope` in host mode) are released by `Effect.scoped` when the user exits the REPL.
 - **Lifecycle events** publish `cli-app:shell-init` / `cli-app:shell-run` / `cli-app:shell-error` per §3.5/§11.4. Per-command shell invocations *inside* the REPL publish `pre-shell-exec` / `post-shell-exec` (host mode) or `pre-provider-exec` / `post-provider-exec` (service mode); subscribers receive the redacted command shape, not the raw line.
 - **Errors.** Without a TTY (`--no-interactive`, redirected stdin, CI), the command fails with `ShellRequiresTtyError` and remediation pointing at `app:exec --interactive --tty -- <command>` for non-interactive use cases.
+
+#### 8.2.4 The `meta bun` and `meta x` commands
+
+`lando meta bun` (default top-level alias `lando bun`) and `lando meta x` (default top-level alias `lando x`) are the **user-visible front door to the embedded Bun CLI** (§2.1). They are thin wrappers over `BunSelfRunner` (§3.4) that exist for three reasons: a user with only `lando` installed gets a working package manager and TS runner with no extra prerequisite; recipes can rely on `lando bun` / `lando x` being callable from `postInit.command` without a host Bun (§8.8.8); and core gets one observable, redacted, lifecycle-eventing entry point for ad-hoc Bun work instead of inviting plugin authors to construct ad-hoc `BUN_BE_BUN=1` children of their own.
+
+```text
+lando meta bun [<bun-argv>...]            # alias: lando bun
+lando meta bun -- [<bun-argv>...]         # explicit argv passthrough; everything after `--` is forwarded verbatim
+lando meta x <package>[@<version>] [<args>...]   # alias: lando x
+```
+
+Behaviors:
+
+- **`meta:bun`** forwards every argument after `bun` to `BunSelfRunner.run(args)`. `lando bun install`, `lando bun add lodash`, `lando bun outdated`, `lando bun audit`, `lando bun test`, `lando bun build ./entry.ts`, `lando bun create vite my-app`, `lando bun run my-script` all behave the way the upstream `bun` CLI documents them. The `cwd` defaults to the user's current working directory; flags Lando *also* defines (e.g., `--help`, `--version`) are NOT intercepted — `lando bun --version` reports the *embedded Bun's* version, not Lando's, by routing the call through `BunSelfRunner.run(["--version"])`. Use `lando version` (or `lando meta version`) to get Lando's version.
+- **`meta:x`** is a structured alias for `BunSelfRunner.x(spec, argv)` with a stricter contract than freeform `lando bun x …`: the first non-flag positional MUST be a package spec, and the remainder is the package's argv. Examples: `lando x prettier --write .`, `lando x @astrojs/cli init`, `lando x degit user/repo my-clone`. The structured form lets the renderer print "Running prettier@latest…" before the spawn, lets the perf-budget suite (§13.1) instrument bunx invocations specifically, and lets sandboxed `BunSelfRunner` plugins (§4.2) decide whether to allow `x` separately from `add`.
+- **Bootstrap level:** `minimal`. Both commands construct `BunSelfRunner` (lazy at `minimal`; §3.4) and the active `Logger` / `Renderer` for output streaming. They do NOT bootstrap plugins, providers, or the app planner — `lando bun add lodash` works inside a directory that has no Landofile.
+- **Lifecycle events** publish `cli-meta:bun-init` / `cli-meta:bun-run` / `cli-meta:bun-error` and `cli-meta:x-init` / `cli-meta:x-run` / `cli-meta:x-error` per §3.5/§11. Each child Bun spawn additionally publishes `pre-bun-self-exec` / `post-bun-self-exec` (§11.2).
+- **Streaming output.** Both commands stream stdout/stderr in real time via `BunSelfRunner.stream`/`lines` so progress (e.g., a long `bun install`, a long `bun build`) is observable through the active `Renderer`. Cancellation propagates: `Effect.interrupt` (Ctrl+C) kills the embedded Bun child within the §3.4 cancellation budget.
+- **Recursion guard.** `BunSelfRunner` sets `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1` in the child (§3.4); a Bun script invoked through `lando bun run …` that itself tries to `lando bun …` is rejected with `BunSelfReentryError`. Use `lando bun --help` to see the embedded Bun's documented escape hatches (e.g., explicit script paths) when you genuinely need recursion.
+- **Top-level alias conflicts.** `lando bun` and `lando x` follow §8.1.2. The default top-level aliases `bun` and `x` are reserved by core; plugin contributions and tooling tasks that try to claim them are rejected with `CommandAliasConflictError` per the built-in-wins rule.
+- **`hostProxyAllowed: false`.** Both commands MUST NOT be on the in-container `lando` shim allowlist (§10.10). A container that needs Bun should declare a `lando.bun-self` service feature (§6.11) — the container-side Bun primitive — instead of round-tripping through the host. Allowing `lando bun` over the host proxy would let a container install host-global packages or run host-side `bun create` against the user's home directory, both of which violate the host-proxy threat model.
+- **Offline mode.** When the user's effective configuration declares `offline: true` (§7.5), `meta:x` refuses uncached packages with `BunSelfOfflineError` and suggests `lando bun add <pkg>` (which writes the user's lockfile and lets the next `lando x` hit the cache). `meta:bun` passes the offline flag through to the embedded Bun unchanged.
+- **Errors.** Non-zero embedded Bun exit produces `BunSelfExecError` with the redacted argv and the embedded Bun's stderr. The Lando exit code matches the embedded Bun's exit code so CI scripts can assert on it identically to a real `bun …` invocation.
 
 ### 8.3 Command contract
 
@@ -1036,6 +1067,11 @@ After every file is written, `postInit:` actions run in declared order:
 | `message` | Print a renderer-aware message; expressions resolve against the recipe context plus `answers`. |
 | `command` | Invoke an allowlisted canonical Lando command (`cmd`) with `args:`. The command runs at its declared bootstrap level. Useful for triggering `app:config:translate` or an opt-in `app:start` after scaffolding. |
 | `bunScript` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()` (§3.4). The script's path MUST resolve under the recipe's `templates/` or `assets/` tree; arbitrary host-shipped paths are rejected. Useful for "open the docs URL", "stamp a generated `.gitattributes`", or "print a localized welcome banner" without inflating the canonical-command allowlist for every scaffold. |
+| `bunInstall` | Run `bun install` in the destination directory via `BunSelfRunner.install` (§3.4). Resolves the scaffold's declared `package.json` (or `bun.lock`) and writes `node_modules/`. The user needs no host Bun. Rejected if the destination has no `package.json`. |
+| `bunAdd` | Add explicit packages via `BunSelfRunner.add(specs, options)`. Specs are listed in `recipe.yml`, optionally split into `dependencies:`, `devDependencies:`, `peerDependencies:`, and `optionalDependencies:` lists. Specs MAY reference `${secret:…}` registry tokens (resolved through `SecretStore`, redacted in events; §3.4). Useful for stack-pickers ("PostgreSQL or MongoDB?") that conditionally pull packages. |
+| `bunCreate` | Run `bun create <template> <dest>` via `BunSelfRunner.create(template, dest)`. The destination MUST be the recipe's destination root or a subdirectory under it; absolute paths outside the destination are rejected with `BunCreateOutsideDestinationError`. This action bridges the entire `bun create` template ecosystem (Vite, Astro, Nuxt, Hono, Elysia, etc.) into Lando recipes — a recipe author writes a tiny `recipe.yml` whose `bunCreate:` line delegates the framework scaffold and then layers a Landofile on top via `files:`. |
+| `bunRun` | Run a script entry from the destination's `package.json` via `BunSelfRunner.runScript(scriptName)`. Useful for post-`bunInstall` scaffold steps the framework's own `package.json` defines (e.g., `bun run init-db`). |
+| `bunX` | Run a one-shot package via `BunSelfRunner.x(spec, argv)`. Useful for generators that publish to npm but don't ship a `bun create` template (e.g., `lando init` invoking `bunX: { spec: "degit", argv: ["user/template-repo"] }` to clone a template repo). The active runtime's offline policy applies (§8.2.4). |
 
 Allowed `postInit.command` targets in v4.0.0 are generated from command metadata (`recipePostInitAllowed: true`). The initial allowlist is `app:config:translate` and `app:start`. `app:start` MUST be guarded by an explicit recipe prompt or CLI answer; recipes MUST NOT start services by default. Adding another target requires updating the command registry and generated recipe-action docs. Recipes MUST NOT use `postInit.command` to install plugins, update Lando, mutate global config, run setup/shell-integration commands, or run arbitrary tooling tasks.
 
@@ -1047,6 +1083,15 @@ The `bunScript` action is bounded by construction:
 - The script runs at recipe-init time, after files are written and in declared order with the rest of `postInit:`. `Effect.interrupt` (e.g., user Ctrl+C) cancels the script; its `Scope` finalizers run and the recipe init reports `BunScriptInterruptedError`.
 - Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on script failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
 - Scripts MUST NOT install plugins, mutate global config, or call back into `lando` itself for state-changing operations. The contract is "do one bounded scaffold-time chore and exit." `bunScript` is intentionally NOT a substitute for `postInit.command`; recipes that need to invoke a Lando command after scaffolding still go through the canonical-command allowlist.
+
+The `bunInstall` / `bunAdd` / `bunCreate` / `bunRun` / `bunX` actions are also bounded:
+
+- All five route through `BunSelfRunner` (§3.4) — the same recursion-guarded, redacted, lifecycle-eventing Bun child the rest of core uses. Recipes do NOT spawn `bun` directly, do NOT write a temporary script and shell into it, and do NOT bypass the §3.4 verb-shape contract. A misformed `bunAdd:` payload (e.g., a spec list containing `--global`) is rejected at `lando recipes validate <path>` time with `BunSelfArgvShapeError`.
+- The `cwd` for all five actions is the recipe destination directory or a declared subdirectory of it (e.g., `bunInstall: { cwd: ./frontend }`). Paths that escape the destination via `..` or symlinks are rejected after realpath resolution with `BunActionOutsideDestinationError`.
+- Each action's redacted argv is published through `pre-bun-self-exec` / `post-bun-self-exec` events with `callerSubsystem: "recipe:bun<verb>:<recipe-id>"` so subscribers (e.g., `lando doctor --transcripts`) can inspect what a recipe scaffolded.
+- Cancellation: `Effect.interrupt` propagates through `BunSelfRunner` to the embedded Bun child. The recipe init aborts with `RecipeInterruptedError`. `bunInstall`-written `node_modules/` directories are NOT auto-removed because they may contain partially extracted artifacts the user wants to inspect; the failure message points at `rm -rf node_modules && lando bun install` for retry.
+- Network. `bunInstall` / `bunAdd` / `bunCreate` / `bunX` may contact registries; this is the legitimate exception to the §1.4 "recipes MUST NOT contact the network" rule and is the same exception the existing `--recipe` source resolution already carries (recipes resolved from `npm:` or `git:` already touch the network). Recipe authors SHOULD scope network-bound actions behind a `when:` expression so users on offline runs can opt out.
+- A recipe MUST NOT use these actions to install Lando *plugins* into the user-global plugin set; `lando plugin add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The actions are bounded to the destination directory's package graph.
 
 Recipes MUST NOT define arbitrary shell hooks outside the `bunScript` action. The action set is intentionally small. New action types require a spec change.
 
@@ -1127,6 +1172,80 @@ Recipes are versioned independently of core. Core's canonical recipes live along
 3. Both `--source` and `--recipe` must succeed; any failure aborts the init with no partial state.
 
 Default init sources: `cwd` (use existing directory), `git`, `tarball`. A provider may be required by a specific source (e.g., a hypothetical "lando-template" source that uses ephemeral container exec); core does not require a provider for `apps:init` in general.
+
+#### 8.8.14 Programmatic recipes (`recipe.ts`)
+
+A recipe MAY ship a `recipe.ts` file *instead of* `recipe.yml`. The TypeScript form is the programmatic counterpart to the declarative YAML form, in the same way `.lando.ts` (§7.1.1) is the programmatic counterpart to `.lando.yml`. The use case is **recipes whose prompt graph or file manifest depends on earlier answers in non-trivial ways** — for example, a Node-API recipe whose Database picker, ORM picker, and migration scaffolder produce different file sets per combination, where expressing the matrix in static YAML becomes unreadable.
+
+`recipe.ts` and `recipe.yml` are **mutually exclusive within a recipe directory.** A recipe ships one or the other, never both.
+
+```ts
+// recipe.ts — illustrative
+import { defineRecipe } from "@lando/core/schema";
+
+export default defineRecipe(async (ctx) => {
+  // ctx mirrors the §8.8.6 recipe render context plus a controlled prompt-asker
+  // so prompt -> file-manifest dependencies can be expressed in TS.
+
+  const framework = await ctx.prompt({
+    name: "framework",
+    type: "select",
+    message: "Which Node.js framework?",
+    choices: ["express", "fastify", "hono"],
+  });
+
+  const wantDb = await ctx.prompt({
+    name: "wantDb",
+    type: "confirm",
+    message: "Add a database?",
+    default: true,
+  });
+
+  const db = wantDb
+    ? await ctx.prompt({
+        name: "db",
+        type: "select",
+        message: "Which database?",
+        choices: ["postgres", "mysql", "mongodb"],
+      })
+    : undefined;
+
+  return {
+    id: "node-api",
+    title: "Node API",
+    version: "1.0.0",
+    description: "Node.js API with optional DB",
+    files: [
+      { src: ".lando.yml.tmpl", dest: ".lando.yml" },
+      { src: `frameworks/${framework}/server.ts.tmpl`, dest: "src/server.ts" },
+      ...(db ? [{ src: `dbs/${db}/schema.sql.tmpl`, dest: "db/schema.sql" }] : []),
+      ...(db === "mongodb" ? [{ src: "dbs/mongodb/index.ts.tmpl", dest: "src/db.ts" }] : []),
+    ],
+    postInit: [
+      { type: "bunInstall" },
+      ...(framework === "hono" ? [{ type: "bunAdd", specs: ["@hono/node-server"] }] : []),
+      ...(db === "mongodb" ? [{ type: "bunAdd", specs: ["mongodb"] }] : []),
+      { type: "message", text: `Run \`lando start\` to launch your ${framework} API.` },
+    ],
+  };
+});
+```
+
+The TS form's contract:
+
+- `defineRecipe(value | factory)` is a thin identity helper exported from `@lando/core/schema` (and re-exported from `@lando/sdk`); it pins the argument's TS type to the inferred `RecipeManifest` (or factory) shape so authors get full editor completion. Runtime decode still goes through the canonical schema.
+- The default export MUST be either a static `RecipeManifest` value or an `async (ctx: RecipeContext) => RecipeManifest` factory. The static form is rare; if a recipe doesn't need TS-driven prompt branching, it should ship YAML.
+- `ctx.prompt(prompt)` is the **only** way the factory may ask the user a question. It accepts the same prompt schema (§8.8.5) the YAML form uses; under the hood it delegates to the same renderer-aware prompt engine. Each call adds the resolved answer to `ctx.answers.<name>` so subsequent calls can branch on it.
+- `ctx.prompt` honors `--no-interactive` and `--answer key=value` exactly as the YAML form's prompt loop does. A factory that asks a prompt without a default in `--no-interactive` mode aborts with `RecipeMissingAnswerError`.
+- The factory's returned `RecipeManifest` is validated against the published schema (§7.8) before any file is written. A factory that returns an invalid shape aborts with `RecipeOutputValidationError` and points at the offending path.
+- Side effects at module top level are **forbidden**, identical to the `.lando.ts` rule (§7.1.1). Imports + `defineRecipe(...)` + `export default`. Any I/O the factory needs runs inside the factory body and is bounded by `Effect.timeout` (default 30 s; configurable via global `recipe.tsTimeoutMs:`).
+- The factory MUST NOT execute arbitrary shell, install plugins, mutate global config, or contact the network outside what `ctx` exposes (`ctx.fetch` for explicit, allowlisted URL families; absent in v4.0 — recipes that need network in their prompt phase should fail at validation time and use `postInit:` instead).
+- The factory MUST NOT re-emit existing built-in `postInit:` actions in a way that escapes the recipe destination (e.g., `bunCreate: { dest: "/tmp/elsewhere" }`). The `RecipeManifest` schema validation enforces this at the same point §8.8.7 does for the YAML form.
+- `lando recipes describe <ref>` (§8.8.11) and `lando recipes validate <path>` work on `recipe.ts` recipes by invoking the factory in a sandboxed evaluation that returns a synthetic prompt graph: each `ctx.prompt` resolves to a placeholder describing the prompt's shape rather than asking the user. The synthetic walk produces a static description of the recipe's *prompt-shape graph* even when answers branch the file manifest.
+- Caching: a `recipe.ts`'s decoded factory result is **not** cached the way YAML decode is, because the factory's output depends on user answers. The compiled `recipe.ts` module is cached under `<userCacheRoot>/recipes/ts/<contentHash>.bin` (a new entry that joins the §12.1 catalog) so the factory only re-imports when the file changes. Each `lando init` execution invokes the factory fresh.
+- Bundled-recipe codegen (§17.2 "Bundled recipes index") handles `recipe.ts` recipes by including the file in the recipe's tar and running `BunSelfRunner.buildLib` against it at build time, embedding the bundled JS output alongside the source. The runtime loader prefers the prebuilt JS so the binary's recipe-init path doesn't pay TS-load cost.
+
+A `recipe.ts` recipe is otherwise indistinguishable from a YAML recipe at runtime: the same source schemes (§8.8.4), the same destination semantics (§8.8.7), the same post-init action set (§8.8.8), and the same constraints (§8.8.12). A user invoking `lando init --recipe foo` has no way to tell whether `foo` was authored as `recipe.ts` or `recipe.yml` from the prompt experience alone.
 
 ### 8.9 Renderers and messages
 
