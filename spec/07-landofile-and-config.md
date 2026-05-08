@@ -5,7 +5,7 @@
 
 This part defines the user-facing configuration system. A Landofile is committed to a project repo and any developer can produce an identical, networked environment from it. Global config sits at `<userConfRoot>/config.yml` with optional `config.d/*.yml` overlays, and every key is overridable by environment variables.
 
-Covered here: Landofile discovery rules and bounds, the six-file merge order with array-merge identity keys, the `!load` and `!import` YAML extensions with hint suffixes, configuration expressions, the top-level Landofile keys, the supported Compose subset, explicit config translation, the explicitly forbidden wrapper keys (`compose:`, `recipe:`, `recipes:`), the global config schema, the env-var override naming convention, the `includes:` composition primitive with its source-resolution rules and lockfile, and how schemas are published from `@lando/sdk` as JSON Schema and generated documentation.
+Covered here: Landofile discovery rules and bounds, the six-file merge order with array-merge identity keys, the `load` and `import` expression helpers for reading external files, configuration expressions, the top-level Landofile keys, the supported Compose subset, explicit config translation, the explicitly forbidden wrapper keys (`compose:`, `recipe:`, `recipes:`), the global config schema, the env-var override naming convention, the `includes:` composition primitive with its source-resolution rules and lockfile, and how schemas are published from `@lando/sdk` as JSON Schema and generated documentation.
 
 ---
 
@@ -46,34 +46,187 @@ Rules:
 - `.lando.recipe.yml` is **not** part of the merge order in v4. The v3 recipe-as-plugin model is removed; recipes are now init-time scaffolds (§8.8) that produce a fully-visible `.lando.yml` the user owns.
 - `includes:` (§7.7) are resolved per file *before* the merge across files. Each file's `includes:` are merged into that file's tree as if the included content appeared inline, using the same map/array rules.
 
-### 7.3 YAML extensions
+### 7.3 Loading external file content
 
-The Landofile parser supports `!load` and `!import` YAML tags. Both read a file relative to the Landofile's directory; both accept an optional `@hint` suffix.
+External files become Landofile values through two pure expression helpers:
+
+- `load(path) → FileRef` — read a file and return a value-shaped reference to its contents.
+- `import(path) → ImportRef<T>` — same as `load`, but the result preserves source provenance (original filename, layer) for downstream consumers that need it.
 
 ```yaml
 services:
   app:
-    command: !load scripts/start.sh @string
-    environment: !load environment.yml @yaml
+    command: "{{ load('scripts/start.sh') | text }}"
+    environment: "{{ load('environment.yml') | yaml }}"
     metadata:
-      json: !import config.json @json
-      binary: !import cert.der @binary
+      json: "{{ load('config.json') }}"             # extension-inferred → json
+      binary: "{{ load('cert.der') | bytes }}"
+
+security:
+  ca:
+    - "{{ import('certs/CorpRootCA.pem') }}"        # provenance preserved for the CA installer
 ```
 
-| Hint | Behavior |
+Earlier drafts of this spec defined `!load` and `!import` as YAML scalar tags. Tags are removed in v4.0; the same patterns are spelled as expression-helper calls so they share the §7.3.1 expression engine's syntax, scopes, error model, and caching. The translation is mechanical — `command: !load script.sh @string` becomes `command: "{{ load('script.sh') | text }}"`.
+
+#### `FileRef` value
+
+`load(path)` returns a `FileRef` — an opaque value with metadata properties accessible through standard dotted access (the same syntax used for any other value path):
+
+| Property | Type | Meaning |
+|---|---|---|
+| `.path` | `string` | Absolute path the read resolved to, after symlink and relative resolution |
+| `.size` | `number` | File size in bytes |
+| `.mime` | `string` | MIME type derived from extension (matches `Bun.file(p).type`) |
+| `.checksum` | `string` | Lowercase hex SHA-256 of the bytes |
+| `.encoding` | `string` | Detected encoding: `"utf-8"`, `"binary"`, or `"ascii"` |
+
+```text
+{{ load('./logo.png').size }}
+{{ load('./logo.png').mime }}             # → "image/png"
+{{ load('./composer.lock').checksum }}
+```
+
+The bytes themselves are obtained via the decoders below.
+
+#### Decoders
+
+Decoders are pipe filters that turn a `FileRef` into a structured or scalar value:
+
+| Decoder | Result |
 |---|---|
-| `@string` | Read as UTF-8 string |
-| `@yaml` | Parse as YAML |
-| `@json` | Parse as JSON |
-| `@binary` | Read as bytes; emit base64 |
+| `text` | UTF-8 string contents |
+| `json` | Parsed JSON value |
+| `yaml` | Parsed YAML value (a strict superset of JSON) |
+| `fromToml` | Parsed TOML value (paired with the existing `fromJson` and `fromYaml` helpers) |
+| `bytes` | Raw bytes (`Uint8Array`) |
 
-Default inference (when no hint):
+```text
+{{ load('./script.sh') | text }}
+{{ load('./config.json') | json }}
+{{ load('./Cargo.toml') | fromToml }}
+{{ load('./fixtures/cert.der') | bytes }}
+```
 
-- `.yml` / `.yaml` → `@yaml`
-- `.json` → `@json`
-- otherwise → `@string`
+When a `FileRef` is consumed without an explicit decoder, the decoder is **inferred from the file extension**:
 
-`!load` returns the parsed/raw value directly. `!import` returns an `ImportRef` that preserves the original filename in metadata; consumers like the CA installer use this to choose a sensible in-container filename.
+| Extension | Implicit decoder |
+|---|---|
+| `.json` | `json` |
+| `.yml`, `.yaml` | `yaml` |
+| `.toml` | `fromToml` |
+| anything else | `text` |
+
+So `load('./composer.json')` and `load('./composer.json') | json` produce the same value. The explicit form is unambiguous and SHOULD be preferred when the file extension does not match its content.
+
+A positional second argument is sugar for the pipe form:
+
+```text
+load('./script.sh', 'text')           # ≡ load('./script.sh') | text
+load('./config.json', 'json')         # ≡ load('./config.json') | json
+```
+
+Valid decoder names: `"text"`, `"json"`, `"yaml"`, `"fromToml"`, `"bytes"`. Any other value throws `ConfigExpressionError` at expression-eval time.
+
+#### Picking a single value from a structured file
+
+The standard pattern for reading one value out of a JSON / YAML / TOML config file is `load → decode → extract`:
+
+```yaml
+services:
+  appserver:
+    type: php
+    # Safe walk with default — get(value, path, default?)
+    version: "{{ load('./composer.json') | json | get('config.platform.php', '8.3') }}"
+
+  node:
+    type: node
+    # Strict walk via direct dotted access — parens disambiguate from "pipe to property"
+    version: "{{ (load('./package.json') | json).engines.node }}"
+
+  rust:
+    type: rust
+    # Same shape, different format
+    version: "{{ load('./Cargo.toml') | fromToml | get('package.rust-version') }}"
+
+tooling:
+  install:
+    service: appserver
+    sources: ["composer.lock"]
+    # Fingerprint a sub-tree for cache invalidation
+    checksum: "{{ hash(load('./composer.lock') | json | get('content-hash')) }}"
+```
+
+Distinction between the two extraction styles:
+
+- `get(value, path, default?)` returns the default (or `null`) when any segment of the path is missing. Use when the value or key may be absent.
+- `(value).a.b.c` throws `ConfigExpressionError` with the failing segment when any intermediate key is missing. Use when the value is required.
+
+`get()` accepts the same path-access syntax as the rest of the language:
+
+```text
+get(obj, 'a.b.c')                       # dotted
+get(obj, 'scripts.test:unit')           # only `.` separates; colons in keys are fine
+get(obj, 'exports["./index.js"]')       # bracket-escape keys with dots
+get(obj, ['a', 'b', 'c'])               # array form for fully unambiguous paths
+```
+
+Plain text plus regex covers the non-structured case:
+
+```yaml
+node-version: "{{ load('./.nvmrc') | text | trim }}"
+php-version: "{{ load('./.tool-versions') | text | regexMatch('^php (.+)$', 'm') | get(1) }}"
+```
+
+#### `ImportRef<T>` and provenance
+
+`import(path)` returns an `ImportRef<T>` — the same value `load(path)` would produce, wrapped with source metadata for consumers that act on it:
+
+| Property | Type | Meaning |
+|---|---|---|
+| `.value` | `T` | The decoded inner value (string, parsed structure, or bytes) |
+| `.path` | `string` | Path as written in the Landofile (pre-resolution) |
+| `.basename` | `string` | Original basename — used by consumers like the CA installer to pick an in-container filename |
+| `.checksum` | `string` | Lowercase hex SHA-256 of the bytes |
+| `.layer` | `string` | Which Landofile layer the call originated from, per the §7.2 merge order |
+
+Schema positions that accept `ImportRef<T>` are annotated `acceptsImportRef: true` in the published Landofile schema (§7.8). Using `import()` at any other position fails validation with `LandofileImportRefMisuseError` and remediation pointing to the closest accepting key. The annotation is enumerable from `dist/schemas/landofile.json`.
+
+Most users will reach for `load()` for value-picking and `import()` only when a downstream consumer documents that it wants provenance — chiefly the CA installer at `security.ca:` (§6.8).
+
+#### Path resolution and security
+
+Paths passed to `load()` and `import()` resolve relative to:
+
+- The Landofile's directory when the call appears in a Landofile or any of its `includes:` fragments. A call inside a fragment resolves against the *fragment's own* source location, not the file that included it.
+- The recipe's directory when the call appears in a recipe scaffold (§8.8).
+- The mount template's directory when the call appears in a `mounts: type: template` body (§6.4).
+
+Containment rules (mirroring §7.7.6):
+
+- The resolved path MUST stay under the app root.
+- Absolute paths and paths that traverse outside the app root via `..` or symlinks are rejected with `LandofileLoadOutsideRootError`.
+- The `--allow-load-outside-root` global config flag opts into broader paths. Setting it is logged at `info` level on every load that uses the relaxation.
+
+Source schemes:
+
+- `load()` and `import()` accept **local paths only** at v4.0. Remote retrieval of value-level content is intentionally out of scope; use `includes:` (§7.7) for fragment-level remote composition.
+
+#### Caching and limits
+
+Every successful `load()` and `import()` call contributes its `(absolutePath, size, mtime, sha256)` tuple to the **app-plan cache key** (§12.1). When any referenced file's bytes change, the plan is recomputed; when only `mtime` drifts but the bytes are unchanged, the plan is reused. A file's content hash is computed once per resolution and reused across decoders applied to the same `FileRef`.
+
+`load()` reads are **eager** — the read happens at expression-eval time and the bytes are captured before the `FileRef` is returned. The `Bun.file()`-style "lazy handle" mental model survives in the value shape (metadata accessible without further IO) but reads themselves are synchronous and complete before the FileRef is observable. This is forced by §7.3.1's synchronous expression contract.
+
+Limits (overridable in global config, §7.5):
+
+| Limit | Default |
+|---|---|
+| `loadMaxFileBytes` | `1 MiB` |
+| `loadMaxFilesPerExpression` | `16` |
+| `loadMaxRecursionDepth` | `4` |
+
+Exceeding any limit throws a tagged `LandofileLoadLimitError` with remediation pointing at the global config key.
 
 ### 7.3.1 Configuration expressions
 
@@ -138,13 +291,38 @@ Pipe filters and positional helper calls are equivalent. `x | f(a, b)` and `f(x,
 {{ app.name | upper | trim }}              # filter chain
 {{ trim(upper(app.name)) }}                # call chain — identical AST
 
-{{ paths.userCacheRoot | pathJoin("foo") }}
-{{ pathJoin(paths.userCacheRoot, "foo") }}
+{{ paths.userCacheRoot | path.join("foo") }}
+{{ path.join(paths.userCacheRoot, "foo") }}
 ```
 
-Built-in functions (all pure, deterministic, and redaction-safe):
+Built-in functions (all pure, deterministic, and redaction-safe). Most stay flat for use in pipe chains; domains with multiple related operations are namespaced.
 
-`default`, `required`, `eq`, `ne`, `lt`, `gt`, `and`, `or`, `not`, `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `split`, `join`, `replace`, `regexMatch`, `length`, `keys`, `values`, `entries`, `json`, `fromJson`, `yaml`, `fromYaml`, `pathJoin`, `pathDirname`, `pathBasename`, `shellQuote`, `shellJoin`, `b64encode`, `b64decode`.
+**Logical and comparison:** `default`, `required`, `eq`, `ne`, `lt`, `gt`, `and`, `or`, `not`, `contains`, `startsWith`, `endsWith`.
+
+**String:** `lower`, `upper`, `trim`, `split`, `join`, `replace`, `regexMatch`.
+
+**Collection:** `length`, `slice`, `keys`, `values`, `entries`, `get`, `merge`, `range`, `map`, `filter`.
+
+**Format (encode and parse pairs):** `json`, `fromJson`, `yaml`, `fromYaml`, `fromToml`, `b64encode`, `b64decode`.
+
+**File IO** (the file-read carve-out, see §7.3): `load`, `import`, `text`, `bytes`, `hash`.
+
+**Shell-form:** `shellQuote`, `shellJoin`.
+
+**Process facts:** `which`, `glob`.
+
+**Namespaced:**
+
+| Namespace | Helpers |
+|---|---|
+| `path.*` | `path.join`, `path.dirname`, `path.basename`, `path.extname`, `path.relative`, `path.resolve` |
+| `fs.*` | `fs.exists`, `fs.isFile`, `fs.isDir`, `fs.size` |
+| `url.*` | `url.build`, `url.parse` |
+| `semver.*` | `semver.satisfies`, `semver.compare` |
+
+A dotted name whose first segment matches a namespace (`path`, `fs`, `url`, `semver`) is a function reference and MUST be called. All other dotted forms are value path access (per "Paths and lookups" above). Namespaces are a closed set published in `@lando/sdk`; plugins MAY contribute additional namespaces through the manifest contribution surface (§9.5) provided the new namespace name does not collide with an existing scope. The singular helper namespace `path.*` is distinct from the plural scope `paths.*` (see the scope table below); the spelling is the only disambiguator.
+
+**Deprecated aliases (removed in v5.0):** `pathJoin` → `path.join`, `pathDirname` → `path.dirname`, `pathBasename` → `path.basename`. The old names continue to work through v4.x and emit a `DeprecationNotice` per §18 on first use.
 
 The function set is published from `@lando/sdk` as a portable utility module so plugin-contributed template engines (§7.3.2, §9.5) can register the same names under their idiomatic registration API. Plugins MAY contribute additional pure functions through the expression-function contribution surface (§9.5); core schemas and docs MUST identify which functions are portable.
 
@@ -165,6 +343,7 @@ Each AST node records the **scopes** it touches. Scopes have a known minimum boo
 | `paths.{userConfRoot,userCacheRoot,userDataRoot}` | `none` | Resolved Lando roots |
 | `app.{name,root,basename,slug}` | `minimal` | Landofile discovery + slug derivation (§7.4) |
 | `global.<key>` | `minimal` | Resolved global config values that are safe to expose |
+| `loader` (`load(...)`, `import(...)`) | `minimal` | Landofile-relative file IO; bytes contribute to the app-plan cache key (§7.3, §12.1) |
 | `vars.<key>` | varies (≥ origin's level) | Variables from the nearest expression scope (Landofile `vars:`, mount `vars:`, tooling `vars:`, etc.) |
 | `service.{name,type,primary}` | `plugins` | Service-type resolution |
 | `service.{hostnames,routes,endpoints}` | `app` | App planning (§5.5) |
@@ -181,14 +360,36 @@ Practical consequences:
 - Hot-path commands at level `none` (§3.2) never parse or render an expression that requires `service.*` or `info.*`. They see only opaque thunks in the cached plan.
 - A typo in `service.bogus` fails at the consumer that requires it, not at parse time, with a tagged `ConfigExpressionError` that includes the expression path, source location, and remediation.
 - A template that requires `service.endpoints[0].port` is rendered by the planner (level `app`) and the rendered output is what the provider applies; the cached plan stores both the AST and the most recent rendered output keyed by content+vars hash (§12.1 `template-render` cache).
-- The `!render` YAML tag is intentionally *not* part of this spec. Rendering is driven by the consumer, not by YAML parse, so that bootstrap level escalation never happens accidentally.
+- Rendering is driven by the consumer at the consumer's bootstrap level, never coupled to YAML parse, so bootstrap level escalation cannot happen accidentally.
 
 #### Purity and safety
 
-- Expressions and templates are pure and deterministic. They MUST NOT execute shell commands, read files (other than the template body itself, which is already resolved before render), perform network IO, or mutate process/global state. Shell-backed dynamic values are allowed only in tooling-specific `vars.<name>.sh` (§8.5.3), where execution is explicit and goes through `ToolingEngine` / `ProcessRunner`.
+- Expressions and templates are pure and deterministic. They MUST NOT execute shell commands, perform network IO, or mutate process or global state. The only file IO permitted is via `load()` / `import()` (§7.3), where the read is captured in the app-plan cache key, plus the implicit read of a template body itself (resolved before render). Shell-backed dynamic values are allowed only in tooling-specific `vars.<name>.sh` (§8.5.3), where execution is explicit and goes through `ToolingEngine` / `ProcessRunner`.
 - Cyclic references, unknown paths at the consumer's level, type mismatches, and out-of-range bracket lookups all fail with a tagged `ConfigExpressionError` that includes the expression path, the source location, and remediation.
 - `${secret:KEY}` is a secret reference (distinct from `${KEY}` shell-parameter-expansion: the `secret:` prefix is the marker). Secret values resolve through `SecretStore` (§4.2), MUST be redacted in logs/errors and lifecycle event payloads, and MUST NOT be written decrypted into caches (§12). Secret references that appear inside `${VAR}` shell-style substitutions follow the same redaction rules.
 - A plugin-contributed engine (§7.3.2) MUST honor the same purity guarantees. An engine that cannot — for example, a template engine whose helper API permits arbitrary host-side code — declares `unsafe: true` in its manifest contribution; `unsafe` engines are disabled by default and require explicit global config opt-in (§9.5).
+
+#### Helper design conventions
+
+The §7.3.1 helper set is the pure, sync, dev-env-relevant subset of Bun's first-party utilities, with a small set of Lando-specific rules where Bun's conventions don't apply to a sync-pure-deterministic helper language:
+
+1. **Synchronous, pure, deterministic, no-network, no-mutation.** Helpers run synchronously (there is no await in expressions) and MUST NOT execute shell commands, perform network IO, or mutate process or global state. The single explicit carve-out is file IO via `load()` / `import()`, where the read is part of the cache key (§7.3).
+
+2. **No `Sync` suffix.** Bun uses `gzipSync` / `spawnSync` to disambiguate from async siblings. Lando expression helpers have no async siblings; the suffix would be redundant and misleading.
+
+3. **Flat naming with namespaces only when ≥2 ops share a domain.** Most helpers stay flat for use in pipe chains. Domains with multiple related operations are namespaced (`path.*`, `fs.*`, `url.*`, `semver.*`). The first identifier in a dotted form is matched against the namespace registry; if it is a known namespace, the dotted form is a function reference and MUST be called.
+
+4. **Polymorphic conversion via a trailing `format` string parameter.** Helpers that produce multiple representations of the same value take a string `format` argument from a fixed closed set, e.g. `hash(data, 'sha256', 'hex')`. Invalid format values throw `ConfigExpressionError` at expression-eval time when the value is statically known.
+
+5. **Optional configuration via a final `opts` object literal.** When a helper has more than one optional knob, they MAY be collected into a single trailing object so the call site stays readable. Positional args are reserved for required parameters and the polymorphic `format` parameter from rule 4.
+
+6. **Return shapes mirror Web and Node standards verbatim.** `url.parse` returns the field set of the WHATWG `URL`; `path.parse` (when added) returns the field set of `node:path.parse`. Lando does not invent new field names where a standard exists.
+
+7. **Error model.** Converters return `null` on un-interpretable input — compose with `default(...)` or `required(...)`. Parsers (`fromJson`, `fromYaml`, `fromToml`) throw `ConfigExpressionError` with line and column. Predicates return `false` for bad input. Misconfiguration (unknown algo, unknown format) throws.
+
+A Bun-mapping table is published as part of the §7.8 generated reference for every helper that has a Bun source. When Bun's behavior shifts in a way that would change a helper's contract, Lando either re-pins to Bun's new behavior or freezes to the old and documents the divergence in the helper's reference page.
+
+Plugins MAY contribute additional helpers and namespaces through the contribution surface (§9.5). Contributed helpers MUST satisfy the same constraints; the SDK provides a contract test suite (§13.1) every helper passes.
 
 ### 7.3.2 Template engines
 
@@ -596,7 +797,7 @@ A fragment MAY itself declare `includes:`. Cycles are detected and rejected with
 - Includes resolve in array order. Later entries in the same `includes:` array override earlier entries on conflict, before the including file's inline keys are layered on top.
 - The including file's inline keys always win over its own includes.
 - Map/array merge rules from §7.2 apply unchanged.
-- `!load` and `!import` inside a fragment resolve relative to the fragment's source location, not the including file.
+- `load()` and `import()` calls inside a fragment resolve paths relative to the fragment's source location, not the including file.
 - Configuration expressions inside a fragment use the including file's context. A fragment cannot define new variable bindings outside its own scope.
 
 #### 7.7.4 Lockfile
@@ -620,7 +821,7 @@ Network access is required only when an include or app-declared plugin is missin
 - Local includes are restricted to the app root by default. The `--allow-include-outside-root` global config flag opts into broader paths.
 - Git and npm includes are pinned by ref and verified by checksum on every load. A drift fails closed.
 - Registry includes (when implemented) require signature verification against the registry's published key.
-- Fragments cannot execute code; the YAML/JSON parser rejects YAML tags other than `!load` / `!import` (§7.3) and the parser's allowlist.
+- Fragments cannot execute code. The YAML/JSON parser rejects every YAML tag other than the small allowlist required for native YAML semantics; external file content enters fragments through `load()` and `import()` (§7.3), the same as in the top-level Landofile.
 
 #### 7.7.7 Distinction from related keys
 

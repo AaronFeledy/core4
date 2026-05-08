@@ -46,7 +46,7 @@ The v4 implementation must satisfy:
 
 - Landofile discovery works from project subdirectories.
 - Custom Landofile names and pre/post merge files work via global config.
-- `!load` and `!import` support YAML, JSON, string, and binary forms.
+- `load()` and `import()` expression helpers support YAML, JSON, TOML, text, and binary decoders (§7.3).
 - Configuration expressions resolve across Landofile, fragment includes (§7.7), global config, events, and tooling without shell execution outside explicit tooling dynamic vars.
 - Built-in commands resolve via both their canonical namespaced form (`lando app start`, `lando meta config set`, `lando apps list`) and their default top-level alias (`lando start`, `lando config set`, `lando list`) when one is configured.
 - `commandAliases.disabled:` and `commandAliases.custom:` global config entries take effect without requiring a binary rebuild.

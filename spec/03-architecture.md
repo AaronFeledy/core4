@@ -138,7 +138,7 @@ core/
 │   │   └── env.ts                  # Env-var override decoding
 │   ├── landofile/
 │   │   ├── service.ts              # LandofileService
-│   │   ├── parser.ts               # YAML + !load/!import tags
+│   │   ├── parser.ts               # YAML parser (load/import are expression helpers, §7.3)
 │   │   ├── merge.ts                # Layered Landofile merge
 │   │   └── schema.ts               # Effect Schema for Landofile shape
 │   ├── plugins/

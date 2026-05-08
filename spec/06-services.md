@@ -92,7 +92,7 @@ services:
     primary: true
 
     artifact: nginxinc/nginx-unprivileged:1.27
-    command: !load scripts/start.sh @string
+    command: "{{ load('scripts/start.sh') | text }}"
     user: nginx
     environment:
       APP_ENV: development
@@ -136,7 +136,7 @@ services:
     security:
       ca:
         - ./certs/CorpCA.crt
-        - !load other-ca.pem
+        - "{{ load('other-ca.pem') }}"
 
     build:
       artifact: |
@@ -239,7 +239,7 @@ mounts:
   # Inline content (literal — bytes are written as-is)
   - destination: /etc/myapp/generated.yml
     type: inline
-    content: !load config.yml @string
+    content: "{{ load('config.yml') | text }}"
 
   # Template content (rendered through a TemplateEngine before writing)
   - source: ./config/vhost.conf.hbs
@@ -412,7 +412,7 @@ Plugins contribute additional filter types via `provides.routeFilters`. Proxy pl
 healthcheck: false
 healthcheck: curl -fsS http://localhost:8080/health
 healthcheck:
-  command: !load healthcheck.sh @string
+  command: "{{ load('healthcheck.sh') | text }}"
   user: app
   retry: 25
   delay: 1000
@@ -422,7 +422,7 @@ healthcheck:
 Rules:
 
 - `false` disables healthchecks.
-- String, string-array, object, and `!load`/`!import` forms are all supported.
+- String, string-array, and object forms are all supported. Any form may be computed from disk via `load()` (§7.3).
 - The `HealthcheckRunner` service decides how to execute. Default runner uses `RuntimeProvider.exec`.
 - `lando start` distinguishes `running` from `ready`. Subscribers may listen to `post-start` priority `ready` to react to readiness.
 
@@ -453,8 +453,8 @@ Cert/key paths are exposed as `LANDO_SERVICE_CERT` and `LANDO_SERVICE_KEY` envir
 security:
   ca:
     - ./CorpCA.crt
-    - !load other-ca.pem
-    - !import inline-ca.crt
+    - "{{ load('other-ca.pem') }}"
+    - "{{ import('inline-ca.crt') }}"
 ```
 
 Each entry is mounted into the service at a CA-distro-appropriate path and registered with the system trust store via the boot scaffolding (`type: lando` only). Plugins handle distro-specific install logic; core defines only the intent.

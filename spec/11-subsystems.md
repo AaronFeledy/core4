@@ -113,7 +113,7 @@ Behavior in v4.0:
 
 **Healthcheck behaviors:**
 
-- Healthchecks support `false`/`disabled`, string, string-array, object, and `!load`/`!import` forms.
+- Healthchecks support `false`/`disabled`, string, string-array, and object forms; any form may be computed from disk via `load()` (§7.3).
 - Object form supports `command`, `user`, `retry`, `delay`, `timeout`, `target`.
 - Startup distinguishes `running` from `ready`. The `ready` event fires when all healthchecks pass.
 - The active `HealthcheckRunner` decides execution mechanics. Default: `RuntimeProvider.exec` with retry/delay loop.
