@@ -267,6 +267,7 @@ export interface LandoCommandSpec<A = void, E = LandoCommandError> {
   readonly args?: ReadonlyArray<ArgSpec>;
   readonly deprecated?: DeprecationNotice;               // command-wide deprecation; see §18
   readonly recipePostInitAllowed?: boolean;              // true only for commands in the generated recipe allowlist (§8.8.8)
+  readonly hostProxyAllowed?: boolean;                   // true only for commands safe to invoke from inside a container via the in-container `lando` shim (§10.10)
   readonly docs?: CommandDocsMetadata;
   readonly acceptance?: ReadonlyArray<AcceptanceCheckId>;
   readonly run: (input: CommandInput) => Effect.Effect<A, E, LandoCommandRequirements>;
@@ -291,6 +292,7 @@ Rules:
 - `deprecated` declares a command-wide `DeprecationNotice` (§18.2). When set, every invocation of the command (canonical id or any alias) records a `deprecation-used` event with `kind: "command"` and `id: <canonical-id>`. A non-deprecated alias of a deprecated canonical raises `DeprecationContradictionError` at registration (§18.3).
 - `FlagSpec.deprecated?` and `ArgSpec.deprecated?` declare `DeprecationNotice`s scoped to the flag or arg. Using a deprecated flag/arg records `kind: "flag"` / `kind: "arg"` with `id: "<canonical-id>.<flag-or-arg-name>"`.
 - `recipePostInitAllowed` defaults to `false`. Setting it to `true` adds the command to the generated recipe post-init command allowlist, subject to §8.8.8 constraints and tests.
+- `hostProxyAllowed` defaults to `false`. Setting it to `true` adds the command to the generated **host-proxy `runLando` allowlist** (§10.10) — the set of canonical command ids the in-container `lando` shim is permitted to forward to the host. Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT set this true; they would self-destruct the container that issued the call. Read-only and laterally-scoped commands (`app:info`, `app:logs`, `app:exec`, `app:ssh`, `apps:list`, `meta:version`, `meta:doctor`, `meta:events:follow`, `app:config get|view`) are the typical opt-ins. The flag generates the `host-proxy-allowlist` cache (§12.1); the host-side `HostProxyService` rejects any `runLando` request whose canonical id is not in that cache with `HostProxyCommandNotAllowedError`.
 - `docs` and `acceptance` metadata feed generated command reference docs and acceptance coverage checks; public commands MUST provide both.
 
 The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` instances so commands compose cleanly with Effect's IO.
@@ -434,6 +436,7 @@ tooling:
     output: interleaved | group | prefixed
     failFast: true | false
     disabled: true | false
+    hostProxyAllowed: true | false       # opt-in: allow this task to be invoked via the in-container `lando` shim (§10.10); default false
 
     deprecated: <DeprecationNotice>      # task-wide deprecation notice; see §18
 
@@ -459,6 +462,8 @@ Shorthands:
 - `topLevelAlias` is interpreted per §8.1.2. A task with `topLevelAlias: true` exposes the task's last segment as a bare top-level alias (`db:wait` → `lando wait`); use a string to set an explicit alias name (`topLevelAlias: db-wait`).
 
 **Conflict rules.** Built-in command ids are reserved; a tooling task that collides with a built-in or plugin command at the same canonical id MUST be namespaced differently or rejected with remediation. Top-level alias collisions follow §8.1.2.
+
+**Host-proxy opt-in.** `hostProxyAllowed: true` adds the task's canonical id to the `host-proxy-allowlist` cache (§12.1) so the in-container `lando` shim may forward to it (§10.10). Tasks default to `false` because most projects' tooling tasks have lifecycle side effects (e.g., `assets` rebuild) that are surprising when invoked from inside a service. A task that wraps a host-side helper (e.g., `lando launch <url>` running `service: :host`) is the natural opt-in case.
 
 #### 8.5.2 Commands and dependencies
 

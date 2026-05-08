@@ -21,6 +21,7 @@ Covered here: the nine test layers (unit, Effect service, CLI, library API, prov
 | Library API | `bun test` + `@lando/core/testing` | Embedding-host surface (§16): `makeLandoRuntime`, public services, `@lando/core/cli` operations, lifecycle event publication |
 | Provider contract | Shared contract suite (in `@lando/sdk/test`) | Any `RuntimeProvider` plugin must pass |
 | Template engine contract | Shared contract suite (in `@lando/sdk/test`) | Any `TemplateEngine` plugin must pass: capability declaration matches behavior, `lando` engine round-trip parity for the §7.3.1 portable function set, `TemplateRenderContext` shape acceptance without mutation, purity (no shell/FS/network/process state mutation), `unsafe: false` engines reject any helper that performs side effects, render output is byte-stable across repeated calls with identical input |
+| Host proxy contract | Shared contract suite (in `@lando/sdk/test`) | Any `HostProxyService` plugin must pass: token auth enforcement, URL scheme allowlist (including `file://` rejection), `runLando` allowlist enforcement against the `host-proxy-allowlist` cache, recursion guard via `LANDO_HOST_PROXY_DEPTH`, concurrency cap, `pre-host-proxy-call` / `post-host-proxy-call` event publication with redacted payloads, atomic socket creation with mode `0600`, scope finalization (socket unlink, in-flight cancellation) within 1s of `Effect.interrupt` |
 | Plugin SDK contract | Type tests + runtime tests | Public API compatibility |
 | Scenario | `bun test` + `@lando/core/testing` | End-to-end through the library API against `TestRuntimeProvider`; no real container runtime |
 | Recipe | `bun test` against `recipes/` | Every canonical recipe scaffolds with default answers and produces a Landofile that passes schema validation; the resulting app starts under the end-to-end suite |
@@ -57,6 +58,19 @@ Covered here: the nine test layers (unit, Effect service, CLI, library API, prov
 - Unsafe engines: an engine with `capabilities.unsafe: true` MUST refuse to render when global config opt-in is absent and emits `TemplateEngineUnsafeRejectedError` (§7.3.2).
 - Errors are tagged (`TemplateCompileError`, `TemplateRenderError`) and include the source location and remediation.
 - Cancellation: an `Effect.interrupt` during render terminates promptly; finalizers reap any internal resources.
+
+**Host proxy contract suite** (mandatory for every `HostProxyService` plugin and for the built-in default; lives in `@lando/sdk/test`):
+
+- Token auth: a request without `Authorization: Bearer <token>` or with a mismatched token is answered HTTP 401 with an opaque body; no log/event payload includes the supplied token.
+- URL scheme allowlist: every `openUrl` request is matched against the configured scheme allowlist; `file://`, `javascript:`, `data:`, and `vbscript:` are rejected with `HostProxyOpenUrlSchemeError` regardless of plugin configuration.
+- `runLando` allowlist: requests for canonical ids absent from the `host-proxy-allowlist` cache (§12.1) are rejected with `HostProxyCommandNotAllowedError`. Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) MUST NOT appear in the allowlist; a contract test attempts to register them and asserts `HostProxyAllowlistConflictError`.
+- Recursion guard: an inbound request with `LANDO_HOST_PROXY_DEPTH >= 3` is rejected with `HostProxyRecursionLimitError`; a successful dispatch passes the incremented value into the host re-entry env.
+- Concurrency cap: the dispatcher answers HTTP 429 with `HostProxyBackpressureError` for requests beyond the configured `hostProxy.maxConcurrent` (default 16).
+- Lifecycle events: every dispatch (including rejected ones) publishes `pre-host-proxy-call` and `post-host-proxy-call` with the redacted payload from §11.2; `${secret:…}` values resolved during the dispatch are redacted identically to `pre-shell-exec`.
+- Socket discipline: socket creation is atomic (`O_CREAT | O_EXCL`), mode is set to `0600` before any client can connect, and a pre-existing path raises `HostProxySocketStaleError`.
+- Cancellation: `Effect.interrupt` of the dispatcher fiber finalizes within 1s — listener closed, in-flight request fibers cancelled, socket file unlinked, in that order.
+- `runLando` streaming: stdout/stderr arrive at the in-container shim as NDJSON frames in the order produced; the final `{ kind: "exit", code }` frame matches the host program's exit code.
+- Capability gating: when `hostReachability` is `none`, the feature plans as a no-op and the test asserts no socket is bound and no token is generated.
 
 **Library API contract suite** (mandatory; lives in `test/library/`):
 

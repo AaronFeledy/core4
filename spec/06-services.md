@@ -490,13 +490,16 @@ LANDO_INFO=<JSON-encoded service info>
 **Conditional:**
 
 ```text
-LANDO_SERVICE_CERT       # when certs enabled
-LANDO_SERVICE_KEY        # when certs enabled
-LANDO_CA_CERT            # when CA available
-LANDO_CA_DIR             # when CA installed in trust store
-LANDO_CA_BUNDLE          # when CA installed in trust store
+LANDO_SERVICE_CERT          # when certs enabled
+LANDO_SERVICE_KEY           # when certs enabled
+LANDO_CA_CERT               # when CA available
+LANDO_CA_DIR                # when CA installed in trust store
+LANDO_CA_BUNDLE             # when CA installed in trust store
 LANDO_USER, LANDO_UID, LANDO_GID  # type: lando services
-SSH_AUTH_SOCK            # when ssh-agent feature enabled
+SSH_AUTH_SOCK               # when ssh-agent feature enabled
+LANDO_HOST_PROXY_SOCKET     # when host-proxy feature enabled (in-container path to the bound socket; §10.10)
+LANDO_HOST_PROXY_TOKEN      # when host-proxy feature enabled (per-`app:start` random token; required as Bearer auth)
+LANDO_HOST_PROXY_DEPTH      # set by HostProxyService for `runLando` re-entries; recursion guard, never set by users
 ```
 
 **Inheritable via env layer.** `type: lando` services source `/etc/lando/environment` on every exec, which:
@@ -595,6 +598,7 @@ Feature rules:
 | `lando.certs` | Service leaf cert wiring | 1000 |
 | `lando.security` | Additional CAs into trust store | 1100 |
 | `lando.ssh-agent` | SSH agent forwarding (sidecar by default — see §10.4) | 1200 |
+| `lando.host-proxy` | Container→host RPC: bind-mount the per-app `HostProxyService` socket, install the in-container shim binary symlinked as `xdg-open`/`open`/`lando`, inject `LANDO_HOST_PROXY_*` env (§10.10) | 1250 |
 | `lando.git` | Install git, set safe.directory | 1300 |
 | `lando.sudo` | Install sudo, add user to sudo group | 1400 |
 | `lando.proxy` | Proxy-package config wiring (when ProxyService active) | 1500 |

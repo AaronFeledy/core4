@@ -29,6 +29,7 @@ The **encoding** column captures the §12.2 rule: every cache read on the router
 | `oclif-manifest` | embedded in binary + `<userCacheRoot>/oclif-manifest.bin` | binary | OCLIF adapter shim cache derived from core/plugin/app command indexes | Plugin install/remove, app command index change |
 | `template-compile` | `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` | binary | Compiled `CompiledTemplate` blobs per `TemplateEngine` (§7.3.2). Content-addressed by canonical template-content hash; cross-app | Template content change (hash mismatch), engine version change, `--clear` |
 | `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered template output. Content-addressed by template content hash + canonical resolved-vars hash; cross-app | Template content change, resolved `vars:` change, render context schema/version change, `--clear` |
+| `host-proxy-allowlist` | `<userCacheRoot>/host-proxy-allowlist.bin` | binary | Generated allowlist of canonical command ids that the in-container `lando` shim may forward via `HostProxyService.runLando` (§10.10). Built from every `LandoCommandSpec` with `hostProxyAllowed: true` (§8.3), every plugin command with the same flag, and every per-app tooling task with `hostProxyAllowed: true` (§8.5) | Plugin install/remove/update, app command index change, app-plan rebuild, `--clear` |
 | `update` | `<userCacheRoot>/update-cache.json` | JSON | Plugin update channel metadata | `update`, scheduled refresh |
 
 **`cwd-app-map` semantics.** The router phase first does an O(1) lookup of `cwd` → cached entry. On hit, it stats the cached `primaryLandofilePath`; if `mtimeNs` and `sizeBytes` match, the resolved `appRoot` is used directly without walking the directory tree. On miss or staleness, the router falls back to the directory walk, then atomically writes the resolved entry. The cache is bounded; eviction is LRU. This avoids the 30+ stat syscalls that a deep-cwd directory walk costs in the v3-style flow.
@@ -83,6 +84,7 @@ Files Lando v4 writes to disk:
 | `<userDataRoot>/runtime/storage/` | Private container image and volume storage |
 | `<userDataRoot>/runtime/run/` | Private API socket and PID files (Linux; inside VM on macOS/Windows) |
 | `<userDataRoot>/runtime/machines/` | Managed VM state (macOS and Windows only) |
+| `<userDataRoot>/run/<app-id>/host-proxy.sock` | Per-app `HostProxyService` Unix socket (mode `0600`). Bound at `app:start`, unlinked at `app:stop` or scope finalization (§10.10) |
 | `<systemPluginRoot>/plugins/` | System-installed plugins (read-only from Lando; populated by OS package managers or admins; see §7.5 for the platform defaults that resolve `<systemPluginRoot>`) |
 
 ### 12.5 Hot-path read budgets

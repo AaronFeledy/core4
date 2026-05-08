@@ -42,6 +42,7 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 | **Healthcheck runner** | `HealthcheckRunner` | Execute a `HealthcheckPlan` and report status | Built-in via `RuntimeProvider.exec` | Plugin contributes `healthcheckRunners:` for native or external probes. |
 | **URL scanner** | `UrlScanner` | Probe URLs after start | Built-in `fetch`-based scanner | Plugin contributes `urlScanners:`. |
 | **Doctor diagnostics** | `DoctorService` | Run host/app/provider diagnostics and expose automated or manual remediations | Built-in core checks for app config and selected-provider basics | Plugin contributes `doctorChecks:` for additional issue coverage. |
+| **Host proxy** | `HostProxyService` | Per-app container→host RPC dispatch: open URLs in the host browser, route in-container `lando` shim calls back into the host runtime, host clipboard/notification dispatch (§10.10) | Built-in `HostProxyServiceLive` (Bun-served HTTP/JSON over a per-app Unix socket) | Plugin contributes `hostProxyServices:`. Replaceable for headless CI builds (swallow URL opens), audited builds (mandatory transcript), or remote-host transports. Selection follows §4.3. |
 | **Plugin source** | `PluginSource` | Resolve and fetch a plugin spec | Built-in: registry (Bun), git, local, tarball | Plugin contributes `pluginSources:` for private registries, GitLab, etc. |
 | **Init source** | `InitSource` | Provide source materials for `lando apps init` | Plugin-only | Plugin contributes `initSources:`. |
 | **Service type** | `ServiceType` | Resolve `type: <name>` into normalized config + features | Bundled catalog from `@lando/service-lando` and `@lando/service-*` (PHP, Node, Python, Ruby, Go, common databases, caches, mail, search, queues, static, plus `lando` and `l337` bases) — see §6.11 | Plugin contributes `serviceTypes:` to add or replace. |
@@ -92,6 +93,9 @@ provides:
     - id: example
       module: ./src/doctor/example.ts
       tags: [example]
+  hostProxyServices:
+    - id: headless-ci
+      module: ./src/host-proxy/headless.ts
   loggers:
     - id: pretty
       module: ./src/logger.ts

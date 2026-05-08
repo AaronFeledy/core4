@@ -92,6 +92,12 @@ The v4 implementation must satisfy:
 - Cert generation supports disabled, generated, and custom cert/key forms.
 - Service cert SANs include `localhost`, service name, internal hostname, configured hostnames, loopback IP.
 - Host access works through `host.lando.internal` and `LANDO_HOST_IP` when capability allows.
+- An app with the `lando.host-proxy` feature enabled binds a per-app Unix socket at `<userDataRoot>/run/<app-id>/host-proxy.sock` (mode `0600`) at `app:start` and unlinks it at `app:stop` or scope finalization (§10.10).
+- The in-container shim binary, symlinked as `xdg-open` / `open` / `lando` inside `type: lando` services, dispatches `openUrl` and `runLando` requests to the per-app `HostProxyService` over the bind-mounted socket using `LANDO_HOST_PROXY_SOCKET` and `LANDO_HOST_PROXY_TOKEN`; missing env produces a deterministic stderr fallback message rather than a silent failure.
+- `HostProxyService` enforces token Bearer auth, the URL scheme allowlist (rejecting `file://` always), the `host-proxy-allowlist` cache for `runLando`, the `LANDO_HOST_PROXY_DEPTH >= 3` recursion guard, and the per-app concurrency cap; rejected requests still publish `pre-host-proxy-call` / `post-host-proxy-call` events with redacted payloads (§10.10, §11.2).
+- Lifecycle commands (`app:start`, `app:stop`, `app:rebuild`, `app:destroy`, `apps:poweroff`) are absent from the `host-proxy-allowlist` cache and registering them with `hostProxyAllowed: true` raises `HostProxyAllowlistConflictError` at registration time (§8.3, §13.1).
+- `runLando` requests dispatch through `@lando/core/cli` against a single retained `LandoRuntime` held by `HostProxyService` for the app's started state; the second and subsequent in-container `lando` invocations meet the §2.1 hot-path budget at p95 (§10.10.1, §16.3).
+- The host-proxy contract suite (§13.1) is mandatory and runs against both the bundled default `HostProxyServiceLive` and any plugin-contributed implementation.
 - Healthchecks support disabled, string, script, array, object, user, retry, delay forms.
 - SSH key loading supports disablement and allowlists; default uses sidecar agent.
 - SQL helper plugins can expose import/export workflows for supported services.
@@ -171,6 +177,8 @@ The `CommandFramework` abstraction exists so that if `@effect/cli` reaches featu
 - **Embedding host** — A Bun program that imports `@lando/core` and constructs its own `LandoRuntimeLive` Layer instead of (or in addition to) invoking the `lando` binary. See §16.
 - **End-to-end suite** — Test layer that drives the compiled `lando` binary against a real provider on a real OS (§13.1). Lives in `test/e2e/` with internal fixtures under `test/e2e/fixtures/`; user-facing scenarios are exercised through the canonical recipe scaffold flow. Replaces the Lando 3 Leia format.
 - **Endpoint** — A service listener (port, path, socket).
+- **Host proxy** — Per-app container→host RPC channel exposed by `HostProxyService` (§10.10). A token-authenticated HTTP/JSON dispatcher binds a Unix socket at `<userDataRoot>/run/<app-id>/host-proxy.sock`, bind-mounted into `type: lando` services by the `lando.host-proxy` feature (§6.11). In-container shims (`xdg-open`, `open`, `lando`) call back to the host to open URLs in the user's real browser and to re-enter the host's `lando` command runtime. Lifetime is bound to `app:start` / `app:stop`; not the deferred persistent agent (§14.2).
+- **Host-proxy allowlist** — Generated cache of canonical command ids that the in-container `lando` shim is permitted to forward via `HostProxyService.runLando` (§10.10, §12.1). Built from `LandoCommandSpec.hostProxyAllowed: true` (§8.3), per-plugin command flags, and per-app tooling tasks with `hostProxyAllowed: true` (§8.5). Lifecycle commands are forbidden from the allowlist by construction.
 - **Entry point** — A documented `package.json#exports` path of `@lando/core` that hosts may import. The catalog is in §2.7; semver stability per §16.9.
 - **Feature** — A composable, ordered, idempotent service-plan transformation.
 - **Fragment** — A partial Landofile (`services:`, `tooling:`, `proxy:`, etc.) loaded by an enclosing Landofile through `includes:` (§7.7). Fragments are pure config — never code — and resolve from local paths, git, npm, or the registry.

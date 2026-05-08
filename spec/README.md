@@ -188,6 +188,18 @@ If you are looking for…
 | Certificate authority service | 11 | §10.3 |
 | Corporate proxies and outbound trust | 11 | §10.3.1 |
 | SSH and host identity (sidecar-by-default agent) | 11 | §10.4 |
+| Host proxy (container→host RPC: `xdg-open` shim, in-container `lando` shim) | 11 | §10.10 |
+| Host-proxy wire protocol (`openUrl`, `runLando`, NDJSON streaming) | 11 | §10.10.2 |
+| In-container shim binary (argv[0] dispatch on `xdg-open` / `open` / `lando`) | 11 | §10.10.3 |
+| `lando.host-proxy` built-in service feature | 06 | §6.11 |
+| `LANDO_HOST_PROXY_SOCKET` / `LANDO_HOST_PROXY_TOKEN` / `LANDO_HOST_PROXY_DEPTH` env | 06 | §6.9 |
+| `HostProxyService` core service | 03 | §3.4 |
+| `HostProxyService` pluggability (headless CI, audited builds, recording) | 04 + 11 | §4.2 + §10.10.5 |
+| `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | 03 | §3.5 + §11.2 |
+| `hostProxyAllowed` field on `LandoCommandSpec` and tooling tasks | 08 | §8.3 + §8.5.1 |
+| `host-proxy-allowlist` cache | 12 | §12.1 |
+| Per-app `host-proxy.sock` persistent artifact | 12 | §12.4 |
+| Host-proxy contract suite (mandatory) | 13 | §13.1 |
 | Healthcheck runner + URL scanner | 11 | §10.5 |
 | Host-target healthchecks (`ShellRunner`-backed) | 11 | §10.5 |
 | Files and performance | 11 | §10.6 |

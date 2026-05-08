@@ -264,6 +264,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `Logger` | Structured logging through Effect | `LoggerLive` (Effect `Logger.pretty` by default; `Layer.suspend`-wrapped — built on first `yield* Logger`) |
 | `Renderer` | CLI output strategy | `RendererLive` (default Lando renderer; `Layer.suspend`-wrapped, with a pre-bootstrap direct-write fallback for first-paint banners; §8.9) |
 | `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
+| `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches `openUrl` (host browser open) and `runLando` (in-process re-entry into `@lando/core/cli`) requests from in-container shims, enforces token auth and the §10.10 message allowlist, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
 
 Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type errors at the Layer composition boundary catch missing services at compile time. Services in this table are core-provided runtime services; not every one is plugin-replaceable. Plugin-replaceable abstractions are enumerated in §4.2. `EmbeddedAssetService` is overrideable by tests and embedding hosts, but is not a plugin contribution surface because it protects binary/package asset integrity.
@@ -359,7 +360,7 @@ Tagged errors live in `@lando/core/errors`:
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
-| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner` | *(none — this is the maximal layer)* |
+| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService` | *(none — this is the maximal layer)* |
 
 The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, and doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script).
 
@@ -375,6 +376,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
 | Process / Shell | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec` |
+| Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` (published for every container→host RPC dispatched by `HostProxyService`; §10.10) |
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
 
@@ -456,6 +458,20 @@ The `EventService.publish` signature is type-narrowed to the exact union of know
 
 
 `DeprecationUsedEvent` is a cross-cutting event in the same registry. Its payload schema and publication rules are spec'd in §18.4; it is part of the standard event taxonomy here so subscribers can discover it through the same `EventService.subscribe<DeprecationUsedEvent>("deprecation-used")` API as any other event.
+
+`HostProxyCallEvent` is published for every container→host RPC dispatched by `HostProxyService` (§10.10). Both `pre-host-proxy-call` and `post-host-proxy-call` carry the redacted request shape, the calling service id, the inbound `LANDO_HOST_PROXY_DEPTH` value, and (for `post-`) the result summary and dispatch latency. Full unredacted payloads are available only to the active `Logger` at debug level; URL query strings, `runLando` argv tail values, and any `${secret:…}`-resolved tokens are redacted from the event payload identically to `pre-shell-exec` / `post-shell-exec` (§3.4).
+
+```ts
+export const HostProxyCallEvent = Schema.TaggedStruct("pre-host-proxy-call", {
+  app: AppRef,
+  callId: Schema.String,                                  // ULID; correlation key with the post- event
+  request: HostProxyRequestRedacted,                      // shape matches §10.10.2 Wire protocol
+  callerService: Schema.String,                           // resolved Lando service id of the caller
+  depth: Schema.Number,                                   // inbound LANDO_HOST_PROXY_DEPTH
+  timestamp: Schema.DateTimeUtc,
+});
+export type HostProxyCallEvent = Schema.Schema.Type<typeof HostProxyCallEvent>;
+```
 ### 11.3 Subscriber priority
 
 Subscribers register a priority (lower runs first). Priority bands are:

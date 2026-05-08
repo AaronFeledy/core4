@@ -158,6 +158,8 @@ Reuse skips bootstrap, plugin discovery, AOT layer instantiation, and cache load
 
 Hosts that need *isolation* across operations (per-request isolation in a multi-tenant server, parallel-test isolation, scenarios that mutate `<userCacheRoot>`) construct multiple runtimes per §16.5's cache-root override. The two patterns are not in tension — the host picks one per logical context.
 
+The bundled `HostProxyServiceLive` (§10.10) is itself an embedding host: it constructs one retained `LandoRuntime` at `app:start`, holds it in scope until `app:stop`, and dispatches every inbound `runLando` RPC through `@lando/core/cli` (§16.7) against that retained runtime. Hosts building an alternate `HostProxyService` MUST follow the same pattern so the in-container `lando` shim hits hot-path budgets on all calls past the first.
+
 **Difference from CLI defaults:**
 
 | Concern | CLI default | Embedding default |
