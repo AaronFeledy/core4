@@ -151,6 +151,15 @@ provides:
       inputKinds: [terraform, cloud]
       detects: ["*.tf", "terraform/*.tf"]
       optionsSchema: ./src/translators/terraform-options.schema.ts
+  templateEngines:
+    - id: handlebars
+      module: ./src/engines/handlebars.ts
+      extensions: [".hbs", ".handlebars"]
+      capabilities:
+        wholeFile: true                     # supports multi-line render with control flow
+        stringInterpolation: false          # cannot replace the `lando` engine for Landofile values
+        partials: true                      # `{{> name}}` partials supported when site supplies them
+        unsafe: false                       # honors the §7.3.1 purity guarantees
   doctorChecks:
     - id: terraform
       module: ./src/doctor/terraform.ts
@@ -197,6 +206,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `pluginSources` | `PluginSource` impls | Plugin install |
 | `secretStores` | `SecretStore` impls | Config expression resolution + tooling |
 | `configTranslators` | Translators from external config formats to Landofile fragments | `app config translate` / embedding hosts |
+| `templateEngines` | `TemplateEngine` impls for whole-file or string template rendering (§7.3.2) | Template renderer + mount materializer + recipe scaffold |
 | `doctorChecks` | Diagnostic checks with automatic or manual remediations | `doctor` command / `DoctorService` |
 | `messages` | Message factories | Lifecycle service |
 | `subscribers` | Event handlers | Lifecycle service |
@@ -210,6 +220,15 @@ There are no legacy autoload directories. All contributions go through the manif
 - `optionsSchema:` is optional. When present, CLI and library callers validate translator-specific options against it before invoking `translate()`.
 - Translators return Landofile fragments plus diagnostics. They MUST NOT return an `AppPlan`, mutate files directly, contact providers, or install plugins.
 - Translators run only on explicit request; they never participate in normal app bootstrap.
+
+**Template engine contribution rules:**
+
+- Each `templateEngines:` entry MUST declare a unique `id`, `module`, `extensions:` (the file-extension list the engine claims by default), and `capabilities:` (see §7.3.2 — `wholeFile`, `stringInterpolation`, `partials`, `unsafe`).
+- `id: lando` is reserved for the built-in default engine. Plugins MUST NOT contribute an entry with `id: lando`.
+- An engine MUST NOT declare `stringInterpolation: true` unless its syntax is fully compatible with the §7.3.1 expression grammar — Landofile string-value interpolation is the contract for the `lando` engine and only the `lando` engine. Plugin-contributed engines render whole files only.
+- An engine that cannot honor the §7.3.1 purity rules MUST declare `capabilities.unsafe: true`. Unsafe engines are disabled by default and require explicit opt-in via global config (`templateEngines.<id>.allowUnsafe: true`). The plugin loader emits `TemplateEngineUnsafeRejectedError` when an unsafe engine is selected without opt-in.
+- Engines MUST register through the published `@lando/sdk/services` `TemplateEngine` tag and accept the canonical `TemplateRenderContext` shape (§7.3.2) without engine-specific shape mutations.
+- Engines SHOULD register the §7.3.1 portable function set under the engine's idiomatic registration API so users see the same helper names regardless of engine.
 
 **Command contribution rules:**
 

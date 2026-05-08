@@ -27,6 +27,7 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 |---|---|---|---|---|
 | **Containerization** | `RuntimeProvider` | Apply app plans, exec, logs, build artifacts, manage instances | `@lando/provider-lando` (Lando-managed runtime) | Plugin contributes `providers:` in manifest. User selects with `provider:` in Landofile or `defaultProvider` global. Multiple providers may be installed; one is selected per app. |
 | **Tooling execution** | `ToolingEngine` | Translate a compiled Lando task graph from `tooling:` into provider or host operations | Built-in `ProviderExecToolingEngine` (uses `RuntimeProvider.exec`) | Plugin contributes `toolingEngines:`. Selected per command step, task, defaults, Landofile, or global config. |
+| **Template rendering** | `TemplateEngine` | Render a string or whole-file template with the published `TemplateRenderContext` (§7.3.2) into text | Built-in `lando` engine (the §7.3.1 expression language) — always available, the only engine permitted for Landofile string-value interpolation. `@lando/template-handlebars` and `@lando/template-mustache` are bundled as optional whole-file engines. | Plugin contributes `templateEngines:`. Selected per render site by explicit `engine:` field, file extension, Landofile `defaultTemplateEngine:`, or global config (§4.3, §7.3.2). |
 | **Console logging** | `Logger` | Structured log events with annotations | Effect `Logger.pretty` for TTY, `Logger.json` for non-TTY | Plugin contributes `loggers:`. Selected by global `logger:` config or `--logger=` flag. |
 | **Output rendering** | `Renderer` | Render task progress, tables, banners, errors | Built-in default renderer | Plugin contributes `renderers:`. Selected by `--renderer=` flag, `LANDO_RENDERER`, or TTY/CI detection. |
 | **Schema validation** | `SchemaValidator` | Validate Landofile/manifest data | Effect Schema | **Reserved (v4.0 not user-swappable).** Effect Schema is the only validator on the hot path; the service tag is reserved so a future major can introduce an alternate validator (e.g., for plugin authors who want a different library *internally*) without re-opening the catalog. Listed here so the catalog enumerates every reserved abstraction; do not implement plugin-side overrides for it in v4.0. |
@@ -100,6 +101,15 @@ provides:
   shellRunners:
     - id: audited
       module: ./src/shell/audited-runner.ts
+  templateEngines:
+    - id: handlebars
+      module: ./src/engines/handlebars.ts
+      extensions: [".hbs", ".handlebars"]
+      capabilities:
+        wholeFile: true
+        stringInterpolation: false
+        partials: true
+        unsafe: false
 ```
 
 ### 4.5 Mandatory abstraction guarantees

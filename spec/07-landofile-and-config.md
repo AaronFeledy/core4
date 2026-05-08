@@ -77,47 +77,189 @@ Default inference (when no hint):
 
 ### 7.3.1 Configuration expressions
 
-Lando supports a small, pure expression language in configuration strings. The syntax is Taskfile-inspired (`{{ ... }}`), but it is a Lando contract rather than Go template compatibility.
+Lando supports a small, pure expression language in configuration strings and template files. The syntax is designed to feel familiar regardless of whether you come from Go templates, Handlebars, Twig/Jinja/Liquid, or shell-parameter-expansion: `{{ … }}` interpolation with bracketed-or-dotted paths, both pipe filters and positional helper calls (transparently equivalent), and native shell-style `${VAR}` substitution. The same language is used by the `lando` template engine described in §7.3.2 — a single-line expression in a Landofile string and a multi-line template under `mounts: type: template` (§6.4) parse identically and share a context.
 
 ```yaml
-name: "{{ .env.PROJECT_NAME | default .app.basename }}"
+name: "{{ env.PROJECT_NAME | default(app.basename) }}"
 
 services:
   appserver:
     type: lando
     environment:
-      APP_ENV: "{{ .env.APP_ENV | default \"local\" }}"
+      APP_ENV: "{{ env.APP_ENV | default(\"local\") }}"
+      # Native shell-parameter-expansion is part of the same engine:
+      LISTEN_PORT: "${PORT:-8080}"
+      DOCROOT: "${DOCROOT:?docroot is required}"
 
 tooling:
   test:
     service: appserver
     cmds:
-      - "php vendor/bin/phpunit {{ .raw | shellJoin }}"
+      - "php vendor/bin/phpunit {{ raw | shellJoin }}"
 ```
 
-Rules:
+#### Syntax
 
-- Expressions are resolved by `ConfigService` / `LandofileService` after YAML parsing, `!load` / `!import`, `includes:` resolution, file merge, and env overrides for the relevant config layer, but before resolved schema validation and app planning consume the values.
-- A string that is exactly one expression preserves the expression result type (`boolean`, `number`, array, object, `null`, or string). A string with surrounding text interpolates the expression result as a string.
-- Expressions are pure and deterministic. They MUST NOT execute shell commands, read files, perform network IO, or mutate process/global state. Shell-backed dynamic values are allowed only in tooling-specific `vars.<name>.sh` (§8.5.3), where execution is explicit and goes through `ToolingEngine` / `ProcessRunner`.
-- Expressions can reference only the evaluation context for the current phase. Unknown paths, cyclic references, or type mismatches fail validation with a tagged `ConfigExpressionError` that includes the expression path and remediation.
-- `${secret:...}` remains the SecretStore reference syntax. Secret values MAY be used as expression inputs only through resolver-provided secret references, MUST be redacted in logs/errors, and MUST NOT be written decrypted into caches.
-- Literal `{{` in a string is escaped as `{{{{`.
-
-The baseline expression context is:
-
-| Scope | Meaning |
+| Form | Meaning |
 |---|---|
-| `.app.name`, `.app.root`, `.app.basename` | App identity and root path known during Landofile discovery |
-| `.host.os`, `.host.arch`, `.host.platform`, `.host.isWsl` | Host platform facts |
-| `.env.<NAME>` | Process environment after global env override handling |
-| `.global.<key>` | Resolved global config values that are safe to expose |
-| `.vars.<key>` | Variables from the nearest expression scope |
-| `.paths.userConfRoot`, `.paths.userCacheRoot`, `.paths.userDataRoot` | Resolved Lando roots |
+| `{{ expr }}` | Interpolate an expression value. |
+| `{{- expr }}` / `{{ expr -}}` / `{{- expr -}}` | Trim leading / trailing / both whitespace around the rendered value (Twig/Jinja-style). |
+| `{{# comment #}}` | Comment; produces no output. |
+| `{{ if expr }}` … `{{ else if expr }}` … `{{ else }}` … `{{ end }}` | Conditional block (whole-file render only — see §7.3.2). |
+| `{{ for name in expr }}` … `{{ end }}` | Iteration over an array; binds `name` per item. |
+| `{{ for key, value in expr }}` … `{{ end }}` | Iteration over an object; binds `key` and `value`. |
+| `${VAR}` | Substitute the named scope value `VAR` from the active context (typically a key under `env.*`, `vars.*`, or `service.*` depending on render site). Empty string when unset. |
+| `${VAR:-default}` | Use `default` when `VAR` is unset or empty. |
+| `${VAR-default}` | Use `default` only when `VAR` is unset (set-but-empty stays empty). |
+| `${VAR:?message}` | Render error tagged `ConfigExpressionError` when `VAR` is unset or empty. |
+| `${VAR:+alt}` | Use `alt` when `VAR` is set and non-empty; empty otherwise. |
+| `$VAR` | Bare form of `${VAR}`; recognized only when followed by a non-identifier character (or end-of-string). Use the brace form anywhere ambiguity is possible. |
+| `{{{{` / `$${` | Escapes for a literal `{{` or `${` respectively. |
 
-Tooling invocation expressions add `.task`, `.flags`, `.args`, `.raw`, `.service`, `.sources`, `.generates`, `.checksum`, and `.timestamp` (§8.5.4). Event expressions add `.event` with the decoded event payload.
+#### Paths and lookups
 
-The required built-in function set is intentionally small: `default`, `required`, `eq`, `ne`, `and`, `or`, `not`, `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `split`, `join`, `json`, `fromJson`, `yaml`, `fromYaml`, `pathJoin`, `shellQuote`, and `shellJoin`. Plugins MAY contribute additional pure functions through a future expression-function contribution surface, but core schemas and docs MUST identify which functions are portable.
+```text
+app.name
+service.endpoints[0].port
+vars["my-key"]
+env.HOME
+```
+
+Bracket notation works for arrays, for keys with non-identifier characters, and for dynamic keys (`vars[env.LOOKUP_KEY]`). Dotted paths and bracket lookups compose freely.
+
+#### Filters and helpers
+
+Pipe filters and positional helper calls are equivalent. `x | f(a, b)` and `f(x, a, b)` parse to the same AST node. The two forms exist so that users coming from Twig/Jinja/Liquid/Blade and users coming from Handlebars/Go-template each see their familiar idiom; documentation always shows both forms in examples. There is no semantic difference, no precedence trickery, and no "preferred" form.
+
+```text
+{{ env.PORT | default(8080) }}             # pipe form
+{{ default(env.PORT, 8080) }}              # call form — identical AST
+
+{{ app.name | upper | trim }}              # filter chain
+{{ trim(upper(app.name)) }}                # call chain — identical AST
+
+{{ paths.userCacheRoot | pathJoin("foo") }}
+{{ pathJoin(paths.userCacheRoot, "foo") }}
+```
+
+Built-in functions (all pure, deterministic, and redaction-safe):
+
+`default`, `required`, `eq`, `ne`, `lt`, `gt`, `and`, `or`, `not`, `contains`, `startsWith`, `endsWith`, `lower`, `upper`, `trim`, `split`, `join`, `replace`, `regexMatch`, `length`, `keys`, `values`, `entries`, `json`, `fromJson`, `yaml`, `fromYaml`, `pathJoin`, `pathDirname`, `pathBasename`, `shellQuote`, `shellJoin`, `b64encode`, `b64decode`.
+
+The function set is published from `@lando/sdk` as a portable utility module so plugin-contributed template engines (§7.3.2, §9.5) can register the same names under their idiomatic registration API. Plugins MAY contribute additional pure functions through the expression-function contribution surface (§9.5); core schemas and docs MUST identify which functions are portable.
+
+#### Result types
+
+A string whose entire content is exactly one `{{ expr }}` (no surrounding text, no `${…}`, no other interpolation) preserves the expression's result type — `boolean`, `number`, array, object, or `null`. A string that interpolates expressions or `${VAR}` forms with surrounding text always renders as a string. This rule applies to Landofile values; whole-file template rendering (§7.3.2) always produces text.
+
+#### AST and staged, bootstrap-level-aware resolution
+
+Expressions are parsed into an **AST at Landofile parse time**. Parsing is cheap, IO-free, and produces no values; it is what is cached in the app-plan cache (§12) alongside the rest of the resolved Landofile.
+
+Each AST node records the **scopes** it touches. Scopes have a known minimum bootstrap level (§3.2):
+
+| Scope | Min bootstrap level | Source |
+|---|---|---|
+| `host.{os,arch,platform,isWsl}` | `none` | Process facts |
+| `env.<NAME>` | `none` | Process environment after global env-override handling |
+| `paths.{userConfRoot,userCacheRoot,userDataRoot}` | `none` | Resolved Lando roots |
+| `app.{name,root,basename,slug}` | `minimal` | Landofile discovery + slug derivation (§7.4) |
+| `global.<key>` | `minimal` | Resolved global config values that are safe to expose |
+| `vars.<key>` | varies (≥ origin's level) | Variables from the nearest expression scope (Landofile `vars:`, mount `vars:`, tooling `vars:`, etc.) |
+| `service.{name,type,primary}` | `plugins` | Service-type resolution |
+| `service.{hostnames,routes,endpoints}` | `app` | App planning (§5.5) |
+| `info.{status,containerIp,…}` | `provider` | Post-start runtime info |
+| `secrets.<key>` | per-`SecretStore` (typically `minimal`) | `${secret:…}` references resolve through `SecretStore` (§4.2) |
+| `task`, `flags`, `args`, `raw`, `sources`, `generates`, `checksum`, `timestamp` | tooling invocation | Per-step tooling context (§8.5.4) |
+| `event` | event dispatch | Subscriber invocation payload |
+| `answers`, `recipe`, `destination`, `flags`, `cwd` | recipe init | Recipe scaffold context (§8.8.6) |
+
+An expression's **effective level** is the maximum minimum-level across every scope it references. Resolution is **staged**: each consumer (planner, healthcheck runner, tooling step, mount materializer, event subscriber, …) calls `ConfigService.resolve(node, currentLevel)` and either receives the resolved value, when `currentLevel >= node.minLevel`, or a typed `DeferredExpression` thunk that the consumer passes through to a downstream consumer running at a higher level. Re-entry at the higher level resolves the thunk in place; the thunk is opaque to lower-level code paths.
+
+Practical consequences:
+
+- Hot-path commands at level `none` (§3.2) never parse or render an expression that requires `service.*` or `info.*`. They see only opaque thunks in the cached plan.
+- A typo in `service.bogus` fails at the consumer that requires it, not at parse time, with a tagged `ConfigExpressionError` that includes the expression path, source location, and remediation.
+- A template that requires `service.endpoints[0].port` is rendered by the planner (level `app`) and the rendered output is what the provider applies; the cached plan stores both the AST and the most recent rendered output keyed by content+vars hash (§12.1 `template-render` cache).
+- The `!render` YAML tag is intentionally *not* part of this spec. Rendering is driven by the consumer, not by YAML parse, so that bootstrap level escalation never happens accidentally.
+
+#### Purity and safety
+
+- Expressions and templates are pure and deterministic. They MUST NOT execute shell commands, read files (other than the template body itself, which is already resolved before render), perform network IO, or mutate process/global state. Shell-backed dynamic values are allowed only in tooling-specific `vars.<name>.sh` (§8.5.3), where execution is explicit and goes through `ToolingEngine` / `ProcessRunner`.
+- Cyclic references, unknown paths at the consumer's level, type mismatches, and out-of-range bracket lookups all fail with a tagged `ConfigExpressionError` that includes the expression path, the source location, and remediation.
+- `${secret:KEY}` is a secret reference (distinct from `${KEY}` shell-parameter-expansion: the `secret:` prefix is the marker). Secret values resolve through `SecretStore` (§4.2), MUST be redacted in logs/errors and lifecycle event payloads, and MUST NOT be written decrypted into caches (§12). Secret references that appear inside `${VAR}` shell-style substitutions follow the same redaction rules.
+- A plugin-contributed engine (§7.3.2) MUST honor the same purity guarantees. An engine that cannot — for example, a template engine whose helper API permits arbitrary host-side code — declares `unsafe: true` in its manifest contribution; `unsafe` engines are disabled by default and require explicit global config opt-in (§9.5).
+
+### 7.3.2 Template engines
+
+Template rendering is pluggable. Core ships the `lando` engine (§7.3.1) as the default and bundles two additional engines (`handlebars`, `mustache`) for users with existing template files in those formats. Any plugin may contribute additional engines through the `templateEngines:` manifest surface (§9.5); selection follows the standard precedence rules (§4.3).
+
+The same `lando` engine renders every template surface in the system: Landofile string-value interpolation (§7.3.1), `mounts: type: template` (§6.4), recipe `templates/**/*.tmpl` files (§8.8.6), and any other site that renders text. Plugin-contributed engines rendering whole files MAY be selected per file site; engines other than `lando` MUST NOT be used for Landofile string-value interpolation (the `lando` engine's syntax *is* the Landofile expression contract).
+
+Engine selection precedence at any render site:
+
+```text
+1. Explicit `engine:` field at the render site
+2. File extension match against installed engines' `extensions:` lists
+3. Landofile-level `defaultTemplateEngine:` (where the site supports it)
+4. Global config `defaultTemplateEngine:` (default: lando)
+5. Sole installed implementation
+6. Tagged `TemplateEngineUnresolvedError` with remediation suggesting an `engine:` value or plugin to install
+```
+
+Bundled engines and conventional file extensions:
+
+| Engine id | Default file extensions | Notes |
+|---|---|---|
+| `lando` | `.tmpl`, `.tpl`, no extension | Built into core, always available. The default. Implements the §7.3.1 syntax. Whole-file rendering supports the full `{{ if }}` / `{{ for }}` / comment / whitespace-trim grammar. Single-string rendering (used for Landofile string-value interpolation) supports interpolation, filters, helpers, and `${VAR}` substitution but not control-flow blocks. |
+| `handlebars` | `.hbs`, `.handlebars` | Bundled as `@lando/template-handlebars` in the default install. Configured with `noEscape: true` and `strict: true` so config-file rendering does not HTML-escape and missing keys fail loudly. The §7.3.1 function set is registered as Handlebars helpers under the same names. The template render context (below) is exposed as the Handlebars data context. Recipe-level partials are available via `{{> name}}` when the surrounding site supplies named partials. |
+| `mustache` | `.mustache` | Bundled as `@lando/template-mustache` in the default install. Logic-less by design. Useful for cross-language templates that the user already maintains in Mustache form. Helper functions are not invocable from Mustache (the engine has no helper concept); callers that need helpers should use `lando` or `handlebars`. |
+
+A user who is satisfied with the binary footprint MAY disable bundled engines through plugin disablement (§7.5 / §9). The `lando` engine cannot be disabled — it is built into core and backs the Landofile expression contract itself.
+
+#### Render context
+
+Every engine receives a context object with a stable, schema-defined shape (`TemplateRenderContext` in `@lando/sdk/schema`). The context is identical across engines; engines differ only in accessor syntax (e.g., `{{ app.name }}` in `lando`, `{{app.name}}` in `handlebars`, `{{app.name}}` in `mustache`). The shape is the union of the scopes published in the §7.3.1 scope-to-bootstrap-level table; each render site publishes the subset that is meaningful at the consumer's effective bootstrap level. Sites that render before `app` planning (§5.5) MUST NOT include `service.*` or `info.*` in the context.
+
+A site MAY merge per-render `vars:` into the `vars.<key>` scope. Resolution precedence for `vars.*` at a given site:
+
+```text
+1. Per-render `vars:` (e.g. on a single mount entry)
+2. Landofile-level `templateVars:` (§7.4)
+3. Engine defaults (engine plugins MAY ship a small, documented set; the `lando` engine ships none)
+```
+
+#### Engine contract (illustrative)
+
+The canonical schema lives in `@lando/sdk`. The shape:
+
+```ts
+export interface TemplateEngine {
+  readonly id: string;
+  readonly extensions: ReadonlyArray<string>;
+  readonly capabilities: TemplateEngineCapabilities;
+
+  readonly compile: (
+    input: TemplateCompileInput,
+  ) => Effect.Effect<CompiledTemplate, TemplateCompileError>;
+
+  readonly render: (
+    template: CompiledTemplate,
+    context: TemplateRenderContext,
+  ) => Effect.Effect<string, TemplateRenderError>;
+}
+
+export interface TemplateEngineCapabilities {
+  readonly wholeFile: boolean;             // multi-line render with control flow
+  readonly stringInterpolation: boolean;   // single-string render for Landofile values
+  readonly partials: boolean;              // engine supports named partials
+  readonly unsafe: boolean;                // engine cannot guarantee §7.3.1 purity
+}
+```
+
+`wholeFile`-only engines (most third-party engines) cannot replace the `lando` engine for Landofile string-value interpolation; they may only be selected at sites that render whole files. The `lando` engine is the only built-in engine that satisfies both `wholeFile: true` and `stringInterpolation: true`.
+
+Compiled templates are content-addressed and cached at `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` (§12.1 `template-render` cache). Rendered output is cached at the same path with `<contentHash>-<varsHash>.bin`; re-renders are skipped when neither template content nor resolved vars change.
 
 ### 7.4 Top-level Landofile keys
 

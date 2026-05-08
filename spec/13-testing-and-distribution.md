@@ -20,6 +20,7 @@ Covered here: the nine test layers (unit, Effect service, CLI, library API, prov
 | CLI | `@oclif/test` + `bun test` | Command parsing, flag/arg handling, exit codes |
 | Library API | `bun test` + `@lando/core/testing` | Embedding-host surface (§16): `makeLandoRuntime`, public services, `@lando/core/cli` operations, lifecycle event publication |
 | Provider contract | Shared contract suite (in `@lando/sdk/test`) | Any `RuntimeProvider` plugin must pass |
+| Template engine contract | Shared contract suite (in `@lando/sdk/test`) | Any `TemplateEngine` plugin must pass: capability declaration matches behavior, `lando` engine round-trip parity for the §7.3.1 portable function set, `TemplateRenderContext` shape acceptance without mutation, purity (no shell/FS/network/process state mutation), `unsafe: false` engines reject any helper that performs side effects, render output is byte-stable across repeated calls with identical input |
 | Plugin SDK contract | Type tests + runtime tests | Public API compatibility |
 | Scenario | `bun test` + `@lando/core/testing` | End-to-end through the library API against `TestRuntimeProvider`; no real container runtime |
 | Recipe | `bun test` against `recipes/` | Every canonical recipe scaffolds with default answers and produces a Landofile that passes schema validation; the resulting app starts under the end-to-end suite |
@@ -45,6 +46,17 @@ Covered here: the nine test layers (unit, Effect service, CLI, library API, prov
 - Mount, endpoint, storage, and route behavior matches the capability matrix.
 - Errors are tagged and contain remediation.
 - Cancellation propagates: an interrupted `apply` rolls back partial state.
+
+**Template engine contract suite** (mandatory for every `TemplateEngine` plugin and for the built-in `lando` engine):
+
+- The engine's declared `capabilities` (§7.3.2) match observed behavior. An engine with `wholeFile: true` accepts the canonical control-flow grammar; an engine with `partials: true` resolves `{{> name}}`-style partials when the site supplies them.
+- The `lando` engine's renders for the §7.3.1 portable function set are byte-stable across repeated calls with identical input.
+- A plugin engine that registers the §7.3.1 portable function set produces results that match the `lando` engine's for the same input/context.
+- Every engine accepts the canonical `TemplateRenderContext` shape (§7.3.2) without engine-specific mutation; the engine's render output MUST NOT depend on context keys outside the declared shape.
+- Purity: a render produces zero observable side effects — no filesystem reads (other than the template itself, already loaded), no network calls, no `process.env` mutation, no `process.cwd()` mutation, no global-state writes. The contract harness asserts this via `Effect.TestServices` with denied filesystem/network access.
+- Unsafe engines: an engine with `capabilities.unsafe: true` MUST refuse to render when global config opt-in is absent and emits `TemplateEngineUnsafeRejectedError` (§7.3.2).
+- Errors are tagged (`TemplateCompileError`, `TemplateRenderError`) and include the source location and remediation.
+- Cancellation: an `Effect.interrupt` during render terminates promptly; finalizers reap any internal resources.
 
 **Library API contract suite** (mandatory; lives in `test/library/`):
 

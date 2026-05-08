@@ -27,6 +27,8 @@ The **encoding** column captures the §12.2 rule: every cache read on the router
 | `service-info` | `<userCacheRoot>/apps/<app-id>/info.json` | JSON | Last known `ServiceInfo[]` for fast `info`/`list` | Start, stop, restart, rebuild, destroy |
 | `provider` | `<userCacheRoot>/provider-cache.json` | JSON | Provider availability + version metadata | `setup`, provider config change, `--clear` |
 | `oclif-manifest` | embedded in binary + `<userCacheRoot>/oclif-manifest.bin` | binary | OCLIF adapter shim cache derived from core/plugin/app command indexes | Plugin install/remove, app command index change |
+| `template-compile` | `<userCacheRoot>/templates/<engineId>/<contentHash>.bin` | binary | Compiled `CompiledTemplate` blobs per `TemplateEngine` (§7.3.2). Content-addressed by canonical template-content hash; cross-app | Template content change (hash mismatch), engine version change, `--clear` |
+| `template-render` | `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` | binary | Rendered template output. Content-addressed by template content hash + canonical resolved-vars hash; cross-app | Template content change, resolved `vars:` change, render context schema/version change, `--clear` |
 | `update` | `<userCacheRoot>/update-cache.json` | JSON | Plugin update channel metadata | `update`, scheduled refresh |
 
 **`cwd-app-map` semantics.** The router phase first does an O(1) lookup of `cwd` → cached entry. On hit, it stats the cached `primaryLandofilePath`; if `mtimeNs` and `sizeBytes` match, the resolved `appRoot` is used directly without walking the directory tree. On miss or staleness, the router falls back to the directory walk, then atomically writes the resolved entry. The cache is bounded; eviction is LRU. This avoids the 30+ stat syscalls that a deep-cwd directory walk costs in the v3-style flow.
@@ -66,6 +68,7 @@ Files Lando v4 writes to disk:
 | `<userCacheRoot>/` | Cache root |
 | `<userCacheRoot>/logs/` | Core log files |
 | `<userCacheRoot>/cwd-app-map.bin` | Bounded LRU mapping of cwd → resolved app root for fast router-phase lookup (§12.1) |
+| `<userCacheRoot>/templates/<engineId>/` | Cross-app `template-compile` and `template-render` caches per engine (§12.1) |
 | `<userCacheRoot>/apps/<app-id>/` | Per-app caches and provider workdir |
 | `<userDataRoot>/` | Persistent data root |
 | `<userDataRoot>/plugins/` | User-installed plugin packages (read-write; written by `meta:plugin:add`) |

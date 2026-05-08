@@ -590,40 +590,54 @@ Dynamic `sh` values run through the task's selected engine. For `service: :host`
 
 #### 8.5.4 Expressions in tooling
 
-Tooling uses the config-wide expression language (§7.3.1) and adds invocation scopes:
+Tooling uses the config-wide expression language (§7.3.1) and adds the following invocation scopes. Per the staged-resolution model in §7.3.1, every scope below has an effective bootstrap level of "tooling invocation"; expressions that reference these scopes are held as AST thunks in the cached `ToolingProgram` (§8.7) and resolved when the step actually runs, not at parse, plan, or registration time.
 
 | Scope | Meaning |
 |---|---|
-| `.task.name` | Task name as defined under `tooling.<name>:` (e.g., `db:wait`) |
-| `.task.subnamespace` | Prefix of `.task.name` before the final `:` segment, if any (e.g., `db`); empty string when the task name has no `:` |
-| `.task.commandNamespace` | The command namespace the task registers under (`app` by default; §8.1.1) |
-| `.task.canonicalId` | Full canonical command id (e.g., `app:db:wait`) |
-| `.flags.<name>` | Parsed flag values |
-| `.args.<name>` | Parsed arg values |
-| `.raw` | Raw argv after `--` when `passThrough: true` |
-| `.service` | Resolved service target for the current command step |
-| `.sources`, `.generates` | Expanded file lists for the task |
-| `.checksum` | Stable checksum of `sources` when `method: checksum` |
-| `.timestamp` | Last-run timestamp when `method: timestamp` |
-| `.item`, `.key` | Loop item/key during `for` execution |
+| `task.name` | Task name as defined under `tooling.<name>:` (e.g., `db:wait`) |
+| `task.subnamespace` | Prefix of `task.name` before the final `:` segment, if any (e.g., `db`); empty string when the task name has no `:` |
+| `task.commandNamespace` | The command namespace the task registers under (`app` by default; §8.1.1) |
+| `task.canonicalId` | Full canonical command id (e.g., `app:db:wait`) |
+| `flags.<name>` | Parsed flag values |
+| `args.<name>` | Parsed arg values |
+| `raw` | Raw argv after `--` when `passThrough: true` |
+| `service` | Resolved service target for the current command step |
+| `sources`, `generates` | Expanded file lists for the task |
+| `checksum` | Stable checksum of `sources` when `method: checksum` |
+| `timestamp` | Last-run timestamp when `method: timestamp` |
+| `item`, `key` | Loop item/key during `for` execution |
 
-Examples:
+Examples (showing both filter-pipe and call-style helper forms — they are equivalent per §7.3.1):
 
 ```yaml
 tooling:
   phpunit:
     service: appserver
     passThrough: true
-    cmd: "php vendor/bin/phpunit {{ .raw | shellJoin }}"
+    cmd: "php vendor/bin/phpunit {{ raw | shellJoin }}"
 
   build-image-tag:
     service: :host
     vars:
-      TAG: "{{ .env.CI_COMMIT_SHA | default .checksum }}"
-    cmd: echo "{{ .vars.TAG | lower }}"
+      # Filter-pipe form
+      TAG: "{{ env.CI_COMMIT_SHA | default(checksum) }}"
+    cmd: echo "{{ vars.TAG | lower }}"
+
+  serve:
+    service: appserver
+    # Native shell-parameter-expansion is part of the same engine —
+    # CI templates that already use ${VAR:-default} keep working.
+    cmd: "node server.js --port=${PORT:-3000}"
+
+  list-endpoints:
+    service: :host
+    cmd: |
+      {{ for ep in service.endpoints }}
+      echo "{{ ep.protocol }}://localhost:{{ ep.port }}"
+      {{ end }}
 ```
 
-Expressions are evaluated before each command step runs, after flags/args, dynamic service resolution, dependency call vars, and dynamic vars are known.
+Expressions are evaluated before each command step runs, after flags/args, dynamic service resolution, dependency call vars, and dynamic vars are known. An expression that references `service.endpoints` is naturally gated to bootstrap level `app` (§7.3.1 scope-to-level table); the tooling engine resolves it after `LandoRuntimeLive` is constructed at the task's effective level.
 
 #### 8.5.5 Dynamic service resolution
 
@@ -956,7 +970,9 @@ Resolution is content-addressed and cached. Repeated `lando init --recipe wordpr
 
 #### 8.8.6 Recipe expressions
 
-Recipes use the same `{{ ... }}` expression language as the rest of Lando (§7.3.1), extended with control-flow blocks for use inside template files:
+Recipes render through the `TemplateRenderer` and use the same default `lando` engine as the rest of Lando (§7.3.1, §7.3.2). Templates under `templates/**/` MAY override the engine per file via the `files:` manifest entry (§8.8.3 — set `engine: handlebars` to render a `.hbs` template through the bundled Handlebars engine; see §7.3.2 for the bundled engine list and selection precedence). The `recipe.yml` file itself uses the `lando` engine for its string fields and does not accept an `engine:` override.
+
+The `lando` engine accepts the full §7.3.1 grammar — `{{ … }}` interpolation with bracket-or-dotted paths, both pipe and call-style helper forms, native `${VAR}` shell-parameter-expansion, comments, and whitespace trim. Whole-file recipe templates additionally support control-flow blocks:
 
 ```text
 {{ if <expr> }} … {{ else if <expr> }} … {{ else }} … {{ end }}
@@ -964,9 +980,9 @@ Recipes use the same `{{ ... }}` expression language as the rest of Lando (§7.3
 {{ for <key>, <value> in <expr> }} … {{ end }}
 ```
 
-Control-flow blocks are valid inside `templates/**/*.tmpl` files but NOT inside `recipe.yml`'s string fields, where only single-expression interpolation is permitted. This keeps `recipe.yml` declarative.
+Control-flow blocks are valid inside `templates/**/` files but NOT inside `recipe.yml`'s string fields, where only single-expression interpolation is permitted. This keeps `recipe.yml` declarative.
 
-The recipe context exposes:
+The recipe render context extends the standard `TemplateRenderContext` (§7.3.2) with recipe-specific scopes. Per §7.3.1, all scopes here have an effective bootstrap level of "recipe init"; recipe rendering runs at level `minimal` and never consults a provider:
 
 | Scope | Meaning |
 |---|---|
@@ -978,9 +994,23 @@ The recipe context exposes:
 | `env.<NAME>` | Process env (matches §7.3.1) |
 | `flags.<name>` | Init-command flags (`--full`, `--yes`, `--no-interactive`, etc.) |
 
-The function set from §7.3.1 is available unchanged. Recipes MUST NOT call shell or filesystem functions; the registry exposed to recipe expressions is a strict subset that excludes any function whose evaluation has side effects.
+Examples (filter-pipe and call-style helper forms are equivalent):
 
-Literal `{{` is escaped as `{{{{`. Inside `templates/**/*.tmpl` files, content outside `{{ … }}` and `{{ if … }} … {{ end }}` blocks is copied verbatim.
+```text
+# Filter-pipe form
+{{ answers.appName | default(destination.basename) | lower }}
+
+# Call-style form (identical AST)
+{{ lower(default(answers.appName, destination.basename)) }}
+
+# Native shell-parameter-expansion works in templates too
+LISTEN_PORT=${PORT:-8080}
+DOCROOT=${DOCROOT:?docroot is required}
+```
+
+The portable function set from §7.3.1 is available unchanged. Recipes MUST NOT call shell or filesystem functions; the registry exposed to recipe expressions is the §7.3.1 portable subset minus any function whose evaluation has side effects (in v4.0 the published portable set is already side-effect-free, so the subset and the full set are equivalent).
+
+Literal `{{` is escaped as `{{{{`; literal `${` is escaped as `$${`. Inside `templates/**/` files, content outside `{{ … }}`, `${…}`, and `{{ if … }} … {{ end }}` blocks is copied verbatim.
 
 #### 8.8.7 File manifest semantics
 

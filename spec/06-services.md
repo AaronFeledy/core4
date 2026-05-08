@@ -236,10 +236,20 @@ mounts:
     destination: /etc/lando/service/helpers
     type: copy
 
-  # Inline content
+  # Inline content (literal — bytes are written as-is)
   - destination: /etc/myapp/generated.yml
     type: inline
     content: !load config.yml @string
+
+  # Template content (rendered through a TemplateEngine before writing)
+  - source: ./config/vhost.conf.hbs
+    destination: /etc/apache2/sites-available/000-default.conf
+    type: template
+    engine: handlebars                    # optional; inferred from file extension
+    vars:
+      docroot: /app/web
+      port: 8080
+    mode: "0644"                          # optional; POSIX file permissions
 
   # Bind with excludes (creates volume shadows for excluded subpaths)
   - source: ./
@@ -258,7 +268,18 @@ mounts:
 | `bind` | Live-mount host path | `bindMounts` |
 | `copy` | Copy host path into the artifact at build time | `copyMounts` |
 | `inline` | Write literal content to the destination | (always supported) |
+| `template` | Render a template file through a `TemplateEngine` (§7.3.2) and write the result to the destination | (always supported — materializes to `inline` after render) |
 | `disabled` | Explicitly disables an inherited mount | (no-op) |
+
+**Template mount semantics:**
+
+- `source:` is a host-side path to the template file, resolved relative to the app root. The same security rules as local `includes:` (§7.7.6) apply: the path must stay under the app root unless `--allow-include-outside-root` is set.
+- `engine:` is the `TemplateEngine` id (§4.2, §7.3.2). When omitted, the engine is selected by file extension; when no extension matches, the `lando` engine is used.
+- `vars:` is an object that becomes the `vars.<key>` scope of the template's render context (§7.3.1, §7.3.2). Values inside `vars:` themselves go through the standard expression resolver, so `vars: { x: "${env.X}" }` and `vars: { x: "{{ env.X }}" }` both work.
+- `mode:` (octal string) sets POSIX file permissions on the rendered output. Ignored on Windows hosts.
+- The template's effective bootstrap level is the maximum across every scope its content references (§7.3.1). A template that references `service.endpoints[0].port` is rendered by the planner at level `app`; a template that references only `env.*` and `vars.*` could be rendered earlier but is still deferred to the mount materializer in practice.
+- After rendering, the resulting `MountPlan` is `type: inline` with the rendered text as `content:`. Providers see only `inline` mounts; no provider-side support for `template` is required.
+- Render output is cached at `<userCacheRoot>/templates/<engineId>/<contentHash>-<varsHash>.bin` (§12.1 `template-render` cache). Re-renders are skipped when neither the template content nor the resolved `vars:` change.
 
 **Excludes/includes semantics** (preserved from SPEC2 with provider-neutral phrasing):
 

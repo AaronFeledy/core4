@@ -85,8 +85,12 @@ Reference bundle (subject to change in §14):
 | Service base | `@lando/service-lando` | Required for `type: lando` |
 | Logger | `@lando/logger-pretty` | Optional (Effect default `Logger.pretty` is built in) |
 | Renderer | `@lando/renderer-listr` | Optional |
+| Template engine (Handlebars) | `@lando/template-handlebars` | Optional (bundled by default; configured with `noEscape: true` and `strict: true`; §7.3.2) |
+| Template engine (Mustache) | `@lando/template-mustache` | Optional (bundled by default; logic-less; §7.3.2) |
 
 Two `ToolingEngine`s ship **built into core**, not as plugins, and are always available: the default `providerExec` engine (in-service exec via the active `RuntimeProvider`) and the `host` engine (`ShellRunner` / `Bun.$`-backed; powers `service: :host` tooling, `.bun.sh` scripts, `vars.<name>.sh:`, the `lando shell` REPL, recipe `bunScript:` post-init, and host-target healthchecks/scanners). They do not appear in the table above because they are not replaceable via plugin install in v4.0; both selection precedence and engine override remain plugin-replaceable per §4.2 and §8.6.
+
+The default **template engine** (`lando`) also ships built into core, not as a plugin. It implements the §7.3.1 expression language and is the only engine permitted for Landofile string-value interpolation. The `@lando/template-handlebars` and `@lando/template-mustache` plugins above are bundled for whole-file rendering of users' existing `.hbs` and `.mustache` templates; both follow the standard `TemplateEngine` plugin surface (§7.3.2, §9.5) and can be disabled or replaced like any other plugin.
 
 A user with the default bundle gets a working `lando setup` that downloads and configures the Lando-managed runtime without requiring any pre-existing Docker or Podman installation. Users who prefer a system runtime may install `@lando/provider-docker` or `@lando/provider-podman` and opt in explicitly.
 
