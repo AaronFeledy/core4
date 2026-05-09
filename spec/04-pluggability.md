@@ -1,6 +1,6 @@
 # Lando v4 — Pluggability Catalog
 
-> **Part 4 of 16** · [Index](./README.md)
+> **Part 4 of 17** · [Index](./README.md)
 > **Read next:** [05 Runtime Providers](./05-runtime-providers.md)
 
 This part is the contract index for the entire system. Every replaceable abstraction in v4 is listed here with its Effect Service tag, its responsibility, the default implementation, and the swap mechanism. It also covers the pluggability principles, the selection precedence rules when multiple plugins implement the same abstraction, the manifest contribution shape, and the mandatory guarantees every abstraction interface must satisfy (Effect-typed, Schema-defined, tagged errors, capability-declared, resource-safe, idempotent).

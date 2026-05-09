@@ -1,6 +1,6 @@
 # Lando v4 — CLI, Tasks, and Tooling
 
-> **Part 8 of 16** · [Index](./README.md)
+> **Part 8 of 17** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
 This part defines the CLI surface. OCLIF is consumed in exactly one place — `src/cli/oclif/` — and the moment a command's `run()` is invoked, control crosses into Effect and never goes back.

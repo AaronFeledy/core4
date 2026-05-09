@@ -1,6 +1,6 @@
 # Lando v4 — Landofile and Configuration
 
-> **Part 7 of 16** · [Index](./README.md)
+> **Part 7 of 17** · [Index](./README.md)
 > **Read next:** [08 CLI and Tooling](./08-cli-and-tooling.md)
 
 This part defines the user-facing configuration system. A Landofile is committed to a project repo and any developer can produce an identical, networked environment from it. Global config sits at `<userConfRoot>/config.yml` with optional `config.d/*.yml` overlays, and every key is overridable by environment variables.

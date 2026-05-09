@@ -1,6 +1,7 @@
 # Lando v4 — Binary Build and Release Engineering
 
-> **Part 15 of 16** · [Index](./README.md)
+> **Part 15 of 17** · [Index](./README.md)
+> **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part is the operational counterpart to §13. Where §13 tells you *what* ships, §17 tells you *how* it gets built, signed, embedded, verified, distributed, and updated. Everything here flows from the architectural decisions already made elsewhere — Bun-compiled single-binary (§2.1), two distribution forms (§1.4, §13.5), bundled-plugins and bundled-recipes static-import constraint (§2.1, §13.5), self-update behavior (§13.7) — and pins down the operational mechanics those sections only sketch.
 
@@ -71,8 +72,10 @@ Codegen is the largest single source of correctness drift in a build like this, 
 | **Service registry docs** | `scripts/build-service-docs.ts` | Core service tag registry (§3.4) + pluggability catalog (§4.2) | `docs/src/content/docs/reference/services/*.mdx` | Build (stage 5); docs build | Same |
 | **Recipe action docs** | `scripts/build-recipe-action-docs.ts` | Recipe action registry + command metadata (`recipePostInitAllowed`) | `docs/src/content/docs/reference/recipes/actions.mdx` | Build (stage 5); docs build | Same |
 | **Acceptance coverage index** | `scripts/build-acceptance-index.ts` | Acceptance checklist ids + test metadata | `dist/acceptance-index.json` | Build (stage 5); pre-test | Re-run + coverage validation |
+| **Tutorial tests** | `scripts/build-doc-tests.ts` (§19.7) | `docs/src/content/docs/tutorials/**/*.mdx`, `docs/src/content/docs/how-to/**/*.mdx`, `recipes/*/README.mdx` | `test/mdx/<bucket>/<id>.test.ts` (gitignored) + `test/mdx/index.ts` barrel | Build (stage 1, before stage 2 type-check); dev watch on MDX edit | Generator exits 0; `tsc --noEmit` over generated tree passes; deterministic across runs (re-run into temp dir asserts byte-stable output); outputs are not committed so no `git diff --exit-code` gate applies |
+| **Recipe README scaffold output** | `scripts/build-recipe-readmes.ts` (§19.13) | `recipes/<id>/README.mdx` | `recipes/<id>/.scaffold/README.md` (strip-and-flatten of executable components into prose-only Markdown for `lando init` to copy into the user's project) | Build (stage 1); dev watch on recipe README edit | Re-run + `git diff --exit-code`; the `.scaffold/` output MUST contain no MDX JSX, no `import` statements, and no unresolved interpolation expressions |
 
-Codegen MUST be deterministic: re-running with identical inputs produces byte-identical outputs. The staleness gate exists because Lando publishes some generated files (`oclif.manifest.json`, `dist/schemas/*.json`, schema MDX) that downstream consumers read; CI regenerates them and refuses to merge if the committed copy diverges.
+Codegen MUST be deterministic: re-running with identical inputs produces byte-identical outputs. The staleness gate exists because Lando publishes some generated files (`oclif.manifest.json`, `dist/schemas/*.json`, schema MDX, recipe README scaffolds) that downstream consumers read; CI regenerates them and refuses to merge if the committed copy diverges. Tutorial-test outputs and tutorial transcripts are intentionally outside this rule — both are regenerated each test run, not committed, and validated by "must regenerate cleanly + tests pass" rather than `git diff --exit-code` (§19.7, §19.6).
 
 A single command, `bun run codegen`, runs every generator in dependency order. A single command, `bun run codegen:check`, runs every generator into a temporary directory and fails on drift. CI runs the latter on every PR (§13.4).
 

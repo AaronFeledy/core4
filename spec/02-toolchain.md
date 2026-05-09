@@ -1,6 +1,6 @@
 # Lando v4 — Toolchain
 
-> **Part 2 of 16** · [Index](./README.md)
+> **Part 2 of 17** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
 This part defines the technology stack and the rules each piece imposes. Bun is the runtime, package manager, test runner, subprocess driver, file IO layer, and bundler. TypeScript runs natively under Bun with strict settings. OCLIF is the bundled CLI framework. Effect is the runtime model for every meaningful operation in core. Effect Schema is the single source of truth for every external contract. The section also lists the runtime dependencies that are forbidden in core source.

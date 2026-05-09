@@ -1,6 +1,6 @@
 # Lando v4 — Plugin Specification
 
-> **Part 10 of 16** · [Index](./README.md)
+> **Part 10 of 17** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
 This part is the contract for plugin authors. A v4 plugin is a Bun-loadable package with a manifest declaring its public surface entirely through a `provides:` block. Side-effecting top-level code is forbidden and rejected at load.

@@ -28,7 +28,7 @@ Safe editing recipes (in order of preference):
 
 After every edit to a file in `spec/`:
 
-- `rg -n 'Bun\.#|# Lando v4|Part 8 of 15|Part 8 of 16' spec/*.md` — should match nothing except legitimate `# Lando v4 — …` document titles and the `Part 8 of 16` header in 08-cli-and-tooling.md.
+- `rg -n 'Bun\.#|# Lando v4|Part 8 of 15|Part 8 of 16|Part 8 of 17' spec/*.md` — should match nothing except legitimate `# Lando v4 — …` document titles and the `Part 8 of 17` header in 08-cli-and-tooling.md (the spec was extended from 16 to 17 parts when §19 “Executable Tutorials” was added; both old and new sentinels are listed so the check still flags any historical corruption that left the older string behind).
 - `awk '/^```/{count++} END{print count; exit count % 2}' spec/<file>.md` — code-block parity must hold (even count, exit 0).
 - `git diff` audit for `Bun.$` count parity against `HEAD`:
   ```bash

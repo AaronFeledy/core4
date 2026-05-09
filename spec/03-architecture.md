@@ -1,6 +1,6 @@
 # Lando v4 — Architecture, Lifecycle, and Events
 
-> **Part 3 of 16** · [Index](./README.md)
+> **Part 3 of 17** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part wires up the runtime. It covers the four concentric layers (imperative shell → Effect runtime → pluggable abstractions → plugin implementations), the bootstrap flow with its declared `BootstrapLevel`s, the on-disk source layout, the catalog of core Effect services, and the lifecycle event scopes published through the runtime.
@@ -423,6 +423,7 @@ Required `BunSelfRunner` behaviors:
 - `install`, `add`, `remove`, `x`, `create`, `runScript`, `buildLib`, `publishPkg` MUST validate their argv before dispatch; passing `{ args: ["install", "--global"] }` to `install()` is rejected with `BunSelfArgvShapeError` because the verb-specific contract forbids `--global` writes outside the plugin install dir. Freeform escape hatch is `run(args)`.
 - `x` (bunx-equivalent) MUST refuse to run an external package when the active runtime is in offline mode (§1.4 disconnectable local-dev) unless the package is already cached in Bun's bunx cache; this prevents a `lando x` call from silently breaching the offline contract.
 - The service MUST be safe to use from `bootstrap: minimal`. Constructing the default Live Layer MUST NOT touch the network, the provider, or any plugin module. The first `version` access spawns once and caches the result for the rest of the process.
+- Executable-tutorial transcripts (§19.6) capture `pre-bun-self-exec` / `post-bun-self-exec` event payloads through the same lifecycle-event redaction policy applied here: registry tokens, secret-resolved env values, and the `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` re-entry marker are redacted before they reach the transcript writer. Tutorial authors who reference `lando bun` or `lando x` invocations through `<Run>` (§19.3) get the same self-spawn behavior the CLI gets, and the `<Verify event="post-bun-self-exec" …/>` matcher exposes the redacted payload exactly as observed by the active `Logger` at info level.
 
 Tagged errors live in `@lando/core/errors`:
 

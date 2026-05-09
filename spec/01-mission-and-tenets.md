@@ -1,6 +1,6 @@
 # Lando v4 — Mission, Tenets, and Non-Goals
 
-> **Part 1 of 16** · [Index](./README.md)
+> **Part 1 of 17** · [Index](./README.md)
 > **Read next:** [02 Toolchain](./02-toolchain.md)
 
 This part captures the *why* of Lando v4. It states the mission, the non-negotiable architectural tenets that every PR is reviewed against, the explicit core boundaries (what core owns and what it does not), the default plugin distribution, the explicit non-goals, and the open decisions that remain before GA.

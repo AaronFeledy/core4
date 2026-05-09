@@ -3,15 +3,16 @@
 > **Status:** Draft for build kickoff.
 > **Audience:** Lando Core maintainers, plugin authors, contributors building v4 from a clean slate, and embedding hosts integrating `@lando/core` as a library.
 
-The specification lives entirely in this directory as **sixteen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
+The specification lives entirely in this directory as **seventeen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
 
-The split is *almost* one-section-per-file, with a few principled merges and three principled additions:
+The split is *almost* one-section-per-file, with a few principled merges and four principled additions:
 
 - **§1 (Mission and Tenets)** is paired with **§14 (Non-Goals and Open Decisions)** because they answer the same question from opposite sides.
 - **§3 (Architecture)** is paired with **§11 (Lifecycle and Events)** because the lifecycle event bus is part of the runtime architecture and §3.5 already introduces the event taxonomy that §11 specifies in full.
 - **§16 (Embedding and Library Use)** is a new section that wasn't in the original SPEC. It is filed at part 09 (between CLI and Plugins) because it specifies the second imperative shell — the library — which is a peer to the CLI.
 - **§17 (Binary Build and Release Engineering)** is a new section that wasn't in the original SPEC. It is filed at part 15 (after Appendices) because it is the operational counterpart to §13 — covering the build pipeline, codegen, asset embedding, signing, supply-chain artifacts, self-update, installation, and the CI release workflow that §13.5 and §13.7 only sketch.
 - **§18 (Deprecation and Surface Evolution)** is a new section that wasn't in the original SPEC. It is filed at part 16 (after Binary Build and Release Engineering) because it is a cross-cutting governance contract — every other part references §18 for *how* a surface is deprecated, while §18 owns the *what*.
+- **§19 (Executable Tutorials)** is a new section that wasn't in the original SPEC. It is filed at part 17 (after Deprecation) because it is the canonical mechanism by which authored user docs (Diátaxis tutorials and how-tos, plus recipe READMEs) double as end-to-end test sources via MDX with typed JSX components and an MDX→TypeScript codegen, replacing the need for a Lando 3 Leia-style markdown-as-test surface.
 
 ---
 
@@ -35,6 +36,7 @@ The split is *almost* one-section-per-file, with a few principled merges and thr
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provider-neutral language reference. Forbidden core dependencies. The source-derived acceptance checklist (with embedding criteria). The OCLIF-vs-`@effect/cli` decision rationale. The glossary. |
 | 15 | [`15-binary-build-and-release.md`](./15-binary-build-and-release.md) | §17 | The build pipeline and its single orchestrator. The codegen catalog (every generator, its inputs, outputs, and staleness gate). Asset embedding policy (hybrid: static JSON imports for small data, `Bun.embeddedFiles` for large data). Per-platform signing and notarization (macOS Developer ID + notarytool, Windows Authenticode + cosign, Linux GPG-signed checksum manifests). Supply-chain artifacts (CycloneDX SBOM, SLSA v1.0 provenance, cosign signatures). The self-update protocol (manifest schema, channel resolution, signature verification, atomic replace, Windows rename, rollback). The v4.0.0 install surface (GitHub Releases + curl-pipe installer; Homebrew/scoop/winget/distro deferred). The CI release workflow on GitHub Actions and the binary-shipping acceptance criteria that augment §15.C. |
 | 16 | [`16-deprecation-and-surface-evolution.md`](./16-deprecation-and-surface-evolution.md) | §18 | The cross-cutting deprecation contract: principles, the canonical `DeprecationNotice` schema, the `DeprecationService` and its hot-path rules, the `deprecation-used` lifecycle event, the surface deprecation matrix that maps every public surface to its declaration mechanism (schema annotation, contract field, manifest field, TSDoc tag), the renderer's once-per-process warning behavior and `--no-deprecation-warnings` opt-out, the semver-bound removal policy and the release-pipeline `removeIn` enforcement gate, and the test/lint gates. |
+| 17 | [`17-executable-tutorials.md`](./17-executable-tutorials.md) | §19 | The canonical mechanism for keeping authored user docs and end-to-end tests in lock-step. An *executable tutorial* is an MDX file (under `docs/src/content/docs/tutorials/**`, `docs/src/content/docs/how-to/**`, or `recipes/<id>/README.mdx`) whose typed JSX components — `<Tutorial>`, `<Step>`, `<Run>`, `<Verify>`, `<Inspect>`, `<Hidden>`, `<Cleanup>`, `<Variable>`, `<Skip>`, `<Inline>` — render in the Starlight site as styled command blocks with embedded transcripts, and compile via `scripts/build-doc-tests.ts` into TypeScript test files under `test/mdx/**` (gitignored, regenerated). Covers: the `TutorialFrontmatter` schema, the component prop schemas and `MatcherSchema` assertion vocabulary, the `TutorialContext` runtime, dual display-vs-execute binding, transcript capture/redaction/embedding, source-location preservation via `@source` headers and the MDX source-mapper reporter, the hidden:visible / inline-density / cleanup-mandatory lint rules, the test layer that joins the §13.1 matrix, the §17.2 codegen entry, the recipe-README strip-and-flatten policy, library-mode tutorials targeting `@lando/core` API surfaces, and the v4.0 GA acceptance criteria. |
 
 ---
 
@@ -271,6 +273,36 @@ If you are looking for…
 | Renderer deprecation warnings (`--no-deprecation-warnings`) | 16 | §18.6 |
 | `removeIn` release-time enforcement | 16 + 15 | §18.7 + §17.1 |
 | Deprecation test/lint gates | 16 + 13 | §18.8 + §13.4 |
+| Executable tutorials (mission and applicability) | 17 | §19.1 |
+| Tutorial MDX artifact and frontmatter | 17 | §19.2 |
+| `TutorialFrontmatter` schema | 17 | §19.2 |
+| Diátaxis bucket constraints (`tutorial`/`how-to` only) | 17 | §19.2 + §19.10 |
+| Tutorial component vocabulary | 17 | §19.3 |
+| `<Tutorial>` / `<Step>` / `<Run>` / `<Verify>` / `<Inspect>` props | 17 | §19.3 |
+| `<Hidden>` / `<Cleanup>` / `<Variable>` / `<Skip>` / `<Inline>` props | 17 | §19.3 |
+| `MatcherSchema` (declarative tutorial assertion vocabulary) | 17 | §19.3 |
+| `TutorialContext` runtime surface | 17 | §19.4 |
+| Display-vs-execute dual binding | 17 | §19.5 |
+| Transcript capture, redaction, and embedding | 17 | §19.6 |
+| `Transcript` / `TranscriptFrame` schemas | 17 | §19.6 |
+| `scripts/build-doc-tests.ts` (MDX → TypeScript codegen) | 17 + 15 | §19.7 + §17.2 |
+| Source-location preservation (`@source` headers, source-mapper reporter) | 17 | §19.8 |
+| Hidden / cleanup discipline (ratio cap, mandatory cleanup) | 17 | §19.9 |
+| `bun run lint:tutorials` (lint gate) | 17 + 13 | §19.10 + §13.4 |
+| Executable-tutorials test layer | 17 + 13 | §19.11 + §13.1 |
+| Recipe README MDX (`recipes/<id>/README.mdx`) and strip-and-flatten | 17 + 08 | §19.13 + §8.8.2 |
+| `scripts/build-recipe-readmes.ts` | 17 + 15 | §19.13 + §17.2 |
+| Library-mode tutorials (runtime-target `<Run>`) | 17 + 09 | §19.14 + §16 |
+| Tutorial acceptance checklist items | 17 + 14 | §19.15 + §15.C |
+| Tabbed variants (axes, Cartesian product, multi-test codegen) | 17 | §19.16 |
+| `tabs:` (single-axis) and `axes:` (multi-axis) frontmatter declarations | 17 | §19.2 + §19.16 |
+| `<Tabs>` and `<Tab>` components | 17 | §19.3 + §19.16 |
+| `TabAxis` / `TabAxisValue` schemas | 17 | §19.3 |
+| Per-cell variant overrides (`variants:` map) | 17 | §19.16 |
+| Cross-page tab sync (`syncKey`) | 17 | §19.16 |
+| `test.skip` for axis-coverage gaps | 17 | §19.7 + §19.16 |
+| Per-variant test file naming (`<id>.<axis-value>...test.ts`) | 17 | §19.7 + §19.16 |
+| Recipe README scaffolding with axis-resolved tabs | 17 + 08 | §19.13 + §8.8.2 |
 
 ---
 
@@ -294,6 +326,7 @@ Canonical owners:
 - Recipe action types and `postInit.command` allowlist: generated from command metadata (§8.8.8).
 - Acceptance checklist items: stable checklist ids mapped to tests and public surfaces (§15.C, §17.9).
 - Deprecation notices for every public surface: registered through schema annotations, contract fields, manifest fields, or TSDoc tags per §18.5; published as the merged `DeprecationService` registry (§18.3) and as `dist/schemas/deprecation-notice.json` (§18.2).
+- Executable-tutorial component vocabulary: prop schemas, `TutorialFrontmatter`, `MatcherSchema`, `Transcript`/`TranscriptFrame`, `TabAxis`/`TabAxisValue`, `TabsProps`/`TabProps`, and the redaction list are contracts owned by `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions` (§19.3, §19.6, §19.16); the JSX/Astro runtime implementations and the Starlight integration are owned by `@lando/core/docs/components` (an entry point in `@lando/core`, not in `@lando/sdk`, because contracts-only is preserved); the `TutorialContext` service tag is owned by `@lando/core/testing` (§19.4, §16.8).
 
 Surface change checklist:
 
