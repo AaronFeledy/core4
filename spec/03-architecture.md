@@ -260,7 +260,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `FileSystem` | `Bun.file` / `Bun.write` wrapper | `FileSystemBunLive` |
 | `ProcessRunner` | Argv-precise subprocess spawn (`Bun.spawn`) | `ProcessRunnerBunLive` |
 | `ShellRunner` | Cross-platform shell-shaped execution (pipes, redirection, globs, built-ins) via `Bun.$` (Bun Shell) | `ShellRunnerBunLive` |
-| `BunSelfRunner` | Self-spawn the compiled `lando` binary with `BUN_BE_BUN=1` so it acts as the upstream `bun` CLI; the only place in core that constructs a `BUN_BE_BUN=1` child. Backs plugin install/update (§9.6), `lando bun` / `lando x` (§8.2.4), recipe `bunInstall` / `bunAdd` / `bunCreate` / `bunRun` / `bunX` post-init actions (§8.8.8), the plugin authoring toolkit (§9.10), and `includes:` materialization for `npm:` / `registry:` schemes (§7.7). Library-mode fallback spawns a system `bun` when one is on PATH | `BunSelfRunnerBunLive` |
+| `BunSelfRunner` | Self-spawn the compiled `lando` binary with `BUN_BE_BUN=1` so it acts as the upstream `bun` CLI; the only place in core that constructs a `BUN_BE_BUN=1` child. Backs plugin install/update (§9.6), `lando bun` / `lando x` (§8.2.4), recipe `bun:` post-init action verbs `install` / `add` / `create` / `run` / `x` (§8.8.8), the plugin authoring toolkit (§9.10), and `includes:` materialization for `npm:` / `registry:` schemes (§7.7). Library-mode fallback spawns a system `bun` when one is on PATH | `BunSelfRunnerBunLive` |
 | `PrivilegeService` | sudo/UAC dispatch | `PrivilegeServiceLive` (platform-specific) |
 | `EmbeddedAssetService` | Unified access to build-embedded assets and library-mode package assets | `EmbeddedAssetServiceLive` |
 | `Logger` | Structured logging through Effect | `LoggerLive` (Effect `Logger.pretty` by default; `Layer.suspend`-wrapped — built on first `yield* Logger`) |
@@ -279,7 +279,7 @@ Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type erro
 | Input shape | Exact `argv: string[]` plus options | Tagged template literal with safe-by-default interpolation |
 | Shell features | None — no parsing, no expansion, no built-ins | Pipes (`\|`), redirection (`<`, `>`, `2>&1`), globs (`*`, `**`, `{a,b}`), command substitution (`$(…)`), built-in `cd`/`ls`/`rm`/`mkdir`/`cat`/`mv`/`which`, env var expansion |
 | Cross-platform on Windows | Whatever the spawned binary supports | Built-ins are reimplemented in Bun, so `rm -rf` / `mkdir -p` / globs work on Windows without `rimraf` / `cross-env` |
-| Typical callers | Provider exec (`docker exec`, `podman exec`), signing tools (`codesign`, `signtool`, `cosign`), `bun add`, plugin-supplied external binaries | The `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` for `service: :host` (§8.5.3), `.bun.sh` scripts (§8.5.9), the `lando shell` REPL (§8.2), host-side healthcheck/url-scanner plugins (§10.5), recipe `bunScript:` post-init (§8.8.8) |
+| Typical callers | Provider exec (`docker exec`, `podman exec`), signing tools (`codesign`, `signtool`, `cosign`), `bun add`, plugin-supplied external binaries | The `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` for `service: :host` (§8.5.3), `.bun.sh` scripts (§8.5.9), the `lando shell` REPL (§8.2), host-side healthcheck/url-scanner plugins (§10.5), recipe `bun: { verb: script }` post-init (§8.8.8) |
 | Injection risk | Minimal (no shell parses the argv) | Mitigated by Bun Shell's automatic escaping of interpolated values; explicit `{ raw: "…" }` is required to opt out |
 | Cancellation | `Effect.interrupt` → `proc.kill(SIGTERM)` then `SIGKILL` | `Effect.interrupt` → `proc.kill()` on the underlying Bun Shell process; scope finalizers reap any spawned children |
 
@@ -304,7 +304,7 @@ export class ShellRunner extends Context.Service<ShellRunner, {
   readonly lines:  (script: ShellScript, options?: ShellRunOptions) => Stream.Stream<string,    ShellExecError, Scope.Scope>;
 
   // Run a `.bun.sh` file resolved against an explicit base directory. Used by the host
-  // ToolingEngine for §8.5.9 script-backed tasks and by the recipe `bunScript:` action (§8.8.8).
+  // ToolingEngine for §8.5.9 script-backed tasks and by the recipe `bun: { verb: script }` action (§8.8.8).
   readonly runScript: (file: ResolvedScriptRef, options?: ShellRunOptions) => Effect.Effect<ShellResult, ShellExecError, Scope.Scope>;
 
   // Bun.$ utilities, exposed for callers that need raw escape semantics or brace expansion.
@@ -340,7 +340,7 @@ Required `ShellRunner` behaviors:
 - The default `ShellRunnerBunLive` MUST use `Bun.$` as its execution engine — no system shell (`/bin/sh`, `cmd.exe`, `powershell.exe`) is invoked.
 - Interpolated values in a `ShellScript` MUST be escaped per Bun Shell's default rules; opting out requires an explicit `{ raw: "…" }` wrapper at the call site (mirroring Bun's API).
 - `${secret:…}` references resolved by `SecretStore` (§4.2) MUST be passed as escaped values and redacted from log/event output — the `Logger` and `EventService` MUST observe redacted forms only.
-- `pre-shell-exec` / `post-shell-exec` events publish a `ShellExecEvent` payload with the canonical id of the calling subsystem (e.g., `tooling-engine:host`, `recipe:bunScript`, `lando-shell`), the redacted command shape, the cwd, and the result summary; full unredacted output is available only to the active `Logger` at debug level.
+- `pre-shell-exec` / `post-shell-exec` events publish a `ShellExecEvent` payload with the canonical id of the calling subsystem (e.g., `tooling-engine:host`, `recipe:bun:script`, `lando-shell`), the redacted command shape, the cwd, and the result summary; full unredacted output is available only to the active `Logger` at debug level.
 - `Effect.interrupt` MUST propagate to `proc.kill()` and the service's `Scope` MUST reap any child processes spawned from inside the shell template.
 - `runScript(file)` MUST verify the file resides under a permitted base (the app root, the user-config root's `recipes/` cache, or an explicitly opted-in include root) and MUST refuse to execute scripts whose realpath escapes those bases. Symlink traversal is rejected with `ShellScriptOutsideRootError`.
 - The service MUST be safe to use from inside `bootstrap: tooling` commands; instantiating the default Live Layer MUST NOT touch the network, the provider, or any plugin module.
@@ -348,7 +348,7 @@ Required `ShellRunner` behaviors:
 Tagged errors live in `@lando/core/errors`:
 
 - `ShellExecError` — non-zero exit, signal kill, timeout, or shell-parse failure. Payload includes redacted command, exitCode, signal, stdout/stderr (truncated and redacted), and remediation.
-- `ShellInterpolationError` — a `{ raw: … }` wrapper used in a context where unsafe interpolation is forbidden (e.g., recipe `bunScript:`). Includes the offending position and remediation.
+- `ShellInterpolationError` — a `{ raw: … }` wrapper used in a context where unsafe interpolation is forbidden (e.g., recipe `bun: { verb: script }`). Includes the offending position and remediation.
 - `ShellScriptOutsideRootError` — `runScript` rejected because the file's realpath escapes the permitted base. Includes both paths.
 - `ShellRunnerUnavailableError` — the active Live Layer cannot satisfy the request (e.g., a dry-run plugin that refuses real execution outside an allowlist).
 
@@ -417,7 +417,7 @@ Required `BunSelfRunner` behaviors:
 
 - The default `BunSelfRunnerBunLive` MUST self-spawn the running binary by `process.execPath` with `BUN_BE_BUN: "1"` set in the child's environment. It MUST NOT resolve a `bun` binary from `PATH` for the embedded path. Library-mode fallback (`mode: "host"` or no embedded Bun at runtime — i.e., `process.execPath` is not the Lando-compiled binary) MAY shell out to a system `bun`; the resulting `bunVersion` field carries the host's version and a `bun-self-exec` event is published with `mode: "host"` so observers can tell which path executed.
 - Self-spawn MUST NOT recurse: the dispatcher MUST set `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1` in the child env; if a `BunSelfRunner` finds that env on entry it MUST refuse with `BunSelfReentryError` instead of starting a third level. This prevents a misbehaving plugin or post-install script from forking unbounded `BUN_BE_BUN` chains.
-- Every invocation MUST publish `pre-bun-self-exec` and `post-bun-self-exec` lifecycle events (§3.5/§11.2) with the redacted argv shape, the calling subsystem id (e.g., `plugin-install:meta:plugin:add`, `recipe:bunCreate:vite`, `tooling-engine:bun-x`), the `cwd`, the registry summary (host + scope, never tokens), the `mode` (`embedded` | `host`), and the result summary.
+- Every invocation MUST publish `pre-bun-self-exec` and `post-bun-self-exec` lifecycle events (§3.5/§11.2) with the redacted argv shape, the calling subsystem id (e.g., `plugin-install:meta:plugin:add`, `recipe:bun:create:vite`, `tooling-engine:bun-x`), the `cwd`, the registry summary (host + scope, never tokens), the `mode` (`embedded` | `host`), and the result summary.
 - `secret`-resolved values from `SecretStore` (§4.2) and `registry.token` values MUST be passed through env vars (`BUN_AUTH_TOKEN`, scoped `_authToken` entries) and redacted from log/event output. The `Logger` and `EventService` MUST observe redacted forms only.
 - `Effect.interrupt` MUST propagate to `proc.kill()` and the service's `Scope` MUST reap the spawned Bun process before resolving.
 - `install`, `add`, `remove`, `x`, `create`, `runScript`, `buildLib`, `publishPkg` MUST validate their argv before dispatch; passing `{ args: ["install", "--global"] }` to `install()` is rejected with `BunSelfArgvShapeError` because the verb-specific contract forbids `--global` writes outside the plugin install dir. Freeform escape hatch is `run(args)`.
@@ -445,7 +445,7 @@ Tagged errors live in `@lando/core/errors`:
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
 | `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService` | *(none — this is the maximal layer)* |
 
-The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bunInstall:`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither.
+The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bun: { verb: install }`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither.
 
 `Renderer`'s Layer.suspend wrapping cooperates with the first-paint contract in §8.9 — a pre-bootstrap direct-write fallback prints the initial banner before the suspended `Renderer` Layer is forced.
 
@@ -574,7 +574,7 @@ export const BunSelfExecEvent = Schema.TaggedStruct("pre-bun-self-exec", {
   ),
   argv: Schema.Array(Schema.String),                      // redacted argv as it would appear with BUN_BE_BUN=1
   cwd: AbsolutePath,
-  callerSubsystem: Schema.String,                         // e.g. "plugin-install:meta:plugin:add", "recipe:bunCreate:vite", "tooling-engine:bun-x"
+  callerSubsystem: Schema.String,                         // e.g. "plugin-install:meta:plugin:add", "recipe:bun:create:vite", "tooling-engine:bun-x"
   mode: Schema.Union(Schema.Literal("embedded"), Schema.Literal("host")),
   bunVersion: Schema.String,                              // version reported by the dispatched Bun
   registry: Schema.optional(Schema.Struct({

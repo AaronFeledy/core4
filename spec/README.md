@@ -117,8 +117,13 @@ If you are looking for…
 | `LANDO_*` environment variable contract | 06 | §6.9 |
 | `ServiceInfo` schema | 06 | §6.10 |
 | `ServiceType` and `ServiceFeature` contracts (built-in features list) | 06 | §6.11 |
+| Service-type inheritance (`extends:`) | 06 | §6.11.1 |
+| Declarative version pinning (`artifacts:`) | 06 | §6.11.2 |
+| Service-type-shipped tooling | 06 | §6.11.3 |
+| `AppFeature` (app-scoped features with selectors; e.g., Mailpit injects) | 06 | §6.11.4 |
 | Canonical service-type catalog (PHP, Node, Python, Ruby, Go, databases, caches, search, mail, queues, static, compose passthrough) | 06 | §6.12 |
-| Landofile discovery + merge order (six files) | 07 | §7.1–7.2 |
+| Database `creds:` schema (uniform user/password/database/rootPassword contract) | 06 | §6.12.4 |
+| Landofile discovery + merge order (six files; first-class trio: `dist`, canonical, `local`) | 07 | §7.1–7.2 |
 | `load()` / `import()` expression helpers (FileRef, ImportRef, decoders) | 07 | §7.3 |
 | Picking values from JSON/YAML/TOML files (`get()` and direct access) | 07 | §7.3 |
 | `load()` / `import()` security policy and limits | 07 | §7.3 |
@@ -128,6 +133,7 @@ If you are looking for…
 | `commandAliases:` global config key | 07 | §7.5 |
 | Env-var override rules | 07 | §7.6 |
 | `includes:` and fragments (local/git/npm/registry sources, lockfile, merge semantics) | 07 | §7.7 |
+| `includes:` `kind:` discriminator (`landofile` / `tooling` / `compose`) — unified import surface | 07 | §7.7.1 + §7.7.7 |
 | Schema and generated-doc publication | 07 | §7.8 |
 | Command kinds (built-in, plugin, tooling, management) | 08 | §8.1 |
 | Command namespaces (`app`, `apps`, `meta`) | 08 | §8.1.1 |
@@ -147,6 +153,9 @@ If you are looking for…
 | Config expressions | 07 | §7.3.1 |
 | Template engines (pluggable; `lando` default + bundled handlebars/mustache) | 07 | §7.3.2 |
 | Configuration-expression syntax (paths, filters, helpers, `${VAR}` envsubst) | 07 | §7.3.1 |
+| Cross-service expression scope (`services.<name>.{type,creds,endpoints,hostnames,routes}`) | 07 | §7.3.1 |
+| Self-service `creds.*` expression scope | 07 | §7.3.1 |
+| `plugin.<id>.{root,config,version}` expression scope | 07 | §7.3.1 |
 | Staged, bootstrap-level-aware expression resolution (scope-to-level table) | 07 | §7.3.1 |
 | Helper design conventions (sync, namespacing, format args, error model) | 07 | §7.3.1 |
 | Namespaced helpers (`path.*`, `fs.*`, `url.*`, `semver.*`) | 07 | §7.3.1 |
@@ -172,9 +181,11 @@ If you are looking for…
 | Recipe sources (built-in/local/git/npm/registry) | 08 | §8.8.4 |
 | Prompt types (text, select, multiselect, confirm, number, secret, path, editor) | 08 | §8.8.5 |
 | Recipe expressions and control flow | 08 | §8.8.6 |
-| Recipe `postInit.bunScript:` action | 08 | §8.8.8 |
-| Recipe `postInit.bunInstall:` / `bunAdd:` / `bunCreate:` / `bunRun:` / `bunX:` actions | 08 | §8.8.8 |
+| Recipe `postInit.bun:` action with `verb:` allowlist (`script`, `install`, `add`, `create`, `run`, `x`) | 08 | §8.8.8 |
 | Programmatic recipes (`recipe.ts`) | 08 | §8.8.14 |
+| Recipe `runs:` allowlist + `ctx.run` (API-backed prompt choices via canonical commands) | 08 | §8.8.3 + §8.8.14 |
+| Recipe `fetchAllowlist:` + `ctx.fetch` (allowlisted HTTP GET during init) | 08 | §8.8.3 + §8.8.14 |
+| Prompt `choicesFrom:` (dynamic select/multiselect choices from a canonical command) | 08 | §8.8.3 + §8.8.5 |
 | Programmatic Landofile (`landofile.ts`) | 07 | §7.1.1 |
 | Canonical recipes shipped in core | 08 | §8.8.10 |
 | Renderers and messages | 08 | §8.9 |

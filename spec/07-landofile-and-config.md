@@ -74,13 +74,15 @@ The TS form is **opt-in and intentionally rare**. Recipes ship YAML by default; 
 Default load order (low → high precedence):
 
 ```text
-1. .lando.base.yml
-2. .lando.dist.yml
-3. .lando.upstream.yml
-4. .lando.yml          (canonical; filename configurable globally)
-5. .lando.local.yml
-6. .lando.user.yml
+1. .lando.base.yml         [advanced]
+2. .lando.dist.yml          first-class
+3. .lando.upstream.yml     [advanced]
+4. .lando.yml               first-class — the canonical file (filename configurable globally)
+5. .lando.local.yml         first-class
+6. .lando.user.yml         [advanced]
 ```
+
+The three **first-class** layers (`dist`, canonical, `local`) cover ~99% of projects: ship-with-the-repo defaults, the canonical file, and per-developer overrides. The three **advanced** layers (`base`, `upstream`, `user`) exist for organizations with cross-repo policy injection or per-user host-wide defaults; ordinary documentation, tutorials, and `lando init` output reference only the first-class trio. Cross-repo composition that crosses package or organization boundaries SHOULD use `includes:` (§7.7) rather than relying on the advanced layers — `includes:` is strictly more powerful (versioned, lockfile-tracked, namespaceable).
 
 Rules:
 
@@ -394,8 +396,11 @@ Each AST node records the **scopes** it touches. Scopes have a known minimum boo
 | `global.<key>` | `minimal` | Resolved global config values that are safe to expose |
 | `loader` (`load(...)`, `import(...)`) | `minimal` | Landofile-relative file IO; bytes contribute to the app-plan cache key (§7.3, §12.1) |
 | `vars.<key>` | varies (≥ origin's level) | Variables from the nearest expression scope (Landofile `vars:`, mount `vars:`, tooling `vars:`, etc.) |
-| `service.{name,type,primary}` | `plugins` | Service-type resolution |
+| `service.{name,type,primary}` | `plugins` | Service-type resolution (the *self*-service the expression renders inside) |
+| `service.creds.{user,password,database,rootPassword}` | `plugins` | Self-service credentials, populated by service-types that opt in to the `creds:` schema (§6.12.4). Absent on service-types without creds. |
 | `service.{hostnames,routes,endpoints}` | `app` | App planning (§5.5) |
+| `services.<name>.{type,primary,creds,hostnames,routes,endpoints}` | `app` | **Cross-service** references: read-only view of another service's resolved plan. The named service must exist in the same app; absent or misnamed references fail with `ConfigExpressionError`. Cyclic cross-service expression chains are detected and rejected at plan time. |
+| `plugin.<id>.{root,config,version}` | `plugins` | Plugin-local file roots and metadata for the plugin that *owns* the surrounding contribution (service-type, feature, recipe, command). `root` is the plugin's package root; `config` is `<root>/config` by convention. Resolves to the contributing plugin even when the expression is reused across multiple plugins. |
 | `info.{status,containerIp,…}` | `provider` | Post-start runtime info |
 | `secrets.<key>` | per-`SecretStore` (typically `minimal`) | `${secret:…}` references resolve through `SecretStore` (§4.2) |
 | `task`, `flags`, `args`, `raw`, `sources`, `generates`, `checksum`, `timestamp` | tooling invocation | Per-step tooling context (§8.5.4) |
@@ -594,8 +599,9 @@ Rules:
 - Compose fields without provider-neutral semantics are preserved in plan extensions and require a provider that declares the needed Compose capability. They MUST NOT be silently dropped.
 - Lando-specific keys win over equivalent Compose shorthand during normalization. For example, `services.web.endpoints:` wins over endpoint intent inferred from `services.web.ports:`.
 - `lando config --format yaml` SHOULD render the post-merge, post-normalization config so users can see how Compose and Lando keys were resolved.
-- `toolingIncludes:` is deliberately separate from Compose `include:` and from Lando's top-level `includes:`. `toolingIncludes:` imports reusable tooling/task definitions and namespaces them unless explicitly flattened (§8.5.8); Lando's `includes:` (§7.7) imports whole Landofile fragments; Compose `include:` is the Compose-spec import mechanism for project fragments. The three are deliberately distinct surfaces and resolve at different times.
-- Lando's `includes:` (§7.7) is a strict superset of the supported Compose `include:` forms, with additional source schemes (git, npm, registry) and Lando-aware merge semantics. A Landofile MAY use either key. If both `includes:` and `include:` appear in the same file, `include:` is treated as a Compose-only fragment list and is resolved through `includes:`'s machinery.
+- The canonical import surface is **`includes:`** (§7.7), which accepts a `kind:` discriminator: `landofile` (the default — whole-file fragment merge), `tooling` (tooling-only fragments per §8.5.8), or `compose` (Compose-spec project fragments). Each kind preserves its own resolution timing and namespacing rules; the unification is at the *surface* level so authors learn one key.
+- `toolingIncludes:` is sugar for `includes: [{ source, kind: tooling, ... }]` and is preserved as an idiomatic shorthand. New documentation, generated examples, and `lando init` output use `includes:` with `kind: tooling`; `toolingIncludes:` MAY appear interchangeably and is not deprecated. Both surfaces resolve through the same machinery.
+- Compose's top-level `include:` is recognized as `includes: [{ ..., kind: compose }]`. When both `includes:` and a top-level `include:` appear in the same file, `include:` entries are appended to the resolved `includes:` list with `kind: compose`. Lando's `includes:` is otherwise a strict superset of the supported Compose `include:` forms, with additional source schemes (git, npm, registry) and Lando-aware merge semantics.
 
 **Runtime vs api.** `runtime:` and per-service `api:` are distinct version surfaces:
 
@@ -833,7 +839,15 @@ services:
 | npm | `npm:@scope/pkg[/path][@version]` | Installed under `<userCacheRoot>/includes/npm/`. Path is relative to the package root. |
 | Registry | `registry:<id>[@version]` | Resolved against the curated `includes.lando.dev` index (post-v4.0; reserved syntax at v4.0). |
 
-Each include MAY be a bare string (path only) or an object with `{ source, when?, version? }`. The `when:` field is a config expression (§7.3.1) evaluated against the same context that resolves expressions in the including file; a falsy `when:` skips the include without error.
+Each include MAY be a bare string (path only) or an object with `{ source, kind?, when?, version?, namespace?, flatten?, internal?, aliases?, excludes?, vars? }`. The `when:` field is a config expression (§7.3.1) evaluated against the same context that resolves expressions in the including file; a falsy `when:` skips the include without error.
+
+The `kind:` field discriminates the fragment's shape and resolution timing:
+
+| `kind:` | Resolves at | Fragment shape | Notes |
+|---|---|---|---|
+| `landofile` (default) | per-file, before §7.2 merge | Whole-Landofile fragment per §7.7.2 | The unmarked default. Most includes are this kind. |
+| `tooling` | app-plan compile time | `tooling`/`toolingDefaults`/`toolingIncludes` shape per §8.5.8 | Tooling-only fragments. The shorthand `toolingIncludes:` (§7.4, §8.5.8) is sugar for `includes: [{ kind: tooling, ... }]`. The `namespace`, `flatten`, `internal`, `aliases`, `excludes`, and `vars` fields apply only to this kind. |
+| `compose` | per-file, before §7.2 merge | Compose-spec project fragment | Recognized for Compose `include:` interop (§7.4). |
 
 #### 7.7.2 Fragment shape
 
@@ -876,9 +890,9 @@ Network access is required only when an include or app-declared plugin is missin
 
 | Key | Purpose | Resolution time |
 |---|---|---|
-| `includes:` (Lando, §7.7) | Compose whole-Landofile fragments from local/git/npm/registry sources | Per-file, before merge across files |
-| `toolingIncludes:` (§8.5.8) | Import reusable tooling/task definitions with optional namespace | App-plan compile time |
-| Compose `include:` | Compose-spec project fragments | Treated as a Compose-only subset of `includes:`; resolved through the same machinery (§7.4) |
+| `includes:` (Lando, §7.7) — the canonical surface | Unified import primitive; `kind:` discriminates `landofile` (default), `tooling` (§8.5.8), or `compose` | Per-file before §7.2 merge for `landofile` / `compose`; app-plan compile time for `tooling` |
+| `toolingIncludes:` (§8.5.8) | Idiomatic shorthand for `includes: [{ kind: tooling, ... }]` | App-plan compile time |
+| Compose `include:` | Recognized as `includes: [{ kind: compose, ... }]`; entries are appended to the resolved `includes:` list | Per-file before §7.2 merge |
 
 ### 7.8 Schema and documentation publication
 

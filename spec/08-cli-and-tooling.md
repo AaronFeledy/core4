@@ -722,9 +722,22 @@ Event subscribers that wrap a CLI command (e.g., adding a banner before `app:sta
 
 #### 8.5.8 Tooling includes
 
-`toolingIncludes:` imports reusable tooling definitions without overloading Compose `include:`.
+Tooling definitions are imported through the unified `includes:` surface (§7.7) with `kind: tooling`. The legacy shorthand `toolingIncludes:` is preserved as idiomatic sugar; both forms resolve through the same machinery and may be used interchangeably.
 
 ```yaml
+# Canonical form
+includes:
+  - source: ./docs/.lando.tasks.yml
+    kind: tooling
+    namespace: docs
+    flatten: false
+    internal: false
+    aliases: [documentation]
+    excludes: [publish]
+    vars:
+      DOCS_PORT: 4321
+
+# Equivalent shorthand
 toolingIncludes:
   docs:
     file: ./docs/.lando.tasks.yml
@@ -933,6 +946,12 @@ requires:                                # optional; soft preconditions
   lando: "^4.0.0"                        # core version constraint
   hostTools: [<tool-name>]               # host binaries that must be on PATH (e.g. git, composer)
 
+runs:                                    # optional; canonical commands the recipe may invoke during init
+  - <canonical-command-id>               # e.g. `pantheon:list-sites`; consulted by `ctx.run` (§8.8.14)
+
+fetchAllowlist:                          # optional; URL hosts the recipe may HTTP GET during init
+  - https://api.example.com              # exact-host match; subdomains are not implied
+
 prompts:                                 # ordered; later prompts may reference earlier answers
   - name: <identifier>
     type: text | select | multiselect | confirm | number | secret | path | editor
@@ -946,8 +965,13 @@ prompts:                                 # ordered; later prompts may reference 
       min: <number>                      # number
       max: <number>                      # number
       exists: true | false               # path
-    choices:                             # required for select/multiselect
+    choices:                             # required for select/multiselect; static list, OR
       - <value> | { value: <v>, label: <string>, description?: <string> }
+    choicesFrom:                         # optional; dynamic choices via a canonical command (§8.8.14 ctx.run)
+      run: <canonical-command-id>        # MUST appear in the recipe's `runs:` allowlist
+      args:                              # optional; expressions resolved against earlier answers
+        <flag>: <value | expression>
+      map: <expression>                  # optional; transforms command output into the choices array shape
 
 files:                                   # ordered; written in this order
   - src: <path-under-templates-or-assets>
@@ -1066,34 +1090,34 @@ After every file is written, `postInit:` actions run in declared order:
 | `gitInit` | `git init` + initial commit "Lando recipe `<id>` v`<version>`" if `git` is on PATH and the destination is not already a git repo. No-op otherwise. |
 | `message` | Print a renderer-aware message; expressions resolve against the recipe context plus `answers`. |
 | `command` | Invoke an allowlisted canonical Lando command (`cmd`) with `args:`. The command runs at its declared bootstrap level. Useful for triggering `app:config:translate` or an opt-in `app:start` after scaffolding. |
-| `bunScript` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()` (§3.4). The script's path MUST resolve under the recipe's `templates/` or `assets/` tree; arbitrary host-shipped paths are rejected. Useful for "open the docs URL", "stamp a generated `.gitattributes`", or "print a localized welcome banner" without inflating the canonical-command allowlist for every scaffold. |
-| `bunInstall` | Run `bun install` in the destination directory via `BunSelfRunner.install` (§3.4). Resolves the scaffold's declared `package.json` (or `bun.lock`) and writes `node_modules/`. The user needs no host Bun. Rejected if the destination has no `package.json`. |
-| `bunAdd` | Add explicit packages via `BunSelfRunner.add(specs, options)`. Specs are listed in `recipe.yml`, optionally split into `dependencies:`, `devDependencies:`, `peerDependencies:`, and `optionalDependencies:` lists. Specs MAY reference `${secret:…}` registry tokens (resolved through `SecretStore`, redacted in events; §3.4). Useful for stack-pickers ("PostgreSQL or MongoDB?") that conditionally pull packages. |
-| `bunCreate` | Run `bun create <template> <dest>` via `BunSelfRunner.create(template, dest)`. The destination MUST be the recipe's destination root or a subdirectory under it; absolute paths outside the destination are rejected with `BunCreateOutsideDestinationError`. This action bridges the entire `bun create` template ecosystem (Vite, Astro, Nuxt, Hono, Elysia, etc.) into Lando recipes — a recipe author writes a tiny `recipe.yml` whose `bunCreate:` line delegates the framework scaffold and then layers a Landofile on top via `files:`. |
-| `bunRun` | Run a script entry from the destination's `package.json` via `BunSelfRunner.runScript(scriptName)`. Useful for post-`bunInstall` scaffold steps the framework's own `package.json` defines (e.g., `bun run init-db`). |
-| `bunX` | Run a one-shot package via `BunSelfRunner.x(spec, argv)`. Useful for generators that publish to npm but don't ship a `bun create` template (e.g., `lando init` invoking `bunX: { spec: "degit", argv: ["user/template-repo"] }` to clone a template repo). The active runtime's offline policy applies (§8.2.4). |
+| `bun` | Dispatch to `BunSelfRunner` (§3.4). The `verb:` field selects one of the allowlisted operations below. All variants share the same `cwd:`, `when:`, `env:`, and bounded-by-construction rules; verb-specific fields configure the operation. |
+
+The `bun` action's `verb:` allowlist:
+
+| `verb:` | Verb-specific fields | Behavior |
+|---|---|---|
+| `script` | `script: <path>`, `args: [<string>]` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()`. The script path MUST resolve under the recipe's `templates/` or `assets/` tree; arbitrary host-shipped paths are rejected. Useful for "open the docs URL", "stamp a generated `.gitattributes`", or "print a localized welcome banner" without inflating the canonical-command allowlist. |
+| `install` | *(none)* | Run `bun install` in `cwd:`. Resolves the scaffold's declared `package.json` (or `bun.lock`) and writes `node_modules/`. The user needs no host Bun. Rejected if `cwd:` has no `package.json`. |
+| `add` | `dependencies: [<spec>]`, `devDependencies: [<spec>]`, `peerDependencies: [<spec>]`, `optionalDependencies: [<spec>]` | Add explicit packages. Specs MAY reference `${secret:…}` registry tokens (resolved through `SecretStore`, redacted in events). Useful for stack-pickers ("PostgreSQL or MongoDB?") that conditionally pull packages. |
+| `create` | `template: <name>`, `dest: <path>` | Run `bun create <template> <dest>`. `dest:` MUST resolve under the recipe destination; absolute paths outside the destination are rejected with `BunCreateOutsideDestinationError`. Bridges the entire `bun create` ecosystem (Vite, Astro, Nuxt, Hono, Elysia, etc.) into Lando recipes. |
+| `run` | `script: <name>` | Run a script entry from `cwd:`'s `package.json` via `BunSelfRunner.runScript(scriptName)`. Useful for post-`install` scaffold steps the framework's own `package.json` defines (e.g., `bun run init-db`). |
+| `x` | `spec: <package-spec>`, `argv: [<string>]` | Run a one-shot package via `BunSelfRunner.x(spec, argv)`. Useful for generators that publish to npm but don't ship a `bun create` template (e.g., `bun: { verb: x, spec: "degit", argv: ["user/template-repo"] }`). The active runtime's offline policy applies (§8.2.4). |
 
 Allowed `postInit.command` targets in v4.0.0 are generated from command metadata (`recipePostInitAllowed: true`). The initial allowlist is `app:config:translate` and `app:start`. `app:start` MUST be guarded by an explicit recipe prompt or CLI answer; recipes MUST NOT start services by default. Adding another target requires updating the command registry and generated recipe-action docs. Recipes MUST NOT use `postInit.command` to install plugins, update Lando, mutate global config, run setup/shell-integration commands, or run arbitrary tooling tasks.
 
-The `bunScript` action is bounded by construction:
+The `bun` action is bounded by construction across every verb:
 
-- The `script:` field is a path under the recipe's bundled tree (`templates/<…>.bun.sh` or `assets/<…>.bun.sh`); paths outside those bases are rejected with `BunScriptOutsideRecipeError` after realpath resolution.
-- Recipes that bundle `bunScript:` actions MUST ship the script as a `.bun.sh` file. The bundled-recipes generator (§17.2) checksums every script at build time and embeds the checksum into the recipe manifest; runtime execution verifies the checksum before launching the script. A mismatch fails the action with `BunScriptChecksumError`.
-- Arguments are passed via `args: [<string>]` (resolved through the recipe expression engine) and via `LANDO_RECIPE_ANSWER_<NAME>` environment variables (one per resolved prompt answer). `secret`-typed answers are NOT exported as env vars and require explicit `args:` passing through `${secret:…}` reference, which redacts in lifecycle events.
-- The script runs at recipe-init time, after files are written and in declared order with the rest of `postInit:`. `Effect.interrupt` (e.g., user Ctrl+C) cancels the script; its `Scope` finalizers run and the recipe init reports `BunScriptInterruptedError`.
-- Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on script failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
-- Scripts MUST NOT install plugins, mutate global config, or call back into `lando` itself for state-changing operations. The contract is "do one bounded scaffold-time chore and exit." `bunScript` is intentionally NOT a substitute for `postInit.command`; recipes that need to invoke a Lando command after scaffolding still go through the canonical-command allowlist.
+- All verbs route through `BunSelfRunner` (§3.4) — the same recursion-guarded, redacted, lifecycle-eventing Bun child the rest of core uses. Recipes do NOT spawn `bun` directly, do NOT write a temporary script and shell into it, and do NOT bypass the §3.4 verb-shape contract. A misformed payload (e.g., a `verb: add` spec list containing `--global`) is rejected at `lando recipes validate <path>` time with `BunSelfArgvShapeError`.
+- The `cwd:` for any verb defaults to the recipe destination directory and MAY be a declared subdirectory of it (e.g., `bun: { verb: install, cwd: ./frontend }`). Paths that escape the destination via `..` or symlinks are rejected after realpath resolution with `BunActionOutsideDestinationError`.
+- For `verb: script`, the `script:` field is a path under the recipe's bundled tree (`templates/<…>.bun.sh` or `assets/<…>.bun.sh`); paths outside those bases are rejected with `BunScriptOutsideRecipeError` after realpath resolution. The bundled-recipes generator (§17.2) checksums every script at build time and embeds the checksum into the recipe manifest; runtime execution verifies the checksum before launch and a mismatch fails with `BunScriptChecksumError`.
+- Arguments to `verb: script` are passed via `args: [<string>]` (resolved through the recipe expression engine) and via `LANDO_RECIPE_ANSWER_<NAME>` environment variables (one per resolved prompt answer). `secret`-typed answers are NOT exported as env vars and require explicit `args:` passing through `${secret:…}` reference, which redacts in lifecycle events.
+- Each action's redacted argv is published through `pre-bun-self-exec` / `post-bun-self-exec` events with `callerSubsystem: "recipe:bun:<verb>:<recipe-id>"` so subscribers (e.g., `lando doctor --transcripts`) can inspect what a recipe scaffolded.
+- Cancellation: `Effect.interrupt` propagates through `BunSelfRunner` to the embedded Bun child. The recipe init aborts with `RecipeInterruptedError`. `verb: install`-written `node_modules/` directories are NOT auto-removed because they may contain partially extracted artifacts the user wants to inspect; the failure message points at `rm -rf node_modules && lando bun install` for retry.
+- Network: `verb: install`, `add`, `create`, `x` may contact registries; this is the legitimate exception to the §1.4 "recipes MUST NOT contact the network" rule and is the same exception the existing `--recipe` source resolution already carries. Recipe authors SHOULD scope network-bound actions behind a `when:` expression so users on offline runs can opt out.
+- Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on a `bun` failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
+- The action MUST NOT install Lando *plugins* into the user-global plugin set; `lando plugin add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The action is bounded to the destination directory's package graph. The contract is "do one bounded scaffold-time chore and exit."
 
-The `bunInstall` / `bunAdd` / `bunCreate` / `bunRun` / `bunX` actions are also bounded:
-
-- All five route through `BunSelfRunner` (§3.4) — the same recursion-guarded, redacted, lifecycle-eventing Bun child the rest of core uses. Recipes do NOT spawn `bun` directly, do NOT write a temporary script and shell into it, and do NOT bypass the §3.4 verb-shape contract. A misformed `bunAdd:` payload (e.g., a spec list containing `--global`) is rejected at `lando recipes validate <path>` time with `BunSelfArgvShapeError`.
-- The `cwd` for all five actions is the recipe destination directory or a declared subdirectory of it (e.g., `bunInstall: { cwd: ./frontend }`). Paths that escape the destination via `..` or symlinks are rejected after realpath resolution with `BunActionOutsideDestinationError`.
-- Each action's redacted argv is published through `pre-bun-self-exec` / `post-bun-self-exec` events with `callerSubsystem: "recipe:bun<verb>:<recipe-id>"` so subscribers (e.g., `lando doctor --transcripts`) can inspect what a recipe scaffolded.
-- Cancellation: `Effect.interrupt` propagates through `BunSelfRunner` to the embedded Bun child. The recipe init aborts with `RecipeInterruptedError`. `bunInstall`-written `node_modules/` directories are NOT auto-removed because they may contain partially extracted artifacts the user wants to inspect; the failure message points at `rm -rf node_modules && lando bun install` for retry.
-- Network. `bunInstall` / `bunAdd` / `bunCreate` / `bunX` may contact registries; this is the legitimate exception to the §1.4 "recipes MUST NOT contact the network" rule and is the same exception the existing `--recipe` source resolution already carries (recipes resolved from `npm:` or `git:` already touch the network). Recipe authors SHOULD scope network-bound actions behind a `when:` expression so users on offline runs can opt out.
-- A recipe MUST NOT use these actions to install Lando *plugins* into the user-global plugin set; `lando plugin add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The actions are bounded to the destination directory's package graph.
-
-Recipes MUST NOT define arbitrary shell hooks outside the `bunScript` action. The action set is intentionally small. New action types require a spec change.
+Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. The action set is intentionally small. New top-level actions require a spec change; new `bun` verbs require updating the verb allowlist and the generated recipe-action docs.
 
 #### 8.8.9 Init flow
 
@@ -1222,9 +1246,9 @@ export default defineRecipe(async (ctx) => {
       ...(db === "mongodb" ? [{ src: "dbs/mongodb/index.ts.tmpl", dest: "src/db.ts" }] : []),
     ],
     postInit: [
-      { type: "bunInstall" },
-      ...(framework === "hono" ? [{ type: "bunAdd", specs: ["@hono/node-server"] }] : []),
-      ...(db === "mongodb" ? [{ type: "bunAdd", specs: ["mongodb"] }] : []),
+      { type: "bun", verb: "install" },
+      ...(framework === "hono" ? [{ type: "bun", verb: "add", dependencies: ["@hono/node-server"] }] : []),
+      ...(db === "mongodb" ? [{ type: "bun", verb: "add", dependencies: ["mongodb"] }] : []),
       { type: "message", text: `Run \`lando start\` to launch your ${framework} API.` },
     ],
   };
@@ -1239,8 +1263,10 @@ The TS form's contract:
 - `ctx.prompt` honors `--no-interactive` and `--answer key=value` exactly as the YAML form's prompt loop does. A factory that asks a prompt without a default in `--no-interactive` mode aborts with `RecipeMissingAnswerError`.
 - The factory's returned `RecipeManifest` is validated against the published schema (§7.8) before any file is written. A factory that returns an invalid shape aborts with `RecipeOutputValidationError` and points at the offending path.
 - Side effects at module top level are **forbidden**, identical to the `.lando.ts` rule (§7.1.1). Imports + `defineRecipe(...)` + `export default`. Any I/O the factory needs runs inside the factory body and is bounded by `Effect.timeout` (default 30 s; configurable via global `recipe.tsTimeoutMs:`).
-- The factory MUST NOT execute arbitrary shell, install plugins, mutate global config, or contact the network outside what `ctx` exposes (`ctx.fetch` for explicit, allowlisted URL families; absent in v4.0 — recipes that need network in their prompt phase should fail at validation time and use `postInit:` instead).
-- The factory MUST NOT re-emit existing built-in `postInit:` actions in a way that escapes the recipe destination (e.g., `bunCreate: { dest: "/tmp/elsewhere" }`). The `RecipeManifest` schema validation enforces this at the same point §8.8.7 does for the YAML form.
+- The factory MUST NOT execute arbitrary shell, install plugins, mutate global config, or contact the network outside what `ctx` exposes. Two carve-outs exist:
+  - **`ctx.run(commandId, input?)`** — invoke a plugin-contributed canonical command (§8.1.1, §9.4) and receive its structured output. Only commands declared in the recipe's `recipe.yml` (or, for `recipe.ts`, the static `runs:` export) `runs:` allowlist are callable; calls outside the allowlist abort with `RecipeForbiddenCommandError`. The invoked command runs in the same Effect runtime under `ToolingEngine` budgets and emits the standard `cli-<id>-init`/`-run`/`-error` events. This is the supported path for API-backed prompt choices: a plugin ships `pantheon:list-sites` as a canonical command; the factory calls `await ctx.run('pantheon:list-sites', { token: ctx.answers.token })` between prompts.
+  - **`ctx.fetch(url, opts)`** — direct HTTP GET against an explicit, recipe-declared URL allowlist (`recipe.yml` `fetchAllowlist:` or `recipe.ts` `fetchAllowlist:` static export). Calls to non-allowlisted hosts abort with `RecipeForbiddenFetchError`. Use this only when no canonical command exists; prefer `ctx.run` because it composes with plugin auth, caching, and retry policy.
+- The factory MUST NOT re-emit existing built-in `postInit:` actions in a way that escapes the recipe destination (e.g., `bun: { verb: create, dest: "/tmp/elsewhere" }`). The `RecipeManifest` schema validation enforces this at the same point §8.8.7 does for the YAML form.
 - `lando recipes describe <ref>` (§8.8.11) and `lando recipes validate <path>` work on `recipe.ts` recipes by invoking the factory in a sandboxed evaluation that returns a synthetic prompt graph: each `ctx.prompt` resolves to a placeholder describing the prompt's shape rather than asking the user. The synthetic walk produces a static description of the recipe's *prompt-shape graph* even when answers branch the file manifest.
 - Caching: a `recipe.ts`'s decoded factory result is **not** cached the way YAML decode is, because the factory's output depends on user answers. The compiled `recipe.ts` module is cached under `<userCacheRoot>/recipes/ts/<contentHash>.bin` (a new entry that joins the §12.1 catalog) so the factory only re-imports when the file changes. Each `lando init` execution invokes the factory fresh.
 - Bundled-recipe codegen (§17.2 "Bundled recipes index") handles `recipe.ts` recipes by including the file in the recipe's tar and running `BunSelfRunner.buildLib` against it at build time, embedding the bundled JS output alongside the source. The runtime loader prefers the prebuilt JS so the binary's recipe-init path doesn't pay TS-load cost.

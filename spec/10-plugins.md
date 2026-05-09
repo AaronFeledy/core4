@@ -191,8 +191,9 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | Surface | Purpose | Loaded by |
 |---|---|---|
 | `providers` | `RuntimeProvider` implementations | Provider registry |
-| `serviceTypes` | `ServiceType` resolvers | App planner |
-| `features` | `ServiceFeature` functions | Service planner |
+| `serviceTypes` | `ServiceType` resolvers (with optional `extends:`, `artifacts:`, `tooling:`, `creds:`; §6.11.1–6.11.3, §6.12.4) | App planner |
+| `features` | `ServiceFeature` functions (mutate a single service plan; §6.11) | Service planner |
+| `appFeatures` | `AppFeature` functions (mutate selected services across the app plan; §6.11.4) | App planner |
 | `commands` | OCLIF + Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
 | `initSources` | `apps:init` sources | Init command |
 | `proxyServices` | `ProxyService` implementations | Proxy subsystem |
@@ -229,6 +230,21 @@ There are no legacy autoload directories. All contributions go through the manif
 - An engine that cannot honor the §7.3.1 purity rules MUST declare `capabilities.unsafe: true`. Unsafe engines are disabled by default and require explicit opt-in via global config (`templateEngines.<id>.allowUnsafe: true`). The plugin loader emits `TemplateEngineUnsafeRejectedError` when an unsafe engine is selected without opt-in.
 - Engines MUST register through the published `@lando/sdk/services` `TemplateEngine` tag and accept the canonical `TemplateRenderContext` shape (§7.3.2) without engine-specific shape mutations.
 - Engines SHOULD register the §7.3.1 portable function set under the engine's idiomatic registration API so users see the same helper names regardless of engine.
+
+**Service-type contribution rules:**
+
+- Each `serviceTypes:` entry MUST declare `name`, `base` (`l337` | `lando`), and either `module:` (a `ServiceType` resolver) or a fully declarative shape (`schema:`, `creds:`, `artifacts:`, `tooling:`, `features:`) for plugins that need no resolver code.
+- `extends: <parent-id>` is optional; the parent MUST be either a canonical service-type or another plugin-contributed type loaded earlier in the discovery order. Inheritance is single, depth-limited to 4, and cycles are rejected at load with `ServiceTypeCollisionError` (§6.11.1).
+- `artifacts:` MAY be a literal `{ "<version>": "<image-tag>" }` map or a path to a sibling YAML file (`artifacts: ./artifacts.yml`). Resolution is exact-match at plan-compile time (§6.11.2).
+- `tooling:` contributes tasks merged into the app's tooling map at plan time. Conflict precedence: user > recipe > service-type (§6.11.3). Service-type tooling MUST NOT use `topLevelAlias:`; only canonical commands and Landofile aliases own the top-level namespace.
+- `creds:` opts the service-type into the §6.12.4 credentials contract. A service-type without `creds:` does not surface `LANDO_DB_*` env or `service.creds.*` expressions.
+
+**App-feature contribution rules:**
+
+- Each `appFeatures:` entry MUST declare a unique `id`, `module`, `priority`, and at minimum one of `activatedBy:` or `selectors:` (§6.11.4). An entry with neither is a no-op and rejected at load.
+- `selectors:` evaluate against the resolved app plan; `selectors.fromConfig:` strings are §7.3.1 expressions resolved at level `app`.
+- App-features MUST emit only the plan mutations the standard `AppFeatureContext` mutators expose. Direct provider-extension writes (`providers.<id>.*`) are forbidden unless the feature explicitly opts in via `providerExtensions: [<id>]`, mirroring the §6.11 service-feature rule.
+- App-features MUST be idempotent across replanning. The planner deduplicates identical mutations; non-deterministic `apply()` outputs surface as `AppFeatureNonDeterministicError` in tests.
 
 **Command contribution rules:**
 

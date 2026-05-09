@@ -500,6 +500,10 @@ SSH_AUTH_SOCK               # when ssh-agent feature enabled
 LANDO_HOST_PROXY_SOCKET     # when host-proxy feature enabled (in-container path to the bound socket; §10.10)
 LANDO_HOST_PROXY_TOKEN      # when host-proxy feature enabled (per-`app:start` random token; required as Bearer auth)
 LANDO_HOST_PROXY_DEPTH      # set by HostProxyService for `runLando` re-entries; recursion guard, never set by users
+LANDO_DB_USER               # when service-type opts in to the §6.12.4 creds schema
+LANDO_DB_PASSWORD           # when service-type opts in to the §6.12.4 creds schema (redacted in logs)
+LANDO_DB_NAME               # when service-type opts in to the §6.12.4 creds schema
+LANDO_DB_ROOT_PASSWORD      # when service-type opts in and rootPassword is defined (redacted in logs)
 ```
 
 **Inheritable via env layer.** `type: lando` services source `/etc/lando/environment` on every exec, which:
@@ -535,11 +539,12 @@ export const ServiceInfo = Schema.Struct({
   health: Schema.Literal("unknown").pipe(Schema.Union(Schema.Boolean)),
   externalConnections: Schema.Array(ConnectionInfo),
   internalConnections: Schema.Array(ConnectionInfo),
+  creds: Schema.optional(ServiceCreds),                  // §6.12.4; present iff the service-type opts in
   providerInfo: Schema.optional(Schema.Unknown),
 });
 ```
 
-`providerInfo` is the only provider-specific field; consumers should treat it as opaque unless they know the provider.
+`providerInfo` is the only provider-specific field; consumers should treat it as opaque unless they know the provider. `creds` is present only on service-types that opt in to the creds schema (§6.12.4); plain-text credential fields are redacted in `lando info` unless `--show-secrets` is passed.
 
 ### 6.11 Service type and feature contracts
 
@@ -550,6 +555,8 @@ export class ServiceType extends Context.Service<ServiceType, {
   readonly name: string;
   readonly versions?: ReadonlyArray<string>;
   readonly base: "l337" | "lando";
+  readonly extends?: string;                                // optional parent service-type id (§6.11.1)
+  readonly artifacts?: ReadonlyRecord<string, string>;      // declarative version → image tag (§6.11.2)
   readonly schema: Schema.Schema<unknown>;
   readonly resolve: (input: ServiceTypeInput) => Effect.Effect<ServiceTypeResolution, ServiceTypeError>;
 }>()("@lando/core/ServiceType") {}
@@ -557,9 +564,65 @@ export class ServiceType extends Context.Service<ServiceType, {
 export interface ServiceTypeResolution {
   readonly normalizedConfig: ServiceConfig;
   readonly features: ReadonlyArray<FeatureRef>;
+  readonly tooling?: ReadonlyRecord<string, ToolingTask>;  // §6.11.3, see §8.5 for the ToolingTask shape
   readonly metadata?: Record<string, unknown>;
 }
 ```
+
+#### 6.11.1 Service-type inheritance (`extends:`)
+
+A `ServiceType` MAY declare `extends: <parent-id>` to inherit the parent's resolved normalized config, feature list, tooling, and `artifacts` table. Resolution proceeds parent-first, then the child's `resolve()` runs against the parent's resolution as input and may overlay or replace fields per the §7.2 merge rules. Inheritance is single (no diamond) and depth-limited to 4. Cycles are rejected at plugin load with `ServiceTypeCollisionError`. Use cases: `pantheon-php extends php`, `drupal-mariadb extends mariadb`, `pantheon-mariadb-arm extends mariadb`.
+
+#### 6.11.2 Declarative version pinning (`artifacts:`)
+
+The `artifacts:` field is a `{ "<version>": "<image-tag>" }` map consulted at plan-compile time to resolve a user's `type: mariadb:10.11` into a concrete image tag. The map is data — adding a new pin is a YAML edit, not a code change. Resolution rules:
+
+- Exact match wins. Wildcard / range matching is **not** supported in v4.0; authors who need range resolution write a custom `resolve()`.
+- A `versions:` entry without a corresponding `artifacts:` entry resolves to `<name>:<version>` by convention (the user is using upstream tags directly).
+- The resolved tag is recorded in the app-plan cache key (§12.1) so a pin change invalidates plans.
+- Plugin-contributed `artifacts:` may be merged from a sibling YAML file via `artifacts: ./artifacts.yml` to keep manifests readable.
+
+#### 6.11.3 Service-type-shipped tooling
+
+The optional `tooling:` field on `ServiceTypeResolution` lets a service-type contribute tooling tasks that are merged into the app's tooling map at plan time. Conflict precedence (highest wins): user `tooling:` > recipe `tooling:` > service-type `tooling:`. The service that contributed the task is the default `service:` target unless overridden. This is how the §6.12 catalog ships `lando mariadb`, `lando psql`, `lando redis-cli`, `lando mongo`, etc. without the user writing a `tooling:` block.
+
+#### 6.11.4 App-scoped features (`AppFeature`)
+
+Some plugins need to mutate **other** services in the plan when a triggering service is present (Mailpit injecting SMTP env into PHP services, an Xdebug sidecar adding `XDEBUG_*` env to siblings, an observability agent wiring tracing env into selected runtimes). `ServiceFeature` mutates a single `ServicePlanContext` and cannot express this. `AppFeature` is the matching app-scoped contract.
+
+```ts
+export interface AppFeatureDefinition {
+  readonly id: string;
+  readonly schema?: Schema.Schema<unknown>;
+  readonly priority: number;
+  readonly activatedBy?: AppFeatureActivation;             // when this feature runs
+  readonly selectors?: AppFeatureSelectors;                // which services it mutates
+  readonly apply: (ctx: AppFeatureContext) => Effect.Effect<void, AppFeatureError>;
+}
+
+export interface AppFeatureActivation {
+  readonly services?: { readonly type?: string; readonly hasFeature?: string };
+}
+
+export interface AppFeatureSelectors {
+  readonly types?: ReadonlyArray<string>;                  // service-type ids
+  readonly framework?: ReadonlyArray<string>;              // language-runtime framework: ids
+  readonly hasFeature?: ReadonlyArray<string>;             // service feature ids present
+  readonly names?: ReadonlyArray<string>;                  // explicit service names
+  readonly fromConfig?: string;                            // expression yielding a string[] of service names
+}
+```
+
+App-feature rules:
+
+- Activation runs at app-plan time after `ServiceType.resolve()` for every service has completed. A feature whose `activatedBy` does not match is a no-op (no `apply()` invocation, no plan-cache entry).
+- `AppFeatureContext` exposes the same mutators as `ServiceFeatureContext` (`addEnv`, `addMount`, `addBuildStep`, `addHealthcheck`, `setEntrypoint`, …) but applies them to **each service yielded by the selector**. Mutators are idempotent and replay-safe.
+- Selectors are evaluated against the resolved app plan, not raw user config. `fromConfig: "{{ services.smtp.config.mailFrom }}"` reads through the §7.3.1 expression engine.
+- Priority bands match `ServiceFeature` priorities (§6.11). App-features run after all service-features at each priority bucket.
+- Cyclic mutations (feature A mutates B; feature B mutates A) are detected and rejected with `AppFeatureCycleError`.
+- `AppFeatureError` is a tagged union (`SelectorMatchedNothing`, `MutationConflict`, `CycleDetected`); planners surface failures with the contributing plugin id and remediation.
+
+The mailpit plugin is the canonical example: a `mailpit` service-type plus an `AppFeature` selecting `types: [php]` (or `names: "{{ service.config.mailFrom }}"`) that adds `MAIL_HOST`/`MAIL_PORT` env and bind-mounts `php.ini` into each matched service. Both pieces ship as YAML; the feature `apply()` is ~5 lines of TypeScript using only the standard mutators.
 
 **Features** are deterministic, idempotent functions that mutate an in-memory `ServicePlanContext`. Features are the v4 replacement for the SPEC2 "packages" pattern.
 
@@ -675,5 +738,35 @@ Framework presets are pure config — they emit the same fields a user would wri
 - Plugins MAY contribute service types with the same shape; a name collision with a canonical type is rejected at plugin load with `ServiceTypeCollisionError`.
 - Plugins MAY contribute features that compose with canonical types (e.g., a `php-newrelic` feature that adds the New Relic extension). The feature priority list (§6.11) is the integration point.
 - Library consumers do **not** receive the canonical catalog by default — they must opt into bundled discovery (§16.4) or contribute their own service-type Layers, the same as for any other contribution surface.
+
+#### 6.12.4 The `creds:` schema (database service-types)
+
+Database service-types (`mariadb`, `mysql`, `postgres`, `mongodb`) and any plugin-contributed type that declares `creds:` participate in a uniform credentials contract.
+
+```ts
+export const ServiceCreds = Schema.Struct({
+  user:         Schema.String,
+  password:     Schema.String,
+  database:     Schema.String,
+  rootPassword: Schema.optional(Schema.String),
+});
+```
+
+Resolution rules:
+
+- A service-type opts in by setting `creds: { defaults: { ... } }` in its manifest (§9.5) or its resolver output. The defaults are expressions resolved at plan time at level `plugins`.
+- The default-defaults shipped by the canonical types are deterministic per (app.slug, service.name) so replans produce the same values without persisting state:
+  - `user:         "{{ service.name }}"`
+  - `password:     "{{ service.name }}"`
+  - `database:     "{{ service.name }}"`
+  - `rootPassword: "{{ hash(app.slug + ':' + service.name + ':root', 'sha256', 'hex') | slice(0, 24) }}"`
+- A user MAY override any field by setting `creds:` on the service in their Landofile. User values win.
+- Resolved creds are exposed in three places:
+  1. The §7.3.1 expression scopes `service.creds.*` (self) and `services.<name>.creds.*` (cross-service).
+  2. The `LANDO_DB_*` environment family inside the container (`LANDO_DB_USER`, `LANDO_DB_PASSWORD`, `LANDO_DB_NAME`, `LANDO_DB_ROOT_PASSWORD`) — added to the §6.9 contract.
+  3. `ServiceInfo.creds` for `lando info` consumption (redacted by default).
+- Creds are **not secrets** in the §7.3.1 sense — they are dev-environment defaults, not user secrets. A service-type MAY declare a creds field as `secret: true` to opt that field into `${secret:…}` redaction; `password` and `rootPassword` are secret by default.
+
+This schema is the spec's commitment that the §6.12.1 catalog promise of "MariaDB + creds:" is uniform across types, addressable from anywhere via the cross-service expression scope, and never reinvented per-plugin.
 
 ---
