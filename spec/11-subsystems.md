@@ -1,6 +1,6 @@
 # Lando v4 — Subsystems
 
-> **Part 11 of 17** · [Index](./README.md)
+> **Part 11 of 18** · [Index](./README.md)
 > **Read next:** [12 Caches and Persistence](./12-caches-and-persistence.md)
 
 This part defines the cross-cutting subsystems that sit between the core runtime and provider/plugin implementations. Each subsystem owns a small set of responsibilities, exposes a pluggable `Context.Service`, and is realized by one or more plugin implementations.
@@ -51,6 +51,17 @@ export class ProxyService extends Context.Service<ProxyService, {
 - Offline/custom-domain workflows are supported via the global `domain` config.
 - Proxy plugins reconcile stale routes during rebuild and destroy.
 - Proxy plugins consume `RouteFilter` plugin contributions to translate filters into native middleware.
+
+**§10.2.1 Default Live Layer realization through the global app**
+
+The default `ProxyService` Live Layer in v4 — `ProxyServiceTraefikGlobalAppLive`, shipped with `@lando/proxy-traefik` (§1.4) — realizes its work through a `traefik` service running inside the global Lando app (§20). The plugin contributes BOTH a `proxyServices:` entry (the Live Layer) AND a paired `globalServices:` entry (the `traefik` service definition); installing one without the other is rejected at plugin load with `ProxyContributionPairError` (§20.10.1, §20.13).
+
+Required behaviors:
+
+- `ProxyService.applyRoutes(routes, app)` writes Traefik dynamic config under a Lando-managed directory mounted into the `traefik` global service via the standard `mounts:` machinery. The `RoutePlan` schema is core's contract; the on-disk format is the proxy plugin's responsibility.
+- `ProxyService.setup` calls `GlobalAppService.ensureRunning(["traefik"])` so the first user-app `lando start` after install brings the proxy up automatically.
+- The §10.2 `ProxyService` interface is unchanged; only the realization moved into the global app. Alternative `ProxyService` plugins (remote proxy, Caddy, etc.) MAY contribute a Live Layer that does NOT touch `GlobalAppService`; selection follows §4.3.
+- A user upgrading from a pre-§20 install whose host still has a v3-style out-of-band Traefik container running gets a `LegacyProxyContainerDetected` doctor diagnostic (§10.9, §20.10.3); migration is plugin-supplied.
 
 ### 10.3 Certificates and CA
 
@@ -332,6 +343,7 @@ Core doctor coverage MUST include:
 - Landofile discovery and clear remediation when no app config is in scope.
 - Detection of removed v3/v4-forbidden top-level wrapper keys such as `compose:`, `recipe:`, and `recipes:`.
 - Selected Podman provider availability and machine readiness, with an automatic `podman machine start` remediation when applicable.
+- Detection of a pre-§20 out-of-band proxy container left behind by an upgrade (`LegacyProxyContainerDetected`, §20.10.3) — read-only doctor diagnostic. The same condition is independently checked at `meta:setup` and at first `meta:global:start`, where it raises `LegacyProxyContainerConflictError` (§20.13) and refuses to start the global-app proxy service to prevent two proxies competing for the same ports; remediation is plugin-supplied via `meta:setup --migrate-proxy`.
 
 Doctor checks are read-only by default. `--fix` runs only explicitly declared automatic solution commands and reports their stdout/stderr and exit code.
 

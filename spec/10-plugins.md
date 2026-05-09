@@ -1,6 +1,6 @@
 # Lando v4 — Plugin Specification
 
-> **Part 10 of 17** · [Index](./README.md)
+> **Part 10 of 18** · [Index](./README.md)
 > **Read next:** [11 Subsystems](./11-subsystems.md)
 
 This part is the contract for plugin authors. A v4 plugin is a Bun-loadable package with a manifest declaring its public surface entirely through a `provides:` block. Side-effecting top-level code is forbidden and rejected at load.
@@ -107,6 +107,17 @@ provides:
   features:
     - id: php-extensions
       module: ./src/features/extensions.ts
+  globalServices:
+    - id: mailpit
+      module: ./src/global-services/mailpit.ts
+      enabledByDefault: true
+      requires:
+        providerCapabilities: [sharedCrossAppNetwork]
+      conflicts: [mailhog]
+      summary: SMTP capture server with web UI for the global Lando app (§20.4)
+      commands:                                # discoverability pointer to per-service commands; canonical ids must also appear in `provides.commands`
+        - meta:mail:open
+        - meta:mail:clear
   commands:
     - id: app:composer                    # canonical namespaced id; namespace must equal the prefix
       namespace: app                      # required; one of "app", "apps", "meta", or this plugin's cspace
@@ -194,6 +205,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `serviceTypes` | `ServiceType` resolvers (with optional `extends:`, `artifacts:`, `tooling:`, `creds:`; §6.11.1–6.11.3, §6.12.4) | App planner |
 | `features` | `ServiceFeature` functions (mutate a single service plan; §6.11) | Service planner |
 | `appFeatures` | `AppFeature` functions (mutate selected services across the app plan; §6.11.4) | App planner |
+| `globalServices` | Service definitions contributed to the **global Lando app** (§20.4) | `GlobalAppService` |
 | `commands` | OCLIF + Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
 | `initSources` | `apps:init` sources | Init command |
 | `proxyServices` | `ProxyService` implementations | Proxy subsystem |
@@ -245,6 +257,17 @@ There are no legacy autoload directories. All contributions go through the manif
 - `selectors:` evaluate against the resolved app plan; `selectors.fromConfig:` strings are §7.3.1 expressions resolved at level `app`.
 - App-features MUST emit only the plan mutations the standard `AppFeatureContext` mutators expose. Direct provider-extension writes (`providers.<id>.*`) are forbidden unless the feature explicitly opts in via `providerExtensions: [<id>]`, mirroring the §6.11 service-feature rule.
 - App-features MUST be idempotent across replanning. The planner deduplicates identical mutations; non-deterministic `apply()` outputs surface as `AppFeatureNonDeterministicError` in tests.
+
+**Global service contribution rules:**
+
+- Each `globalServices:` entry MUST declare a unique `id`, `module`, and `enabledByDefault` (boolean, default `true`). Conflicts across plugins fail at plugin load with `GlobalServiceCollisionError` (§20.13).
+- The module's default export MUST be an Effect returning a `ServiceConfig` (§6.2). The Effect MAY consume `LandoPluginContext` (§9.8) and the resolved plugin config; it MUST NOT consume the active `RuntimeProvider`, perform network IO, or spawn subprocesses. Manifest validation rejects modules whose contribution module is plain JS that throws on import.
+- `requires.providerCapabilities:` is enforced at `dist` regeneration; contributions whose capability list the active provider does not satisfy are dropped from the generated layer with `GlobalServiceCapabilityError` recorded by `DoctorService` (§20.4, §20.13).
+- `conflicts:` declares ids of other `globalServices:` contributions that cannot coexist in the same global app. Two enabled, conflicting contributions surface `GlobalServiceConflictError` at `dist` regeneration with remediation suggesting `meta:global:uninstall <name>` (§20.13).
+- A plugin contributing a `globalServices:` entry MUST also publish a `ServiceType` for the entry's resolved `type:` value (the `mailpit` example relies on a `mailpit` type contributed by the same or another plugin); unknown types fail at plugin load with `GlobalServiceUnknownTypeError`.
+- A plugin SHOULD pair its `globalServices:` contributions with one or more `appFeatures:` (§6.11.4) declaring `requires.globalServices: [<id>]` so user apps automatically get discovery env without Landofile changes (§20.11.1).
+- Plugins MUST NOT contribute commands under the reserved `meta:global:*` canonical id namespace (§20.7); they MAY contribute commands under their own cspace topic that operate on the global app via `GlobalAppService`.
+- The optional `commands:` field on each entry is a list of canonical command ids (matching the plugin's `provides.commands` entries) that operate on this global service. `meta:global:list` (§20.7) renders these alongside the service so users discover per-service tooling without reading the plugin README. Each id MUST already exist in the same plugin's `provides.commands` block; an unknown id surfaces `GlobalServiceCommandReferenceError` at plugin load.
 
 **Command contribution rules:**
 

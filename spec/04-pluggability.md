@@ -1,6 +1,6 @@
 # Lando v4 — Pluggability Catalog
 
-> **Part 4 of 17** · [Index](./README.md)
+> **Part 4 of 18** · [Index](./README.md)
 > **Read next:** [05 Runtime Providers](./05-runtime-providers.md)
 
 This part is the contract index for the entire system. Every replaceable abstraction in v4 is listed here with its Effect Service tag, its responsibility, the default implementation, and the swap mechanism. It also covers the pluggability principles, the selection precedence rules when multiple plugins implement the same abstraction, the manifest contribution shape, and the mandatory guarantees every abstraction interface must satisfy (Effect-typed, Schema-defined, tagged errors, capability-declared, resource-safe, idempotent).
@@ -50,6 +50,7 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 | **Service type** | `ServiceType` | Resolve `type: <name>` into normalized config + features | Bundled catalog from `@lando/service-lando` and `@lando/service-*` (PHP, Node, Python, Ruby, Go, common databases, caches, mail, search, queues, static, plus `lando` and `l337` bases) — see §6.11 | Plugin contributes `serviceTypes:` to add or replace. |
 | **Service feature** | `ServiceFeature` | Mutate a service plan with a composable feature | Plugin-only | Plugin contributes `features:`. |
 | **App feature** | `AppFeature` | Mutate selected services across the app plan when a triggering service is present (e.g., a Mailpit service injecting SMTP env into PHP siblings). Selector-driven, idempotent, app-scoped — §6.11.4. | Plugin-only | Plugin contributes `appFeatures:`. |
+| **Global service** | (no service tag — manifest-driven contribution surface) | Contribute a service to the host-level **global app** (§20). The contribution module returns a `ServiceConfig`; the global app's `dist` Landofile layer is regenerated from every enabled contribution at level `plugins`. Plugins typically pair this with an `AppFeature` (§6.11.4) that injects discovery env (`MAIL_HOST=mailpit.global.internal`) into matching user-app services so users get the service for free without Landofile changes. | Plugin-only | Plugin contributes `globalServices:`. Default enablement is `enabledByDefault: true\|false` per contribution; user override lives in `<userConfRoot>/global.config.yml` (§20.3.1) and is toggled by `meta:global:install <plugin>` / `meta:global:uninstall <plugin>`. |
 | **Route filter** | `RouteFilter` | Provider-neutral request/response transforms | Built-ins: `requestHeader`, `responseHeader`, `redirect`, `rewritePath`, `stripPrefix`, `addPrefix` | Plugin contributes `routeFilters:`. |
 | **Telemetry** | `Telemetry` | Core usage stats with redaction and disablement controls | Core telemetry collector, enabled by default | Plugins MAY contribute telemetry sinks only through the telemetry service; plugins MUST NOT bypass user/global disablement. |
 | **Update channel** | `UpdateService` | Check/apply updates to core and plugins | Built-in registry-channel updater | Replaceable for air-gapped or vendor-managed distributions. |

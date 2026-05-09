@@ -1,6 +1,6 @@
 # Lando v4 — Landofile and Configuration
 
-> **Part 7 of 17** · [Index](./README.md)
+> **Part 7 of 18** · [Index](./README.md)
 > **Read next:** [08 CLI and Tooling](./08-cli-and-tooling.md)
 
 This part defines the user-facing configuration system. A Landofile is committed to a project repo and any developer can produce an identical, networked environment from it. Global config sits at `<userConfRoot>/config.yml` with optional `config.d/*.yml` overlays, and every key is overridable by environment variables.
@@ -403,6 +403,7 @@ Each AST node records the **scopes** it touches. Scopes have a known minimum boo
 | `plugin.<id>.{root,config,version}` | `plugins` | Plugin-local file roots and metadata for the plugin that *owns* the surrounding contribution (service-type, feature, recipe, command). `root` is the plugin's package root; `config` is `<root>/config` by convention. Resolves to the contributing plugin even when the expression is reused across multiple plugins. |
 | `info.{status,containerIp,…}` | `provider` | Post-start runtime info |
 | `secrets.<key>` | per-`SecretStore` (typically `minimal`) | `${secret:…}` references resolve through `SecretStore` (§4.2) |
+| `globalServices.<name>.{type,primary,creds,hostnames,routes,endpoints}` | `app` | Cross-service references into the **global Lando app**'s resolved plan (§20.8.3). The named global service must exist in the resolved global plan AND must be in the current user app's set of `AppFeature.requires.globalServices` (§6.11.4, §20.6.3); references outside that set fail with `ConfigExpressionScopeNotPermittedError` to avoid implicit cross-app coupling. |
 | `task`, `flags`, `args`, `raw`, `sources`, `generates`, `checksum`, `timestamp` | tooling invocation | Per-step tooling context (§8.5.4) |
 | `event` | event dispatch | Subscriber invocation payload |
 | `answers`, `recipe`, `destination`, `flags`, `cwd` | recipe init | Recipe scaffold context (§8.8.6) |
@@ -423,16 +424,21 @@ Practical consequences:
 - `${secret:KEY}` is a secret reference (distinct from `${KEY}` shell-parameter-expansion: the `secret:` prefix is the marker). Secret values resolve through `SecretStore` (§4.2), MUST be redacted in logs/errors and lifecycle event payloads, and MUST NOT be written decrypted into caches (§12). Secret references that appear inside `${VAR}` shell-style substitutions follow the same redaction rules.
 - A plugin-contributed engine (§7.3.2) MUST honor the same purity guarantees. An engine that cannot — for example, a template engine whose helper API permits arbitrary host-side code — declares `unsafe: true` in its manifest contribution; `unsafe` engines are disabled by default and require explicit global config opt-in (§9.5).
 
-#### Helper contract
+#### Helper design conventions
 
-Every helper — built-in or plugin-contributed (§9.5) — MUST be:
+The §7.3.1 helper set is the pure, sync, dev-env-relevant subset of Bun's first-party utilities, with a small set of Lando-specific rules where Bun's conventions do not apply to a sync-pure-deterministic helper language:
 
-- Synchronous, pure, deterministic. No network IO, no shell, no global-state mutation. The single carve-out is file IO via `load()` / `import()`, whose reads are part of the app-plan cache key (§7.3).
-- Total over its declared input range. Converters return `null` on un-interpretable input (compose with `default()` / `required()`); parsers (`fromJson`, `fromYaml`, `fromToml`) throw `ConfigExpressionError` with line and column; predicates return `false` for bad input. Misconfiguration (unknown algorithm, unknown format) throws.
+1. **Synchronous, pure, deterministic, no-network, no-mutation.** Helpers run synchronously (there is no await in expressions) and MUST NOT execute shell commands, perform network IO, or mutate process or global state. The single explicit carve-out is file IO via `load()` / `import()`, where the read is part of the cache key (§7.3).
+2. **No `Sync` suffix.** Bun uses `gzipSync` / `spawnSync` to disambiguate from async siblings. Lando expression helpers have no async siblings; the suffix would be redundant and misleading.
+3. **Flat naming with namespaces only when ≥2 operations share a domain.** Most helpers stay flat for use in pipe chains. Domains with multiple related operations are namespaced (`path.*`, `fs.*`, `url.*`, `semver.*`). The first identifier in a dotted form is matched against the namespace registry; if it is a known namespace, the dotted form is a function reference and MUST be called.
+4. **Polymorphic conversion via a trailing `format` string parameter.** Helpers that produce multiple representations of the same value take a string `format` argument from a fixed closed set, e.g. `hash(data, "sha256", "hex")`. Invalid format values throw `ConfigExpressionError` at expression-eval time when the value is statically known.
+5. **Optional configuration via a final `opts` object literal.** When a helper has more than one optional knob, they MAY be collected into a single trailing object so the call site stays readable. Positional args are reserved for required parameters and the polymorphic `format` parameter from rule 4.
+6. **Return shapes mirror Web and Node standards verbatim.** `url.parse` returns the field set of the WHATWG `URL`; `path.parse` returns the field set of `node:path.parse`. Lando does not invent new field names where a standard exists.
+7. **Error model.** Converters return `null` on un-interpretable input — compose with `default(...)` or `required(...)`. Parsers (`fromJson`, `fromYaml`, `fromToml`) throw `ConfigExpressionError` with line and column. Predicates return `false` for bad input. Misconfiguration (unknown algorithm, unknown format) throws.
 
-The SDK ships a contract test suite (§13.1) every helper passes; a helper that cannot satisfy these constraints is not contributable through the expression language.
+A Bun-mapping table is published as part of the §7.8 generated reference for every helper that has a Bun source. When Bun's behavior shifts in a way that would change a helper's contract, Lando either re-pins to Bun's new behavior or freezes to the old and documents the divergence in the helper's reference page.
 
-Naming conventions, return-shape conventions, and the Bun-source mapping for built-in helpers are published in the generated helper reference (§7.8). They are author-time guidance for plugin contributors, not part of the runtime contract.
+Plugins MAY contribute additional helpers and namespaces through the contribution surface (§9.5). Contributed helpers MUST satisfy the same constraints; the SDK provides a contract test suite (§13.1) every helper passes.
 
 ### 7.3.2 Template engines
 
@@ -574,6 +580,8 @@ x-<name>: <unknown>                    # Compose extension fields
 - `<app-id>` is `slug` for v4.0. It is the key under `<userCacheRoot>/apps/<app-id>/` (§12.4), `LANDO_PROJECT`/`LANDO_APP_NAME` env (§6.9), and provider labels (`dev.lando.storage-project`).
 - Two distinct Landofiles whose roots produce the same `slug` collide. Collisions are detected at first cache write and reported with `AppIdCollisionError` and remediation suggesting an explicit `name:`. Lando does **not** automatically de-duplicate by appending suffixes; the user resolves the collision by setting an explicit name.
 
+The slug `global` is **reserved** for the global Lando app (§20.2). A user app whose resolved `name:` (or directory-basename-inferred name) normalizes to `global` is rejected at parse time with `AppIdReservedError` and remediation suggesting an explicit `name:`. The global app's own Landofile lives at `<userDataRoot>/global/.lando.yml` and is excluded from cwd-based discovery (§20.3.2); only `meta:global:*` commands resolve to it.
+
 The slug normalization, the basename inference, and the collision policy are all part of the published Landofile schema metadata so embedding hosts and editor tooling produce the same identity Lando does.
 
 **Compose compatibility.** A Landofile accepts a documented subset of the Compose project spec. The subset covers common Compose features and every Compose feature Lando uses internally. Lando adds higher-level keys (`includes:`, `tooling:`, `toolingDefaults:`, `toolingIncludes:`, `events:`, `proxy:`, plugin config, service shortcuts) and accepts simplifications, but it does not promise that every valid Compose project document is valid Landofile input.
@@ -714,6 +722,14 @@ systemPluginRoot: <platform-default-system-plugin-root>   # search root for syst
 
 defaultProvider: lando                 # default Lando-managed runtime; setup may change for system providers
 providers: {}
+
+# Plugin enablement for the global Lando app (§20.3.1). Toggled by
+# `meta:global:install <plugin>` / `meta:global:uninstall <plugin>`.
+# The map drives generation of `<userDataRoot>/global/.lando.dist.yml`.
+# Per-service config overlays go in `<userDataRoot>/global/.lando.yml`,
+# not here; this map's responsibility is on/off only.
+# (See also: <userConfRoot>/global.config.yml — same map shape as this value.)
+globalServices: {}                       # e.g., { mailpit: { enabled: true }, traefik: { enabled: true } }
 
 plugins: {}
 pluginDirs: []

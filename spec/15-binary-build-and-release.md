@@ -1,6 +1,6 @@
 # Lando v4 — Binary Build and Release Engineering
 
-> **Part 15 of 17** · [Index](./README.md)
+> **Part 15 of 18** · [Index](./README.md)
 > **Read next:** [16 Deprecation and Surface Evolution](./16-deprecation-and-surface-evolution.md)
 
 This part is the operational counterpart to §13. Where §13 tells you *what* ships, §17 tells you *how* it gets built, signed, embedded, verified, distributed, and updated. Everything here flows from the architectural decisions already made elsewhere — Bun-compiled single-binary (§2.1), two distribution forms (§1.4, §13.5), bundled-plugins and bundled-recipes static-import constraint (§2.1, §13.5), self-update behavior (§13.7) — and pins down the operational mechanics those sections only sketch.

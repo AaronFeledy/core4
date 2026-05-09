@@ -1,6 +1,6 @@
 # Lando v4 — Architecture, Lifecycle, and Events
 
-> **Part 3 of 17** · [Index](./README.md)
+> **Part 3 of 18** · [Index](./README.md)
 > **Read next:** [04 Pluggability](./04-pluggability.md)
 
 This part wires up the runtime. It covers the four concentric layers (imperative shell → Effect runtime → pluggable abstractions → plugin implementations), the bootstrap flow with its declared `BootstrapLevel`s, the on-disk source layout, the catalog of core Effect services, and the lifecycle event scopes published through the runtime.
@@ -88,7 +88,8 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 | `commands` | Lando command registry services and command-cache refresh ability | command-management and docs/reference commands |
 | `tooling` | Commands plus a cache-only app plan / `ToolingProgram` read | Landofile-defined tooling commands that do not need full app planning |
 | `provider` | Provider selection and adapter initialization | `meta:setup`, `apps:poweroff`, `apps:list --all` |
-| `app` | Landofile parse, includes resolution, service plan, app state | `app:start`, `app:stop`, `app:info`, `app:rebuild`, `app:destroy`, `app:cache:refresh` |
+| `global` | `provider` + `GlobalAppService` and the global Landofile parser bound to `<userDataRoot>/global/.lando.yml`; `BuildOrchestrator` (lazy via `Layer.suspend` per the §6.13 lifecycle) for the global app's plan | `meta:global:start`, `meta:global:stop`, `meta:global:restart`, `meta:global:rebuild`, `meta:global:destroy`, `meta:global:info`, `meta:global:logs`, `meta:global:install`, `meta:global:uninstall` |
+| `app` | level `global` plus `AppPlanner`, `LandofileService` for the user app (includes `global` because `app:start` may need to call `GlobalAppService.ensureRunning` per §20.6.3) | `app:start`, `app:stop`, `app:info`, `app:rebuild`, `app:destroy`, `app:cache:refresh` |
 
 Levels `minimal` through `app` each emit `pre-bootstrap-<level>` and `post-bootstrap-<level>` lifecycle events through the Effect event service. After all required levels complete, core emits `post-bootstrap` and `ready`. Level `none` emits NO lifecycle events: it is below the EventService construction threshold by design.
 
@@ -270,13 +271,26 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
 | `DoctorService` | Runs host/app/provider diagnostics and exposes automated or manual remediations; aggregates plugin-contributed `doctorChecks` (§9.5); also records deprecation entries surfaced by `lando doctor --deprecations` (§18.6) | `DoctorServiceLive` (constructed at level `plugins` so plugin-contributed checks register; transcripts captured via `ShellRunner` per §10.9) |
 | `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2), `notify` (host notification), `clipboardCopy` (host clipboard write) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
+| `GlobalAppService` | The global Lando app: regenerates `<userDataRoot>/global/.lando.dist.yml` from `globalServices:` manifest contributions, manages the `global` app's plan, lifecycle, and auto-start (§20). Reuses the same `RuntimeProvider`, `AppPlanner`, and `BuildOrchestrator` user apps use; only the `<app-id>` is fixed to `global`. | `GlobalAppServiceLive` (constructed at level `global`; `Layer.suspend`-wrapped — `lando info` against an already-running user app whose features require no global services pays zero cost) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
 
 Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type errors at the Layer composition boundary catch missing services at compile time. Services in this table are core-provided runtime services; not every one is plugin-replaceable. Plugin-replaceable abstractions are enumerated in §4.2. `EmbeddedAssetService` is overrideable by tests and embedding hosts, but is not a plugin contribution surface because it protects binary/package asset integrity.
 
-**`ProcessRunner` vs `ShellRunner`.** `ProcessRunner` wraps `Bun.spawn(argv, opts)` for argv-precise execution with no shell parsing. `ShellRunner` wraps `` Bun.$`…` `` (Bun Shell) for shell-shaped work — pipes, redirection, globs, command substitution, and built-in `rm`/`mkdir`/`cat`/`mv`/`which` that work cross-platform. Core code MUST NOT use one to imitate the other: no `ProcessRunner.run(["sh", "-c", "…"])`, and no `ShellRunner` calls that just re-encode argv as a literal string.
+**`ProcessRunner` vs `ShellRunner` — when to use which.** Both spawn host processes; they exist for distinct shapes of work and are deliberately complementary, not redundant.
 
-Both services flow logs through the same `Logger`, redact `${secret:…}` values identically (§7.3.1, §11), publish lifecycle events (`pre-process-exec`/`post-process-exec` and `pre-shell-exec`/`post-shell-exec`; §3.5/§11), and honor the same `PrivilegeService` for elevation. Telemetry, dry-run, and audited variants are plugin-replaceable for both (§4.2). Author-time guidance on choosing between them lives in `docs/contributing/runner-selection.md`.
+| Concern | `ProcessRunner` | `ShellRunner` |
+|---|---|---|
+| Primitive | `Bun.spawn(argv, opts)` | `` Bun.$`…` `` (Bun Shell, in-process bash-like interpreter) |
+| Input shape | Exact `argv: string[]` plus options | Tagged template literal with safe-by-default interpolation |
+| Shell features | None — no parsing, no expansion, no built-ins | Pipes (`\|`), redirection (`<`, `>`, `2>&1`), globs (`*`, `**`, `{a,b}`), command substitution (`$(…)`), built-in `cd`/`ls`/`rm`/`mkdir`/`cat`/`mv`/`which`, env var expansion |
+| Cross-platform on Windows | Whatever the spawned binary supports | Built-ins are reimplemented in Bun, so `rm -rf` / `mkdir -p` / globs work on Windows without `rimraf` / `cross-env` |
+| Typical callers | Provider exec (`docker exec`, `podman exec`), signing tools (`codesign`, `signtool`, `cosign`), `bun add`, plugin-supplied external binaries | The `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` for `service: :host` (§8.5.3), `.bun.sh` scripts (§8.5.9), the `lando shell` REPL (§8.2), host-side healthcheck/url-scanner plugins (§10.5), recipe `bun: { verb: script }` post-init (§8.8.8) |
+| Injection risk | Minimal (no shell parses the argv) | Mitigated by Bun Shell's automatic escaping of interpolated values; explicit `{ raw: "…" }` is required to opt out |
+| Cancellation | `Effect.interrupt` → `proc.kill(SIGTERM)` then `SIGKILL` | `Effect.interrupt` → `proc.kill()` on the underlying Bun Shell process; scope finalizers reap any spawned children |
+
+A simple rule: if the work is "spawn this exact binary with these exact arguments," use `ProcessRunner`. If the work would naturally be a one-liner in `bash` and you want it to also work on Windows, use `ShellRunner`. Core code MUST NOT use one to imitate the other: no `ProcessRunner.run(["sh", "-c", "…"])`, and no `ShellRunner` calls that just re-encode argv as a literal string.
+
+Both services flow logs through the same `Logger`, redact `${secret:…}` values identically (§7.3.1, §11), publish lifecycle events (`pre-process-exec` / `post-process-exec` for `ProcessRunner`, `pre-shell-exec` / `post-shell-exec` for `ShellRunner`; §3.5/§11), and honor the same `PrivilegeService` for elevation. Telemetry, dry-run, and audited variants are plugin-replaceable for both (§4.2).
 
 **`ShellRunner` interface (illustrative; canonical schema in `@lando/sdk`):**
 
@@ -434,7 +448,8 @@ Tagged errors live in `@lando/core/errors`:
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
-| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, `BuildOrchestrator`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
+| `global` | `provider`'s eager + `GlobalAppService`; the global app's `LandofileService` instance | `provider`'s lazy + `BuildOrchestrator` (lazy per §6.13), `HealthcheckRunner`, `UrlScanner` | full user-app planner |
+| `app` | level `global`'s eager (so `GlobalAppService.ensureRunning` is callable from `pre-start`) + `AppPlanner`, `LandofileService` for the user app | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, `BuildOrchestrator`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
 
 **Cross-table note.** `CertificateAuthority`, `ProxyService`, `HealthcheckRunner`, and `UrlScanner` are pluggable abstractions whose canonical declarations live in §4.2 rather than the §3.4 services table above. Their default Live Layers ship in core (built-in CA stub, default `fetch`-based scanner, default `RuntimeProvider.exec`-backed healthcheck runner) so they are members of the AOT-composed bootstrap layers per the membership-per-level table here. When a plugin contributes an alternate Layer (`@lando/ca-mkcert`, `@lando/proxy-traefik`, etc.), the contributed Layer replaces the default at the same level. Embedding hosts that need to enumerate every service in the runtime SHOULD treat the §4.2 catalog and the §3.4 services table together as the authoritative service registry.
 
@@ -457,6 +472,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | Build | `pre-build`, `post-build`, `pre-build-phase`, `post-build-phase`, `build-step-start`, `build-step-progress`, `build-step-complete`, `build-step-skip`, `build-step-fail` (published by `BuildOrchestrator` for every node in the `BuildPlan` DAG; §6.13) |
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
+| Global | `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-global-rebuild`, `post-global-rebuild`, `pre-global-destroy`, `post-global-destroy`, `pre-global-dist-regenerate`, `post-global-dist-regenerate` (published by `GlobalAppService` for every state transition of the global app and every plugin-contribution-driven `dist` regeneration; §20.6.2) |
 | Cross-cutting | `deprecation-used` (published whenever a registered deprecated surface is used at runtime; §18.4) |
 
 CLI event names use the **canonical command id** (§8.1.1), not the top-level alias the user typed. Subscribing to `cli-app:start-run` catches the event whether the user invoked `lando app start` or `lando start`.
@@ -534,6 +550,26 @@ export type PreStartEvent = Schema.Schema.Type<typeof PreStartEvent>;
 
 The `EventService.publish` signature is type-narrowed to the exact union of known event payloads; publishing an unknown event is a compile error.
 
+`PreGlobalStartEvent` illustrates the Global-scope payload schema (§20.6.2 is canonical; remaining Global-scope events follow the same shape):
+
+```ts
+export const PreGlobalStartEvent = Schema.TaggedStruct("pre-global-start", {
+  app: AppRef,                                            // .id is literally "global"
+  plan: AppPlan,
+  triggeredBy: Schema.Union(
+    Schema.Literal("meta:global:start"),
+    Schema.Literal("apps:poweroff"),
+    Schema.Literal("ensure-running"),                     // auto-start from a user app's AppFeature dependency
+    Schema.Literal("meta:setup"),
+  ),
+  ensuringServices: Schema.Array(Schema.String),          // services this invocation is checking; empty when not ensure-running
+  cached: Schema.Boolean,                                 // true iff every service in ensuringServices was already running+healthy and no work was performed
+  timestamp: Schema.DateTimeUtc,
+});
+export type PreGlobalStartEvent = Schema.Schema.Type<typeof PreGlobalStartEvent>;
+```
+
+`pre-global-start` and `post-global-start` follow always-emit semantics (§20.6.2): they fire for every `GlobalAppService.ensureRunning` invocation, distinguishing warm from cold via the `cached` field, so subscribers (telemetry, audit, executable-tutorial transcripts) get a predictable "every user-app start emits exactly this sequence" contract. Sibling Global-scope payload schemas (`PostGlobalStartEvent`, `PreGlobalStopEvent`, `PreGlobalDistRegenerateEvent`, etc.) are enumerated in §20.6.2 and registered in `@lando/sdk` alongside the App scope's payloads.
 
 `DeprecationUsedEvent` is a cross-cutting event in the same registry. Its payload schema and publication rules are spec'd in §18.4; it is part of the standard event taxonomy here so subscribers can discover it through the same `EventService.subscribe<DeprecationUsedEvent>("deprecation-used")` API as any other event.
 
@@ -777,7 +813,14 @@ cli-app:start-init         → command resolved, runtime ready, run() not yet ca
 pre-init                   → app instance created
 post-init
 pre-start                  → user-defined pre-start subscribers
-  pre-build                                                 → BuildOrchestrator entered (§6.13)
+  pre-global-start { triggeredBy: "ensure-running", ensuringServices: [...] }
+                           → only when AppFeature.requires.globalServices yields a non-empty service set
+                           → warm path emits with cached: true and no nested global build block
+    pre-build (global)                                        → BuildOrchestrator (§6.13) for the global app's plan
+      …                                                        (analogous to user-app build phases below)
+    post-build (global)
+  post-global-start
+  pre-build                                                 → BuildOrchestrator entered (§6.13) for the user app
     pre-build-phase { phase: "artifact" }                   → DAG nodes for build.artifact + group-weighted instructions
       build-step-start  { service: "appserver", buildKey, … }   ┐
       build-step-start  { service: "node",      buildKey, … }   │  (concurrent siblings; cap = build.concurrency.artifact)
@@ -801,6 +844,8 @@ cli-app:start-run          → OCLIF postrun: run() returned successfully
                               (or cli-app:start-error if run() raised; mutually exclusive)
 before-exit
 ```
+
+The `pre-global-start` … `post-global-start` block ALWAYS fires inside `pre-start` when the planner's `AppFeature.requires.globalServices` aggregation yields a non-empty set, regardless of whether those services are already running (§20.6.2 always-emit semantics). The payload's `cached:` field distinguishes warm (`true` — fast no-op body, no `pre-build` block) from cold (`false` — full `start({ services: needed })` plus any non-up-to-date `pre-build` activity). Subscribers that want to act only on cold-path starts gate their work on `event.cached === false`; the §11.1 zero-subscriber short-circuit makes the warm publish essentially free when nothing is listening.
 
 The `Build` scope replaces the v1 of this section's "(priority 100) artifact build / (priority 110) per-service app build" prose. The two phases remain ordered (artifact → app, per service) — the priority numbers survive as the *phase boundaries* the event sequence renders — but siblings inside a phase run concurrently per the §6.13 DAG semantics. Within a service the orchestrator still serializes `artifact` → `app` (the `lando.boot` scaffolding lives inside the built artifact). Compose `depends_on:` flows through into app-build ordering so an `npm run seed` step that needs the db waits for `db` to come up before it runs.
 

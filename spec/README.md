@@ -3,9 +3,9 @@
 > **Status:** Draft for build kickoff.
 > **Audience:** Lando Core maintainers, plugin authors, contributors building v4 from a clean slate, and embedding hosts integrating `@lando/core` as a library.
 
-The specification lives entirely in this directory as **seventeen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
+The specification lives entirely in this directory as **eighteen focused parts**. Files are the canonical source; there is no separate master document. The original `SPEC.md` was split (see "History" below) and the splits have since been edited independently. **Cross-references use a `§N` notation** where `N` is a stable section number that is *independent* of the file number, so links like "see §4.2" or "(§14)" continue to resolve correctly even when files are added or reordered. Use the topic lookup below to find which file a given `§N` lives in.
 
-The split is *almost* one-section-per-file, with a few principled merges and four principled additions:
+The split is *almost* one-section-per-file, with a few principled merges and five principled additions:
 
 - **§1 (Mission and Tenets)** is paired with **§14 (Non-Goals and Open Decisions)** because they answer the same question from opposite sides.
 - **§3 (Architecture)** is paired with **§11 (Lifecycle and Events)** because the lifecycle event bus is part of the runtime architecture and §3.5 already introduces the event taxonomy that §11 specifies in full.
@@ -13,6 +13,7 @@ The split is *almost* one-section-per-file, with a few principled merges and fou
 - **§17 (Binary Build and Release Engineering)** is a new section that wasn't in the original SPEC. It is filed at part 15 (after Appendices) because it is the operational counterpart to §13 — covering the build pipeline, codegen, asset embedding, signing, supply-chain artifacts, self-update, installation, and the CI release workflow that §13.5 and §13.7 only sketch.
 - **§18 (Deprecation and Surface Evolution)** is a new section that wasn't in the original SPEC. It is filed at part 16 (after Binary Build and Release Engineering) because it is a cross-cutting governance contract — every other part references §18 for *how* a surface is deprecated, while §18 owns the *what*.
 - **§19 (Executable Tutorials)** is a new section that wasn't in the original SPEC. It is filed at part 17 (after Deprecation) because it is the canonical mechanism by which authored user docs (Diátaxis tutorials and how-tos, plus recipe READMEs) double as end-to-end test sources via MDX with typed JSX components and an MDX→TypeScript codegen, replacing the need for a Lando 3 Leia-style markdown-as-test surface.
+- **§20 (The Global App)** is a new section that wasn't in the original SPEC. It is filed at part 18 (after Executable Tutorials) because it specifies a cross-cutting architectural concept — a reserved, host-level Lando app for cross-cutting services like the proxy and Mailpit — and every other part references §20 for *how* the global app interacts with their surface, while §20 owns the *what*.
 
 ---
 
@@ -37,6 +38,7 @@ The split is *almost* one-section-per-file, with a few principled merges and fou
 | 15 | [`15-binary-build-and-release.md`](./15-binary-build-and-release.md) | §17 | The build pipeline and its single orchestrator. The codegen catalog (every generator, its inputs, outputs, and staleness gate). Asset embedding policy (hybrid: static JSON imports for small data, `Bun.embeddedFiles` for large data). Per-platform signing and notarization (macOS Developer ID + notarytool, Windows Authenticode + cosign, Linux GPG-signed checksum manifests). Supply-chain artifacts (CycloneDX SBOM, SLSA v1.0 provenance, cosign signatures). The self-update protocol (manifest schema, channel resolution, signature verification, atomic replace, Windows rename, rollback). The v4.0.0 install surface (GitHub Releases + curl-pipe installer; Homebrew/scoop/winget/distro deferred). The CI release workflow on GitHub Actions and the binary-shipping acceptance criteria that augment §15.C. |
 | 16 | [`16-deprecation-and-surface-evolution.md`](./16-deprecation-and-surface-evolution.md) | §18 | The cross-cutting deprecation contract: principles, the canonical `DeprecationNotice` schema, the `DeprecationService` and its hot-path rules, the `deprecation-used` lifecycle event, the surface deprecation matrix that maps every public surface to its declaration mechanism (schema annotation, contract field, manifest field, TSDoc tag), the renderer's once-per-process warning behavior and `--no-deprecation-warnings` opt-out, the semver-bound removal policy and the release-pipeline `removeIn` enforcement gate, and the test/lint gates. |
 | 17 | [`17-executable-tutorials.md`](./17-executable-tutorials.md) | §19 | The canonical mechanism for keeping authored user docs and end-to-end tests in lock-step. An *executable tutorial* is an MDX file (under `docs/src/content/docs/tutorials/**`, `docs/src/content/docs/how-to/**`, or `recipes/<id>/README.mdx`) whose typed JSX components — `<Tutorial>`, `<Step>`, `<Run>`, `<Verify>`, `<Inspect>`, `<Hidden>`, `<Cleanup>`, `<Variable>`, `<Skip>`, `<Inline>` — render in the Starlight site as styled command blocks with embedded transcripts, and compile via `scripts/build-doc-tests.ts` into TypeScript test files under `test/mdx/**` (gitignored, regenerated). Covers: the `TutorialFrontmatter` schema, the component prop schemas and `MatcherSchema` assertion vocabulary, the `TutorialContext` runtime, dual display-vs-execute binding, transcript capture/redaction/embedding, source-location preservation via `@source` headers and the MDX source-mapper reporter, the hidden:visible / inline-density / cleanup-mandatory lint rules, the test layer that joins the §13.1 matrix, the §17.2 codegen entry, the recipe-README strip-and-flatten policy, library-mode tutorials targeting `@lando/core` API surfaces, and the v4.0 GA acceptance criteria. |
+| 18 | [`18-global-app.md`](./18-global-app.md) | §20 | The global Lando app: a reserved, host-level app at `<userDataRoot>/global/` whose Landofile and services are contributed by plugins through the `globalServices:` manifest surface. Covers identity (reserved id `global`, slug reservation), the Lando-owned Landofile and its plugin enablement map, the `globalServices:` contribution surface, the `GlobalAppService` core service and its `Layer.suspend`-wrapped lazy construction, the new `global` bootstrap level, the `Global` lifecycle event scope (`pre-/post-global-start` etc.), the `meta:global:*` CLI namespace and its default `global:` top-level alias prefix, auto-start integration via `AppFeature.requires.globalServices`, `<service>.global.internal` networking, the `LANDO_GLOBAL_*` env-var family, storage scope semantics inside global services, the `apps:poweroff --keep-global` flag, the refactor of the default `ProxyService` Live Layer to realize routes through a `traefik` service in the global app, the bundled `@lando/service-mailpit` reference plugin, and the v4.0 non-goals (multi-host, user-relocatable path, explicit Landofile `dependsOn`, plugin-extensible `meta:global:*`). |
 
 ---
 
@@ -361,6 +363,38 @@ If you are looking for…
 | `test.skip` for axis-coverage gaps | 17 | §19.7 + §19.16 |
 | Per-variant test file naming (`<id>.<axis-value>...test.ts`) | 17 | §19.7 + §19.16 |
 | Recipe README scaffolding with axis-resolved tabs | 17 + 08 | §19.13 + §8.8.2 |
+
+| The global app (concept and overview) | 18 | §20.1 |
+| Global app identity, reserved id `global`, slug reservation | 18 | §20.2 |
+| `AppIdReservedError` | 18 | §20.2 + §20.13 |
+| Global Landofile location and merge order | 18 | §20.3 |
+| Generated `.lando.dist.yml` for the global app | 18 | §20.3 |
+| Plugin enablement map (`<userConfRoot>/global.config.yml`) | 18 | §20.3.1 |
+| Global app discovery rules (excluded from cwd walk) | 18 | §20.3.2 |
+| `globalServices:` plugin contribution surface | 18 | §20.4 + §4.2 |
+| `GlobalServiceContext` plugin context tag | 18 | §20.4 |
+| `GlobalAppService` core service | 18 | §20.5 + §3.4 |
+| `global` bootstrap level | 18 | §20.6.1 + §3.2 |
+| `Global` lifecycle event scope | 18 | §20.6.2 + §3.5 |
+| `pre-global-start` / `post-global-start` events | 18 | §20.6.2 + §11.2 |
+| `pre-global-dist-regenerate` / `post-global-dist-regenerate` events | 18 | §20.6.2 + §11.2 |
+| `AppFeature.requires.globalServices` | 18 | §20.6.3 + §6.11.4 |
+| Auto-start of global services via `AppFeature` | 18 | §20.6.3 |
+| `meta:global:*` CLI namespace | 18 | §20.7 + §8.2 |
+| `meta:global:start` / `stop` / `restart` / `rebuild` / `destroy` / `info` / `logs` / `list` / `config` / `install` / `uninstall` | 18 | §20.7 + §8.2 |
+| `apps:poweroff --keep-global` flag | 18 | §20.7 + §8.2 |
+| `global:` top-level alias prefix reservation | 18 | §20.7.1 + §8.1.2 |
+| `<service>.global.internal` DNS | 18 | §20.8.1 + §10.1 |
+| `LANDO_GLOBAL_*` environment variables | 18 | §20.8.2 + §6.9 |
+| `globalServices.<name>.*` cross-service expression scope | 18 | §20.8.3 + §7.3.1 |
+| Storage scope semantics inside global services | 18 | §20.9 + §6.5 |
+| `ProxyServiceTraefikGlobalAppLive` (default proxy realization) | 18 | §20.10.1 + §10.2 |
+| `ProxyContributionPairError` | 18 | §20.10.1 + §20.13 |
+| `LegacyProxyContainerDetected` doctor diagnostic | 18 | §20.10.3 + §10.9 |
+| `@lando/service-mailpit` reference plugin | 18 | §20.11.1 + §1.4 |
+| Migration of `@lando/proxy-traefik` to global-app realization | 18 | §20.11.2 + §10.2 |
+| Global app non-goals (multi-host, user-relocatable, explicit `dependsOn`) | 18 | §20.14 |
+| `global-app-plan` cache | 18 | §12.1 |
 
 ---
 

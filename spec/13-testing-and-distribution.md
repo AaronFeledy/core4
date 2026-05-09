@@ -1,6 +1,6 @@
 # Lando v4 — Testing, Distribution, and Quality Gates
 
-> **Part 13 of 17** · [Index](./README.md)
+> **Part 13 of 18** · [Index](./README.md)
 > **Read next:** [14 Appendices](./14-appendices.md)
 
 This part defines the quality bar and the release pipeline. Tests run under `bun test`. `tsc --noEmit` is a merge gate. The provider contract suite is mandatory for every `RuntimeProvider` plugin. The default release artifact is the Bun-compiled single-binary, one per platform target, alongside the `@lando/core` library package whose `package.json#bin` entry doubles as the package-manager install path for users who already run Bun.

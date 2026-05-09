@@ -1,6 +1,6 @@
 # Lando v4 — Service Specification
 
-> **Part 6 of 17** · [Index](./README.md)
+> **Part 6 of 18** · [Index](./README.md)
 > **Read next:** [07 Landofile and Configuration](./07-landofile-and-config.md)
 
 This part defines what a v4 service is and how it is composed. A v4 service is a planned runtime component built from a **base** plus a sequence of composable **features**. Two bases ship with core: `l337` (raw artifact, the escape hatch) and `lando` (opinionated dev service with boot scaffolding, env layer, packages, app mounts, healthchecks, certs, SSH agent, and run hooks).
@@ -353,6 +353,8 @@ dev.lando.storage-service: <service>      # not on global
 
 `destroy` removes volumes labeled with the matching project (and, for `service` scope, the matching service) excluding `global` scope.
 
+**Storage inside the global app.** Services contributed to the **global Lando app** (§20) follow the same scope rules with the auto-naming substitution `<project>` → `global`: `scope: service` → `global-<service>-<destination>`, `scope: app` → `global-<destination>`. `scope: global` storage is identical to today and is the only scope that survives `meta:global:destroy --purge` (§20.9); services in user apps using `scope: global` share the same volumes as global-app services declaring it (this is the canonical mechanism for cross-app shared persistent state). Volumes created by global services additionally carry the `dev.lando.storage-global-app: "TRUE"` label so `apps:poweroff --keep-global` can identify them (§20.9).
+
 ### 6.6 Endpoints, hostnames, routes
 
 **Endpoints** describe service listeners. Endpoints are provider-neutral.
@@ -516,7 +518,13 @@ LANDO_DB_USER               # when service-type opts in to the §6.12.4 creds sc
 LANDO_DB_PASSWORD           # when service-type opts in to the §6.12.4 creds schema (redacted in logs)
 LANDO_DB_NAME               # when service-type opts in to the §6.12.4 creds schema
 LANDO_DB_ROOT_PASSWORD      # when service-type opts in and rootPassword is defined (redacted in logs)
+LANDO_GLOBAL_<SERVICE>_HOST     # always when AppFeature activates requires.globalServices: [<service>]
+LANDO_GLOBAL_<SERVICE>_PORT     # primary endpoint port; conditional on the global service exposing one
+LANDO_GLOBAL_<SERVICE>_<EP>_PORT  # named endpoint port (e.g., LANDO_GLOBAL_MAILPIT_SMTP_PORT)
+LANDO_GLOBAL_<SERVICE>_URL      # primary route URL; conditional on the global service having a route
 ```
+
+> The `LANDO_GLOBAL_*` family is a **projection** — only the values the user app's activated `AppFeature`s actually depend on (via `requires.globalServices`, §6.11.4 + §20.6.3) appear in a given service. A user app with no features activating against a global service does not see `LANDO_GLOBAL_*` for it. Plugins MAY add extra fields (e.g., a Mailpit API token) by writing them through their `AppFeature.apply()` body using the standard `addEnv` mutator, reading from `globalServices.<name>.*` per the §7.3.1 cross-service expression scope.
 
 **Inheritable via env layer.** `type: lando` services source `/etc/lando/environment` on every exec, which:
 
@@ -609,6 +617,10 @@ export interface AppFeatureDefinition {
   readonly priority: number;
   readonly activatedBy?: AppFeatureActivation;             // when this feature runs
   readonly selectors?: AppFeatureSelectors;                // which services it mutates
+  readonly requires?: {                                     // §20.6.3 — auto-start integration with the global app
+    readonly providerCapabilities?: ReadonlyArray<keyof ProviderCapabilities>;
+    readonly globalServices?: ReadonlyArray<string>;       // global-app service ids this feature depends on
+  };
   readonly apply: (ctx: AppFeatureContext) => Effect.Effect<void, AppFeatureError>;
 }
 
@@ -634,7 +646,9 @@ App-feature rules:
 - Cyclic mutations (feature A mutates B; feature B mutates A) are detected and rejected with `AppFeatureCycleError`.
 - `AppFeatureError` is a tagged union (`SelectorMatchedNothing`, `MutationConflict`, `CycleDetected`); planners surface failures with the contributing plugin id and remediation.
 
-The mailpit plugin is the canonical example: a `mailpit` service-type plus an `AppFeature` selecting `types: [php]` (or `names: "{{ service.config.mailFrom }}"`) that adds `MAIL_HOST`/`MAIL_PORT` env and bind-mounts `php.ini` into each matched service. Both pieces ship as YAML; the feature `apply()` is ~5 lines of TypeScript using only the standard mutators.
+**`requires.globalServices`** declares that this feature depends on one or more services running in the global Lando app (§20). When the feature activates against a user app's plan, the `AppPlanner` aggregates `requires.globalServices` across every activated feature and the lifecycle orchestrator calls `GlobalAppService.ensureRunning(needed)` inside the user app's `pre-start` phase, after early subscribers and before the user-app build block (§20.6.3). A `requires.globalServices` entry referring to a global service id that is not in the resolved global plan (disabled by the user, capability-blocked, or contributed by a plugin that is not installed) raises `GlobalServiceMissingError` and aborts the user app's start with remediation pointing at `meta:global:install <plugin>`.
+
+The mailpit plugin is the canonical example: an `@lando/service-mailpit` plugin contributes (a) a `mailpit` `ServiceType` (§4.2), (b) a `globalServices:` entry that materializes a `mailpit` service into the **global Lando app**'s `dist` Landofile layer (§20.4, §20.11.1), and (c) an `AppFeature` selecting `types: [php]` (or `framework: [drupal, wordpress, laravel, …]`) with `requires.globalServices: ["mailpit"]` and `apply()` adding `MAIL_HOST=mailpit.global.internal` and `MAIL_PORT={{ globalServices.mailpit.endpoints.smtp.port }}` env. The user installs the plugin and gets Mailpit globally; their PHP services automatically get SMTP env injected without any Landofile change.
 
 **Features** are deterministic, idempotent functions that mutate an in-memory `ServicePlanContext`. Features are the v4 replacement for the SPEC2 "packages" pattern.
 

@@ -1,6 +1,6 @@
 # Lando v4 — Executable Tutorials
 
-> **Part 17 of 17** · [Index](./README.md)
+> **Part 17 of 18** · [Index](./README.md)
 
 This part defines how Lando v4 keeps narrative user docs and end-to-end test coverage in lock-step. An *executable tutorial* is an MDX file that is both the authored guide a reader follows and the structured source from which one or more TypeScript test files are generated. Prose stays prose; structured assertions live in the typed props of a small JSX component vocabulary; codegen compiles the components into runnable tests that drive `@lando/core/testing` against the live runtime; the same components render in Starlight as styled command blocks with embedded transcripts captured from the most recent test run.
 
@@ -28,12 +28,12 @@ An executable tutorial is an MDX file with required frontmatter, a single top-le
 
 ```mdx
 ---
-title: Set up a Drupal site with Lando
+title: Set up a WordPress site with Lando
 diataxis: tutorial
 test:
-  id: drupal-tutorial
+  id: wordpress-tutorial
   layer: e2e
-  tags: ["recipes", "drupal", "smoke"]
+  tags: ["recipes", "wordpress", "smoke"]
 ---
 
 import { Tutorial, Step, Run, Verify, Cleanup, Variable }
@@ -44,7 +44,7 @@ import { Tutorial, Step, Run, Verify, Cleanup, Variable }
 <Variable name="siteName" value="mysite" display="mysite" />
 
 <Step name="scaffold">
-  <Run command="lando init --recipe drupal" answers={{ name: "{{siteName}}" }} />
+  <Run command="lando init --recipe wordpress" answers={{ name: "{{siteName}}" }} />
   <Verify file=".lando.yml" matchesSchema="Landofile" />
 </Step>
 
@@ -233,3 +233,43 @@ The `TabAxis` and `TabAxisValue` schemas live in `@lando/sdk/docs/components`. E
 **Naming.** Generated test files use dot-separated axis-value suffixes in declaration order: `<id>.test.ts` (no axes), `<id>.<value>.test.ts` (`tabs:`), `<id>.<axis1-value>.<axis2-value>.....test.ts` (`axes:`). The `describe()` block matches.
 
 **Rendering.** Each `<Tabs>` block renders as a Starlight tab group. The transcript embedded in each tab pane is the transcript captured for *that variant's* run; switching tabs swaps both the displayed command set and the captured output.
+
+**Worked example.** A single-axis tutorial can fork scaffold input while sharing later steps:
+
+```mdx
+---
+test:
+  id: node-api-tutorial
+  layer: e2e
+  tabs:
+    - { name: express, label: Express }
+    - { name: hono, label: Hono, default: true }
+---
+<Tutorial>
+
+<Tabs>
+  <Tab name="express">
+    <Step name="scaffold">
+      <Run command="lando init --recipe node-api" answers={{ framework: "express" }} />
+    </Step>
+  </Tab>
+  <Tab name="hono">
+    <Step name="scaffold">
+      <Run command="lando init --recipe node-api" answers={{ framework: "hono" }} />
+    </Step>
+  </Tab>
+</Tabs>
+
+<Step name="start">
+  <Run command="lando start" />
+  <Verify event="post-start" status="success" />
+</Step>
+
+<Cleanup>
+  <Run command="lando destroy -y" />
+</Cleanup>
+
+</Tutorial>
+```
+
+This generates `node-api-tutorial.express.test.ts` and `node-api-tutorial.hono.test.ts`. The `start` step and `<Cleanup>` are byte-identical in both; the `scaffold` step differs.

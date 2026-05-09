@@ -1,6 +1,6 @@
 # Lando v4 — Runtime Provider API
 
-> **Part 5 of 17** · [Index](./README.md)
+> **Part 5 of 18** · [Index](./README.md)
 > **Read next:** [06 Services](./06-services.md)
 
 This part is the deep dive on the most critical pluggable abstraction in v4: the `RuntimeProvider`. A provider is a plugin that turns a provider-neutral `AppPlan` into a running, networked set of service instances. The Lando-managed runtime (default), system Docker, system Podman, Lima, OrbStack, remote runtimes, and lightweight VMs all implement this contract.
@@ -143,6 +143,8 @@ If a service, feature, or subsystem requires a missing capability, planning fail
 - `native` — the provider's bind mount path is the host filesystem (Linux native runtime, OrbStack on macOS, Linux containers on Linux Docker/Podman). The planner realizes `MountPlan`s of `type: bind` directly through the provider with no `FileSyncEngine` involvement.
 - `slow` — the provider runs in a separate filesystem boundary (Docker Desktop's VM-mediated VirtioFS / osxfs / 9p; Podman Desktop machines; Lima/Colima at default settings; Windows Docker Desktop with WSL2 backend when the project lives outside the WSL filesystem). The planner marks every `bind` mount in the resolved `AppPlan` as `realization: "accelerated"` and routes its lifecycle through the active `FileSyncEngine` (§4.2, §10.6); the user's Landofile is unchanged and the user does not opt into the behavior.
 - `none` — the provider does not support bind mounts at all (some remote/cloud providers). Plans containing `bind` mounts fail with `CapabilityError` per the §5.4 capability-validation rule.
+
+`sharedCrossAppNetwork` declares whether services in different apps can reach each other via `<service>.<app>.internal` DNS aliases on the same provider network. Required by virtually every plugin-contributed `globalServices:` entry (§20.4); without it the contribution is dropped from the global plan with a doctor warning (§20.8.1).
 
 `bindMountPerformance` is informational at the boundary, not a knob. Providers MUST report it truthfully; misreporting is treated as a contract violation by the §13.1 provider contract suite. The planner consults this field exactly once per `app:start` to compute the `realization` flag on every `MountPlan`; runtime overrides require a Landofile-level escape hatch (`mounts: [..., accelerate: false]`) or a global `defaultFileSyncEngine: passthrough` setting, neither of which is documented in canonical recipes or executable tutorials. The §13.1 perf-budget suite asserts that `app:start` against a `bindMountPerformance: "slow"` provider does **not** regress to native bind IO — i.e., the `FileSyncEngine` actually engaged.
 

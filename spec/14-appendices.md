@@ -1,6 +1,6 @@
 # Lando v4 — Appendices
 
-> **Part 14 of 17** · [Index](./README.md)
+> **Part 14 of 18** · [Index](./README.md)
 > **Read next:** [15 Binary Build and Release Engineering](./15-binary-build-and-release.md)
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
@@ -156,6 +156,16 @@ The v4 implementation must satisfy:
 - Tabbed tutorials (§19.16) — those declaring `tabs:` or `axes:` — generate one passing test file per Cartesian-product variant, each with a transcript file matching its axis-value path. The reporter prefixes failure output with the variant axis-value map. A multi-axis fixture tutorial with at least two axes and at least two values per axis is part of the per-PR matrix and asserts the codegen path end-to-end.
 - Tab coverage gaps surface visibly: when a `<Tabs>` block's union of step names is non-uniform across tabs, every variant whose tab is missing one or more steps emits a `test.skip(<step-name>, "axis A=V …")` entry that the reporter renders alongside its variant prefix.
 
+- A user app whose resolved `name:` normalizes to the slug `global` is rejected at Landofile parse time with `AppIdReservedError` and a remediation suggesting an explicit `name:` (§20.2).
+- The global Lando app's directory at `<userDataRoot>/global/` is excluded from cwd-based app discovery and from the `cwd-app-map` cache (§20.3.2); only `meta:global:*` commands resolve to it.
+- A plugin that contributes a `globalServices:` entry produces, after install, a regenerated `<userDataRoot>/global/.lando.dist.yml` containing the contributed service; a subsequent `meta:global:start` brings it up; `<service>.global.internal` resolves from inside any user-app service when the active provider declares `sharedCrossAppNetwork: true` (§20.4, §20.8.1).
+- An `AppFeature` declaring `requires.globalServices: [<id>]` triggers `GlobalAppService.ensureRunning([<id>])` at `pre-start` of any user app whose plan activates the feature; a missing or disabled global service surfaces `GlobalServiceMissingError` and aborts the user app's start with remediation pointing at `meta:global:install <plugin>` (§20.6.3).
+- `apps:poweroff` stops every Lando-managed service across user apps and the global app by default; `--keep-global` opts out (§20.6.4, §20.7).
+- The default `ProxyService` Live Layer (`ProxyServiceTraefikGlobalAppLive` in `@lando/proxy-traefik`) realizes its routes through a `traefik` service running inside the global app; the plugin contributes both `proxyServices:` and `globalServices:` entries, and installing one without the other fails at plugin load with `ProxyContributionPairError` (§20.10.1).
+- The bundled `@lando/service-mailpit` plugin contributes (a) a `mailpit` `ServiceType`, (b) a `globalServices:` entry, and (c) an `AppFeature` injecting `MAIL_HOST=mailpit.global.internal` and `MAIL_PORT=…` env into framework-aware user-app services; a fresh user app whose framework matches the feature's selectors gets working SMTP capture with no Landofile changes (§20.11.1).
+- The reserved top-level alias prefix `global:` rejects plugin and tooling contributions whose `topLevelAlias` starts with `global:` (§20.7.1).
+- Storage volumes created by global-app services carry `dev.lando.storage-global-app: "TRUE"` so `apps:poweroff --keep-global` can identify them (§20.9).
+
 Binary-shipping criteria — items the v4.0.0 release pipeline (rather than the source) must satisfy — are catalogued separately in §17.9 (signing, notarization, SBOM, provenance, self-update, installer, codegen drift gates).
 
 ### D. Why OCLIF (and not @effect/cli)
@@ -208,6 +218,9 @@ The `CommandFramework` abstraction exists so that if `@effect/cli` reaches featu
 - **`bindMountPerformance` capability** — `ProviderCapabilities` field declaring the provider's host↔guest filesystem-IO characteristics for `bind` mounts: `"native"` (Linux native runtime, OrbStack, WSL-resident projects), `"slow"` (Docker Desktop / Podman Desktop / Lima / Colima / Rancher Desktop), or `"none"` (the provider does not support bind at all). Drives mount-realization selection at plan time (§5.4, §6.4).
 - **Mount realization** — A planner-set `realization: "passthrough" | "accelerated"` field on every `bind`-type `MountPlan` (§6.4). Derived deterministically from the active provider's `bindMountPerformance`. The user's Landofile is unchanged across both values.
 - **Fragment** — A partial Landofile (`services:`, `tooling:`, `proxy:`, etc.) loaded by an enclosing Landofile through `includes:` (§7.7). Fragments are pure config — never code — and resolve from local paths, git, npm, or the registry.
+- **Global app** — A reserved, host-level Lando app with id `global` rooted at `<userDataRoot>/global/` whose Landofile is plugin-contributed via `globalServices:` entries (§20). The canonical home for cross-cutting host services like the proxy and Mailpit. Started, stopped, and managed through the `meta:global:*` CLI namespace; auto-started by user-app `pre-start` when an `AppFeature` declares `requires.globalServices`.
+- **`globalServices:` contribution surface** — Plugin manifest field (§4.2 row, §20.4) that contributes a service definition into the global app's generated `.lando.dist.yml` layer. Each entry declares `id`, `module`, `enabledByDefault`, `requires.providerCapabilities`, and optional `conflicts`.
+- **`GlobalAppService`** — Core Effect service (§3.4, §20.5) that owns global Landofile management, `dist` regeneration from plugin contributions, plan derivation, and lifecycle. `Layer.suspend`-wrapped — costs nothing on commands that don't need it.
 - **Imperative shell** — The outer layer of the architecture (§3.1) that runs Effect programs against the runtime. The CLI is one shell; an embedding host is another (§3.6).
 - **Include** — An entry in a Landofile's `includes:` array referencing a fragment by source scheme (local path, git, npm, registry). See §7.7.
 - **Layer** — Effect's mechanism for providing services with their dependencies and lifecycles.

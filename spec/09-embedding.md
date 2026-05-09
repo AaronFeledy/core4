@@ -1,6 +1,6 @@
 # Lando v4 — Embedding and Library Use
 
-> **Part 9 of 17** · [Index](./README.md)
+> **Part 9 of 18** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
 This part defines what it means to consume Lando v4 as a library from another Bun program. The CLI (§8) is one imperative shell over the runtime; an embedding host is another (§3.6). Both build the same `LandoRuntimeLive` Layer, run Effect programs against it, and tear down through `Scope`. There is no separate "library mode" of core — embedding is a peer use case to the CLI.
