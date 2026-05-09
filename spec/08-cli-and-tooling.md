@@ -1146,6 +1146,9 @@ export class Renderer extends Context.Service<Renderer, {
 Built-in render events:
 
 - `task.start`, `task.progress`, `task.complete`, `task.fail`
+- `task.tree.start`, `task.tree.complete` — open/close a parent container around N concurrent sibling tasks. Carries `parentId`, `label`, `children: TaskId[]`, and an optional `mode` that hints renderer layout (`"grid"` for tabular siblings, `"list"` for vertically stacked siblings; the default Lando renderer uses `"list"` for the build phases). The §6.13 `BuildOrchestrator` emits one `task.tree.start` per phase and one inner `task.start` per `BuildStep`.
+- `task.detail` — streaming tail of a single task's output. Carries `taskId`, `stream: "stdout"|"stderr"`, and `line: string`. Renderers MUST keep an in-memory ring buffer of at least 4 lines per task and surface the most recent N as a dimmed indented panel under the task line. The build orchestrator publishes `task.detail` events derived from `build-step-progress` (chunks split on `\n`, redacted per §6.13.6).
+- `task.detail.expand`, `task.detail.collapse` — TTY input events emitted by the renderer (not by callers) when the user presses `Enter` on a focused task or `Esc` to leave the expanded view. Renderers MUST publish these on the `EventService` so subscribers (e.g., screen recordings, executable-tutorial transcripts) can capture the interaction.
 - `log.line`
 - `message.info`, `message.warn`, `message.error`
 - `table.row`, `table.end`
@@ -1184,5 +1187,35 @@ The Renderer is responsible for the perceived-performance budget in §2.1. The c
 **JSON renderer special case.** `--format json` / `--renderer=json` emits exactly one JSON document on stdout (the command's typed result) plus structured events on stderr. The first stderr event MUST land within the first-meaningful-line budget; the stdout document is buffered until completion by design.
 
 These rules are tested by the perf-budget test layer (§13.1), which captures stdout/stderr timing at byte resolution and asserts against the §2.1 perceived-performance table.
+
+#### 8.9.2 Concurrent task tree contract
+
+When the active runtime is driving multiple concurrent tasks under a common parent — the canonical case is `BuildOrchestrator` (§6.13) running per-service `composer install` and `npm ci` siblings under the `app` build phase, but the same shape applies to any caller that emits `task.tree.start` with `children: [a, b, c, …]` — every Renderer MUST honor the contract below. The contract is what makes the OpenCode/Claude-Code-style "list of running tasks with a per-task tail and a select-to-expand full view" UX work uniformly across renderers without callers having to know which renderer is active.
+
+| Surface | Required behavior |
+|---|---|
+| **Default Lando renderer (TTY)** | Renders one parent line per `task.tree.start` (`▼ Building app dependencies (2/4 running)`), with one indented child line per `task.start`. Each running child shows `[spinner] <stepId>  <last line of task.detail, dimmed and truncated to one terminal column>`. Below each running child, an indented panel of at least 4 lines surfaces the most recent `task.detail` lines for that child (dimmed, monospaced). On `task.complete` / `task.fail`, the spinner becomes `✓` (green) / `✗` (red), the panel collapses, the child line is left as a one-line summary (`✓ appserver: composer install (12.4s · cached)` / `✗ node: npm ci (exit 1 — see lando logs node --build)`). On `task.tree.complete`, the parent line collapses to `▶ Built app dependencies (3 ✓ · 1 ✗)` with a hint to expand it. |
+| **Selection / expand (TTY)** | The renderer MUST honor keyboard input while a tree is rendered: `↑`/`↓` move focus across visible children; `Tab` cycles between trees when more than one is visible; `Enter` enters the **alt-screen full-tail view** for the focused child; `Esc` returns to the tree. The full-tail view swaps to the terminal's alternate screen buffer, hides the tree until exit, and shows the live tail of the focused child read directly from its transcript file (§6.13.6 / §12.4). Scrollback (PgUp / PgDn / arrows) is honored within the alt screen. Exiting the alt screen MUST restore the tree to its current state without redrawing-from-scratch artifacts. The renderer MUST publish `task.detail.expand` on enter and `task.detail.collapse` on exit so executable-tutorial transcripts (§19) and screen-recording subscribers can capture the interaction. |
+| **Post-completion expand** | After `task.tree.complete`, the focused-child Enter behavior remains live: the tree stays as a static summary, but pressing Enter still drops into the alt-screen full-tail view against the persisted transcript file. The renderer is permitted (but not required) to leave the tree visible for up to the renderer's normal completion-line latency budget after the last `task.tree.complete`; after that, it MAY collapse the trees and only re-render them if the user pages back via a renderer-defined affordance. |
+| **Default Lando renderer (non-TTY / CI / pipe)** | Per the §8.9.1 non-TTY exemption, no spinners and no alt-screen behavior. Every child's `task.detail` events MUST be emitted as interleaved log lines with a stable prefix (`[<stepId>]`), one event per line, in the order they arrive at the renderer. `task.tree.start` and `task.tree.complete` MUST emit a single header / summary line each (`▼ Building app dependencies (4 services)` / `▶ Built app dependencies (3 ✓ · 1 ✗ · 12.4s)`). Children whose only output is `task.detail.expand` / `task.detail.collapse` MUST NOT emit anything in non-TTY mode. |
+| **`--renderer=json`** | NDJSON of every `task.tree.*`, `task.start`, `task.detail`, `task.complete` / `task.fail` event on stderr, with the standard JSON-renderer guarantees (§8.9.1). Embedding hosts and CI consumers get the same structured stream the renderer would consume, suitable for piping into a custom UI. |
+| **`--renderer=plain`** | One line per `task.complete` / `task.fail` carrying the summary; no task tree, no detail tail, no spinners, no input handling. |
+
+**Renderer state machine (informative).** The default renderer maintains a small per-tree state machine driven by the event stream:
+
+```text
+task.tree.start  →  open tree, allocate child slots
+task.start       →  show spinner; start consuming task.detail into the per-child ring
+task.detail      →  push line into ring buffer; redraw the child's tail panel
+task.complete    →  swap spinner for ✓; collapse panel; render summary line
+task.fail        →  swap spinner for ✗; collapse panel; render summary line with hint
+task.tree.complete  →  collapse to summary; tree is now passive (focused-child Enter still works)
+```
+
+**Redaction.** The renderer MUST treat every `task.detail.line` as already-redacted by the publisher. The build orchestrator's emitter (§6.13.6) applies the same `${secret:…}` and registry-token redaction the `Logger` and lifecycle-event payloads receive. The alt-screen full-tail view, however, reads the *unredacted* per-step transcript file from disk — it is a local-only diagnostic surface bounded by the user data root and is never propagated to telemetry, executable-tutorial transcripts, or NDJSON renderers. Tutorial authors who need to capture an alt-screen session use the `<Inspect>` component (§19.3) which reads the redacted `task.detail` event stream, not the file.
+
+**Cancellation.** `Effect.interrupt` (Ctrl+C) propagates from the imperative shell through the orchestrator to every in-flight child; the renderer MUST receive a `task.fail` for each affected child within the §2.1 cancellation budget. While the alt-screen view is active, the renderer MUST NOT swallow Ctrl+C; the input is still routed to the runtime so the user can cancel from inside the expanded view without first pressing Esc.
+
+**Test coverage.** The §13.1 perf-budget suite exercises the contract end-to-end: a fixture with three services whose `build.app` scripts sleep for known durations asserts that wall-clock time is approximately `max(t_a, t_b, t_c)` (within 20%) rather than `sum(…)`, that every child emits at least one `task.detail` event during the sleep window, and that the renderer publishes `task.detail.expand` / `task.detail.collapse` events when synthetic Enter / Esc inputs are fed to its TTY. The non-TTY mode is asserted on the same fixture by piping output and matching the `[<stepId>]`-prefixed line set.
 
 ---

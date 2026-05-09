@@ -763,12 +763,27 @@ healthcheck:
   retry: 25
   delay: 1000
 
+# Build orchestration (§6.13). Concurrency caps and failure policies for the
+# artifact-build and per-service app-build phases of `app:start` / `app:rebuild`.
+build:
+  concurrency:
+    artifact: 2                        # concurrent image builds; Docker-class daemons saturate around 2-3
+    app: min(4, cpu_count)             # concurrent in-container app builds (composer install, npm ci, ...)
+  failFast:
+    artifact: true                     # a failed image build aborts in-flight siblings in the artifact phase
+    app: false                         # app-phase siblings run to completion; failures aggregated and reported once
+  transcripts:
+    keepCompleted: 10                  # per service per buildKey; older entries rotated out of build-results cache
+    keepFailed: 5                      # per service per buildKey
+
 logLevelConsole: info
 experimental: false
 
 stats:
   report: true                         # telemetry enabled by default; users may opt out
 ```
+
+`build.concurrency.app: min(4, cpu_count)` is the spec form; the resolved value at runtime is the integer minimum of `4` and the host CPU count. CI runners with high core counts therefore stay capped at `4` by default to leave headroom for the runner's own work; users with a fixed budget can pin a literal integer in their global config or per-app override. Per-service overrides live under `services.<name>.build:` in the Landofile (§6.2): `services.appserver.build.failFast: true` opts a single service into fail-fast even when the phase default is continue-all; `services.node.build.concurrency: 1` serializes a service's own multi-step app build.
 
 ### 7.6 Environment overrides
 

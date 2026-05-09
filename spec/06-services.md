@@ -782,4 +782,160 @@ Resolution rules:
 
 This schema is the spec's commitment that the §6.12.1 catalog promise of "MariaDB + creds:" is uniform across types, addressable from anywhere via the cross-service expression scope, and never reinvented per-plugin.
 
+### 6.13 Build orchestration
+
+`BuildOrchestrator` (§3.4) is the v4 replacement for v3's serial start sequence, where a long-running `composer install` against the PHP service blocked an equally long-running `npm ci` against the Node service from even starting until the first one finished. In v4 the two run concurrently by default, share one task-tree render surface, and stream their progress through the same lifecycle event bus the rest of core uses.
+
+This subsection specifies the build phase shape, the DAG construction rules, the concurrency caps, the failure policy, the up-to-date check, the per-step transcript artifact, and cancellation. The renderer-side surface that consumes the resulting events is spec'd in §8.9.2 (concurrent task tree contract).
+
+#### 6.13.1 The two phases
+
+The build phase of `app:start` (and the equivalent positions of `app:rebuild` and `app:cache:refresh --rebuild`) decomposes into two ordered sub-phases. Both phases publish `pre-build-phase` / `post-build-phase` events and feed `build-step-*` events through `EventService`. The §11.4 standard sequence renders this as a nested block under `pre-start` / `post-start`.
+
+| Phase | Source | Provider call | Per-service serial dep | Default failure policy | Default concurrency cap |
+|---|---|---|---|---|---|
+| `artifact` | `build.artifact:` plus the §6.3 group-weighted artifact instructions a service-type and its features contributed | `RuntimeProvider.buildArtifact` (or `pullArtifact` when the artifact is a tag the provider can pull) | none — artifact builds for distinct services are independent | **fail-fast** (§6.13.4) | `build.concurrency.artifact`, default `2` (Docker-class daemons saturate around 2–3 concurrent image builds; over-parallelizing wastes CPU and IO) |
+| `app` | `build.app:` plus any `ServiceFeature.apply()` contributions that registered a runtime build step | `RuntimeProvider.execStream` against the started service container | for service S, S's `app` step waits on S's `artifact` step (the `lando.boot` scaffolding lives inside the built artifact) and on `start(S)` reaching `running` (so the container is up before we exec into it); cross-service waits flow through Compose `depends_on:` | **continue-all** (§6.13.4) | `build.concurrency.app`, default `min(4, cpu_count)` (leaves headroom for the user's editor / browser; CI runners with high core counts get a higher cap up to the floor) |
+
+Concurrency caps and failure policies are global config keys (§7.5) with per-app override under the Landofile `build:` key and per-service override under `services.<name>.build:` (`build: { failFast: true }`, `build: { concurrency: 1 }`).
+
+#### 6.13.2 The `BuildPlan` DAG
+
+`BuildOrchestrator` derives a `BuildPlan` from the resolved `AppPlan` at level `app`. The plan is a directed acyclic graph of typed nodes; siblings without an edge between them are eligible to run concurrently subject to the phase cap.
+
+```ts
+export const BuildStep = Schema.Struct({
+  stepId:    Schema.String,                                 // "<service>:<phase>:<short-name>"
+  phase:     Schema.Literal("artifact", "app"),
+  service:   ServiceName,
+  buildKey:  Schema.String,                                 // SHA-256 over the resolved inputs (§6.13.5)
+  command:   BuildCommand,                                  // shape per phase (artifact spec | exec script)
+  dependsOn: Schema.Array(Schema.String),                   // predecessor stepIds in this BuildPlan
+  failFast:  Schema.Boolean,                                // resolved per-step from phase + per-service overrides
+  redact:    Schema.Array(Schema.String),                   // additional redaction tokens propagated to events
+  estimateMs: Schema.optional(Schema.Number),               // optional hint from the build-results cache (§12.1) for renderer ETA
+});
+
+export const BuildPlan = Schema.Struct({
+  app:        AppRef,
+  steps:      Schema.Array(BuildStep),
+  caps:       Schema.Struct({                               // resolved phase caps
+    artifact: Schema.Number,
+    app:      Schema.Number,
+  }),
+});
+```
+
+DAG construction rules:
+
+- For each service S in the plan, if S has artifact-build inputs (a non-empty group-weighted instruction list, a `sourcefile:`, or a Compose `build:` block), emit one `artifact` step `<S>:artifact`. If S resolves to a pullable artifact tag with no build inputs, emit a degenerate `artifact` step that calls `pullArtifact` and is almost always cached on the second run.
+- For each service S in the plan, if `build.app:` is non-empty (or any service-feature contributed app-build steps), emit one `app` step `<S>:app:<short-name>` per discrete script. Multiple `build.app:` entries for one service emit one step each, in declaration order, with sequential `dependsOn` edges between siblings.
+- Per-service edge: every `<S>:app:*` step depends on `<S>:artifact` and on `start(S)` reaching `running` (the orchestrator publishes a synthetic `service-running` predecessor for each service so steps that only need the container up can declare it explicitly).
+- Cross-service edges from Compose `depends_on:`: if service S declares `depends_on: [db]`, every `<S>:app:*` step gets an additional `dependsOn` entry on the synthetic `<db>:running` node. The orchestrator does NOT add `dependsOn` between `<S>:artifact` and `<db>:artifact` — image builds are independent of each other regardless of `depends_on:`.
+- Cycles are rejected at plan time with `BuildPlanCycleError` containing the offending edge list. (Service `depends_on:` cycles are already rejected by the `AppPlanner`; this is belt-and-braces.)
+
+Execution:
+
+- The orchestrator walks the DAG and pushes every step whose predecessors have all resolved (`complete` or `skip`) into the appropriate phase's run pool.
+- Each phase's run pool is bounded by `Effect.forEach({ concurrency: caps[phase] })` from §2.4. The same primitive that governs intra-bootstrap parallelism governs build siblings — there is no second concurrency mechanism to reason about.
+- `Effect.interrupt` (from `SIGINT`, command-level cancellation, or fail-fast within the artifact phase) propagates through the `forEach` pool; every in-flight `execStream` (§5.3) is killed at scope close; the orchestrator publishes `build-step-fail { reason: "interrupted" }` for each.
+
+#### 6.13.3 What runs where
+
+The orchestrator dispatches each step kind to the right provider primitive:
+
+| Step kind | Provider call | Notes |
+|---|---|---|
+| `artifact` (full build) | `RuntimeProvider.buildArtifact(spec)` consuming the §6.3 group-weighted instruction list | Returns an `ArtifactRef`; the orchestrator stamps the resulting tag onto the `ServicePlan` so `start(S)` references it. |
+| `artifact` (pull only) | `RuntimeProvider.pullArtifact(spec)` | Used when the service resolves to a published image tag with no inline build inputs. |
+| `app` (build script) | `RuntimeProvider.execStream({ service: S }, { script, user, cwd, env })` | The orchestrator owns the `Stream<ExecChunk>` consumer and translates chunks into `build-step-progress` events plus transcript writes. |
+
+The `app`-phase step is always dispatched through `execStream` even when the script is short — uniformity makes the renderer's tail panel work the same way for every step, and `exec` is itself a `Stream.runFold` over `execStream` per §5.3.
+
+#### 6.13.4 Failure policy
+
+The two phases have different default policies because their failure modes differ:
+
+- **`artifact` phase: fail-fast.** A failed image build for service S blocks every `<S>:app:*` step downstream, and a half-built image set tends to leave the user in a broken state. First failure interrupts in-flight siblings via `Effect.interrupt`, marks queued siblings as `build-step-skip { reason: "phase-aborted" }`, and raises the failure to `pre-start`'s caller. Override per-app via `build.failFast: false` in the Landofile when the user explicitly wants every artifact build to run to completion (e.g., to reproduce multiple failures in one cycle).
+- **`app` phase: continue-all.** A failed `composer install` does NOT interrupt a healthy `npm ci`. Every sibling runs to completion; the orchestrator aggregates failures and raises a single `BuildPhaseFailedError { failures: ReadonlyArray<BuildStepFailure> }` after `post-build-phase`. Rationale: when a developer `lando start`s a fresh clone after a long branch update, "all four broken services" is one round-trip to fix; "one broken service, run again, next broken service, run again" is four round-trips.
+
+Per-service overrides: `services.<name>.build.failFast: true` opts a single service into fail-fast even in the `app` phase. Per-step overrides are not exposed; the failure granularity is the service.
+
+#### 6.13.5 The `buildKey` up-to-date check
+
+Every `BuildStep` carries a `buildKey` — a SHA-256 hash over the canonicalized inputs that determine whether re-running the step would produce a different result. The orchestrator consults the `build-results` cache (§12.1) before dispatching: if `buildKey` matches a successful prior run, the step is short-circuited and emits `build-step-skip { reason: "up-to-date", cached: true }`.
+
+`buildKey` inputs:
+
+| Phase | Hashed inputs |
+|---|---|
+| `artifact` | The resolved group-weighted instruction list (after §6.3 group/weight resolution), the resolved `args:` and `secrets:` *names* (not values), the resolved `platform:`, the realized `context:` directory tree's content hash, the parent artifact reference (e.g., `nginxinc/nginx-unprivileged:1.27`), the provider id, and the active `lando` and `@lando/service-*` versions that contributed steps. |
+| `app` | The resolved script source (post-template-render), the resolved `cwd:`, `user:`, `env:` keys (values redacted before hashing — secret value changes do NOT bust the cache, by design; secret *name* changes do), the realized `mounts:` `mountKey` set, the `ArtifactRef` from the same service's `artifact` step (so a rebuilt image always re-runs the app step), and the active `lando` version. |
+
+Inputs that are deliberately NOT in `buildKey`:
+
+- The resolved value of any `${secret:…}` reference (changing a secret value MUST NOT silently re-run a build step the user did not change; if a user wants to force a rerun, `lando rebuild <service>` or `lando app cache refresh --rebuild` does it).
+- The host system clock or timezone.
+- The values inside `mounts:` of `type: bind` (they are content-addressed by `mountKey` already; the file contents inside the bind mount are tracked by the build script itself, not the orchestrator).
+- Any environment variable that wasn't declared on the build script's `env:` map.
+
+`build-results` cache entries:
+
+```ts
+export const BuildResult = Schema.Struct({
+  buildKey:       Schema.String,
+  service:        ServiceName,
+  phase:          Schema.Literal("artifact", "app"),
+  outcome:        Schema.Literal("complete", "fail"),       // "skip" entries are not persisted
+  exitCode:       Schema.Number,
+  durationMs:     Schema.Number,
+  artifactRef:    Schema.optional(Schema.String),           // present for artifact phase
+  transcriptPath: AbsolutePath,
+  completedAt:    Schema.DateTimeUtc,
+});
+```
+
+Only `outcome: "complete"` entries short-circuit a future run. A cached failure entry is informational (lets `lando logs --build` find the transcript) and does NOT prevent the orchestrator from retrying. Cache rotation is per-service per-`buildKey`; the most recent N (default 10) `complete` entries and the most recent N (default 5) `fail` entries are kept.
+
+#### 6.13.6 Per-step transcripts
+
+For every dispatched step, the orchestrator writes the full unredacted output to a per-step transcript file at `<userDataRoot>/builds/<app-id>/<phase>/<service>/<buildKey>.log` (full path schema in §12.4). The file is opened on `build-step-start`, every chunk from `execStream` is appended atomically, and the file is closed on `build-step-complete` / `build-step-fail`.
+
+- `transcriptPath` is published on `BuildStepEvent` and `BuildStepResultEvent` so subscribers and the renderer can `tail -f` it.
+- The renderer's "expand task" surface (§8.9.2) reads from this file directly — the live tail and the post-completion replay use the same source.
+- `lando logs <service> --build [--build-key …]` resolves the latest transcript for a service or a specific `buildKey`.
+- Transcripts are never sent to telemetry. `${secret:…}`-resolved values are redacted at the `Logger`/event boundary but written *unredacted* to the transcript file (they are local-only diagnostic artifacts; the file lives under the user data root and is removed by `lando destroy`).
+
+#### 6.13.7 Cancellation
+
+Cancellation propagates through Effect's standard interrupt model. `SIGINT` from the CLI shell (§3.6) calls `Effect.interrupt` on the running build phase; `Effect.forEach` propagates to every in-flight sibling; each step's `Scope` invokes the provider's `kill()` on its `execStream` child; the orchestrator publishes `build-step-fail { reason: "interrupted" }` for every in-flight or queued step; the per-step transcript is closed cleanly with a final marker line. The user-perceived gap between Ctrl+C and the renderer's "Cancelled" line MUST stay inside the §2.1 cancellation budget.
+
+When fail-fast triggers a phase abort (§6.13.4), the same machinery runs but the published `reason:` is `"phase-aborted"` and the cause field carries the originating step's `BuildStepFailure`.
+
+#### 6.13.8 Errors
+
+```ts
+export class BuildPlanCycleError extends Schema.TaggedError<BuildPlanCycleError>()(
+  "BuildPlanCycleError",
+  { app: AppRef, edges: Schema.Array(Schema.String) },
+) {}
+
+export class BuildStepFailedError extends Schema.TaggedError<BuildStepFailedError>()(
+  "BuildStepFailedError",
+  { step: BuildStep, exitCode: Schema.Number, transcriptPath: AbsolutePath, summary: Schema.String },
+) {}
+
+export class BuildPhaseFailedError extends Schema.TaggedError<BuildPhaseFailedError>()(
+  "BuildPhaseFailedError",
+  { app: AppRef, phase: Schema.Literal("artifact", "app"), failures: Schema.Array(BuildStepFailedError) },
+) {}
+
+export class BuildOrchestratorUnavailableError extends Schema.TaggedError<BuildOrchestratorUnavailableError>()(
+  "BuildOrchestratorUnavailableError",
+  { reason: Schema.String },
+) {}
+```
+
+`BuildOrchestratorUnavailableError` exists because the service is `Layer.suspend`-wrapped (§3.4): an embedding host that constructs the runtime at level `app` but never references `BuildOrchestrator` MUST still see a typed failure if a downstream subsystem tries to publish a `Build` event without going through the orchestrator. (The orchestrator is the only publisher of the `Build` event scope; manifest validation rejects plugin subscribers that try to publish into the scope.)
+
 ---

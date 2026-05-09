@@ -89,12 +89,15 @@ export class RuntimeProvider extends Context.Service<RuntimeProvider, {
   readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
+  readonly execStream: (target: ExecTarget, command: CommandSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
   readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
   readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
   readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
   readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
 }>()("@lando/core/RuntimeProvider") {}
 ```
+
+**`exec` vs `execStream`.** `exec` returns a collected `ExecResult` (stdout / stderr buffered, exit code) and is the right primitive for short, structured calls (a single `psql -c "select 1"`, a healthcheck probe). `execStream` returns a `Stream<ExecChunk>` where each chunk is `{ stream: "stdout" | "stderr", data: Uint8Array }` followed by a terminal `{ exit: number }` chunk; it is the right primitive for long-running output that must be observable while it runs (the build orchestrator's `composer install` / `npm ci` steps; `lando logs --follow`'s sibling for one-shot exec; tooling tasks with `interactive: false` that the renderer needs to stream into a tail panel). `exec` MUST be implemented as a thin collector over `execStream` (`Stream.runFold`) — providers do not duplicate spawn logic. `Effect.interrupt` MUST propagate through `execStream` to the underlying `kill()` and the service's `Scope` MUST reap the child before resolving, identical to the contract on `RuntimeProvider.logs`. Unlike `logs`, `execStream` is `Scope`-bounded: a stream that is dropped without being consumed to completion still terminates the underlying exec at scope close.
 
 ### 5.4 Capabilities
 

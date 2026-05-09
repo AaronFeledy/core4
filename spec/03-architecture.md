@@ -256,6 +256,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `FileSyncEngineRegistry` | Discovery and selection of `FileSyncEngine` implementations (§4.2, §10.6). Built-in `passthrough` engine (no-op; the active provider's native bind mount realizes the `MountPlan` directly) registered eagerly; plugin engines (e.g., the bundled `@lando/file-sync-mutagen`) register when the plugin contribution graph loads. The selected engine's Live Layer is `Layer.suspend`-wrapped and constructed only when the active app plan contains at least one mount the planner has marked `realization: "accelerated"` per §6.4 | `FileSyncEngineRegistryLive` |
 | `RuntimeProviderRegistry` | Provider discovery, selection | `RuntimeProviderRegistryLive` |
 | `AppPlanner` | Service plan, route plan | `AppPlannerLive` |
+| `BuildOrchestrator` | Compiles the resolved `AppPlan` into a `BuildPlan` DAG (artifact-build phase + per-service app-build phase, with cross-service `depends_on:` edges), runs siblings concurrently per the §6.13 caps, drives the build lifecycle (`pre-build`, `build-step-*`, `post-build`) through `EventService`, owns the per-step transcript writer (`<userDataRoot>/builds/<app-id>/<buildKey>.log`; §12.4), and surfaces task-tree progress to the active `Renderer` via the §8.9.2 events. Up-to-date checks consult the planner-stamped `buildKey` against the `build-results` cache (§12.1) so unchanged steps short-circuit to `build-step-skip { reason: "up-to-date" }`. | `BuildOrchestratorLive` (constructed at level `app`; `Layer.suspend`-wrapped — `lando info`, `lando logs`, and most tooling commands never construct it) |
 | `EventService` | Pub/sub over typed lifecycle events | `EventServiceLive` |
 | `CacheService` | Atomic cache reads/writes, invalidation | `CacheServiceLive` |
 | `FileSystem` | `Bun.file` / `Bun.write` wrapper | `FileSystemBunLive` |
@@ -433,11 +434,11 @@ Tagged errors live in `@lando/core/errors`:
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
-| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
+| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, `BuildOrchestrator`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
 
 **Cross-table note.** `CertificateAuthority`, `ProxyService`, `HealthcheckRunner`, and `UrlScanner` are pluggable abstractions whose canonical declarations live in §4.2 rather than the §3.4 services table above. Their default Live Layers ship in core (built-in CA stub, default `fetch`-based scanner, default `RuntimeProvider.exec`-backed healthcheck runner) so they are members of the AOT-composed bootstrap layers per the membership-per-level table here. When a plugin contributes an alternate Layer (`@lando/ca-mkcert`, `@lando/proxy-traefik`, etc.), the contributed Layer replaces the default at the same level. Embedding hosts that need to enumerate every service in the runtime SHOULD treat the §4.2 catalog and the §3.4 services table together as the authoritative service registry.
 
-The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bun: { verb: install }`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither. The active `FileSyncEngine` Live Layer follows the same pattern at level `app`: a `lando start` against an app whose plan contains zero accelerated mounts (every mount is `realization: "passthrough"`) MUST NOT spawn the Mutagen daemon, allocate a sync session, or import the gRPC client; the `Layer.suspend` wrapper holds construction until the planner emits the first `FileSyncEngine.createSession` call.
+The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bun: { verb: install }`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither. The active `FileSyncEngine` Live Layer follows the same pattern at level `app`: a `lando start` against an app whose plan contains zero accelerated mounts (every mount is `realization: "passthrough"`) MUST NOT spawn the Mutagen daemon, allocate a sync session, or import the gRPC client; the `Layer.suspend` wrapper holds construction until the planner emits the first `FileSyncEngine.createSession` call. `BuildOrchestrator` follows the same pattern: a `lando info` or a `lando logs` against an already-running app does not need it; the `Layer.suspend` wrapper holds construction until a lifecycle command (`app:start`, `app:rebuild`, `app:cache:refresh --rebuild`) actually drives a build phase.
 
 `Renderer`'s Layer.suspend wrapping cooperates with the first-paint contract in §8.9 — a pre-bootstrap direct-write fallback prints the initial banner before the suspended `Renderer` Layer is forced.
 
@@ -453,6 +454,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | Process / Shell | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec` |
 | File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` (published for every `FileSyncEngine` session lifecycle transition and conflict/progress frame; §10.6) |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` (published for every container→host RPC dispatched by `HostProxyService`; §10.10) |
+| Build | `pre-build`, `post-build`, `pre-build-phase`, `post-build-phase`, `build-step-start`, `build-step-progress`, `build-step-complete`, `build-step-skip`, `build-step-fail` (published by `BuildOrchestrator` for every node in the `BuildPlan` DAG; §6.13) |
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
 | Cross-cutting | `deprecation-used` (published whenever a registered deprecated surface is used at runtime; §18.4) |
@@ -616,6 +618,67 @@ export type ToolingStepResultEvent = Schema.Schema.Type<typeof ToolingStepResult
 
 The `tooling-step-skip`, `tooling-step-complete`, and `tooling-step-fail` events all share the `ToolingStepResultEvent` payload via the discriminated `outcome` field; only the event `_tag` differs. `EventService.publish` is signature-narrowed to each `_tag`, so subscribers may type-discriminate on either the event name or the `outcome` field.
 
+`BuildPhaseEvent`, `BuildStepEvent`, `BuildStepProgressEvent`, and `BuildStepResultEvent` cover the `Build` event scope (§3.5). They publish for every node in the `BuildPlan` DAG that `BuildOrchestrator` (§3.4) drives at level `app`. The `pre-build` / `post-build` pair brackets the whole DAG; `pre-build-phase` / `post-build-phase` brackets each of the two phases (`artifact`, `app`); `build-step-*` events fire for individual steps. Step events carry the resolved app and service ids, the phase, the planner-stamped `buildKey` (the SHA-256 over the resolved build script and its inputs that drives the up-to-date check; §6.13), the user-facing `stepId`, the `dependsOn` predecessor ids, and the redacted command shape. `build-step-progress` carries truncated streaming chunks tailed off the per-step transcript; the renderer's "tail" view (§8.9.2) is driven by these events. `build-step-skip` MUST fire (with `reason: "up-to-date"`) when the orchestrator short-circuits an unchanged step against the `build-results` cache (§12.1).
+
+```ts
+export const BuildPhaseEvent = Schema.TaggedStruct("pre-build-phase", {
+  app: AppRef,
+  phase: Schema.Literal("artifact", "app"),
+  steps: Schema.Array(Schema.String),                     // stepIds in this phase
+  failFast: Schema.Boolean,                               // resolved per-phase failure policy
+  concurrency: Schema.Number,                             // resolved cap for this phase
+  timestamp: Schema.DateTimeUtc,
+});
+export type BuildPhaseEvent = Schema.Schema.Type<typeof BuildPhaseEvent>;
+
+export const BuildStepEvent = Schema.TaggedStruct("build-step-start", {
+  app: AppRef,
+  phase: Schema.Literal("artifact", "app"),
+  service: ServiceName,
+  stepId: Schema.String,                                  // e.g. "appserver:composer-install"
+  buildKey: Schema.String,                                // content-hash; correlation key for transcripts and cache
+  parentId: Schema.optional(Schema.String),               // task-tree parent (the phase node)
+  dependsOn: Schema.Array(Schema.String),                 // predecessor stepIds in the BuildPlan DAG
+  command: BuildCommandRedacted,                          // redacted argv/script shape
+  transcriptPath: AbsolutePath,                           // path the orchestrator is writing to
+  timestamp: Schema.DateTimeUtc,
+});
+export type BuildStepEvent = Schema.Schema.Type<typeof BuildStepEvent>;
+
+export const BuildStepProgressEvent = Schema.TaggedStruct("build-step-progress", {
+  stepId: Schema.String,
+  buildKey: Schema.String,
+  stream: Schema.Literal("stdout", "stderr"),
+  data: Schema.Uint8ArrayFromBase64,                      // chunk; bounded by the orchestrator's per-event cap
+  byteOffset: Schema.Number,                              // offset into the per-step transcript file
+  parsed: Schema.optional(Schema.Unknown),                // optional structured projection (e.g., npm install --json)
+  timestamp: Schema.DateTimeUtc,
+});
+export type BuildStepProgressEvent = Schema.Schema.Type<typeof BuildStepProgressEvent>;
+
+export const BuildStepResultEvent = Schema.TaggedStruct("build-step-complete", {
+  app: AppRef,
+  phase: Schema.Literal("artifact", "app"),
+  service: ServiceName,
+  stepId: Schema.String,
+  buildKey: Schema.String,
+  outcome: Schema.Union(
+    Schema.Literal("complete"),                           // build-step-complete
+    Schema.Literal("skip"),                               // build-step-skip (up-to-date or precondition)
+    Schema.Literal("fail"),                               // build-step-fail
+  ),
+  exitCode: Schema.optional(Schema.Number),               // present for `complete`/`fail`
+  durationMs: Schema.Number,
+  cached: Schema.Boolean,                                 // true when up-to-date short-circuit fired
+  reason: Schema.optional(Schema.String),                 // "up-to-date" | redacted failure summary
+  transcriptPath: Schema.optional(AbsolutePath),          // present for `complete`/`fail`; omitted for cached skips
+  timestamp: Schema.DateTimeUtc,
+});
+export type BuildStepResultEvent = Schema.Schema.Type<typeof BuildStepResultEvent>;
+```
+
+The `build-step-skip`, `build-step-complete`, and `build-step-fail` events all share the `BuildStepResultEvent` payload via the discriminated `outcome` field; only the event `_tag` differs (mirrors the tooling-step pattern above). `BuildCommandRedacted` is shaped after the redacted command schema used by `pre-process-exec` / `pre-shell-exec`: `${secret:…}`-resolved values, registry tokens, and additional `redact:` tokens declared on the build script are masked before they reach the event payload, identical to §3.4. Full unredacted output is available only to the active `Logger` at debug level and to the per-step transcript file (§12.4) — never to subscribers.
+
 `FileSyncSessionEvent` covers the `pre-/post-file-sync-create`, `pre-/post-file-sync-pause`, `pre-/post-file-sync-resume`, and `pre-/post-file-sync-terminate` family. They publish for every `FileSyncEngine` session-lifecycle transition (§10.6) and carry the resolved app and service ids, the engine id (`passthrough`, `mutagen`, plugin-supplied), the session id, the source/target shape (host path → volume name or service path), the canonical mount-source pair from §6.4 (so subscribers can correlate back to the user's Landofile entry), the sync mode, and the redacted excludes hash. Source paths under the host user's home directory are surfaced as-is to the active `Logger` at debug level and as a stable `${HOME}/<...>` shape to all other subscribers and the recorded transcript.
 
 ```ts
@@ -714,8 +777,21 @@ cli-app:start-init         → command resolved, runtime ready, run() not yet ca
 pre-init                   → app instance created
 post-init
 pre-start                  → user-defined pre-start subscribers
-  (priority 100) artifact build
-  (priority 110) per-service app build
+  pre-build                                                 → BuildOrchestrator entered (§6.13)
+    pre-build-phase { phase: "artifact" }                   → DAG nodes for build.artifact + group-weighted instructions
+      build-step-start  { service: "appserver", buildKey, … }   ┐
+      build-step-start  { service: "node",      buildKey, … }   │  (concurrent siblings; cap = build.concurrency.artifact)
+      build-step-start  { service: "db",        buildKey, … }   │  failFast: true — first failure interrupts siblings
+      build-step-progress { stepId, stream: "stdout"|"stderr" }*│  (streamed chunks drive renderer §8.9.2 tail)
+      build-step-complete | build-step-skip | build-step-fail   ┘
+    post-build-phase { phase: "artifact" }
+    pre-build-phase { phase: "app" }                        → DAG nodes for build.app (composer install, npm ci, …)
+      build-step-start  { service: "appserver", buildKey, … }   ┐
+      build-step-start  { service: "node",      buildKey, … }   │  (concurrent siblings; cap = build.concurrency.app)
+      build-step-progress { stepId, stream, … }*                │  failFast: false — every sibling runs to completion
+      build-step-complete | build-step-skip | build-step-fail   ┘  (failures aggregated, surfaced after the phase)
+    post-build-phase { phase: "app" }
+  post-build                                                → all phases drained; aggregated failures (if any) raise
 post-start
   (priority 1) running-state check
   (priority 2) healthchecks
@@ -725,6 +801,8 @@ cli-app:start-run          → OCLIF postrun: run() returned successfully
                               (or cli-app:start-error if run() raised; mutually exclusive)
 before-exit
 ```
+
+The `Build` scope replaces the v1 of this section's "(priority 100) artifact build / (priority 110) per-service app build" prose. The two phases remain ordered (artifact → app, per service) — the priority numbers survive as the *phase boundaries* the event sequence renders — but siblings inside a phase run concurrently per the §6.13 DAG semantics. Within a service the orchestrator still serializes `artifact` → `app` (the `lando.boot` scaffolding lives inside the built artifact). Compose `depends_on:` flows through into app-build ordering so an `npm run seed` step that needs the db waits for `db` to come up before it runs.
 
 `lando stop`, `rebuild`, and `destroy` follow analogous sequences with their own `pre-*`/`post-*` pairs and their own `cli-<canonical-id>-init`/`-run`/`-error` triplet at the same positions relative to bootstrap.
 
