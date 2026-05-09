@@ -288,6 +288,18 @@ mounts:
 - A copy with `includes:` becomes the primary copy plus one bind per included path.
 - Excludes are applied in ascending depth order so deeper excludes are created after shallower ones.
 
+**Mount realization (`passthrough` vs `accelerated`).** A `MountPlan` of `type: bind` carries a planner-set `realization` field — `"passthrough"` or `"accelerated"` — derived deterministically from the active provider's `bindMountPerformance` capability (§5.4):
+
+- Provider declares `bindMountPerformance: "native"` (Linux native runtime; OrbStack on macOS; the WSL-resident detection path) → `realization: "passthrough"`. The provider's native bind primitive realizes the mount directly. The `FileSyncEngine` is not consulted; no daemon is spawned; no `pre-file-sync-*` events fire. Volume shadows for `excludes:` are still created the same way as today.
+- Provider declares `bindMountPerformance: "slow"` (Docker Desktop on macOS / Windows; Podman Desktop machines; default-config Lima/Colima; Rancher Desktop) → `realization: "accelerated"`. The planner replaces the bind shape with a pair: (1) a provider-managed `volume`-type storage entry named `lando-sync-<app-id>-<service>-<mountKeyHash>` mounted at the original `destination:`, and (2) a `FileSyncEngine` session whose source is the host path and whose target is that volume. The bundled `@lando/file-sync-mutagen` engine (§4.2) realizes this pair via a Mutagen sync session; alternate engines see the same `FileSyncSessionSpec` shape (§3.5).
+- Provider declares `bindMountPerformance: "none"` → planner refuses with `CapabilityError` per §5.4.
+
+The user's Landofile is unchanged across all three cases — the realization shape is invisible. `lando config --format yaml` MAY surface the resolved realization in a `--debug` view; it MUST NOT include the engine id or session id in the canonical config output, because doing so would leak machine state into a value the user is expected to commit.
+
+**Excludes under `realization: "accelerated"`.** When the active `FileSyncEngine` declares `capabilities.exclusionPatterns: true` (§4.2), the planner forwards `excludes:` to the engine's session-spec rather than emitting per-exclude volume shadows. Mutagen's `.mutagen.yml`-style ignore patterns are richer than the volume-shadow trick (full glob support, no per-exclude volume cost); the planner translates `excludes: ["node_modules", "vendor", "!vendor/something"]` into the engine's native exclude grammar. When the engine declares `exclusionPatterns: false` (e.g., the `passthrough` engine itself, or a hypothetical engine that cannot honor patterns), the planner falls back to the volume-shadow expansion so the user's `excludes:` still take effect — engines never silently drop excludes.
+
+**Mount key.** Every `MountPlan` carries a stable `mountKey` (SHA-256 over the canonicalized `(source, destination, type, normalized-excludes)` tuple) used as the correlation key between the mount, the realized volume name, the `FileSyncSessionSpec`, the `file-sync-sessions` cache entry (§12.1), and lifecycle events (§3.5). The mount key is invariant across replans of the same Landofile content; an `excludes:` change rolls the mount key, which causes the engine to terminate the old session and create a fresh one without the user thinking about session state.
+
 ### 6.5 Storage
 
 Storage is a list of persistent data declarations, scoped by lifetime.
@@ -536,7 +548,7 @@ export const ServiceInfo = Schema.Struct({
   urls: Schema.Array(Schema.String),
   hostnames: Schema.Array(Schema.String),
   certs: Schema.Literal("none", "generated", "custom"),
-  health: Schema.Literal("unknown").pipe(Schema.Union(Schema.Boolean)),
+  health: Schema.Union(Schema.Literal("unknown"), Schema.Boolean),
   externalConnections: Schema.Array(ConnectionInfo),
   internalConnections: Schema.Array(ConnectionInfo),
   creds: Schema.optional(ServiceCreds),                  // §6.12.4; present iff the service-type opts in
@@ -662,6 +674,7 @@ Feature rules:
 | `lando.security` | Additional CAs into trust store | 1100 |
 | `lando.ssh-agent` | SSH agent forwarding (sidecar by default — see §10.4) | 1200 |
 | `lando.host-proxy` | Container→host RPC: bind-mount the per-app `HostProxyService` socket, install the in-container shim binary symlinked as `xdg-open`/`open`/`lando`, inject `LANDO_HOST_PROXY_*` env (§10.10) | 1250 |
+| `lando.bun-self` | Container-side Bun primitive: install a Bun runtime inside the service so `bun` / `bunx` / `bun install` / `bun create` / `bun build` work directly without round-tripping through the host (§8.2.4 / §10.10.2 forbid `meta:bun` and mutating `runBun` verbs from the host-proxy path). The feature provisions Bun under `/usr/local/lib/lando/bun` with a stable PATH symlink, sets `BUN_INSTALL_GLOBAL_DIR` to a service-scoped directory so `bun add -g` does not write to the host user's home, and adds `LANDO_BUN_VERSION` / `LANDO_BUN_PATH` env. The feature MUST refuse to coexist with the `lando.host-proxy` shim symlinking `bun` (the §10.10.3 `lando.host-proxy.bun: true` opt-in) and rejects with `BunSelfFeatureConflictError` at plan time. Default Bun version tracks the §14.2 floor and is overridable via the feature's config schema. | 1260 |
 | `lando.git` | Install git, set safe.directory | 1300 |
 | `lando.sudo` | Install sudo, add user to sudo group | 1400 |
 | `lando.proxy` | Proxy-package config wiring (when ProxyService active) | 1500 |
@@ -701,7 +714,7 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 | `opensearch[:<version>]` | 2 | `lando` | OpenSearch + index init, persistent volume |
 | `meilisearch[:<version>]` | 1 | `lando` | Meilisearch + master key, persistent volume |
 | `mailpit` | latest | `lando` | Mailpit SMTP capture + web UI proxy route |
-| `mailhog` | latest | `lando` | MailHog SMTP capture + web UI proxy route (alias for `mailpit` users on legacy projects) |
+| `mailhog` | latest | `lando` | MailHog SMTP capture + web UI proxy route. **Deprecated** since v4.2.0; scheduled for removal in v5.0.0; replacement `mailpit`. The catalog keeps the entry registered (and the §9.4 plugin manifest example mirrors the deprecation) so legacy projects continue to validate while the deprecation runtime emits the §18.4 `deprecation-used` event on use. New projects should select `mailpit`. |
 | `rabbitmq[:<version>]` | 3, 4 | `lando` | RabbitMQ + management UI route, persistent volume |
 | `minio` | latest | `lando` | MinIO S3-compatible object store + console route, bucket init |
 | `localstack` | latest | `lando` | LocalStack AWS emulator |

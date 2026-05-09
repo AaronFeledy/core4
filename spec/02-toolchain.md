@@ -33,7 +33,7 @@ Bun is the runtime, the package manager, the test runner, the bundler, and the b
 - The mechanism is exposed through a single core service, **`BunSelfRunner`** (§3.4), which is the only place in core source that constructs a `BUN_BE_BUN=1` child. `ProcessRunner.run(["bun", …])` and `ShellRunner` calls that re-encode `bun` as a literal command name are forbidden — they are a layering bug because they assume a system Bun. The `BunSelfRunner` service is plugin-replaceable per §4.2 (audited / dry-run / sandboxed / mirror-aware variants) and publishes `pre-bun-self-exec` / `post-bun-self-exec` lifecycle events identical in shape to the `pre-shell-exec` / `post-shell-exec` pair (§3.5, §11.2).
 - The library form of `@lando/core` (§1.4, §13.5) does **not** ship with an embedded Bun: when consumed as a library on a system that already has `bun` on PATH, the default `BunSelfRunner` Layer falls back to spawning the host `bun`. This is the same fallback pattern used by `EmbeddedAssetService` for library-mode asset reads (§17.3). An embedding host that wants to forbid host-Bun fallback may provide a strict variant.
 - A small, user-visible surface area is exposed at the CLI: `lando meta bun …` (top-level alias `lando bun`) and `lando meta x …` (top-level alias `lando x`) proxy through to the embedded Bun's CLI for ad-hoc package management, scaffolding, and one-shot bunx invocations (§8.2). Recipes consume the same primitive through the declarative `postInit.bun:` action's `install` / `add` / `create` / `run` / `x` verbs (§8.8.8). Plugin authoring (`lando meta plugin new` / `test` / `build` / `link` / `publish`) goes through `BunSelfRunner` (§9.10).
-- The `bin/lando.ts` level-`none` fast path (§3.2) MUST still short-circuit before any Bun-CLI dispatch logic runs. Argv shapes that look like `bun` invocations (`lando bun --version`, `lando install`, `lando x`) are *not* level-`none`: they require at minimum level `minimal` so `BunSelfRunner` and lifecycle events are constructed. The pre-OCLIF argv sniffer never matches them.
+- The `bin/lando.ts` level-`none` fast path (§3.2) MUST still short-circuit before any Bun-CLI dispatch logic runs. Argv shapes that look like `bun` invocations (`lando bun --version`, `lando bun install`, `lando x`) are *not* level-`none`: they require at minimum level `minimal` so `BunSelfRunner` and lifecycle events are constructed. The pre-OCLIF argv sniffer never matches them.
 
 **Single-executable distribution.** The default Lando v4 binary is built with `bun build --compile`:
 
@@ -315,14 +315,16 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
   "type": "module",
   "bin": { "lando": "./bin/lando.js" },
   "exports": {
-    ".":              "./dist/index.js",          // public library API (§16)
-    "./schema":       "./dist/schema/index.js",   // Effect Schemas
-    "./errors":       "./dist/errors/index.js",   // tagged error classes
-    "./events":       "./dist/lifecycle/index.js",// EventService + payload schemas
-    "./services":     "./dist/services/index.js", // service-tag re-exports
-    "./testing":      "./dist/testing/index.js",  // test helpers (TestServices wiring, fixtures)
-    "./cli":          "./dist/cli/index.js",      // programmatic CLI invocation
-    "./oclif":        "./dist/cli/oclif/index.js" // OCLIF adapter; do not import outside src/cli/oclif/
+    ".":                  "./dist/index.js",                  // public library API (§16)
+    "./schema":           "./dist/schema/index.js",           // Effect Schemas
+    "./errors":           "./dist/errors/index.js",           // tagged error classes
+    "./events":           "./dist/lifecycle/index.js",        // EventService + payload schemas
+    "./services":         "./dist/services/index.js",         // service-tag re-exports
+    "./testing":          "./dist/testing/index.js",          // test helpers (TestServices wiring, fixtures)
+    "./cli":              "./dist/cli/index.js",              // programmatic CLI invocation
+    "./oclif":            "./dist/cli/oclif/index.js",        // OCLIF adapter; do not import outside src/cli/oclif/
+    "./docs/components":  "./dist/docs/components/index.js",  // Astro/JSX component runtime + AST helpers for executable tutorials (§19.3)
+    "./docs/redactions":  "./dist/docs/redactions/index.js"   // transcript redaction list shared with @lando/sdk/docs/redactions (§19.6)
   }
 }
 ```
@@ -333,6 +335,7 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
 - `@lando/core/cli` MAY pull OCLIF; it is the programmatic-CLI entry.
 - `@lando/core/schema` MUST be tree-shakeable per-schema. Importing one schema must not pull every schema in the package.
 - `@lando/core/testing` is published only on the `next` and `dev` channels until the testing API is frozen for v4.0.0 GA.
+- `@lando/core/docs/components` and `@lando/core/docs/redactions` exist because executable tutorials (§19) ship JSX/Astro implementations and a shared redaction list that the docs build consumes. The contracts (prop schemas, frontmatter, matcher schema, transcript schemas) live in `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions`; the runtime implementations live here. They are tree-shakeable and do NOT pull `@oclif/core` or the Effect runtime — the docs site imports them at build time without instantiating a `LandoRuntime`.
 - Every entry point ships its own `.d.ts` file. Type-only re-exports use `export type { ... }`.
 - ESM only at every entry. No CommonJS dual-publish.
 

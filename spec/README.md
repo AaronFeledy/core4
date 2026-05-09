@@ -30,9 +30,9 @@ The split is *almost* one-section-per-file, with a few principled merges and fou
 | 08 | [`08-cli-and-tooling.md`](./08-cli-and-tooling.md) | §8 | Command kinds (built-in, plugin, tooling, management). Three first-class command namespaces (`app`, `apps`, `meta`) with plugin-owned topics. Top-level alias mechanism and conflict rules. Built-in command list with behavioral requirements, including dedicated `app config`, `meta config`, and `meta recipes:*` commands. The `LandoCommandSpec` contract (with `namespace` and `topLevelAlias` fields) and `CommandInput` shape. OCLIF integration policies (manifest-first, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, flexible taxonomy, namespace-to-topic mapping). Taskfile-inspired tooling schema with dynamic service resolution, expressions, dependencies, includes, and up-to-date checks. The `ToolingEngine` abstraction and its hot-path cache. `lando apps init` and the v4 recipe model — Yeoman-style init-time scaffolds with Q&A prompts (text/select/multiselect/confirm/number/secret/path/editor), file manifests, and post-init actions, replacing the v3 recipe-as-plugin model. The `Renderer` service and selection precedence. |
 | 09 | [`09-embedding.md`](./09-embedding.md) | §16 | Embedding `@lando/core` in another Bun program: use cases, the public API surface (Effect-native; no Promise facade), the `makeLandoRuntime` factory and its options, host-controlled plugin discovery (opt-in to system/user/app sources), bootstrap and lifecycle in library mode, scope/resource ownership, programmatic CLI invocation via `@lando/core/cli`, the `@lando/core/testing` API, version compatibility, and embedding non-goals. |
 | 10 | [`10-plugins.md`](./10-plugins.md) | §9 | Plugin identity (manifest locations, distribution forms via `PluginSource` adapters), runtime rules, discovery order across bundled/system/user/app-local sources (CLI default; library mode in §16.4), the full manifest schema (with command-namespace and top-level-alias rules), the contribution surfaces table, the install/update flow for `meta:plugin:add` / `meta:plugin:remove` / `meta:update` (and their top-level aliases), plugin loading rules, and the constrained `LandoPluginContext`. |
-| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Networking intent, `ProxyService` and `RoutePlan` (with the route-filter abstraction), `CertificateAuthority`, corporate proxy/custom CA handling for Lando-owned network access, SSH and host identity (with the new sidecar-by-default SSH-agent design), `HealthcheckRunner` and `UrlScanner`, files and performance, SQL helpers (plugin-only), `lando setup` and host integration, and logs/diagnostics. |
+| 11 | [`11-subsystems.md`](./11-subsystems.md) | §10 | Networking intent, `ProxyService` and `RoutePlan` (with the route-filter abstraction), `CertificateAuthority`, corporate proxy/custom CA handling for Lando-owned network access, SSH and host identity (with the new sidecar-by-default SSH-agent design), `HealthcheckRunner` and `UrlScanner`, files and performance (with the `FileSyncEngine` pluggable abstraction and the bundled `@lando/file-sync-mutagen` reference engine that transparently accelerates bind mounts on Docker-Desktop-class providers), SQL helpers (plugin-only), `lando setup` and host integration, and logs/diagnostics. |
 | 12 | [`12-caches-and-persistence.md`](./12-caches-and-persistence.md) | §12 | The cache catalog (command, plugin, app-plugin, app-plan, service-info, provider, oclif-manifest, update) with locations and invalidation triggers. Encoding choices. Atomicity rules. The full list of persistent on-disk artifacts. Hot-path read budgets. Disconnectable local-dev state after app build. |
-| 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | The nine test layers (unit, Effect service, CLI, library API, provider contract, plugin SDK contract, scenario, recipe, end-to-end), Effect testing patterns, the mandatory provider contract suite, the library API contract suite, the recipe suite that exercises every canonical recipe, the scenario / recipe / end-to-end conventions that replace the Lando 3 Leia format, schema and docs gates, type gates, PR merge requirements, the two distribution forms (compiled binary and library package whose `package.json#bin` doubles as a CLI install path) plus bundled-plugin and bundled-recipe generation, the docs site build, the per-PR/nightly/weekly CI matrices, and the release flow with channels. |
+| 13 | [`13-testing-and-distribution.md`](./13-testing-and-distribution.md) | §13 | The fourteen test layers (unit, Effect service, CLI, library API, provider contract, template engine contract, host proxy contract, plugin SDK contract, scenario, recipe, executable tutorials, deprecation, perf budget, end-to-end), Effect testing patterns, the mandatory provider contract suite, the library API contract suite, the recipe suite that exercises every canonical recipe, the scenario / recipe / end-to-end conventions that replace the Lando 3 Leia format, schema and docs gates, type gates, PR merge requirements, the two distribution forms (compiled binary and library package whose `package.json#bin` doubles as a CLI install path) plus bundled-plugin and bundled-recipe generation, the docs site build, the per-PR/nightly/weekly CI matrices, and the release flow with channels. |
 | 14 | [`14-appendices.md`](./14-appendices.md) | §15 | Provider-neutral language reference. Forbidden core dependencies. The source-derived acceptance checklist (with embedding criteria). The OCLIF-vs-`@effect/cli` decision rationale. The glossary. |
 | 15 | [`15-binary-build-and-release.md`](./15-binary-build-and-release.md) | §17 | The build pipeline and its single orchestrator. The codegen catalog (every generator, its inputs, outputs, and staleness gate). Asset embedding policy (hybrid: static JSON imports for small data, `Bun.embeddedFiles` for large data). Per-platform signing and notarization (macOS Developer ID + notarytool, Windows Authenticode + cosign, Linux GPG-signed checksum manifests). Supply-chain artifacts (CycloneDX SBOM, SLSA v1.0 provenance, cosign signatures). The self-update protocol (manifest schema, channel resolution, signature verification, atomic replace, Windows rename, rollback). The v4.0.0 install surface (GitHub Releases + curl-pipe installer; Homebrew/scoop/winget/distro deferred). The CI release workflow on GitHub Actions and the binary-shipping acceptance criteria that augment §15.C. |
 | 16 | [`16-deprecation-and-surface-evolution.md`](./16-deprecation-and-surface-evolution.md) | §18 | The cross-cutting deprecation contract: principles, the canonical `DeprecationNotice` schema, the `DeprecationService` and its hot-path rules, the `deprecation-used` lifecycle event, the surface deprecation matrix that maps every public surface to its declaration mechanism (schema annotation, contract field, manifest field, TSDoc tag), the renderer's once-per-process warning behavior and `--no-deprecation-warnings` opt-out, the semver-bound removal policy and the release-pipeline `removeIn` enforcement gate, and the test/lint gates. |
@@ -74,6 +74,7 @@ If you are looking for…
 | Why Effect Schema is the only schema lib in core | 02 | §2.5 |
 | Forbidden runtime dependencies | 02 | §2.6 |
 | Package surface (entry points, exports) | 02 | §2.7 |
+| `@lando/core/docs/components` and `@lando/core/docs/redactions` exports | 02 + 09 + 17 | §2.7 + §16.2 + §19.3 |
 | The four layers | 03 | §3.1 |
 | Bootstrap flow + bootstrap levels | 03 | §3.2 |
 | Level-`none` (pre-OCLIF fast path) | 03 | §3.2 |
@@ -140,6 +141,7 @@ If you are looking for…
 | Top-level command aliases | 08 | §8.1.2 |
 | Built-in commands list and behavior | 08 | §8.2 |
 | `lando app cache refresh` command | 08 | §8.2 |
+| `lando app includes update` / `verify` commands | 08 | §8.2 |
 | `lando app config` command | 08 | §8.2.1 |
 | `lando app config translate` command | 08 | §8.2.1 |
 | `lando events --follow` command | 08 | §8.2 |
@@ -175,6 +177,7 @@ If you are looking for…
 | `.bun.sh` script-backed tooling tasks | 08 | §8.5.9 |
 | `ToolingEngine` abstraction | 08 | §8.6 |
 | `host` ToolingEngine (Bun-Shell-backed) | 08 | §8.6 |
+| Both built-in ToolingEngines (`providerExec` + `host`) in pluggability catalog | 04 | §4.2 |
 | Tooling compilation pipeline + hot path | 08 | §8.7 |
 | `lando apps init` and the v4 recipe model (Yeoman-style scaffolds) | 08 | §8.8 |
 | `recipe.yml` schema (prompts, files, postInit) | 08 | §8.8.3 |
@@ -209,6 +212,7 @@ If you are looking for…
 | Plugin-contributed config translators | 10 | §9.5 |
 | Plugin install/update flow | 10 | §9.6 |
 | Plugin postinstall-script trust policy | 10 | §9.6 |
+| `lando plugin trust*` open decisions | 01 | §14.2 |
 | Plugin authoring toolkit (`meta:plugin:new`/`test`/`build`/`link`/`unlink`/`publish`) | 10 | §9.10 |
 | Plugin loading rules | 10 | §9.7 |
 | `LandoPluginContext` | 10 | §9.8 |
@@ -218,13 +222,17 @@ If you are looking for…
 | Corporate proxies and outbound trust | 11 | §10.3.1 |
 | SSH and host identity (sidecar-by-default agent) | 11 | §10.4 |
 | Host proxy (container→host RPC: `xdg-open` shim, in-container `lando` shim) | 11 | §10.10 |
-| Host-proxy wire protocol (`openUrl`, `runLando`, NDJSON streaming) | 11 | §10.10.2 |
+| Host-proxy wire protocol (`openUrl`, `openPath`, `runLando`, `runBun`, `notify`, `clipboardCopy`, NDJSON streaming) | 11 | §10.10.2 |
+| Host-proxy `runBun` channel + verb allowlist | 11 | §10.10.2 |
 | In-container shim binary (argv[0] dispatch on `xdg-open` / `open` / `lando`) | 11 | §10.10.3 |
 | `lando.host-proxy` built-in service feature | 06 | §6.11 |
+| `lando.bun-self` built-in service feature (container-side Bun primitive) | 06 | §6.11 |
 | `LANDO_HOST_PROXY_SOCKET` / `LANDO_HOST_PROXY_TOKEN` / `LANDO_HOST_PROXY_DEPTH` env | 06 | §6.9 |
 | `HostProxyService` core service | 03 | §3.4 |
+| `DoctorService` core service | 03 | §3.4 |
 | `HostProxyService` pluggability (headless CI, audited builds, recording) | 04 + 11 | §4.2 + §10.10.5 |
 | `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | 03 | §3.5 + §11.2 |
+| `tooling-step-start` / `-skip` / `-complete` / `-fail` lifecycle event payloads | 03 | §11.2 |
 | `hostProxyAllowed` field on `LandoCommandSpec` and tooling tasks | 08 | §8.3 + §8.5.1 |
 | `host-proxy-allowlist` cache | 12 | §12.1 |
 | Per-app `host-proxy.sock` persistent artifact | 12 | §12.4 |
@@ -232,6 +240,21 @@ If you are looking for…
 | Healthcheck runner + URL scanner | 11 | §10.5 |
 | Host-target healthchecks (`ShellRunner`-backed) | 11 | §10.5 |
 | Files and performance | 11 | §10.6 |
+| `FileSyncEngine` pluggable abstraction | 04 + 11 | §4.2 + §10.6 |
+| `FileSyncEngineRegistry` core service | 03 | §3.4 |
+| Mount realization (`passthrough` vs `accelerated`) | 06 | §6.4 |
+| `bindMountPerformance` provider capability | 05 | §5.4 |
+| Bundled `@lando/file-sync-mutagen` engine | 11 | §10.6.2 |
+| `FileSyncEngine` doctor checks | 11 | §10.6.3 |
+| `FileSyncEngine` replaceability (audited / air-gapped / alternate engines) | 11 | §10.6.4 |
+| `pre-file-sync-*` / `post-file-sync-*` lifecycle events | 03 | §3.5 + §11.2 |
+| `file-sync-conflict-detected` / `file-sync-progress` events | 03 | §11.2 |
+| `file-sync-sessions` cache | 12 | §12.1 |
+| Mutagen daemon socket / binary persistent artifacts | 12 | §12.4 |
+| File sync engine contract suite | 13 | §13.1 |
+| Mutagen gRPC client codegen entry | 15 | §17.2 |
+| Mutagen versions manifest codegen entry | 15 | §17.2 |
+| `lando setup --skip-file-sync` flag | 11 | §10.8 |
 | SQL helpers (plugin-only) | 11 | §10.7 |
 | `lando setup` | 11 | §10.8 |
 | Logs and diagnostics | 11 | §10.9 |

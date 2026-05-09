@@ -50,7 +50,7 @@ import { Tutorial, Step, Run, Verify, Cleanup, Variable }
 
 <Step name="start">
   <Run command="lando start" />
-  <Verify event="post-app-start" status="success" within="60s" />
+  <Verify event="post-start" status="success" within="60s" />
 </Step>
 
 <Cleanup>
@@ -173,6 +173,7 @@ Failure-traceability is not optional. A reader who breaks a tutorial must land o
 - Every `<Tutorial layer="e2e">` carries at least one `<Cleanup>` applicable to every variant.
 - No raw fenced bash/sh/zsh code blocks appear inside `<Tutorial>` — shell snippets MUST go through `<Run>` or `<Inline>`. (This is the v3 Leia failure mode and is rejected outright.)
 - Every `<Verify>` `expect` value parses against `MatcherSchema`.
+- Every `<Verify event="...">` name is a member of the canonical event registry (the same registry that drives §13.4's "event registry drift" check). Unknown event names — including stale v3-style ids like `post-app-start` — fail the lint with `TutorialUnknownEventError` and a suggestion list. The flagship `<Verify event="post-start" ...>` example in §19.2 is exercised by the lint-fixture suite to keep this rule honest.
 - `<Tabs>` blocks do not nest (`TutorialNestedTabsError`); every `<Tab name>` matches a value declared for the enclosing axis; every `axes:`-declared axis has either exactly one `default: true` value or every value `default: false`; every `variants:` key resolves to a real Cartesian cell (`TutorialVariantKeyError`).
 
 Cooperating gates:
@@ -232,43 +233,3 @@ The `TabAxis` and `TabAxisValue` schemas live in `@lando/sdk/docs/components`. E
 **Naming.** Generated test files use dot-separated axis-value suffixes in declaration order: `<id>.test.ts` (no axes), `<id>.<value>.test.ts` (`tabs:`), `<id>.<axis1-value>.<axis2-value>.....test.ts` (`axes:`). The `describe()` block matches.
 
 **Rendering.** Each `<Tabs>` block renders as a Starlight tab group. The transcript embedded in each tab pane is the transcript captured for *that variant's* run; switching tabs swaps both the displayed command set and the captured output.
-
-**Worked example.**
-
-```mdx
----
-test:
-  id: drupal-tutorial
-  layer: e2e
-  tabs:
-    - { name: drupal-10, label: Drupal 10 }
-    - { name: drupal-11, label: Drupal 11, default: true }
----
-<Tutorial>
-
-<Tabs>
-  <Tab name="drupal-10">
-    <Step name="scaffold">
-      <Run command="lando init --recipe drupal" answers={{ version: "10" }} />
-    </Step>
-  </Tab>
-  <Tab name="drupal-11">
-    <Step name="scaffold">
-      <Run command="lando init --recipe drupal" answers={{ version: "11" }} />
-    </Step>
-  </Tab>
-</Tabs>
-
-<Step name="start">
-  <Run command="lando start" />
-  <Verify event="post-app-start" status="success" />
-</Step>
-
-<Cleanup>
-  <Run command="lando destroy -y" />
-</Cleanup>
-
-</Tutorial>
-```
-
-Generates `drupal-tutorial.drupal-10.test.ts` and `drupal-tutorial.drupal-11.test.ts`. The `start` step and `<Cleanup>` are byte-identical in both; the `scaffold` step differs.

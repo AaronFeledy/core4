@@ -253,6 +253,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `ConfigTranslatorRegistry` | Plugin-contributed external config translators | `ConfigTranslatorRegistryLive` |
 | `TemplateEngineRegistry` | Discovery and selection of `TemplateEngine` implementations (§4.2, §7.3.2). Built-in `lando` engine registered eagerly; plugin engines registered when the plugin contribution graph loads | `TemplateEngineRegistryLive` |
 | `TemplateRenderer` | Front-door for whole-file and string template rendering. Resolves engine via the registry, builds the canonical `TemplateRenderContext`, calls the engine, and writes the content-addressed render cache (§12.1 `template-render`). Used by the mount materializer, the recipe scaffold, and `ConfigService` for string-value interpolation | `TemplateRendererLive` |
+| `FileSyncEngineRegistry` | Discovery and selection of `FileSyncEngine` implementations (§4.2, §10.6). Built-in `passthrough` engine (no-op; the active provider's native bind mount realizes the `MountPlan` directly) registered eagerly; plugin engines (e.g., the bundled `@lando/file-sync-mutagen`) register when the plugin contribution graph loads. The selected engine's Live Layer is `Layer.suspend`-wrapped and constructed only when the active app plan contains at least one mount the planner has marked `realization: "accelerated"` per §6.4 | `FileSyncEngineRegistryLive` |
 | `RuntimeProviderRegistry` | Provider discovery, selection | `RuntimeProviderRegistryLive` |
 | `AppPlanner` | Service plan, route plan | `AppPlannerLive` |
 | `EventService` | Pub/sub over typed lifecycle events | `EventServiceLive` |
@@ -266,26 +267,15 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `Logger` | Structured logging through Effect | `LoggerLive` (Effect `Logger.pretty` by default; `Layer.suspend`-wrapped — built on first `yield* Logger`) |
 | `Renderer` | CLI output strategy | `RendererLive` (default Lando renderer; `Layer.suspend`-wrapped, with a pre-bootstrap direct-write fallback for first-paint banners; §8.9) |
 | `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
-| `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches `openUrl` (host browser open) and `runLando` (in-process re-entry into `@lando/core/cli`) requests from in-container shims, enforces token auth and the §10.10 message allowlist, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
+| `DoctorService` | Runs host/app/provider diagnostics and exposes automated or manual remediations; aggregates plugin-contributed `doctorChecks` (§9.5); also records deprecation entries surfaced by `lando doctor --deprecations` (§18.6) | `DoctorServiceLive` (constructed at level `plugins` so plugin-contributed checks register; transcripts captured via `ShellRunner` per §10.9) |
+| `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2), `notify` (host notification), `clipboardCopy` (host clipboard write) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
 
 Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type errors at the Layer composition boundary catch missing services at compile time. Services in this table are core-provided runtime services; not every one is plugin-replaceable. Plugin-replaceable abstractions are enumerated in §4.2. `EmbeddedAssetService` is overrideable by tests and embedding hosts, but is not a plugin contribution surface because it protects binary/package asset integrity.
 
-**`ProcessRunner` vs `ShellRunner` — when to use which.** Both spawn host processes; they exist for distinct shapes of work and are deliberately complementary, not redundant.
+**`ProcessRunner` vs `ShellRunner`.** `ProcessRunner` wraps `Bun.spawn(argv, opts)` for argv-precise execution with no shell parsing. `ShellRunner` wraps `` Bun.$`…` `` (Bun Shell) for shell-shaped work — pipes, redirection, globs, command substitution, and built-in `rm`/`mkdir`/`cat`/`mv`/`which` that work cross-platform. Core code MUST NOT use one to imitate the other: no `ProcessRunner.run(["sh", "-c", "…"])`, and no `ShellRunner` calls that just re-encode argv as a literal string.
 
-| Concern | `ProcessRunner` | `ShellRunner` |
-|---|---|---|
-| Primitive | `Bun.spawn(argv, opts)` | `` Bun.$`…` `` (Bun Shell, in-process bash-like interpreter) |
-| Input shape | Exact `argv: string[]` plus options | Tagged template literal with safe-by-default interpolation |
-| Shell features | None — no parsing, no expansion, no built-ins | Pipes (`\|`), redirection (`<`, `>`, `2>&1`), globs (`*`, `**`, `{a,b}`), command substitution (`$(…)`), built-in `cd`/`ls`/`rm`/`mkdir`/`cat`/`mv`/`which`, env var expansion |
-| Cross-platform on Windows | Whatever the spawned binary supports | Built-ins are reimplemented in Bun, so `rm -rf` / `mkdir -p` / globs work on Windows without `rimraf` / `cross-env` |
-| Typical callers | Provider exec (`docker exec`, `podman exec`), signing tools (`codesign`, `signtool`, `cosign`), `bun add`, plugin-supplied external binaries | The `host` ToolingEngine (§8.6), tooling `vars.<name>.sh:` for `service: :host` (§8.5.3), `.bun.sh` scripts (§8.5.9), the `lando shell` REPL (§8.2), host-side healthcheck/url-scanner plugins (§10.5), recipe `bun: { verb: script }` post-init (§8.8.8) |
-| Injection risk | Minimal (no shell parses the argv) | Mitigated by Bun Shell's automatic escaping of interpolated values; explicit `{ raw: "…" }` is required to opt out |
-| Cancellation | `Effect.interrupt` → `proc.kill(SIGTERM)` then `SIGKILL` | `Effect.interrupt` → `proc.kill()` on the underlying Bun Shell process; scope finalizers reap any spawned children |
-
-A simple rule: if the work is "spawn this exact binary with these exact arguments," use `ProcessRunner`. If the work would naturally be a one-liner in `bash` and you want it to also work on Windows, use `ShellRunner`. Core code MUST NOT use one to imitate the other (no `ProcessRunner.run(["sh", "-c", "…"])`, no `ShellRunner` calls that just re-encode argv as a literal string).
-
-Both services flow logs through the same `Logger`, redact `${secret:…}` values identically (§7.3.1, §11), publish lifecycle events (`pre-process-exec` / `post-process-exec` for `ProcessRunner`, `pre-shell-exec` / `post-shell-exec` for `ShellRunner`; §3.5/§11), and honor the same `PrivilegeService` for elevation. Telemetry, dry-run, and audited variants are plugin-replaceable for both (§4.2).
+Both services flow logs through the same `Logger`, redact `${secret:…}` values identically (§7.3.1, §11), publish lifecycle events (`pre-process-exec`/`post-process-exec` and `pre-shell-exec`/`post-shell-exec`; §3.5/§11), and honor the same `PrivilegeService` for elevation. Telemetry, dry-run, and audited variants are plugin-replaceable for both (§4.2). Author-time guidance on choosing between them lives in `docs/contributing/runner-selection.md`.
 
 **`ShellRunner` interface (illustrative; canonical schema in `@lando/sdk`):**
 
@@ -439,13 +429,15 @@ Tagged errors live in `@lando/core/errors`:
 |---|---|---|---|
 | `none` | *none* — no Effect runtime constructed | *none* | every service |
 | `minimal` | `ConfigService`, `FileSystem`, `ProcessRunner`, `EmbeddedAssetService`, `CacheService`, `EventService`, `DeprecationService`, `TemplateEngineRegistry` (built-in `lando` engine pre-registered), `TemplateRenderer` | `Logger`, `Renderer`, `Telemetry`, `ShellRunner`, `BunSelfRunner` | plugins, commands, providers, app planner, networking subsystems |
-| `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry`; plugin-contributed `TemplateEngine` impls register here | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
+| `plugins` | `minimal` + `PluginRegistry`, `ConfigTranslatorRegistry`, `DoctorService`, `FileSyncEngineRegistry` (built-in `passthrough` engine pre-registered); plugin-contributed `TemplateEngine` and `FileSyncEngine` impls register here | `minimal`'s lazy + `PrivilegeService` | commands beyond registry, providers, app planner |
 | `commands` | `plugins` + `CommandRegistry` | `plugins`'s lazy | providers, app planner |
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
-| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService` | *(none — this is the maximal layer)* |
+| `app` | `provider` + `AppPlanner`, `LandofileService` | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
 
-The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bun: { verb: install }`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither.
+**Cross-table note.** `CertificateAuthority`, `ProxyService`, `HealthcheckRunner`, and `UrlScanner` are pluggable abstractions whose canonical declarations live in §4.2 rather than the §3.4 services table above. Their default Live Layers ship in core (built-in CA stub, default `fetch`-based scanner, default `RuntimeProvider.exec`-backed healthcheck runner) so they are members of the AOT-composed bootstrap layers per the membership-per-level table here. When a plugin contributes an alternate Layer (`@lando/ca-mkcert`, `@lando/proxy-traefik`, etc.), the contributed Layer replaces the default at the same level. Embedding hosts that need to enumerate every service in the runtime SHOULD treat the §4.2 catalog and the §3.4 services table together as the authoritative service registry.
+
+The "lazy" column lists services that the codegen wraps in `Layer.suspend` so their `Live` body never executes unless something at runtime actually requests them. This keeps cold-path overhead off the hot path: a `lando list` at level `minimal` doesn't construct `Telemetry` unless a subscriber actually publishes a telemetry event during the run, doesn't construct `ShellRunner` unless something at runtime actually shells out (the same caller that needs the host engine, a `vars.sh:` evaluator, or a `.bun.sh` script), and doesn't construct `BunSelfRunner` unless something at runtime self-spawns Bun (the same caller that runs `lando bun`, `lando x`, plugin install, recipe `bun: { verb: install }`, or `includes:` materialization). The two runner services share the lazy bucket because most level-`minimal` invocations need neither. The active `FileSyncEngine` Live Layer follows the same pattern at level `app`: a `lando start` against an app whose plan contains zero accelerated mounts (every mount is `realization: "passthrough"`) MUST NOT spawn the Mutagen daemon, allocate a sync session, or import the gRPC client; the `Layer.suspend` wrapper holds construction until the planner emits the first `FileSyncEngine.createSession` call.
 
 `Renderer`'s Layer.suspend wrapping cooperates with the first-paint contract in §8.9 — a pre-bootstrap direct-write fallback prints the initial banner before the suspended `Renderer` Layer is forced.
 
@@ -459,11 +451,12 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | App | `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy` |
 | Provider | `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `pre-provider-logs`, `post-provider-logs` |
 | Process / Shell | `pre-process-exec`, `post-process-exec`, `pre-shell-exec`, `post-shell-exec`, `pre-bun-self-exec`, `post-bun-self-exec` |
+| File sync | `pre-file-sync-create`, `post-file-sync-create`, `pre-file-sync-pause`, `post-file-sync-pause`, `pre-file-sync-resume`, `post-file-sync-resume`, `pre-file-sync-terminate`, `post-file-sync-terminate`, `file-sync-conflict-detected`, `file-sync-progress` (published for every `FileSyncEngine` session lifecycle transition and conflict/progress frame; §10.6) |
 | Host proxy | `pre-host-proxy-call`, `post-host-proxy-call` (published for every container→host RPC dispatched by `HostProxyService`; §10.10) |
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
-
 | Cross-cutting | `deprecation-used` (published whenever a registered deprecated surface is used at runtime; §18.4) |
+
 CLI event names use the **canonical command id** (§8.1.1), not the top-level alias the user typed. Subscribing to `cli-app:start-run` catches the event whether the user invoked `lando app start` or `lando start`.
 
 **CLI event mapping to OCLIF lifecycle:**
@@ -585,6 +578,106 @@ export const BunSelfExecEvent = Schema.TaggedStruct("pre-bun-self-exec", {
 });
 export type BunSelfExecEvent = Schema.Schema.Type<typeof BunSelfExecEvent>;
 ```
+
+`ToolingStepEvent` and `ToolingStepResultEvent` cover the `tooling-step-*` family. They publish for every step in a compiled `ToolingProgram` (§8.5 / §8.6) at level `tooling` or higher; their `pre-<tool>` / `post-<tool>` siblings publish around the whole task and reuse the same payload shapes with `stepIndex: -1` to denote task-boundary frames. Step events carry the canonical task id, the step index and id, the step kind (`shell`, `command`, `engine-exec`, `script`), the resolved service target, and (for `complete`/`fail`) the exit code, duration, and a redacted reason.
+
+```ts
+export const ToolingStepEvent = Schema.TaggedStruct("tooling-step-start", {
+  task: Schema.String,                                    // canonical id, e.g. "app:composer", "app:db:wait"
+  stepIndex: Schema.Number,                               // 0-based position; -1 for the task-boundary frame
+  stepId: Schema.optional(Schema.String),                 // user-supplied step name when present
+  kind: Schema.Union(
+    Schema.Literal("shell"),                              // ShellRunner-backed (host engine, .bun.sh, vars.sh)
+    Schema.Literal("command"),                            // command: <canonical-id> step
+    Schema.Literal("engine-exec"),                        // ToolingEngine.execute step (e.g., providerExec)
+    Schema.Literal("script"),                             // recipe bun: { verb: script } / .bun.sh
+  ),
+  service: Schema.optional(Schema.String),                // resolved service target (`:host` for host-mode)
+  timestamp: Schema.DateTimeUtc,
+});
+export type ToolingStepEvent = Schema.Schema.Type<typeof ToolingStepEvent>;
+
+export const ToolingStepResultEvent = Schema.TaggedStruct("tooling-step-complete", {
+  task: Schema.String,
+  stepIndex: Schema.Number,
+  stepId: Schema.optional(Schema.String),
+  outcome: Schema.Union(
+    Schema.Literal("complete"),                           // tooling-step-complete
+    Schema.Literal("skip"),                               // tooling-step-skip (status/precondition)
+    Schema.Literal("fail"),                               // tooling-step-fail
+  ),
+  exitCode: Schema.optional(Schema.Number),               // present for `complete`/`fail`
+  durationMs: Schema.Number,
+  reason: Schema.optional(Schema.String),                 // skip/fail remediation summary, redacted per §3.4
+  timestamp: Schema.DateTimeUtc,
+});
+export type ToolingStepResultEvent = Schema.Schema.Type<typeof ToolingStepResultEvent>;
+```
+
+The `tooling-step-skip`, `tooling-step-complete`, and `tooling-step-fail` events all share the `ToolingStepResultEvent` payload via the discriminated `outcome` field; only the event `_tag` differs. `EventService.publish` is signature-narrowed to each `_tag`, so subscribers may type-discriminate on either the event name or the `outcome` field.
+
+`FileSyncSessionEvent` covers the `pre-/post-file-sync-create`, `pre-/post-file-sync-pause`, `pre-/post-file-sync-resume`, and `pre-/post-file-sync-terminate` family. They publish for every `FileSyncEngine` session-lifecycle transition (§10.6) and carry the resolved app and service ids, the engine id (`passthrough`, `mutagen`, plugin-supplied), the session id, the source/target shape (host path → volume name or service path), the canonical mount-source pair from §6.4 (so subscribers can correlate back to the user's Landofile entry), the sync mode, and the redacted excludes hash. Source paths under the host user's home directory are surfaced as-is to the active `Logger` at debug level and as a stable `${HOME}/<...>` shape to all other subscribers and the recorded transcript.
+
+```ts
+export const FileSyncSessionEvent = Schema.TaggedStruct("pre-file-sync-create", {
+  callId: Schema.String,                                  // ULID; correlation key with the post- event
+  app: AppRef,
+  service: ServiceName,
+  engine: Schema.String,                                  // resolved FileSyncEngine id
+  sessionId: Schema.String,                               // engine-issued session id (e.g., Mutagen session id)
+  source: AbsolutePath,                                   // host-side source; ${HOME} normalized for non-debug subscribers
+  target: Schema.Union(
+    Schema.TaggedStruct("volume",  { name: Schema.String, path: PortablePath }),
+    Schema.TaggedStruct("service", { service: ServiceName,  path: PortablePath }),
+  ),
+  mode: Schema.Union(
+    Schema.Literal("two-way-safe"),
+    Schema.Literal("two-way-resolved"),
+    Schema.Literal("one-way-safe"),
+    Schema.Literal("one-way-replica"),
+  ),
+  excludesHash: Schema.String,                            // SHA-256 over the canonicalized excludes list
+  mountKey: Schema.String,                                // stable id matching the §6.4 MountPlan it realizes
+  timestamp: Schema.DateTimeUtc,
+});
+export type FileSyncSessionEvent = Schema.Schema.Type<typeof FileSyncSessionEvent>;
+```
+
+`FileSyncConflictEvent` (`file-sync-conflict-detected`) and `FileSyncProgressEvent` (`file-sync-progress`) carry per-frame data streamed from the engine. Conflicts include the affected paths and the conflict kind (`both-modified`, `delete-modify`, `permissions-divergence`); progress frames include byte counts and an opaque `phase` token so the renderer can drive a deterministic spinner without parsing engine-specific shape.
+
+```ts
+export const FileSyncConflictEvent = Schema.TaggedStruct("file-sync-conflict-detected", {
+  app: AppRef,
+  sessionId: Schema.String,
+  paths: Schema.Array(PortablePath),
+  kind: Schema.Union(
+    Schema.Literal("both-modified"),
+    Schema.Literal("delete-modify"),
+    Schema.Literal("permissions-divergence"),
+    Schema.Literal("symlink-divergence"),
+  ),
+  remediation: Schema.optional(Schema.String),
+  timestamp: Schema.DateTimeUtc,
+});
+export type FileSyncConflictEvent = Schema.Schema.Type<typeof FileSyncConflictEvent>;
+
+export const FileSyncProgressEvent = Schema.TaggedStruct("file-sync-progress", {
+  app: AppRef,
+  sessionId: Schema.String,
+  phase: Schema.Union(
+    Schema.Literal("initial-scan"),
+    Schema.Literal("staging"),
+    Schema.Literal("transitioning"),
+    Schema.Literal("watching"),                            // steady-state; emitted at most once per session
+  ),
+  bytesPending: Schema.Number,                              // bytes left to transfer in the current phase
+  bytesTotal: Schema.optional(Schema.Number),               // populated for `staging` / `transitioning`
+  timestamp: Schema.DateTimeUtc,
+});
+export type FileSyncProgressEvent = Schema.Schema.Type<typeof FileSyncProgressEvent>;
+```
+
+The `FileSyncEngine` Live Layer is responsible for translating engine-native progress streams (Mutagen's `Synchronization.List` watch stream, in the bundled implementation) into these events; the Renderer consumes them through the standard `EventService.subscribe` path so accelerated mounts get the same first-paint and spinner treatment as any other long-running operation (§8.9).
 
 ### 11.3 Subscriber priority
 

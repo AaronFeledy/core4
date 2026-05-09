@@ -26,7 +26,8 @@ This section is the contract index. Every replaceable abstraction in v4 is liste
 | Abstraction | Service tag | Responsibility | Default | Pluggable mechanism |
 |---|---|---|---|---|
 | **Containerization** | `RuntimeProvider` | Apply app plans, exec, logs, build artifacts, manage instances | `@lando/provider-lando` (Lando-managed runtime) | Plugin contributes `providers:` in manifest. User selects with `provider:` in Landofile or `defaultProvider` global. Multiple providers may be installed; one is selected per app. |
-| **Tooling execution** | `ToolingEngine` | Translate a compiled Lando task graph from `tooling:` into provider or host operations | Built-in `ProviderExecToolingEngine` (uses `RuntimeProvider.exec`) | Plugin contributes `toolingEngines:`. Selected per command step, task, defaults, Landofile, or global config. |
+| **File sync** | `FileSyncEngine` | Realize accelerated bind mounts when the active `RuntimeProvider` declares `bindMountPerformance: "slow"` (§5.4): create, pause, resume, terminate sync sessions; surface conflict and progress streams as `file-sync-*` lifecycle events (§3.5). Engines are session-stateful (a session per accelerated mount, lifetime bound to `app:start` … `app:stop`) and pluggable per the standard §4.3 selection rules. Engines MUST NOT speak to provider runtimes directly; they observe `MountPlan`s the planner has marked `realization: "accelerated"` and read/write through the provider's storage capabilities | Built-in `passthrough` engine (no-op; the provider's native bind mount realizes the `MountPlan` directly) — registered eagerly at level `plugins`. **Bundled default for `bindMountPerformance: "slow"`:** `@lando/file-sync-mutagen` (Mutagen-backed; bundled per §1.4). Library consumers receive only `passthrough` unless they opt into the bundled set | Plugin contributes `fileSyncEngines:`. Selected per app by `bindMountPerformance` (provider) → `defaultFor.bindMountPerformance` matchers (plugin) → global `defaultFileSyncEngine:` → sole-installed-implementation, per §4.3. The user-facing Landofile MUST NOT carry an engine-id field by default; the planner picks the engine without explicit user input. Per-mount `accelerate: false` and global `defaultFileSyncEngine: passthrough` are escape hatches for advanced users and are not surfaced in canonical recipes or generated tutorials. |
+| **Tooling execution** | `ToolingEngine` | Translate a compiled Lando task graph from `tooling:` into provider or host operations | Two engines ship **built into core** (not as plugins): `providerExec` (default; `RuntimeProvider.exec`-backed; in-service work) and `host` (`ShellRunner` / `Bun.$`-backed; powers `service: :host`, `.bun.sh` scripts, `vars.<name>.sh:`, the `lando shell` REPL, recipe `bun: { verb: script }`, host-target healthchecks/scanners; §1.4, §8.6). Both are present at level `tooling` and selected per call. | Plugin contributes `toolingEngines:`. Selected per command step, task, defaults, Landofile, or global config (§8.6 selection precedence). The `host` and `providerExec` engine ids are reserved by core and may NOT be replaced by a plugin in v4.0; plugins MAY contribute additional engines (e.g., `processExec`, `remote`, `dryRun`). |
 | **Template rendering** | `TemplateEngine` | Render a string or whole-file template with the published `TemplateRenderContext` (§7.3.2) into text | Built-in `lando` engine (the §7.3.1 expression language) — always available, the only engine permitted for Landofile string-value interpolation. `@lando/template-handlebars` and `@lando/template-mustache` are bundled as optional whole-file engines. | Plugin contributes `templateEngines:`. Selected per render site by explicit `engine:` field, file extension, Landofile `defaultTemplateEngine:`, or global config (§4.3, §7.3.2). |
 | **Console logging** | `Logger` | Structured log events with annotations | Effect `Logger.pretty` for TTY, `Logger.json` for non-TTY | Plugin contributes `loggers:`. Selected by global `logger:` config or `--logger=` flag. |
 | **Output rendering** | `Renderer` | Render task progress, tables, banners, errors | Built-in default renderer | Plugin contributes `renderers:`. Selected by `--renderer=` flag, `LANDO_RENDERER`, or TTY/CI detection. |
@@ -113,6 +114,17 @@ provides:
       capabilities:
         verbs: [install, add, remove, runScript, buildLib]   # explicitly omits `x`, `create`, `publishPkg`
         offlineOnly: true                                    # refuses any registry read that misses the local cache
+  fileSyncEngines:
+    - id: mutagen
+      module: ./src/file-sync/engine.ts
+      defaultFor:
+        bindMountPerformance: ["slow"]                       # auto-select on slow-IO providers (Docker Desktop, Podman Desktop)
+      capabilities:
+        modes: [two-way-safe, two-way-resolved, one-way-safe, one-way-replica]
+        remoteAgentDeployment: auto                          # engine deploys its own agent into containers
+        exclusionPatterns: true                              # honors excludes at the engine level (no volume-shadow fallback)
+        conflictReporting: true
+        progressReporting: true
   templateEngines:
     - id: handlebars
       module: ./src/engines/handlebars.ts

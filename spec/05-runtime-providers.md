@@ -114,6 +114,7 @@ export const ProviderCapabilities = Schema.Struct({
   sharedCrossAppNetwork: Schema.Boolean,
   persistentStorage: Schema.Boolean,
   bindMounts: Schema.Boolean,
+  bindMountPerformance: Schema.Literal("native", "slow", "none"),
   copyMounts: Schema.Boolean,
   hostPortPublish: Schema.Literal("native", "proxy", "manual", "none"),
   routeProvider: Schema.Boolean,
@@ -133,6 +134,14 @@ If a service, feature, or subsystem requires a missing capability, planning fail
 - `none` — the provider can only realize fields that core normalized into provider-neutral `AppPlan` fields.
 - `portable` — the provider can realize the Compose keys that have direct provider-neutral equivalents, such as standard service environment, command, mounts, stores, networks, endpoints, and dependencies.
 - `native` — the provider can also consume Compose-native fields preserved in plan extensions, such as provider labels, deploy hints, build variants, profiles, configs, and secrets.
+
+`bindMountPerformance` describes the provider's host↔guest filesystem-IO characteristics for `bind`-type mounts:
+
+- `native` — the provider's bind mount path is the host filesystem (Linux native runtime, OrbStack on macOS, Linux containers on Linux Docker/Podman). The planner realizes `MountPlan`s of `type: bind` directly through the provider with no `FileSyncEngine` involvement.
+- `slow` — the provider runs in a separate filesystem boundary (Docker Desktop's VM-mediated VirtioFS / osxfs / 9p; Podman Desktop machines; Lima/Colima at default settings; Windows Docker Desktop with WSL2 backend when the project lives outside the WSL filesystem). The planner marks every `bind` mount in the resolved `AppPlan` as `realization: "accelerated"` and routes its lifecycle through the active `FileSyncEngine` (§4.2, §10.6); the user's Landofile is unchanged and the user does not opt into the behavior.
+- `none` — the provider does not support bind mounts at all (some remote/cloud providers). Plans containing `bind` mounts fail with `CapabilityError` per the §5.4 capability-validation rule.
+
+`bindMountPerformance` is informational at the boundary, not a knob. Providers MUST report it truthfully; misreporting is treated as a contract violation by the §13.1 provider contract suite. The planner consults this field exactly once per `app:start` to compute the `realization` flag on every `MountPlan`; runtime overrides require a Landofile-level escape hatch (`mounts: [..., accelerate: false]`) or a global `defaultFileSyncEngine: passthrough` setting, neither of which is documented in canonical recipes or executable tutorials. The §13.1 perf-budget suite asserts that `app:start` against a `bindMountPerformance: "slow"` provider does **not** regress to native bind IO — i.e., the `FileSyncEngine` actually engaged.
 
 ### 5.5 The `AppPlan`
 
@@ -266,6 +275,8 @@ It demonstrates:
 - A `Stream<LogChunk>` implementation backed by the private log API.
 - Provider-extension schema for Compose passthrough, custom labels, registry credentials.
 
+**`bindMountPerformance` declaration.** `@lando/provider-lando` declares per platform: `native` on Linux (the runtime is on the host filesystem), `slow` on macOS (the managed Podman machine is a VM with VM-mediated file sharing), `slow` on Windows (managed machine on WSL2 or Hyper-V; even WSL-resident projects pay for the Windows↔WSL boundary on host-mounted paths). The planner consults the live capability report at `app:start`, so a user who later adopts a future native macOS Linux container substrate sees the value flip without code changes.
+
 `@lando/provider-lando` is bundled and active by default. Removing it from a distribution is supported.
 
 #### 5.8.2 Opt-in: system Docker (`@lando/provider-docker`)
@@ -280,9 +291,13 @@ It demonstrates:
 - A `Stream<LogChunk>` implementation backed by `docker logs --follow`.
 - Provider-extension schema for Compose passthrough, native labels, registry credentials.
 
+**`bindMountPerformance` declaration.** `@lando/provider-docker` reports `native` when the system Docker is Docker Engine on Linux, `slow` when the system Docker is Docker Desktop on macOS or Windows (the daemon runs in a VM regardless of WSL2/Hyper-V backend), and `native` when the system Docker is Docker Engine running natively inside WSL2 with the user's project living inside the WSL filesystem (detected via `/proc/version` introspection plus the resolved app-root path). The Compose-spec input subset documented in §7.4 is independent of this signal; bind performance is purely a host-IO concern.
+
 #### 5.8.3 Opt-in: system Podman (`@lando/provider-podman`)
 
 `@lando/provider-podman` targets a system-wide Podman installation. Activate with `provider: podman` in a Landofile or `defaultProvider: podman` in global config. It demonstrates the same core behaviors as `@lando/provider-docker`, adapted for the Podman API and rootless operation.
+
+**`bindMountPerformance` declaration.** `@lando/provider-podman` reports `native` on Linux (rootless or rootful, both run on the host filesystem), `slow` on macOS and Windows (the user's Podman machine is a VM), with the same WSL-resident detection as `@lando/provider-docker`. Plugin authors implementing additional providers (Lima, OrbStack, Rancher Desktop, remote/cloud) MUST report `bindMountPerformance` honestly: OrbStack on macOS reports `native` because its file-sharing layer reaches host-filesystem latency; Lima with default settings reports `slow`; Rancher Desktop reports `slow`.
 
 ### 5.9 Multi-provider apps (deferred)
 

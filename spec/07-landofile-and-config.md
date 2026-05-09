@@ -423,27 +423,16 @@ Practical consequences:
 - `${secret:KEY}` is a secret reference (distinct from `${KEY}` shell-parameter-expansion: the `secret:` prefix is the marker). Secret values resolve through `SecretStore` (§4.2), MUST be redacted in logs/errors and lifecycle event payloads, and MUST NOT be written decrypted into caches (§12). Secret references that appear inside `${VAR}` shell-style substitutions follow the same redaction rules.
 - A plugin-contributed engine (§7.3.2) MUST honor the same purity guarantees. An engine that cannot — for example, a template engine whose helper API permits arbitrary host-side code — declares `unsafe: true` in its manifest contribution; `unsafe` engines are disabled by default and require explicit global config opt-in (§9.5).
 
-#### Helper design conventions
+#### Helper contract
 
-The §7.3.1 helper set is the pure, sync, dev-env-relevant subset of Bun's first-party utilities, with a small set of Lando-specific rules where Bun's conventions don't apply to a sync-pure-deterministic helper language:
+Every helper — built-in or plugin-contributed (§9.5) — MUST be:
 
-1. **Synchronous, pure, deterministic, no-network, no-mutation.** Helpers run synchronously (there is no await in expressions) and MUST NOT execute shell commands, perform network IO, or mutate process or global state. The single explicit carve-out is file IO via `load()` / `import()`, where the read is part of the cache key (§7.3).
+- Synchronous, pure, deterministic. No network IO, no shell, no global-state mutation. The single carve-out is file IO via `load()` / `import()`, whose reads are part of the app-plan cache key (§7.3).
+- Total over its declared input range. Converters return `null` on un-interpretable input (compose with `default()` / `required()`); parsers (`fromJson`, `fromYaml`, `fromToml`) throw `ConfigExpressionError` with line and column; predicates return `false` for bad input. Misconfiguration (unknown algorithm, unknown format) throws.
 
-2. **No `Sync` suffix.** Bun uses `gzipSync` / `spawnSync` to disambiguate from async siblings. Lando expression helpers have no async siblings; the suffix would be redundant and misleading.
+The SDK ships a contract test suite (§13.1) every helper passes; a helper that cannot satisfy these constraints is not contributable through the expression language.
 
-3. **Flat naming with namespaces only when ≥2 ops share a domain.** Most helpers stay flat for use in pipe chains. Domains with multiple related operations are namespaced (`path.*`, `fs.*`, `url.*`, `semver.*`). The first identifier in a dotted form is matched against the namespace registry; if it is a known namespace, the dotted form is a function reference and MUST be called.
-
-4. **Polymorphic conversion via a trailing `format` string parameter.** Helpers that produce multiple representations of the same value take a string `format` argument from a fixed closed set, e.g. `hash(data, 'sha256', 'hex')`. Invalid format values throw `ConfigExpressionError` at expression-eval time when the value is statically known.
-
-5. **Optional configuration via a final `opts` object literal.** When a helper has more than one optional knob, they MAY be collected into a single trailing object so the call site stays readable. Positional args are reserved for required parameters and the polymorphic `format` parameter from rule 4.
-
-6. **Return shapes mirror Web and Node standards verbatim.** `url.parse` returns the field set of the WHATWG `URL`; `path.parse` (when added) returns the field set of `node:path.parse`. Lando does not invent new field names where a standard exists.
-
-7. **Error model.** Converters return `null` on un-interpretable input — compose with `default(...)` or `required(...)`. Parsers (`fromJson`, `fromYaml`, `fromToml`) throw `ConfigExpressionError` with line and column. Predicates return `false` for bad input. Misconfiguration (unknown algo, unknown format) throws.
-
-A Bun-mapping table is published as part of the §7.8 generated reference for every helper that has a Bun source. When Bun's behavior shifts in a way that would change a helper's contract, Lando either re-pins to Bun's new behavior or freezes to the old and documents the divergence in the helper's reference page.
-
-Plugins MAY contribute additional helpers and namespaces through the contribution surface (§9.5). Contributed helpers MUST satisfy the same constraints; the SDK provides a contract test suite (§13.1) every helper passes.
+Naming conventions, return-shape conventions, and the Bun-source mapping for built-in helpers are published in the generated helper reference (§7.8). They are author-time guidance for plugin contributors, not part of the runtime contract.
 
 ### 7.3.2 Template engines
 
@@ -793,6 +782,7 @@ Rules:
 - `LANDO_PROVIDER_<PROVIDER>_*` adjusts a single provider's extension config.
 - Standard proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, lowercase variants) are honored for Lando-owned network clients unless explicit `network.proxy` config overrides them.
 - `LANDO_NETWORK_CA_CERTS` accepts a JSON array of additional CA certificate paths for Lando-owned network clients.
+- `commandAliases:` (§7.4 Landofile, §7.5 global) is overridable through the standard prefix rules but the nested map keys are JSON-encoded. The master switch is `LANDO_COMMAND_ALIASES_ENABLED=true|false`; the `disabled:` array is set with `LANDO_COMMAND_ALIASES_DISABLED='["start","poweroff"]'`; the `custom:` map is set with `LANDO_COMMAND_ALIASES_CUSTOM='{"halt":"app:stop"}'`. Per-alias scalar setters (`LANDO_COMMAND_ALIASES_CUSTOM_HALT=app:stop`) are NOT supported because alias names may contain characters incompatible with `UPPER_SNAKE_CASE` round-tripping; the JSON-document setter is the canonical mechanism.
 
 Examples:
 
@@ -869,15 +859,15 @@ A fragment MAY itself declare `includes:`. Cycles are detected and rejected with
 
 - If a lockfile entry exists for an include or app-declared plugin, that exact ref/version/checksum is used and verified.
 - If no entry exists, the source is resolved fresh and a new lockfile entry is written.
-- `lando includes update [<source>...]` refreshes one or more entries; with no arguments, refreshes all.
-- `lando includes verify` re-checks every checksum without updating.
-- A lockfile mismatch (checksum drift, missing source) fails with a tagged `IncludeLockError` and remediation pointing at `lando includes update`.
+- `lando app includes update [<source>...]` (canonical id `app:includes:update`; §8.2) refreshes one or more entries; with no arguments, refreshes all.
+- `lando app includes verify` (canonical id `app:includes:verify`; §8.2) re-checks every checksum without updating.
+- A lockfile mismatch (checksum drift, missing source) fails with a tagged `IncludeLockError` and remediation pointing at `lando app includes update`.
 
 #### 7.7.5 Caching
 
 Resolved fragment contents are cached under `<userCacheRoot>/includes/` keyed by source + ref + checksum. Cache reads are content-addressed and cross-app — a fragment used by multiple apps is fetched once.
 
-Network access is required only when an include or app-declared plugin is missing from the cache, `lando includes update` is invoked, or the app build itself pulls remote artifacts/dependencies. Routine `lando start` / tooling invocations on a project with complete caches, a complete lockfile, and already-built app artifacts do not touch the network.
+Network access is required only when an include or app-declared plugin is missing from the cache, `lando app includes update` is invoked, or the app build itself pulls remote artifacts/dependencies. Routine `lando start` / tooling invocations on a project with complete caches, a complete lockfile, and already-built app artifacts do not touch the network.
 
 #### 7.7.6 Security
 

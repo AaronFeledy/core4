@@ -25,6 +25,9 @@ Covered here: the provider-neutral language reference (which Docker-flavored ter
 | Traefik middleware | Route filter |
 | Docker labels | Provider metadata |
 | Dockerfile | Sourcefile or Containerfile (in container-specific docs) |
+| Mutagen | File-sync engine (in core docs); the bundled implementation may be referred to by name only within `@lando/file-sync-mutagen` plugin docs and within the §10.6.2 reference subsection |
+| Mutagen session | File-sync session (in core docs) |
+| Mutagen daemon | File-sync daemon (in core docs); the §10.6.2 reference subsection is the single place where "Mutagen daemon" is the canonical phrase |
 
 ### B. Forbidden core dependencies
 
@@ -64,7 +67,7 @@ The v4 implementation must satisfy:
 - `lando meta config` reads/writes the global config file at `<userConfRoot>/config.yml` and validates against the published schema.
 - `lando apps init --recipe <id>` scaffolds a working app from a canonical recipe (§8.8.10) using interactive prompts; `--no-interactive --answers <file>` produces the same output deterministically.
 - Every canonical recipe under `recipes/` produces a Landofile that passes schema validation with default answers.
-- A Landofile `includes:` array (§7.7) loads local, git, and npm fragments, deep-merges them with file precedence rules, and writes an `.lando.lock.yml` recording resolved refs and checksums; `lando includes verify` succeeds without network access on a warm cache.
+- A Landofile `includes:` array (§7.7) loads local, git, and npm fragments, deep-merges them with file precedence rules, and writes an `.lando.lock.yml` recording resolved refs and checksums; `lando app includes verify` (canonical id `app:includes:verify`; §8.2) succeeds without network access on a warm cache.
 - Landofile `plugins:` entries are resolved during app materialization/build, installed into an app-scoped plugin store, locked in `.lando.lock.yml`, and reused offline for subsequent local-dev commands.
 - The canonical service-type catalog (§6.12) covers PHP, Node, Python, Ruby, and Go runtimes; nginx and apache; MariaDB, MySQL, and PostgreSQL; Redis, Memcached, and Valkey; Solr, Elasticsearch, OpenSearch, and Meilisearch; Mailpit and Mailhog; RabbitMQ; MinIO and LocalStack; static; and a `compose` passthrough.
 - `lando app info` supports service filtering, path filtering, deep output, JSON, table.
@@ -102,6 +105,12 @@ The v4 implementation must satisfy:
 - SSH key loading supports disablement and allowlists; default uses sidecar agent.
 - SQL helper plugins can expose import/export workflows for supported services.
 - Mount excludes/includes are explicit on per-mount config.
+- Bind mounts on a `bindMountPerformance: "slow"` provider (§5.4) are routed through the active `FileSyncEngine` (§10.6) without any user-facing config change. The user's Landofile carries `mounts: [..., type: bind, ...]` (or `appMount: <path>`) and the engine activation is invisible — no engine id surfaces in the canonical Landofile, no recipe or executable tutorial mentions it, and `lando config --format yaml` MUST NOT leak the engine id into committed config output.
+- The bundled `@lando/file-sync-mutagen` engine is auto-selected on `bindMountPerformance: "slow"` providers, downloads its host CLI and per-platform agent binaries to `<userDataRoot>/bin/` during `lando setup` (or first accelerated `app:start`), and binds a Lando-owned daemon socket at `<userDataRoot>/run/file-sync/daemon.sock` (Linux/macOS) or the equivalent Windows named pipe (§12.4). The plugin refuses to use a system Mutagen install on PATH; `lando doctor` flags conflicting installs without blocking sync.
+- Every `FileSyncEngine` session lifecycle transition publishes the matching `pre-/post-file-sync-*` event with the redacted `FileSyncSessionEvent` payload (§3.5, §11.2); host-home source paths normalize to `${HOME}/<...>` for non-debug subscribers and recorded transcripts.
+- A `MountPlan` of `type: bind` carries a planner-set `realization: "passthrough" | "accelerated"` field (§6.4) derived deterministically from the resolved provider's `bindMountPerformance` capability. Engines declaring `exclusionPatterns: true` honor `excludes:` natively; engines declaring `false` fall back to the volume-shadow expansion described in §6.4.
+- The §13.1 file-sync engine contract suite passes against `passthrough` and `@lando/file-sync-mutagen`; the §13.1 perf-budget suite asserts that `app:start` on a slow-IO provider engages the engine (`Layer.suspend` forced, daemon acquired, sessions created) and reuses cached `file-sync-sessions` entries on subsequent invocations.
+- Library consumers receive only the `passthrough` engine by default; the bundled Mutagen engine is gated by the same opt-in (`discovery.bundled: true`) as every other bundled plugin (§16.4).
 - Compose-compatible Landofile input is accepted only for the documented subset, normalized where portable, and never silently dropped; provider-specific Compose, labels, daemon, and network details remain invisible unless the user opts into the provider extension or selects a provider with native Compose capability.
 - A user can install a plugin from registry, git, local dir, or tarball.
 - A compiled binary can load external user/system/app plugins from validated absolute `file://` module URLs while keeping bundled plugins statically imported.
@@ -194,6 +203,10 @@ The `CommandFramework` abstraction exists so that if `@effect/cli` reaches featu
 - **Host-proxy allowlist** — Generated cache of canonical command ids that the in-container `lando` shim is permitted to forward via `HostProxyService.runLando` (§10.10, §12.1). Built from `LandoCommandSpec.hostProxyAllowed: true` (§8.3), per-plugin command flags, and per-app tooling tasks with `hostProxyAllowed: true` (§8.5). Lifecycle commands are forbidden from the allowlist by construction.
 - **Entry point** — A documented `package.json#exports` path of `@lando/core` that hosts may import. The catalog is in §2.7; semver stability per §16.9.
 - **Feature** — A composable, ordered, idempotent service-plan transformation.
+- **File sync engine** — Pluggable abstraction (`FileSyncEngine`, §4.2, §10.6) responsible for realizing accelerated bind mounts when the active `RuntimeProvider` declares `bindMountPerformance: "slow"` (§5.4). Default engine is the no-op `passthrough`; the bundled default for slow-IO providers is `@lando/file-sync-mutagen` (§10.6.2). Engines hold sync-session lifetime through `Scope` and publish `pre-/post-file-sync-*` lifecycle events (§3.5).
+- **File sync session** — One per accelerated `MountPlan` per started app. Created by `FileSyncEngine.createSession`, finalized at `app:stop` or `Effect.interrupt`. Identified by an engine-issued opaque `FileSyncSessionRef` plus a stable `mountKey` linking it back to the originating mount entry (§6.4). Recorded in the `file-sync-sessions` cache (§12.1) for fast `app:start` reconciliation.
+- **`bindMountPerformance` capability** — `ProviderCapabilities` field declaring the provider's host↔guest filesystem-IO characteristics for `bind` mounts: `"native"` (Linux native runtime, OrbStack, WSL-resident projects), `"slow"` (Docker Desktop / Podman Desktop / Lima / Colima / Rancher Desktop), or `"none"` (the provider does not support bind at all). Drives mount-realization selection at plan time (§5.4, §6.4).
+- **Mount realization** — A planner-set `realization: "passthrough" | "accelerated"` field on every `bind`-type `MountPlan` (§6.4). Derived deterministically from the active provider's `bindMountPerformance`. The user's Landofile is unchanged across both values.
 - **Fragment** — A partial Landofile (`services:`, `tooling:`, `proxy:`, etc.) loaded by an enclosing Landofile through `includes:` (§7.7). Fragments are pure config — never code — and resolve from local paths, git, npm, or the registry.
 - **Imperative shell** — The outer layer of the architecture (§3.1) that runs Effect programs against the runtime. The CLI is one shell; an embedding host is another (§3.6).
 - **Include** — An entry in a Landofile's `includes:` array referencing a fragment by source scheme (local path, git, npm, registry). See §7.7.

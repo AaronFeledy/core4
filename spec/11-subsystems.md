@@ -136,6 +136,149 @@ Behavior in v4.0:
 - Excludes/includes live on individual mounts, never on a global key.
 - Heavy directories (`node_modules`, `vendor`, `.cache`) can be excluded from live host sync.
 - Windows/WSL guidance is documentation and provider-setup behavior, not core logic.
+- Bind-mount realization is split between the provider's native primitive (`realization: "passthrough"`) and an accelerated path through a pluggable `FileSyncEngine` (`realization: "accelerated"`) selected by the provider's `bindMountPerformance` capability (§5.4, §6.4). The user's Landofile is the same in both cases — the engine is invisible by design.
+
+The pluggable engine — `FileSyncEngine` (§4.2) — is what makes accelerated bind mounts work. The default implementation is the no-op `passthrough` engine; the bundled default for slow-IO providers is `@lando/file-sync-mutagen`, the Mutagen-backed reference engine documented in §10.6.2.
+
+#### 10.6.1 `FileSyncEngine` architecture
+
+`FileSyncEngine` is a session-stateful service. One session per accelerated `MountPlan` per started app. The engine is a `Layer.suspend`-wrapped service in the level-`app` bootstrap layer (§3.4); the suspended Layer is forced only when the planner emits the first `createSession` call, so apps with zero accelerated mounts pay zero engine cost.
+
+```ts
+export class FileSyncEngine extends Context.Service<FileSyncEngine, {
+  readonly id: string;
+  readonly displayName: string;
+  readonly capabilities: FileSyncEngineCapabilities;
+
+  // Availability and one-time setup. `setup` is called by `lando setup` (§10.8) and by
+  // the planner's auto-acquisition path on first accelerated `app:start`.
+  readonly isAvailable: Effect.Effect<boolean, FileSyncError>;
+  readonly setup:        (options: FileSyncSetupOptions) => Effect.Effect<void, FileSyncError, Scope.Scope>;
+
+  // Per-mount session lifecycle. createSession is `Scope`-acquired so that interruption
+  // and app-stop both flow through the standard finalization path.
+  readonly createSession:    (spec: FileSyncSessionSpec) => Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope>;
+  readonly pauseSession:     (ref: FileSyncSessionRef)   => Effect.Effect<void, FileSyncError>;
+  readonly resumeSession:    (ref: FileSyncSessionRef)   => Effect.Effect<void, FileSyncError>;
+  readonly terminateSession: (ref: FileSyncSessionRef)   => Effect.Effect<void, FileSyncError>;
+
+  // Diagnostics
+  readonly listSessions: (filter: FileSyncSessionFilter) => Effect.Effect<ReadonlyArray<FileSyncSessionInfo>, FileSyncError>;
+  readonly streamEvents: (ref: FileSyncSessionRef)       => Stream.Stream<FileSyncEventChunk, FileSyncError>;
+}>()("@lando/core/FileSyncEngine") {}
+
+export const FileSyncEngineCapabilities = Schema.Struct({
+  modes:                Schema.Array(Schema.Literal("two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica")),
+  remoteAgentDeployment: Schema.Literal("auto", "preinstalled", "none"),
+  exclusionPatterns:    Schema.Boolean,
+  conflictReporting:    Schema.Boolean,
+  progressReporting:    Schema.Boolean,
+});
+export type FileSyncEngineCapabilities = Schema.Schema.Type<typeof FileSyncEngineCapabilities>;
+
+export const FileSyncSessionSpec = Schema.Struct({
+  app:        AppRef,
+  service:    ServiceName,
+  mountKey:   Schema.String,                                  // §6.4 stable mount key
+  source:     AbsolutePath,                                   // host-side source
+  target:     Schema.Union(
+    Schema.TaggedStruct("volume",  { name: Schema.String, path: PortablePath }),
+    Schema.TaggedStruct("service", { service: ServiceName,  path: PortablePath }),
+  ),
+  mode:       Schema.Literal("two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"),
+  excludes:   Schema.Array(Schema.String),
+  permissions: Schema.optional(Schema.Struct({
+    owner: Schema.optional(Schema.String),
+    mode:  Schema.optional(Schema.String),
+  })),
+});
+export type FileSyncSessionSpec = Schema.Schema.Type<typeof FileSyncSessionSpec>;
+```
+
+Required `FileSyncEngine` behaviors:
+
+- `setup` is the engine's "make yourself ready" entry point. It MUST be idempotent. The default `passthrough` engine's `setup` is a no-op; engines that require external binaries (Mutagen and any plugin equivalent) MUST download and verify their binaries during `setup`, write them under `<userDataRoot>/bin/` (§12.4), and report progress through the standard `Renderer` channel. `setup` is run by `lando setup` and by the planner's auto-acquisition path on first accelerated `app:start` when the engine reports `isAvailable: false`.
+- `createSession` MUST be `Scope`-acquired. The associated `Scope` is the app's started state; `app:stop` finalizes it; `Effect.interrupt` propagates as a session terminate. The returned `FileSyncSessionRef` is opaque to the planner and stable across pause/resume cycles.
+- Engines MUST publish `pre-file-sync-create` / `post-file-sync-create`, `pre-file-sync-pause` / `post-file-sync-pause`, `pre-file-sync-resume` / `post-file-sync-resume`, and `pre-file-sync-terminate` / `post-file-sync-terminate` events for every session-lifecycle transition (§3.5, §11.2). Engines MUST stream `file-sync-conflict-detected` for conflicts and `file-sync-progress` for at-least the four standard phases (`initial-scan`, `staging`, `transitioning`, `watching`).
+- Source paths under the host user's home directory MUST be normalized to a `${HOME}/<...>` shape in event payloads, transcript captures, and `lando info` output. The active `Logger` at debug level MAY observe the absolute path for diagnostic purposes.
+- Engines MUST be safe to use behind corporate proxies and custom CA chains (§10.3.1) for any binary download or registry call they perform. The default Mutagen engine resolves Mutagen release URLs through the same `network.proxy` / `network.ca` resolution path as the rest of core.
+- Engines MUST refuse to start a session whose `source` resolves outside the app root (after symlink resolution) unless the global `--allow-load-outside-root` opt-in is set (§7.3); the failure is `FileSyncSourceOutsideRootError`.
+- Engines MUST NOT speak to the runtime provider directly. Volume creation, container exec, and agent-deployment hooks (when needed) go through `RuntimeProvider.exec` and `RuntimeProvider.run` per the §5.3 contract. This keeps the engine portable across providers.
+- Engines MUST cooperate with offline mode (§1.4 disconnectable local-dev): a `pause` operation triggered by network loss MUST be silent and reversible, and `resume` MUST not require network for sessions whose binaries and agent images are already cached.
+
+Tagged errors live in `@lando/core/errors`:
+
+- `FileSyncEngineUnavailableError` — `setup` failed or the engine cannot satisfy `isAvailable` (binary missing, daemon unreachable, agent deployment refused). Payload includes the engine id, a debug `cause`, and remediation pointing at `lando setup` or `lando doctor`.
+- `FileSyncSessionFailedError` — a `createSession` call failed (provider volume creation refused, agent deploy refused, target path conflict). Payload includes the rejected `FileSyncSessionSpec` (with secrets redacted), the engine-side cause, and remediation.
+- `FileSyncDaemonUnreachableError` — for engines that require a long-running daemon (Mutagen). Payload includes the daemon socket path and the timeout.
+- `FileSyncBinaryMissingError` — the engine's required binary is not present at the expected path. Payload includes the resolved path, the expected SHA-256, and a remediation pointing at `lando setup`.
+- `FileSyncSourceOutsideRootError` — source path resolves outside the app root.
+- `FileSyncCapabilityError` — a `MountPlan` requires a capability the engine does not declare (e.g., the spec asks for `mode: "one-way-replica"` and the engine declares only `two-way-*` modes).
+- `FileSyncConflictError` — a conflict the engine cannot resolve under the requested `mode`. Surfaces the conflicted paths and the suggested `mode` upgrade.
+- `FileSyncInternalError` — engine-internal failure that does not match any other tag.
+
+#### 10.6.2 Reference engine: `@lando/file-sync-mutagen`
+
+The bundled default for `bindMountPerformance: "slow"` is `@lando/file-sync-mutagen`, a Mutagen-backed engine. It is bundled per §1.4 and library consumers MAY opt into it through the standard bundled-discovery mechanism (§16.4). Mutagen was chosen because it is the only mature open-source engine that handles two-way bidirectional sync with conflict resolution, has a stable gRPC API designed for embedding, and has years of edge-case coverage on macOS/Windows file-system semantics. The integration is invisible to users; they never invoke `mutagen` directly and the spec does not introduce a `mutagen.yml` or any user-facing Mutagen surface.
+
+**Architecture.** The plugin embeds a generated TypeScript Connect-RPC client (codegen entry in §17.2, "Mutagen gRPC client") for Mutagen's `Synchronization` service plus the small subset of `Daemon` and `Prompting` services needed for session management. The plugin spawns the Mutagen daemon as a Lando-owned subprocess and dials it over a Lando-owned Unix domain socket (Linux/macOS) or Windows named pipe (Windows). Lando's daemon runs in a Lando-owned data directory and is bit-for-bit isolated from any system Mutagen install the user may already have.
+
+- **Binary placement.** Mutagen host CLI at `<userDataRoot>/bin/mutagen[.exe]`; agent binaries at `<userDataRoot>/bin/mutagen-agents/mutagen-agent-<platform>` (§12.4). Both are downloaded by `lando setup` from `https://github.com/mutagen-io/mutagen/releases/download/...` against checksums shipped in the plugin's compile-time `mutagen-versions.json` asset (§17.3 mechanism A).
+- **Daemon lifetime.** `Layer.scoped` resource owned by the engine. Acquired lazily on the first `createSession` call within a process, finalized at process exit. The daemon is **process-scoped, not app-scoped**: a single Lando process drives N apps with N×M sessions through one daemon, matching how Mutagen is designed.
+- **Daemon socket.** `<userDataRoot>/run/file-sync/daemon.sock` (POSIX, mode `0600`) or `\\.\pipe\lando-file-sync-daemon` (Windows). Pre-existing socket triggers `FileSyncDaemonUnreachableError` with remediation `lando doctor --fix` or `lando apps poweroff`.
+- **Daemon data directory.** `<userDataRoot>/file-sync/mutagen-data/` — Mutagen's own state directory (sessions registry, Mutagen logs). Lando does not interpret these files; they are owned by the embedded Mutagen and are not part of the §13.5 cache catalog.
+- **Wire protocol.** gRPC over the daemon socket. The client is generated at build time from vendored `.proto` files; runtime dependency on a system `protoc` or system gRPC implementation is forbidden (no `node-grpc`, no `@grpc/grpc-js` C++ addons; Connect-ES over Bun's HTTP/2 stack is used because it ships pure-JS and runs unmodified under `bun build --compile`).
+- **Agent deployment.** Mutagen's standard `auto` agent-deployment path is used: when a session targets a service path, Mutagen copies the platform-appropriate `mutagen-agent-<linux>-<arch>` binary into the container via the provider's exec primitive and runs it on stdin/stdout. Lando wraps the deploy through `RuntimeProvider.run` with stdio piped into the gRPC stream so agent transport stays inside the standard Effect resource model.
+- **Volume targets.** When the planner emits an accelerated `bind` (§6.4), the realization pair is (provider-managed `volume` named `lando-sync-<app-id>-<service>-<mountKeyHash>`) + (Mutagen session with target `service` mode mounted on that volume's container path). The volume is provider-owned for lifecycle; the sync session is engine-owned for content.
+
+**Session creation flow** (illustrative; the canonical path lives in `core/plugins/file-sync-mutagen/src/engine.ts`):
+
+```ts
+yield* engine.createSession({
+  app, service, mountKey,
+  source: appRoot,
+  target: { _tag: "service", service, path: "/app" },
+  mode: "two-way-safe",
+  excludes: ["node_modules", "vendor", ".cache"],
+});
+// → 1. lazy-spawn daemon if not running
+// → 2. gRPC: Synchronization.Create{ alpha: file://<appRoot>, beta: docker://<container>:/app, ... }
+// → 3. record FileSyncSessionRef in <userCacheRoot>/file-sync/sessions/<app-id>.bin (§12.1)
+// → 4. fork a fiber that subscribes to Synchronization.List streaming and translates frames
+//      into file-sync-progress / file-sync-conflict-detected events
+// → 5. publish post-file-sync-create with the redacted spec
+```
+
+Required behaviors specific to the Mutagen engine:
+
+- Mutagen version is pinned in `mutagen-versions.json`. Upgrades are a plugin release (not a runtime decision), and the §17.6 self-update flow reuses the same checksum-verification path it uses for the Lando binary itself. When the plugin is updated and the daemon protocol bumps, the next `lando setup` (or first `app:start` after the upgrade) terminates the prior daemon, replaces the binaries, and restarts; existing sessions are recreated against the new daemon transparently.
+- The plugin MUST refuse to use a system `mutagen` binary on PATH. Conflicting installs are surfaced by `lando doctor` as a warning ("Mutagen detected at `/usr/local/bin/mutagen`; Lando uses its own copy at `<userDataRoot>/bin/mutagen` and ignores the system version") but do not block sync.
+- The plugin MUST honor `network.proxy` and `network.ca` (§10.3.1) for both the binary download path and any registry call Mutagen makes for agent images. Proxy credentials are redacted from logs and the lifecycle event payloads identical to other Lando-owned network access.
+- The plugin's `FileSyncEngineCapabilities` declaration at runtime is fixed: `modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]`, `remoteAgentDeployment: "auto"`, `exclusionPatterns: true`, `conflictReporting: true`, `progressReporting: true`. The default `mode` for the planner-emitted `bind` realization is `two-way-safe` — Mutagen's safest mode that refuses ambiguous conflicts rather than auto-resolving them.
+
+**v4.0 scope: sync only.** Mutagen also offers TCP/UDP forwarding sessions; these are explicitly out of scope for v4.0 (§14.1). Lando's `RuntimeProvider` host-port and `ProxyService` route stories already cover host-facing networking, and adding forwarding through Mutagen would create two paths for one user-facing concern. A future plugin MAY contribute a `PortForwardingService` abstraction reusing the same daemon; v4.0 does not.
+
+#### 10.6.3 Doctor checks
+
+`lando doctor` (§10.9) MUST include the following file-sync checks when the active provider declares `bindMountPerformance: "slow"`:
+
+- `FileSyncEngineRegistry` reports the planned engine id (`mutagen` by default) and that engine's `isAvailable` returns `true`.
+- The engine's required binaries are present at the expected paths and match the recorded SHA-256 fingerprints.
+- For Mutagen specifically: the daemon socket is reachable, the daemon's gRPC `Daemon.Version` reports a compatible protocol version, and the cached session list (`<userCacheRoot>/file-sync/sessions/<app-id>.bin`, §12.1) round-trips through the encoder without corruption.
+- `lando doctor --fix` runs `engine.setup()` to recover from missing-binary or stale-daemon states; transcripts of the run are captured per the §10.9 transcript policy.
+
+When the active provider declares `bindMountPerformance: "native"`, the file-sync checks reduce to a single "no engine required" entry and skip availability probing.
+
+#### 10.6.4 Replaceability
+
+`FileSyncEngine` is a §4.2 pluggable abstraction. Plugins replace the default Layer to satisfy use cases the bundled Mutagen engine does not cover:
+
+- **Air-gapped variant.** A plugin that pre-bundles Mutagen binaries into a custom Lando distribution and refuses any network-dependent setup.
+- **Audited variant.** Every session create/pause/resume/terminate is appended to a tamper-evident append-only log; conflict events trigger explicit user prompts.
+- **Alternate engine.** A plugin contributing Unison, `docker-sync`, or a future native macOS bind-acceleration path through the same `FileSyncEngine` contract. Engines compete via the standard §4.3 selection rules; the planner does not care which engine actually handles the session as long as the contract holds.
+- **Recording variant.** A test-only engine that captures every session spec for assertions; never spawns a real daemon. The library API testing surface (§16.8) ships this as `TestFileSyncEngine` — used by the §13.1 file-sync engine contract suite.
+
+Plugin implementations MUST pass the same contract suite as the default and MUST honor every event-publication and redaction requirement above; weakening the security or determinism posture of the default is forbidden and is checked by the contract suite.
 
 ### 10.7 SQL helpers
 
@@ -157,7 +300,7 @@ Core does not ship SQL helpers.
 ```text
 lando setup [--yes] [--provider=<id>] [--skip-provider]
             [--skip-proxy] [--skip-install-ca]
-            [--skip-shell-integration]
+            [--skip-shell-integration] [--skip-file-sync]
 ```
 
 By default, `lando setup` installs the Lando-managed runtime without requiring any pre-existing Docker or Podman installation. Users who prefer a system runtime pass `--provider=docker` or `--provider=podman`; those providers assume the corresponding system installation already exists.
@@ -169,6 +312,7 @@ Rules:
 - Linux commands that may prompt for sudo set `SUDO_ASKPASS` when an askpass helper is available.
 - Setup honors corporate proxy and custom CA configuration for every Lando-owned download or registry call (§10.3.1).
 - `lando shellenv` prints shell-profile snippets to add `<userDataRoot>/bin` to `PATH`.
+- When the resolved provider declares `bindMountPerformance: "slow"` (§5.4), setup also runs the active `FileSyncEngine`'s `setup()` (§10.6) — by default this downloads the bundled Mutagen host CLI and the per-platform agent binaries to `<userDataRoot>/bin/` against the plugin's pinned checksums. `--skip-file-sync` defers the download to first accelerated `app:start` instead. When the resolved provider declares `bindMountPerformance: "native"`, the file-sync stage is a no-op regardless of whether `--skip-file-sync` was passed.
 
 ### 10.9 Logs and diagnostics
 

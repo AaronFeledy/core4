@@ -111,6 +111,8 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `app:config:translate` | *(none)* | `app` | Run config translators and optionally apply generated Landofile fragments (§8.2.1) |
 | `app:destroy` | `destroy` | `app` | Destroy the current app's resources |
 | `app:exec` | `exec` | `app` | Execute a command inside a service |
+| `app:includes:update` | *(none)* | `minimal` | Refresh one or more `includes:` lockfile entries (§7.7.4); with no arguments, refreshes all |
+| `app:includes:verify` | *(none)* | `minimal` | Re-check every `includes:` checksum without updating; succeeds without network access on a warm cache (§7.7.4, §15.C) |
 | `app:info` | `info` | `app` | Print app/service runtime information |
 | `app:logs` | `logs` | `app` | Stream service logs |
 | `app:rebuild` | `rebuild` | `app` | Rebuild and restart services |
@@ -150,6 +152,8 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 
 - `app:info` supports `--deep`, repeated `--filter`, `--path`, `--service`, `--format json|table|yaml`.
 - `app:cache:refresh` performs full app bootstrap, rebuilds the app plan cache, compiled tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.json`, then exits without contacting the provider unless app materialization needs missing Lando-managed dependencies.
+- `app:includes:update [<source>...]` resolves the named include sources fresh, writes new `<appRoot>/.lando.lock.yml` entries with refreshed refs and checksums, and invalidates the app plan cache. With no positional arguments, refreshes every entry. Supports `--no-network` to fail fast when a refresh would require network and `--check` to report would-be drift without writing. Network access is required by definition.
+- `app:includes:verify` re-reads every entry in `.lando.lock.yml` and re-computes the checksum of the cached fragment under `<userCacheRoot>/includes/`. Succeeds without network access when every entry resolves from the warm cache. Reports drift, missing cache entries, or checksum mismatches as a non-zero exit with `IncludeLockError` and remediation pointing at `app:includes:update`. Supports `--format json|table`.
 - `apps:list` works inside and outside an app context, supports `--all`, filters, `--path`, JSON, table.
 - `app:logs` streams app logs and supports `--service`, `--follow`, `--tail`, `--since`.
 - `app:stop` stops the current app.
@@ -563,40 +567,7 @@ Semantics:
 
 The `command:` step does **not** re-parse argv through OCLIF. It calls the same Effect program that backs `@lando/core/cli`'s `appStart`, `metaPluginAdd`, etc. (§16.7), so wrap behavior in the CLI and in an embedding host is identical.
 
-##### 8.5.2.2 Wrapping a built-in: worked example
-
-To make `lando start` print a banner, run the built-in start, then probe a health endpoint, the user combines a Landofile-level alias override (§8.1.2) with a tooling task that uses `command:`:
-
-```yaml
-# .lando.yml
-commandAliases:
-  custom:
-    start: app:my-start              # in this app, `lando start` runs `app:my-start`
-
-tooling:
-  my-start:
-    desc: Start with welcome banner and health probe
-    cmds:
-      - cmd: 'echo "Welcome! Starting your app…"'
-        service: :host
-
-      - command: app:start           # invoke the actual built-in
-        flags:
-          rebuild: "{{ .flags.rebuild | default false }}"
-
-      - cmd: 'curl -sf http://appserver:8080/healthz | jq .'
-        service: appserver
-```
-
-What happens when the user runs `lando start --rebuild`:
-
-1. OCLIF resolves `start` via the Landofile-overridden alias → canonical id `app:my-start`.
-2. The runtime bootstraps at level `app` (auto-escalated because `command: app:start` requires it).
-3. The banner step runs on the host through `ProcessRunner`.
-4. The `command: app:start` step invokes the built-in's Effect program with `--rebuild` forwarded explicitly. Subscribers to `cli-app:start-run` still fire.
-5. The health probe runs in `appserver` through the active `ToolingEngine`.
-
-`lando app start --rebuild` (canonical) is unaffected — it always runs the built-in. The override only re-binds the bare top-level alias for the app's command registry.
+The intended composition pattern is a Landofile `commandAliases.custom:` entry (§8.1.2) pointing at a wrapper tooling task whose `cmds:` invoke the original built-in via `command:`. Subscribers to the wrapped command's lifecycle events still fire because the inner invocation goes through the canonical Effect program; the canonical id (e.g., `lando app start`) remains callable directly.
 
 #### 8.5.3 Variables and environment
 
@@ -1030,47 +1001,21 @@ Resolution is content-addressed and cached. Repeated `lando init --recipe wordpr
 
 #### 8.8.6 Recipe expressions
 
-Recipes render through the `TemplateRenderer` and use the same default `lando` engine as the rest of Lando (§7.3.1, §7.3.2). Templates under `templates/**/` MAY override the engine per file via the `files:` manifest entry (§8.8.3 — set `engine: handlebars` to render a `.hbs` template through the bundled Handlebars engine; see §7.3.2 for the bundled engine list and selection precedence). The `recipe.yml` file itself uses the `lando` engine for its string fields and does not accept an `engine:` override.
+Recipes render through the `TemplateRenderer` using the default `lando` engine (§7.3.1, §7.3.2). Deltas from §7.3.1:
 
-The `lando` engine accepts the full §7.3.1 grammar — `{{ … }}` interpolation with bracket-or-dotted paths, both pipe and call-style helper forms, native `${VAR}` shell-parameter-expansion, comments, and whitespace trim. Whole-file recipe templates additionally support control-flow blocks:
+- **Per-file engine override.** A `files:` entry MAY set `engine:` to select a bundled engine other than `lando` (§8.8.3, §7.3.2). `recipe.yml`'s own string fields always use the `lando` engine.
+- **Whole-file control flow.** Files under `templates/**/` MAY use the `{{ if }}` / `{{ for }}` / `{{- … -}}` whole-file grammar from §7.3.1. `recipe.yml` string fields are interpolation-only.
+- **Side-effect-free helpers only.** Recipes MUST NOT call shell or filesystem helpers. In v4.0 the §7.3.1 portable function set is already side-effect-free, so this is enforced by validating that no non-portable namespace is referenced.
 
-```text
-{{ if <expr> }} … {{ else if <expr> }} … {{ else }} … {{ end }}
-{{ for <name> in <expr> }} … {{ end }}
-{{ for <key>, <value> in <expr> }} … {{ end }}
-```
-
-Control-flow blocks are valid inside `templates/**/` files but NOT inside `recipe.yml`'s string fields, where only single-expression interpolation is permitted. This keeps `recipe.yml` declarative.
-
-The recipe render context extends the standard `TemplateRenderContext` (§7.3.2) with recipe-specific scopes. Per §7.3.1, all scopes here have an effective bootstrap level of "recipe init"; recipe rendering runs at level `minimal` and never consults a provider:
+Recipe-init adds the following scopes to `TemplateRenderContext` (§7.3.2). All have effective bootstrap level `minimal` — recipe rendering never consults a provider:
 
 | Scope | Meaning |
 |---|---|
-| `answers.<name>` | Resolved prompt answers (only those preceding the current evaluation) |
+| `answers.<name>` | Resolved prompt answers preceding the current evaluation |
 | `recipe.id`, `recipe.title`, `recipe.version` | Recipe metadata |
 | `destination.path`, `destination.basename` | Output directory |
 | `cwd.basename`, `cwd.path` | Initial working directory before `--destination` resolution |
-| `host.os`, `host.arch`, `host.platform`, `host.isWsl` | Host facts (matches §7.3.1) |
-| `env.<NAME>` | Process env (matches §7.3.1) |
 | `flags.<name>` | Init-command flags (`--full`, `--yes`, `--no-interactive`, etc.) |
-
-Examples (filter-pipe and call-style helper forms are equivalent):
-
-```text
-# Filter-pipe form
-{{ answers.appName | default(destination.basename) | lower }}
-
-# Call-style form (identical AST)
-{{ lower(default(answers.appName, destination.basename)) }}
-
-# Native shell-parameter-expansion works in templates too
-LISTEN_PORT=${PORT:-8080}
-DOCROOT=${DOCROOT:?docroot is required}
-```
-
-The portable function set from §7.3.1 is available unchanged. Recipes MUST NOT call shell or filesystem functions; the registry exposed to recipe expressions is the §7.3.1 portable subset minus any function whose evaluation has side effects (in v4.0 the published portable set is already side-effect-free, so the subset and the full set are equivalent).
-
-Literal `{{` is escaped as `{{{{`; literal `${` is escaped as `$${`. Inside `templates/**/` files, content outside `{{ … }}`, `${…}`, and `{{ if … }} … {{ end }}` blocks is copied verbatim.
 
 #### 8.8.7 File manifest semantics
 
@@ -1096,28 +1041,26 @@ The `bun` action's `verb:` allowlist:
 
 | `verb:` | Verb-specific fields | Behavior |
 |---|---|---|
-| `script` | `script: <path>`, `args: [<string>]` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()`. The script path MUST resolve under the recipe's `templates/` or `assets/` tree; arbitrary host-shipped paths are rejected. Useful for "open the docs URL", "stamp a generated `.gitattributes`", or "print a localized welcome banner" without inflating the canonical-command allowlist. |
-| `install` | *(none)* | Run `bun install` in `cwd:`. Resolves the scaffold's declared `package.json` (or `bun.lock`) and writes `node_modules/`. The user needs no host Bun. Rejected if `cwd:` has no `package.json`. |
-| `add` | `dependencies: [<spec>]`, `devDependencies: [<spec>]`, `peerDependencies: [<spec>]`, `optionalDependencies: [<spec>]` | Add explicit packages. Specs MAY reference `${secret:…}` registry tokens (resolved through `SecretStore`, redacted in events). Useful for stack-pickers ("PostgreSQL or MongoDB?") that conditionally pull packages. |
-| `create` | `template: <name>`, `dest: <path>` | Run `bun create <template> <dest>`. `dest:` MUST resolve under the recipe destination; absolute paths outside the destination are rejected with `BunCreateOutsideDestinationError`. Bridges the entire `bun create` ecosystem (Vite, Astro, Nuxt, Hono, Elysia, etc.) into Lando recipes. |
-| `run` | `script: <name>` | Run a script entry from `cwd:`'s `package.json` via `BunSelfRunner.runScript(scriptName)`. Useful for post-`install` scaffold steps the framework's own `package.json` defines (e.g., `bun run init-db`). |
-| `x` | `spec: <package-spec>`, `argv: [<string>]` | Run a one-shot package via `BunSelfRunner.x(spec, argv)`. Useful for generators that publish to npm but don't ship a `bun create` template (e.g., `bun: { verb: x, spec: "degit", argv: ["user/template-repo"] }`). The active runtime's offline policy applies (§8.2.4). |
+| `script` | `script: <path>`, `args: [<string>]` | Run a recipe-bundled `.bun.sh` file through `ShellRunner.runScript()`. `script:` MUST resolve under the recipe's `templates/` or `assets/` tree. |
+| `install` | *(none)* | Run `bun install` in `cwd:`. Rejected if `cwd:` has no `package.json`. |
+| `add` | `dependencies`, `devDependencies`, `peerDependencies`, `optionalDependencies`: `[<spec>]` | Add explicit packages. Specs MAY reference `${secret:…}` registry tokens. |
+| `create` | `template: <name>`, `dest: <path>` | Run `bun create <template> <dest>`. `dest:` MUST resolve under the recipe destination. |
+| `run` | `script: <name>` | Run a script entry from `cwd:`'s `package.json` via `BunSelfRunner.runScript()`. |
+| `x` | `spec: <package-spec>`, `argv: [<string>]` | Run a one-shot package via `BunSelfRunner.x()`. The active runtime's offline policy applies (§8.2.4). |
 
-Allowed `postInit.command` targets in v4.0.0 are generated from command metadata (`recipePostInitAllowed: true`). The initial allowlist is `app:config:translate` and `app:start`. `app:start` MUST be guarded by an explicit recipe prompt or CLI answer; recipes MUST NOT start services by default. Adding another target requires updating the command registry and generated recipe-action docs. Recipes MUST NOT use `postInit.command` to install plugins, update Lando, mutate global config, run setup/shell-integration commands, or run arbitrary tooling tasks.
+`postInit.command` targets are generated from command metadata (`recipePostInitAllowed: true`); the v4.0 allowlist is `app:config:translate` and `app:start`. `app:start` MUST be guarded by an explicit recipe prompt or CLI answer; recipes MUST NOT start services by default.
 
-The `bun` action is bounded by construction across every verb:
+The `bun` action contract:
 
-- All verbs route through `BunSelfRunner` (§3.4) — the same recursion-guarded, redacted, lifecycle-eventing Bun child the rest of core uses. Recipes do NOT spawn `bun` directly, do NOT write a temporary script and shell into it, and do NOT bypass the §3.4 verb-shape contract. A misformed payload (e.g., a `verb: add` spec list containing `--global`) is rejected at `lando recipes validate <path>` time with `BunSelfArgvShapeError`.
-- The `cwd:` for any verb defaults to the recipe destination directory and MAY be a declared subdirectory of it (e.g., `bun: { verb: install, cwd: ./frontend }`). Paths that escape the destination via `..` or symlinks are rejected after realpath resolution with `BunActionOutsideDestinationError`.
-- For `verb: script`, the `script:` field is a path under the recipe's bundled tree (`templates/<…>.bun.sh` or `assets/<…>.bun.sh`); paths outside those bases are rejected with `BunScriptOutsideRecipeError` after realpath resolution. The bundled-recipes generator (§17.2) checksums every script at build time and embeds the checksum into the recipe manifest; runtime execution verifies the checksum before launch and a mismatch fails with `BunScriptChecksumError`.
-- Arguments to `verb: script` are passed via `args: [<string>]` (resolved through the recipe expression engine) and via `LANDO_RECIPE_ANSWER_<NAME>` environment variables (one per resolved prompt answer). `secret`-typed answers are NOT exported as env vars and require explicit `args:` passing through `${secret:…}` reference, which redacts in lifecycle events.
-- Each action's redacted argv is published through `pre-bun-self-exec` / `post-bun-self-exec` events with `callerSubsystem: "recipe:bun:<verb>:<recipe-id>"` so subscribers (e.g., `lando doctor --transcripts`) can inspect what a recipe scaffolded.
-- Cancellation: `Effect.interrupt` propagates through `BunSelfRunner` to the embedded Bun child. The recipe init aborts with `RecipeInterruptedError`. `verb: install`-written `node_modules/` directories are NOT auto-removed because they may contain partially extracted artifacts the user wants to inspect; the failure message points at `rm -rf node_modules && lando bun install` for retry.
-- Network: `verb: install`, `add`, `create`, `x` may contact registries; this is the legitimate exception to the §1.4 "recipes MUST NOT contact the network" rule and is the same exception the existing `--recipe` source resolution already carries. Recipe authors SHOULD scope network-bound actions behind a `when:` expression so users on offline runs can opt out.
-- Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on a `bun` failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
-- The action MUST NOT install Lando *plugins* into the user-global plugin set; `lando plugin add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The action is bounded to the destination directory's package graph. The contract is "do one bounded scaffold-time chore and exit."
+- All verbs route through `BunSelfRunner` (§3.4); recipes MUST NOT spawn `bun` directly. Misformed payloads (e.g., `verb: add` with `--global`) are rejected at `meta:recipes:validate` time with `BunSelfArgvShapeError`.
+- `cwd:` defaults to the recipe destination and MAY be a declared subdirectory. Paths escaping the destination after realpath resolution are rejected with `BunActionOutsideDestinationError`.
+- `verb: script`'s `script:` MUST resolve under the recipe's `templates/` or `assets/` tree; the bundled-recipes generator (§17.2) embeds a checksum verified before launch (`BunScriptChecksumError` on mismatch).
+- Argument passing: `args:` is resolved through the recipe expression engine; resolved prompt answers are exposed as `LANDO_RECIPE_ANSWER_<NAME>` env vars except `secret`-typed answers, which require explicit `${secret:…}` references in `args:` for redaction.
+- Each invocation publishes `pre-bun-self-exec` / `post-bun-self-exec` with `callerSubsystem: "recipe:bun:<verb>:<recipe-id>"`.
+- `verb: install`/`add`/`create`/`x` MAY contact registries (the §1.4 network-allowance exception that already covers `--recipe` source resolution).
+- Failures do NOT roll back files already written. Recipes MUST NOT install Lando plugins, mutate global config, or run arbitrary tooling tasks; the action is bounded to the destination's package graph.
 
-Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. The action set is intentionally small. New top-level actions require a spec change; new `bun` verbs require updating the verb allowlist and the generated recipe-action docs.
+New top-level actions require a spec change; new `bun` verbs require updating the verb allowlist and the generated recipe-action docs.
 
 #### 8.8.9 Init flow
 
@@ -1139,45 +1082,15 @@ Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. T
 
 Lifecycle events publish at canonical command id `apps:init` per §11. Init itself does not contact a provider; an explicit, opt-in `postInit.command: app:start` action runs as a separate allowlisted command at its own bootstrap level after scaffolding completes.
 
-#### 8.8.10 Canonical recipes shipped in core
+#### 8.8.10 Canonical recipes
 
-The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each ships its own `recipe.yml`, templates, and README:
+Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts` which generates `src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
 
-| Recipe id | Stack |
-|---|---|
-| `wordpress` | WordPress with PHP, MariaDB, optional Redis |
-| `laravel` | Laravel with PHP, MariaDB or PostgreSQL, Redis, optional queue worker |
-| `symfony` | Symfony with PHP, PostgreSQL or MariaDB, Redis |
-| `lamp` | Generic LAMP starter — Apache, PHP, MariaDB |
-| `lemp` | Generic LEMP starter — nginx, PHP, MariaDB |
-| `node-api` | Node API with `Express` / `Fastify` / `Hono` framework picker, optional PostgreSQL or MongoDB |
-| `astro` | Astro frontend with optional content-source and DB picker |
-| `sveltekit` | SvelteKit frontend with optional adapter and DB picker |
-| `nextjs` | Next.js frontend with optional DB and Auth helper picker |
-| `django` | Django with PostgreSQL, Redis, optional Celery worker |
-| `fastapi` | FastAPI with PostgreSQL, Redis |
-| `rails` | Ruby on Rails with PostgreSQL, Redis |
-| `jekyll` | Jekyll static site |
-| `hugo` | Hugo static site |
-| `eleventy` | Eleventy static site |
-| `empty` | Blank Landofile starter — service catalog selection only, no opinion |
+The v4.0 set covers common PHP, Node, Python, Ruby, and static-site stacks plus an `empty` starter. Out of scope for the v4.0 bundle: Drupal (community can publish via npm/git/registry) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
 
-The canonical set is defined at build time via `scripts/build-bundled-recipes.ts` which generates `src/recipes/bundled.ts`. Recipes are statically imported into the compiled binary (§13.5). The list MAY grow in v4.x; removals require a major version bump.
+#### 8.8.11 Recipe authoring surface
 
-Notably out of scope for the v4.0 canonical set: Drupal recipes (community can publish via npm/git/registry); v3-style recipe compatibility shims in core (external config translator plugins may provide them).
-
-#### 8.8.11 Authoring a recipe
-
-Recipes are authored as plain directories. There is no SDK package to install, no plugin manifest to write, no Bun build step. A recipe author:
-
-1. Creates a directory with the layout in §8.8.2.
-2. Writes a `recipe.yml` validated by `lando recipes validate <path>`.
-3. Tests interactively with `lando init --recipe ./<path> /tmp/<dest>`.
-4. Publishes to git, npm, or the future registry.
-
-Recipes are versioned independently of core. Core's canonical recipes live alongside core source; community recipes live wherever their authors prefer.
-
-`lando recipes validate <path>` and `lando recipes describe <ref>` are first-class meta commands (canonical ids `meta:recipes:validate` and `meta:recipes:describe`) that authors and consumers use to verify recipe shape and inspect the prompt set without performing an init.
+Recipes are plain directories: no SDK package, no plugin manifest, no build step. The authoring surface is `recipe.yml` (§8.8.3) plus the directory layout (§8.8.2), validated by `meta:recipes:validate` and inspected by `meta:recipes:describe` (§8.2). Recipes are versioned independently of core.
 
 #### 8.8.12 Constraints
 
@@ -1199,79 +1112,21 @@ Default init sources: `cwd` (use existing directory), `git`, `tarball`. A provid
 
 #### 8.8.14 Programmatic recipes (`recipe.ts`)
 
-A recipe MAY ship a `recipe.ts` file *instead of* `recipe.yml`. The TypeScript form is the programmatic counterpart to the declarative YAML form, in the same way `.lando.ts` (§7.1.1) is the programmatic counterpart to `.lando.yml`. The use case is **recipes whose prompt graph or file manifest depends on earlier answers in non-trivial ways** — for example, a Node-API recipe whose Database picker, ORM picker, and migration scaffolder produce different file sets per combination, where expressing the matrix in static YAML becomes unreadable.
+A recipe MAY ship a `recipe.ts` file *instead of* `recipe.yml` (the two are mutually exclusive within a recipe directory) when the prompt graph or file manifest must branch on earlier answers in ways static YAML cannot express cleanly. The TS form is the programmatic counterpart to the declarative YAML form, mirroring `.lando.ts` (§7.1.1).
 
-`recipe.ts` and `recipe.yml` are **mutually exclusive within a recipe directory.** A recipe ships one or the other, never both.
+Contract:
 
-```ts
-// recipe.ts — illustrative
-import { defineRecipe } from "@lando/core/schema";
+- The default export MUST be a static `RecipeManifest` value or an `async (ctx: RecipeContext) => RecipeManifest` factory, wrapped in `defineRecipe()` from `@lando/core/schema` for editor completion. Runtime decode goes through the canonical `RecipeManifest` schema; `defineRecipe` is type-only.
+- Module top-level side effects are forbidden (same rule as `.lando.ts`, §7.1.1). I/O runs inside the factory body, bounded by `Effect.timeout` (default 30 s; configurable via `recipe.tsTimeoutMs:`).
+- `ctx.prompt(prompt)` is the only way the factory asks the user a question. It accepts the §8.8.5 prompt schema, delegates to the renderer-aware prompt engine, honors `--no-interactive` / `--answer` identically to YAML, and records each answer on `ctx.answers.<name>`.
+- The factory MUST NOT execute arbitrary shell, install plugins, mutate global config, or contact the network outside the two `ctx` carve-outs:
+  - `ctx.run(commandId, input?)` — invoke a canonical command (§8.1.1) declared in the recipe's `runs:` allowlist; out-of-allowlist calls abort with `RecipeForbiddenCommandError`.
+  - `ctx.fetch(url, opts)` — HTTP GET against the recipe's `fetchAllowlist:` hosts; out-of-allowlist calls abort with `RecipeForbiddenFetchError`. Prefer `ctx.run` when a canonical command exists.
+- The returned `RecipeManifest` is schema-validated before any file is written; failures abort with `RecipeOutputValidationError` and no partial state. The `postInit:` destination-containment rules from §8.8.7 apply.
+- `meta:recipes:describe` and `meta:recipes:validate` evaluate the factory in a sandboxed mode that resolves every `ctx.prompt` to a placeholder, producing a static description of the prompt-shape graph even when answers branch the file manifest.
+- Caching: the compiled `recipe.ts` module is cached under `<userCacheRoot>/recipes/ts/<contentHash>.bin` (added to the §12.1 catalog). The factory itself is invoked fresh per `lando init` because its output depends on user answers. Bundled-recipe codegen (§17.2) prebuilds `recipe.ts` recipes via `BunSelfRunner.buildLib` so the runtime loader can skip TS-load cost.
 
-export default defineRecipe(async (ctx) => {
-  // ctx mirrors the §8.8.6 recipe render context plus a controlled prompt-asker
-  // so prompt -> file-manifest dependencies can be expressed in TS.
-
-  const framework = await ctx.prompt({
-    name: "framework",
-    type: "select",
-    message: "Which Node.js framework?",
-    choices: ["express", "fastify", "hono"],
-  });
-
-  const wantDb = await ctx.prompt({
-    name: "wantDb",
-    type: "confirm",
-    message: "Add a database?",
-    default: true,
-  });
-
-  const db = wantDb
-    ? await ctx.prompt({
-        name: "db",
-        type: "select",
-        message: "Which database?",
-        choices: ["postgres", "mysql", "mongodb"],
-      })
-    : undefined;
-
-  return {
-    id: "node-api",
-    title: "Node API",
-    version: "1.0.0",
-    description: "Node.js API with optional DB",
-    files: [
-      { src: ".lando.yml.tmpl", dest: ".lando.yml" },
-      { src: `frameworks/${framework}/server.ts.tmpl`, dest: "src/server.ts" },
-      ...(db ? [{ src: `dbs/${db}/schema.sql.tmpl`, dest: "db/schema.sql" }] : []),
-      ...(db === "mongodb" ? [{ src: "dbs/mongodb/index.ts.tmpl", dest: "src/db.ts" }] : []),
-    ],
-    postInit: [
-      { type: "bun", verb: "install" },
-      ...(framework === "hono" ? [{ type: "bun", verb: "add", dependencies: ["@hono/node-server"] }] : []),
-      ...(db === "mongodb" ? [{ type: "bun", verb: "add", dependencies: ["mongodb"] }] : []),
-      { type: "message", text: `Run \`lando start\` to launch your ${framework} API.` },
-    ],
-  };
-});
-```
-
-The TS form's contract:
-
-- `defineRecipe(value | factory)` is a thin identity helper exported from `@lando/core/schema` (and re-exported from `@lando/sdk`); it pins the argument's TS type to the inferred `RecipeManifest` (or factory) shape so authors get full editor completion. Runtime decode still goes through the canonical schema.
-- The default export MUST be either a static `RecipeManifest` value or an `async (ctx: RecipeContext) => RecipeManifest` factory. The static form is rare; if a recipe doesn't need TS-driven prompt branching, it should ship YAML.
-- `ctx.prompt(prompt)` is the **only** way the factory may ask the user a question. It accepts the same prompt schema (§8.8.5) the YAML form uses; under the hood it delegates to the same renderer-aware prompt engine. Each call adds the resolved answer to `ctx.answers.<name>` so subsequent calls can branch on it.
-- `ctx.prompt` honors `--no-interactive` and `--answer key=value` exactly as the YAML form's prompt loop does. A factory that asks a prompt without a default in `--no-interactive` mode aborts with `RecipeMissingAnswerError`.
-- The factory's returned `RecipeManifest` is validated against the published schema (§7.8) before any file is written. A factory that returns an invalid shape aborts with `RecipeOutputValidationError` and points at the offending path.
-- Side effects at module top level are **forbidden**, identical to the `.lando.ts` rule (§7.1.1). Imports + `defineRecipe(...)` + `export default`. Any I/O the factory needs runs inside the factory body and is bounded by `Effect.timeout` (default 30 s; configurable via global `recipe.tsTimeoutMs:`).
-- The factory MUST NOT execute arbitrary shell, install plugins, mutate global config, or contact the network outside what `ctx` exposes. Two carve-outs exist:
-  - **`ctx.run(commandId, input?)`** — invoke a plugin-contributed canonical command (§8.1.1, §9.4) and receive its structured output. Only commands declared in the recipe's `recipe.yml` (or, for `recipe.ts`, the static `runs:` export) `runs:` allowlist are callable; calls outside the allowlist abort with `RecipeForbiddenCommandError`. The invoked command runs in the same Effect runtime under `ToolingEngine` budgets and emits the standard `cli-<id>-init`/`-run`/`-error` events. This is the supported path for API-backed prompt choices: a plugin ships `pantheon:list-sites` as a canonical command; the factory calls `await ctx.run('pantheon:list-sites', { token: ctx.answers.token })` between prompts.
-  - **`ctx.fetch(url, opts)`** — direct HTTP GET against an explicit, recipe-declared URL allowlist (`recipe.yml` `fetchAllowlist:` or `recipe.ts` `fetchAllowlist:` static export). Calls to non-allowlisted hosts abort with `RecipeForbiddenFetchError`. Use this only when no canonical command exists; prefer `ctx.run` because it composes with plugin auth, caching, and retry policy.
-- The factory MUST NOT re-emit existing built-in `postInit:` actions in a way that escapes the recipe destination (e.g., `bun: { verb: create, dest: "/tmp/elsewhere" }`). The `RecipeManifest` schema validation enforces this at the same point §8.8.7 does for the YAML form.
-- `lando recipes describe <ref>` (§8.8.11) and `lando recipes validate <path>` work on `recipe.ts` recipes by invoking the factory in a sandboxed evaluation that returns a synthetic prompt graph: each `ctx.prompt` resolves to a placeholder describing the prompt's shape rather than asking the user. The synthetic walk produces a static description of the recipe's *prompt-shape graph* even when answers branch the file manifest.
-- Caching: a `recipe.ts`'s decoded factory result is **not** cached the way YAML decode is, because the factory's output depends on user answers. The compiled `recipe.ts` module is cached under `<userCacheRoot>/recipes/ts/<contentHash>.bin` (a new entry that joins the §12.1 catalog) so the factory only re-imports when the file changes. Each `lando init` execution invokes the factory fresh.
-- Bundled-recipe codegen (§17.2 "Bundled recipes index") handles `recipe.ts` recipes by including the file in the recipe's tar and running `BunSelfRunner.buildLib` against it at build time, embedding the bundled JS output alongside the source. The runtime loader prefers the prebuilt JS so the binary's recipe-init path doesn't pay TS-load cost.
-
-A `recipe.ts` recipe is otherwise indistinguishable from a YAML recipe at runtime: the same source schemes (§8.8.4), the same destination semantics (§8.8.7), the same post-init action set (§8.8.8), and the same constraints (§8.8.12). A user invoking `lando init --recipe foo` has no way to tell whether `foo` was authored as `recipe.ts` or `recipe.yml` from the prompt experience alone.
+A `recipe.ts` recipe is otherwise indistinguishable from a YAML recipe at runtime: same source schemes (§8.8.4), destination semantics (§8.8.7), post-init action set (§8.8.8), and constraints (§8.8.12).
 
 ### 8.9 Renderers and messages
 

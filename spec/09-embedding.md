@@ -44,18 +44,20 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 | Surface | Entry point | What it exports |
 |---|---|---|
 | Runtime factory | `@lando/core` | `makeLandoRuntime`, `LandoRuntimeOptions`, `BootstrapLevel` |
-| Service tags | `@lando/core/services` | `ConfigService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `FileSystem`, `ProcessRunner`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `Telemetry`, plus pluggable abstraction tags (§4.2) |
+| Service tags | `@lando/core/services` | `ConfigService`, `LandofileService`, `PluginRegistry`, `CommandRegistry`, `ConfigTranslatorRegistry`, `TemplateEngineRegistry`, `TemplateRenderer`, `RuntimeProviderRegistry`, `AppPlanner`, `EventService`, `CacheService`, `FileSystem`, `ProcessRunner`, `ShellRunner`, `BunSelfRunner`, `PrivilegeService`, `EmbeddedAssetService`, `Logger`, `Renderer`, `Telemetry`, `DeprecationService`, `DoctorService`, `HostProxyService`, plus pluggable abstraction tags (§4.2) |
 | Schemas | `@lando/core/schema` | Every schema in §7.8 (Landofile, ServiceConfig, expression AST/errors, ToolingConfig, ToolingInclude, RouteConfig, HealthcheckConfig, plugin manifest, event payloads, etc.) |
 | Tagged errors | `@lando/core/errors` | Every `Schema.TaggedError` subclass declared in `src/errors/tagged.ts` |
 | Lifecycle | `@lando/core/events` | `EventService` (re-exported), event payload schemas, subscriber priority bands, the standard event sequence |
 | Programmatic CLI | `@lando/core/cli` | Wrappers for invoking built-in command logic without OCLIF (§16.7) |
-| Testing | `@lando/core/testing` | Test-Layer fixtures, in-memory `FileSystem` and `ProcessRunner`, `TestRuntimeProvider`, helpers for asserting against `Stream`s and `EventService` (§16.8) |
+| Testing | `@lando/core/testing` | Test-Layer fixtures, in-memory `FileSystem` and `ProcessRunner`, `TestRuntimeProvider`, the `TutorialContext` test runtime for executable tutorials (§19.4), helpers for asserting against `Stream`s and `EventService` (§16.8) |
+| Docs components | `@lando/core/docs/components` | JSX/Astro runtime + AST helpers for the executable-tutorial component vocabulary (`Tutorial`, `Step`, `Run`, `Verify`, `Inspect`, `Hidden`, `Cleanup`, `Variable`, `Skip`, `Inline`, `Tabs`, `Tab`); contracts (prop schemas, frontmatter, `MatcherSchema`, `Transcript`, `TranscriptFrame`, `TabAxis`, `TabAxisValue`) live in `@lando/sdk/docs/components` (§19.3). |
+| Docs redactions | `@lando/core/docs/redactions` | Re-export of the canonical transcript redaction list owned by `@lando/sdk/docs/redactions` (§19.6); consumed by both the docs build and the test-time transcript writer. |
 | OCLIF adapter | `@lando/core/oclif` | The OCLIF-specific glue. Hosts MUST NOT import this unless they are building an alternate CLI distribution. |
 
 Stability rules:
 
 - The default entry (`@lando/core`), `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli` are **semver-stable** within a major version. Breaking changes bump the major.
-- `@lando/core/testing` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7).
+- `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions` are unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA they follow the standard semver rule.
 - `@lando/core/oclif` is **internal**. It is exported only because the OCLIF compiled-binary build needs it; embedding hosts MUST NOT import it. Tests enforce the boundary.
 - Any symbol not listed above is internal and may change between patch versions.
 
