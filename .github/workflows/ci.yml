@@ -1,0 +1,55 @@
+# Per-PR CI matrix per spec §13.6.
+#
+# Runs typecheck, lint, schema gates, and the Bun unit/library test suites on
+# every supported host platform. Provider contract suites, scenarios, recipes,
+# tutorials, perf-budget, and end-to-end smoke tests are wired in as the
+# corresponding test layers (§13.1) land.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: ${{ matrix.os-name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: linux-x64
+          - os: ubuntu-24.04-arm
+            os-name: linux-arm64
+          - os: macos-13
+            os-name: macos-x64
+          - os: macos-14
+            os-name: macos-arm64
+          - os: windows-latest
+            os-name: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck (tsc -b)
+        run: bun run typecheck
+
+      - name: Lint (Biome)
+        run: bun run lint
+
+      - name: Test (bun test)
+        run: bun test
