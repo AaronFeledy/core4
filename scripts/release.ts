@@ -188,16 +188,15 @@ const stages: ReadonlyArray<Stage> = [
 
 const main = async (): Promise<void> => {
   const target = parseTarget(process.argv.slice(2));
-  const selectedStages = stages.filter((stage) => stageMatchesTarget(stage, target));
-  console.log(`[release] running ${selectedStages.length}/${stages.length} stages for ${target}`);
+  const matchingCount = stages.filter((stage) => stageMatchesTarget(stage, target)).length;
+  console.log(`[release] running ${matchingCount}/${stages.length} stages for ${target}`);
   for (const stage of stages) {
     if (!stageMatchesTarget(stage, target)) {
       await skip(stage.id, `${target} release target`);
+    } else {
+      console.log(`[release] -> ${stage.id}: ${stage.description}`);
+      await stage.run();
     }
-  }
-  for (const stage of selectedStages) {
-    console.log(`[release] -> ${stage.id}: ${stage.description}`);
-    await stage.run();
   }
   console.log("[release] done.");
 };
