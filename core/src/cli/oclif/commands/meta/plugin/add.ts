@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:plugin:add`.
  * `lando meta:plugin:add` — install a plugin via Bun.
  *
  * Resolves the plugin spec through the active `PluginSource` adapter

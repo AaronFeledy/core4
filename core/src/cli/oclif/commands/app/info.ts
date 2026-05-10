@@ -1,6 +1,5 @@
 import { type InfoAppResult, infoApp } from "../../../commands/info.ts";
 /**
- * SPEC: §8.2 canonical id `app:info`.
  * `lando app:info` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

@@ -1,6 +1,5 @@
 import { type ConfigResult, config } from "../../../../commands/config.ts";
 /**
- * SPEC: §8.2 canonical id `app:config`.
  * `lando app:config` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";

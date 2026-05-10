@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 /**
- * Lando v4 release orchestrator — runs the §17.1 build pipeline.
+ * Lando v4 release orchestrator — runs the build pipeline.
  *
  * One ordered sequence produces the two artifact families:
- *   1. compiled binaries (one per platform target, §13.5)
+ *   1. compiled binaries (one per platform target)
  *   2. library package (`@lando/core` published to npm)
  *
- * Per SPEC §17.1, this orchestrator MAY use `Bun.$` directly because it runs
+ * this orchestrator MAY use `Bun.$` directly because it runs
  * outside `LandoRuntimeLive`. Production source under `core/src/` still routes
  * shell-shaped work through `ShellRunner` for redaction, lifecycle events,
- * and pluggability (§3.4, §4.2).
+ * and pluggability.
  *
  * Status: SCAFFOLDING. Stages 9–13 (sign / notarize / manifest / SBOM /
  * publish) are stubs and exit successfully without doing real work; they

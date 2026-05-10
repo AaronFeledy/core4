@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:recipes:list`.
  */
 import { Effect } from "effect";
 

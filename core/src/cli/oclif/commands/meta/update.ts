@@ -1,6 +1,5 @@
 import { type UpdateResult, update } from "../../../commands/update.ts";
 /**
- * SPEC: §8.2 canonical id `meta:update`.
  * `lando meta:update` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `app:logs`.
  * `lando app:logs` — OCLIF wrapper.
  */
 import { Effect, Stream } from "effect";

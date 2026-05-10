@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `app:shell`.
  */
 import { Effect } from "effect";
 

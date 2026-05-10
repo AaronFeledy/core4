@@ -1,6 +1,5 @@
 import { type PoweroffResult, poweroff } from "../../../commands/poweroff.ts";
 /**
- * SPEC: §8.2 canonical id `apps:poweroff`.
  * `lando apps:poweroff` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

@@ -1,5 +1,5 @@
 /**
- * Lando v4 build configuration — the bundled-artifact "ship list" (SPEC: §17.2).
+ * Lando v4 build configuration — the bundled-artifact "ship list".
  *
  * Read by:
  *   - `scripts/build-bundled-plugins.ts` (regenerates `src/plugins/bundled.ts`)

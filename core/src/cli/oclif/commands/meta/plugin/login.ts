@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:plugin:login`.
  * `lando meta:plugin:login` — write registry auth.
  *
  * `lando plugin:login` / `lando plugin:logout` write to

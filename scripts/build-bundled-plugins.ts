@@ -2,8 +2,6 @@
 /**
  * Regenerate `core/src/plugins/bundled.ts` from `core/build.config.ts`.
  *
- * SPEC: §17.2 codegen catalog — `Bundled plugins index` row.
- *
  * Inputs:
  *   - `plugins/` workspace
  *   - `core/build.config.ts` (the "ship list")
@@ -12,9 +10,8 @@
  *   - `core/src/plugins/bundled.ts` — a static `import` graph the compiled
  *     binary can use without dynamic `import()`.
  *
- * Drift gate (per §17.2):
- *   `bun run build:check` re-runs this generator and `git diff --exit-code`
- *   fails if the output drifts.
+ * Drift gate: `bun run build:check` re-runs this generator and
+ * `git diff --exit-code` fails if the output drifts.
  */
 import { resolve } from "node:path";
 
@@ -30,8 +27,8 @@ const HEADER = `/**
  *
  * Source of truth: \`core/build.config.ts\` (the "ship list").
  *
- * The default Lando v4 binary is built with \`bun build --compile\` (SPEC: §17.1
- * stage 7). Compiled binaries cannot dynamically \`import()\` arbitrary files at
+ * The default Lando v4 binary is built with \`bun build --compile\`.
+ * Compiled binaries cannot dynamically \`import()\` arbitrary files at
  * runtime, so bundled plugins are statically imported here. Library consumers
  * do not receive bundled plugins by default — they must opt into bundled
  * discovery or contribute their own Layers.

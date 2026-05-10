@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:plugin:remove`.
  * `lando meta:plugin:remove` — uninstall a plugin.
  */
 import { Args } from "@oclif/core";

@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `apps:init`.
  * `lando apps:init` — interactive scaffolding for new Lando apps.
  *
  * **Interactive only** — not exported as a function from

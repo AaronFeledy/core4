@@ -1,6 +1,5 @@
 import { type RebuildAppResult, rebuildApp } from "../../../commands/rebuild.ts";
 /**
- * SPEC: §8.2 canonical id `app:rebuild`.
  * `lando app:rebuild` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

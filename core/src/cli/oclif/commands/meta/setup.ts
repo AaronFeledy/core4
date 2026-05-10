@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:setup`.
  * `lando meta:setup` — provider, CA, proxy, and shell-integration setup.
  *
  * Bootstrap: `provider`.

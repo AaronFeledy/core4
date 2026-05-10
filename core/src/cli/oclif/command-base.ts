@@ -36,7 +36,7 @@ import type { Effect } from "effect";
  * subclass.
  */
 /**
- * The three first-class command namespaces (SPEC: §8.1.1).
+ * The three first-class command namespaces.
  *
  *   - `app`: operations on the current Lando app
  *   - `apps`: cross-app and host-discovery operations
@@ -45,7 +45,7 @@ import type { Effect } from "effect";
 export type LandoCommandNamespace = "app" | "apps" | "meta";
 
 /**
- * Top-level alias rules (SPEC: §8.1.2).
+ * Top-level alias rules.
  *
  *   - `false` (default): no top-level alias is registered.
  *   - `true`: register the canonical id with its namespace prefix stripped.
@@ -61,7 +61,7 @@ export interface LandoCommandSpec<A = void, E = unknown> {
   /**
    * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
    * `"meta:config"`). MUST start with one of `LandoCommandNamespace` plus
-   * `:`. SPEC: §8.1.1.
+   * `:`. The canonical id MUST be namespace-prefixed.
    */
   readonly id: string;
   readonly summary: string;
@@ -80,7 +80,7 @@ export interface LandoCommandSpec<A = void, E = unknown> {
 
 /**
  * Resolve the OCLIF `aliases` array for a `LandoCommandSpec` from its
- * `topLevelAlias` rule (SPEC: §8.1.2). Returns the merged alias list,
+ * `topLevelAlias` rule. Returns the merged alias list,
  * including any explicit `aliases` already on the spec.
  */
 export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {

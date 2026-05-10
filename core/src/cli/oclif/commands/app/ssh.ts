@@ -1,6 +1,5 @@
 import { type ExecAppResult, execApp } from "../../../commands/exec.ts";
 /**
- * SPEC: §8.2 canonical id `app:ssh`.
  * `lando app:ssh` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

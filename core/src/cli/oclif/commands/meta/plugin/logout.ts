@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:plugin:logout`.
  * `lando meta:plugin:logout` — clear registry auth.
  */
 import { Flags } from "@oclif/core";

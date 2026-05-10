@@ -1,8 +1,8 @@
 #!/usr/bin/env bun
 /**
- * Codegen orchestrator — Stage 1 of the build pipeline (SPEC: §17.1).
+ * Codegen orchestrator — Stage 1 of the build pipeline.
  *
- * Runs every generator in the §17.2 catalog. Order matters because some
+ * Runs every generator in the catalog. Order matters because some
  * outputs feed others (e.g. the bundled-plugins index informs the bootstrap
  * layers; the OCLIF manifest reads the static command tree).
  *

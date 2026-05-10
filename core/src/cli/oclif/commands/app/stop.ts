@@ -1,6 +1,5 @@
 import { type StopAppResult, stopApp } from "../../../commands/stop.ts";
 /**
- * SPEC: §8.2 canonical id `app:stop`.
  * `lando app:stop` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

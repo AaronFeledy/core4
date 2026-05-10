@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:config`.
  */
 import { Effect } from "effect";
 

@@ -1,6 +1,5 @@
 import { type ExecAppResult, execApp } from "../../../commands/exec.ts";
 /**
- * SPEC: §8.2 canonical id `app:exec`.
  * `lando app:exec` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

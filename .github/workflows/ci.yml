@@ -1,9 +1,9 @@
-# Per-PR CI matrix per spec §13.6.
+# Per-PR CI matrix 
 #
 # Runs typecheck, lint, schema gates, and the Bun unit/library test suites on
 # every supported host platform. Provider contract suites, scenarios, recipes,
 # tutorials, perf-budget, and end-to-end smoke tests are wired in as the
-# corresponding test layers (§13.1) land.
+# corresponding test layers land.
 name: ci
 
 on:

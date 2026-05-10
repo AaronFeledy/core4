@@ -1,6 +1,5 @@
 import { type DestroyAppResult, destroyApp } from "../../../commands/destroy.ts";
 /**
- * SPEC: §8.2 canonical id `app:destroy`.
  * `lando app:destroy` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

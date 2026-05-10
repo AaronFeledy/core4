@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:shellenv`.
  * `lando meta:shellenv` — print shell-profile snippets to add
  * `<userConfRoot>/bin` to PATH.
  *

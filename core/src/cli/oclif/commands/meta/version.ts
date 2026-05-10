@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `meta:version`.
  * `lando meta:version` — OCLIF Command class wrapping the Effect operation.
  *
  * Bootstrap: `none`. The pure Effect operation lives at

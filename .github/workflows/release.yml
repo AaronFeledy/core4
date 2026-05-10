@@ -1,7 +1,7 @@
-# Release workflow per spec §17.8.
+# Release workflow 
 #
 # Triggered by tag pushes (`v*.*.*`). Runs the ordered build pipeline from
-# §17.1 — typecheck, codegen, per-platform `bun build --compile`, library
+# the build pipeline — typecheck, codegen, per-platform `bun build --compile`, library
 # build — and uploads artifacts to a GitHub Release.
 #
 # Signing, notarization, SBOM, SLSA provenance, and the curl|sh installer

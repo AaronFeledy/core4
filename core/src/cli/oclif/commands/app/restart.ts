@@ -1,6 +1,5 @@
 import { type RestartAppResult, restartApp } from "../../../commands/restart.ts";
 /**
- * SPEC: §8.2 canonical id `app:restart`.
  * `lando app:restart` — OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

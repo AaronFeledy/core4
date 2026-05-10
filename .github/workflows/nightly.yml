@@ -1,7 +1,7 @@
-# Nightly distribution rehearsal per spec §13.6.
+# Nightly distribution rehearsal 
 #
 # Runs `bun build --compile` for each supported platform target listed in
-# §13.5 and a dry-run library publish. Real signing, notarization, SBOM, and
+# distribution rehearsal and a dry-run library publish. Real signing, notarization, SBOM, and
 # provenance are wired into release.yml; this job is the daily rehearsal that
 # guarantees the build pipeline still works ahead of any tagged release.
 name: nightly

@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `app:includes:verify`.
  */
 import { Effect } from "effect";
 

@@ -1,5 +1,4 @@
 /**
- * SPEC: §8.2 canonical id `app:config:translate`.
  */
 import { Effect } from "effect";
 
