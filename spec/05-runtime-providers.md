@@ -28,7 +28,7 @@ A **Runtime Provider** is a plugin that turns a provider-neutral `AppPlan` into 
 
 1. **Core never shells out to provider binaries.** No `Bun.spawn('docker', [...])` in core. All provider operations go through the `RuntimeProvider` Effect interface.
 2. **Core never writes provider-native plan files as source of truth.** Compose files, Pod specs, Vagrantfiles are emitted by the provider, not by core.
-3. **Provider selection is explicit and cached.** The selected provider is stored per-app in the app plan cache.
+3. **Provider selection is explicit and cached.** When an app plan needs a runtime provider and no app/global config overrides provider selection, Lando selects the bundled Lando-managed runtime (`@lando/provider-lando`) as the default. That selection is stored per-app in the app plan cache. Host-only commands and host-targeted tooling do not need a runtime provider selection at all.
 4. **Provider capabilities are declared and validated before plans are applied.** A planner that needs `bindMounts` checks `provider.capabilities.bindMounts === true` and emits a typed `CapabilityError` if not.
 5. **Provider-specific config is namespaced.** It lives under `providers.<id>` and is invisible unless the provider plugin opts to read it.
 6. **Provider escape hatches don't become portable v4 semantics.** A user who sets `providers.docker.composeFiles:` is opting out of portability. A user who writes supported Compose keys directly in the Landofile is using the shared input schema; planning decides whether those keys normalize to provider-neutral intent or require a provider capability.
