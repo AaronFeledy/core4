@@ -1,0 +1,1063 @@
+{
+  "project": "Lando v4",
+  "branchName": "ralph/mvp-walking-skeleton",
+  "description": "Lando v4 Phase 1 MVP (walking skeleton): one developer can run `lando start` against one app with one service on Linux x64, end-to-end, via the Lando-managed runtime (private Podman socket). Stories follow the 7-PRD breakdown in `spec/mvp/prd-mvp-*.md`; each story has a corresponding US-XXX section in its PRD with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 1.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Lock BootstrapLevel schema export from @lando/sdk",
+      "description": "As a plugin author, I want a single semver-stable BootstrapLevel literal exported from @lando/sdk/schema so I can declare the bootstrap depth my command needs without depending on @lando/core internals. (PRD-01 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/schema/bootstrap.test.ts` asserts BootstrapLevel is a Schema.Literal with exactly: none | minimal | plugins | commands | tooling | provider | global | scratch | app",
+        "Test asserts unknown literals fail decoding with a structured ParseError",
+        "BOOTSTRAP_RANK exported alongside, with a frozen ordering test that fails if any rank value changes",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Ship AppRef, AppPlan, ServicePlan schemas in @lando/sdk",
+      "description": "As @lando/core, I need full Effect Schemas for AppRef, AppPlan, and ServicePlan so the planner and providers consume a shared, validated shape instead of structurally-typed interfaces. (PRD-01 US-002)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/schema/app-plan.test.ts` decodes a fixture matching the minimal MVP shape (one app, one service, one mount, one endpoint)",
+        "Test asserts decoding rejects malformed plans with a structured ParseError",
+        "Schemas exported from `sdk/src/schema/` and re-exported from `@lando/sdk/schema`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Ship ProviderCapabilities schema (full shape) in @lando/sdk",
+      "description": "As a provider author, I need a full ProviderCapabilities schema so my Live Layer declares its capabilities once and core/planner can dispatch on them. (PRD-01 US-003)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/schema/provider-capabilities.test.ts` asserts every field from spec/05-runtime-providers.md capability matrix (bindMountPerformance, sharedCrossAppNetwork, copyOnWriteAppRoot, etc.)",
+        "Test decodes a provider-lando fixture (`bindMountPerformance: native`) and a provider-docker fixture (`bindMountPerformance: slow`)",
+        "Required vs optional fields match the spec exactly; defaults come from decode",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Ship landofile parse-input schemas (LandofileShape, GlobalConfig)",
+      "description": "As @lando/core, I need a frozen schema for the parsed Landofile shape and GlobalConfig so LandofileService and ConfigService work against a stable contract. (PRD-01 US-004)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/schema/landofile.test.ts` decodes a minimal MVP Landofile (name, one service, Compose-subset keys: image, ports, environment, volumes, command, dependsOn)",
+        "Test asserts decoding rejects Compose keys outside the MVP allowlist with a LandofileValidationError naming the rejected key",
+        "GlobalConfig schema covers: userDataRoot, userConfRoot, defaultProviderId, telemetry.enabled (default false at MVP)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Ship the five MVP-mandated tagged errors in @lando/sdk",
+      "description": "As a plugin author or library consumer, I need stable Effect TaggedError types for the failure modes Phase 1 publishes: LandoRuntimeBootstrapError, ProviderCapabilityError, LandofileParseError, PluginLoadError, NoProviderInstalledError. (PRD-01 US-005)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/errors/tagged-errors.test.ts` constructs each of the five errors and asserts both `_tag` discriminator and structured payload",
+        "Each error carries the payload fields needed for downstream rendering (e.g. LandofileParseError: { filePath, message, line?, column? }; ProviderCapabilityError: { providerId, capability, requiredValue, actualValue })",
+        "Test asserts Effect.failCause paths preserve `_tag` after Effect.runPromiseExit",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Ship lifecycle event payload schemas (8-10 events for app:start/app:stop)",
+      "description": "As an event subscriber (plugins, telemetry, future renderer), I need frozen payload shapes for the lifecycle events app:start/app:stop publish per spec/03-architecture.md §3.5. (PRD-01 US-006)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/events/lifecycle.test.ts` decodes payloads for: pre-app-start, post-app-start, pre-service-start, post-service-start, pre-app-stop, post-app-stop, pre-service-stop, post-service-stop, pre-build, post-build",
+        "Each payload schema includes: appRef, serviceName? (services-scoped only), providerId, timestamp",
+        "Each event has a literal `eventName` field that pins the discriminator",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Ship Effect service tags with frozen interface shapes in @lando/sdk",
+      "description": "As a plugin author, I need Effect Service tags (Context.Tag class-extending pattern) for every service Phase 1 ships, with frozen method shapes. (PRD-01 US-007)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/services/tags.test.ts` asserts each tag is exported, is a Context.Tag, has documented method names with Effect-typed return signatures: Logger, EventService, RuntimeProvider, RuntimeProviderRegistry, ConfigService, LandofileService, PluginRegistry, CacheService, FileSystem, ProcessRunner, ShellRunner",
+        "Each method's failure channel is typed with one or more SDK tagged errors (no unknown, no bare Error)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Provider contract test stub in @lando/sdk/test (with TestRuntimeProvider)",
+      "description": "As a provider author, I need a published contract test suite I can run my Live Layer through to prove conformance to the RuntimeProvider interface. A trivial in-memory TestRuntimeProvider proves the suite runs. (PRD-01 US-008)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/contract/provider.test.ts` documents Phase 1 contract assertions (capability matrix exists, bringUp/bringDown Effect-typed, exec returns Stream of stdio chunks, logs returns Stream<LogChunk>, inspect returns structured snapshot)",
+        "Suite exported from `@lando/sdk/test` as `runProviderContract(provider): Effect<void, ContractFailure>`",
+        "Trivial in-memory TestRuntimeProvider in `sdk/src/test/` passes the suite",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Verify @lando/sdk package exports surface",
+      "description": "As an embedding host, I need every PRD-mandated entry point to resolve cleanly so I can pin against a stable surface. (PRD-01 US-009)",
+      "acceptanceCriteria": [
+        "Failing test `sdk/test/library/exports.test.ts` does `await import('@lando/sdk')`, '/schema', '/errors', '/events', '/services', '/test' and asserts each resolves with the expected canonical sample symbol",
+        "`sdk/package.json` `exports` published all six entry points",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "makeLandoRuntime factory composes a Layer at the requested bootstrap level",
+      "description": "As @lando/core's OCLIF init hook, I need makeLandoRuntime({ bootstrap: <level> }) to return one composed Layer that satisfies every required service tag for that level — and only that level. (PRD-02 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/runtime/make-runtime.test.ts` calls makeLandoRuntime({ bootstrap: 'minimal' }) and asserts the returned Layer satisfies Logger | ConfigService | FileSystem but not RuntimeProvider",
+        "Same test for bootstrap: 'provider' satisfies RuntimeProvider | RuntimeProviderRegistry",
+        "Same test for bootstrap: 'app' satisfies LandofileService | AppPlanner | RuntimeProvider",
+        "Failure cases (invalid bootstrap value, malformed options) fail with LandoRuntimeBootstrapError carrying a structured payload",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "OCLIF init hook resolves command's bootstrap level and provides matching Layer",
+      "description": "As an OCLIF command, I declare `static bootstrap: BootstrapLevel = 'provider'` on my class; the init hook reads that level on dispatch and provides a runtime that satisfies it. (PRD-02 US-002)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/init-hook.test.ts` registers a fixture command with `static bootstrap = 'provider'`, dispatches via OCLIF, and asserts hook ran before run() and the command can `yield* RuntimeProvider`",
+        "Second fixture with `static bootstrap = 'minimal'` cannot `yield* RuntimeProvider` without missing-context error",
+        "Init hook lives at `core/src/cli/oclif/hooks/init.ts`, registered in core/package.json oclif.hooks",
+        "Hook fails with LandoRuntimeBootstrapError if a command class is missing `static bootstrap` (no silent default)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Pre-OCLIF fast path for --version, -v, version",
+      "description": "As a CI script that runs `lando --version` thousands of times, that path must skip OCLIF + Effect entirely and return in <50ms. (PRD-02 US-003)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/fast-path.test.ts` shells out to `bun run core/src/cli/index.ts --version`, asserts exit 0 and stdout matches version from core/package.json",
+        "Test asserts no Effect runtime imports were touched (debug hook throws if makeLandoRuntime is called)",
+        "Test repeats for `-v` and `version`",
+        "Wall-clock budget ≤50ms documented (not enforced at MVP)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Pre-OCLIF fast path for shellenv at bootstrap level none",
+      "description": "As a user setting up shell integration, `lando shellenv` must run at bootstrap level `none` so it works before any lando state exists on the machine. (PRD-02 US-004)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/fast-path.test.ts` runs `lando shellenv` against compiled binary and asserts stdout contains canonical shellenv lines (export of LANDO_INSTALL_DIR, prepend `${LANDO_INSTALL_DIR}/bin` to PATH)",
+        "Output identical regardless of whether ~/.lando/ exists",
+        "Fast-path branch handles `shellenv` without invoking Effect runtime",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "BUNDLED_PLUGINS array consumed by PluginRegistry's bundled-only loader",
+      "description": "As PluginRegistry.Live, I read the BUNDLED_PLUGINS array from `core/src/plugins/bundled.ts` to decide which plugins are loaded at MVP — no FS scanning, no dynamic imports. (PRD-02 US-005)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/plugins/bundled.test.ts` asserts BUNDLED_PLUGINS exported as ReadonlyArray<{ name, layer, manifest }> containing all four MVP plugins (@lando/provider-lando, @lando/provider-docker, @lando/service-lando, @lando/logger-pretty)",
+        "Empty layer/manifest stubs are acceptable here; PRDs 04 and 05 fill them",
+        "Test asserts bundled.ts is regenerated by `scripts/build-bundled-plugins.ts` (idempotent on fresh checkout)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "scripts/codegen.ts orchestrates all codegen steps",
+      "description": "As a developer running `bun run codegen`, every codegen output (bundled.ts, OCLIF manifest, schema artifacts, recipe asset embedding, CI workflow) is regenerated in one command. (PRD-02 US-006)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/scripts/codegen.test.ts` runs `bun run codegen` and asserts all expected output files exist and are byte-identical to a fresh run (idempotency)",
+        "scripts/codegen.ts invokes scripts/build-bundled-plugins.ts and scripts/build-ci-workflow.ts (CI workflow gen lives in PRD-07 US-005)",
+        "`bun run codegen` is the single command developers run",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Compiled binary builds for Linux x64 via bun build --compile",
+      "description": "As release engineering, `bun run build` produces a single Linux x64 binary at `dist/lando` that runs on the dev's machine. (PRD-02 US-007)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/build/build-binary.test.ts` runs `bun run build`, asserts `dist/lando` exists, is executable, and `./dist/lando --version` returns the expected version",
+        "`./dist/lando --help` exits 0",
+        "package.json `build` script invokes `bun build --compile` with the right entrypoint",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Test harness for Effect services (test-runner helper)",
+      "description": "As a service-test author, I want a thin helper that builds a Layer of in-memory test doubles for the SDK service tags so writing service tests is one import, not boilerplate. (PRD-02 US-008)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/runtime/test-harness.test.ts` imports `@lando/core/testing` makeTestRuntime() and asserts it provides Logger, FileSystem, ProcessRunner, ConfigService as in-memory doubles",
+        "Doubles record calls so tests can assert on them",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "bun test configuration covers unit + Effect-service + CLI scenario tests",
+      "description": "As a developer running `bun test`, every test layer (unit, Effect service, CLI scenario, integration) discovers and runs without extra config. (PRD-02 US-009)",
+      "acceptanceCriteria": [
+        "Failing test (or build assertion) verifies `bun test` discovers tests under `core/test/`, `sdk/test/`, `plugins/*/test/`",
+        "Integration tests gated behind env var (e.g. `LANDO_TEST_PODMAN_SOCKET`) are skipped without that var",
+        "`bun test` exit code is 0 on a fresh checkout",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "tsc -b build-info file dist/.tsbuildinfo does not leak into runtime",
+      "description": "As a packager, I need `tsc -b` artifacts (.tsbuildinfo, dist/) to stay out of the published package and the compiled binary. (PRD-02 US-010)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/build/no-leak.test.ts` greps the compiled `dist/lando` binary for `.tsbuildinfo` strings and asserts none are present",
+        "`.gitignore` and `.npmignore` (if any) exclude tsc build artifacts",
+        "`bun run clean` removes dist/ and .tsbuildinfo files",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "biome check . is enforced (lint gate)",
+      "description": "As a developer, `bun run lint` runs biome with the repo's biome.json and exits non-zero on any violation. (PRD-02 US-011)",
+      "acceptanceCriteria": [
+        "Failing test or CI assertion: `bun run lint` exits 0 on a clean checkout",
+        "Introducing a deliberate lint violation makes `bun run lint` exit non-zero",
+        "biome.json governs the rules; no per-file overrides without justification",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "ProcessRunner Live implementation (Bun.spawn)",
+      "description": "As any service that needs to run a child process, I depend on the ProcessRunner tag and get a Bun.spawn-backed Live impl that returns Effect-typed exit/stdio. (PRD-03 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/process-runner.test.ts` runs a trivial command (e.g. `echo hi`) via ProcessRunner and asserts exit code 0 and captured stdout 'hi'",
+        "Failure (non-zero exit) yields a tagged error with structured stderr/exit payload",
+        "Stream-mode call returns a Stream<{ kind: 'stdout' | 'stderr', chunk: Uint8Array }>",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "ShellRunner Live implementation (Bun.$)",
+      "description": "As the host ToolingEngine and CLI scenario tests, I need a ShellRunner Live impl backed by Bun.$ that returns Effect-typed results. (PRD-03 US-002)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/shell-runner.test.ts` runs `echo hi` via ShellRunner and asserts captured stdout",
+        "Failure exits propagate as tagged errors with payload",
+        "Cwd, env, and shell options surfaced in the API",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "FileSystem Live implementation (Bun.file)",
+      "description": "As any service that reads/writes files, I depend on FileSystem and get a Bun.file-backed Live impl. (PRD-03 US-003)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/file-system.test.ts` writes a temp file via FileSystem.write, reads it back via FileSystem.read, asserts equal content",
+        "Read of nonexistent path yields tagged error with path payload",
+        "Atomic write supported (write-temp-then-rename) per spec/12",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "ConfigService Live implementation (global config + env overlay)",
+      "description": "As consumers of global config, I get ConfigService.Live that loads from `<userConfRoot>/lando.yml` with environment-variable overlay. (PRD-03 US-004)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/config-service.test.ts` writes a temp lando.yml, asserts ConfigService loads expected values",
+        "Env var overlay (e.g. LANDO_DEFAULT_PROVIDER_ID) takes precedence over yml",
+        "Decoded against GlobalConfig schema; rejects bad yml with tagged error",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "LandofileService Live implementation (YAML + Compose subset)",
+      "description": "As AppPlanner, I depend on LandofileService.Live to parse `.lando.yml` against the MVP Compose-subset allowlist. No includes, no landofile.ts, no expressions at MVP. (PRD-03 US-005)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/landofile-service.test.ts` parses a minimal Node+Postgres .lando.yml and asserts the structured shape matches the Landofile schema",
+        "Compose keys outside the MVP allowlist are rejected with LandofileParseError naming the rejected key",
+        "YAML errors propagate as LandofileParseError with line/column",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "EventService Live implementation (basic pub/sub)",
+      "description": "As app:start/app:stop, I depend on EventService.Live to publish lifecycle events; subscribers receive them in order. No priority bands at MVP. (PRD-03 US-006)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/event-service.test.ts` subscribes a listener, publishes pre-app-start and post-app-start, asserts both received in order with correct payloads",
+        "Multiple subscribers all receive the event",
+        "Subscriber error does not abort other subscribers",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Logger Live implementation (Effect Logger.pretty wrapper)",
+      "description": "As any service, I depend on Logger.Live and get Effect's built-in Logger.pretty under the hood with the SDK's Logger interface on top. (PRD-03 US-007)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/logger.test.ts` logs at info, warn, error levels and asserts the rendered output matches expected pretty format",
+        "Logger.Live is provided by the minimal bootstrap level",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "CacheService Live implementation (in-memory)",
+      "description": "As any caller that needs caching, I depend on CacheService.Live which is in-memory only at MVP (persistent caches are Alpha). (PRD-03 US-008)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/cache-service.test.ts` sets a key, reads it back, asserts roundtrip",
+        "Different cache namespaces are isolated",
+        "TTL semantics (if any at MVP) work as documented",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "PluginRegistry Live implementation (bundled-only)",
+      "description": "As @lando/core, PluginRegistry.Live reads BUNDLED_PLUGINS at startup — no FS discovery, no install, no dynamic imports at MVP. (PRD-03 US-009)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/plugin-registry.test.ts` asserts PluginRegistry.list() returns all four bundled plugins",
+        "PluginRegistry.get(name) returns the plugin's manifest+layer",
+        "Unknown plugin id yields tagged PluginLoadError",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "RuntimeProvider + RuntimeProviderRegistry Live implementations",
+      "description": "As app:start, I depend on RuntimeProvider (the picked one) and RuntimeProviderRegistry (the picker). Live impls dispatch by id; missing provider yields NoProviderInstalledError. (PRD-03 US-010)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/runtime-provider-registry.test.ts` registers a TestRuntimeProvider, picks it by id, asserts dispatch",
+        "Missing provider id yields NoProviderInstalledError",
+        "Default provider id resolves from ConfigService.defaultProviderId",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "AppPlanner Live implementation (minimal AppPlan)",
+      "description": "As app:start, I depend on AppPlanner.Live that takes a parsed Landofile and emits a minimal AppPlan with services, one mount (app root bind), and endpoints. (PRD-03 US-011)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/app-planner.test.ts` plans a Node+Postgres Landofile and asserts the resulting AppPlan has 2 services with expected images, 1 app-root bind mount, and per-service endpoints",
+        "Plan is decoded against AppPlan schema",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "BuildOrchestrator Live implementation (sequential)",
+      "description": "As app:start, I depend on BuildOrchestrator.Live which sequentially runs pre-build → build → post-build for each service. No group weighting at MVP. (PRD-03 US-012)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/services/build-orchestrator.test.ts` orchestrates a 2-service plan and asserts pre-build / post-build events are published per service in order",
+        "Failure of one service short-circuits the orchestration with the failing service's error",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Create @lando/provider-lando workspace package skeleton",
+      "description": "As the bundled providers list, I need the @lando/provider-lando workspace package to exist with a Layer export and a manifest, ready to be filled by subsequent stories. (PRD-04 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-lando/test/skeleton.test.ts` imports the package, asserts a Layer is exported, asserts the manifest declares pluginId @lando/provider-lando",
+        "Workspace registered in root package.json `workspaces`",
+        "BUNDLED_PLUGINS includes the package",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "provider-lando capability matrix introspection",
+      "description": "As @lando/core/planner, I depend on provider-lando declaring its ProviderCapabilities at registration. On Linux: bindMountPerformance: native, sharedCrossAppNetwork: false (MVP). (PRD-04 US-002)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-lando/test/capabilities.test.ts` registers the Live Layer and asserts ProviderCapabilities matches the spec for Linux MVP",
+        "Capabilities are populated via Podman API introspection (not from podman binary on PATH)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "provider-lando Compose file emission to per-app temp dir",
+      "description": "As provider-lando.bringUp, I emit a Compose file for the app to a per-app temp dir (internal only, never user-exposed). (PRD-04 US-003)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-lando/test/compose-emit.test.ts` plans a 2-service AppPlan and asserts the emitted Compose YAML matches expected shape (services, networks, volumes)",
+        "File location is under a per-app temp dir, not the app root",
+        "Compose file references images and ports from the AppPlan",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-036",
+      "title": "provider-lando bringUp brings services to running state",
+      "description": "As app:start, I call provider-lando.bringUp(plan) and it brings every service to running state via the private Podman API socket. (PRD-04 US-004)",
+      "acceptanceCriteria": [
+        "Failing integration test `plugins/provider-lando/test/bring-up.integration.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET on Linux x64) brings up a Node+Postgres plan and asserts both containers are running via API inspect",
+        "Bun.spawn-driven RPC against the socket — not `podman` binary on PATH",
+        "bringUp is idempotent: calling twice on the same plan is a no-op the second time",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Test functionality against live Podman socket"
+      ],
+      "priority": 36,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-037",
+      "title": "provider-lando bringDown stops + removes containers",
+      "description": "As app:stop, I call provider-lando.bringDown(plan) and every container the plan provisioned is stopped and removed (volumes preserved). (PRD-04 US-005)",
+      "acceptanceCriteria": [
+        "Failing integration test `plugins/provider-lando/test/bring-down.integration.test.ts` brings up a plan, brings it down, asserts no containers remain via API inspect",
+        "Volumes declared `scope: app` are preserved across bringDown/bringUp cycles",
+        "bringDown is idempotent",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Test functionality against live Podman socket"
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "provider-lando exec returns Stream of stdio chunks",
+      "description": "As future tooling, I can call provider-lando.exec(plan, service, cmd) and get back a Stream<{kind, chunk}> for stdout/stderr plus an Effect-typed exit code. (PRD-04 US-006)",
+      "acceptanceCriteria": [
+        "Failing integration test `plugins/provider-lando/test/exec.integration.test.ts` brings up a plan, execs `echo hi` in the node service, asserts captured stdout 'hi' and exit 0",
+        "Stream-based API; no buffering whole output before yield",
+        "Failure (nonzero exit) propagates as a tagged error with exit code in payload",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Test functionality against live Podman socket"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "provider-lando logs returns follow Stream",
+      "description": "As `lando logs` (future), I depend on provider-lando.logs(plan, service, { follow }) which yields a Stream<LogChunk>. (PRD-04 US-007)",
+      "acceptanceCriteria": [
+        "Failing integration test `plugins/provider-lando/test/logs.integration.test.ts` brings up a service that prints to stdout, calls logs({ follow: false }), asserts captured chunks contain expected lines",
+        "follow: true returns an open stream that surfaces new chunks until canceled",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Test functionality against live Podman socket"
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "provider-lando inspect returns structured snapshot",
+      "description": "As `lando info`, I depend on provider-lando.inspect(plan) returning a structured snapshot (services + container ids + states + endpoints). (PRD-04 US-008)",
+      "acceptanceCriteria": [
+        "Failing integration test `plugins/provider-lando/test/inspect.integration.test.ts` brings up a plan, calls inspect, asserts the returned snapshot matches expected schema (services, ids, states, endpoints)",
+        "inspect is read-only — does not mutate provider state",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Test functionality against live Podman socket"
+      ],
+      "priority": 40,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "provider-lando passes the SDK provider contract suite",
+      "description": "As a provider author, I run runProviderContract(provider-lando) from @lando/sdk/test and it passes every Phase 1 contract assertion. (PRD-04 US-009)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-lando/test/contract.integration.test.ts` runs runProviderContract against the Live Layer and asserts pass",
+        "Test runs in CI on Linux x64 against a private Podman socket",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Test functionality against live Podman socket"
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "@lando/provider-docker Live Layer (Linux Docker Engine, stretch)",
+      "description": "As a contributor with Docker Engine running, I get a working escape-hatch RuntimeProvider so the contract suite is cross-validated. (PRD-04 US-010)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-docker/test/contract.integration.test.ts` (gated on Docker socket presence) runs runProviderContract against the docker Live Layer and asserts pass",
+        "Capability matrix declares bindMountPerformance: native (Linux Engine) and sharedCrossAppNetwork: false (MVP)",
+        "Compose emission + `docker exec` + `docker logs --follow` via Bun.spawn",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "lando setup (provider-lando) — manual-install acceptance",
+      "description": "As a dev on Linux, `lando setup` for provider-lando at MVP accepts a system-installed Podman (manual install required); it surfaces a clear remediation message if Podman is missing. (PRD-04 US-011)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-lando/test/setup.integration.test.ts` runs setup with no podman socket, asserts it exits with NoProviderInstalledError carrying remediation message",
+        "With socket present, setup succeeds and reports detected Podman version",
+        "No automatic download of pinned Podman binary at MVP (deferred to Alpha; documented as such)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-044",
+      "title": "Provider-lando does not import @oclif/core (boundary test)",
+      "description": "As an embedding library consumer, plugins must not pull OCLIF into the default entry point. (PRD-04 US-012)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/provider-lando/test/boundary.test.ts` asserts no source under plugins/provider-lando/src imports from @oclif/core (transitive or direct)",
+        "Equivalent assertion in plugins/provider-docker",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-045",
+      "title": "@lando/service-lando package skeleton",
+      "description": "As the bundled-services list, I need the @lando/service-lando workspace package to exist with a Layer export and a manifest. (PRD-05 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/service-lando/test/skeleton.test.ts` imports the package, asserts a Layer is exported, manifest declares pluginId @lando/service-lando",
+        "Registered in BUNDLED_PLUGINS",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-046",
+      "title": "node:lts ServiceType implementation",
+      "description": "As app:start, I get a working ServiceType `node:lts` that produces a Node service with default image, default port, and Compose-subset overrides. (PRD-05 US-002)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/service-lando/test/node-service-type.test.ts` plans a Landofile with `services: { web: { type: 'node:lts' } }`, asserts ServicePlan output (image: node:lts, port mapping, default command)",
+        "User overrides (image, environment, command) propagate from Landofile to the ServicePlan",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 46,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-047",
+      "title": "postgres ServiceType implementation",
+      "description": "As app:start, I get a working ServiceType `postgres` that produces a Postgres service with default image, default port, and Compose-subset overrides. (PRD-05 US-003)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/service-lando/test/postgres-service-type.test.ts` plans a Landofile with `services: { db: { type: 'postgres' } }`, asserts ServicePlan output (image: postgres, port mapping, default env vars POSTGRES_USER/POSTGRES_PASSWORD/POSTGRES_DB)",
+        "User overrides propagate from Landofile",
+        "A scope:app named volume is declared for /var/lib/postgresql/data so data persists across bringDown/bringUp",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 47,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-048",
+      "title": "service-lando Layer wires both ServiceTypes into core's registry",
+      "description": "As @lando/core, when service-lando's Layer is provided, both `node:lts` and `postgres` ServiceTypes appear in the planner's ServiceType registry. (PRD-05 US-004)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/service-lando/test/registry.test.ts` provides the service-lando Layer and asserts both ServiceTypes are registered and resolvable by id",
+        "Unknown service type in a Landofile yields a structured ParseError naming the unknown type",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 48,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-049",
+      "title": "service-lando does not import @oclif/core (boundary test)",
+      "description": "As an embedding library consumer, service plugins must not pull OCLIF into the default entry. (PRD-05 US-005)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/service-lando/test/boundary.test.ts` asserts no source under plugins/service-lando/src imports from @oclif/core",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 49,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-050",
+      "title": "@lando/logger-pretty package skeleton (empty body)",
+      "description": "As the bundled plugin set, @lando/logger-pretty exists with a manifest and an empty body — Effect's default Logger.pretty is good enough at MVP. The package exists so the bundled.ts codegen path is exercised. (PRD-05 US-006)",
+      "acceptanceCriteria": [
+        "Failing test `plugins/logger-pretty/test/skeleton.test.ts` imports the package, asserts a Layer is exported (empty bind on Logger is acceptable), manifest declares pluginId @lando/logger-pretty",
+        "Registered in BUNDLED_PLUGINS",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-051",
+      "title": "BUNDLED_PLUGINS codegen handles all four MVP plugins",
+      "description": "As `bun run codegen`, scripts/build-bundled-plugins.ts emits a bundled.ts referencing all four MVP plugins by their actual Layer/manifest exports (not stubs). (PRD-05 US-007)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/plugins/bundled-codegen.test.ts` runs scripts/build-bundled-plugins.ts and asserts bundled.ts re-exports real Layer + manifest from each of the four MVP packages",
+        "Re-running codegen produces byte-identical output (idempotent)",
+        "Compiled binary contains all four plugins (no FS dynamic import)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-052",
+      "title": "lando init --full --name=<name> scaffolds a Node+Postgres app",
+      "description": "As a developer, `lando init --full --name=mvp` creates a directory containing a working Node+Postgres .lando.yml from the single hardcoded MVP recipe. No prompts beyond --name. (PRD-06 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/init.scenario.test.ts` runs `lando init --full --name=mvp`, asserts a `mvp/` directory exists with .lando.yml + minimal Node app file (e.g. server.js)",
+        ".lando.yml decodes against the Landofile schema",
+        "Re-running init in same dir is a no-op (or yields a clear error)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Run `./dist/lando init --full --name=mvp-test` against compiled binary and verify output"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-053",
+      "title": "lando start brings up the scaffolded app via provider-lando",
+      "description": "As a developer in a scaffolded app dir, `lando start` plans the app, calls provider-lando.bringUp, and reports running services. (PRD-06 US-002)",
+      "acceptanceCriteria": [
+        "Failing integration test `core/test/cli/start.integration.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET) scaffolds a fresh app via init, runs start, asserts both services are running via inspect",
+        "Lifecycle events pre-app-start, post-app-start, pre-service-start (×2), post-service-start (×2) are published",
+        "Plain text output reports the started services (no concurrent task tree at MVP)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Run `./dist/lando start` end-to-end against live Podman socket"
+      ],
+      "priority": 53,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-054",
+      "title": "lando stop brings down the running app",
+      "description": "As a developer in a running app, `lando stop` calls provider-lando.bringDown and reports clean stop. (PRD-06 US-003)",
+      "acceptanceCriteria": [
+        "Failing integration test `core/test/cli/stop.integration.test.ts` starts an app, runs stop, asserts no containers remain via inspect",
+        "Lifecycle events pre-app-stop, post-app-stop, pre-service-stop (×2), post-service-stop (×2) are published",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Run `./dist/lando stop` end-to-end against live Podman socket"
+      ],
+      "priority": 54,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-055",
+      "title": "lando info prints services + endpoints",
+      "description": "As a developer, `lando info` calls provider-lando.inspect and prints the structured snapshot in plain text (services with state and endpoints). (PRD-06 US-004)",
+      "acceptanceCriteria": [
+        "Failing integration test `core/test/cli/info.integration.test.ts` starts an app, runs info, asserts stdout contains both service names and their endpoint URLs",
+        "info on a stopped app reports services as stopped (no error)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Run `./dist/lando info` end-to-end against live Podman socket"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-056",
+      "title": "lando version works at bootstrap level none",
+      "description": "As a CI script, `lando version` runs at bootstrap level `none` (Effect runtime never instantiated) and prints version from package.json. (PRD-06 US-005)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/version.test.ts` runs the compiled binary `lando version`, asserts exit 0 and stdout matches version",
+        "Same fast-path branch as `--version` / `-v` (PRD-02 US-003)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-057",
+      "title": "lando shellenv works at bootstrap level none",
+      "description": "As a user setting up shell integration, `lando shellenv` runs at bootstrap level `none` and prints export lines for LANDO_INSTALL_DIR + PATH prepend. (PRD-06 US-006)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/shellenv.test.ts` runs `lando shellenv`, asserts stdout contains canonical shellenv lines",
+        "Output identical regardless of whether ~/.lando/ exists (same as PRD-02 US-004)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 57,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-058",
+      "title": "Every non-MVP OCLIF command exits with structured NotImplementedError",
+      "description": "As a user who runs a not-yet-shipped command, I get a clear NotImplementedError with the command id and a 'this is alpha/beta/...' remediation message — not a stack trace. (PRD-06 US-007)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/not-implemented.test.ts` runs a representative non-MVP command (e.g. `lando exec`) and asserts exit non-zero plus stderr contains NotImplementedError with the command id",
+        "Every non-MVP OCLIF command class throws NotImplementedError consistently",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 58,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-059",
+      "title": "app:start / app:stop / app:info command aliases",
+      "description": "As an embedding script that wants explicit command ids, `app:start`, `app:stop`, `app:info` are valid aliases of `start`, `stop`, `info`. (PRD-06 US-008)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/cli/aliases.test.ts` runs `app:start`, `app:stop`, `app:info` against a scaffolded app and asserts they behave identically to their unprefixed counterparts",
+        "OCLIF manifest registers both ids",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 59,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-060",
+      "title": "End-to-end MVP exit-criteria smoke test",
+      "description": "As release engineering, I want a single-script reproduction of the roadmap's MVP exit criteria runnable in a temp dir on a Linux x64 box with a private Podman socket. (PRD-06 US-009)",
+      "acceptanceCriteria": [
+        "Failing scenario test `core/test/scenario/mvp-exit-criteria.scenario.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET, linux x64) runs in a temp dir: bun run codegen → bun run build → ./dist/lando init --full → ./dist/lando start → ./dist/lando info (asserts both services running) → ./dist/lando stop → cleanup",
+        "Test passes once every prior story is green",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes",
+        "Run the full smoke flow end-to-end against live Podman socket"
+      ],
+      "priority": 60,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-061",
+      "title": ".github/workflows/ci.yml exists and gates static-checks pipeline",
+      "description": "As a maintainer, every PR runs a static-checks job that runs typecheck + lint + non-integration `bun test` on Linux x64. (PRD-07 US-001)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/static-checks.test.ts` parses .github/workflows/ci.yml and asserts a `static-checks` job exists with steps: bun install, bun run typecheck, bun run lint, bun test (filtering out *.integration.test.ts)",
+        "Job runs on ubuntu-22.04 (pinned, not latest, per cross-cutting risks)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 61,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-062",
+      "title": "CI runs binary build and uploads it as workflow artifact",
+      "description": "As a maintainer, every PR has a `build-linux-x64` job that runs `bun build --compile`, runs `--version`/`--help` smoke checks, and uploads `dist/lando` as the `lando-linux-x64` workflow artifact (7-day retention). No GitHub Releases at MVP. (PRD-07 US-002)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/build-linux-x64.test.ts` parses ci.yml and asserts a `build-linux-x64` job exists with build + smoke + upload-artifact steps",
+        "Artifact name is `lando-linux-x64`, retention 7 days",
+        "Job depends on static-checks (does not start until static gate passes)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 62,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-063",
+      "title": "CI runs full provider integration suite against a Podman socket",
+      "description": "As a maintainer, every PR has a `provider-integration-linux-x64` job that starts a private Podman socket in the runner and runs every *.integration.test.ts plus the MVP exit-criteria scenario. (PRD-07 US-003)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/provider-integration.test.ts` parses ci.yml and asserts a `provider-integration-linux-x64` job exists with steps: install podman, start socket, set LANDO_TEST_PODMAN_SOCKET env var, run integration test glob, run mvp-exit-criteria scenario",
+        "Job runs on ubuntu-22.04",
+        "Job depends on build-linux-x64",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 63,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-064",
+      "title": "CI workflow is the only permitted source of truth for CI config",
+      "description": "As a maintainer, hand-editing .github/workflows/ci.yml is forbidden — the file carries a generated-header comment and any drift is detected by a check. (PRD-07 US-004)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/no-hand-edits.test.ts` asserts ci.yml carries a `# AUTO-GENERATED` header comment",
+        "Test runs scripts/build-ci-workflow.ts in dry-run and asserts the file matches the generated output (otherwise fails with diff)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 64,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-065",
+      "title": "scripts/codegen.ts regenerates the CI workflow",
+      "description": "As a developer running `bun run codegen`, the CI workflow regen is one of the steps invoked. (PRD-07 US-005)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/codegen-invokes-ci.test.ts` runs `bun run codegen`, asserts ci.yml is rewritten and matches what scripts/build-ci-workflow.ts produces standalone",
+        "scripts/codegen.ts imports/invokes scripts/build-ci-workflow.ts",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 65,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-066",
+      "title": "CI failure modes are debuggable (logs + artifacts on failure)",
+      "description": "As a maintainer debugging a red CI run, I get useful logs: typecheck/lint output, full bun test output, podman daemon log on integration failure, and the dist/lando binary uploaded even on failure. (PRD-07 US-006)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/debuggability.test.ts` parses ci.yml and asserts: actions/upload-artifact uses `if: always()` for diagnostic uploads, podman-related step captures journalctl on failure, bun test runs without `--silent`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 66,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-067",
+      "title": "CI is required for merge to main (branch protection assertion)",
+      "description": "As a maintainer, all three CI jobs (static-checks, build-linux-x64, provider-integration-linux-x64) are required status checks for merge to main. (PRD-07 US-007)",
+      "acceptanceCriteria": [
+        "Failing test `core/test/ci/branch-protection.test.ts` reads the documented required-checks list (in repo doc or via gh API mock) and asserts all three job names are required",
+        "Document the branch-protection requirement in README or CONTRIBUTING.md so it's discoverable",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 67,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+# Ralph Progress Log — Lando v4 MVP (walking skeleton)
+
+Branch: ralph/mvp-walking-skeleton
+Source PRDs: spec/mvp/prd-mvp-{01..07}-*.md
+Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
+
+## Conventions
+
+- Each story corresponds to a US-XXX section in one of the seven prd-mvp-*.md files.
+  Mapping (priority -> source PRD US):
+    1-9   -> prd-mvp-01-sdk-contracts.md      US-001..009
+    10-20 -> prd-mvp-02-foundation.md         US-001..011
+    21-32 -> prd-mvp-03-effect-services.md    US-001..012
+    33-44 -> prd-mvp-04-providers.md          US-001..012
+    45-51 -> prd-mvp-05-bundled-services.md   US-001..007
+    52-60 -> prd-mvp-06-cli-commands.md       US-001..009
+    61-67 -> prd-mvp-07-ci-and-binaries.md    US-001..007
+
+- Every story is TDD (red -> green -> clean) per the index PRD's "Verification contract" section.
+- Read the corresponding source PRD section before starting a story for full acceptance criteria detail.
+- Verification gate (mandatory on every story): bun run typecheck, bun run lint, bun test all green.
+- Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
+
+## Iteration Log
+
+(Ralph appends one entry per iteration below.)
+
