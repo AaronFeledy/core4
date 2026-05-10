@@ -1,18 +1,22 @@
-import { type InfoAppResult, infoApp } from "../../commands/info.ts";
+import { type InfoAppResult, infoApp } from "../../../commands/info.ts";
 /**
- * `lando info` — OCLIF wrapper.
+ * SPEC: §8.2 canonical id `app:info`.
+ * `lando app:info` — OCLIF wrapper.
  */
-import { LandoCommandBase, type LandoCommandSpec } from "../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const infoSpec: LandoCommandSpec<InfoAppResult> = {
-  id: "info",
+  id: "app:info",
   summary: "Print provider-neutral runtime info for the current app.",
+  namespace: "app",
+  topLevelAlias: true,
   bootstrap: "app",
   run: () => infoApp(),
 };
 
 export default class InfoCommand extends LandoCommandBase {
   static override description = infoSpec.summary;
+  static override aliases = [...resolveTopLevelAliases(infoSpec)];
   static override landoSpec: LandoCommandSpec = infoSpec;
 
   override async run(): Promise<void> {

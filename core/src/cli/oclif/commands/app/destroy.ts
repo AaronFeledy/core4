@@ -1,18 +1,22 @@
-import { type DestroyAppResult, destroyApp } from "../../commands/destroy.ts";
+import { type DestroyAppResult, destroyApp } from "../../../commands/destroy.ts";
 /**
- * `lando destroy` — OCLIF wrapper.
+ * SPEC: §8.2 canonical id `app:destroy`.
+ * `lando app:destroy` — OCLIF wrapper.
  */
-import { LandoCommandBase, type LandoCommandSpec } from "../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
-  id: "destroy",
+  id: "app:destroy",
   summary: "Destroy the current Lando app (requires confirmation).",
+  namespace: "app",
+  topLevelAlias: true,
   bootstrap: "app",
   run: () => destroyApp(),
 };
 
 export default class DestroyCommand extends LandoCommandBase {
   static override description = destroySpec.summary;
+  static override aliases = [...resolveTopLevelAliases(destroySpec)];
   static override landoSpec: LandoCommandSpec = destroySpec;
 
   override async run(): Promise<void> {

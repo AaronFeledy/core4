@@ -1,18 +1,22 @@
-import { type PoweroffResult, poweroff } from "../../commands/poweroff.ts";
+import { type PoweroffResult, poweroff } from "../../../commands/poweroff.ts";
 /**
- * `lando poweroff` — OCLIF wrapper.
+ * SPEC: §8.2 canonical id `apps:poweroff`.
+ * `lando apps:poweroff` — OCLIF wrapper.
  */
-import { LandoCommandBase, type LandoCommandSpec } from "../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
-  id: "poweroff",
+  id: "apps:poweroff",
   summary: "Stop every Lando-managed service across apps.",
+  namespace: "apps",
+  topLevelAlias: true,
   bootstrap: "provider",
   run: () => poweroff(),
 };
 
 export default class PoweroffCommand extends LandoCommandBase {
   static override description = poweroffSpec.summary;
+  static override aliases = [...resolveTopLevelAliases(poweroffSpec)];
   static override landoSpec: LandoCommandSpec = poweroffSpec;
 
   override async run(): Promise<void> {

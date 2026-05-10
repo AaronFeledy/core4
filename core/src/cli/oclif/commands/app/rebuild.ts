@@ -1,18 +1,22 @@
-import { type RebuildAppResult, rebuildApp } from "../../commands/rebuild.ts";
+import { type RebuildAppResult, rebuildApp } from "../../../commands/rebuild.ts";
 /**
- * `lando rebuild` — OCLIF wrapper.
+ * SPEC: §8.2 canonical id `app:rebuild`.
+ * `lando app:rebuild` — OCLIF wrapper.
  */
-import { LandoCommandBase, type LandoCommandSpec } from "../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
-  id: "rebuild",
+  id: "app:rebuild",
   summary: "Rebuild artifacts and restart the current app.",
+  namespace: "app",
+  topLevelAlias: true,
   bootstrap: "app",
   run: () => rebuildApp(),
 };
 
 export default class RebuildCommand extends LandoCommandBase {
   static override description = rebuildSpec.summary;
+  static override aliases = [...resolveTopLevelAliases(rebuildSpec)];
   static override landoSpec: LandoCommandSpec = rebuildSpec;
 
   override async run(): Promise<void> {
