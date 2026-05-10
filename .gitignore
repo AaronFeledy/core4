@@ -37,3 +37,6 @@ pnpm-lock.yaml
 # Local development
 .local/
 .lando.local.yml
+
+# Sisyphus agent workspace (project-local)
+.sisyphus/
