@@ -4,10 +4,10 @@
  * **Interactive only** — not exported as a function from
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
-import { Command, Flags } from "@oclif/core";
+import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
-import { type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const initSpec: LandoCommandSpec<never> = {
   id: "apps:init",
@@ -18,8 +18,8 @@ export const initSpec: LandoCommandSpec<never> = {
   run: () => Effect.die("not yet implemented: apps:init"),
 };
 
-export default class InitCommand extends Command {
-  static override description = "Initialize a new Lando app from a recipe or source.";
+export default class InitCommand extends LandoCommandBase {
+  static override description = initSpec.summary;
   static override aliases = [...resolveTopLevelAliases(initSpec)];
   static override flags = {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
@@ -33,9 +33,9 @@ export default class InitCommand extends Command {
       multiple: true,
     }),
   };
-  static landoSpec: LandoCommandSpec = initSpec;
+  static override landoSpec: LandoCommandSpec = initSpec;
 
   override async run(): Promise<void> {
-    throw new Error("apps:init: not yet implemented");
+    await this.runEffect(initSpec);
   }
 }
