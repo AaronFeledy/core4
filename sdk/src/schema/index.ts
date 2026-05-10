@@ -649,7 +649,17 @@ export type RecipeManifest = typeof RecipeManifest.Type;
 
 export const TemplateRenderContext = Schema.Struct({
   /** Bootstrap level the renderer is running at. */
-  bootstrapLevel: Schema.Literal("minimal", "plugins", "commands", "tooling", "provider", "app"),
+  bootstrapLevel: Schema.Literal(
+    "none",
+    "minimal",
+    "plugins",
+    "commands",
+    "tooling",
+    "provider",
+    "global",
+    "scratch",
+    "app",
+  ),
   /** App root (when known). */
   appRoot: Schema.optional(AbsolutePath),
   /** Effective env at render time. */

@@ -71,7 +71,16 @@ export interface LandoCommandSpec<A = void, E = unknown> {
   readonly aliases?: ReadonlyArray<string>;
   readonly examples?: ReadonlyArray<string>;
   readonly hidden?: boolean;
-  readonly bootstrap: "none" | "minimal" | "plugins" | "commands" | "tooling" | "provider" | "app";
+  readonly bootstrap:
+    | "none"
+    | "minimal"
+    | "plugins"
+    | "commands"
+    | "tooling"
+    | "provider"
+    | "global"
+    | "scratch"
+    | "app";
   // TODO: typed flag/arg shapes. For now, generic.
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
