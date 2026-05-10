@@ -47,9 +47,16 @@ jobs:
         working-directory: ./core
         run: bun run build:compile
 
-      - name: Smoke check binary
+      - name: Smoke check binary (unix)
+        if: runner.os != 'Windows'
         working-directory: ./core
         run: ./dist/lando --version || ./dist/lando --help
+
+      - name: Smoke check binary (windows)
+        if: runner.os == 'Windows'
+        working-directory: ./core
+        run: .\dist\lando.exe --version || .\dist\lando.exe --help
+        shell: cmd
 
   publish-dry-run:
     name: library publish (dry-run)
