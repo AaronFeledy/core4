@@ -193,8 +193,9 @@ const main = async (): Promise<void> => {
   for (const stage of stages) {
     if (!stageMatchesTarget(stage, target)) {
       await skip(stage.id, `${target} release target`);
-      continue;
     }
+  }
+  for (const stage of selectedStages) {
     console.log(`[release] -> ${stage.id}: ${stage.description}`);
     await stage.run();
   }
