@@ -26,6 +26,43 @@ interface Stage {
   readonly run: () => Promise<void>;
 }
 
+type ArtifactTarget = "all" | "binary" | "library";
+
+const targetFlags = {
+  "--all": "all",
+  "--binary": "binary",
+  "--binary-only": "binary",
+  "--library": "library",
+  "--library-only": "library",
+} satisfies Record<string, ArtifactTarget>;
+
+const isTargetFlag = (arg: string): arg is keyof typeof targetFlags => arg in targetFlags;
+
+const parseTarget = (args: ReadonlyArray<string>): ArtifactTarget => {
+  let target: ArtifactTarget | undefined;
+  for (const arg of args) {
+    if (arg === "--") continue;
+
+    if (!isTargetFlag(arg)) {
+      throw new Error(`Unknown release argument: ${arg}`);
+    }
+
+    const nextTarget = targetFlags[arg];
+    if (target !== undefined && target !== nextTarget) {
+      throw new Error(`Conflicting release targets: ${target} and ${nextTarget}`);
+    }
+    target = nextTarget;
+  }
+
+  return target ?? "all";
+};
+
+const stageMatchesTarget = (stage: Stage, target: ArtifactTarget): boolean => {
+  if (target === "all") return true;
+  if (target === "binary") return stage.forBinary;
+  return stage.forLibrary;
+};
+
 const skip = async (id: string, reason: string): Promise<void> => {
   console.log(`[release] skip ${id} (${reason})`);
 };
@@ -150,8 +187,14 @@ const stages: ReadonlyArray<Stage> = [
 ];
 
 const main = async (): Promise<void> => {
-  console.log(`[release] running ${stages.length} stages`);
+  const target = parseTarget(process.argv.slice(2));
+  const selectedStages = stages.filter((stage) => stageMatchesTarget(stage, target));
+  console.log(`[release] running ${selectedStages.length}/${stages.length} stages for ${target}`);
   for (const stage of stages) {
+    if (!stageMatchesTarget(stage, target)) {
+      await skip(stage.id, `${target} release target`);
+      continue;
+    }
     console.log(`[release] -> ${stage.id}: ${stage.description}`);
     await stage.run();
   }
