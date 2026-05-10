@@ -27,8 +27,10 @@ const commandEntries: Array<[string, CompiledCommand]> = Object.entries(compiled
 );
 
 const commandName = (id: string, command: CompiledCommand): string => {
-  const alias = command.aliases?.[0];
-  return alias ?? id;
+  const aliases = command.aliases;
+  if (!aliases || aliases.length === 0) return id;
+  const nonFlagAlias = aliases.find((alias) => !alias.startsWith("-"));
+  return nonFlagAlias ?? aliases[0];
 };
 
 const findCommand = (name: string): [string, CompiledCommand] | undefined =>
