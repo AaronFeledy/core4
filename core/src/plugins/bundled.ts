@@ -1,31 +1,20 @@
 /**
- * **GENERATED FILE** — bundled plugin static imports.
+ * **GENERATED FILE** — do not edit by hand.
  *
- * The default Lando v4 binary is built with `bun build --compile`. Compiled
- * binaries cannot dynamically `import()` arbitrary files at runtime, so
- * bundled plugins are statically imported here. The build step
- * (`scripts/build-bundled-plugins.ts`, TBD) regenerates this file from the
- * bundle set declared at build time.
+ * Regenerate via `bun run scripts/build-bundled-plugins.ts`.
  *
- * Library consumers do **not** receive bundled plugins by default — they
- * must opt into bundled discovery or contribute their own Layers.
+ * Source of truth: `core/build.config.ts` (the "ship list").
  *
- * Status: stub. The bundled set is empty until the bundled plugin packages
- * (`plugins/service-lando`, `plugins/provider-docker`, etc.) are
- * implemented.
+ * The default Lando v4 binary is built with `bun build --compile` (SPEC: §17.1
+ * stage 7). Compiled binaries cannot dynamically `import()` arbitrary files at
+ * runtime, so bundled plugins are statically imported here. Library consumers
+ * do not receive bundled plugins by default — they must opt into bundled
+ * discovery or contribute their own Layers.
  */
 
 import type { Layer } from "effect";
 
-/**
- * Statically-imported bundled plugin Layers.
- *
- * Each entry is a `{ id, layer }` pair so the runtime can route them through
- * the same selection precedence as runtime-discovered plugins.
- */
 export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly id: string;
   readonly layer: Layer.Layer<unknown, unknown, never>;
-}> = [
-  // TODO: regenerate from `scripts/build-bundled-plugins.ts`.
-];
+}> = [];
