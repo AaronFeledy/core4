@@ -355,6 +355,8 @@ dev.lando.storage-service: <service>      # not on global
 
 **Storage inside the global app.** Services contributed to the **global Lando app** (§20) follow the same scope rules with the auto-naming substitution `<project>` → `global`: `scope: service` → `global-<service>-<destination>`, `scope: app` → `global-<destination>`. `scope: global` storage is identical to today and is the only scope that survives `meta:global:destroy --purge` (§20.9); services in user apps using `scope: global` share the same volumes as global-app services declaring it (this is the canonical mechanism for cross-app shared persistent state). Volumes created by global services additionally carry the `dev.lando.storage-global-app: "TRUE"` label so `apps:poweroff --keep-global` can identify them (§20.9).
 
+**Storage inside scratch apps.** Services that run inside a **scratch Lando app** (§21) follow the same scope rules with two transformations applied at plan time. (1) Auto-naming substitutes `<project>` → `<scratch-id>`: `scope: service` → `<scratch-id>-<service>-<destination>`, `scope: app` → `<scratch-id>-<destination>`. (2) Every `scope: global` declaration is **rewritten to `scope: app`** unless the user passed `--share-global-storage` to the scratch start (§21.8); this shadowing prevents a scratch from accidentally reading or mutating cross-app `scope: global` volumes used by user apps. With `--share-global-storage` the original `scope: global` semantics apply (auto-name `lando-<destination>`, survives `apps:scratch:destroy`). Volumes created by scratch services additionally carry the `dev.lando.scratch: "TRUE"` and `dev.lando.scratch-id: <scratch-id>` labels so `apps:scratch:gc` (§21.11) can identify orphans without consulting the registry. Volumes whose effective scope (after the rewrite) is `service` or `app` are removed at scratch destroy by default; `--keep-volumes` retains them for inspection (§21.10.1).
+
 ### 6.6 Endpoints, hostnames, routes
 
 **Endpoints** describe service listeners. Endpoints are provider-neutral.
@@ -419,6 +421,8 @@ Plugins contribute additional filter types via `provides.routeFilters`. Proxy pl
 **Default hostnames.** Generated as `<service>.<app>.<domain>`, where `<domain>` defaults to `lndo.site` and is overridable via global config or Landofile.
 
 **Default bind address.** Host-exposed endpoints bind to `127.0.0.1` by default. LAN exposure is opt-in via global `bindAddress` and emits a security warning.
+
+**Routes inside scratch apps.** When the resolved app is a **scratch Lando app** (§21), the planner automatically applies a built-in `ScratchHostnameSuffix` route filter that rewrites every route hostname `<host>.<domain>` to `<host>--<scratch-id>.<domain>` (§21.9.2). This avoids hostname collisions when a fork-mode scratch runs alongside the source app whose Landofile defined the original routes. The transformation is idempotent and is suppressed per-host with `--hostname <host>` (§21.10.1) or globally for the scratch with `--no-hostname-suffix`. The filter is published in `@lando/sdk` as `RouteFilter.ScratchHostnameSuffix` for plugins that need to compose around it; user-authored Landofiles do not declare the filter directly.
 
 ### 6.7 Healthchecks
 
@@ -491,6 +495,7 @@ LANDO_HOST_UID=<host uid>
 LANDO_HOST_GID=<host gid>
 LANDO_HOST_HOME=<host home>
 LANDO_APP_NAME=<app name>
+LANDO_APP_KIND=<user|global|scratch>
 LANDO_APP_ROOT=<app root visible inside service>
 LANDO_PROJECT=<app slug>
 LANDO_PROJECT_MOUNT=<app mount target>
@@ -522,6 +527,9 @@ LANDO_GLOBAL_<SERVICE>_HOST     # always when AppFeature activates requires.glob
 LANDO_GLOBAL_<SERVICE>_PORT     # primary endpoint port; conditional on the global service exposing one
 LANDO_GLOBAL_<SERVICE>_<EP>_PORT  # named endpoint port (e.g., LANDO_GLOBAL_MAILPIT_SMTP_PORT)
 LANDO_GLOBAL_<SERVICE>_URL      # primary route URL; conditional on the global service having a route
+LANDO_SCRATCH_ID                # when LANDO_APP_KIND=scratch; the scratch id (§21.2)
+LANDO_SCRATCH_SOURCE_KIND       # when LANDO_APP_KIND=scratch; "fork" or "from-recipe" (§21.4)
+LANDO_SCRATCH_ISOLATE           # when LANDO_APP_KIND=scratch; "full" | "baked" | "cwd" (§21.7)
 ```
 
 > The `LANDO_GLOBAL_*` family is a **projection** — only the values the user app's activated `AppFeature`s actually depend on (via `requires.globalServices`, §6.11.4 + §20.6.3) appear in a given service. A user app with no features activating against a global service does not see `LANDO_GLOBAL_*` for it. Plugins MAY add extra fields (e.g., a Mailpit API token) by writing them through their `AppFeature.apply()` body using the standard `addEnv` mutator, reading from `globalServices.<name>.*` per the §7.3.1 cross-service expression scope.

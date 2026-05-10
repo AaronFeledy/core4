@@ -68,6 +68,8 @@ Top-level aliases are configured per command via the `topLevelAlias` field on `L
 
 The `global:` top-level alias prefix is **reserved** for the `meta:global:*` namespace (§20.7.1). Plugin- and tooling-contributed top-level aliases that begin with `global:` collide with the built-ins and are rejected with `CommandAliasConflictError`. A user override via `commandAliases.custom:` MAY remap a `global:*` alias inside an app context (the underlying `meta:global:*` canonical id remains callable directly).
 
+The `scratch:` top-level alias prefix and the bare `scratch` top-level alias are **reserved** for the `apps:scratch:*` namespace (§21.10.2). The bare `scratch` alias maps to `apps:scratch:start` (analogous to the bare `init` alias mapping to `apps:init`), and every other `scratch:<verb>` alias maps to its `apps:scratch:<verb>` canonical id. Plugin- and tooling-contributed top-level aliases that begin with `scratch:` or that are exactly `scratch` collide with the built-ins and are rejected with `CommandAliasConflictError`. A user override via `commandAliases.custom:` MAY remap a `scratch:*` alias inside an app context (the underlying `apps:scratch:*` canonical id remains callable directly).
+
 **User override.** Top-level aliases are configurable in global config (§7.5) and at the Landofile level (§7.4). Landofile entries take precedence inside the app context.
 
 ```yaml
@@ -126,6 +128,13 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `apps:init` | `init` | `minimal` | Generate a new Lando app (§8.8) |
 | `apps:list` | `list` | `minimal` | List apps known to Lando |
 | `apps:poweroff` | `poweroff` | `provider` | Stop every Lando-managed service across apps |
+| `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy a scratch app's resources without first stopping; `<id>` required, `--keep-volumes` retains volumes for inspection (§21.10) |
+| `apps:scratch:gc` | `scratch:gc` | `scratch` | Find orphaned scratch resources via the registry walk + provider-label scan; `--prune` reaps (§21.11) |
+| `apps:scratch:info` | `scratch:info` | `scratch` | Print runtime info for a scratch app; `<id>` selects, `--service`, `--format` (§21.10) |
+| `apps:scratch:list` | `scratch:list` | `minimal` | List every scratch app from the registry plus orphans found via provider labels; `--format table\|json` (§21.10) |
+| `apps:scratch:logs` | `scratch:logs` | `scratch` | Stream scratch service logs; `<id>` selects, `--service`, `--follow`, `--tail`, `--since` (§21.10) |
+| `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | Start a scratch app; `--fork` or `--from <recipe-ref>` is required, `--isolate=full\|baked\|cwd`, `--mount-cwd`, `--share-global-storage`, `--detach` (§21.10) |
+| `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop a scratch app; `<id>` selects (or stops the foreground scratch in this shell session); calls destroy (§21.10) |
 | `meta:bun` | `bun` | `minimal` | Proxy to the embedded Bun CLI via `BunSelfRunner` (§3.4); the canonical user-visible BUN_BE_BUN entry point (§8.2.4) |
 | `meta:config` | `config` | `minimal` | Read/write global Lando config (§8.2.2) |
 | `meta:doctor` | `doctor` | `plugins` | Run diagnostics for app config, host/provider setup, and plugin-contributed checks (§10.9) |
@@ -181,8 +190,16 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 - `app:start` and `app:rebuild` materialize app-declared Lando dependencies when needed: app-scoped plugins from `plugins:`, remote includes without warm cache entries, provider artifacts, and provider/runtime metadata. After a successful materialization/build, repeating `app:start` for the same app MUST NOT require network access unless a declared source is missing from the cache, the lockfile changed, or the app's own build/tooling commands require network.
 
 - `apps:poweroff` stops every Lando-managed service across user apps **and** the global app by default; `--keep-global` opts out and reports "kept global app running" in the renderer's final summary (§20.6.4, §20.7).
+- `apps:poweroff` ALSO stops every running scratch Lando app by default; `--keep-scratch` opts out and reports "kept N scratch app(s) running" in the renderer's final summary (§21.6.3, §21.10). `--keep-global` and `--keep-scratch` compose: `apps:poweroff --keep-global --keep-scratch` stops only user apps.
 - `meta:global:start` (and the auto-start path triggered by user-app `AppFeature.requires.globalServices`, §20.6.3) refuses to run when no `globalServices:` contributions are installed; the user is told to install at least one plugin that contributes a global service or to run `meta:setup`.
 - `meta:global:list --format json` is the canonical machine-readable shape of "what's available in the global app on this host"; embedding hosts and CI scripts MUST use it instead of parsing the rendered table.
+- `apps:scratch:start` requires either `--fork` (use the cwd-walk Landofile as the source) or `--from <recipe-ref>` (render a recipe into the scratch root); passing both, or neither, fails fast with `ScratchSourceUnresolvedError`. The default is foreground; `--detach` registers the scratch in `<userCacheRoot>/scratch/registry.bin` and exits 0 (§21.10.1, §21.11).
+- `apps:scratch:start --fork` materializes the scratch by content-copying the resolved source app root, honoring `scratch.fork.excludes:` plus repeated `--exclude <pattern>` (§21.4.1). The default isolation is `--isolate=full` (the appMount binds the scratch's copy); `--mount-cwd` is sugar for `--isolate=cwd` and overrides the safer default (§21.7).
+- `apps:scratch:start --from <recipe-ref>` runs the recipe pipeline against the scratch root and SKIPS the recipe's `postInit:` actions by default; `--run-post-init` opts back in. The default isolation is `--isolate=baked` (no appMount; an empty `/app` inside the container); `--mount-cwd` switches to bind-mounting the host cwd at the appMount destination (§21.4.2, §21.7).
+- `apps:scratch:start` rewrites every `scope: global` storage entry in the resolved plan to `scope: app` at plan time so a scratch app does NOT touch user-app `scope: global` volumes; `--share-global-storage` opts back into the original semantics (§21.8).
+- `apps:scratch:start` applies the built-in `ScratchHostnameSuffix` route filter at plan time so a scratch's routes do not collide with the source app's; `--no-hostname-suffix` (or per-host `--hostname <host>` overrides) opts out (§21.9.2).
+- `apps:scratch:list --format json` is the canonical machine-readable shape of "what scratch apps are alive on this host"; embedding hosts and CI scripts MUST use it instead of parsing the rendered table.
+- `apps:scratch:gc` is safe to run from cron and from post-host-reboot init scripts; without `--prune` it prints a report and exits 0 (§21.11).
 
 Commands tolerate apps with no services when the command semantics allow it.
 

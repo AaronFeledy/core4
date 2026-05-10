@@ -89,6 +89,7 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 | `tooling` | Commands plus a cache-only app plan / `ToolingProgram` read | Landofile-defined tooling commands that do not need full app planning |
 | `provider` | Provider selection and adapter initialization | `meta:setup`, `apps:poweroff`, `apps:list --all` |
 | `global` | `provider` + `GlobalAppService` and the global Landofile parser bound to `<userDataRoot>/global/.lando.yml`; `BuildOrchestrator` (lazy via `Layer.suspend` per the §6.13 lifecycle) for the global app's plan | `meta:global:start`, `meta:global:stop`, `meta:global:restart`, `meta:global:rebuild`, `meta:global:destroy`, `meta:global:info`, `meta:global:logs`, `meta:global:install`, `meta:global:uninstall` |
+| `scratch` | `provider` + `ScratchAppService`; `LandofileService` constructible against an arbitrary scratch root; `AppPlanner` and `BuildOrchestrator` lazy via `Layer.suspend` (§21.6.1). Does NOT eagerly include `global`; scratch apps that activate `AppFeature.requires.globalServices` lazy-construct `GlobalAppService` exactly as user apps do | `apps:scratch:start`, `apps:scratch:stop`, `apps:scratch:destroy`, `apps:scratch:list`, `apps:scratch:info`, `apps:scratch:logs`, `apps:scratch:gc` |
 | `app` | level `global` plus `AppPlanner`, `LandofileService` for the user app (includes `global` because `app:start` may need to call `GlobalAppService.ensureRunning` per §20.6.3) | `app:start`, `app:stop`, `app:info`, `app:rebuild`, `app:destroy`, `app:cache:refresh` |
 
 Levels `minimal` through `app` each emit `pre-bootstrap-<level>` and `post-bootstrap-<level>` lifecycle events through the Effect event service. After all required levels complete, core emits `post-bootstrap` and `ready`. Level `none` emits NO lifecycle events: it is below the EventService construction threshold by design.
@@ -272,6 +273,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `DoctorService` | Runs host/app/provider diagnostics and exposes automated or manual remediations; aggregates plugin-contributed `doctorChecks` (§9.5); also records deprecation entries surfaced by `lando doctor --deprecations` (§18.6) | `DoctorServiceLive` (constructed at level `plugins` so plugin-contributed checks register; transcripts captured via `ShellRunner` per §10.9) |
 | `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2), `notify` (host notification), `clipboardCopy` (host clipboard write) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
 | `GlobalAppService` | The global Lando app: regenerates `<userDataRoot>/global/.lando.dist.yml` from `globalServices:` manifest contributions, manages the `global` app's plan, lifecycle, and auto-start (§20). Reuses the same `RuntimeProvider`, `AppPlanner`, and `BuildOrchestrator` user apps use; only the `<app-id>` is fixed to `global`. | `GlobalAppServiceLive` (constructed at level `global`; `Layer.suspend`-wrapped — `lando info` against an already-running user app whose features require no global services pays zero cost) |
+| `ScratchAppService` | Scratch apps (§21): acquires, starts, stops, destroys, lists, and reaps short-lived Lando apps whose lifetime is bound to an Effect `Scope`. Owns materialization of the scratch root under `<userCacheRoot>/scratch/<id>/`, the scratch registry at `<userCacheRoot>/scratch/registry.bin`, and the orphan-reap protocol that combines the registry walk with a provider-label scan (`dev.lando.scratch: "TRUE"`). Reuses every other core service a normal user app uses — `LandofileService`, `AppPlanner`, `BuildOrchestrator`, `RuntimeProvider`, `ProxyService`, `CertificateAuthority` — with the §21.7–§21.9 plan-time transformations applied (mount isolation, `scope: global` shadowing, hostname auto-suffix). | `ScratchAppServiceLive` (constructed at level `scratch`; `Layer.suspend`-wrapped — `lando info` against a user app pays zero `ScratchAppService` cost) |
 | `Telemetry` | Core usage stats, enabled by default unless disabled by config/env | `TelemetryLive` (fire-and-forget; never blocks command exit; §2.4) |
 
 Every service is consumed via `yield* ServiceTag` inside `Effect.gen`. Type errors at the Layer composition boundary catch missing services at compile time. Services in this table are core-provided runtime services; not every one is plugin-replaceable. Plugin-replaceable abstractions are enumerated in §4.2. `EmbeddedAssetService` is overrideable by tests and embedding hosts, but is not a plugin contribution surface because it protects binary/package asset integrity.
@@ -449,6 +451,7 @@ Tagged errors live in `@lando/core/errors`:
 | `tooling` | `commands` + cached `ToolingProgram` reader | `commands`'s lazy + `ToolingEngine` (resolved from cache) | live providers, full app planner |
 | `provider` | `commands` + `RuntimeProviderRegistry` (selected adapter constructed) | `commands`'s lazy + `CertificateAuthority`, `ProxyService` | full app planner |
 | `global` | `provider`'s eager + `GlobalAppService`; the global app's `LandofileService` instance | `provider`'s lazy + `BuildOrchestrator` (lazy per §6.13), `HealthcheckRunner`, `UrlScanner` | full user-app planner |
+| `scratch` | `provider`'s eager + `ScratchAppService`; `LandofileService` constructible against an arbitrary scratch root; the scratch registry reader/writer | `provider`'s lazy + `AppPlanner`, `BuildOrchestrator` (lazy per §6.13), `HealthcheckRunner`, `UrlScanner`, `HostProxyService` (when the resolved scratch plan declares the `lando.host-proxy` feature), `GlobalAppService` (when the scratch's `AppFeature` activations declare `requires.globalServices`) | full user-app planner bound to a discoverable cwd app root |
 | `app` | level `global`'s eager (so `GlobalAppService.ensureRunning` is callable from `pre-start`) + `AppPlanner`, `LandofileService` for the user app | `provider`'s lazy + `HealthcheckRunner`, `UrlScanner`, `HostProxyService`, `BuildOrchestrator`, the active `FileSyncEngine` Live Layer (e.g., `FileSyncEngineMutagenLive`) when the resolved app plan contains at least one mount marked `realization: "accelerated"` per §6.4 | *(none — this is the maximal layer)* |
 
 **Cross-table note.** `CertificateAuthority`, `ProxyService`, `HealthcheckRunner`, and `UrlScanner` are pluggable abstractions whose canonical declarations live in §4.2 rather than the §3.4 services table above. Their default Live Layers ship in core (built-in CA stub, default `fetch`-based scanner, default `RuntimeProvider.exec`-backed healthcheck runner) so they are members of the AOT-composed bootstrap layers per the membership-per-level table here. When a plugin contributes an alternate Layer (`@lando/ca-mkcert`, `@lando/proxy-traefik`, etc.), the contributed Layer replaces the default at the same level. Embedding hosts that need to enumerate every service in the runtime SHOULD treat the §4.2 catalog and the §3.4 services table together as the authoritative service registry.
@@ -473,6 +476,7 @@ Events are typed and validated. Subscribers register through plugin manifests.
 | Tooling | `pre-<tool>`, `post-<tool>`, `tooling-step-start`, `tooling-step-complete`, `tooling-step-skip`, `tooling-step-fail` |
 | CLI | `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, `cli-<canonical-id>-error` (e.g. `cli-app:start-init`, `cli-app:start-run`, `cli-meta:plugin:add-run`) |
 | Global | `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-global-rebuild`, `post-global-rebuild`, `pre-global-destroy`, `post-global-destroy`, `pre-global-dist-regenerate`, `post-global-dist-regenerate` (published by `GlobalAppService` for every state transition of the global app and every plugin-contribution-driven `dist` regeneration; §20.6.2) |
+| Scratch | `pre-scratch-acquire`, `post-scratch-acquire`, `pre-scratch-materialize`, `post-scratch-materialize`, `pre-scratch-start`, `post-scratch-start`, `pre-scratch-stop`, `post-scratch-stop`, `pre-scratch-destroy`, `post-scratch-destroy`, `pre-scratch-gc`, `post-scratch-gc` (published by `ScratchAppService` for every state transition of a scratch app; §21.6.2). The `App` scope events still fire from inside the scratch app's lifecycle with `app.kind === "scratch"`. |
 | Cross-cutting | `deprecation-used` (published whenever a registered deprecated surface is used at runtime; §18.4) |
 
 CLI event names use the **canonical command id** (§8.1.1), not the top-level alias the user typed. Subscribing to `cli-app:start-run` catches the event whether the user invoked `lando app start` or `lando start`.
@@ -538,7 +542,16 @@ export class EventService extends Context.Service<EventService, {
 
 Every event has a typed payload defined in `@lando/sdk` as an Effect Schema.
 
+`AppRef` is the shared identity field on every App, Global, and Scratch scope payload. Since v4.0 it carries a `kind` discriminator that splits the identifier namespace across user, global, and scratch apps; subscribers MUST switch on `kind` (or on the per-scope `_tag`) when their behavior depends on which kind of app the event describes.
+
 ```ts
+export const AppRef = Schema.Struct({
+  kind: Schema.Literal("user", "global", "scratch"),
+  id:   Schema.String,                                       // user slug, literal "global", or scratch id
+  root: AbsolutePath,                                        // user app root, `<userDataRoot>/global/`, or `<userCacheRoot>/scratch/<id>/root/`
+});
+export type AppRef = Schema.Schema.Type<typeof AppRef>;
+
 export const PreStartEvent = Schema.TaggedStruct("pre-start", {
   app: AppRef,
   plan: AppPlan,
@@ -546,6 +559,26 @@ export const PreStartEvent = Schema.TaggedStruct("pre-start", {
   timestamp: Schema.DateTimeUtc,
 });
 export type PreStartEvent = Schema.Schema.Type<typeof PreStartEvent>;
+```
+
+`PreScratchStartEvent` illustrates the Scratch-scope payload shape (§21.6.2 is canonical; remaining Scratch-scope events follow the same pattern):
+
+```ts
+export const PreScratchStartEvent = Schema.TaggedStruct("pre-scratch-start", {
+  app: AppRef,                                               // .kind === "scratch"
+  plan: AppPlan,
+  source: ScratchSource,                                     // §21.4
+  isolate: Schema.Literal("full", "baked", "cwd"),
+  shareGlobalStorage: Schema.Boolean,
+  detached: Schema.Boolean,
+  triggeredBy: Schema.Union(
+    Schema.Literal("apps:scratch:start"),
+    Schema.Literal("scratch-acquire"),
+    Schema.Literal("apps:scratch:gc"),
+  ),
+  timestamp: Schema.DateTimeUtc,
+});
+export type PreScratchStartEvent = Schema.Schema.Type<typeof PreScratchStartEvent>;
 ```
 
 The `EventService.publish` signature is type-narrowed to the exact union of known event payloads; publishing an unknown event is a compile error.
