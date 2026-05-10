@@ -52,7 +52,7 @@ TOPICS
 
 COMMANDS`);
   for (const [id, command] of commandEntries) {
-    console.log(`  ${commandName(id, command).padEnd(10)} ${command.description ?? ""}`);
+    console.log(`  ${commandName(id, command).padEnd(22)} ${command.description ?? ""}`);
   }
 };
 
@@ -115,7 +115,7 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
   const entryPath = fileURLToPath(options.rootUrl);
   const args = options.argv as Array<string>;
 
-  if (entryPath.includes("/$bunfs/")) {
+  if (entryPath.includes("$bunfs")) {
     runCompiledCli(options.argv);
     return;
   }
