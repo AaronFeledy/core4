@@ -52,7 +52,10 @@ TOPICS
 
 COMMANDS`);
   for (const [id, command] of commandEntries) {
-    console.log(`  ${commandName(id, command).padEnd(22)} ${command.description ?? ""}`);
+    const name = commandName(id, command);
+    if (!name.includes(":")) {
+      console.log(`  ${name.padEnd(22)} ${command.description ?? ""}`);
+    }
   }
 };
 
