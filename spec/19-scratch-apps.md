@@ -243,7 +243,7 @@ The `App` scope events (`pre-init`, `pre-start`, `pre-build`, etc.) STILL fire f
 
 #### 21.6.3 Standard event sequence
 
-`apps:scratch:start --from lamp` (cold) — illustrative ordering, scratch id `scratch-lamp-3a2f`:
+`apps:scratch:start --from lamp` (cold) — illustrative ordering, scratch id `scratch-lamp-3a2f9c`:
 
 ```text
 … (bootstrap-minimal..bootstrap-scratch per §11.4)
@@ -254,7 +254,7 @@ pre-scratch-acquire   { source: { _tag: "from-recipe", recipe: "lamp" } }
   pre-scratch-materialize
     … (recipe pipeline: prompts, render, atomic file writes; §8.8.9 steps 1–6)
   post-scratch-materialize
-  pre-scratch-start   { app: { kind: "scratch", id: "scratch-lamp-3a2f" }, isolate: "baked", detached: false }
+  pre-scratch-start   { app: { kind: "scratch", id: "scratch-lamp-3a2f9c" }, isolate: "baked", detached: false }
     pre-init          (App scope; app.kind === "scratch")
     post-init
     pre-start
@@ -360,7 +360,7 @@ The labels make `apps:scratch:gc` deterministic without consulting the registry:
 
 #### 21.9.1 DNS
 
-`<service>.<scratch-id>.internal` resolves from inside the scratch app's services exactly the way `<service>.<app-id>.internal` resolves for user apps (§10.1). The `<scratch-id>`'s 6-hex suffix guarantees uniqueness across concurrent scratch apps, so a `mariadb.scratch-lamp-3a2f.internal` does not collide with a `mariadb.scratch-lamp-7e91.internal` even when both share a base.
+`<service>.<scratch-id>.internal` resolves from inside the scratch app's services exactly the way `<service>.<app-id>.internal` resolves for user apps (§10.1). The `<scratch-id>`'s 6-hex suffix guarantees uniqueness across concurrent scratch apps, so a `mariadb.scratch-lamp-3a2f9c.internal` does not collide with a `mariadb.scratch-lamp-7e91bc.internal` even when both share a base.
 
 Cross-app DNS into a scratch app (`<service>.<scratch-id>.internal` from a *user* app) is supported when the active provider declares `sharedCrossAppNetwork: true` (§5.4); the scratch app's services join the same provider network user apps and the global app share. The expected use is "let me curl my scratch's web service from a tool running in my user app" during a debugging session; it is not a recommended pattern for committed config.
 
@@ -369,9 +369,9 @@ Cross-app DNS into a scratch app (`<service>.<scratch-id>.internal` from a *user
 When the scratch app's plan contains routes whose hostnames would collide with an in-flight user app's routes (the most common case: a fork of a user app whose Landofile declares `proxy: app: [app.lndo.site]`), the planner applies a **route auto-suffix** filter at plan time. Every hostname `<host>.<domain>` not explicitly overridden via `--hostname` or `--no-hostname-suffix` is rewritten to `<host>--<scratch-id>.<domain>`:
 
 ```text
-app.lndo.site             →  app--scratch-myproj-3a2f.lndo.site
-admin.app.lndo.site       →  admin.app--scratch-myproj-3a2f.lndo.site
-*.app.lndo.site           →  *.app--scratch-myproj-3a2f.lndo.site
+app.lndo.site             →  app--scratch-myproj-3a2f9c.lndo.site
+admin.app.lndo.site       →  admin.app--scratch-myproj-3a2f9c.lndo.site
+*.app.lndo.site           →  *.app--scratch-myproj-3a2f9c.lndo.site
 ```
 
 The transformation is implemented as a `RoutePlan` filter (§6.6) named `ScratchHostnameSuffix` and is applied unconditionally to every scratch app at plan time unless `--no-hostname-suffix` is passed. The filter is idempotent — running it twice yields the same hostnames — and does not modify routes whose hostname is already explicitly bound to the scratch via `--hostname`.
@@ -391,7 +391,7 @@ Scratch apps get their own CLI subtree under the `apps:` namespace. Default top-
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | Start a scratch app. `--fork` (use cwd's Landofile as source) or `--from <recipe-ref>` (recipe scaffold) is required. Foreground by default; `--detach` registers the scratch and returns. |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop a scratch app. `<id>` selects an explicit one; with no id, stops the foreground scratch in this shell session if any. Calls `destroy` after stop. |
 | `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy a scratch app's resources without first stopping (used after a stuck stop). `<id>` required. `--keep-volumes` retains volumes for inspection (overrides the §21.6.2 default that volumes go on destroy). |
-| `apps:scratch:list` | `scratch:list` | `minimal` | List every scratch app from the scratch registry plus orphans found via the provider label scan. `--format table\|json`. |
+| `apps:scratch:list` | `scratch:list` | `scratch` | List every scratch app from the scratch registry plus orphans found via the provider label scan. `--format table\|json`. |
 | `apps:scratch:info` | `scratch:info` | `scratch` | Print runtime info for a scratch app. `<id>` selects; `--service`, `--format`. |
 | `apps:scratch:logs` | `scratch:logs` | `scratch` | Stream scratch service logs. `<id>` selects; `--service`, `--follow`, `--tail`, `--since`. |
 | `apps:scratch:gc` | `scratch:gc` | `scratch` | Find orphaned scratch resources (stale registry entries, label-matched containers/volumes whose scratch root or registry entry is missing) and report them. `--prune` reaps. Recommended for cron or post-host-reboot cleanup. |
@@ -416,7 +416,7 @@ lando apps scratch start
         [--no-local-overrides]                # fork mode: don't copy .lando.local.yml / .lando.user.yml
         [--answer key=value]... [--answers <file>] [--no-interactive] [--yes]
         [--detach]                            # don't block the shell; register and return
-        [--keep-volumes]                      # default destroy behavior keeps volumes; cf. §21.8 shadowing rules
+        [--keep-volumes]                      # retain scratch-created volumes for inspection; cf. §21.8 shadowing rules
         [--keep-on-failure]                   # don't auto-destroy if the scratch fails to come up healthy
 ```
 
@@ -547,4 +547,3 @@ Out of scope for v4.0; the architecture preserves the option for each:
 - **User-relocatable scratch root.** The path `<userCacheRoot>/scratch/` is canonical at v4.0; there is no `scratch.root:` global config key. If users want scratch state on a different filesystem, they relocate `<userCacheRoot>` (a documented operation) — scratch state moves with it.
 - **Persistent agent for scratch.** §14.2's deferred persistent agent would cache a warm runtime for fast successive invocations. That is orthogonal to scratch: even with a warm runtime, scratch apps still have to materialize, plan, and start their services. The two compose cleanly when both ship.
 - **Scratch through `meta:plugin:add` install.** A plugin author cannot register a scratch app at install time. Scratch acquisition is always a user-initiated CLI invocation or a library-mode `acquire`. Plugins MAY contribute new `globalServices:` (§20) or new recipes (§8.8.4) that scratches can consume; they do not own scratches themselves.
-

@@ -254,7 +254,7 @@ The `CommandFramework` abstraction exists so that if `@effect/cli` reaches featu
 - **`ScratchAppService`** — Core Effect service (§3.4, §21.5) that owns scratch-app acquisition, materialization, lifecycle, and the registry-plus-provider-label orphan-reap protocol. `Layer.suspend`-wrapped — costs nothing on commands that don't need it.
 - **`ScratchHostnameSuffix` route filter** — Built-in `RouteFilter` (§6.6) applied unconditionally at plan time to every scratch app's `RoutePlan` (unless suppressed via `--no-hostname-suffix`); rewrites every hostname `<host>.<domain>` to `<host>--<scratch-id>.<domain>` so a fork-mode scratch's routes do not collide with the source app's (§21.9.2).
 - **Scratch registry** — Single-file binary registry at `<userCacheRoot>/scratch/registry.bin` (§12.1, §21.11) recording every running scratch app on the host. Source-of-truth for `apps:scratch:list`; combined with a provider-label scan (`dev.lando.scratch: "TRUE"`) to drive `apps:scratch:gc`.
-- - **Scope** — Effect's resource-lifetime tracker; runs finalizers in LIFO on close/error/interrupt.
+- **Scope** — Effect's resource-lifetime tracker; runs finalizers in LIFO on close/error/interrupt.
 - **Service base** — `l337` (raw artifact) or `lando` (opinionated dev service).
 - **Service feature** — See "Feature".
 - **Service info** — Provider-neutral runtime metadata returned by `app info`.

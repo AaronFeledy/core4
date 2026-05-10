@@ -131,7 +131,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `apps:scratch:destroy` | `scratch:destroy` | `scratch` | Destroy a scratch app's resources without first stopping; `<id>` required, `--keep-volumes` retains volumes for inspection (§21.10) |
 | `apps:scratch:gc` | `scratch:gc` | `scratch` | Find orphaned scratch resources via the registry walk + provider-label scan; `--prune` reaps (§21.11) |
 | `apps:scratch:info` | `scratch:info` | `scratch` | Print runtime info for a scratch app; `<id>` selects, `--service`, `--format` (§21.10) |
-| `apps:scratch:list` | `scratch:list` | `minimal` | List every scratch app from the registry plus orphans found via provider labels; `--format table\|json` (§21.10) |
+| `apps:scratch:list` | `scratch:list` | `scratch` | List every scratch app from the registry plus orphans found via provider labels; `--format table\|json` (§21.10) |
 | `apps:scratch:logs` | `scratch:logs` | `scratch` | Stream scratch service logs; `<id>` selects, `--service`, `--follow`, `--tail`, `--since` (§21.10) |
 | `apps:scratch:start` | `scratch:start`, `scratch` | `scratch` | Start a scratch app; `--fork` or `--from <recipe-ref>` is required, `--isolate=full\|baked\|cwd`, `--mount-cwd`, `--share-global-storage`, `--detach` (§21.10) |
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop a scratch app; `<id>` selects (or stops the foreground scratch in this shell session); calls destroy (§21.10) |
