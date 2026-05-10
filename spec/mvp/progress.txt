@@ -21,7 +21,30 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Verification gate (mandatory on every story): bun run typecheck, bun run lint, bun test all green.
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
+## Codebase Patterns
+
+- Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
+- `tsc -b` (root `bun run typecheck`) only walks projects listed in `tsconfig.json#references`. Tests live outside those project roots, so they are not type-checked by `bun run typecheck`. Bun runs them directly. Treat a passing `bun test` plus a passing `bun run typecheck` as the test/typecheck gate; do not assume tests are TS-strict-checked.
+- The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
+- When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
+- Pre-existing `noUncheckedIndexedAccess` errors will block any feature commit because `tsc -b` is the gate. Repair the smallest minimal fix as a separate `chore:` commit before the feature so history stays bisectable.
+
 ## Iteration Log
 
 (Ralph appends one entry per iteration below.)
 
+
+## 2026-05-10 18:51 CDT - US-001
+- Lifted BootstrapLevel and BOOTSTRAP_RANK from core/src/runtime/bootstrap.ts into sdk/src/schema/index.ts so @lando/sdk/schema is the canonical (semver-stable) home.
+- core/src/runtime/bootstrap.ts now thin re-exports BootstrapLevel and BOOTSTRAP_RANK from @lando/sdk/schema and keeps isAtLeast as a core-local helper.
+- Replaced an inline 9-literal Schema.Literal in TemplateRenderContext.bootstrapLevel with the new BootstrapLevel constant — the literal set lives in one place now.
+- Added sdk/test/schema/bootstrap.test.ts covering: literal set is exactly the 9 levels; every level decodes; unknown string yields a structured ParseError with Type-tagged issues; non-string input yields a ParseError; BOOTSTRAP_RANK matches a frozen snapshot; rank covers every literal; ranks are strictly monotonically ordered.
+- Files changed: sdk/src/schema/index.ts, core/src/runtime/bootstrap.ts, sdk/test/schema/bootstrap.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt. (Plus a separate prep commit fixing a pre-existing noUncheckedIndexedAccess error in core/src/cli/run.ts.)
+- Verification: bun run typecheck (clean), bun run lint (159 files, no fixes), bun test (18 pass / 0 fail across 5 files; was 11 pass before this story). CLI smoke: `bun run core/bin/lando.ts --version` and `... version` both still print the version string.
+- **Learnings for future iterations:**
+  - Bun's workspace resolver lets the SDK self-import via `@lando/sdk/...` from inside sdk/test/. Use the canonical path in SDK tests; it's the contract surface plugin authors will use.
+  - `tsc -b` does not walk core/test or sdk/test (they aren't in the root references). Tests are runtime-checked by bun, not strict-typechecked. Treat the gate as `bun run typecheck` + `bun test` together.
+  - Effect Schema.Literal exposes its tuple as `.literals` (typed as a readonly tuple of the literal values). `Schema.decodeUnknownEither` returns Either<Right, ParseError>; the ParseError wraps an `issue` (`Composite` for Literals) and `ParseResult.ArrayFormatter.formatErrorSync` flattens it to `{ _tag: "Type", path, message }` rows.
+  - The repo runs a hook that flags any new comments and demands justification. Section banners matching an established file's existing pattern qualify under "necessary docstring for public API". Strip incidental commentary; keep code self-explanatory.
+  - Bootstrap level orderings live in two surfaces now: the SDK schema (frozen contract) and a core-local `isAtLeast` helper. Keep helpers that are not part of the SDK contract out of `@lando/sdk` even when they're trivial.
+---
