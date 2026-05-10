@@ -1,16 +1,21 @@
+import { type ConfigResult, config } from "../../../commands/config.ts";
 /**
+ * `lando meta:config` — OCLIF wrapper.
+ *
+ * Reads or writes the global Lando config at `<userConfRoot>/config.yml`.
+ * The bare `lando config` invocation is the default top-level alias for
+ * this command (the app-scoped `app:config` does NOT register a top-level
+ * alias).
  */
-import { Effect } from "effect";
-
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-export const metaConfigSpec: LandoCommandSpec<never> = {
+export const metaConfigSpec: LandoCommandSpec<ConfigResult> = {
   id: "meta:config",
-  summary: "Read/write global Lando config.",
+  summary: "Read or write the global Lando config.",
   namespace: "meta",
   topLevelAlias: "config",
   bootstrap: "minimal",
-  run: () => Effect.die("not yet implemented: meta:config"),
+  run: () => config(),
 };
 
 export default class MetaConfigCommand extends LandoCommandBase {
