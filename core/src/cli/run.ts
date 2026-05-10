@@ -30,7 +30,8 @@ const commandName = (id: string, command: CompiledCommand): string => {
   const aliases = command.aliases;
   if (!aliases || aliases.length === 0) return id;
   const nonFlagAlias = aliases.find((alias) => !alias.startsWith("-"));
-  return nonFlagAlias ?? aliases[0];
+  if (nonFlagAlias !== undefined) return nonFlagAlias;
+  return aliases[0] ?? id;
 };
 
 const findCommand = (name: string): [string, CompiledCommand] | undefined =>
