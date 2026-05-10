@@ -16,7 +16,17 @@ import { Schema } from "effect";
 /**
  * BootstrapLevel.
  */
-export const BootstrapLevel = Schema.Literal("minimal", "plugins", "commands", "provider", "app", "tooling");
+export const BootstrapLevel = Schema.Literal(
+  "none",
+  "minimal",
+  "plugins",
+  "commands",
+  "tooling",
+  "provider",
+  "global",
+  "scratch",
+  "app",
+);
 export type BootstrapLevel = typeof BootstrapLevel.Type;
 
 /**
@@ -26,12 +36,15 @@ export type BootstrapLevel = typeof BootstrapLevel.Type;
  * purposes of provider initialization.
  */
 export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
-  minimal: 0,
-  plugins: 1,
-  commands: 2,
-  tooling: 3,
-  provider: 4,
-  app: 5,
+  none: 0,
+  minimal: 1,
+  plugins: 2,
+  commands: 3,
+  tooling: 4,
+  provider: 5,
+  global: 6,
+  scratch: 7,
+  app: 8,
 };
 
 export const isAtLeast = (have: BootstrapLevel, need: BootstrapLevel): boolean =>

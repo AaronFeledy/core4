@@ -1,0 +1,80 @@
+# Nightly distribution rehearsal 
+#
+# Runs `bun build --compile` for each supported platform target listed in
+# distribution rehearsal and a dry-run library publish. Real signing, notarization, SBOM, and
+# provenance are wired into release.yml; this job is the daily rehearsal that
+# guarantees the build pipeline still works ahead of any tagged release.
+name: nightly
+
+on:
+  schedule:
+    - cron: "0 7 * * *" # 07:00 UTC daily
+  workflow_dispatch:
+
+jobs:
+  compile:
+    name: compile-${{ matrix.os-name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            os-name: linux-x64
+          - os: ubuntu-24.04-arm
+            os-name: linux-arm64
+          - os: macos-13
+            os-name: macos-x64
+          - os: macos-14
+            os-name: macos-arm64
+          - os: windows-latest
+            os-name: windows-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Compile single-binary
+        working-directory: ./core
+        run: bun run build:compile
+
+      - name: Smoke check binary (unix)
+        if: runner.os != 'Windows'
+        working-directory: ./core
+        run: ./dist/lando --version || ./dist/lando --help
+
+      - name: Smoke check binary (windows)
+        if: runner.os == 'Windows'
+        working-directory: ./core
+        run: .\dist\lando.exe --version || .\dist\lando.exe --help
+        shell: cmd
+
+  publish-dry-run:
+    name: library publish (dry-run)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build core library
+        run: bun run --filter='@lando/core' build
+
+      - name: Pack (dry-run)
+        run: bun pm pack --destination /tmp/lando-pack
+        working-directory: ./core

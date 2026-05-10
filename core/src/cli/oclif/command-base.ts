@@ -35,19 +35,82 @@ import type { Effect } from "effect";
  * this shape. The OCLIF adapter compiles it into an OCLIF `Command`
  * subclass.
  */
+/**
+ * The three first-class command namespaces.
+ *
+ *   - `app`: operations on the current Lando app
+ *   - `apps`: cross-app and host-discovery operations
+ *   - `meta`: operations on Lando itself (config, plugins, host setup)
+ */
+export type LandoCommandNamespace = "app" | "apps" | "meta";
+
+/**
+ * Top-level alias rules.
+ *
+ *   - `false` (default): no top-level alias is registered.
+ *   - `true`: register the canonical id with its namespace prefix stripped.
+ *     `app:start` → `lando start`. `meta:plugin:add` → `lando plugin:add`.
+ *   - `"name"`: register the given name as the top-level alias instead of
+ *     the auto-derived name. Multi-segment values like `"plugin:add"` are
+ *     accepted.
+ *   - `["a", "b"]`: register multiple top-level aliases.
+ */
+export type LandoTopLevelAlias = boolean | string | ReadonlyArray<string>;
+
 export interface LandoCommandSpec<A = void, E = unknown> {
+  /**
+   * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
+   * `"meta:config"`). MUST start with one of `LandoCommandNamespace` plus
+   * `:`. The canonical id MUST be namespace-prefixed.
+   */
   readonly id: string;
   readonly summary: string;
   readonly description?: string;
+  readonly namespace: LandoCommandNamespace;
+  readonly topLevelAlias?: LandoTopLevelAlias;
   readonly aliases?: ReadonlyArray<string>;
   readonly examples?: ReadonlyArray<string>;
   readonly hidden?: boolean;
-  readonly bootstrap: "minimal" | "plugins" | "commands" | "tooling" | "provider" | "app";
+  readonly bootstrap:
+    | "none"
+    | "minimal"
+    | "plugins"
+    | "commands"
+    | "tooling"
+    | "provider"
+    | "global"
+    | "scratch"
+    | "app";
   // TODO: typed flag/arg shapes. For now, generic.
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, unknown>;
 }
+
+/**
+ * Resolve the OCLIF `aliases` array for a `LandoCommandSpec` from its
+ * `topLevelAlias` rule. Returns the merged alias list,
+ * including any explicit `aliases` already on the spec.
+ */
+export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {
+  const explicit = spec.aliases ?? [];
+  const top = spec.topLevelAlias;
+
+  if (top === false || top === undefined) {
+    return explicit;
+  }
+
+  if (top === true) {
+    const stripped = spec.id.replace(/^[^:]+:/, "");
+    return Array.from(new Set([...explicit, stripped]));
+  }
+
+  if (typeof top === "string") {
+    return Array.from(new Set([...explicit, top]));
+  }
+
+  return Array.from(new Set([...explicit, ...top]));
+};
 
 /**
  * Base class for built-in commands. Plugin-contributed commands compile

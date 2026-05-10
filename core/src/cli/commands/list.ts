@@ -1,8 +1,11 @@
 /**
- * `lando list` — list services across apps.
+ * `lando apps:list` — list apps known to Lando.
  *
- * Works inside and outside app context, supports `--all`, filters, `--path`,
- * JSON, table. Bootstrap level: `provider`.
+ * Walks the configured app-discovery roots, parses each discovered
+ * Landofile metadata header, and returns the list. Works inside and
+ * outside an app context. Supports `--all`, filters, `--path`, `--format
+ * json|table`. Bootstrap level: `minimal` — discovery does not require
+ * provider initialization.
  */
 import type { Effect } from "effect";
 

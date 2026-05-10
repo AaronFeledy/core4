@@ -66,13 +66,21 @@ These need follow-up before GA:
 - **`tsconfig.skipLibCheck: true`.** `@types/bun` and `@types/node` currently
   conflict on `stream/web` and a handful of other globals. Revisit once
   Bun's type packaging stabilizes.
-- **No CI matrix yet.** The existing `.github/workflows/*.yml` files are
-  inherited from the `oclif init` Node-based scaffold and need a full
-  rewrite to a Bun matrix (macOS x64+arm64, Linux x64+arm64, Windows x64;
-  weekly provider matrix).
-- **No `bun build --compile` step yet.** The
-  `core/scripts/build-bundled-plugins.ts` generator and the cross-platform
-  binary packaging both need to be wired up.
+- **Codegen is partial.** `scripts/build-bundled-plugins.ts` and the
+  `scripts/codegen.ts` orchestrator scaffold the §17.2 catalog, but several
+  generators (bootstrap layers, bundled recipes, bundled plugin templates,
+  schema JSON, OCLIF manifest wrapper) are stubs that print "skip" until
+  they land.
+- **`scripts/release.ts` is a partial orchestrator.** Stages 1–4 and 6–7
+  (codegen, typecheck, lint, test, library bundle, compile) run; stages 8–13
+  (strip, sign, notarize, manifest, provenance, publish) are stubs. Real
+  signing/notarization, SBOM, SLSA provenance, and the curl|sh installer
+  manifest land alongside the release-secrets infrastructure.
 - **`@lando/sdk` is currently a workspace package only.** It is intended to
   be `npm publish`-able as a peer of `@lando/core`. The package metadata is
   in place; only the publish pipeline is missing.
+- **CLI command bodies are not yet wired.** Every command file under
+  `core/src/cli/oclif/commands/` declares its canonical namespace-prefixed
+  id (`app:start`, `meta:config`, …) and top-level alias per spec §8.1.1
+  and §8.2, but the underlying `LandoCommandBase.runEffect` integration is
+  a stub — invoking any command currently throws "not yet implemented".
