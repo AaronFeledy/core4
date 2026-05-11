@@ -173,3 +173,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - For nested defaulted config blocks, default the containing object as well as its leaves when the PRD promises a leaf default from an empty config.
 ---
+
+## 2026-05-11 04:54 UTC - Push
+- Branch pushed: origin/ralph/mvp-walking-skeleton at 584d556 (US-004 story commit); two post-merge fix commits also pushed (see below)
+- Commits involved: 584d556 (main story), 468e66e→643dbe9 (fix: default telemetry.enabled on decode; add GlobalConfigOverrides in layer), c05af47→029784a (docs: record review fallback for US-004)
+- PR: #4 https://github.com/AaronFeledy/core4/pull/4 (created; squash-merged by Aaron at 2026-05-11T04:48:21Z on first CI pass)
+- CI outcome: pass (all 5 checks SUCCESS — linux-x64, linux-arm64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (no review comments; reviewDecision empty)
+- Triage rounds used: 0
+- Merge: merged by Aaron (squash) before this push step ran gh pr merge — PR was already MERGED when checked
+- Local main / branch refreshed: yes — main pulled (ff-only) to 9464e92; branch rebased onto main (2 fix commits preserved: 643dbe9 and 029784a)
+- Remaining local state: branch ralph/mvp-walking-skeleton is 2 commits ahead of main with the post-merge review fixes (telemetry schema default + GlobalConfigOverrides). These commits were NOT in the merged squash — they must be included in the next PR. The next iteration's build step should bundle these fixes with US-005 work or open a separate fix PR before starting US-005.
+---
