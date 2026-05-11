@@ -366,3 +366,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Export-surface tests can validate Bun workspace package exports directly with dynamic imports from the public `@lando/sdk` entry points.
   - `@lando/sdk/services` currently exposes the Phase 1 service tags named in the services tag test, including `PluginRegistry`, `RuntimeProviderRegistry`, `FileSystem`, `ProcessRunner`, and `ShellRunner`.
 ---
+
+## 2026-05-11 11:14 CDT - US-009
+- What was implemented: completed the SDK export surface by adding `getJsonSchema(schemaName)` to `@lando/sdk/schema` for the canonical contract schemas and extending the package export test to verify the helper through the public subpath.
+- Files changed: sdk/src/schema/index.ts, sdk/test/library/exports.test.ts, spec/mvp/progress.txt.
+- Verification run and result: `bun test sdk/test/library/exports.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun pm pack --dry-run --quiet` from sdk passed and produced `lando-sdk-0.0.0.tgz` dry-run output. LSP diagnostics could not run because typescript-language-server is not installed in this environment.
+- **Learnings for future iterations:**
+  - Effect JSON Schema generation is available as `JSONSchema.make(schema)` from the root `effect` package.
+  - Narrow schema names before calling `JSONSchema.make`; passing a heterogeneous schema registry lookup directly creates an unhelpful schema union type.
+---
