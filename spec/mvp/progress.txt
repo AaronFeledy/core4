@@ -326,3 +326,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `sdk/test/` files are not included in root `tsc -b`; run a targeted `tsc --noEmit ... <test-file>` when tests rely on compile-time contract assertions.
   - Effect service tag tests can use `Context.isTag(tag)` and `Context.Tag.Service<typeof Tag>` to freeze tag identity and service interface shapes.
 ---
+
+## 2026-05-11 10:43 CDT - US-008
+- Implemented the SDK provider contract helper `runProviderContract`, tagged `ContractFailure`, and in-memory `TestRuntimeProvider` reference implementation.
+- Files changed: sdk/src/test/index.ts, sdk/test/contract/provider.test.ts, sdk/AGENTS.md, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification run and result: `bun test ./sdk/test/contract/provider.test.ts` passed (4 tests); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (82 tests); `bun run build` passed; manual SDK import/contract execution via `bun -e` printed `provider contract passed for test`. LSP diagnostics could not run because `typescript-language-server` is not installed in this environment.
+- **Learnings for future iterations:**
+  - Provider contract checks should validate the public capability schema and assert Effect/Stream return shapes without requiring real provider side effects.
+  - Keep `@lando/sdk/test` helpers in `sdk/src/test/index.ts` and import them through the public `@lando/sdk/test` subpath in tests.
+  - The existing RuntimeProvider API uses `apply`/`destroy` and `execStream`; treat PRD shorthand like bring-up/exec stream as assertions over those current service methods.
+---
