@@ -36,6 +36,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - To verify a struct has no accidentally-optional fields, iterate the expected field name set and omit each one in turn — a single-omission test misses optional-field accidents that a per-field loop catches.
 - To probe an SDK schema's internals interactively, drop a throwaway `*.tmp.test.ts` under `sdk/test/schema/` (Bun resolves the workspace `@lando/sdk` self-import inside the workspace tree). Scripts run from `/tmp` or repo root cannot resolve workspace exports, so the temporary-test approach is the path of least resistance.
 - Biome's lint rules collapse short multi-line array spreads onto a single line; keep contract-test field-set initializers single-line where reasonable to avoid an unnecessary lint round-trip.
+- Bun's `Error` superclass auto-populates `line` and `column` properties with the constructor's source location. `Schema.TaggedError` extends `Error`, so a TaggedError field declared as `Schema.optional(Schema.Number)` and named `line` or `column` will silently report Bun's source-line number when the caller omits the field (the optional declaration leaves the property unset, so the Bun built-in shines through). Use `Schema.UndefinedOr(Schema.Number)` instead — Effect explicitly assigns `undefined` to the instance property, overriding the Bun built-in. The same trap applies to any TaggedError field whose name collides with an `Error` built-in. Verify suspect cases with a throwaway probe: omit the field, log `instance.fieldName` and `Object.hasOwn(instance, "fieldName")` — `Schema.optional` shows the Bun bleed-through, `Schema.UndefinedOr` shows `undefined` with `hasOwn === true`.
 
 ## Iteration Log
 
@@ -184,4 +185,69 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged by Aaron (squash) before this push step ran gh pr merge — PR was already MERGED when checked
 - Local main / branch refreshed: yes — main pulled (ff-only) to 9464e92; branch rebased onto main (2 fix commits preserved: 643dbe9 and 029784a)
 - Remaining local state: branch ralph/mvp-walking-skeleton is 2 commits ahead of main with the post-merge review fixes (telemetry schema default + GlobalConfigOverrides). These commits were NOT in the merged squash — they must be included in the next PR. The next iteration's build step should bundle these fixes with US-005 work or open a separate fix PR before starting US-005.
+---
+---
+
+## 2026-05-11 05:02 UTC - Push (PR #5)
+- Branch: ralph/mvp-walking-skeleton (3 commits ahead of main: fix + 2 docs)
+- PR: #5 https://github.com/AaronFeledy/core4/pull/5
+- Title: "fix: default telemetry.enabled on decode; add GlobalConfigOverrides in layer"
+- Phase 2: PR created (no prior PR existed for these commits; PR #4 was already merged).
+- Phase 3 CI results:
+  - linux-x64: SUCCESS
+  - linux-arm64: SUCCESS
+  - macos-arm64: SUCCESS
+  - windows-x64: SUCCESS
+  - Cursor Bugbot: SUCCESS
+- Phase 4 triage: No failures, no review comments, no actionable items. Sub-agent not dispatched (all green).
+- Phase 5: Squash-merged PR #5 (`gh pr merge 5 --squash --delete-branch`). Squash commit: 68a3db2 on main. Local main refreshed via `git pull --ff-only`. Branch `ralph/mvp-walking-skeleton` recreated at fresh main (68a3db2).
+---
+
+## 2026-05-11 05:06 UTC - Sync
+- Initial PR query (`--limit 1`) returned PR #4 (MERGED); most recent PR was actually PR #5 (MERGED, squash commit 68a3db2).
+- Previous PR: #5 https://github.com/AaronFeledy/core4/pull/5 (MERGED, all CI green)
+- Action: caught up after prior merge (both PR #4 and PR #5 already merged)
+- Local main updated: yes — pulled ff-only; main now at 68a3db2 (PR #5 squash commit)
+- Branch after sync: ralph/mvp-walking-skeleton (1 commit ahead of main — docs-only commit 68e922c recording push step for PR #5; left in place per hard rule; will bundle with next story work)
+- Stash created: no
+- Note: accidentally recreated origin/ralph/mvp-walking-skeleton (was deleted by PR #5 --delete-branch) during sync; it points to 68a3db2 (same as main). Harmless; next push will either update or delete it.
+---
+
+## 2026-05-11 05:42 UTC - US-005
+- Shipped contract-locking test `sdk/test/errors/tagged-errors.test.ts` (21 tests, 74 expects) plus a minimal schema patch to land the spec-mandated payloads on the two errors that diverged.
+- Schema changes (`sdk/src/errors/index.ts`):
+  - `LandofileParseError`: renamed `file` -> `filePath`; added `line: Schema.UndefinedOr(Schema.Number)` and `column: Schema.UndefinedOr(Schema.Number)`. The other consumers (`core/src/landofile/parser.ts`, `sdk/src/services/index.ts`) are type-only imports, so the rename was a no-op for callers.
+  - `ProviderCapabilityError`: added required `requiredValue: Schema.Unknown` and `actualValue: Schema.Unknown` alongside the existing capability/providerId/operation fields. No constructor sites in the repo, so the new required fields didn't break callers.
+  - The other three MVP errors (`LandoRuntimeBootstrapError`, `PluginLoadError`, `NoProviderInstalledError`) already had compliant payloads; the test locks their `_tag` and field set without touching the schema.
+- Test asserts, for each of the five errors: (a) `Class.fields` contains the spec-mandated keys, (b) the constructor accepts the documented payload, (c) the resulting `_tag` matches the class name, (d) the error survives `Effect.fail` -> `Effect.runPromiseExit` with `_tag` and `instanceof` intact (`Cause.failureOption`).
+- Files changed: `sdk/src/errors/index.ts` (+5/-1), `sdk/test/errors/tagged-errors.test.ts` (new, 280 lines), `sdk/AGENTS.md` (+1, Bun line/column gotcha), `spec/mvp/progress.txt` (this entry + Codebase Patterns entry), `spec/mvp/prd.json` (`passes: false → true`).
+- Verification run and result: `bun run typecheck` clean; `bun run lint` clean (163 files, no fixes); `bun test` clean (70 pass / 0 fail / 413 expects across 9 files; was 49 pass before this story).
+- Mutation check (manual TDD red-validation): (1) removed `requiredValue` from `ProviderCapabilityError` schema → 3 tests failed (field lock + both construction tests); restored → 21 pass. (2) renamed `filePath` back to `file` on `LandofileParseError` → 5 tests failed (field lock + 3 construction tests + catalog assertion); restored → 21 pass. The locks catch drift on both fronts.
+- CLI behavior: not applicable — pure SDK schema change with no CLI surface impact.
+- **Learnings for future iterations:**
+  - Bun's `Error` superclass auto-sets `line` and `column` to the constructor call site. A `Schema.TaggedError` field named `line` or `column` declared as `Schema.optional(Schema.Number)` will silently leak Bun's source line/column when the caller omits the field. Use `Schema.UndefinedOr(Schema.Number)` so Effect explicitly writes `undefined` to the property, overriding the Bun built-in. (Recorded in Codebase Patterns + sdk/AGENTS.md.)
+  - When the Bun-built-in clash is suspected for a field name, write a throwaway `*.tmp.test.ts` under `sdk/test/errors/` that constructs the error with the field omitted and logs both `instance.field` and `Object.hasOwn(instance, "field")`. `Schema.optional` shows the Bun value with `hasOwn: true`; `Schema.UndefinedOr` shows `undefined` with `hasOwn: true`. Delete the probe before committing.
+  - `Schema.TaggedError` instances expose `Class.fields` as the field map by name (same shape `Schema.Struct.fields` returns). Loop the field-name set in tests to lock the contract; loop with omission to prove every required field is required (same pattern US-003 used for `ProviderCapabilities`).
+  - `Effect.runPromiseExit` -> `Cause.failureOption` is the canonical roundtrip to assert `_tag` survives the Effect error channel (the failure value is the original TaggedError instance, so `instanceof` and `_tag` both work).
+  - Renaming a required SDK field (here `LandofileParseError.file` → `filePath`) is safe when no call site constructs the error — only the type signature surface (downstream `Effect.Effect<_, LandofileParseError>` channels) changes, and TS catches any new constructor sites at typecheck time.
+---
+
+## 2026-05-11 00:46 CDT - US-005 Review
+- Reviewed HEAD commit `f420a22` for PRD-01 US-005 against `spec/mvp/prd-mvp-01-sdk-contracts.md`.
+- Fixed the tagged-error contract tests to exercise the PRD-mandated `Effect.failCause` path instead of only `Effect.fail`.
+- Files changed: `sdk/test/errors/tagged-errors.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: unavailable — `Skill(name="review", user_message="HEAD")` is not registered in this environment. Fixed: direct PRD/code review found the test used `Effect.fail`, while US-005 requires `Effect.failCause` preservation through `Effect.runPromiseExit`. Rejected: broader 28-error catalog coverage is out of scope for US-005, which requires the five MVP-mandated tagged errors. Rejected: root `@lando/sdk` direct class exports are out of scope because FR-2 requires `@lando/sdk/errors`, and the subpath export exists.
+- Verification run and result: `lsp_diagnostics` unavailable because `typescript-language-server` is not installed; `bun test sdk/test/errors/tagged-errors.test.ts` exit 0; `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test` exit 0.
+- **Learnings for future iterations:**
+  - When a PRD says `Effect.failCause`, the contract test should use `Effect.failCause(Cause.fail(error))`; `Effect.fail(error)` covers a nearby but weaker path.
+---
+
+## 2026-05-11 00:46 CDT - US-005 Review
+- Reviewed HEAD commit `f420a22` for PRD-01 US-005 against `spec/mvp/prd-mvp-01-sdk-contracts.md` and the current SDK tagged-error catalog.
+- Fixed the contract tests to exercise the PRD-mandated `Effect.failCause` path instead of the weaker `Effect.fail` path for all five MVP tagged errors.
+- Files changed: `sdk/test/errors/tagged-errors.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: unavailable — `Skill(name="review", user_message="HEAD")` is not registered in this environment; direct review found and fixed the `Effect.failCause` acceptance-criteria gap. Rejected: broader stability tests for all 28 SDK error classes are out of scope for US-005, which only mandates the five MVP errors. Rejected: root-level direct class exports are out of scope because FR-2 requires `@lando/sdk/errors`, which is exported.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `/home/aaron/.bun/bin/bun test sdk/test/errors/tagged-errors.test.ts` exit 0; `/home/aaron/.bun/bin/bun run typecheck` exit 0; `/home/aaron/.bun/bin/bun run lint` exit 0; `/home/aaron/.bun/bin/bun test` exit 0. No CLI behavior changed.
+- **Learnings for future iterations:**
+  - When a PRD explicitly names `Effect.failCause`, contract tests should build a `Cause.fail(error)` and pass it through `Effect.failCause(...)`, not rely on `Effect.fail(...)`'s ordinary failure path.
 ---
