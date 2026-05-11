@@ -370,6 +370,25 @@ export const ProviderCapabilities = Schema.Struct({
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
 // =============================================================================
+// AppRef — shared identity field across App, Global, and Scratch event scopes.
+// SPEC: §11.2 (carries `kind` discriminator splitting the identifier namespace
+// across user, global, and scratch apps).
+// =============================================================================
+
+export const AppRef = Schema.Struct({
+  /** Identity namespace this app belongs to. */
+  kind: Schema.Literal("user", "global", "scratch"),
+  /** User slug, the literal `"global"`, or a scratch id. */
+  id: Schema.String,
+  /**
+   * Materialized app root (user app root, `<userDataRoot>/global/`, or
+   * `<userCacheRoot>/scratch/<id>/root/`).
+   */
+  root: AbsolutePath,
+});
+export type AppRef = typeof AppRef.Type;
+
+// =============================================================================
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // description of what a provider must realize. SPEC: §5.5
 // =============================================================================

@@ -13,15 +13,11 @@
  */
 import { Schema } from "effect";
 
-import { AppId, AppPlan, ServiceName } from "../schema/index.ts";
+import { AppPlan, AppRef, ServiceName } from "../schema/index.ts";
+
+export type { AppRef };
 
 const Timestamp = Schema.DateTimeUtc;
-
-const AppRef = Schema.Struct({
-  id: AppId,
-  name: Schema.String,
-});
-export type AppRef = typeof AppRef.Type;
 
 // =============================================================================
 // Lando-scope events

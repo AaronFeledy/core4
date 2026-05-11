@@ -28,6 +28,9 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
 - When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
 - Pre-existing `noUncheckedIndexedAccess` errors will block any feature commit because `tsc -b` is the gate. Repair the smallest minimal fix as a separate `chore:` commit before the feature so history stays bisectable.
+- Effect Schema fixtures: use `typeof MySchema.Encoded` for input/wire shapes and `typeof MySchema.Type` for decoded output. They diverge for non-trivial leaves (e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`). Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
+- `ParseResult.ArrayFormatter.formatErrorSync(err)` returns rows whose `path` is `ReadonlyArray<PropertyKey>`, not a dotted string. Match nested-field issues via `issue.path.includes("fieldName")`; chain `.includes()` for deeper paths (e.g. `path.includes("services") && path.includes("primary")`). Biome's `useLiteralKeys` flags bracket access on known properties — prefer dot-keyed services in fixtures (`services.web`, not `services["web"]`).
+- When a schema is shared across SDK modules (e.g. `AppRef` referenced by both `sdk/src/schema/index.ts` and `sdk/src/events/index.ts`), define it once in `sdk/src/schema/` and `import` + `export type` re-export it from the consuming barrel. The SDK's barrel pattern keeps the canonical home in `@lando/sdk/schema` while preserving the public surface from the consuming module.
 
 ## Iteration Log
 
@@ -47,4 +50,25 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Effect Schema.Literal exposes its tuple as `.literals` (typed as a readonly tuple of the literal values). `Schema.decodeUnknownEither` returns Either<Right, ParseError>; the ParseError wraps an `issue` (`Composite` for Literals) and `ParseResult.ArrayFormatter.formatErrorSync` flattens it to `{ _tag: "Type", path, message }` rows.
   - The repo runs a hook that flags any new comments and demands justification. Section banners matching an established file's existing pattern qualify under "necessary docstring for public API". Strip incidental commentary; keep code self-explanatory.
   - Bootstrap level orderings live in two surfaces now: the SDK schema (frozen contract) and a core-local `isAtLeast` helper. Keep helpers that are not part of the SDK contract out of `@lando/sdk` even when they're trivial.
+---
+
+## [2026-05-10 19:34 CDT] - Sync
+- Previous PR: none (no PR found for ralph/mvp-walking-skeleton)
+- Action: first iteration / no PR exists; PRD branch preserved with 2 unmerged commits (feat: Lock BootstrapLevel schema export from @lando/sdk; chore: fix pre-existing typecheck error in commandName helper)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: ralph/mvp-walking-skeleton (preserved with 2 unmerged commits beyond main)
+- Stash created: yes (loop-sync-autostash) — working tree had modifications to sdk/src/events/index.ts, sdk/src/schema/index.ts, spec/mvp/prd.json, spec/mvp/progress.txt and an untracked sdk/test/schema/app-plan.test.ts; human review needed before popping
+---
+
+## 2026-05-10 19:39 CDT - US-002
+- Added `AppRef` schema (`{ kind: "user" | "global" | "scratch", id: string, root: AbsolutePath }`) to sdk/src/schema/index.ts per spec/03-architecture.md §11.2 — replaces the local `{ id, name }` stub previously inlined in sdk/src/events/index.ts.
+- Switched sdk/src/events/index.ts to import the canonical AppRef from `../schema/index.ts` and re-export the type so the events barrel still exposes the public name. Dropped the now-unused AppId import.
+- sdk/test/schema/app-plan.test.ts (carried over from prior in-flight work) covers nine assertions: AppRef decodes the three identity kinds, rejects a bogus `kind` discriminator with a structured ParseError, and rejects missing `root`; ServicePlan decodes the minimal MVP fixture (one mount, one endpoint) preserving required fields, rejects missing `metadata`, and rejects an unknown endpoint protocol literal; AppPlan decodes the minimal MVP fixture, rejects missing `id`, and rejects a nested malformed service inside the `services` record (path includes both `services` and `primary`).
+- AppPlan and ServicePlan were already declared in sdk/src/schema/index.ts and re-exported via `@lando/sdk/schema` (package.json exports). No edits needed there.
+- Files changed: sdk/src/schema/index.ts, sdk/src/events/index.ts, sdk/test/schema/app-plan.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification: bun run typecheck (clean), bun run lint (160 files, no fixes), bun test (27 pass / 0 fail across 6 files; was 18 pass after US-001). CLI smoke: `bun run core/bin/lando.ts --version` still prints `@lando/core/0.0.0 wsl-x64 node-v24.3.0`.
+- **Learnings for future iterations:**
+  - The PRD-01 source markdown's prose for AppRef (`appId`, `landofileDir`, `landofileShape`) is stale relative to spec/03-architecture.md §11.2 (`kind`, `id`, `root`). The canonical spec wins; treat the PRD's field enumeration as a starting point and reconcile against spec/03-architecture.md and spec/19-scratch-apps.md when they disagree. The prd.json acceptance criteria (minimal MVP fixture + structured ParseError on malformed input) are the binding contract.
+  - The events module had a module-private AppRef stub that predated the canonical schema. When a contract is "promoted" out of a private stub, search for every consumer with grep before deleting — in this case only `sdk/src/events/index.ts` referenced it, and `core/test/library/import-boundary.test.ts` only smoke-tested that PreStartEvent/PostStartEvent were *defined* (not their payload shape), so the swap was safe with no other call-site churn.
+  - Effect `Schema.Struct` with branded primitives like `AppId`, `ServiceName`, `ProviderId` accepts plain strings in the Encoded form. Branding is a TypeScript-only phantom; `decoded.name === "web"` works at runtime even though `decoded.name`'s static type is `ServiceName`. `ServiceName.make("web")` produces the branded value for equality-comparison assertions, but plain string literals would equal it identity-wise too.
 ---
