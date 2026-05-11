@@ -115,3 +115,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When wiring a quick AST probe to inspect a schema, write a throwaway `*.tmp.test.ts` under `sdk/test/schema/` (Bun resolves the workspace self-import automatically). `/tmp/probe.ts` and root-level scripts cannot resolve `@lando/sdk/schema` because the workspace mapping only applies inside the workspace tree.
   - Biome's `useLiteralKeys` + collapse-short-array rules will rewrite a short multi-line array spread into a single line — keep contract-test field-set initializers compact (single-line) to avoid an avoidable lint pass.
 ---
+
+## 2026-05-10 20:18 CDT - US-003 Review
+- Reviewed HEAD commit `444a6b4` for PRD-01 US-003 against `spec/mvp/prd-mvp-01-sdk-contracts.md` and `spec/05-runtime-providers.md` §5.4.
+- Fixed the ProviderCapabilities contract test to avoid `as any` schema AST introspection; it now validates booleans, literal domains, and `providerExtensions` through public decode behavior.
+- Files changed: `sdk/test/schema/provider-capabilities.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: unavailable — `Skill(name="review", user_message="HEAD")` is not registered in this environment; substituted the available review-work flow plus direct PRD/code verification. Fixed: test used `as any` for schema introspection, conflicting with repo/session type-safety constraints. Rejected: `copyOnWriteAppRoot` wording in the PRD/index is not a schema gap because the authoritative §5.4 capability matrix names `copyMounts`.
+- Verification run and result: `lsp_diagnostics sdk/test/schema/provider-capabilities.test.ts` clean; `bun test sdk/test/schema/provider-capabilities.test.ts` exit 0; `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test` exit 0. (`lsp_diagnostics spec/mvp/progress.txt` is not applicable because no .txt LSP is configured.)
+- **Learnings for future iterations:**
+  - Prefer behavioral decode assertions for SDK contract tests when they can lock the same public contract; avoid `as any` AST peeking even in tests.
+  - The source-of-truth ProviderCapabilities field list is `spec/05-runtime-providers.md` §5.4; treat older `copyOnWriteAppRoot` wording as stale shorthand unless the matrix changes.
+---

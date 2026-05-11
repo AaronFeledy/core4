@@ -89,28 +89,54 @@ describe("ProviderCapabilities — field set lock", () => {
     expect(actual).toHaveLength(21);
   });
 
-  test("every boolean capability is a Schema.Boolean (not optional, not literal)", () => {
+  test("every boolean capability accepts only booleans", () => {
     for (const field of BOOLEAN_FIELDS) {
-      const schema = ProviderCapabilities.fields[field];
-      // biome-ignore lint/suspicious/noExplicitAny: AST introspection
-      expect((schema as any).ast._tag).toBe("BooleanKeyword");
+      for (const value of [true, false]) {
+        const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+          ...providerLandoFixture,
+          [field]: value,
+        });
+        expect(Either.isRight(accepted)).toBe(true);
+      }
+
+      const rejected = Schema.decodeUnknownEither(ProviderCapabilities)({
+        ...providerLandoFixture,
+        [field]: "true",
+      });
+      expect(Either.isLeft(rejected)).toBe(true);
     }
   });
 
-  test("every literal capability exposes the spec-exact literal options", () => {
+  test("every literal capability accepts exactly the spec literal options", () => {
     for (const [field, expected] of Object.entries(LITERAL_FIELDS)) {
-      const schema = ProviderCapabilities.fields[field as keyof typeof LITERAL_FIELDS];
-      // biome-ignore lint/suspicious/noExplicitAny: AST introspection
-      const literals = (schema as any).literals as ReadonlyArray<string>;
-      expect([...literals].sort()).toEqual([...expected].sort());
-      expect(literals).toHaveLength(expected.length);
+      for (const value of expected) {
+        const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+          ...providerLandoFixture,
+          [field]: value,
+        });
+        expect(Either.isRight(accepted)).toBe(true);
+      }
+
+      const rejected = Schema.decodeUnknownEither(ProviderCapabilities)({
+        ...providerLandoFixture,
+        [field]: "__not_a_spec_literal__",
+      });
+      expect(Either.isLeft(rejected)).toBe(true);
     }
   });
 
-  test("providerExtensions is a Schema.Array(Schema.String)", () => {
-    // biome-ignore lint/suspicious/noExplicitAny: AST introspection
-    const ast = (ProviderCapabilities.fields.providerExtensions as any).ast;
-    expect(ast._tag).toBe("TupleType");
+  test("providerExtensions accepts only arrays of strings", () => {
+    const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      providerExtensions: ["compose", "labels"],
+    });
+    expect(Either.isRight(accepted)).toBe(true);
+
+    const rejected = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      providerExtensions: ["compose", 1],
+    });
+    expect(Either.isLeft(rejected)).toBe(true);
   });
 });
 
