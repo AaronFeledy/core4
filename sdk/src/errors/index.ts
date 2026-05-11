@@ -30,7 +30,9 @@ export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFound
 
 export class LandofileParseError extends Schema.TaggedError<LandofileParseError>()("LandofileParseError", {
   message: Schema.String,
-  file: Schema.String,
+  filePath: Schema.String,
+  line: Schema.UndefinedOr(Schema.Number),
+  column: Schema.UndefinedOr(Schema.Number),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
@@ -76,6 +78,8 @@ export class ProviderCapabilityError extends Schema.TaggedError<ProviderCapabili
   {
     ...ProviderErrorBase,
     capability: Schema.String,
+    requiredValue: Schema.Unknown,
+    actualValue: Schema.Unknown,
   },
 ) {}
 
