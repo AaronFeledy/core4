@@ -27,6 +27,32 @@ describe("@lando/sdk package exports", () => {
     expect(schema.HostPlatform).toBeDefined();
     expect(schema.ServiceInfo).toBeDefined();
     expect(schema.PluginManifest).toBeDefined();
+    expect(schema.getJsonSchema).toBeDefined();
+  });
+
+  test("schema entry point exposes JSON Schema for the canonical contract surface", async () => {
+    const schema = await import("@lando/sdk/schema");
+
+    for (const schemaName of [
+      "BootstrapLevel",
+      "AppRef",
+      "AppPlan",
+      "ServicePlan",
+      "ProviderCapabilities",
+      "LandofileShape",
+      "GlobalConfig",
+      "AppId",
+      "ServiceName",
+      "ProviderId",
+      "HostPlatform",
+      "ServiceInfo",
+      "PluginManifest",
+    ] as const) {
+      const jsonSchema = schema.getJsonSchema(schemaName);
+
+      expect(jsonSchema).toBeDefined();
+      expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    }
   });
 
   test("errors entry point exports the canonical tagged errors", async () => {
