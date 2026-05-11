@@ -21,6 +21,7 @@ The SDK is the API-stable surface. Per `spec/ROADMAP.md` Phasing principle 1, an
 - `typeof MySchema.Encoded` is the wire/input shape; `typeof MySchema.Type` is the decoded output. They diverge for non-trivial leaves: `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`. Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
 - `ParseResult.ArrayFormatter.formatErrorSync(err)` returns rows whose `path` is `ReadonlyArray<PropertyKey>` (not a dotted string). Match nested-field issues via `issue.path.includes("fieldName")`; chain `.includes()` for deeper paths.
 - Biome's `useLiteralKeys` flags bracket access on known properties. Prefer dot-keyed services in fixtures (`services.web`, not `services["web"]`).
+- For contract-locking tests, introspect the schema directly instead of snapshotting: `MyStruct.fields` is the field map by name; `Schema.Literal(...).literals` returns the literal-option array; `Schema.Boolean.ast._tag === "BooleanKeyword"`; `Schema.Array(...).ast._tag === "TupleType"`. To prove every field is required, loop the field-name set and omit each one in turn — single-omission tests miss optional-field accidents that a per-field loop catches.
 
 ## Tests
 
