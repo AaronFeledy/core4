@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -346,4 +347,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 0477de2
 - Local main / branch refreshed: yes — git switch main, git pull --ff-only
 - Concurrent agent note: a second agent committed 6e343f2 (fix: Preserve provider contract suite export) to us-008-provider-contract-test-stub after the merge; that local branch remains 1 commit ahead of main and will be detected by the next sync step.
+---
+
+## 2026-05-11 11:08 CDT - Sync
+- Previous branch: us-009-sdk-exports-surface
+- Previous PR: none
+- Action: no PR found; branch had 0 commits ahead of main (clean state); deleted local story branch; stashed dirty progress.txt (uncommitted sync note from prior run) with loop-sync-autostash
+- Local main updated: yes — already at origin/main 2d228bf
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — contains uncommitted progress note from prior sync; human cleanup recommended)
+---
+
+## 2026-05-11 11:20 CDT - US-009
+- What was implemented: added the SDK package export-surface smoke test covering the root namespace and all six PRD-mandated public subpaths.
+- Files changed: sdk/test/library/exports.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification run and result: `bun test sdk/test/library/exports.test.ts` passed (6 pass, 0 fail); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (88 pass, 0 fail). LSP diagnostics could not run because typescript-language-server is not installed in this environment. No CLI behavior changed, so no CLI command QA was required.
+- **Learnings for future iterations:**
+  - Export-surface tests can validate Bun workspace package exports directly with dynamic imports from the public `@lando/sdk` entry points.
+  - `@lando/sdk/services` currently exposes the Phase 1 service tags named in the services tag test, including `PluginRegistry`, `RuntimeProviderRegistry`, `FileSystem`, `ProcessRunner`, and `ShellRunner`.
 ---
