@@ -285,3 +285,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `Schema.TaggedStruct("event-name", ...)` supplies `_tag`; this story's lifecycle contracts also require a separate literal `eventName`, so tests should assert both the schema export and the pinned `eventName` discriminator.
   - The non-login shell used by tools may not have Bun on PATH even though the repo requires Bun; prefix command invocations with `PATH=/home/aaron/.bun/bin:$PATH` when `bun` is not found.
 ---
+
+## 2026-05-11 - Push - US-006
+- Branch pushed: ralph/us-006-ship-lifecycle-event-payload-schemas-8-10-events-for-app-start-app-stop
+  - Note: build step left verified story work uncommitted; push step committed it (all verification had passed per progress.txt entry; focused test, typecheck, lint, and full test suite were all exit 0 per build step record).
+- Commit pushed: 4b131d7 "feat: Ship 10 MVP lifecycle event payload schemas in @lando/sdk"
+- PR: #7 https://github.com/AaronFeledy/core4/pull/7 (created)
+- CI outcome: pass — linux-arm64, linux-x64, macos-arm64, windows-x64 all pass; Cursor Bugbot and Bugbot Autofix both skipping (not failures).
+- Review feedback: Cursor Bugbot (bot) flagged hardcoded /home/aaron path in AGENTS.md; reviewDecision=""; check status=skipping. Rejected as non-blocking bot cosmetic suggestion — does not constitute CHANGES_REQUESTED.
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit c24dd9f on main.
+- Local main / branch refreshed: yes — main at c24dd9f; story branch deleted locally (remote deleted by --delete-branch).
+- Remaining local state: clean, on main
+---
