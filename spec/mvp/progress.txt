@@ -168,7 +168,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 ## 2026-05-10 23:47 CDT - US-004 Review
 - Reviewed commit `584d556` for PRD-01 US-004 (`LandofileShape` and `GlobalConfig`) against `spec/mvp/prd-mvp-01-sdk-contracts.md`.
 - Files changed: `sdk/src/schema/index.ts`, `sdk/test/schema/landofile.test.ts`, `core/src/runtime/layer.ts`, `spec/mvp/progress.txt`.
-- `/review` findings: fixed — `GlobalConfig` only defaulted `telemetry.enabled` when `telemetry: {}` was present; `GlobalConfig` now decodes `{}` with `telemetry.enabled === false`. Rejected — none.
+- `/review` findings: `Skill(name="review", user_message="HEAD")` was attempted but the command is not installed in this environment; substitute Oracle review finding fixed — `GlobalConfig` only defaulted `telemetry.enabled` when `telemetry: {}` was present; `GlobalConfig` now decodes `{}` with `telemetry.enabled === false`. Rejected — none.
 - Verification run and result: focused SDK Landofile schema test, `bun run typecheck`, `bun run lint`, and `bun test` rerun after the fix (all green). LSP diagnostics were attempted but unavailable because `typescript-language-server` and `biome` are not installed in this environment.
 - **Learnings for future iterations:**
   - For nested defaulted config blocks, default the containing object as well as its leaves when the PRD promises a leaf default from an empty config.
