@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -346,4 +347,49 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 0477de2
 - Local main / branch refreshed: yes — git switch main, git pull --ff-only
 - Concurrent agent note: a second agent committed 6e343f2 (fix: Preserve provider contract suite export) to us-008-provider-contract-test-stub after the merge; that local branch remains 1 commit ahead of main and will be detected by the next sync step.
+---
+
+## 2026-05-11 11:08 CDT - Sync
+- Previous branch: us-009-sdk-exports-surface
+- Previous PR: none
+- Action: no PR found; branch had 0 commits ahead of main (clean state); deleted local story branch; stashed dirty progress.txt (uncommitted sync note from prior run) with loop-sync-autostash
+- Local main updated: yes — already at origin/main 2d228bf
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — contains uncommitted progress note from prior sync; human cleanup recommended)
+---
+
+## 2026-05-11 11:20 CDT - US-009
+- What was implemented: added the SDK package export-surface smoke test covering the root namespace and all six PRD-mandated public subpaths.
+- Files changed: sdk/test/library/exports.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification run and result: `bun test sdk/test/library/exports.test.ts` passed (6 pass, 0 fail); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (88 pass, 0 fail). LSP diagnostics could not run because typescript-language-server is not installed in this environment. No CLI behavior changed, so no CLI command QA was required.
+- **Learnings for future iterations:**
+  - Export-surface tests can validate Bun workspace package exports directly with dynamic imports from the public `@lando/sdk` entry points.
+  - `@lando/sdk/services` currently exposes the Phase 1 service tags named in the services tag test, including `PluginRegistry`, `RuntimeProviderRegistry`, `FileSystem`, `ProcessRunner`, and `ShellRunner`.
+---
+
+## 2026-05-11 11:14 CDT - US-009
+- What was implemented: completed the SDK export surface by adding `getJsonSchema(schemaName)` to `@lando/sdk/schema` for the canonical contract schemas and extending the package export test to verify the helper through the public subpath.
+- Files changed: sdk/src/schema/index.ts, sdk/test/library/exports.test.ts, spec/mvp/progress.txt.
+- Verification run and result: `bun test sdk/test/library/exports.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun pm pack --dry-run --quiet` from sdk passed and produced `lando-sdk-0.0.0.tgz` dry-run output. LSP diagnostics could not run because typescript-language-server is not installed in this environment.
+- **Learnings for future iterations:**
+  - Effect JSON Schema generation is available as `JSONSchema.make(schema)` from the root `effect` package.
+  - Narrow schema names before calling `JSONSchema.make`; passing a heterogeneous schema registry lookup directly creates an unhelpful schema union type.
+---
+
+## 2026-05-11 11:18 CDT - US-009 Review
+- Reviewed build commits 8e5230f (test for all six SDK export entry points) and 4c89af1 (`getJsonSchema` helper + JSON Schema assertion).
+- Files inspected: `sdk/src/schema/index.ts`, `sdk/test/library/exports.test.ts`, `sdk/package.json`, `spec/mvp/prd-mvp-01-sdk-contracts.md` (US-009 + FR-1/FR-6/FR-7), `spec/mvp/prd.json` (passes flag).
+- `/review` findings: the canonical `/review` slash command is not present in this environment; the only available review skill is the heavyweight 5-agent `review-work` orchestrator, which is disproportionate for a ~60-line additive diff (one helper + one test block). Performed a focused manual review covering the same dimensions instead.
+  - Manual findings (rejected as non-blocking):
+    - `JSON_SCHEMA_REGISTRY` const is referenced only via `keyof typeof` for the `JsonSchemaName` type; the switch duplicates its entries. Rejected: build step's own learnings note this is intentional — collapsing to `JSONSchema.make(registry[name])` produces an unhelpful heterogeneous union schema type at the call sites.
+    - Test hardcodes `$schema === "http://json-schema.org/draft-07/schema#"`. Rejected: verified Effect `JSONSchema.make` currently emits exactly this value for all 13 FR-1 schemas; treating it as a contract is the point of the assertion.
+    - Switch has no `default` branch (future-registry-entry-without-switch-update would widen return type with `undefined`). Rejected: out-of-scope refactor; all 13 FR-1 schemas covered today.
+    - `BOOTSTRAP_RANK` not in `getJsonSchema`. Rejected: not a Schema (it's `Record<BootstrapLevel, number>`), so FR-6 ("every schema in FR-1") does not apply.
+  - Confirmed-real bugs: none. No fixes applied.
+- PRD acceptance verified manually: all 6 entry points import; `sdk/package.json` `exports` lists all six; FR-6 helper resolves a JSON Schema for every FR-1 schema (smoked via `bun -e` import + iteration over all 13 names); FR-7 `bun pm pack --dry-run --quiet --cwd sdk` produced `lando-sdk-0.0.0.tgz`.
+- Verification run and result: `bun run typecheck` → clean; `bun run lint` → 167 files, no fixes; `bun test sdk/test/library/exports.test.ts` → 7 pass / 0 fail (77 expects); `bun test` → first run had 4 cold-start timeouts in `core/test/library/import-boundary.test.ts` (5s default; unrelated to changed files), re-run → 89 pass / 0 fail in 379ms.
+- **Learnings for future iterations:**
+  - `core/test/library/import-boundary.test.ts` is sensitive to Bun cold-start latency under default 5s timeouts; full suite re-run resolves it. If it recurs reliably, raise the timeout rather than treating as a real failure.
+  - Effect `JSONSchema.make` currently emits draft-07 `$schema` for all SDK schemas — a stable enough contract to assert exact-match in tests.
+  - The `/review` slash command referenced by the loop instructions resolves to `review-work` in this environment; for tiny additive diffs, manual review with the same dimensions (goal/QA/code/security/context) is acceptable and must be called out explicitly in the progress log.
 ---

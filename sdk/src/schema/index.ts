@@ -15,7 +15,7 @@
  * §7.4 for the full Landofile, §6.2 for the full ServiceConfig — gated behind
  * `// SPEC: §X.Y deferred for MVP` comments).
  */
-import { Schema } from "effect";
+import { JSONSchema, Schema } from "effect";
 
 // =============================================================================
 // Branded primitives
@@ -728,3 +728,57 @@ export const TemplateRenderContext = Schema.Struct({
   scope: Schema.String,
 });
 export type TemplateRenderContext = typeof TemplateRenderContext.Type;
+
+// =============================================================================
+// JSON Schema accessors
+// SPEC: prd-mvp-01 US-009 package export surface
+// =============================================================================
+
+const JSON_SCHEMA_REGISTRY = {
+  BootstrapLevel,
+  AppRef,
+  AppPlan,
+  ServicePlan,
+  ProviderCapabilities,
+  LandofileShape,
+  GlobalConfig,
+  AppId,
+  ServiceName,
+  ProviderId,
+  HostPlatform,
+  ServiceInfo,
+  PluginManifest,
+} as const;
+
+export type JsonSchemaName = keyof typeof JSON_SCHEMA_REGISTRY;
+
+export const getJsonSchema = (schemaName: JsonSchemaName) => {
+  switch (schemaName) {
+    case "BootstrapLevel":
+      return JSONSchema.make(BootstrapLevel);
+    case "AppRef":
+      return JSONSchema.make(AppRef);
+    case "AppPlan":
+      return JSONSchema.make(AppPlan);
+    case "ServicePlan":
+      return JSONSchema.make(ServicePlan);
+    case "ProviderCapabilities":
+      return JSONSchema.make(ProviderCapabilities);
+    case "LandofileShape":
+      return JSONSchema.make(LandofileShape);
+    case "GlobalConfig":
+      return JSONSchema.make(GlobalConfig);
+    case "AppId":
+      return JSONSchema.make(AppId);
+    case "ServiceName":
+      return JSONSchema.make(ServiceName);
+    case "ProviderId":
+      return JSONSchema.make(ProviderId);
+    case "HostPlatform":
+      return JSONSchema.make(HostPlatform);
+    case "ServiceInfo":
+      return JSONSchema.make(ServiceInfo);
+    case "PluginManifest":
+      return JSONSchema.make(PluginManifest);
+  }
+};
