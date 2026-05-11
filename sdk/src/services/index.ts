@@ -12,7 +12,7 @@
  * Status: stub interfaces — methods are typed but Live impls don't exist
  * yet.
  */
-import { Context, type Effect, type Stream } from "effect";
+import { Context, type Effect, type Scope, type Stream } from "effect";
 
 // Re-export branded primitives so downstream tags can reference them.
 import type {
@@ -35,12 +35,127 @@ import type {
   LandofileNotFoundError,
   LandofileParseError,
   LandofileValidationError,
+  NoProviderInstalledError,
   PluginLoadError,
   PluginManifestError,
+  ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
   ProviderUnavailableError,
+  ServiceExecError,
+  ServiceNotFoundError,
+  ServiceStartError,
+  ToolingExecError,
 } from "../errors/index.ts";
+
+export type ProviderError =
+  | ProviderCapabilityError
+  | ProviderConfigError
+  | ProviderInternalError
+  | ProviderUnavailableError
+  | ServiceExecError
+  | ServiceNotFoundError
+  | ServiceStartError;
+
+export interface ProviderSetupOptions {
+  readonly force: boolean;
+}
+
+export interface ProviderStatus {
+  readonly running: boolean;
+  readonly message?: string;
+}
+
+export interface ProviderVersions {
+  readonly provider: string;
+  readonly runtime?: string;
+}
+
+export interface ArtifactBuildSpec {
+  readonly app: AppId;
+  readonly service: ServiceName;
+}
+
+export interface ArtifactRef {
+  readonly providerId: ProviderId;
+  readonly ref: string;
+}
+
+export interface ArtifactPullSpec {
+  readonly ref: string;
+}
+
+export interface ApplyOptions {
+  readonly reconcile: boolean;
+}
+
+export interface ApplyResult {
+  readonly changed: boolean;
+}
+
+export interface ServiceSelector {
+  readonly app: AppId;
+  readonly service: ServiceName;
+}
+
+export interface AppSelector {
+  readonly app: AppId;
+}
+
+export interface ExecTarget extends ServiceSelector {
+  readonly user?: string;
+}
+
+export interface CommandSpec {
+  readonly command: ReadonlyArray<string>;
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+export interface ExecResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+export type ExecChunk =
+  | { readonly stream: "stdout" | "stderr"; readonly data: Uint8Array }
+  | { readonly exitCode: number };
+
+export interface EphemeralRunSpec {
+  readonly image: string;
+  readonly command: ReadonlyArray<string>;
+}
+
+export interface LogTarget extends ServiceSelector {}
+
+export interface LogOptions {
+  readonly follow: boolean;
+  readonly tail?: number;
+}
+
+export interface LogChunk {
+  readonly service: ServiceName;
+  readonly stream: "stdout" | "stderr";
+  readonly line: string;
+  readonly timestamp?: Date;
+}
+
+export interface ServiceRuntimeInfo {
+  readonly app: AppId;
+  readonly service: ServiceName;
+  readonly providerId: ProviderId;
+  readonly status: string;
+}
+
+export interface ListFilter {
+  readonly app?: AppId;
+}
+
+export interface ShellCommandOptions {
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+}
 
 // =============================================================================
 // Core services
@@ -106,7 +221,10 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
     readonly select: (
       plan: AppPlan,
-    ) => Effect.Effect<RuntimeProvider, ProviderUnavailableError | ProviderConfigError>;
+    ) => Effect.Effect<
+      RuntimeProvider,
+      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
+    >;
   }
 >() {}
 
@@ -125,12 +243,36 @@ export interface RuntimeProviderShape {
   readonly capabilities: ProviderCapabilities;
 
   readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
-  readonly getStatus: Effect.Effect<unknown, ProviderInternalError>;
+  readonly setup: (options: ProviderSetupOptions) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
+  readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
+
+  readonly buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>;
+  readonly pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>;
+  readonly removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>;
 
   readonly apply: (
     plan: AppPlan,
-    options: { readonly reconcile: boolean },
-  ) => Effect.Effect<unknown, ProviderInternalError>;
+    options: ApplyOptions,
+  ) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>;
+  readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
+
+  readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;
+  readonly execStream: (
+    target: ExecTarget,
+    command: CommandSpec,
+  ) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>;
+  readonly run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>;
+  readonly logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>;
+  readonly inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>;
+  readonly list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>;
+}
+
+export interface DestroyOptions {
+  readonly volumes: boolean;
 }
 
 export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
@@ -221,7 +363,24 @@ export interface ProcessResult {
 export class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
   ProcessRunner,
   {
-    readonly spawn: (options: ProcessSpawnOptions) => Effect.Effect<ProcessResult, never>;
+    readonly spawn: (options: ProcessSpawnOptions) => Effect.Effect<ProcessResult, ToolingExecError>;
+  }
+>() {}
+
+/**
+ * ShellRunner — Bun.$ wrapper for shell-shaped host commands.
+ */
+export class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
+  ShellRunner,
+  {
+    readonly run: (
+      command: string,
+      options?: ShellCommandOptions,
+    ) => Effect.Effect<ProcessResult, ToolingExecError>;
+    readonly runScript: (
+      path: string,
+      options?: ShellCommandOptions,
+    ) => Effect.Effect<ProcessResult, ToolingExecError>;
   }
 >() {}
 
@@ -251,7 +410,22 @@ export class PrivilegeService extends Context.Tag("@lando/core/PrivilegeService"
 export class Logger extends Context.Tag("@lando/core/Logger")<
   Logger,
   {
-    readonly id: string;
+    readonly debug: (
+      message: string,
+      data?: Readonly<Record<string, unknown>>,
+    ) => Effect.Effect<void, EventError>;
+    readonly info: (
+      message: string,
+      data?: Readonly<Record<string, unknown>>,
+    ) => Effect.Effect<void, EventError>;
+    readonly warn: (
+      message: string,
+      data?: Readonly<Record<string, unknown>>,
+    ) => Effect.Effect<void, EventError>;
+    readonly error: (
+      message: string,
+      data?: Readonly<Record<string, unknown>>,
+    ) => Effect.Effect<void, EventError>;
   }
 >() {}
 
