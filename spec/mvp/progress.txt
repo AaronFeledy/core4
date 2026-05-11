@@ -185,3 +185,18 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — main pulled (ff-only) to 9464e92; branch rebased onto main (2 fix commits preserved: 643dbe9 and 029784a)
 - Remaining local state: branch ralph/mvp-walking-skeleton is 2 commits ahead of main with the post-merge review fixes (telemetry schema default + GlobalConfigOverrides). These commits were NOT in the merged squash — they must be included in the next PR. The next iteration's build step should bundle these fixes with US-005 work or open a separate fix PR before starting US-005.
 ---
+---
+
+## 2026-05-11 05:02 UTC - Push (PR #5)
+- Branch: ralph/mvp-walking-skeleton (3 commits ahead of main: fix + 2 docs)
+- PR: #5 https://github.com/AaronFeledy/core4/pull/5
+- Title: "fix: default telemetry.enabled on decode; add GlobalConfigOverrides in layer"
+- Phase 2: PR created (no prior PR existed for these commits; PR #4 was already merged).
+- Phase 3 CI results:
+  - linux-x64: SUCCESS
+  - linux-arm64: SUCCESS
+  - macos-arm64: SUCCESS
+  - windows-x64: SUCCESS
+  - Cursor Bugbot: SUCCESS
+- Phase 4 triage: No failures, no review comments, no actionable items. Sub-agent not dispatched (all green).
+- Phase 5: Squash-merged PR #5 (`gh pr merge 5 --squash --delete-branch`). Squash commit: 68a3db2 on main. Local main refreshed via `git pull --ff-only`. Branch `ralph/mvp-walking-skeleton` recreated at fresh main (68a3db2).
