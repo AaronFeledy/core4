@@ -4,7 +4,12 @@ import { Effect, Stream } from "effect";
 
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProvider } from "@lando/sdk/services";
-import { ContractFailure, TestRuntimeProvider, runProviderContract } from "@lando/sdk/test";
+import {
+  ContractFailure,
+  TestRuntimeProvider,
+  runProviderContract,
+  runProviderContractSuite,
+} from "@lando/sdk/test";
 
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");
@@ -12,6 +17,13 @@ const TEST_SERVICE_NAME = ServiceName.make("web");
 describe("RuntimeProvider contract", () => {
   test("exports a runnable Effect contract helper", async () => {
     const contract = runProviderContract(TestRuntimeProvider);
+
+    expect(Effect.isEffect(contract)).toBe(true);
+    await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
+  });
+
+  test("keeps the original suite export as a runnable alias", async () => {
+    const contract = runProviderContractSuite({ providerId: "test", provider: TestRuntimeProvider });
 
     expect(Effect.isEffect(contract)).toBe(true);
     await expect(Effect.runPromise(contract)).resolves.toBeUndefined();

@@ -12,7 +12,7 @@ The SDK is the API-stable surface. Per `spec/ROADMAP.md` Phasing principle 1, an
 
 ## Conventions
 
-- Provider contract tests should import through `@lando/sdk/test`; `runProviderContract` accepts a `RuntimeProviderShape` service object and returns an `Effect<void, ContractFailure>`.
+- Provider contract tests should import through `@lando/sdk/test`; `runProviderContract` accepts a `RuntimeProviderShape` service object and returns an `Effect<void, ContractFailure>`. Keep `runProviderContractSuite` as the compatibility alias for the original SDK test-suite stub export.
 - Schema modules use `// ====` section banners with a one-line description and a `SPEC:` reference (e.g. `SPEC: §5.5`). Keep this style when adding a new section so the public-API surface stays self-documenting.
 - Brand primitives (`AppId`, `ServiceName`, `ProviderId`, `AbsolutePath`, `PortablePath`) are `Schema.String.pipe(Schema.brand(...))`. They accept plain strings in the `.Encoded` (wire) form; branding is a TS-only phantom.
 - When a schema is shared across SDK modules (e.g. `AppRef` lives in `schema/` but is referenced by `events/`), define it once in `schema/` and `import` + `export type` re-export it from the consuming barrel. The canonical home stays in `@lando/sdk/schema`.

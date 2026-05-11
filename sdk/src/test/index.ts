@@ -114,6 +114,13 @@ const mapProviderFailure =
 
 const isStream = (value: unknown): boolean => Stream.StreamTypeId in Object(value);
 
+export interface ProviderContractSuiteOptions {
+  /** Tag identifier used in test descriptions. */
+  readonly providerId: string;
+  /** `RuntimeProvider` service object under test. */
+  readonly provider: RuntimeProviderShape;
+}
+
 /**
  * Run the Phase 1 `RuntimeProvider` contract assertions.
  */
@@ -162,6 +169,13 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
     yield* requireContract(typeof snapshot.status === "string", "inspect snapshot includes status", snapshot);
   });
+
+/**
+ * Compatibility alias for the original SDK test-suite stub export.
+ */
+export const runProviderContractSuite = (
+  options: ProviderContractSuiteOptions,
+): Effect.Effect<void, ContractFailure> => runProviderContract(options.provider);
 
 /**
  * In-memory `RuntimeProvider` reference implementation for SDK contract tests.

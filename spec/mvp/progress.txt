@@ -336,3 +336,11 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Keep `@lando/sdk/test` helpers in `sdk/src/test/index.ts` and import them through the public `@lando/sdk/test` subpath in tests.
   - The existing RuntimeProvider API uses `apply`/`destroy` and `execStream`; treat PRD shorthand like bring-up/exec stream as assertions over those current service methods.
 ---
+
+## 2026-05-11 11:05 CDT - US-008 review fix
+- Preserved the original `runProviderContractSuite` SDK test-suite stub export as a compatibility alias to `runProviderContract`.
+- Files changed: sdk/src/test/index.ts, sdk/test/contract/provider.test.ts, sdk/AGENTS.md, spec/mvp/progress.txt.
+- Verification run and result: `bun test sdk/test/contract/provider.test.ts` passed (5 tests); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (83 tests); `bun run build` passed; manual SDK import/contract execution via `bun -e` printed `provider contract aliases passed for test`. LSP diagnostics could not run because `typescript-language-server` is not installed in this environment.
+- **Learnings for future iterations:**
+  - Do not remove prior SDK test helper exports when replacing stubs with real implementations; keep aliases unless the story explicitly permits a breaking rename.
+---
