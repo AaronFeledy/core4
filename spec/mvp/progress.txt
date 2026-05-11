@@ -30,6 +30,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
 - Pre-existing `noUncheckedIndexedAccess` errors will block any feature commit because `tsc -b` is the gate. Repair the smallest minimal fix as a separate `chore:` commit before the feature so history stays bisectable.
 - Effect Schema fixtures: use `typeof MySchema.Encoded` for input/wire shapes and `typeof MySchema.Type` for decoded output. They diverge for non-trivial leaves (e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`). Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
+- SDK service tag tests can use `Context.isTag(tag)` for runtime tag identity and `Context.Tag.Service<typeof Tag>` for compile-time method shape assertions; because `sdk/test/` is outside root `tsc -b`, run targeted `tsc --noEmit` when those tests rely on type-level assertions.
 - For "optional in wire form, but always present after decode" fields, use `Schema.optionalWith(<Schema>, { default: () => <value> })`. The decoded type narrows the field to non-undefined, and a partial parent input (e.g. `telemetry: {}`) still yields the default. This is the one-call alternative to `Schema.optional(...) + Schema.withDefaults(...)` and pairs cleanly with nested defaults.
 - `ParseResult.ArrayFormatter.formatErrorSync(err)` returns rows whose `path` is `ReadonlyArray<PropertyKey>`, not a dotted string. Match nested-field issues via `issue.path.includes("fieldName")`; chain `.includes()` for deeper paths (e.g. `path.includes("services") && path.includes("primary")`). Biome's `useLiteralKeys` flags bracket access on known properties — prefer dot-keyed services in fixtures (`services.web`, not `services["web"]`).
 - When a schema is shared across SDK modules (e.g. `AppRef` referenced by both `sdk/src/schema/index.ts` and `sdk/src/events/index.ts`), define it once in `sdk/src/schema/` and `import` + `export type` re-export it from the consuming barrel. The SDK's barrel pattern keeps the canonical home in `@lando/sdk/schema` while preserving the public surface from the consuming module.
@@ -297,4 +298,31 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit c24dd9f on main.
 - Local main / branch refreshed: yes — main at c24dd9f; story branch deleted locally (remote deleted by --delete-branch).
 - Remaining local state: clean, on main
+---
+
+## [2026-05-11 07:53 UTC] - Sync
+- Previous branch: ralph/us-006-ship-lifecycle-event-payload-schemas-8-10-events-for-app-start-app-stop
+- Previous PR: #7 https://github.com/AaronFeledy/core4/pull/7
+- Action: caught up after prior merge (PR #7 was already MERGED with all CI checks SUCCESS/NEUTRAL)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-11 02:53 CDT - Sync
+- Previous branch: ralph/us-006-ship-lifecycle-event-payload-schemas-8-10-events-for-app-start-app-stop
+- Previous PR: #7 https://github.com/AaronFeledy/core4/pull/7
+- Action: caught up after prior merge (PR #7 was already MERGED; remote branch pruned on fetch)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-11 03:11 CDT - US-007
+- Implemented the SDK Effect service tag contract surface for the Phase 1 service tags, including RuntimeProvider method signatures, ShellRunner, Logger methods, and SDK tagged-error failure channels.
+- Files changed: sdk/src/services/index.ts, sdk/test/services/tags.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification run and result: `bun test ./sdk/test/services/tags.test.ts` PASS; targeted `tsc --noEmit ... sdk/test/services/tags.test.ts` PASS; `bun run typecheck` PASS; `bun run lint` PASS; `bun test` PASS; `bun run build` PASS; manual SDK import/tag check PASS.
+- **Learnings for future iterations:**
+  - `sdk/test/` files are not included in root `tsc -b`; run a targeted `tsc --noEmit ... <test-file>` when tests rely on compile-time contract assertions.
+  - Effect service tag tests can use `Context.isTag(tag)` and `Context.Tag.Service<typeof Tag>` to freeze tag identity and service interface shapes.
 ---
