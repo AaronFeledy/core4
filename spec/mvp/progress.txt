@@ -393,3 +393,25 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Effect `JSONSchema.make` currently emits draft-07 `$schema` for all SDK schemas — a stable enough contract to assert exact-match in tests.
   - The `/review` slash command referenced by the loop instructions resolves to `review-work` in this environment; for tiny additive diffs, manual review with the same dimensions (goal/QA/code/security/context) is acceptable and must be called out explicitly in the progress log.
 ---
+
+## [2026-05-11 16:22 UTC] - Push (US-009)
+- Branch pushed: us-009-sdk-exports-surface → origin (4 commits: edae6ed, 8e5230f, 4c89af1, 5a19b34)
+- PR: #11 https://github.com/AaronFeledy/core4/pull/11 (created)
+- CI outcome: pass — linux-arm64, linux-x64, macos-arm64, windows-x64 all SUCCESS
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 6397b75
+- Local main / branch refreshed: yes — main at 6397b75; story branch deleted locally (remote deleted by --delete-branch)
+- Remaining local state: clean, on main
+---
+
+## 2026-05-11 16:22 UTC - Push (US-009)
+- Branch pushed: us-009-sdk-exports-surface → origin (4 commits: edae6ed, 8e5230f, 4c89af1, 5a19b34)
+- PR: #11 https://github.com/AaronFeledy/core4/pull/11 (created)
+- CI outcome: pass — linux-arm64, linux-x64, macos-arm64, windows-x64 all SUCCESS
+- Review feedback: none (no reviews, no comments, reviewDecision="")
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 6397b75 on main
+- Local main / branch refreshed: yes — main at 6397b75; story branch deleted locally (remote deleted by --delete-branch)
+- Remaining local state: clean, on main
+---
