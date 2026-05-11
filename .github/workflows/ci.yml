@@ -28,8 +28,9 @@ jobs:
             os-name: linux-x64
           - os: ubuntu-24.04-arm
             os-name: linux-arm64
-          - os: macos-13
-            os-name: macos-x64
+          # macos-13 (macos-x64) runner currently times out / gets cancelled by
+          # GitHub-hosted infra before the job starts; re-enable when the
+          # runner is healthy. macos-arm64 still covers macOS.
           - os: macos-14
             os-name: macos-arm64
           - os: windows-latest
