@@ -14,3 +14,5 @@ This file is for non-obvious repo context only. It is a living document that you
 - For a single workspace package, follow the repo's Bun filter style, e.g. `bun run --filter='@lando/core' typecheck`.
 
 ## Gotchas
+
+- In non-interactive shells, Bun may be installed at `/home/aaron/.bun/bin/bun` but absent from `PATH`; prefix repo commands with `PATH=/home/aaron/.bun/bin:$PATH` if workspace scripts invoke `bun` internally.

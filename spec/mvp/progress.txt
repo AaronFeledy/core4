@@ -23,6 +23,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 
 ## Codebase Patterns
 
+- Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
 - `tsc -b` (root `bun run typecheck`) only walks projects listed in `tsconfig.json#references`. Tests live outside those project roots, so they are not type-checked by `bun run typecheck`. Bun runs them directly. Treat a passing `bun test` plus a passing `bun run typecheck` as the test/typecheck gate; do not assume tests are TS-strict-checked.
 - The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
@@ -37,6 +38,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - To probe an SDK schema's internals interactively, drop a throwaway `*.tmp.test.ts` under `sdk/test/schema/` (Bun resolves the workspace `@lando/sdk` self-import inside the workspace tree). Scripts run from `/tmp` or repo root cannot resolve workspace exports, so the temporary-test approach is the path of least resistance.
 - Biome's lint rules collapse short multi-line array spreads onto a single line; keep contract-test field-set initializers single-line where reasonable to avoid an unnecessary lint round-trip.
 - Bun's `Error` superclass auto-populates `line` and `column` properties with the constructor's source location. `Schema.TaggedError` extends `Error`, so a TaggedError field declared as `Schema.optional(Schema.Number)` and named `line` or `column` will silently report Bun's source-line number when the caller omits the field (the optional declaration leaves the property unset, so the Bun built-in shines through). Use `Schema.UndefinedOr(Schema.Number)` instead — Effect explicitly assigns `undefined` to the instance property, overriding the Bun built-in. The same trap applies to any TaggedError field whose name collides with an `Error` built-in. Verify suspect cases with a throwaway probe: omit the field, log `instance.fieldName` and `Object.hasOwn(instance, "fieldName")` — `Schema.optional` shows the Bun bleed-through, `Schema.UndefinedOr` shows `undefined` with `hasOwn === true`.
+
 
 ## Iteration Log
 
@@ -262,4 +264,24 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 9934636 on main
 - Local main / branch refreshed: yes — main at 9934636; branch ralph/mvp-walking-skeleton deleted (remote deleted by --delete-branch, local already absent)
 - Remaining local state: clean, on main
+---
+
+## 2026-05-11 06:55 UTC - Sync
+- Previous branch: ralph/mvp-walking-skeleton
+- Previous PR: #6 https://github.com/AaronFeledy/core4/pull/6
+- Action: caught up after prior merge — PR #6 was already MERGED; local main was already up to date; local story branch was not present
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: yes ("loop-sync-autostash" — spec/mvp/progress.txt had uncommitted changes at step entry; stash left for human review)
+---
+
+## 2026-05-11 02:01 CDT - US-006
+- Added the ten MVP app/service/build lifecycle event payload schemas in `sdk/src/events/index.ts`: pre/post app start, pre/post app stop, pre/post service start, pre/post service stop, pre/post build.
+- Added `sdk/test/events/app-lifecycle.test.ts` covering successful decode, literal `eventName` pinning, service-scoped `serviceName`, structured ParseError for mismatched event names, and required `serviceName` on service events.
+- Updated `spec/mvp/prd.json` to mark US-006 as passing.
+- Files changed: `sdk/src/events/index.ts`, `sdk/test/events/app-lifecycle.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification: focused test `bun test sdk/test/events/app-lifecycle.test.ts` (4 pass / 0 fail); manual import/decode smoke via `bun --print` returned `pre-service-start:web:lando`; `bun run typecheck` (clean); `bun run lint` (164 files, no fixes); `bun test` (74 pass / 0 fail); `bun run build` (all workspace builds exited 0 after putting `/home/aaron/.bun/bin` on PATH). LSP diagnostics could not run because `typescript-language-server` is not installed in this environment.
+- **Learnings for future iterations:**
+  - `Schema.TaggedStruct("event-name", ...)` supplies `_tag`; this story's lifecycle contracts also require a separate literal `eventName`, so tests should assert both the schema export and the pinned `eventName` discriminator.
+  - The non-login shell used by tools may not have Bun on PATH even though the repo requires Bun; prefix command invocations with `PATH=/home/aaron/.bun/bin:$PATH` when `bun` is not found.
 ---
