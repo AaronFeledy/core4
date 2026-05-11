@@ -2,7 +2,16 @@ import { describe, expect, test } from "bun:test";
 
 import { DateTime, Either, ParseResult, Schema } from "effect";
 
-import { AppId, AppPlan, AppRef, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  AppPlan,
+  AppRef,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  ServicePlan,
+} from "@lando/sdk/schema";
 
 const FIXED_RESOLVED_AT = DateTime.unsafeMake("2026-05-10T18:51:00Z");
 
@@ -111,7 +120,7 @@ describe("ServicePlan", () => {
     expect(decoded.primary).toBe(true);
     expect(decoded.environment).toEqual({ NODE_ENV: "development" });
     expect(decoded.mounts).toHaveLength(1);
-    expect(decoded.mounts[0]?.target).toBe("/app");
+    expect(decoded.mounts[0]?.target).toBe(PortablePath.make("/app"));
     expect(decoded.mounts[0]?.realization).toBe("passthrough");
     expect(decoded.endpoints).toHaveLength(1);
     expect(decoded.endpoints[0]?.port).toBe(3000);
@@ -148,10 +157,10 @@ describe("AppPlan", () => {
     expect(decoded.id).toBe(AppId.make("myapp"));
     expect(decoded.name).toBe("My App");
     expect(decoded.slug).toBe("myapp");
-    expect(decoded.root).toBe("/srv/apps/myapp");
+    expect(decoded.root).toBe(AbsolutePath.make("/srv/apps/myapp"));
     expect(decoded.provider).toBe(ProviderId.make("lando"));
     expect(Object.keys(decoded.services)).toEqual(["web"]);
-    const web = decoded.services.web;
+    const web = decoded.services[ServiceName.make("web")];
     if (web === undefined) throw new Error("web service missing");
     expect(web.mounts).toHaveLength(1);
     expect(web.endpoints).toHaveLength(1);
