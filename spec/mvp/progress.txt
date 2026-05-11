@@ -251,3 +251,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - When a PRD explicitly names `Effect.failCause`, contract tests should build a `Cause.fail(error)` and pass it through `Effect.failCause(...)`, not rely on `Effect.fail(...)`'s ordinary failure path.
 ---
+
+## 2026-05-11 06:40 UTC - Push
+- Branch pushed: ralph/mvp-walking-skeleton at befdb18 (4 commits ahead of main: US-005 story work + prior docs commits)
+- Commits involved: f420a22 (feat: Ship the five MVP-mandated tagged errors in @lando/sdk), befdb18 (test: exercise failCause for tagged errors), 41f3ef6 (docs: sync step), 68e922c (docs: push step for PR #5)
+- PR: #6 https://github.com/AaronFeledy/core4/pull/6 (created)
+- CI outcome: pass — all 5 checks SUCCESS (linux-x64, linux-arm64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (no comments, reviewDecision empty)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 9934636 on main
+- Local main / branch refreshed: yes — main at 9934636; branch ralph/mvp-walking-skeleton deleted (remote deleted by --delete-branch, local already absent)
+- Remaining local state: clean, on main
+---
