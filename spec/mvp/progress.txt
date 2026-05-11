@@ -375,3 +375,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Effect JSON Schema generation is available as `JSONSchema.make(schema)` from the root `effect` package.
   - Narrow schema names before calling `JSONSchema.make`; passing a heterogeneous schema registry lookup directly creates an unhelpful schema union type.
 ---
+
+## 2026-05-11 11:18 CDT - US-009 Review
+- Reviewed build commits 8e5230f (test for all six SDK export entry points) and 4c89af1 (`getJsonSchema` helper + JSON Schema assertion).
+- Files inspected: `sdk/src/schema/index.ts`, `sdk/test/library/exports.test.ts`, `sdk/package.json`, `spec/mvp/prd-mvp-01-sdk-contracts.md` (US-009 + FR-1/FR-6/FR-7), `spec/mvp/prd.json` (passes flag).
+- `/review` findings: the canonical `/review` slash command is not present in this environment; the only available review skill is the heavyweight 5-agent `review-work` orchestrator, which is disproportionate for a ~60-line additive diff (one helper + one test block). Performed a focused manual review covering the same dimensions instead.
+  - Manual findings (rejected as non-blocking):
+    - `JSON_SCHEMA_REGISTRY` const is referenced only via `keyof typeof` for the `JsonSchemaName` type; the switch duplicates its entries. Rejected: build step's own learnings note this is intentional — collapsing to `JSONSchema.make(registry[name])` produces an unhelpful heterogeneous union schema type at the call sites.
+    - Test hardcodes `$schema === "http://json-schema.org/draft-07/schema#"`. Rejected: verified Effect `JSONSchema.make` currently emits exactly this value for all 13 FR-1 schemas; treating it as a contract is the point of the assertion.
+    - Switch has no `default` branch (future-registry-entry-without-switch-update would widen return type with `undefined`). Rejected: out-of-scope refactor; all 13 FR-1 schemas covered today.
+    - `BOOTSTRAP_RANK` not in `getJsonSchema`. Rejected: not a Schema (it's `Record<BootstrapLevel, number>`), so FR-6 ("every schema in FR-1") does not apply.
+  - Confirmed-real bugs: none. No fixes applied.
+- PRD acceptance verified manually: all 6 entry points import; `sdk/package.json` `exports` lists all six; FR-6 helper resolves a JSON Schema for every FR-1 schema (smoked via `bun -e` import + iteration over all 13 names); FR-7 `bun pm pack --dry-run --quiet --cwd sdk` produced `lando-sdk-0.0.0.tgz`.
+- Verification run and result: `bun run typecheck` → clean; `bun run lint` → 167 files, no fixes; `bun test sdk/test/library/exports.test.ts` → 7 pass / 0 fail (77 expects); `bun test` → first run had 4 cold-start timeouts in `core/test/library/import-boundary.test.ts` (5s default; unrelated to changed files), re-run → 89 pass / 0 fail in 379ms.
+- **Learnings for future iterations:**
+  - `core/test/library/import-boundary.test.ts` is sensitive to Bun cold-start latency under default 5s timeouts; full suite re-run resolves it. If it recurs reliably, raise the timeout rather than treating as a real failure.
+  - Effect `JSONSchema.make` currently emits draft-07 `$schema` for all SDK schemas — a stable enough contract to assert exact-match in tests.
+  - The `/review` slash command referenced by the loop instructions resolves to `review-work` in this environment; for tiny additive diffs, manual review with the same dimensions (goal/QA/code/security/context) is acceptable and must be called out explicitly in the progress log.
+---
