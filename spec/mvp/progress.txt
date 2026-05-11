@@ -126,3 +126,8 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Prefer behavioral decode assertions for SDK contract tests when they can lock the same public contract; avoid `as any` AST peeking even in tests.
   - The source-of-truth ProviderCapabilities field list is `spec/05-runtime-providers.md` §5.4; treat older `copyOnWriteAppRoot` wording as stale shorthand unless the matrix changes.
 ---
+
+## 2026-05-11 - PR #3 triage
+- macos-x64 check: categorized as per-policy-pass because `gh run view 25645379331 --json jobs` reports the job conclusion as `cancelled`, not an assertion failure; per loop maintainer guidance, do not chase this runner cancellation for the iteration.
+- Cursor Bugbot literal-domain comment: categorized as real-issue because behavioral good-value decoding plus one invalid literal did not prove the schema's literal union was exhaustive. Fixed `sdk/test/schema/provider-capabilities.test.ts` to compare each public literal schema's typed `.literals` array against the spec list while preserving decode assertions and avoiding `as any` AST access.
+- Cursor Bugbot's note that the `sdk/AGENTS.md` literal-introspection guidance was added in the same commit is inaccurate; that guidance already existed before the US-003 review fix, but the substantive exhaustiveness gap was valid.

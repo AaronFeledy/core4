@@ -108,7 +108,16 @@ describe("ProviderCapabilities — field set lock", () => {
   });
 
   test("every literal capability accepts exactly the spec literal options", () => {
-    for (const [field, expected] of Object.entries(LITERAL_FIELDS)) {
+    const literalEntries = Object.entries(LITERAL_FIELDS) as Array<
+      [keyof typeof LITERAL_FIELDS, readonly [string, ...string[]]]
+    >;
+
+    for (const [field, expected] of literalEntries) {
+      const literalSchema = ProviderCapabilities.fields[field] as Schema.Literal<
+        readonly [string, ...string[]]
+      >;
+      expect([...literalSchema.literals].sort()).toEqual([...expected].sort());
+
       for (const value of expected) {
         const accepted = Schema.decodeUnknownEither(ProviderCapabilities)({
           ...providerLandoFixture,
