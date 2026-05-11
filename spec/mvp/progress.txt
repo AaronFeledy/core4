@@ -336,3 +336,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Keep `@lando/sdk/test` helpers in `sdk/src/test/index.ts` and import them through the public `@lando/sdk/test` subpath in tests.
   - The existing RuntimeProvider API uses `apply`/`destroy` and `execStream`; treat PRD shorthand like bring-up/exec stream as assertions over those current service methods.
 ---
+
+## 2026-05-11 10:51 CDT - Push (US-008)
+- Branch pushed: us-008-provider-contract-test-stub → origin (1 commit: ffe90c3)
+- PR: #9 https://github.com/AaronFeledy/core4/pull/9 (created)
+- CI outcome: pass — linux-arm64, linux-x64, macos-arm64, windows-x64 all SUCCESS
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 0477de2
+- Local main / branch refreshed: yes — git switch main, git pull --ff-only
+- Concurrent agent note: a second agent committed 6e343f2 (fix: Preserve provider contract suite export) to us-008-provider-contract-test-stub after the merge; that local branch remains 1 commit ahead of main and will be detected by the next sync step.
+---
