@@ -557,6 +557,9 @@ export const ServiceConfig = Schema.Struct({
   workingDirectory: Schema.optional(PortablePath),
   environment: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
 
+  ports: Schema.optional(Schema.Array(Schema.String)),
+  volumes: Schema.optional(Schema.Array(Schema.String)),
+
   appMount: Schema.optional(
     Schema.Struct({
       target: Schema.String,
@@ -600,17 +603,29 @@ export type LandofileShape = typeof LandofileShape.Type;
 // SPEC: §7.5
 // =============================================================================
 
+/**
+ * Telemetry opt-in. `enabled` defaults to `false` so a partial decode is
+ * always safe.
+ */
+export const TelemetryConfig = Schema.Struct({
+  enabled: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+});
+export type TelemetryConfig = typeof TelemetryConfig.Type;
+
+/**
+ * GlobalConfig — MVP subset. Covers the four host-root fields the Phase 1
+ * walking skeleton resolves at the `global` bootstrap level. Full §7.5
+ * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
+ * systemPluginRoot, providers, plugins, pluginDirs, disablePlugins,
+ * bindAddress, routing, network, logger, renderer, toolingEngine,
+ * commandAliases, pluginConfig, keys, maxKeyWarning, scanner, healthcheck,
+ * build, logLevelConsole, experimental, stats) is deferred.
+ */
 export const GlobalConfig = Schema.Struct({
-  envPrefix: Schema.optional(Schema.String),
-  domain: Schema.optional(Schema.String),
-  landoFile: Schema.optional(Schema.String),
-  defaultProvider: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
-  /** Cache root (defaults to platform-appropriate userCacheRoot/lando). */
-  cacheRoot: Schema.optional(AbsolutePath),
-  /** Data root (defaults to platform-appropriate userDataRoot/lando). */
-  dataRoot: Schema.optional(AbsolutePath),
-  /** Bootstrap-time plugin enable/disable. */
-  pluginsEnabled: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Boolean })),
+  userDataRoot: Schema.optional(AbsolutePath),
+  userConfRoot: Schema.optional(AbsolutePath),
+  defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
+  telemetry: Schema.optional(TelemetryConfig),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;
 
