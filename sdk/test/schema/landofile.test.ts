@@ -154,7 +154,7 @@ describe("GlobalConfig (MVP)", () => {
 
   test("decodes an empty object (every field is optional at MVP)", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({});
-    expect(decoded).toBeDefined();
+    expect(decoded.telemetry.enabled).toBe(false);
   });
 
   test("defaultProviderId accepts an explicit null (opt-out signal)", () => {

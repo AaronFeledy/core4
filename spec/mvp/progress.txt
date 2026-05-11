@@ -164,3 +164,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The hook flags any new comments/docstrings. JSDoc on new exported public-API symbols in `sdk/src/schema/index.ts` falls under the "public API documentation" exception, and the file's established "MVP subset / deferred-fields enumeration" pattern (originally on `ServiceConfig`/`LandofileShape`) is the right style to extend when a new MVP-slice schema goes out. Avoid mentioning PRD/spec story IDs in code; reference spec sections instead.
   - Recovering an untracked test file across a loop sync: untracked files are NOT captured by `git stash` — they survive sync as-is in the working tree. If a previous iteration stashed tracked source changes but left the test file untracked, the test file alone re-establishes the contract intent. Re-derive the source change from the failing-test signal rather than popping the stash blind.
 ---
+
+## 2026-05-10 23:47 CDT - US-004 Review
+- Reviewed commit `584d556` for PRD-01 US-004 (`LandofileShape` and `GlobalConfig`) against `spec/mvp/prd-mvp-01-sdk-contracts.md`.
+- Files changed: `sdk/src/schema/index.ts`, `sdk/test/schema/landofile.test.ts`, `core/src/runtime/layer.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: fixed — `GlobalConfig` only defaulted `telemetry.enabled` when `telemetry: {}` was present; `GlobalConfig` now decodes `{}` with `telemetry.enabled === false`. Rejected — none.
+- Verification run and result: focused SDK Landofile schema test, `bun run typecheck`, `bun run lint`, and `bun test` rerun after the fix (all green). LSP diagnostics were attempted but unavailable because `typescript-language-server` and `biome` are not installed in this environment.
+- **Learnings for future iterations:**
+  - For nested defaulted config blocks, default the containing object as well as its leaves when the PRD promises a leaf default from an empty config.
+---
