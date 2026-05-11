@@ -31,6 +31,10 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Effect Schema fixtures: use `typeof MySchema.Encoded` for input/wire shapes and `typeof MySchema.Type` for decoded output. They diverge for non-trivial leaves (e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`). Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
 - `ParseResult.ArrayFormatter.formatErrorSync(err)` returns rows whose `path` is `ReadonlyArray<PropertyKey>`, not a dotted string. Match nested-field issues via `issue.path.includes("fieldName")`; chain `.includes()` for deeper paths (e.g. `path.includes("services") && path.includes("primary")`). Biome's `useLiteralKeys` flags bracket access on known properties — prefer dot-keyed services in fixtures (`services.web`, not `services["web"]`).
 - When a schema is shared across SDK modules (e.g. `AppRef` referenced by both `sdk/src/schema/index.ts` and `sdk/src/events/index.ts`), define it once in `sdk/src/schema/` and `import` + `export type` re-export it from the consuming barrel. The SDK's barrel pattern keeps the canonical home in `@lando/sdk/schema` while preserving the public surface from the consuming module.
+- Contract-locking tests for a `Schema.Struct` can introspect the AST instead of relying on snapshots: `MyStruct.fields` is the field map by name; `Schema.Literal(...).literals` returns the literal options array; `Schema.Boolean.ast._tag === "BooleanKeyword"`; `Schema.Array(...).ast._tag === "TupleType"`. Use these to assert "exact field set + exact literal options + correct kind" so any drift fails closed.
+- To verify a struct has no accidentally-optional fields, iterate the expected field name set and omit each one in turn — a single-omission test misses optional-field accidents that a per-field loop catches.
+- To probe an SDK schema's internals interactively, drop a throwaway `*.tmp.test.ts` under `sdk/test/schema/` (Bun resolves the workspace `@lando/sdk` self-import inside the workspace tree). Scripts run from `/tmp` or repo root cannot resolve workspace exports, so the temporary-test approach is the path of least resistance.
+- Biome's lint rules collapse short multi-line array spreads onto a single line; keep contract-test field-set initializers single-line where reasonable to avoid an unnecessary lint round-trip.
 
 ## Iteration Log
 
@@ -83,3 +87,47 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Bun tests can pass even when LSP flags branded decoded-value assertions in `sdk/test/`; use the schema brand constructors in expectations when asserting decoded `AbsolutePath`, `PortablePath`, `ServiceName`, and similar values.
   - If `/review` is unavailable in this environment, record the failed invocation explicitly and continue with direct PRD/code review plus specialist consultation rather than silently skipping review triage.
 ---
+
+## 2026-05-11 - Sync
+- Previous PR: #2 https://github.com/AaronFeledy/core4/pull/2
+- Action: caught up after prior merge (PR #2 was already MERGED)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: ralph/mvp-walking-skeleton (fresh from main)
+- Stash created: no
+---
+
+## 2026-05-10 20:11 CDT - US-003
+- Added locking test `sdk/test/schema/provider-capabilities.test.ts` (12 tests, 125 expects) that:
+  - Enumerates `ProviderCapabilities.fields` to assert the exact 21-field set (no additions, no omissions).
+  - Asserts every boolean field's AST is `BooleanKeyword`; every literal field's `.literals` array matches the spec-exact options; `providerExtensions.ast._tag` is `TupleType`.
+  - Decodes a `provider-lando` fixture with `bindMountPerformance: "native"` (Linux scenario per spec §5.8.1).
+  - Decodes a `provider-docker` fixture with `bindMountPerformance: "slow"` (Docker Desktop on macOS/Windows per spec §5.8.2).
+  - Rejects unknown literal values for `bindMountPerformance`, `composeSpec`, `hostPortPublish` with structured `ParseError`.
+  - Rejects wrong types for `artifactBuild` (non-boolean) and `providerExtensions` (non-array).
+  - Loops over every field, omits each one, asserts decoding fails — proving every field is required (defaults come from decode, not caller code).
+- The `ProviderCapabilities` schema was already exported from `@lando/sdk/schema` (relocated during the Phase 2 expansion that landed AppPlan/ServicePlan); US-003's deliverable is the locking test that asserts the contract is exactly what the spec demands.
+- Files changed: `sdk/test/schema/provider-capabilities.test.ts` (new, 207 lines), `spec/mvp/prd.json` (`passes: false → true`), `spec/mvp/progress.txt` (this entry).
+- Verification run and result: `bun run typecheck` clean; `bun run lint` clean (161 files, no fixes); `bun test` clean (39 pass / 0 fail across 7 files); focused `bun test sdk/test/schema/provider-capabilities.test.ts` clean (12 pass / 0 fail / 125 expects).
+- Mutation check (manual TDD red-validation): temporarily removed `"slow"` from the `bindMountPerformance` literal options in `sdk/src/schema/index.ts` → 2 tests failed (literal-set lock + provider-docker decode); restored → 12 pass. The lock catches drift.
+- **Learnings for future iterations:**
+  - `Schema.Struct(...).fields` exposes the field map by name; `Schema.Literal(...).literals` exposes the literal options; `Schema.Boolean.ast._tag === "BooleanKeyword"`; `Schema.Array(...).ast._tag === "TupleType"`. These four primitives let you write contract-locking tests that fail closed on any field/type/literal drift without resorting to snapshot tests.
+  - When the spec mandates "every field required", the most rigorous test is to loop the field name set and omit each one in turn — single-omission tests can miss optional-field accidents.
+  - When wiring a quick AST probe to inspect a schema, write a throwaway `*.tmp.test.ts` under `sdk/test/schema/` (Bun resolves the workspace self-import automatically). `/tmp/probe.ts` and root-level scripts cannot resolve `@lando/sdk/schema` because the workspace mapping only applies inside the workspace tree.
+  - Biome's `useLiteralKeys` + collapse-short-array rules will rewrite a short multi-line array spread into a single line — keep contract-test field-set initializers compact (single-line) to avoid an avoidable lint pass.
+---
+
+## 2026-05-10 20:18 CDT - US-003 Review
+- Reviewed HEAD commit `444a6b4` for PRD-01 US-003 against `spec/mvp/prd-mvp-01-sdk-contracts.md` and `spec/05-runtime-providers.md` §5.4.
+- Fixed the ProviderCapabilities contract test to avoid `as any` schema AST introspection; it now validates booleans, literal domains, and `providerExtensions` through public decode behavior.
+- Files changed: `sdk/test/schema/provider-capabilities.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: unavailable — `Skill(name="review", user_message="HEAD")` is not registered in this environment; substituted the available review-work flow plus direct PRD/code verification. Fixed: test used `as any` for schema introspection, conflicting with repo/session type-safety constraints. Rejected: `copyOnWriteAppRoot` wording in the PRD/index is not a schema gap because the authoritative §5.4 capability matrix names `copyMounts`.
+- Verification run and result: `lsp_diagnostics sdk/test/schema/provider-capabilities.test.ts` clean; `bun test sdk/test/schema/provider-capabilities.test.ts` exit 0; `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test` exit 0. (`lsp_diagnostics spec/mvp/progress.txt` is not applicable because no .txt LSP is configured.)
+- **Learnings for future iterations:**
+  - Prefer behavioral decode assertions for SDK contract tests when they can lock the same public contract; avoid `as any` AST peeking even in tests.
+  - The source-of-truth ProviderCapabilities field list is `spec/05-runtime-providers.md` §5.4; treat older `copyOnWriteAppRoot` wording as stale shorthand unless the matrix changes.
+---
+
+## 2026-05-11 - PR #3 triage
+- macos-x64 check: categorized as per-policy-pass because `gh run view 25645379331 --json jobs` reports the job conclusion as `cancelled`, not an assertion failure; per loop maintainer guidance, do not chase this runner cancellation for the iteration.
+- Cursor Bugbot literal-domain comment: categorized as real-issue because behavioral good-value decoding plus one invalid literal did not prove the schema's literal union was exhaustive. Fixed `sdk/test/schema/provider-capabilities.test.ts` to compare each public literal schema's typed `.literals` array against the spec list while preserving decode assertions and avoiding `as any` AST access.
+- Cursor Bugbot's note that the `sdk/AGENTS.md` literal-introspection guidance was added in the same commit is inaccurate; that guidance already existed before the US-003 review fix, but the substantive exhaustiveness gap was valid.
