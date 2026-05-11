@@ -44,14 +44,14 @@ describe("LandofileParseError", () => {
     expect(error.column).toBe(12);
   });
 
-  test("survives Effect.fail then Effect.runPromiseExit with _tag intact", async () => {
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
     const error = new LandofileParseError({
       filePath: "/app/.lando.yml",
       message: "unexpected token",
       line: 3,
       column: 1,
     });
-    const exit = await Effect.runPromiseExit(Effect.fail(error));
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);
@@ -103,7 +103,7 @@ describe("ProviderCapabilityError", () => {
     expect(error.actualValue).toBe("slow");
   });
 
-  test("survives Effect.fail then Effect.runPromiseExit with _tag intact", async () => {
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
     const error = new ProviderCapabilityError({
       providerId: "provider-docker",
       operation: "checkCapability",
@@ -112,7 +112,7 @@ describe("ProviderCapabilityError", () => {
       requiredValue: true,
       actualValue: false,
     });
-    const exit = await Effect.runPromiseExit(Effect.fail(error));
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);
@@ -152,12 +152,12 @@ describe("LandoRuntimeBootstrapError", () => {
     expect(error.cause).toBe(cause);
   });
 
-  test("survives Effect.fail then Effect.runPromiseExit with _tag intact", async () => {
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
     const error = new LandoRuntimeBootstrapError({
       message: "provider boot failed",
       stage: "provider",
     });
-    const exit = await Effect.runPromiseExit(Effect.fail(error));
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);
@@ -190,12 +190,12 @@ describe("PluginLoadError", () => {
     expect(error.cause).toBe(cause);
   });
 
-  test("survives Effect.fail then Effect.runPromiseExit with _tag intact", async () => {
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
     const error = new PluginLoadError({
       message: "boom",
       pluginName: "@lando/php",
     });
-    const exit = await Effect.runPromiseExit(Effect.fail(error));
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);
@@ -233,11 +233,11 @@ describe("NoProviderInstalledError", () => {
     expect(error.suggestion).toBeUndefined();
   });
 
-  test("survives Effect.fail then Effect.runPromiseExit with _tag intact", async () => {
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
     const error = new NoProviderInstalledError({
       message: "no runtime provider installed",
     });
-    const exit = await Effect.runPromiseExit(Effect.fail(error));
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);

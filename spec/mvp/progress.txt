@@ -231,3 +231,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `Effect.runPromiseExit` -> `Cause.failureOption` is the canonical roundtrip to assert `_tag` survives the Effect error channel (the failure value is the original TaggedError instance, so `instanceof` and `_tag` both work).
   - Renaming a required SDK field (here `LandofileParseError.file` → `filePath`) is safe when no call site constructs the error — only the type signature surface (downstream `Effect.Effect<_, LandofileParseError>` channels) changes, and TS catches any new constructor sites at typecheck time.
 ---
+
+## 2026-05-11 00:46 CDT - US-005 Review
+- Reviewed HEAD commit `f420a22` for PRD-01 US-005 against `spec/mvp/prd-mvp-01-sdk-contracts.md`.
+- Fixed the tagged-error contract tests to exercise the PRD-mandated `Effect.failCause` path instead of only `Effect.fail`.
+- Files changed: `sdk/test/errors/tagged-errors.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: unavailable — `Skill(name="review", user_message="HEAD")` is not registered in this environment. Fixed: direct PRD/code review found the test used `Effect.fail`, while US-005 requires `Effect.failCause` preservation through `Effect.runPromiseExit`. Rejected: broader 28-error catalog coverage is out of scope for US-005, which requires the five MVP-mandated tagged errors. Rejected: root `@lando/sdk` direct class exports are out of scope because FR-2 requires `@lando/sdk/errors`, and the subpath export exists.
+- Verification run and result: `lsp_diagnostics` unavailable because `typescript-language-server` is not installed; `bun test sdk/test/errors/tagged-errors.test.ts` exit 0; `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test` exit 0.
+- **Learnings for future iterations:**
+  - When a PRD says `Effect.failCause`, the contract test should use `Effect.failCause(Cause.fail(error))`; `Effect.fail(error)` covers a nearby but weaker path.
+---
+
+## 2026-05-11 00:46 CDT - US-005 Review
+- Reviewed HEAD commit `f420a22` for PRD-01 US-005 against `spec/mvp/prd-mvp-01-sdk-contracts.md` and the current SDK tagged-error catalog.
+- Fixed the contract tests to exercise the PRD-mandated `Effect.failCause` path instead of the weaker `Effect.fail` path for all five MVP tagged errors.
+- Files changed: `sdk/test/errors/tagged-errors.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: unavailable — `Skill(name="review", user_message="HEAD")` is not registered in this environment; direct review found and fixed the `Effect.failCause` acceptance-criteria gap. Rejected: broader stability tests for all 28 SDK error classes are out of scope for US-005, which only mandates the five MVP errors. Rejected: root-level direct class exports are out of scope because FR-2 requires `@lando/sdk/errors`, which is exported.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `/home/aaron/.bun/bin/bun test sdk/test/errors/tagged-errors.test.ts` exit 0; `/home/aaron/.bun/bin/bun run typecheck` exit 0; `/home/aaron/.bun/bin/bun run lint` exit 0; `/home/aaron/.bun/bin/bun test` exit 0. No CLI behavior changed.
+- **Learnings for future iterations:**
+  - When a PRD explicitly names `Effect.failCause`, contract tests should build a `Cause.fail(error)` and pass it through `Effect.failCause(...)`, not rely on `Effect.fail(...)`'s ordinary failure path.
+---
