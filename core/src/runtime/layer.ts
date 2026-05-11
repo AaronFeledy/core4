@@ -18,7 +18,7 @@
  */
 import { type Layer, Schema } from "effect";
 
-import { GlobalConfig } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -70,6 +70,17 @@ export const EmbeddingPluginPolicy = Schema.Struct({
   disable: Schema.optional(Schema.Array(Schema.String)),
 });
 
+const GlobalConfigOverrides = Schema.Struct({
+  userDataRoot: Schema.optional(AbsolutePath),
+  userConfRoot: Schema.optional(AbsolutePath),
+  defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
+  telemetry: Schema.optional(
+    Schema.Struct({
+      enabled: Schema.optional(Schema.Boolean),
+    }),
+  ),
+});
+
 /**
  * `LandoRuntimeOptions` — options bag.
  */
@@ -81,7 +92,7 @@ export const LandoRuntimeOptions = Schema.Struct({
   /** Plugin source policy. Default: host-provided only. */
   plugins: Schema.optional(EmbeddingPluginPolicy),
   /** Inline overrides applied after global config + env, before Landofile. */
-  config: Schema.optional(Schema.partial(GlobalConfig)),
+  config: Schema.optional(GlobalConfigOverrides),
   /** Renderer/logger preset shortcuts. */
   logger: Schema.optional(Schema.String),
   renderer: Schema.optional(Schema.String),

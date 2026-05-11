@@ -164,3 +164,24 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The hook flags any new comments/docstrings. JSDoc on new exported public-API symbols in `sdk/src/schema/index.ts` falls under the "public API documentation" exception, and the file's established "MVP subset / deferred-fields enumeration" pattern (originally on `ServiceConfig`/`LandofileShape`) is the right style to extend when a new MVP-slice schema goes out. Avoid mentioning PRD/spec story IDs in code; reference spec sections instead.
   - Recovering an untracked test file across a loop sync: untracked files are NOT captured by `git stash` — they survive sync as-is in the working tree. If a previous iteration stashed tracked source changes but left the test file untracked, the test file alone re-establishes the contract intent. Re-derive the source change from the failing-test signal rather than popping the stash blind.
 ---
+
+## 2026-05-10 23:47 CDT - US-004 Review
+- Reviewed commit `584d556` for PRD-01 US-004 (`LandofileShape` and `GlobalConfig`) against `spec/mvp/prd-mvp-01-sdk-contracts.md`.
+- Files changed: `sdk/src/schema/index.ts`, `sdk/test/schema/landofile.test.ts`, `core/src/runtime/layer.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: `Skill(name="review", user_message="HEAD")` was attempted but the command is not installed in this environment; substitute Oracle review finding fixed — `GlobalConfig` only defaulted `telemetry.enabled` when `telemetry: {}` was present; `GlobalConfig` now decodes `{}` with `telemetry.enabled === false`. Rejected — none.
+- Verification run and result: focused SDK Landofile schema test, `bun run typecheck`, `bun run lint`, and `bun test` rerun after the fix (all green). LSP diagnostics were attempted but unavailable because `typescript-language-server` and `biome` are not installed in this environment.
+- **Learnings for future iterations:**
+  - For nested defaulted config blocks, default the containing object as well as its leaves when the PRD promises a leaf default from an empty config.
+---
+
+## 2026-05-11 04:54 UTC - Push
+- Branch pushed: origin/ralph/mvp-walking-skeleton at 584d556 (US-004 story commit); two post-merge fix commits also pushed (see below)
+- Commits involved: 584d556 (main story), 468e66e→643dbe9 (fix: default telemetry.enabled on decode; add GlobalConfigOverrides in layer), c05af47→029784a (docs: record review fallback for US-004)
+- PR: #4 https://github.com/AaronFeledy/core4/pull/4 (created; squash-merged by Aaron at 2026-05-11T04:48:21Z on first CI pass)
+- CI outcome: pass (all 5 checks SUCCESS — linux-x64, linux-arm64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (no review comments; reviewDecision empty)
+- Triage rounds used: 0
+- Merge: merged by Aaron (squash) before this push step ran gh pr merge — PR was already MERGED when checked
+- Local main / branch refreshed: yes — main pulled (ff-only) to 9464e92; branch rebased onto main (2 fix commits preserved: 643dbe9 and 029784a)
+- Remaining local state: branch ralph/mvp-walking-skeleton is 2 commits ahead of main with the post-merge review fixes (telemetry schema default + GlobalConfigOverrides). These commits were NOT in the merged squash — they must be included in the next PR. The next iteration's build step should bundle these fixes with US-005 work or open a separate fix PR before starting US-005.
+---

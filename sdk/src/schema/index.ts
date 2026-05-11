@@ -625,7 +625,7 @@ export const GlobalConfig = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
   userConfRoot: Schema.optional(AbsolutePath),
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
-  telemetry: Schema.optional(TelemetryConfig),
+  telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: false }) }),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;
 
