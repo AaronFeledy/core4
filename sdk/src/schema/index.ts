@@ -50,6 +50,36 @@ export const HostArchitecture = Schema.Literal("x64", "arm64");
 export type HostArchitecture = typeof HostArchitecture.Type;
 
 // =============================================================================
+// Bootstrap level — declared by every command, ranked by depth.
+// SPEC: roadmap §"SDK contracts shipped"; spec/13-bootstrap-and-runtime.md
+// =============================================================================
+
+export const BootstrapLevel = Schema.Literal(
+  "none",
+  "minimal",
+  "plugins",
+  "commands",
+  "tooling",
+  "provider",
+  "global",
+  "scratch",
+  "app",
+);
+export type BootstrapLevel = typeof BootstrapLevel.Type;
+
+export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
+  none: 0,
+  minimal: 1,
+  plugins: 2,
+  commands: 3,
+  tooling: 4,
+  provider: 5,
+  global: 6,
+  scratch: 7,
+  app: 8,
+};
+
+// =============================================================================
 // Plan building blocks (referenced by ServicePlan/AppPlan)
 // =============================================================================
 
@@ -338,6 +368,25 @@ export const ProviderCapabilities = Schema.Struct({
   providerExtensions: Schema.Array(Schema.String),
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
+
+// =============================================================================
+// AppRef — shared identity field across App, Global, and Scratch event scopes.
+// SPEC: §11.2 (carries `kind` discriminator splitting the identifier namespace
+// across user, global, and scratch apps).
+// =============================================================================
+
+export const AppRef = Schema.Struct({
+  /** Identity namespace this app belongs to. */
+  kind: Schema.Literal("user", "global", "scratch"),
+  /** User slug, the literal `"global"`, or a scratch id. */
+  id: Schema.String,
+  /**
+   * Materialized app root (user app root, `<userDataRoot>/global/`, or
+   * `<userCacheRoot>/scratch/<id>/root/`).
+   */
+  root: AbsolutePath,
+});
+export type AppRef = typeof AppRef.Type;
 
 // =============================================================================
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
@@ -649,17 +698,7 @@ export type RecipeManifest = typeof RecipeManifest.Type;
 
 export const TemplateRenderContext = Schema.Struct({
   /** Bootstrap level the renderer is running at. */
-  bootstrapLevel: Schema.Literal(
-    "none",
-    "minimal",
-    "plugins",
-    "commands",
-    "tooling",
-    "provider",
-    "global",
-    "scratch",
-    "app",
-  ),
+  bootstrapLevel: BootstrapLevel,
   /** App root (when known). */
   appRoot: Schema.optional(AbsolutePath),
   /** Effective env at render time. */

@@ -10,42 +10,14 @@
  * the lower levels load. The `tooling` level is the hot path — it combines
  * `commands` with a cache-only read of the app plan, deliberately deferring
  * provider initialization until the command actually executes.
+ *
+ * `BootstrapLevel` and `BOOTSTRAP_RANK` are owned by `@lando/sdk/schema`
+ * (semver-stable contract). Core re-exports them so internal call sites
+ * keep their existing import path.
  */
-import { Schema } from "effect";
+export { BOOTSTRAP_RANK, BootstrapLevel } from "@lando/sdk/schema";
 
-/**
- * BootstrapLevel.
- */
-export const BootstrapLevel = Schema.Literal(
-  "none",
-  "minimal",
-  "plugins",
-  "commands",
-  "tooling",
-  "provider",
-  "global",
-  "scratch",
-  "app",
-);
-export type BootstrapLevel = typeof BootstrapLevel.Type;
-
-/**
- * Strict-ordering helper for level comparisons. Higher = more services
- * loaded. Note `tooling` is special: it's "commands + cache-only app plan",
- * so it's *higher* than `commands` but *lower* than `provider` for the
- * purposes of provider initialization.
- */
-export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
-  none: 0,
-  minimal: 1,
-  plugins: 2,
-  commands: 3,
-  tooling: 4,
-  provider: 5,
-  global: 6,
-  scratch: 7,
-  app: 8,
-};
+import { BOOTSTRAP_RANK, type BootstrapLevel } from "@lando/sdk/schema";
 
 export const isAtLeast = (have: BootstrapLevel, need: BootstrapLevel): boolean =>
   BOOTSTRAP_RANK[have] >= BOOTSTRAP_RANK[need];

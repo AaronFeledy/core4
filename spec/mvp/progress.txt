@@ -21,7 +21,65 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Verification gate (mandatory on every story): bun run typecheck, bun run lint, bun test all green.
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
+## Codebase Patterns
+
+- Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
+- `tsc -b` (root `bun run typecheck`) only walks projects listed in `tsconfig.json#references`. Tests live outside those project roots, so they are not type-checked by `bun run typecheck`. Bun runs them directly. Treat a passing `bun test` plus a passing `bun run typecheck` as the test/typecheck gate; do not assume tests are TS-strict-checked.
+- The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
+- When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
+- Pre-existing `noUncheckedIndexedAccess` errors will block any feature commit because `tsc -b` is the gate. Repair the smallest minimal fix as a separate `chore:` commit before the feature so history stays bisectable.
+- Effect Schema fixtures: use `typeof MySchema.Encoded` for input/wire shapes and `typeof MySchema.Type` for decoded output. They diverge for non-trivial leaves (e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`). Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
+- `ParseResult.ArrayFormatter.formatErrorSync(err)` returns rows whose `path` is `ReadonlyArray<PropertyKey>`, not a dotted string. Match nested-field issues via `issue.path.includes("fieldName")`; chain `.includes()` for deeper paths (e.g. `path.includes("services") && path.includes("primary")`). Biome's `useLiteralKeys` flags bracket access on known properties — prefer dot-keyed services in fixtures (`services.web`, not `services["web"]`).
+- When a schema is shared across SDK modules (e.g. `AppRef` referenced by both `sdk/src/schema/index.ts` and `sdk/src/events/index.ts`), define it once in `sdk/src/schema/` and `import` + `export type` re-export it from the consuming barrel. The SDK's barrel pattern keeps the canonical home in `@lando/sdk/schema` while preserving the public surface from the consuming module.
+
 ## Iteration Log
 
 (Ralph appends one entry per iteration below.)
 
+
+## 2026-05-10 18:51 CDT - US-001
+- Lifted BootstrapLevel and BOOTSTRAP_RANK from core/src/runtime/bootstrap.ts into sdk/src/schema/index.ts so @lando/sdk/schema is the canonical (semver-stable) home.
+- core/src/runtime/bootstrap.ts now thin re-exports BootstrapLevel and BOOTSTRAP_RANK from @lando/sdk/schema and keeps isAtLeast as a core-local helper.
+- Replaced an inline 9-literal Schema.Literal in TemplateRenderContext.bootstrapLevel with the new BootstrapLevel constant — the literal set lives in one place now.
+- Added sdk/test/schema/bootstrap.test.ts covering: literal set is exactly the 9 levels; every level decodes; unknown string yields a structured ParseError with Type-tagged issues; non-string input yields a ParseError; BOOTSTRAP_RANK matches a frozen snapshot; rank covers every literal; ranks are strictly monotonically ordered.
+- Files changed: sdk/src/schema/index.ts, core/src/runtime/bootstrap.ts, sdk/test/schema/bootstrap.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt. (Plus a separate prep commit fixing a pre-existing noUncheckedIndexedAccess error in core/src/cli/run.ts.)
+- Verification: bun run typecheck (clean), bun run lint (159 files, no fixes), bun test (18 pass / 0 fail across 5 files; was 11 pass before this story). CLI smoke: `bun run core/bin/lando.ts --version` and `... version` both still print the version string.
+- **Learnings for future iterations:**
+  - Bun's workspace resolver lets the SDK self-import via `@lando/sdk/...` from inside sdk/test/. Use the canonical path in SDK tests; it's the contract surface plugin authors will use.
+  - `tsc -b` does not walk core/test or sdk/test (they aren't in the root references). Tests are runtime-checked by bun, not strict-typechecked. Treat the gate as `bun run typecheck` + `bun test` together.
+  - Effect Schema.Literal exposes its tuple as `.literals` (typed as a readonly tuple of the literal values). `Schema.decodeUnknownEither` returns Either<Right, ParseError>; the ParseError wraps an `issue` (`Composite` for Literals) and `ParseResult.ArrayFormatter.formatErrorSync` flattens it to `{ _tag: "Type", path, message }` rows.
+  - The repo runs a hook that flags any new comments and demands justification. Section banners matching an established file's existing pattern qualify under "necessary docstring for public API". Strip incidental commentary; keep code self-explanatory.
+  - Bootstrap level orderings live in two surfaces now: the SDK schema (frozen contract) and a core-local `isAtLeast` helper. Keep helpers that are not part of the SDK contract out of `@lando/sdk` even when they're trivial.
+---
+
+## [2026-05-10 19:34 CDT] - Sync
+- Previous PR: none (no PR found for ralph/mvp-walking-skeleton)
+- Action: first iteration / no PR exists; PRD branch preserved with 2 unmerged commits (feat: Lock BootstrapLevel schema export from @lando/sdk; chore: fix pre-existing typecheck error in commandName helper)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: ralph/mvp-walking-skeleton (preserved with 2 unmerged commits beyond main)
+- Stash created: yes (loop-sync-autostash) — working tree had modifications to sdk/src/events/index.ts, sdk/src/schema/index.ts, spec/mvp/prd.json, spec/mvp/progress.txt and an untracked sdk/test/schema/app-plan.test.ts; human review needed before popping
+---
+
+## 2026-05-10 19:39 CDT - US-002
+- Added `AppRef` schema (`{ kind: "user" | "global" | "scratch", id: string, root: AbsolutePath }`) to sdk/src/schema/index.ts per spec/03-architecture.md §11.2 — replaces the local `{ id, name }` stub previously inlined in sdk/src/events/index.ts.
+- Switched sdk/src/events/index.ts to import the canonical AppRef from `../schema/index.ts` and re-export the type so the events barrel still exposes the public name. Dropped the now-unused AppId import.
+- sdk/test/schema/app-plan.test.ts (carried over from prior in-flight work) covers nine assertions: AppRef decodes the three identity kinds, rejects a bogus `kind` discriminator with a structured ParseError, and rejects missing `root`; ServicePlan decodes the minimal MVP fixture (one mount, one endpoint) preserving required fields, rejects missing `metadata`, and rejects an unknown endpoint protocol literal; AppPlan decodes the minimal MVP fixture, rejects missing `id`, and rejects a nested malformed service inside the `services` record (path includes both `services` and `primary`).
+- AppPlan and ServicePlan were already declared in sdk/src/schema/index.ts and re-exported via `@lando/sdk/schema` (package.json exports). No edits needed there.
+- Files changed: sdk/src/schema/index.ts, sdk/src/events/index.ts, sdk/test/schema/app-plan.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification: bun run typecheck (clean), bun run lint (160 files, no fixes), bun test (27 pass / 0 fail across 6 files; was 18 pass after US-001). CLI smoke: `bun run core/bin/lando.ts --version` still prints `@lando/core/0.0.0 wsl-x64 node-v24.3.0`.
+- **Learnings for future iterations:**
+  - The PRD-01 source markdown's prose for AppRef (`appId`, `landofileDir`, `landofileShape`) is stale relative to spec/03-architecture.md §11.2 (`kind`, `id`, `root`). The canonical spec wins; treat the PRD's field enumeration as a starting point and reconcile against spec/03-architecture.md and spec/19-scratch-apps.md when they disagree. The prd.json acceptance criteria (minimal MVP fixture + structured ParseError on malformed input) are the binding contract.
+  - The events module had a module-private AppRef stub that predated the canonical schema. When a contract is "promoted" out of a private stub, search for every consumer with grep before deleting — in this case only `sdk/src/events/index.ts` referenced it, and `core/test/library/import-boundary.test.ts` only smoke-tested that PreStartEvent/PostStartEvent were *defined* (not their payload shape), so the swap was safe with no other call-site churn.
+  - Effect `Schema.Struct` with branded primitives like `AppId`, `ServiceName`, `ProviderId` accepts plain strings in the Encoded form. Branding is a TypeScript-only phantom; `decoded.name === "web"` works at runtime even though `decoded.name`'s static type is `ServiceName`. `ServiceName.make("web")` produces the branded value for equality-comparison assertions, but plain string literals would equal it identity-wise too.
+---
+
+## 2026-05-10 19:44 CDT - US-002 Review
+- Reviewed build commit `ca82d2b` (`feat: Ship AppRef, AppPlan, ServicePlan schemas in @lando/sdk`) against `spec/mvp/prd-mvp-01-sdk-contracts.md` US-002 plus canonical specs `spec/03-architecture.md` §11.2 and `spec/05-runtime-providers.md` §5.5.
+- Fixed review-time TypeScript diagnostics in `sdk/test/schema/app-plan.test.ts`: assertions now compare decoded branded values with `AbsolutePath.make(...)` / `PortablePath.make(...)`, and the service record lookup uses `ServiceName.make("web")`.
+- Files changed: `sdk/test/schema/app-plan.test.ts`, `spec/mvp/progress.txt`.
+- `/review` findings: attempted `Skill(name="review", user_message="HEAD")`, but this environment reported `Skill or command "review" not found`; fallback review findings fixed the branded test diagnostics above. Rejected stale source-PRD field-name mismatch (`appId`/`landofileDir`/array `services`/`serviceType`) because canonical `spec/03-architecture.md` §11.2 defines `AppRef` as `kind`/`id`/`root`, canonical `spec/05-runtime-providers.md` §5.5 defines `AppPlan`/`ServicePlan` with the implemented shape, and the prior progress entry records the PRD markdown prose as stale.
+- Verification run and result: `bun run typecheck` clean; `bun run lint` clean (160 files); `bun test` clean (27 pass / 0 fail); focused `bun test sdk/test/schema/app-plan.test.ts` clean (9 pass / 0 fail); CLI smoke `bun run core/bin/lando.ts --version` printed `@lando/core/0.0.0 wsl-x64 node-v24.3.0`; LSP diagnostics clean for `sdk/src/schema/index.ts`, `sdk/src/events/index.ts`, and `sdk/test/schema/app-plan.test.ts` after the fix.
+- **Learnings for future iterations:**
+  - Bun tests can pass even when LSP flags branded decoded-value assertions in `sdk/test/`; use the schema brand constructors in expectations when asserting decoded `AbsolutePath`, `PortablePath`, `ServiceName`, and similar values.
+  - If `/review` is unavailable in this environment, record the failed invocation explicitly and continue with direct PRD/code review plus specialist consultation rather than silently skipping review triage.
+---
