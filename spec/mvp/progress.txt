@@ -200,3 +200,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Cursor Bugbot: SUCCESS
 - Phase 4 triage: No failures, no review comments, no actionable items. Sub-agent not dispatched (all green).
 - Phase 5: Squash-merged PR #5 (`gh pr merge 5 --squash --delete-branch`). Squash commit: 68a3db2 on main. Local main refreshed via `git pull --ff-only`. Branch `ralph/mvp-walking-skeleton` recreated at fresh main (68a3db2).
+---
+
+## 2026-05-11 05:06 UTC - Sync
+- Initial PR query (`--limit 1`) returned PR #4 (MERGED); most recent PR was actually PR #5 (MERGED, squash commit 68a3db2).
+- Previous PR: #5 https://github.com/AaronFeledy/core4/pull/5 (MERGED, all CI green)
+- Action: caught up after prior merge (both PR #4 and PR #5 already merged)
+- Local main updated: yes — pulled ff-only; main now at 68a3db2 (PR #5 squash commit)
+- Branch after sync: ralph/mvp-walking-skeleton (1 commit ahead of main — docs-only commit 68e922c recording push step for PR #5; left in place per hard rule; will bundle with next story work)
+- Stash created: no
+- Note: accidentally recreated origin/ralph/mvp-walking-skeleton (was deleted by PR #5 --delete-branch) during sync; it points to 68a3db2 (same as main). Harmless; next push will either update or delete it.
+---
