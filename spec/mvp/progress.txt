@@ -30,6 +30,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
 - When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
 - Pre-existing `noUncheckedIndexedAccess` errors will block any feature commit because `tsc -b` is the gate. Repair the smallest minimal fix as a separate `chore:` commit before the feature so history stays bisectable.
+- Runtime Layer composition tests should build the Layer with `Effect.scoped(Layer.build(...))` and inspect supplied tags with `Context.getOption`; this verifies exact bootstrap composition without invoking unfinished service method bodies.
 - Effect Schema fixtures: use `typeof MySchema.Encoded` for input/wire shapes and `typeof MySchema.Type` for decoded output. They diverge for non-trivial leaves (e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`). Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
 - SDK service tag tests can use `Context.isTag(tag)` for runtime tag identity and `Context.Tag.Service<typeof Tag>` for compile-time method shape assertions; because `sdk/test/` is outside root `tsc -b`, run targeted `tsc --noEmit` when those tests rely on type-level assertions.
 - For "optional in wire form, but always present after decode" fields, use `Schema.optionalWith(<Schema>, { default: () => <value> })`. The decoded type narrows the field to non-undefined, and a partial parent input (e.g. `telemetry: {}`) still yields the default. This is the one-call alternative to `Schema.optional(...) + Schema.withDefaults(...)` and pairs cleanly with nested defaults.
@@ -414,4 +415,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 6397b75 on main
 - Local main / branch refreshed: yes — main at 6397b75; story branch deleted locally (remote deleted by --delete-branch)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-11 16:34 UTC] - US-010
+- Implemented `makeLandoRuntime` option validation and bootstrap-specific Layer composition for minimal/provider/app, with skeletal service implementations for the requested tags.
+- Files changed: `core/src/runtime/layer.ts`, `core/test/runtime/make-runtime.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test core/test/runtime/make-runtime.test.ts --timeout 5000` exit 0; `bun test --timeout 10000` exit 0; manual QA driver confirmed minimal/provider/app tag sets and invalid options failure.
+- **Learnings for future iterations:**
+  - Layer composition can be verified by building the layer into an Effect Context and checking tag presence with `Context.getOption`.
+  - Keep runtime service method bodies skeletal until their dedicated stories; composition tests should not call unfinished service methods.
 ---

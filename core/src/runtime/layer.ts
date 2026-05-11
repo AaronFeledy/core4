@@ -16,9 +16,19 @@
  * - Runs the same bootstrap sequence up to the requested level.
  * - Layer's outer scope owns all resource handles.
  */
-import { type Layer, Schema } from "effect";
+import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
 
-import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
+import { LandoRuntimeBootstrapError, NoProviderInstalledError } from "@lando/sdk/errors";
+import { AbsolutePath, GlobalConfig, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import {
+  AppPlanner,
+  ConfigService,
+  FileSystem,
+  LandofileService,
+  Logger,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -108,29 +118,180 @@ export const LandoRuntimeOptions = Schema.Struct({
 });
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
+type MinimalRuntimeServices = Logger | ConfigService | FileSystem;
+type ProviderRuntimeServices = MinimalRuntimeServices | RuntimeProvider | RuntimeProviderRegistry;
+export type AppRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner;
+type RuntimeLayer =
+  | Layer.Layer<never>
+  | Layer.Layer<MinimalRuntimeServices>
+  | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<ProviderRuntimeServices>
+  | Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<AppRuntimeServices>
+  | Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<unknown, LandoRuntimeBootstrapError>;
+
+const defaultGlobalConfig: GlobalConfig = Schema.decodeUnknownSync(GlobalConfig)({
+  telemetry: { enabled: false },
+});
+
+const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
+  artifactBuild: false,
+  artifactPull: false,
+  buildSecrets: false,
+  buildSsh: false,
+  multiServiceApply: false,
+  serviceExec: false,
+  serviceLogs: false,
+  serviceHealth: "none",
+  hostReachability: "none",
+  sharedCrossAppNetwork: false,
+  persistentStorage: false,
+  bindMounts: false,
+  bindMountPerformance: "none",
+  copyMounts: false,
+  hostPortPublish: "none",
+  routeProvider: false,
+  tlsCertificates: "none",
+  rootless: true,
+  privilegedServices: false,
+  composeSpec: "none",
+  providerExtensions: [],
+});
+
+const loggerService: Context.Tag.Service<typeof Logger> = {
+  debug: () => Effect.void,
+  info: () => Effect.void,
+  warn: () => Effect.void,
+  error: () => Effect.void,
+};
+
+const configService: Context.Tag.Service<typeof ConfigService> = {
+  load: Effect.succeed(defaultGlobalConfig),
+  get: (key) => Effect.succeed(defaultGlobalConfig[key]),
+};
+
+const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
+  readFile: () => Effect.succeed(""),
+  writeFile: () => Effect.void,
+  writeAtomic: () => Effect.void,
+  exists: () => Effect.succeed(false),
+};
+
+const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
+  id: "stub",
+  displayName: "Stub Runtime Provider",
+  version: "0.0.0",
+  platform: "linux",
+  capabilities: providerCapabilities,
+  isAvailable: Effect.succeed(false),
+  setup: () => Effect.void,
+  getStatus: Effect.succeed({ running: false }),
+  getVersions: Effect.succeed({ provider: "0.0.0" }),
+  buildArtifact: () => Effect.die("runtime provider stub cannot build artifacts"),
+  pullArtifact: () => Effect.die("runtime provider stub cannot pull artifacts"),
+  removeArtifact: () => Effect.void,
+  apply: () => Effect.succeed({ changed: false }),
+  start: () => Effect.void,
+  stop: () => Effect.void,
+  restart: () => Effect.void,
+  destroy: () => Effect.void,
+  exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
+  execStream: () => Stream.empty,
+  run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot run" }),
+  logs: () => Stream.empty,
+  inspect: () => Effect.die("runtime provider stub cannot inspect services"),
+  list: () => Effect.succeed([]),
+};
+
+const runtimeProviderRegistryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
+  list: Effect.succeed([]),
+  select: () =>
+    Effect.fail(
+      new NoProviderInstalledError({
+        message: "No runtime provider has been installed yet.",
+      }),
+    ),
+};
+
+const landofileService: Context.Tag.Service<typeof LandofileService> = {
+  discover: Effect.die("landofile discovery is not implemented yet"),
+};
+
+const appPlannerService: Context.Tag.Service<typeof AppPlanner> = {
+  plan: () => Effect.die("app planning is not implemented yet"),
+};
+
+const MinimalRuntimeLive = Layer.mergeAll(
+  Layer.succeed(Logger, loggerService),
+  Layer.succeed(ConfigService, configService),
+  Layer.succeed(FileSystem, fileSystemService),
+);
+
+const ProviderRuntimeLive = Layer.mergeAll(
+  MinimalRuntimeLive,
+  Layer.succeed(RuntimeProvider, runtimeProviderService),
+  Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),
+);
+
+const AppRuntimeLive = Layer.mergeAll(
+  ProviderRuntimeLive,
+  Layer.succeed(LandofileService, landofileService),
+  Layer.succeed(AppPlanner, appPlannerService),
+);
+
+const runtimeLayerFor = (bootstrap: BootstrapLevel): RuntimeLayer => {
+  switch (bootstrap) {
+    case "none":
+      return Layer.empty;
+    case "minimal":
+    case "plugins":
+    case "commands":
+    case "tooling":
+      return MinimalRuntimeLive;
+    case "provider":
+    case "global":
+    case "scratch":
+      return ProviderRuntimeLive;
+    case "app":
+      return AppRuntimeLive;
+  }
+};
+
+const bootstrapError = (message: string, cause: unknown): LandoRuntimeBootstrapError =>
+  new LandoRuntimeBootstrapError({
+    message,
+    stage: "minimal",
+    cause,
+  });
+
 /**
  * `makeLandoRuntime`.
  *
- * TODO: construct the composed `LandoRuntimeLive` Layer at the
- * requested bootstrap level. The composition is roughly:
- *
- *   Layer.mergeAll(
- *     ConfigServiceLive,
- *     FileSystemBunLive,
- *     ProcessRunnerBunLive,
- *     LoggerLive,
- *     EventServiceLive,
- *     CacheServiceLive,
- *     PluginRegistryLive,
- *     CommandRegistryLive,
- *     RuntimeProviderRegistryLive,
- *     AppPlannerLive,
- *     RendererLive,
- *     // ... plus host-contributed Layers
- *   )
- *
- * Filtered by `bootstrap` level and overridden by `options.plugins.layers`.
+ * Builds the runtime Layer for the requested bootstrap depth. Service
+ * implementations are intentionally skeletal until the later foundation and
+ * provider stories fill in their behavior; this factory owns only composition
+ * and option validation.
  */
-export const makeLandoRuntime = (_options: LandoRuntimeOptions): Layer.Layer<never, never, never> => {
-  throw new Error("makeLandoRuntime: not yet implemented");
-};
+export function makeLandoRuntime(options: { readonly bootstrap: "minimal" }): Layer.Layer<
+  MinimalRuntimeServices,
+  LandoRuntimeBootstrapError
+>;
+export function makeLandoRuntime(options: { readonly bootstrap: "provider" }): Layer.Layer<
+  ProviderRuntimeServices,
+  LandoRuntimeBootstrapError
+>;
+export function makeLandoRuntime(options: { readonly bootstrap: "app" }): Layer.Layer<
+  AppRuntimeServices,
+  LandoRuntimeBootstrapError
+>;
+export function makeLandoRuntime(options: unknown): RuntimeLayer;
+export function makeLandoRuntime(options: unknown): RuntimeLayer {
+  const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);
+
+  if (Either.isLeft(decoded)) {
+    return Layer.fail(bootstrapError("Invalid Lando runtime options.", decoded.left));
+  }
+
+  return runtimeLayerFor(decoded.right.bootstrap ?? "app");
+}
