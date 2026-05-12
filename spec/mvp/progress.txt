@@ -591,3 +591,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When updating a code generator's primary (non-empty) branch, also touch the empty/edge branch — generators must produce lint-clean output for every input shape, not just the happy path.
   - `Layer.empty` is `Layer.Layer<never, never, never>`, so `import type { Layer } from "effect"` is sufficient for the empty-branch template (no runtime `Layer.empty` reference there).
 ---
+
+## 2026-05-12 20:35 UTC - Push (US-014)
+- Branch pushed: us-014-bundled-plugins-loader → origin (2 commits: 0e62aba feat, b86a872 fix)
+- PR: #16 https://github.com/AaronFeledy/core4/pull/16 (created)
+- CI outcome: linux-arm64 SUCCESS, linux-x64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) as 3323b78 "Bundled plugin ship list and registry loader (#16)"
+- Local main / branch refreshed: yes — on main at 3323b78, us-014-bundled-plugins-loader branch deleted
+- Remaining local state: untracked Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) — not product code
+---
