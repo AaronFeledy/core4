@@ -32,6 +32,15 @@ if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0]
   process.exit(0);
 }
 
+if (argv.length === 1 && argv[0] === "shellenv") {
+  const { fileURLToPath } = await import("node:url");
+  const installDir = fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
+
+  console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
+  console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
+  process.exit(0);
+}
+
 const { runCli } = await import("@lando/core/cli");
 
 await runCli({
