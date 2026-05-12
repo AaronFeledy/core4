@@ -510,6 +510,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Remaining local state: clean, on main
 ---
 
+## [2026-05-12 17:46 UTC] - Sync
+- Previous branch: us-012-version-fast-path
+- Previous PR: #14 https://github.com/AaronFeledy/core4/pull/14
+- Action: caught up after prior merge (PR #14 already merged, all CI checks SUCCESS/NEUTRAL)
+- Local main updated: yes (already at latest)
+- Branch after sync: main
+- Stash created: no
+---
+
+
 ## [2026-05-12 12:58 CDT] - US-013
 - Implemented the `shellenv` pre-OCLIF fast path in both the programmatic CLI entry and binary entry so it exits before importing OCLIF/Effect.
 - Files changed: `core/src/cli/index.ts`, `core/bin/lando.ts`, `core/test/cli/fast-path.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
@@ -517,4 +527,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Keep level-`none` CLI behavior mirrored in both `core/src/cli/index.ts` and `core/bin/lando.ts`; the binary entry must short-circuit before importing `@lando/core/cli`.
   - Fast-path tests can vary `HOME` with `Bun.spawn` env overrides to prove output is independent of `~/.lando` state.
+---
+
+## [2026-05-12 18:03 UTC] - US-013 Review
+- Reviewed commit `ceefbec` (Pre-OCLIF fast path for `shellenv`) against PRD-02 US-004 acceptance criteria.
+- Files changed by build step: `core/src/cli/index.ts`, `core/bin/lando.ts`, `core/test/cli/fast-path.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Files changed by review step: `spec/mvp/progress.txt` (this entry only — no code fixes required).
+- `/review` findings:
+  - Rejected: Windows `new URL(...).pathname` produces `/C:/...` — shellenv only emits POSIX shell syntax; PRD does not claim Windows support. Out of MVP scope.
+  - Rejected: Fast-path logic duplicated between `core/bin/lando.ts` and `core/src/cli/index.ts` — intentional; binary entry MUST avoid any import that could transitively load Effect (already captured in build learnings).
+  - Rejected: Bundled-binary test asserts `startsWith("export LANDO_INSTALL_DIR=")` rather than an exact path — appropriate, the bundle lives in a tmpdir and PRD AC is line-format scoped.
+- Verification run and result:
+  - `bun test core/test/cli/fast-path.test.ts` → 9 pass, 0 fail
+  - `bun test` (workspace) → 107 pass, 0 fail
+  - `bun run typecheck` → clean
+  - `bun run lint` → clean
+  - Manual `bun core/bin/lando.ts shellenv` with `HOME` set to a tmpdir with and without `~/.lando` produced byte-identical canonical output.
+- **Learnings for future iterations:**
+  - When reviewing a fast-path story, exercise the binary entry with at least two different `HOME` values to prove level-`none` invariance, not just one.
+  - `fast-path-canary-preload.ts` traps `effect` imports under `node_modules/effect/dist/*.js`; reuse the same pattern (Bun plugin onLoad filter) for any future "must not load X" assertion.
 ---
