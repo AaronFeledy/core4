@@ -604,6 +604,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Remaining local state: untracked Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) — not product code
 ---
 
+## [2026-05-12 20:52 UTC] - Sync
+- Previous branch: us-014-bundled-plugins-loader
+- Previous PR: #16 https://github.com/AaronFeledy/core4/pull/16
+- Action: caught up after prior merge (PR #16 was already MERGED)
+- Local main updated: yes (already up to date with origin/main at 532d7ff)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-12 15:59 CDT - US-015
 - What was implemented: `bun run codegen` now runs the bundled-plugin generator and an OCLIF manifest generator in order; added the manifest generator and an idempotency test covering the current MVP outputs.
 - Files changed: `scripts/codegen.ts`, `scripts/build-oclif-manifest.ts`, `core/test/scripts/codegen.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
@@ -611,4 +619,20 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Use a programmatic OCLIF manifest generator in this Bun workspace. Shelling to `bunx oclif manifest` can fail when OCLIF follows workspace symlinks into TypeScript sources under `node_modules`.
   - `core/oclif.manifest.json` is ignored and generated locally, so tests should verify existence/content after `bun run codegen` rather than expecting the manifest to be a tracked diff.
+---
+
+## 2026-05-12 16:30 CDT - US-015 Review
+- What was reviewed: build commit 1811ea7 (US-015 codegen orchestrator) against PRD-02 US-006 source acceptance criteria.
+- Files changed in build: `scripts/codegen.ts`, `scripts/build-oclif-manifest.ts`, `core/test/scripts/codegen.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- `/review` findings: the `/review` slash command is not installed (only `/review-work` 5-agent fanout exists, which is disproportionate for a ~128 LOC orchestrator). Performed manual targeted review against the checklist.
+  - rejected: prd.json US-015 AC names `build-ci-workflow.ts`, but source PRD-02 US-006 specifies an OCLIF manifest step — implementation correctly followed the source PRD (CI workflow is PRD-07 US-005, a later story); prd.json metadata mismatch is pre-existing, out of scope.
+  - rejected: `core/package.json` `prepack`/`build:manifest` still shell to `bunx oclif manifest` — US-015 scope is the developer-side `bun run codegen` path, not packaging; out of scope.
+  - rejected: orchestrator docstring references `bun run build:check` drift check which does not exist yet — aspirational forward-looking comment, not a defect.
+  - rejected: `scripts/build-oclif-manifest.ts` strips `load` via destructure instead of using `Command.toCached(...)` — produces byte-identical manifest to the previously committed output (verified by second-run zero diff), functionally equivalent for the current command set.
+  - rejected: codegen test asserts only `exitCode: 0` via `toMatchObject({ exitCode })` on `{ exitCode, stdout, stderr }` — failure path would surface captured stdout/stderr in the matcher diff for debugging; intentional.
+- Verification run and result: `bun run typecheck` ✓; `bun run lint` ✓ (181 files, no fixes applied); `bun test` ✓ (111 pass / 0 fail); manual `bun run codegen` regenerated `core/src/plugins/bundled.ts` (4 entries) + `core/oclif.manifest.json` (33 commands); ran twice — second invocation produced zero diff against tracked manifest, confirming idempotency.
+- Fixes applied: none — build commit satisfies the source PRD as-is.
+- **Learnings for future iterations:**
+  - The loop instruction references `Skill(name="review", user_message="HEAD")` but only `review-work` exists. For small (≤200 LOC) story diffs, manual targeted review against the checklist is more efficient than the 5-agent fanout; document the rejection reasons inline.
+  - prd.json acceptance criteria can drift from the source PRD; the loop's source-of-truth rule ("implementation matches the source PRD, not just prd.json") protects against false-positive review failures driven by stale metadata.
 ---
