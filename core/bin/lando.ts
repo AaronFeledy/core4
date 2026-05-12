@@ -15,10 +15,27 @@
  * - SIGINT handling and bridge-to-Effect-interrupt happen inside
  *   `@lando/core/cli`. This file does not install signal handlers directly.
  */
-import { runCli } from "@lando/core/cli";
+
+const argv = Bun.argv.slice(2);
+if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
+  const packageJson: unknown = await Bun.file(new URL("../package.json", import.meta.url)).json();
+  const version =
+    typeof packageJson === "object" && packageJson !== null && "version" in packageJson
+      ? packageJson.version
+      : undefined;
+
+  if (typeof version !== "string") {
+    throw new Error("Unable to read @lando/core package version.");
+  }
+
+  console.log(version);
+  process.exit(0);
+}
+
+const { runCli } = await import("@lando/core/cli");
 
 await runCli({
-  argv: Bun.argv.slice(2),
+  argv,
   // Hand the import.meta URL to OCLIF so it can resolve the package root.
   rootUrl: import.meta.url,
 });
