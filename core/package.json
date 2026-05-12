@@ -89,7 +89,7 @@
     "build": "bun run build:compile && bun run build:manifest",
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
     "build:manifest": "bun run ../scripts/build-oclif-manifest.ts",
-    "build:compile": "bun build ./src/cli/index.ts --compile --outfile ./dist/lando --sourcemap=external",
+    "build:compile": "bun build ./bin/lando.ts --compile --outfile ./dist/lando --sourcemap=external",
     "clean": "rm -rf dist oclif.manifest.json .tsbuildinfo *.tsbuildinfo",
     "test": "bun test",
     "typecheck": "tsc -b",

@@ -47,5 +47,11 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
 
     const help = await runCommand([binaryPath, "--help"]);
     expect(help.exitCode).toBe(0);
+    // OCLIF help must actually register commands and topics — a silent exit-0
+    // means the binary skipped OCLIF entirely (regression guard for the
+    // compile entry-point: must be `bin/lando.ts`, not `src/cli/index.ts`).
+    expect(help.stdout).toContain("USAGE");
+    expect(help.stdout).toContain("TOPICS");
+    expect(help.stdout).toContain("COMMANDS");
   });
 });
