@@ -38,10 +38,9 @@ const HEADER = `/**
 const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string => {
   if (entries.length === 0) {
     return [
-      'import { Layer } from "effect";',
-      'import { Schema } from "effect";',
+      'import type { Layer } from "effect";',
       "",
-      'import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";',
+      'import type { PluginManifest } from "@lando/sdk/schema";',
       "",
       "export const BUNDLED_PLUGINS: ReadonlyArray<{",
       "  readonly name: string;",

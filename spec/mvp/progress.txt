@@ -561,6 +561,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — on main, us-013-shellenv-fast-path branch deleted
 - Remaining local state: clean, on main at b9199f7
 ---
+
+## [2026-05-12 15:06 CDT] - Sync
+- Previous branch: us-014-bundled-plugins-loader
+- Previous PR: none
+- Action: no PR found; branch had 0 commits ahead of main (clean post-merge state); deleted local branch
+- Local main updated: yes (already up to date, origin/main = 3e3313e)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash) — spec/mvp/progress.txt had uncommitted entries from previous sync runs; Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) remain untracked in working tree (human to clean up)
+---
 ## 2026-05-12 15:15  - US-014
 - Implemented the bundled plugin ship list, generated `BUNDLED_PLUGINS` with four MVP entries, and added a bundled-only `PluginRegistryLive` that lists/loads those manifests without filesystem scanning or dynamic imports.
 - Files changed: `core/build.config.ts`, `core/src/plugins/bundled.ts`, `core/src/plugins/registry.ts`, `core/test/plugins/bundled.test.ts`, `scripts/build-bundled-plugins.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
@@ -569,4 +578,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Patterns discovered: keep generated bundled plugin output Biome-clean and derive it only from `core/build.config.ts`.
   - Gotchas encountered: `Layer.empty` is typed as `Layer.Layer<never, never, never>`, so generated stub layer types should match that exact shape until real plugin Layers land.
   - Useful context: `PluginManifest.name` is a branded SDK string after schema decode; tests comparing names should coerce to `String(...)` or use decoded manifest expectations carefully.
+---
+
+## [2026-05-12 15:25 CDT] - US-014 Review
+- Reviewed build commit 0e62aba (US-014 BUNDLED_PLUGINS + bundled-only PluginRegistryLive) against PRD-02 US-005 acceptance criteria.
+- Files changed: `scripts/build-bundled-plugins.ts` (empty-array branch only).
+- `/review` findings:
+  - fixed: empty-array branch of `scripts/build-bundled-plugins.ts` emitted unused `Schema` / `PluginManifestSchema` imports — would fail `biome check` (`noUnusedImports`) if `bundledPlugins` is ever emptied again; switched empty-branch imports to `import type` for `Layer` and `PluginManifest` only (regression introduced by this commit vs. the pre-existing empty branch, which was lint-clean).
+  - rejected: `core/build.config.ts` references `plugins/provider-lando` workspace path that does not exist on disk; out of scope — PRD-02 US-005 explicitly allows empty Layer/manifest stubs and the generator only consumes `name`; the missing workspace dir will be created when PRD-04 lands the provider plugin.
+- Verification: `bun run typecheck`, `bun run lint`, `bun test` all green; ran generator and `git diff --exit-code core/src/plugins/bundled.ts` confirms output unchanged (4 entries idempotent); separately verified the modified empty-branch output is lint-clean by running `bunx biome check` against a synthesized empty-branch file.
+- **Learnings for future iterations:**
+  - When updating a code generator's primary (non-empty) branch, also touch the empty/edge branch — generators must produce lint-clean output for every input shape, not just the happy path.
+  - `Layer.empty` is `Layer.Layer<never, never, never>`, so `import type { Layer } from "effect"` is sufficient for the empty-branch template (no runtime `Layer.empty` reference there).
 ---
