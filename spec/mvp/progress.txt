@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 
@@ -466,4 +467,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - OCLIF `init` hooks receive only `{ id, argv }`, so load the command class with `config.findCommand(id)?.load()` before reading command statics.
   - Fixture CLI tests must ignore stale manifests or OCLIF may dispatch repo commands instead of fixture commands.
   - Expected OCLIF command failures can set `process.exitCode`; reset it in tests after asserting the failure.
+---
+## 2026-05-12 12:18 CDT - US-012
+- Implemented a pre-OCLIF version fast path for `--version`, `-v`, and `version` in the direct CLI entry, with matching binary-entry behavior before loading the OCLIF runner.
+- Files changed: core/src/cli/index.ts, core/bin/lando.ts, core/src/runtime/layer.ts, core/test/cli/fast-path.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt, AGENTS.md.
+- Verification run and result: `bun test core/test/cli/fast-path.test.ts` passed; manual `LANDO_DEBUG_THROW_ON_RUNTIME=1 bun run core/src/cli/index.ts --version`, `-v`, `version`, and `bun run core/bin/lando.ts --version` all printed `0.0.0` with exit 0; `bun run build`, `bun run typecheck`, `bun run lint`, and `bun test` passed. `lsp_diagnostics` could not run because `typescript-language-server` is not installed in the environment.
+- **Learnings for future iterations:**
+  - Static ESM re-exports still load their target modules before top-level fast-path code runs; keep fast-path entry modules free of static OCLIF runner imports.
+  - Use `import.meta.main` for importable Bun modules; `Bun.main` is the process entry path and is truthy from imported modules.
 ---

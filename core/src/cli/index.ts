@@ -1,3 +1,21 @@
+if (import.meta.main) {
+  const argv = Bun.argv.slice(2);
+  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
+    const packageJson: unknown = await Bun.file(new URL("../../package.json", import.meta.url)).json();
+    const version =
+      typeof packageJson === "object" && packageJson !== null && "version" in packageJson
+        ? packageJson.version
+        : undefined;
+
+    if (typeof version !== "string") {
+      throw new Error("Unable to read @lando/core package version.");
+    }
+
+    console.log(version);
+    process.exit(0);
+  }
+}
+
 /**
  * `@lando/core/cli` — programmatic CLI entry point.
  *
@@ -23,8 +41,15 @@
  * - The compiled `lando` binary uses these same functions internally.
  */
 
+import type { RunCliOptions } from "./run.ts";
+
 // CLI runner used by `bin/lando.ts`.
-export { runCli, type RunCliOptions } from "./run.ts";
+export type { RunCliOptions } from "./run.ts";
+
+export const runCli = async (options: RunCliOptions): Promise<void> => {
+  const cli = await import("./run.ts");
+  await cli.runCli(options);
+};
 
 // Built-in command operations.
 export * from "./commands/start.ts";

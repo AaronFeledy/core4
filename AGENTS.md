@@ -15,5 +15,7 @@ This file is for non-obvious repo context only. It is a living document that you
 
 ## Gotchas
 
+- For CLI entry fast paths, do not rely on top-level code before static imports/re-exports; ESM evaluates static dependencies first. Use dynamic imports and `import.meta.main` for importable Bun entry modules.
+
 - In non-interactive shells, Bun may be installed at `/home/aaron/.bun/bin/bun` but absent from `PATH`; prefix repo commands with `PATH=/home/aaron/.bun/bin:$PATH` if workspace scripts invoke `bun` internally.
 - OCLIF fixture tests should pass `ignoreManifest: true` to `Config.load(...)`; otherwise a stale `core/oclif.manifest.json` can make OCLIF dispatch repo commands instead of fixture commands.
