@@ -636,3 +636,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The loop instruction references `Skill(name="review", user_message="HEAD")` but only `review-work` exists. For small (≤200 LOC) story diffs, manual targeted review against the checklist is more efficient than the 5-agent fanout; document the rejection reasons inline.
   - prd.json acceptance criteria can drift from the source PRD; the loop's source-of-truth rule ("implementation matches the source PRD, not just prd.json") protects against false-positive review failures driven by stale metadata.
 ---
+
+## 2026-05-12 21:14 UTC - Push (US-015)
+- Branch pushed: us-015-codegen-orchestration → origin (2 commits: 1811ea7 feat, 7fe6e4c docs)
+- PR: #17 https://github.com/AaronFeledy/core4/pull/17 (created)
+- CI outcome: linux-arm64 SUCCESS, linux-x64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) as 863191a "Codegen orchestrator runs bundled-plugin and OCLIF manifest generators (#17)"
+- Local main / branch refreshed: yes — on main at 863191a, us-015-codegen-orchestration branch deleted
+- Remaining local state: untracked Syncthing conflict files — not product code
+---
