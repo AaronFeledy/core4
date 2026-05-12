@@ -30,6 +30,8 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
+- Compiled CLI fast paths must not use `Bun.file(new URL(...package.json, import.meta.url))` for package metadata; compiled binaries resolve that through Bun's virtual filesystem. Statically import `core/package.json` instead, and include it in `core/tsconfig.json`.
+- Avoid `--minify` on the MVP compiled OCLIF binary; Bun 1.2.18 can produce a compiled artifact that throws during the dynamic OCLIF import.
 - `tsc -b` (root `bun run typecheck`) only walks projects listed in `tsconfig.json#references`. Tests live outside those project roots, so they are not type-checked by `bun run typecheck`. Bun runs them directly. Treat a passing `bun test` plus a passing `bun run typecheck` as the test/typecheck gate; do not assume tests are TS-strict-checked.
 - The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
 - When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
@@ -646,4 +648,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 863191a "Codegen orchestrator runs bundled-plugin and OCLIF manifest generators (#17)"
 - Local main / branch refreshed: yes — on main at 863191a, us-015-codegen-orchestration branch deleted
 - Remaining local state: untracked Syncthing conflict files — not product code
+---
+
+## 2026-05-13 - Sync
+- Previous branch: us-015-codegen-orchestration
+- Previous PR: #17 https://github.com/AaronFeledy/core4/pull/17
+- Action: caught up after prior merge (PR was already MERGED)
+- Local main updated: yes (already current — up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-12 16:21 CDT - US-016
+- Implemented Linux x64 compiled binary build via `core` build script using `bun build --compile --outfile ./dist/lando ./src/cli/index.ts`, followed by programmatic OCLIF manifest generation.
+- Added compile regression coverage that runs `bun run build`, verifies `dist/lando` exists and is executable, checks `--version`, and verifies `--help` exits 0.
+- Files changed: `core/package.json`, `core/tsconfig.json`, `core/src/cli/index.ts`, `core/bin/lando.ts`, `core/test/build/compile.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/cli/fast-path.test.ts core/test/build/compile.test.ts` pass; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass; `bun run build` pass; manual `./dist/lando --version` prints `0.0.0`, `./dist/lando --help` exits 0, and `dist/lando` is executable.
+- **Learnings for future iterations:**
+  - Static JSON imports are safer than runtime `Bun.file(...package.json...)` reads in compiled Bun binaries because the latter resolves through the compiled virtual filesystem.
+  - Keep the compiled OCLIF binary unminified on Bun 1.2.18; minification reproduced a runtime `ReferenceError` at the dynamic OCLIF import.
 ---
