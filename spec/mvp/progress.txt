@@ -436,3 +436,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — main at 147b458; story branch deleted locally (remote deleted by --delete-branch)
 - Remaining local state: clean, on main
 ---
+
+## 2026-05-12 15:24 UTC - Sync
+- Previous branch: us-010-make-runtime-bootstrap
+- Previous PR: none (no PR had been opened for this branch)
+- Action: dispatched leftover push (sub-agent outcome: pushed branch, created PR #12 https://github.com/AaronFeledy/core4/pull/12, CI passed all 4 checks, squash-merged, local main updated to 147b458)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
