@@ -17,6 +17,7 @@ export default class MetaBunCommand extends LandoCommandBase {
   static override description = metaBunSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaBunSpec)];
   static override landoSpec: LandoCommandSpec = metaBunSpec;
+  static override bootstrap = metaBunSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaBunSpec);

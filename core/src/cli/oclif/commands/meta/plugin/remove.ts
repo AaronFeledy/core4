@@ -22,6 +22,7 @@ export default class PluginRemoveCommand extends LandoCommandBase {
     name: Args.string({ description: "Plugin name.", required: true }),
   };
   static override landoSpec: LandoCommandSpec = pluginRemoveSpec;
+  static override bootstrap = pluginRemoveSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(pluginRemoveSpec);

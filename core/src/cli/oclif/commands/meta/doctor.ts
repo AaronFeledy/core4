@@ -17,6 +17,7 @@ export default class MetaDoctorCommand extends LandoCommandBase {
   static override description = metaDoctorSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaDoctorSpec)];
   static override landoSpec: LandoCommandSpec = metaDoctorSpec;
+  static override bootstrap = metaDoctorSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaDoctorSpec);

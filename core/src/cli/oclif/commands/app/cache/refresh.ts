@@ -15,6 +15,7 @@ export const appCacheRefreshSpec: LandoCommandSpec<never> = {
 export default class AppCacheRefreshCommand extends LandoCommandBase {
   static override description = appCacheRefreshSpec.summary;
   static override landoSpec: LandoCommandSpec = appCacheRefreshSpec;
+  static override bootstrap = appCacheRefreshSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(appCacheRefreshSpec);

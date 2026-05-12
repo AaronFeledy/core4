@@ -18,6 +18,7 @@ export default class ExecCommand extends LandoCommandBase {
   static override description = execSpec.summary;
   static override aliases = [...resolveTopLevelAliases(execSpec)];
   static override landoSpec: LandoCommandSpec = execSpec;
+  static override bootstrap = execSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(execSpec);

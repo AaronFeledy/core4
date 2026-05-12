@@ -76,6 +76,12 @@
       "meta:recipes": {
         "description": "Inspect canonical recipes shipped with Lando."
       }
+    },
+    "hooks": {
+      "init": {
+        "target": "./src/cli/oclif/hooks/init.ts",
+        "identifier": "initHook"
+      }
     }
   },
   "scripts": {

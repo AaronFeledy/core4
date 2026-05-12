@@ -17,6 +17,7 @@ export default class ListCommand extends LandoCommandBase {
   static override description = listSpec.summary;
   static override aliases = [...resolveTopLevelAliases(listSpec)];
   static override landoSpec: LandoCommandSpec = listSpec;
+  static override bootstrap = listSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(listSpec);

@@ -17,6 +17,7 @@ export default class StopCommand extends LandoCommandBase {
   static override description = stopSpec.summary;
   static override aliases = [...resolveTopLevelAliases(stopSpec)];
   static override landoSpec: LandoCommandSpec = stopSpec;
+  static override bootstrap = stopSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(stopSpec);

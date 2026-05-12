@@ -24,6 +24,7 @@ export default class VersionCommand extends LandoCommandBase {
   static override hidden = false;
   static override aliases = ["--version", "-v", ...resolveTopLevelAliases(versionSpec)];
   static override landoSpec: LandoCommandSpec = versionSpec;
+  static override bootstrap = versionSpec.bootstrap;
 
   override async run(): Promise<void> {
     // Until LandoCommandBase.runEffect is implemented, run the Effect inline

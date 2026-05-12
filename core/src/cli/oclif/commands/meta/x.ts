@@ -17,6 +17,7 @@ export default class MetaXCommand extends LandoCommandBase {
   static override description = metaXSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaXSpec)];
   static override landoSpec: LandoCommandSpec = metaXSpec;
+  static override bootstrap = metaXSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaXSpec);

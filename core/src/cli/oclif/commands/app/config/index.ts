@@ -22,6 +22,7 @@ export default class AppConfigCommand extends LandoCommandBase {
   static override description = appConfigSpec.summary;
   static override aliases = [...resolveTopLevelAliases(appConfigSpec)];
   static override landoSpec: LandoCommandSpec = appConfigSpec;
+  static override bootstrap = appConfigSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(appConfigSpec);

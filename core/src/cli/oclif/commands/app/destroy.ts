@@ -17,6 +17,7 @@ export default class DestroyCommand extends LandoCommandBase {
   static override description = destroySpec.summary;
   static override aliases = [...resolveTopLevelAliases(destroySpec)];
   static override landoSpec: LandoCommandSpec = destroySpec;
+  static override bootstrap = destroySpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(destroySpec);

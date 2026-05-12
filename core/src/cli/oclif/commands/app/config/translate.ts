@@ -15,6 +15,7 @@ export const appConfigTranslateSpec: LandoCommandSpec<never> = {
 export default class AppConfigTranslateCommand extends LandoCommandBase {
   static override description = appConfigTranslateSpec.summary;
   static override landoSpec: LandoCommandSpec = appConfigTranslateSpec;
+  static override bootstrap = appConfigTranslateSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(appConfigTranslateSpec);

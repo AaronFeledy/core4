@@ -26,7 +26,12 @@
  */
 import { Command } from "@oclif/core";
 
-import type { Effect } from "effect";
+import { Cause, Effect, Exit, type Layer } from "effect";
+
+import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+
+import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
+import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
  * `LandoCommandSpec`.
@@ -57,7 +62,7 @@ export type LandoCommandNamespace = "app" | "apps" | "meta";
  */
 export type LandoTopLevelAlias = boolean | string | ReadonlyArray<string>;
 
-export interface LandoCommandSpec<A = void, E = unknown> {
+export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   /**
    * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
    * `"meta:config"`). MUST start with one of `LandoCommandNamespace` plus
@@ -84,7 +89,7 @@ export interface LandoCommandSpec<A = void, E = unknown> {
   // TODO: typed flag/arg shapes. For now, generic.
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
-  readonly run: (input: unknown) => Effect.Effect<A, E, unknown>;
+  readonly run: (input: unknown) => Effect.Effect<A, E, R>;
 }
 
 /**
@@ -123,13 +128,34 @@ export abstract class LandoCommandBase extends Command {
    */
   static landoSpec: LandoCommandSpec | undefined = undefined;
 
+  /** Bootstrap depth required before this command can run. */
+  static bootstrap: BootstrapLevel | undefined = undefined;
+
   /**
    * Run the underlying Effect program. Subclasses' `run()` should call this.
    *
-   * TODO: wire argv → CommandInput → makeLandoRuntime →
-   * Effect.runPromiseExit → exit code translation.
+   * TODO: wire argv → full CommandInput and tagged-error → exit code
+   * translation. For now this is the minimal Effect bridge: the init hook
+   * owns runtime selection, and the base provides that runtime to the command
+   * Effect.
    */
-  protected async runEffect<A, E>(_spec: LandoCommandSpec<A, E>): Promise<void> {
-    throw new Error("LandoCommandBase.runEffect: not yet implemented");
+  protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
+    await this.parse(this.ctor);
+
+    const runtime = getCommandRuntimeLayer(this.ctor);
+    if (runtime === undefined) {
+      throw new LandoRuntimeBootstrapError({
+        message: `OCLIF command ${this.id ?? spec.id} is missing a valid static bootstrap declaration.`,
+        stage: "minimal",
+      });
+    }
+
+    const exit = await Effect.runPromiseExit(
+      Effect.provide(spec.run({ argv: this.argv }), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),
+    );
+
+    if (Exit.isFailure(exit)) {
+      throw new Error(Cause.pretty(exit.cause));
+    }
   }
 }

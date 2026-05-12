@@ -17,6 +17,7 @@ export default class MetaEventsFollowCommand extends LandoCommandBase {
   static override description = metaEventsFollowSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaEventsFollowSpec)];
   static override landoSpec: LandoCommandSpec = metaEventsFollowSpec;
+  static override bootstrap = metaEventsFollowSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaEventsFollowSpec);

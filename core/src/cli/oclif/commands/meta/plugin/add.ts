@@ -36,6 +36,7 @@ export default class PluginAddCommand extends LandoCommandBase {
     force: Flags.boolean({ description: "Re-install even if already present.", default: false }),
   };
   static override landoSpec: LandoCommandSpec = pluginAddSpec;
+  static override bootstrap = pluginAddSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(pluginAddSpec);

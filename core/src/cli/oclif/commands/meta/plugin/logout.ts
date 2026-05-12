@@ -22,6 +22,7 @@ export default class PluginLogoutCommand extends LandoCommandBase {
     registry: Flags.string({ description: "Registry URL." }),
   };
   static override landoSpec: LandoCommandSpec = pluginLogoutSpec;
+  static override bootstrap = pluginLogoutSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(pluginLogoutSpec);
