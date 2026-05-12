@@ -17,6 +17,7 @@ export default class MetaRecipesListCommand extends LandoCommandBase {
   static override description = metaRecipesListSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaRecipesListSpec)];
   static override landoSpec: LandoCommandSpec = metaRecipesListSpec;
+  static override bootstrap = metaRecipesListSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaRecipesListSpec);

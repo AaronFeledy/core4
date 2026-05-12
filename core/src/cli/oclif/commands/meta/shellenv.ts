@@ -21,6 +21,7 @@ export default class ShellenvCommand extends LandoCommandBase {
   static override description = shellenvSpec.summary;
   static override aliases = [...resolveTopLevelAliases(shellenvSpec)];
   static override landoSpec: LandoCommandSpec = shellenvSpec;
+  static override bootstrap = shellenvSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(shellenvSpec);

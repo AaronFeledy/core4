@@ -32,6 +32,7 @@ export default class SetupCommand extends LandoCommandBase {
     "skip-shell-integration": Flags.boolean({ default: false }),
   };
   static override landoSpec: LandoCommandSpec = setupSpec;
+  static override bootstrap = setupSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(setupSpec);

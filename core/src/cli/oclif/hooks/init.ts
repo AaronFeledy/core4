@@ -1,24 +1,63 @@
 /**
  * OCLIF `init` hook — Lando bootstrap.
  *
- * Sequence:
- *   1. Load global config + env overrides         [level: minimal]
- *   2. Discover Landofiles upward from CWD        [level: minimal]
- *   3. Load plugin manifest cache                 [level: plugins]
- *   4. Register OCLIF commands from cache         [level: commands]
- *   5. OCLIF resolves the command to run
- *   6. Read command's required BootstrapLevel
- *   7. Build LandoRuntimeLive Layer at that level
- *   8. Run the command's Effect program
- *
- * Each level emits `pre-bootstrap-<level>` and `post-bootstrap-<level>`
- * lifecycle events through the Effect event service. After all required
- * levels complete, core emits `post-bootstrap` and `ready`.
- *
- * Status: stub.
+ * The init hook runs after OCLIF has resolved the command id and before the
+ * command class is instantiated. It loads the resolved command class, reads
+ * its declared bootstrap level, builds the matching Lando runtime Layer, and
+ * stores that Layer for `LandoCommandBase.runEffect()` to provide to the
+ * command's Effect program.
  */
-import type { Hook } from "@oclif/core";
+import type { Command, Hook } from "@oclif/core";
+import { Either, Schema } from "effect";
 
-export const initHook: Hook<"init"> = async (_options) => {
-  // TODO: execute the bootstrap sequence above.
+import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import { BootstrapLevel, type BootstrapLevel as BootstrapLevelType } from "@lando/sdk/schema";
+
+import { makeLandoRuntime } from "../../../runtime/layer.ts";
+
+type LandoCommandClass = Command.Class & {
+  readonly bootstrap?: unknown;
+};
+
+type LandoRuntimeLayer = ReturnType<typeof makeLandoRuntime>;
+
+const commandRuntimeLayers = new WeakMap<Command.Class, LandoRuntimeLayer>();
+
+const bootstrapError = (message: string, cause?: unknown): LandoRuntimeBootstrapError =>
+  new LandoRuntimeBootstrapError({
+    message,
+    stage: "minimal",
+    cause,
+  });
+
+const readBootstrapLevel = (CommandClass: LandoCommandClass): BootstrapLevelType => {
+  const decoded = Schema.decodeUnknownEither(BootstrapLevel)(CommandClass.bootstrap);
+
+  if (Either.isLeft(decoded)) {
+    throw bootstrapError("OCLIF command is missing a valid static bootstrap declaration.", decoded.left);
+  }
+
+  return decoded.right;
+};
+
+export const getCommandRuntimeLayer = (CommandClass: Command.Class): LandoRuntimeLayer | undefined =>
+  commandRuntimeLayers.get(CommandClass);
+
+export const initHook: Hook<"init"> = async ({ config, context, id }) => {
+  if (id === undefined) return;
+
+  const command = config.findCommand(id);
+  if (command === undefined) return;
+
+  const CommandClass = (await command.load()) as LandoCommandClass;
+  let bootstrap: BootstrapLevelType;
+  try {
+    bootstrap = readBootstrapLevel(CommandClass);
+  } catch (error) {
+    if (error instanceof LandoRuntimeBootstrapError) {
+      context.error(error, { exit: 1 });
+    }
+    throw error;
+  }
+  commandRuntimeLayers.set(CommandClass, makeLandoRuntime({ bootstrap }));
 };

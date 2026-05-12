@@ -1,0 +1,16 @@
+{
+  "name": "@lando/oclif-init-fixture",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "oclif": {
+    "bin": "lando-fixture",
+    "commands": "./src/commands",
+    "hooks": {
+      "init": {
+        "target": "../../../src/cli/oclif/hooks/init.ts",
+        "identifier": "initHook"
+      }
+    }
+  }
+}

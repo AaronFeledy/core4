@@ -22,6 +22,7 @@ export default class MetaConfigCommand extends LandoCommandBase {
   static override description = metaConfigSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaConfigSpec)];
   static override landoSpec: LandoCommandSpec = metaConfigSpec;
+  static override bootstrap = metaConfigSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaConfigSpec);

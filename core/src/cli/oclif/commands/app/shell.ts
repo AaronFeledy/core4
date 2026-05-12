@@ -17,6 +17,7 @@ export default class AppShellCommand extends LandoCommandBase {
   static override description = appShellSpec.summary;
   static override aliases = [...resolveTopLevelAliases(appShellSpec)];
   static override landoSpec: LandoCommandSpec = appShellSpec;
+  static override bootstrap = appShellSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(appShellSpec);

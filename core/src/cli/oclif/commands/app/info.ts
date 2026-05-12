@@ -17,6 +17,7 @@ export default class InfoCommand extends LandoCommandBase {
   static override description = infoSpec.summary;
   static override aliases = [...resolveTopLevelAliases(infoSpec)];
   static override landoSpec: LandoCommandSpec = infoSpec;
+  static override bootstrap = infoSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(infoSpec);

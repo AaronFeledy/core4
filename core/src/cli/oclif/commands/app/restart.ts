@@ -17,6 +17,7 @@ export default class RestartCommand extends LandoCommandBase {
   static override description = restartSpec.summary;
   static override aliases = [...resolveTopLevelAliases(restartSpec)];
   static override landoSpec: LandoCommandSpec = restartSpec;
+  static override bootstrap = restartSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(restartSpec);

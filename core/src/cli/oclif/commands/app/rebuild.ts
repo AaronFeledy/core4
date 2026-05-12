@@ -17,6 +17,7 @@ export default class RebuildCommand extends LandoCommandBase {
   static override description = rebuildSpec.summary;
   static override aliases = [...resolveTopLevelAliases(rebuildSpec)];
   static override landoSpec: LandoCommandSpec = rebuildSpec;
+  static override bootstrap = rebuildSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(rebuildSpec);

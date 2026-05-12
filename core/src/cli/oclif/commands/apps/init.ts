@@ -34,6 +34,7 @@ export default class InitCommand extends LandoCommandBase {
     }),
   };
   static override landoSpec: LandoCommandSpec = initSpec;
+  static override bootstrap = initSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(initSpec);

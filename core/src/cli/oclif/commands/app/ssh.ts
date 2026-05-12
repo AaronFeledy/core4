@@ -17,6 +17,7 @@ export default class SshCommand extends LandoCommandBase {
   static override description = sshSpec.summary;
   static override aliases = [...resolveTopLevelAliases(sshSpec)];
   static override landoSpec: LandoCommandSpec = sshSpec;
+  static override bootstrap = sshSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(sshSpec);

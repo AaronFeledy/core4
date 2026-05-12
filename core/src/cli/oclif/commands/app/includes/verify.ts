@@ -15,6 +15,7 @@ export const appIncludesVerifySpec: LandoCommandSpec<never> = {
 export default class AppIncludesVerifyCommand extends LandoCommandBase {
   static override description = appIncludesVerifySpec.summary;
   static override landoSpec: LandoCommandSpec = appIncludesVerifySpec;
+  static override bootstrap = appIncludesVerifySpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(appIncludesVerifySpec);

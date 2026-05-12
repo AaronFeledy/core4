@@ -17,6 +17,7 @@ export default class MetaUninstallCommand extends LandoCommandBase {
   static override description = metaUninstallSpec.summary;
   static override aliases = [...resolveTopLevelAliases(metaUninstallSpec)];
   static override landoSpec: LandoCommandSpec = metaUninstallSpec;
+  static override bootstrap = metaUninstallSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(metaUninstallSpec);

@@ -17,6 +17,7 @@ export default class PoweroffCommand extends LandoCommandBase {
   static override description = poweroffSpec.summary;
   static override aliases = [...resolveTopLevelAliases(poweroffSpec)];
   static override landoSpec: LandoCommandSpec = poweroffSpec;
+  static override bootstrap = poweroffSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(poweroffSpec);

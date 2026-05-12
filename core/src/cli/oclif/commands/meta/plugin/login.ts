@@ -26,6 +26,7 @@ export default class PluginLoginCommand extends LandoCommandBase {
     registry: Flags.string({ description: "Registry URL.", required: true }),
   };
   static override landoSpec: LandoCommandSpec = pluginLoginSpec;
+  static override bootstrap = pluginLoginSpec.bootstrap;
 
   override async run(): Promise<void> {
     await this.runEffect(pluginLoginSpec);
