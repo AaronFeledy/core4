@@ -695,6 +695,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Remaining local state: untracked Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) — not product code
 ---
 
+## [2026-05-12] - Sync
+- Previous branch: us-017-test-runtime-helper
+- Previous PR: none
+- Action: no previous branch work — branch existed at main (0 commits ahead), no PR open; deleted local branch
+- Local main updated: yes (already up to date with origin/main at e7c29ce)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash) — stashed uncommitted progress.txt entries from prior sync iterations; human should pop stash@{0} to recover those notes
+---
+
 ## [2026-05-12 16:52 CDT] - US-017
 - Implemented `@lando/core/testing` test-runtime helpers with deterministic Logger, FileSystem, ProcessRunner, and ConfigService doubles plus optional RuntimeProvider override support.
 - Files changed: `core/src/testing/index.ts`, `core/test/testing/test-runtime.test.ts`, `core/test/runtime/test-harness.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
@@ -702,4 +711,20 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - `@lando/sdk/test` already provides the provider contract test double as a service shape, so core testing helpers can layer it with `Layer.succeed(RuntimeProvider, TestRuntimeProvider)`.
   - Keep test-runtime assertion handles outside Effect services; returning `{ layer, calls, files }` lets tests assert interactions without adding extra SDK tags.
+---
+
+## [2026-05-12 17:35 CDT] - US-017 Review
+- Reviewed: build commit 63512b7 "feat: Test harness for Effect services" (5 files, +272/-87) implementing PRD-02 US-008 (test-runtime helper at `core/src/testing/index.ts`).
+- `/review` findings: skipped the 5-agent `review-work` fanout (only `review-work` exists; no `review` skill matches the loop instruction). Diff is small and tractable; followed the precedent set in the US-014 review entry. Performed a manual checklist review against the source PRD, the SDK service contracts (`sdk/src/services/index.ts`), and the prd.json acceptance criteria.
+- Manual review findings:
+  - Confirmed real, in-scope: none. Source PRD acceptance criteria all satisfied — `provideTestRuntime({ bootstrap: "minimal" })` returns a Layer that yields the default `GlobalConfig` from `Effect.flatMap(ConfigService, c => c.load)` (test 2 in `core/test/testing/test-runtime.test.ts`); helper lives at `core/src/testing/index.ts` and re-exports through `@lando/core/testing` (verified via `core/package.json` exports map); `with: { RuntimeProvider }` override path is exercised (test 3). prd.json `makeTestRuntime()` shape (Logger / FileSystem / ProcessRunner / ConfigService doubles that record calls) is also implemented and covered by `core/test/runtime/test-harness.test.ts`.
+  - Rejected (out of scope): top-level `export const TestRuntime = provideTestRuntime({ bootstrap: "provider" })` evaluates once at module load and shares hidden `calls`/`files` state across consumers — a latent footgun, but no test or production code currently imports it (`grep -rn "TestRuntime\b"` shows only declaration sites and `TestRuntimeProvider` matches), the original stub also exported `TestRuntime`, and the source PRD/prd.json neither requires nor forbids it. Removing or refactoring it is API-shape work for a future story.
+  - Rejected (stylistic): `export { TestRuntimeProvider } from "@lando/sdk/test"; import { TestRuntimeProvider } from "@lando/sdk/test";` is unconventional but biome-clean and functionally correct. Cleanup is repo-style preference, not a build-step bug.
+  - Rejected (out of scope): mock `FileSystem.readFile` returns `""` for missing paths instead of failing on the `CacheError` channel; mock `ProcessRunner.spawn` always returns `exitCode: 0`. These match deterministic-double intent and are not contradicted by the PRD; tests that need error-channel coverage can extend the helper later.
+- Verification run and result: `bun run typecheck` ✓; `bun run lint` ✓ (184 files, no fixes); full `bun test` ✓ (116 pass / 0 fail / 678 expects across 21 files in 4.34 s). No CLI behavior changed by this story, so no manual CLI exercise needed.
+- Fixes applied: none — build commit satisfies the source PRD as-is.
+- Unstaged delta noted: `spec/mvp/progress.txt` carries a `[2026-05-12] - Sync` block recording the loop-sync auto-stash for `us-017-test-runtime-helper`. It documents iteration bookkeeping (no product change) and is left for the push step to roll into the iteration record.
+- **Learnings for future iterations:**
+  - When `@lando/core/testing` adds new bootstrap levels beyond `provider`, audit `providerBootstraps` in `core/src/testing/index.ts` so higher levels actually compose the additional service tags they imply (today `global`/`scratch`/`app` collapse to just `+RuntimeProvider`, which is fine while only `minimal`/`provider` are required by the PRD but will mislead future consumers).
+  - `core/src/services/index.ts` is a pure `export * from "@lando/sdk/services"` facade — tests should import service tags from `@lando/core/services`, not `@lando/sdk/services`, to keep the embedding-host abstraction intact.
 ---
