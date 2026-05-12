@@ -425,3 +425,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Layer composition can be verified by building the layer into an Effect Context and checking tag presence with `Context.getOption`.
   - Keep runtime service method bodies skeletal until their dedicated stories; composition tests should not call unfinished service methods.
 ---
+
+## 2026-05-12 15:23 UTC - Push (US-010)
+- Branch pushed: us-010-make-runtime-bootstrap → origin (1 commit: a8c432f feat: makeLandoRuntime factory composes a Layer at requested bootstrap level)
+- PR: #12 https://github.com/AaronFeledy/core4/pull/12 (created)
+- CI outcome: pass — linux-arm64, linux-x64, macos-arm64, windows-x64 all SUCCESS
+- Review feedback: none (no reviews, no comments, reviewDecision="")
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 147b458 on main
+- Local main / branch refreshed: yes — main at 147b458; story branch deleted locally (remote deleted by --delete-branch)
+- Remaining local state: clean, on main
+---
