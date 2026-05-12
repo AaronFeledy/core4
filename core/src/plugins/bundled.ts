@@ -12,9 +12,26 @@
  * discovery or contribute their own Layers.
  */
 
-import type { Layer } from "effect";
+import { Layer } from "effect";
+import { Schema } from "effect";
+
+import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";
+
+const makeManifest = (name: string): PluginManifest =>
+  Schema.decodeSync(PluginManifestSchema)({
+    name,
+    version: "0.0.0",
+    api: 4,
+    bundled: true,
+  });
 
 export const BUNDLED_PLUGINS: ReadonlyArray<{
-  readonly id: string;
-  readonly layer: Layer.Layer<unknown, unknown, never>;
-}> = [];
+  readonly name: string;
+  readonly layer: Layer.Layer<never, never, never>;
+  readonly manifest: PluginManifest;
+}> = [
+  { name: "@lando/provider-lando", layer: Layer.empty, manifest: makeManifest("@lando/provider-lando") },
+  { name: "@lando/provider-docker", layer: Layer.empty, manifest: makeManifest("@lando/provider-docker") },
+  { name: "@lando/service-lando", layer: Layer.empty, manifest: makeManifest("@lando/service-lando") },
+  { name: "@lando/logger-pretty", layer: Layer.empty, manifest: makeManifest("@lando/logger-pretty") },
+];
