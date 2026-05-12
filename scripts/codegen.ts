@@ -9,27 +9,44 @@
  * Each generator below is gated by a `bun run build:check` drift check:
  * after running, `git diff --exit-code` MUST be clean.
  */
-import { $ } from "bun";
+import { resolve } from "node:path";
 
 const SCRIPT_DIR = import.meta.dirname;
+const REPO_ROOT = resolve(SCRIPT_DIR, "..");
+const CORE_ROOT = resolve(REPO_ROOT, "core");
 
-const generators = [
-  { id: "bundled-plugins", path: `${SCRIPT_DIR}/build-bundled-plugins.ts`, status: "ready" },
-  { id: "bundled-recipes", path: `${SCRIPT_DIR}/build-bundled-recipes.ts`, status: "stub" },
-  { id: "bundled-plugin-templates", path: `${SCRIPT_DIR}/build-bundled-plugin-templates.ts`, status: "stub" },
-  { id: "bootstrap-layers", path: `${SCRIPT_DIR}/build-bootstrap-layers.ts`, status: "stub" },
-  { id: "oclif-manifest", path: `${SCRIPT_DIR}/build-oclif-manifest.ts`, status: "stub" },
-  { id: "schema-json", path: `${SCRIPT_DIR}/build-schema-json.ts`, status: "stub" },
-] as const;
+interface Generator {
+  readonly id: string;
+  readonly cmd: Array<string>;
+  readonly cwd: string;
+}
+
+const generators: ReadonlyArray<Generator> = [
+  {
+    id: "bundled-plugins",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-plugins.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
+    id: "oclif-manifest",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
+    cwd: CORE_ROOT,
+  },
+] satisfies ReadonlyArray<Generator>;
+
+const run = async (cmd: Array<string>, cwd: string): Promise<void> => {
+  const proc = Bun.spawn({ cmd, cwd, stdout: "inherit", stderr: "inherit" });
+  const exitCode = await proc.exited;
+
+  if (exitCode !== 0) {
+    throw new Error(`Command failed with exit code ${exitCode}: ${cmd.join(" ")}`);
+  }
+};
 
 const main = async (): Promise<void> => {
   for (const gen of generators) {
-    if (gen.status === "stub") {
-      console.log(`[codegen] skip ${gen.id} (stub — script not yet implemented)`);
-      continue;
-    }
     console.log(`[codegen] run ${gen.id}`);
-    await $`bun run ${gen.path}`;
+    await run(gen.cmd, gen.cwd);
   }
 };
 

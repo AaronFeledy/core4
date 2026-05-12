@@ -19,3 +19,4 @@ This file is for non-obvious repo context only. It is a living document that you
 - In non-interactive shells, Bun may be installed at `/home/aaron/.bun/bin/bun` but absent from `PATH`; prefix repo commands with `PATH=/home/aaron/.bun/bin:$PATH` if workspace scripts invoke `bun` internally.
 - Bun's `--preload` flag requires an absolute path, must come before any `run` subcommand, and is most reliable when the entry is given as a file path without `run` (i.e. `bun --preload /abs/path/preload.ts /abs/path/entry.ts arg`).
 - OCLIF fixture tests should pass `ignoreManifest: true` to `Config.load(...)`; otherwise a stale `core/oclif.manifest.json` can make OCLIF dispatch repo commands instead of fixture commands.
+- Generate the repo OCLIF manifest programmatically instead of shelling to `bunx oclif manifest`; Bun can fail to strip workspace TypeScript loaded via `node_modules` symlinks.
