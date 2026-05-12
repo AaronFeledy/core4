@@ -468,6 +468,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Fixture CLI tests must ignore stale manifests or OCLIF may dispatch repo commands instead of fixture commands.
   - Expected OCLIF command failures can set `process.exitCode`; reset it in tests after asserting the failure.
 ---
+## 2026-05-12 12:09 CDT - Sync
+- Previous branch: us-012-version-fast-path
+- Previous PR: none
+- Action: no PR found; branch was 0 commits ahead of main — clean state; deleted local story branch
+- Local main updated: yes (already up to date with origin/main at 493cfad)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash) — stash contains a leftover progress.txt entry from the prior sync step that was not committed; human review needed before popping
+---
 ## 2026-05-12 12:18 CDT - US-012
 - Implemented a pre-OCLIF version fast path for `--version`, `-v`, and `version` in the direct CLI entry, with matching binary-entry behavior before loading the OCLIF runner.
 - Files changed: core/src/cli/index.ts, core/bin/lando.ts, core/src/runtime/layer.ts, core/test/cli/fast-path.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt, AGENTS.md.
@@ -475,4 +483,18 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Static ESM re-exports still load their target modules before top-level fast-path code runs; keep fast-path entry modules free of static OCLIF runner imports.
   - Use `import.meta.main` for importable Bun modules; `Bun.main` is the process entry path and is truthy from imported modules.
+---
+## 2026-05-12 12:36 CDT - US-012 Review
+- Reviewed commit 83af2e8 against PRD-02 US-003 / US-012 acceptance criteria via Oracle (stand-in for `/review`). Verified typecheck, lint, `bun test`, and `bun run build` are green on the pre-fix state; manually exercised `--version`, `-v`, `version` on both `core/src/cli/index.ts` and `core/bin/lando.ts` (all printed `0.0.0`, exit 0).
+- Oracle verdict: FAIL on PRD-02 FR-4. Root cause: `core/src/cli/index.ts` still re-exported 14 command modules via static `export * from "./commands/*"`. ESM hoists those declarations ahead of the `if (import.meta.main)` block, so `core/src/cli/commands/version.ts` (which `import { Effect } from "effect"`) loaded `effect` BEFORE the fast path printed and exited. The existing `LANDO_DEBUG_THROW_ON_RUNTIME` hook fires only when `makeLandoRuntime` is *called*, so the test passed despite the import-graph violation. Empirically reproduced via a Bun `--preload` canary that throws on `node_modules/effect/dist/...` and via wall-clock: 180ms cold for the dev entry vs. 10ms for the binary entry (18× slower).
+- `/review` findings:
+  - fixed: dev-entry fast path imports effect via static command re-exports → moved re-exports to new `core/src/cli/operations.ts`, exposed via `./cli/operations` in `core/package.json` exports, updated `core/src/cli/index.ts` to a minimal fast-path + dynamic `runCli` wrapper + `RunCliOptions` type re-export only.
+  - fixed: original fast-path test could not detect import-graph violations → added `core/test/cli/fast-path-canary-preload.ts` (Bun plugin throwing on any `node_modules/effect/dist/*.js` load) and three new `--preload`-based assertions in `core/test/cli/fast-path.test.ts` covering `--version`, `-v`, and `version`.
+  - fixed: AGENTS.md gotcha was added in the build step but only covered half the issue (`import`); updated to also call out static `export * from "./x.ts"`, the embedding-host-subpath split, and the Bun `--preload` quirk (absolute path, no `run` subcommand).
+- Files changed: `core/src/cli/index.ts`, `core/src/cli/operations.ts` (new), `core/package.json`, `core/test/cli/fast-path.test.ts`, `core/test/cli/fast-path-canary-preload.ts` (new), `AGENTS.md`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` clean across 180 files; `bun test` passed 105 / 105 (up from 102; 3 new canary assertions); `bun run build` succeeded (831 modules, 10.78 MB lando.js, manifest written). Manual: all 6 (entry × arg) combinations print `0.0.0` exit 0; canary preload confirms effect is NOT loaded by `bun core/src/cli/index.ts --version`; cold-start dropped 180ms → 10ms, well within the documented ≤50ms PRD budget. `bun -e "import('@lando/core/cli/operations')..."` resolves and lists the expected command-operation exports.
+- **Learnings for future iterations:**
+  - "Fast path before any `import` of OCLIF or Effect" includes `export * from "./x.ts"` — if `x.ts` statically imports the forbidden module, ESM still loads it ahead of the consuming module's body, even with `import.meta.main` guarding the fast-path block. The fix is structural: split the embedding-host surface onto a separate `package.json` exports subpath.
+  - Function-call debug hooks (`makeLandoRuntime`-throw style) are insufficient regression coverage for import-graph constraints. A Bun-plugin `--preload` canary that throws on the forbidden module's path is reliable and cheap.
+  - Bun's `--preload` flag takes an absolute path, and `bun --preload <abs> <entry>` works while `bun --preload <abs> run <entry>` does not — Bun's `run` subcommand re-parses argv and drops the preload flag.
 ---

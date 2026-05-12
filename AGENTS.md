@@ -15,7 +15,7 @@ This file is for non-obvious repo context only. It is a living document that you
 
 ## Gotchas
 
-- For CLI entry fast paths, do not rely on top-level code before static imports/re-exports; ESM evaluates static dependencies first. Use dynamic imports and `import.meta.main` for importable Bun entry modules.
-
+- For CLI entry fast paths (e.g. `core/src/cli/index.ts`), ESM hoists every static `import` AND `export * from "./x.ts"` declaration ahead of the module body, so any top-level `if (import.meta.main)` block runs AFTER those declarations have already evaluated their target modules. The fast-path entry must contain NO static imports/re-exports of OCLIF or Effect (or modules that transitively import them); use dynamic `await import(...)` from inside a wrapper function for the OCLIF runner, and host embedding-host APIs that need Effect on a separate subpath (`@lando/core/cli/operations`). Regression coverage lives in `core/test/cli/fast-path.test.ts` via the `fast-path-canary-preload.ts` Bun-plugin canary.
 - In non-interactive shells, Bun may be installed at `/home/aaron/.bun/bin/bun` but absent from `PATH`; prefix repo commands with `PATH=/home/aaron/.bun/bin:$PATH` if workspace scripts invoke `bun` internally.
+- Bun's `--preload` flag requires an absolute path, must come before any `run` subcommand, and is most reliable when the entry is given as a file path without `run` (i.e. `bun --preload /abs/path/preload.ts /abs/path/entry.ts arg`).
 - OCLIF fixture tests should pass `ignoreManifest: true` to `Config.load(...)`; otherwise a stale `core/oclif.manifest.json` can make OCLIF dispatch repo commands instead of fixture commands.

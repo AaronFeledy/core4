@@ -17,52 +17,31 @@ if (import.meta.main) {
 }
 
 /**
- * `@lando/core/cli` — programmatic CLI entry point.
+ * `@lando/core/cli` — programmatic CLI runner entry point.
  *
- * This entry MAY pull `@oclif/core` (it is the programmatic-CLI surface).
- * The default `@lando/core` entry MUST NOT.
+ * **Required behavior** (PRD-02 FR-4): the pre-OCLIF fast path at the top
+ * of this file MUST run before any `import` of OCLIF or Effect. ESM hoists
+ * static imports/re-exports ahead of the module body, so this file:
+ *   - Uses a dynamic `await import("./run.ts")` for the OCLIF runner.
+ *   - Contains NO static `export *` re-exports that would transitively pull
+ *     in `effect` (the built-in command operations live in
+ *     `@lando/core/cli/operations` instead).
  *
  * Two consumers:
  *   1. The `lando` binary (`bin/lando.ts`) imports `runCli` here to wire
- *      OCLIF + the bootstrap.
- *   2. Embedding hosts import the built-in command operations
- *      (`startApp`, `stopApp`, `infoApp`, etc.) to invoke the same Effect
- *      programs the CLI runs, without parsing argv or pulling OCLIF into
- *      the host bundle.
- *
- * **Required behaviors**:
- * - Every built-in command has a corresponding exported Effect-returning
- *   function. Input is an Effect-Schema-validated subset of the command's
- *   flags/args; output is a typed result.
- * - Functions DO NOT touch `process.stdin/stdout/stderr` and DO NOT call
- *   OCLIF. Output is in the return value; logs go through the active
- *   `Logger`; rendering is the host's choice.
- * - Functions inherit the runtime's services via the requirements channel.
- * - The compiled `lando` binary uses these same functions internally.
+ *      OCLIF + the bootstrap. The binary mirrors the same fast path so the
+ *      compiled artifact short-circuits before this module is loaded.
+ *   2. Embedding hosts that want to invoke built-in command operations
+ *      (`startApp`, `stopApp`, `infoApp`, …) without parsing argv or
+ *      pulling OCLIF into the host bundle import from
+ *      `@lando/core/cli/operations`.
  */
 
 import type { RunCliOptions } from "./run.ts";
 
-// CLI runner used by `bin/lando.ts`.
 export type { RunCliOptions } from "./run.ts";
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   const cli = await import("./run.ts");
   await cli.runCli(options);
 };
-
-// Built-in command operations.
-export * from "./commands/start.ts";
-export * from "./commands/stop.ts";
-export * from "./commands/info.ts";
-export * from "./commands/destroy.ts";
-export * from "./commands/list.ts";
-export * from "./commands/logs.ts";
-export * from "./commands/exec.ts";
-export * from "./commands/rebuild.ts";
-export * from "./commands/restart.ts";
-export * from "./commands/poweroff.ts";
-export * from "./commands/config.ts";
-export * from "./commands/version.ts";
-export * from "./commands/update.ts";
-export * from "./commands/tooling.ts";

@@ -6,12 +6,17 @@ import corePackage from "../../package.json";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const cliEntry = resolve(repoRoot, "core/src/cli/index.ts");
+const canaryPreload = resolve(dirname(fileURLToPath(import.meta.url)), "fast-path-canary-preload.ts");
 
-const runCli = async (
-  arg: string,
-): Promise<{ readonly exitCode: number; readonly stdout: string; readonly stderr: string }> => {
+interface RunResult {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+const runCli = async (arg: string, extraArgs: ReadonlyArray<string> = []): Promise<RunResult> => {
   const proc = Bun.spawn({
-    cmd: [process.execPath, "run", cliEntry, arg],
+    cmd: [process.execPath, ...extraArgs, cliEntry, arg],
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -38,6 +43,17 @@ describe("CLI version fast path", () => {
     expect(result.stdout.trim()).toBe(corePackage.version);
     expect(result.stderr).toBe("");
   });
+
+  test.each(["--version", "-v", "version"])(
+    "%s does not import the effect runtime (PRD-02 FR-4)",
+    async (arg) => {
+      const result = await runCli(arg, ["--preload", canaryPreload]);
+
+      expect(result.stderr).not.toContain("FAST_PATH_CANARY");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe(corePackage.version);
+    },
+  );
 
   test("documents the MVP wall-clock budget without enforcing it", () => {
     expect("version fast path budget: <=50ms on baseline Linux x64").toContain("<=50ms");
