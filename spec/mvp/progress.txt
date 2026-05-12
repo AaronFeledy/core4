@@ -509,3 +509,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — main at 023a4aa; story branch deleted (remote deleted by --delete-branch, local was already gone)
 - Remaining local state: clean, on main
 ---
+
+## [2026-05-12 12:58 CDT] - US-013
+- Implemented the `shellenv` pre-OCLIF fast path in both the programmatic CLI entry and binary entry so it exits before importing OCLIF/Effect.
+- Files changed: `core/src/cli/index.ts`, `core/bin/lando.ts`, `core/test/cli/fast-path.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: focused `bun test core/test/cli/fast-path.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; manual `bun core/bin/lando.ts shellenv` printed the expected `LANDO_INSTALL_DIR` export and PATH prepend lines.
+- **Learnings for future iterations:**
+  - Keep level-`none` CLI behavior mirrored in both `core/src/cli/index.ts` and `core/bin/lando.ts`; the binary entry must short-circuit before importing `@lando/core/cli`.
+  - Fast-path tests can vary `HOME` with `Bun.spawn` env overrides to prove output is independent of `~/.lando` state.
+---
