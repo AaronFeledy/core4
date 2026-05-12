@@ -498,3 +498,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Function-call debug hooks (`makeLandoRuntime`-throw style) are insufficient regression coverage for import-graph constraints. A Bun-plugin `--preload` canary that throws on the forbidden module's path is reliable and cheap.
   - Bun's `--preload` flag takes an absolute path, and `bun --preload <abs> <entry>` works while `bun --preload <abs> run <entry>` does not — Bun's `run` subcommand re-parses argv and drops the preload flag.
 ---
+
+## 2026-05-12 17:46 UTC - Push (US-012)
+- Branch pushed: us-012-version-fast-path → origin (2 commits: 83af2e8 feat: Pre-OCLIF fast path for --version, -v, version; f379ed0 fix(cli): keep effect off the version fast path)
+- PR: #14 https://github.com/AaronFeledy/core4/pull/14 (created)
+- CI outcome: pass — linux-arm64, linux-x64, macos-arm64, windows-x64 all SUCCESS; Cursor Bugbot SKIPPED
+- Review feedback: Cursor Bugbot left a COMMENTED (not CHANGES_REQUESTED) bot note — not a work item; reviewDecision=""
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 023a4aa on main
+- Local main / branch refreshed: yes — main at 023a4aa; story branch deleted (remote deleted by --delete-branch, local was already gone)
+- Remaining local state: clean, on main
+---
