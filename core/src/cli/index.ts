@@ -1,11 +1,9 @@
+import corePackage from "../../package.json";
+
 if (import.meta.main) {
   const argv = Bun.argv.slice(2);
   if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
-    const packageJson: unknown = await Bun.file(new URL("../../package.json", import.meta.url)).json();
-    const version =
-      typeof packageJson === "object" && packageJson !== null && "version" in packageJson
-        ? packageJson.version
-        : undefined;
+    const version = corePackage.version;
 
     if (typeof version !== "string") {
       throw new Error("Unable to read @lando/core package version.");

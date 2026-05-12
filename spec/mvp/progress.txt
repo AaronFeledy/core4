@@ -30,6 +30,8 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
+- Compiled CLI fast paths must not use `Bun.file(new URL(...package.json, import.meta.url))` for package metadata; compiled binaries resolve that through Bun's virtual filesystem. Statically import `core/package.json` instead, and include it in `core/tsconfig.json`.
+- Avoid `--minify` on the MVP compiled OCLIF binary; Bun 1.2.18 can produce a compiled artifact that throws during the dynamic OCLIF import.
 - `tsc -b` (root `bun run typecheck`) only walks projects listed in `tsconfig.json#references`. Tests live outside those project roots, so they are not type-checked by `bun run typecheck`. Bun runs them directly. Treat a passing `bun test` plus a passing `bun run typecheck` as the test/typecheck gate; do not assume tests are TS-strict-checked.
 - The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
 - When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
@@ -646,4 +648,37 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 863191a "Codegen orchestrator runs bundled-plugin and OCLIF manifest generators (#17)"
 - Local main / branch refreshed: yes — on main at 863191a, us-015-codegen-orchestration branch deleted
 - Remaining local state: untracked Syncthing conflict files — not product code
+---
+
+## 2026-05-13 - Sync
+- Previous branch: us-015-codegen-orchestration
+- Previous PR: #17 https://github.com/AaronFeledy/core4/pull/17
+- Action: caught up after prior merge (PR was already MERGED)
+- Local main updated: yes (already current — up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-12 16:21 CDT - US-016
+- Implemented Linux x64 compiled binary build via `core` build script using `bun build --compile --outfile ./dist/lando ./src/cli/index.ts`, followed by programmatic OCLIF manifest generation.
+- Added compile regression coverage that runs `bun run build`, verifies `dist/lando` exists and is executable, checks `--version`, and verifies `--help` exits 0.
+- Files changed: `core/package.json`, `core/tsconfig.json`, `core/src/cli/index.ts`, `core/bin/lando.ts`, `core/test/build/compile.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/cli/fast-path.test.ts core/test/build/compile.test.ts` pass; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass; `bun run build` pass; manual `./dist/lando --version` prints `0.0.0`, `./dist/lando --help` exits 0, and `dist/lando` is executable.
+- **Learnings for future iterations:**
+  - Static JSON imports are safer than runtime `Bun.file(...package.json...)` reads in compiled Bun binaries because the latter resolves through the compiled virtual filesystem.
+  - Keep the compiled OCLIF binary unminified on Bun 1.2.18; minification reproduced a runtime `ReferenceError` at the dynamic OCLIF import.
+---
+
+## 2026-05-12 16:45 CDT - US-016 Review
+- What was reviewed: build commit 3067766 ("Compiled binary builds for Linux x64 via bun build --compile") against PRD-02 US-007 source acceptance criteria and `spec/15-binary-build-and-release.md` stage 7.
+- `/review` findings: the `/review` slash command is still not installed (only `/review-work` 5-agent fanout exists). Performed manual targeted review.
+  - **fixed (real bug):** build commit changed `build:compile` entry from `./bin/lando.ts` to `./src/cli/index.ts`. `src/cli/index.ts` only handles the `--version`/`-v`/`version`/`shellenv` fast paths and has no fall-through to `runCli`, so the compiled binary silently exited 0 for `--help`, every OCLIF command, and unknown args (verified by running `./dist/lando --help` against the build commit's binary: empty stdout, exit 0). PRD acceptance criterion "`dist/lando --help` exits 0 (basic OCLIF help registers commands)" was satisfied only on the technicality of exit code; help was not actually rendered. The compile-test assertion of `help.exitCode === 0` passed against the broken state, so it did not catch the regression. `spec/15-binary-build-and-release.md` stage 7 authoritatively names `bin/lando.ts` as the compile entry, and the MVP PRD wording explicitly defers to spec/15 ("or equivalent — exact flags per spec/15-binary-build-and-release.md MVP guidance"). Fix reverts `build:compile` to compile `./bin/lando.ts` (which already fall-throughs to `await runCli(...)` after its fast paths). Strengthened `core/test/build/compile.test.ts` to assert `--help` output contains `USAGE`, `TOPICS`, and `COMMANDS` so the entry-point regression cannot recur silently.
+  - rejected: `dist/lando shellenv` reports `LANDO_INSTALL_DIR="/$bunfs"` inside the compiled binary because `import.meta.url` resolves to Bun's virtual FS path. Pre-existing limitation of the shellenv fast path inside compiled binaries, not introduced by US-016, and not part of this story's acceptance criteria. Out of scope.
+  - rejected: build script omits `--bytecode` (spec/15 stage 7 calls it required). MVP PRD does not require it; leaving alignment with spec/15 for a future release-pipeline story. Out of scope.
+- Files changed: `core/package.json`, `core/test/build/compile.test.ts`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun run typecheck` pass; `bun run lint` pass; `bun test` 112 pass / 0 fail; `bun test core/test/build/compile.test.ts` pass with the strengthened OCLIF help assertions; manual QA after rebuild: `./dist/lando --version` → `0.0.0`, `./dist/lando --help` renders full OCLIF help with USAGE/TOPICS/COMMANDS, `./dist/lando` (no args) renders OCLIF help, `./dist/lando -v` / `version` print `0.0.0`, `dist/lando` is executable.
+- **Learnings for future iterations:**
+  - When the MVP PRD acceptance criteria and the canonical spec (`spec/*.md`) disagree on a mechanical detail (entry-point path, flag set, output location), `spec/15-binary-build-and-release.md` is authoritative for build pipeline stages. The MVP PRD's "or equivalent — exact flags per spec/15" phrasing exists for exactly this case.
+  - Fast-path entry-point files (`src/cli/index.ts`) are NOT viable compile targets. They short-circuit known argv shapes and intentionally do not bootstrap OCLIF on fall-through. The compile target must be the imperative shell (`bin/lando.ts`) that both mirrors the fast paths and unconditionally awaits `runCli` for everything else.
+  - Compile-binary tests must assert observable command output, not just exit codes. An `exit 0` assertion against a binary that silently does nothing passes for all the wrong reasons.
 ---

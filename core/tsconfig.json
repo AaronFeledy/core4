@@ -11,7 +11,7 @@
       "@lando/sdk/*": ["../sdk/src/*/index.ts"]
     }
   },
-  "include": ["./src/**/*.ts", "./bin/**/*.ts"],
+  "include": ["./src/**/*.ts", "./bin/**/*.ts", "./package.json"],
   "exclude": ["./dist", "./node_modules", "./test"],
   "references": [{ "path": "../sdk" }]
 }

@@ -86,10 +86,10 @@
     }
   },
   "scripts": {
-    "build": "bun run build:bin && bun run build:manifest",
+    "build": "bun run build:compile && bun run build:manifest",
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
-    "build:manifest": "bunx oclif manifest",
-    "build:compile": "bun build ./bin/lando.ts --compile --outfile ./dist/lando --minify --sourcemap=external",
+    "build:manifest": "bun run ../scripts/build-oclif-manifest.ts",
+    "build:compile": "bun build ./bin/lando.ts --compile --outfile ./dist/lando --sourcemap=external",
     "clean": "rm -rf dist oclif.manifest.json .tsbuildinfo *.tsbuildinfo",
     "test": "bun test",
     "typecheck": "tsc -b",
