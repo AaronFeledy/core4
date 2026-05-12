@@ -25,6 +25,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
+- For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
@@ -601,4 +602,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 3323b78 "Bundled plugin ship list and registry loader (#16)"
 - Local main / branch refreshed: yes — on main at 3323b78, us-014-bundled-plugins-loader branch deleted
 - Remaining local state: untracked Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) — not product code
+---
+
+## 2026-05-12 15:59 CDT - US-015
+- What was implemented: `bun run codegen` now runs the bundled-plugin generator and an OCLIF manifest generator in order; added the manifest generator and an idempotency test covering the current MVP outputs.
+- Files changed: `scripts/codegen.ts`, `scripts/build-oclif-manifest.ts`, `core/test/scripts/codegen.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun test core/test/scripts/codegen.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual QA `bun run codegen` regenerated bundled plugins and wrote `core/oclif.manifest.json` with 33 commands; generated tracked output remained idempotent.
+- **Learnings for future iterations:**
+  - Use a programmatic OCLIF manifest generator in this Bun workspace. Shelling to `bunx oclif manifest` can fail when OCLIF follows workspace symlinks into TypeScript sources under `node_modules`.
+  - `core/oclif.manifest.json` is ignored and generated locally, so tests should verify existence/content after `bun run codegen` rather than expecting the manifest to be a tracked diff.
 ---
