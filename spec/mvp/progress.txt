@@ -682,3 +682,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Fast-path entry-point files (`src/cli/index.ts`) are NOT viable compile targets. They short-circuit known argv shapes and intentionally do not bootstrap OCLIF on fall-through. The compile target must be the imperative shell (`bin/lando.ts`) that both mirrors the fast paths and unconditionally awaits `runCli` for everything else.
   - Compile-binary tests must assert observable command output, not just exit codes. An `exit 0` assertion against a binary that silently does nothing passes for all the wrong reasons.
 ---
+
+## [2026-05-12 21:35 UTC] - Push (US-016)
+- Branch pushed: us-016-compiled-linux-binary → origin (2 commits: 3067766 feat, 07245cf fix)
+- PR: #18 https://github.com/AaronFeledy/core4/pull/18 (created)
+- CI outcome: linux-arm64 SUCCESS, linux-x64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) as 1114a52 "Compiled binary builds for Linux x64 via bun build --compile (#18)"
+- Local main / branch refreshed: yes — on main at 1114a52, us-016-compiled-linux-binary branch deleted
+- Remaining local state: untracked Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) — not product code
+---
