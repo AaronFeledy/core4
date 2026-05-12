@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
@@ -692,4 +693,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 1114a52 "Compiled binary builds for Linux x64 via bun build --compile (#18)"
 - Local main / branch refreshed: yes — on main at 1114a52, us-016-compiled-linux-binary branch deleted
 - Remaining local state: untracked Syncthing conflict files (bun.sync-conflict-*.lock, package.sync-conflict-*.json) — not product code
+---
+
+## [2026-05-12 16:52 CDT] - US-017
+- Implemented `@lando/core/testing` test-runtime helpers with deterministic Logger, FileSystem, ProcessRunner, and ConfigService doubles plus optional RuntimeProvider override support.
+- Files changed: `core/src/testing/index.ts`, `core/test/testing/test-runtime.test.ts`, `core/test/runtime/test-harness.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `lsp_diagnostics` passed for changed TypeScript files; `bun run typecheck`, `bun run lint`, focused `bun test core/test/testing/test-runtime.test.ts core/test/runtime/test-harness.test.ts`, and full `bun test` all passed.
+- **Learnings for future iterations:**
+  - `@lando/sdk/test` already provides the provider contract test double as a service shape, so core testing helpers can layer it with `Layer.succeed(RuntimeProvider, TestRuntimeProvider)`.
+  - Keep test-runtime assertion handles outside Effect services; returning `{ layer, calls, files }` lets tests assert interactions without adding extra SDK tags.
 ---

@@ -86,7 +86,7 @@
     {
       "id": "US-006",
       "title": "Ship lifecycle event payload schemas (8-10 events for app:start/app:stop)",
-      "description": "As an event subscriber (plugins, telemetry, future renderer), I need frozen payload shapes for the lifecycle events app:start/app:stop publish per spec/03-architecture.md §3.5. (PRD-01 US-006)",
+      "description": "As an event subscriber (plugins, telemetry, future renderer), I need frozen payload shapes for the lifecycle events app:start/app:stop publish per spec/03-architecture.md \u00a73.5. (PRD-01 US-006)",
       "acceptanceCriteria": [
         "Failing test `sdk/test/events/lifecycle.test.ts` decodes payloads for: pre-app-start, post-app-start, pre-service-start, post-service-start, pre-app-stop, post-app-stop, pre-service-stop, post-service-stop, pre-build, post-build",
         "Each payload schema includes: appRef, serviceName? (services-scoped only), providerId, timestamp",
@@ -148,7 +148,7 @@
     {
       "id": "US-010",
       "title": "makeLandoRuntime factory composes a Layer at the requested bootstrap level",
-      "description": "As @lando/core's OCLIF init hook, I need makeLandoRuntime({ bootstrap: <level> }) to return one composed Layer that satisfies every required service tag for that level — and only that level. (PRD-02 US-001)",
+      "description": "As @lando/core's OCLIF init hook, I need makeLandoRuntime({ bootstrap: <level> }) to return one composed Layer that satisfies every required service tag for that level \u2014 and only that level. (PRD-02 US-001)",
       "acceptanceCriteria": [
         "Failing test `core/test/runtime/make-runtime.test.ts` calls makeLandoRuntime({ bootstrap: 'minimal' }) and asserts the returned Layer satisfies Logger | ConfigService | FileSystem but not RuntimeProvider",
         "Same test for bootstrap: 'provider' satisfies RuntimeProvider | RuntimeProviderRegistry",
@@ -187,7 +187,7 @@
         "Failing test `core/test/cli/fast-path.test.ts` shells out to `bun run core/src/cli/index.ts --version`, asserts exit 0 and stdout matches version from core/package.json",
         "Test asserts no Effect runtime imports were touched (debug hook throws if makeLandoRuntime is called)",
         "Test repeats for `-v` and `version`",
-        "Wall-clock budget ≤50ms documented (not enforced at MVP)",
+        "Wall-clock budget \u226450ms documented (not enforced at MVP)",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -215,7 +215,7 @@
     {
       "id": "US-014",
       "title": "BUNDLED_PLUGINS array consumed by PluginRegistry's bundled-only loader",
-      "description": "As PluginRegistry.Live, I read the BUNDLED_PLUGINS array from `core/src/plugins/bundled.ts` to decide which plugins are loaded at MVP — no FS scanning, no dynamic imports. (PRD-02 US-005)",
+      "description": "As PluginRegistry.Live, I read the BUNDLED_PLUGINS array from `core/src/plugins/bundled.ts` to decide which plugins are loaded at MVP \u2014 no FS scanning, no dynamic imports. (PRD-02 US-005)",
       "acceptanceCriteria": [
         "Failing test `core/test/plugins/bundled.test.ts` asserts BUNDLED_PLUGINS exported as ReadonlyArray<{ name, layer, manifest }> containing all four MVP plugins (@lando/provider-lando, @lando/provider-docker, @lando/service-lando, @lando/logger-pretty)",
         "Empty layer/manifest stubs are acceptable here; PRDs 04 and 05 fill them",
@@ -272,7 +272,7 @@
         "Lint passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -453,7 +453,7 @@
     {
       "id": "US-029",
       "title": "PluginRegistry Live implementation (bundled-only)",
-      "description": "As @lando/core, PluginRegistry.Live reads BUNDLED_PLUGINS at startup — no FS discovery, no install, no dynamic imports at MVP. (PRD-03 US-009)",
+      "description": "As @lando/core, PluginRegistry.Live reads BUNDLED_PLUGINS at startup \u2014 no FS discovery, no install, no dynamic imports at MVP. (PRD-03 US-009)",
       "acceptanceCriteria": [
         "Failing test `core/test/services/plugin-registry.test.ts` asserts PluginRegistry.list() returns all four bundled plugins",
         "PluginRegistry.get(name) returns the plugin's manifest+layer",
@@ -500,7 +500,7 @@
     {
       "id": "US-032",
       "title": "BuildOrchestrator Live implementation (sequential)",
-      "description": "As app:start, I depend on BuildOrchestrator.Live which sequentially runs pre-build → build → post-build for each service. No group weighting at MVP. (PRD-03 US-012)",
+      "description": "As app:start, I depend on BuildOrchestrator.Live which sequentially runs pre-build \u2192 build \u2192 post-build for each service. No group weighting at MVP. (PRD-03 US-012)",
       "acceptanceCriteria": [
         "Failing test `core/test/services/build-orchestrator.test.ts` orchestrates a 2-service plan and asserts pre-build / post-build events are published per service in order",
         "Failure of one service short-circuits the orchestration with the failing service's error",
@@ -565,7 +565,7 @@
       "description": "As app:start, I call provider-lando.bringUp(plan) and it brings every service to running state via the private Podman API socket. (PRD-04 US-004)",
       "acceptanceCriteria": [
         "Failing integration test `plugins/provider-lando/test/bring-up.integration.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET on Linux x64) brings up a Node+Postgres plan and asserts both containers are running via API inspect",
-        "Bun.spawn-driven RPC against the socket — not `podman` binary on PATH",
+        "Bun.spawn-driven RPC against the socket \u2014 not `podman` binary on PATH",
         "bringUp is idempotent: calling twice on the same plan is a no-op the second time",
         "Tests pass",
         "Typecheck passes",
@@ -632,7 +632,7 @@
       "description": "As `lando info`, I depend on provider-lando.inspect(plan) returning a structured snapshot (services + container ids + states + endpoints). (PRD-04 US-008)",
       "acceptanceCriteria": [
         "Failing integration test `plugins/provider-lando/test/inspect.integration.test.ts` brings up a plan, calls inspect, asserts the returned snapshot matches expected schema (services, ids, states, endpoints)",
-        "inspect is read-only — does not mutate provider state",
+        "inspect is read-only \u2014 does not mutate provider state",
         "Tests pass",
         "Typecheck passes",
         "Lint passes",
@@ -676,7 +676,7 @@
     },
     {
       "id": "US-043",
-      "title": "lando setup (provider-lando) — manual-install acceptance",
+      "title": "lando setup (provider-lando) \u2014 manual-install acceptance",
       "description": "As a dev on Linux, `lando setup` for provider-lando at MVP accepts a system-installed Podman (manual install required); it surfaces a clear remediation message if Podman is missing. (PRD-04 US-011)",
       "acceptanceCriteria": [
         "Failing test `plugins/provider-lando/test/setup.integration.test.ts` runs setup with no podman socket, asserts it exits with NoProviderInstalledError carrying remediation message",
@@ -783,7 +783,7 @@
     {
       "id": "US-050",
       "title": "@lando/logger-pretty package skeleton (empty body)",
-      "description": "As the bundled plugin set, @lando/logger-pretty exists with a manifest and an empty body — Effect's default Logger.pretty is good enough at MVP. The package exists so the bundled.ts codegen path is exercised. (PRD-05 US-006)",
+      "description": "As the bundled plugin set, @lando/logger-pretty exists with a manifest and an empty body \u2014 Effect's default Logger.pretty is good enough at MVP. The package exists so the bundled.ts codegen path is exercised. (PRD-05 US-006)",
       "acceptanceCriteria": [
         "Failing test `plugins/logger-pretty/test/skeleton.test.ts` imports the package, asserts a Layer is exported (empty bind on Logger is acceptable), manifest declares pluginId @lando/logger-pretty",
         "Registered in BUNDLED_PLUGINS",
@@ -834,7 +834,7 @@
       "description": "As a developer in a scaffolded app dir, `lando start` plans the app, calls provider-lando.bringUp, and reports running services. (PRD-06 US-002)",
       "acceptanceCriteria": [
         "Failing integration test `core/test/cli/start.integration.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET) scaffolds a fresh app via init, runs start, asserts both services are running via inspect",
-        "Lifecycle events pre-app-start, post-app-start, pre-service-start (×2), post-service-start (×2) are published",
+        "Lifecycle events pre-app-start, post-app-start, pre-service-start (\u00d72), post-service-start (\u00d72) are published",
         "Plain text output reports the started services (no concurrent task tree at MVP)",
         "Tests pass",
         "Typecheck passes",
@@ -851,7 +851,7 @@
       "description": "As a developer in a running app, `lando stop` calls provider-lando.bringDown and reports clean stop. (PRD-06 US-003)",
       "acceptanceCriteria": [
         "Failing integration test `core/test/cli/stop.integration.test.ts` starts an app, runs stop, asserts no containers remain via inspect",
-        "Lifecycle events pre-app-stop, post-app-stop, pre-service-stop (×2), post-service-stop (×2) are published",
+        "Lifecycle events pre-app-stop, post-app-stop, pre-service-stop (\u00d72), post-service-stop (\u00d72) are published",
         "Tests pass",
         "Typecheck passes",
         "Lint passes",
@@ -910,7 +910,7 @@
     {
       "id": "US-058",
       "title": "Every non-MVP OCLIF command exits with structured NotImplementedError",
-      "description": "As a user who runs a not-yet-shipped command, I get a clear NotImplementedError with the command id and a 'this is alpha/beta/...' remediation message — not a stack trace. (PRD-06 US-007)",
+      "description": "As a user who runs a not-yet-shipped command, I get a clear NotImplementedError with the command id and a 'this is alpha/beta/...' remediation message \u2014 not a stack trace. (PRD-06 US-007)",
       "acceptanceCriteria": [
         "Failing test `core/test/cli/not-implemented.test.ts` runs a representative non-MVP command (e.g. `lando exec`) and asserts exit non-zero plus stderr contains NotImplementedError with the command id",
         "Every non-MVP OCLIF command class throws NotImplementedError consistently",
@@ -942,7 +942,7 @@
       "title": "End-to-end MVP exit-criteria smoke test",
       "description": "As release engineering, I want a single-script reproduction of the roadmap's MVP exit criteria runnable in a temp dir on a Linux x64 box with a private Podman socket. (PRD-06 US-009)",
       "acceptanceCriteria": [
-        "Failing scenario test `core/test/scenario/mvp-exit-criteria.scenario.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET, linux x64) runs in a temp dir: bun run codegen → bun run build → ./dist/lando init --full → ./dist/lando start → ./dist/lando info (asserts both services running) → ./dist/lando stop → cleanup",
+        "Failing scenario test `core/test/scenario/mvp-exit-criteria.scenario.test.ts` (gated on LANDO_TEST_PODMAN_SOCKET, linux x64) runs in a temp dir: bun run codegen \u2192 bun run build \u2192 ./dist/lando init --full \u2192 ./dist/lando start \u2192 ./dist/lando info (asserts both services running) \u2192 ./dist/lando stop \u2192 cleanup",
         "Test passes once every prior story is green",
         "Tests pass",
         "Typecheck passes",
@@ -1003,7 +1003,7 @@
     {
       "id": "US-064",
       "title": "CI workflow is the only permitted source of truth for CI config",
-      "description": "As a maintainer, hand-editing .github/workflows/ci.yml is forbidden — the file carries a generated-header comment and any drift is detected by a check. (PRD-07 US-004)",
+      "description": "As a maintainer, hand-editing .github/workflows/ci.yml is forbidden \u2014 the file carries a generated-header comment and any drift is detected by a check. (PRD-07 US-004)",
       "acceptanceCriteria": [
         "Failing test `core/test/ci/no-hand-edits.test.ts` asserts ci.yml carries a `# AUTO-GENERATED` header comment",
         "Test runs scripts/build-ci-workflow.ts in dry-run and asserts the file matches the generated output (otherwise fails with diff)",
