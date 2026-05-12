@@ -547,3 +547,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When reviewing a fast-path story, exercise the binary entry with at least two different `HOME` values to prove level-`none` invariance, not just one.
   - `fast-path-canary-preload.ts` traps `effect` imports under `node_modules/effect/dist/*.js`; reuse the same pattern (Bun plugin onLoad filter) for any future "must not load X" assertion.
 ---
+
+## 2026-05-12 18:26 UTC - Push (US-013)
+- Branch pushed: us-013-shellenv-fast-path → origin (3 commits: ceefbec feat, e4b5c86 docs, 8cb291e fix)
+- PR: #15 https://github.com/AaronFeledy/core4/pull/15 (created)
+- CI outcome (round 1): linux-arm64 SUCCESS, linux-x64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS; Cursor Bugbot NEUTRAL
+- Review feedback: Cursor Bugbot flagged real issue — `new URL(..).pathname` in shellenv fast path yields percent-encoded paths for install dirs with spaces; rest of codebase uses `fileURLToPath` from `node:url`. Fixed in both `core/bin/lando.ts` and `core/src/cli/index.ts`; also updated trailing-slash regex to `/[\\/]$/` for Windows compatibility.
+- Triage commit: 8cb291e fix(cli): use fileURLToPath for shellenv installDir to avoid percent-encoded paths
+- CI outcome (round 2): all 5 checks SUCCESS (including Cursor Bugbot)
+- Triage rounds used: 1
+- Merge: merged (squash) as b9199f7 "Pre-OCLIF fast path for shellenv at bootstrap level none (#15)"
+- Local main / branch refreshed: yes — on main, us-013-shellenv-fast-path branch deleted
+- Remaining local state: clean, on main at b9199f7
+---
