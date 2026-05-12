@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
@@ -559,4 +560,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as b9199f7 "Pre-OCLIF fast path for shellenv at bootstrap level none (#15)"
 - Local main / branch refreshed: yes — on main, us-013-shellenv-fast-path branch deleted
 - Remaining local state: clean, on main at b9199f7
+---
+## 2026-05-12 15:15  - US-014
+- Implemented the bundled plugin ship list, generated `BUNDLED_PLUGINS` with four MVP entries, and added a bundled-only `PluginRegistryLive` that lists/loads those manifests without filesystem scanning or dynamic imports.
+- Files changed: `core/build.config.ts`, `core/src/plugins/bundled.ts`, `core/src/plugins/registry.ts`, `core/test/plugins/bundled.test.ts`, `scripts/build-bundled-plugins.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: focused `bun test core/test/plugins/bundled.test.ts` passed; `bun run typecheck`, `bun run lint`, and `bun test` passed; `bun run build` was also attempted and failed in existing `oclif manifest` type-stripping behavior under `node_modules/@lando/sdk`.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep generated bundled plugin output Biome-clean and derive it only from `core/build.config.ts`.
+  - Gotchas encountered: `Layer.empty` is typed as `Layer.Layer<never, never, never>`, so generated stub layer types should match that exact shape until real plugin Layers land.
+  - Useful context: `PluginManifest.name` is a branded SDK string after schema decode; tests comparing names should coerce to `String(...)` or use decoded manifest expectations carefully.
 ---

@@ -38,31 +38,49 @@ const HEADER = `/**
 const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string => {
   if (entries.length === 0) {
     return [
-      'import type { Layer } from "effect";',
+      'import { Layer } from "effect";',
+      'import { Schema } from "effect";',
+      "",
+      'import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";',
       "",
       "export const BUNDLED_PLUGINS: ReadonlyArray<{",
-      "  readonly id: string;",
-      "  readonly layer: Layer.Layer<unknown, unknown, never>;",
+      "  readonly name: string;",
+      "  readonly layer: Layer.Layer<never, never, never>;",
+      "  readonly manifest: PluginManifest;",
       "}> = [];",
       "",
     ].join("\n");
   }
 
-  const imports: Array<string> = ['import type { Layer } from "effect";', ""];
+  const imports: Array<string> = [
+    'import { Layer } from "effect";',
+    'import { Schema } from "effect";',
+    "",
+    'import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";',
+    "",
+  ];
   const tableRows: Array<string> = [];
 
-  entries.forEach((entry, idx) => {
-    const alias = `plugin${idx}`;
-    imports.push(`import ${alias} from "${entry.name}";`);
-    tableRows.push(`  { id: "${entry.name}", layer: ${alias} as Layer.Layer<unknown, unknown, never> },`);
-  });
+  for (const entry of entries) {
+    tableRows.push(
+      `  { name: "${entry.name}", layer: Layer.empty, manifest: makeManifest("${entry.name}") },`,
+    );
+  }
 
   return [
     imports.join("\n"),
+    "const makeManifest = (name: string): PluginManifest =>",
+    "  Schema.decodeSync(PluginManifestSchema)({",
+    "    name,",
+    '    version: "0.0.0",',
+    "    api: 4,",
+    "    bundled: true,",
+    "  });",
     "",
     "export const BUNDLED_PLUGINS: ReadonlyArray<{",
-    "  readonly id: string;",
-    "  readonly layer: Layer.Layer<unknown, unknown, never>;",
+    "  readonly name: string;",
+    "  readonly layer: Layer.Layer<never, never, never>;",
+    "  readonly manifest: PluginManifest;",
     "}> = [",
     tableRows.join("\n"),
     "];",

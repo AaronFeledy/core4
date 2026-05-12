@@ -37,17 +37,10 @@ export interface BuildConfig {
 
 export const buildConfig: BuildConfig = {
   bundledPlugins: [
-    // The reference plugins under `plugins/` are still scaffolding stubs
-    // (`PLUGIN_NAME` exports only). They are intentionally NOT shipped in
-    // the binary until each plugin's runtime Layer lands. Re-add an entry
-    // here when the plugin's `src/index.ts` exports a usable `Layer`.
-    //
-    // { name: "@lando/service-lando", path: "plugins/service-lando" },
-    // { name: "@lando/provider-docker", path: "plugins/provider-docker" },
-    // { name: "@lando/proxy-traefik", path: "plugins/proxy-traefik" },
-    // { name: "@lando/ca-mkcert", path: "plugins/ca-mkcert" },
-    // { name: "@lando/logger-pretty", path: "plugins/logger-pretty" },
-    // { name: "@lando/renderer-listr", path: "plugins/renderer-listr" },
+    { name: "@lando/provider-lando", path: "plugins/provider-lando" },
+    { name: "@lando/provider-docker", path: "plugins/provider-docker" },
+    { name: "@lando/service-lando", path: "plugins/service-lando" },
+    { name: "@lando/logger-pretty", path: "plugins/logger-pretty" },
   ],
   bundledRecipes: [],
   bundledPluginTemplates: [],
