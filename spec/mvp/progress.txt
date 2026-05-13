@@ -44,6 +44,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Runtime Layer composition tests should build the Layer with `Effect.scoped(Layer.build(...))` and inspect supplied tags with `Context.getOption`; this verifies exact bootstrap composition without invoking unfinished service method bodies.
 - Effect Schema fixtures: use `typeof MySchema.Encoded` for input/wire shapes and `typeof MySchema.Type` for decoded output. They diverge for non-trivial leaves (e.g. `Schema.DateTimeUtc` encodes as ISO-8601 string but decodes to `DateTime.Utc`). Build wire-form fixtures on `.Encoded` and produce date strings via `DateTime.formatIso(dt)`.
 - SDK service tag tests can use `Context.isTag(tag)` for runtime tag identity and `Context.Tag.Service<typeof Tag>` for compile-time method shape assertions; because `sdk/test/` is outside root `tsc -b`, run targeted `tsc --noEmit` when those tests rely on type-level assertions.
+- ConfigService Live reads `<userConfRoot>/config.yml`, treats the file as optional, applies `LANDO_*` environment overlays afterward, and decodes the merged object through the SDK `GlobalConfig` schema.
 - For "optional in wire form, but always present after decode" fields, use `Schema.optionalWith(<Schema>, { default: () => <value> })`. The decoded type narrows the field to non-undefined, and a partial parent input (e.g. `telemetry: {}`) still yields the default. This is the one-call alternative to `Schema.optional(...) + Schema.withDefaults(...)` and pairs cleanly with nested defaults.
 - `ParseResult.ArrayFormatter.formatErrorSync(err)` returns rows whose `path` is `ReadonlyArray<PropertyKey>`, not a dotted string. Match nested-field issues via `issue.path.includes("fieldName")`; chain `.includes()` for deeper paths (e.g. `path.includes("services") && path.includes("primary")`). Biome's `useLiteralKeys` flags bracket access on known properties — prefer dot-keyed services in fixtures (`services.web`, not `services["web"]`).
 - When a schema is shared across SDK modules (e.g. `AppRef` referenced by both `sdk/src/schema/index.ts` and `sdk/src/events/index.ts`), define it once in `sdk/src/schema/` and `import` + `export type` re-export it from the consuming barrel. The SDK's barrel pattern keeps the canonical home in `@lando/sdk/schema` while preserving the public surface from the consuming module.
@@ -1044,4 +1045,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit `518d58b Add FileSystem Live service backed by Bun.file (#25)`
 - Local main / branch refreshed: yes — on `main` at `518d58b`, local story branch deleted
 - Remaining local state: clean
+---
+
+## [2026-05-13 17:22 CDT] - US-024
+- Implemented ConfigService Live global config loading from optional `config.yml`, `LANDO_*` environment overlay handling, schema decoding, and `ConfigService.get` over the merged config.
+- Files changed: `core/src/services/config.ts`, `core/src/runtime/layer.ts`, `core/test/services/config.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/services/config.test.ts` passed; lsp diagnostics passed on modified TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual ConfigService driver printed `lando` for an env-overlaid provider id.
+- **Learnings for future iterations:**
+  - Patterns discovered: Live service implementations use `Context.Tag.Service<typeof Tag>` plus `Layer.succeed`; runtime composition should import the Live layer instead of keeping long-lived stubs once a service story lands.
+  - Gotchas encountered: Bun 1.2.18 in this repo does not expose `Bun.YAML`, and no YAML dependency is present, so ConfigService keeps a minimal MVP YAML parser scoped to simple config mappings.
+  - Useful context: Source PRD-03 names the config file `config.yml`; the older PRD index text mentioning `lando.yml` is not the detailed story contract.
 ---
