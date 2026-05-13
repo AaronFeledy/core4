@@ -917,3 +917,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Issue 3 (Low, fixture eager recording): Rejected as out-of-scope for MVP. Tests pass; current test patterns do not exercise conditional stream creation.
 - Verification: `bun run typecheck` pass, `bun run lint` pass (0 errors, 0 warnings), `bun test` 126 pass / 0 fail, `bun test core/test/services/process-runner.test.ts` 5 pass.
 ---
+
+## [2026-05-13 19:50 UTC] - Push (US-021)
+- Branch pushed: `us-021-process-runner-live` → `origin/us-021-process-runner-live`
+- Commits: `294d6b9 feat: ProcessRunner Live implementation backed by Bun.spawn`, `790b89f fix: interleave stdout/stderr in streamProcess to prevent ordering issues`, `24bad69 docs: record PR #23 triage outcome`
+- PR: #23 https://github.com/AaronFeledy/core4/pull/23 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS) — both before and after triage fix
+- Review feedback: Cursor Bugbot COMMENTED (3 issues). Fixed: Issue 1 (High — stream stdout/stderr sequential read → interleaved queue). Rejected: Issue 2 (Medium — Bun drains OS pipes asynchronously; `proc.exited` race is safe), Issue 3 (Low — test fixture eager recording, out of scope).
+- Triage rounds used: 1
+- Merge: merged (squash) — squash commit `bfc7243 Add ProcessRunner Live implementation backed by Bun.spawn (#23)`
+- Local main / branch refreshed: yes — on `main` at `bfc7243`, local story branch deleted
+- Remaining local state: clean
+---
