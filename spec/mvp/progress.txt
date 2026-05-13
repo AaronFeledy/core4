@@ -1030,3 +1030,18 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `BunFile.exists()` returns `false` for directory paths. `Bun.file(dir).delete()` is a no-op shape; directory teardown needs a different primitive than `BunFile.delete()`. The current `FileSystem.remove` reflects this by quietly handling only the file branch.
   - Service-method test coverage that exercises happy paths only is fine for MVP-grade ACs but leaves the "no-op on missing path / partial behavior on directory" cases unguarded. When the next story consumes `remove`, extend the test set with a missing-path case so the FileNotFoundError contract is locked.
 ---
+
+## [2026-05-13 21:38 UTC] - Push (US-023)
+- Branch pushed: `us-023-file-system-live` → `origin/us-023-file-system-live`
+- Commits: `b75b7b0 feat: FileSystem Live implementation (Bun.file)`, `5f12b0f docs: record US-023 review verification and Bun atomic-rename gotcha`, `432e3e3 fix: FileSystem.remove no-op on missing paths; writeAtomic temp cleanup on first-write failure`
+- PR: #25 https://github.com/AaronFeledy/core4/pull/25 (created)
+- CI outcome (round 1): pass (linux-x64, linux-arm64, macos-arm64, windows-x64 all SUCCESS; Cursor Bugbot SKIPPED)
+- Review feedback: Cursor Bugbot left 2 inline COMMENTED threads (not CHANGES_REQUESTED):
+  - Thread 1 (Medium): `remove()` throws FileNotFoundError on non-existent paths instead of no-op — REAL, FIXED: catch ENOENT from Bun.Glob.scan and return silently
+  - Thread 2 (Low): `writeAtomic()` leaks temp file if first Bun.write fails — REAL, FIXED: moved first write into try block so finally always cleans up
+- Triage rounds used: 1 (fixes committed as `432e3e3` and pushed; CI re-ran clean)
+- CI outcome (round 2): pass (all 4 platforms SUCCESS; Bugbot SKIPPED)
+- Merge: merged (squash) — squash commit `518d58b Add FileSystem Live service backed by Bun.file (#25)`
+- Local main / branch refreshed: yes — on `main` at `518d58b`, local story branch deleted
+- Remaining local state: clean
+---
