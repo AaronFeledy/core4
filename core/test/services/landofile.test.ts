@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -10,7 +10,7 @@ import { LandofileService } from "@lando/core/services";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-"));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-landofile-service-")));
   const previousCwd = process.cwd();
   try {
     return await run(dir);
