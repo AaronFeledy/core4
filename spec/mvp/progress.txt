@@ -860,3 +860,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Biome's `--no-color` is not needed when asserting on file paths in piped output — ANSI escapes do not break substring matches for plain filenames.
   - Lint-gate tests that spawn `bun run lint` over the whole tree are cheap (≈260 ms locally) because Biome already scans 191 files in ~60 ms; no need to scope the gate to a subdirectory.
 ---
+
+## [2026-05-13 19:05 UTC] - Push (US-020)
+- Branch pushed: `us-020-biome-lint-gate` → `origin/us-020-biome-lint-gate`
+- Commits: `43e2765 feat: biome check . is enforced (lint gate)`, `f4ff5a6 docs: record US-020 review step result`
+- PR: #22 https://github.com/AaronFeledy/core4/pull/22 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit `3fbfb63 Enforce Biome lint gate in CI build tests (#22)`
+- Local main / branch refreshed: yes — on `main` at `3fbfb63`, local story branch deleted
+- Remaining local state: clean
+---
