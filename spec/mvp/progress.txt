@@ -909,3 +909,11 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - For Effect service implementations the canonical service type is `Context.Tag.Service<typeof Tag>`, not `Tag.Service`. The latter only typechecks for tags that explicitly export a `Service` namespace member.
   - Whenever a service tag's method names change, audit every fake/in-memory double in `core/src/testing/index.ts` AND every consumer test (`core/test/runtime/*`, `core/test/testing/*`) — the SDK methods list in `sdk/test/services/tags.test.ts` (both the EXPECTED_TAGS entry and the ordered freeze list) is the canonical cross-check that flags missed call sites.
 ---
+
+## [2026-05-13 19:45 UTC] - Triage (PR #23, round 1)
+- Cursor Bugbot COMMENTED (not CHANGES_REQUESTED) with 3 findings.
+- Issue 1 (High, stream deadlock): REAL. Sequential `for await` over stdout then stderr loses real-time ordering and can block if stderr fills while stdout is open. Fixed via shared async queue that interleaves both pipes concurrently. Commit `790b89f`.
+- Issue 2 (Medium, run path hang): NOT a real bug on Bun. Bun drains OS pipe buffers into its internal ReadableStream queue asynchronously (libuv-based IO); `proc.exited` always resolves because the runtime consumes the pipe data in the background. Rejected.
+- Issue 3 (Low, fixture eager recording): Rejected as out-of-scope for MVP. Tests pass; current test patterns do not exercise conditional stream creation.
+- Verification: `bun run typecheck` pass, `bun run lint` pass (0 errors, 0 warnings), `bun test` 126 pass / 0 fail, `bun test core/test/services/process-runner.test.ts` 5 pass.
+---
