@@ -25,7 +25,7 @@
     "./events": "./src/events/index.ts",
     "./test": "./src/test/index.ts"
   },
-  "files": ["./src", "./dist"],
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "lando-sdk", "effect"],
   "dependencies": {
     "effect": "^3.21.2"

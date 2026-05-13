@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
@@ -775,4 +776,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 76a31d0 "Explicit Bun test discovery with bunfig.toml and service/provider test fixtures (#20)"
 - Local main / branch refreshed: yes — on main at 76a31d0, us-018-bun-test-discovery branch deleted
 - Remaining local state: two stale local branches (align-scaffolding-with-spec, us-011-oclif-init-hook) — not product code for this iteration
+---
+
+## [2026-05-13 17:54 UTC] - US-019
+- Implemented runtime/build guards so TypeScript build-info artifacts are not opened by the `@lando/core` runtime import and `.tsbuildinfo` markers are scrubbed from the compiled binary.
+- Files changed: `core/test/build/no-runtime-tsbuildinfo.test.ts`, `core/test/build/compile.test.ts`, `scripts/sanitize-compiled-binary.ts`, package clean/files settings, CLI version source, `AGENTS.md`, and MVP progress/PRD metadata.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (120 pass, 1 skip, 0 fail); `bun run build` passed and `./core/dist/lando --version` printed `0.0.0`; binary `.tsbuildinfo` count was 0.
+- **Learnings for future iterations:**
+  - Compiled Bun binaries can include dependency/tooling marker strings even when runtime behavior is clean, so release-only forbidden markers may need byte-preserving post-compile sanitization plus a runnable-binary regression test.
+  - Avoid importing full package metadata in compiled binary fast paths; keep tiny build-time constants in source modules instead.
 ---

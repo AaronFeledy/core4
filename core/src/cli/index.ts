@@ -1,15 +1,9 @@
-import corePackage from "../../package.json";
+import { CORE_VERSION } from "../version.ts";
 
 if (import.meta.main) {
   const argv = Bun.argv.slice(2);
   if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
-    const version = corePackage.version;
-
-    if (typeof version !== "string") {
-      throw new Error("Unable to read @lando/core package version.");
-    }
-
-    console.log(version);
+    console.log(CORE_VERSION);
     process.exit(0);
   }
 
