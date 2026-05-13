@@ -174,6 +174,16 @@ export class ToolingExecError extends Schema.TaggedError<ToolingExecError>()("To
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class ShellExecError extends Schema.TaggedError<ShellExecError>()("ShellExecError", {
+  message: Schema.String,
+  command: Schema.String,
+  cwd: Schema.optional(Schema.String),
+  exitCode: Schema.optional(Schema.Number),
+  stdout: Schema.optional(Schema.String),
+  stderr: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class ProcessExecError extends Schema.TaggedError<ProcessExecError>()("ProcessExecError", {
   message: Schema.String,
   cmd: Schema.String,

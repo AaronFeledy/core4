@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
@@ -928,4 +929,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit `bfc7243 Add ProcessRunner Live implementation backed by Bun.spawn (#23)`
 - Local main / branch refreshed: yes — on `main` at `bfc7243`, local story branch deleted
 - Remaining local state: clean
+---
+
+## [2026-05-13 20:04 UTC] - Sync
+- Previous branch: us-022-shell-runner-live (from .last-branch)
+- Previous PR: none (gh pr list returned empty — no PR was ever opened for this branch)
+- Action: Case E — no PR found; 0 commits ahead of main on branch; clean post-merge state. Deleted local story branch. Stash created for unexpected uncommitted changes in spec/mvp/progress.txt (prior incomplete sync notes — a human will pop if needed).
+- Local main updated: yes (already at origin/main — clean)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — uncommitted progress notes from prior session)
+---
+
+## [2026-05-13 15:17 CDT] - US-022
+- Implemented `ShellRunnerLive` backed by `Bun.$`, including env/cwd handling, shell metacharacter execution, and tagged `ShellExecError` failures for parse errors and non-zero exits.
+- Files changed: `sdk/src/errors/index.ts`, `sdk/src/services/index.ts`, `sdk/test/services/tags.test.ts`, `core/src/services/shell-runner.ts`, `core/test/services/shell-runner.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck`, `bun run lint`, `bun test`, focused ShellRunner/tag tests, and manual ShellRunner execution all passed.
+- **Learnings for future iterations:**
+  - Bun 1.2.18 `ShellPromise` supports `.cwd()`, `.env()`, `.quiet()`, and `.nothrow()`; it does not expose a per-command `.shell()` method.
+  - Invalid Bun shell syntax can throw before a shell result exists, so map both thrown parser errors and non-zero result exits into the service's tagged error.
+  - Use `Context.Tag.Service<typeof Tag>` for live service objects and `Layer.succeed(Tag, service)` for isolated Live layers.
 ---
