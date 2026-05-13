@@ -79,24 +79,39 @@ const writeAtomic = async (path: string, content: string | Uint8Array): Promise<
     await Bun.write(tempPath, content);
     await Bun.write(path, Bun.file(tempPath));
   } finally {
-    if (await Bun.file(tempPath).exists()) {
-      await Bun.file(tempPath).delete();
+    // Clean up the temp file but never let cleanup failures mask the real
+    // error from the try block. Callers cannot act on cleanup failure: the
+    // primary write either succeeded (target is current) or failed (its
+    // error is already propagating via the implicit rethrow).
+    try {
+      if (await Bun.file(tempPath).exists()) {
+        await Bun.file(tempPath).delete();
+      }
+    } catch {
+      // intentionally ignored — see comment above
     }
   }
 };
 
 const stat = async (path: string): Promise<FileStat> => {
-  const file = Bun.file(path);
-  if (!(await file.exists())) {
-    throw notFound(path);
+  // Note: Bun.file(path).exists() returns false for directories, so it cannot
+  // be used as a guard here. Call .stat() directly and translate ENOENT to a
+  // tagged FileNotFoundError so the FileStat contract (which includes
+  // isDirectory: true) is actually reachable for directory paths.
+  try {
+    const stats = await Bun.file(path).stat();
+    return {
+      size: stats.size,
+      mtimeMs: stats.mtimeMs,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory(),
+    };
+  } catch (cause) {
+    if (codeFrom(cause) === "ENOENT") {
+      throw notFound(path);
+    }
+    throw cause;
   }
-  const stats = await file.stat();
-  return {
-    size: stats.size,
-    mtimeMs: stats.mtimeMs,
-    isFile: stats.isFile(),
-    isDirectory: stats.isDirectory(),
-  };
 };
 
 const mkdir = async (path: string): Promise<void> => {
