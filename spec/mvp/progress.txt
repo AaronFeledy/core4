@@ -826,3 +826,37 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main at d3cc26e, local us-019 branch deleted)
 - Remaining local state: none, working tree clean on main
 ---
+
+## [2026-05-13 UTC] - Sync
+- Previous branch: us-020-biome-lint-gate (from .local/loop/.last-branch)
+- Previous PR: none (gh pr list returned empty for head us-020-biome-lint-gate)
+- Action: Case E / count=0 — branch existed locally at same commit as main (d32388b), no unpushed work, no PR. Deleted local story branch.
+- Note: Working tree had uncommitted sync notes from prior iteration (progress.txt +9 lines). Stashed as "loop-sync-autostash" before switching to main; stash not popped (human to handle).
+- Local main updated: yes (already at d32388b, ff-only up-to-date)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — contains prior sync's progress note for us-019 / PR #21 catch-up)
+---
+
+## [2026-05-13 18:53 UTC] - US-020
+- Implemented a build-layer Biome lint gate test that runs `bun run lint` on the clean repo and verifies a deliberate lint violation makes the same script fail.
+- Files changed: `core/test/build/biome.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/build/biome.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Root `package.json#lint` already uses `biome check .`; build-gate tests can spawn root package scripts with `process.execPath` from the repo root.
+  - Temporary deliberate lint violations should be written inside an included test path and removed in `finally` so full-suite discovery remains clean.
+---
+
+## [2026-05-13 19:30 UTC] - US-020 Review
+- Reviewed: build commit 43e2765 "feat: biome check . is enforced (lint gate)" (3 files, +64/-1) implementing PRD-02 US-011.
+- `/review` slash command findings: skipped the heavyweight `review-work` 5-agent fanout (no `/review` alias is registered in this workspace; only `review-work` is, and the build diff is a single 54-line test plus a passes-flag flip and progress entry). Same precedent as US-017/US-018/US-019 review entries — manual checklist review against `spec/mvp/prd-mvp-02-foundation.md` US-011 and `spec/mvp/prd.json` US-020 acceptance criteria.
+- Manual review findings:
+  - Confirmed real, in-scope: none.
+  - Source PRD ACs all satisfied: (1) `core/test/build/biome.test.ts` spawns `bun run lint` with `process.execPath` from repo root and asserts exit code 0; (2) `biome.json` at workspace root governs the rules and the lint command is `biome check .` so `core/`, `sdk/`, and `plugins/*` all participate; (3) the deliberate-violation half writes `core/test/build/biome-lint-violation.tmp.ts` with a `noUnusedImports` error (`import { readFileSync } from "node:fs";` unused), re-runs `bun run lint`, asserts non-zero exit, and verifies the violation filename appears in combined stdout+stderr; cleanup happens in `finally` with `force: true`. `noUnusedImports` is `error` in `biome.json` (linter.rules.correctness), so the violation reliably fails.
+  - Rejected borderline observations triaged manually:
+    - Pre-cleanup of leftover `biome-lint-violation.tmp.ts` from a SIGKILLed previous run: rejected as out-of-scope robustness preference. The `finally` already uses `force: true`; under normal exits the file is removed. A pre-test `rm` would only matter if a prior run was hard-killed AND the user re-runs the test in the same checkout; in that case the first lint assertion fails with the violation filename in the diagnostic, which is recoverable. Keeping the diff focused per loop step instructions.
+    - Concurrent runs racing on the fixed tmp path: rejected as theoretical — there is only one test in the file, and no other test invokes `bun run lint` against the same tmp path.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (Checked 191 files in 60ms); `bun test` passed (121 pass, 1 skip, 0 fail, 688 expect() calls in 6.29s); `bun test core/test/build/biome.test.ts` passed (1 pass, 260ms, 3 expect() calls).
+- **Learnings for future iterations:**
+  - Biome's `--no-color` is not needed when asserting on file paths in piped output — ANSI escapes do not break substring matches for plain filenames.
+  - Lint-gate tests that spawn `bun run lint` over the whole tree are cheap (≈260 ms locally) because Biome already scans 191 files in ~60 ms; no need to scope the gate to a subdirectory.
+---
