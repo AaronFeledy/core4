@@ -765,3 +765,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Marker discovery tests (`expect(EXPORT).toBe(KNOWN_VALUE)`) are sufficient evidence that a `bunfig.toml` include glob catches files at that surface — running them proves the glob caught the file.
   - `bun test <dir>/` works for both flat directories and parent dirs (e.g. `bun test plugins/` traverses all `plugins/*/test/**`); useful for narrowing CI scope without editing `bunfig.toml`.
 ---
+
+## [2026-05-13 12:24 CDT] - Push
+- Branch pushed: us-018-bun-test-discovery → origin/us-018-bun-test-discovery (2 commits: b1ae549 feat, c933c8f docs)
+- PR: #20 https://github.com/AaronFeledy/core4/pull/20 (created)
+- CI outcome: pass — linux-x64 ✅, linux-arm64 ✅, macos-arm64 ✅, windows-x64 ✅, Cursor Bugbot ✅ (all SUCCESS)
+- Review feedback: none (reviewDecision="", no comments)
+- Triage rounds used: 0
+- Merge: merged (squash) as 76a31d0 "Explicit Bun test discovery with bunfig.toml and service/provider test fixtures (#20)"
+- Local main / branch refreshed: yes — on main at 76a31d0, us-018-bun-test-discovery branch deleted
+- Remaining local state: two stale local branches (align-scaffolding-with-spec, us-011-oclif-init-hook) — not product code for this iteration
+---
