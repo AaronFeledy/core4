@@ -64,6 +64,27 @@ describe("ConfigServiceLive", () => {
     });
   });
 
+  test("config.yml with column-0 comments parses without error", async () => {
+    await withTempConfigRoot(async (_dir) => {
+      await writeFile(
+        join(_dir, "config.yml"),
+        [
+          "# Lando global config",
+          "defaultProviderId: docker",
+          "# another comment",
+          "telemetry:",
+          "  enabled: true",
+          "",
+        ].join("\n"),
+      );
+
+      const config = await loadConfig();
+
+      expect(config.defaultProviderId).toBe("docker");
+      expect(config.telemetry.enabled).toBe(true);
+    });
+  });
+
   test("malformed YAML fails with ConfigError carrying the file path", async () => {
     await withTempConfigRoot(async (dir) => {
       const filePath = join(dir, "config.yml");

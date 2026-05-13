@@ -1,3 +1,5 @@
+import { join } from "node:path";
+
 import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigError } from "@lando/sdk/errors";
@@ -33,10 +35,11 @@ const parseConfigYaml = (text: string, path: string): Record<string, unknown> =>
 
   for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
     const withoutComment = rawLine.replace(/\s+#.*$/, "");
-    if (withoutComment.trim() === "") continue;
+    const trimmedLine = withoutComment.trim();
+    if (trimmedLine === "" || trimmedLine.startsWith("#")) continue;
 
     const indent = withoutComment.match(/^ */)?.[0].length ?? 0;
-    const match = withoutComment.trim().match(/^([A-Za-z0-9_-]+):(.*)$/);
+    const match = trimmedLine.match(/^([A-Za-z0-9_-]+):(.*)$/);
     if (match === null) {
       throw configError(path, `Malformed YAML at line ${index + 1}`);
     }
@@ -104,7 +107,7 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
 
 const loadConfig = async (): Promise<GlobalConfig> => {
   const userConfRoot = process.env.LANDO_USER_CONF_ROOT ?? DEFAULT_CONFIG_ROOT;
-  const path = `${userConfRoot}/config.yml`;
+  const path = join(userConfRoot, "config.yml");
   const file = Bun.file(path);
   let fileConfig: Record<string, unknown> = {};
 
