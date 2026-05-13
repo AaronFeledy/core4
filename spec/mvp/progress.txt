@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
 - ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
@@ -980,4 +981,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit `db65e2a Add ShellRunner Live implementation backed by Bun.$ (#24)`
 - Local main / branch refreshed: yes — on `main` at `db65e2a`, local story branch deleted
 - Remaining local state: clean
+---
+
+## [2026-05-13 15:38] - Sync
+- Previous branch: us-022-shell-runner-live
+- Previous PR: #24 https://github.com/AaronFeledy/core4/pull/24
+- Action: caught up after prior merge (PR #24 already MERGED; local main already at origin/main; local branch was absent)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-13 15:58] - US-023
+- Implemented Bun-backed FileSystem Live service with read streams, readText, write, writeAtomic, exists, stat, mkdir, remove, readDir, and legacy readFile/writeFile aliases.
+- Files changed: sdk error/service contracts, core FileSystem Live implementation, test runtime doubles, runtime stubs, SDK export/tag tests, and FileSystem service tests.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; focused FileSystem tests passed; lsp diagnostics clean on changed files.
+- **Learnings for future iterations:**
+  - Bun.file exposes exists/stat/stream/delete and Bun.write creates missing parent directories, which lets mkdir be represented by writing then deleting a temporary marker.
+  - Bun has no direct public atomic rename primitive in the file API; the MVP FileSystem implementation writes a temp file, copies it into place with Bun.write, then deletes the temp file and verifies cleanup.
+  - Keep FileSystem aliases (`readFile`/`writeFile`) while newer stories migrate consumers to `readText`/`write` to avoid churn in existing runtime tests.
 ---
