@@ -92,4 +92,43 @@ describe("FileSystemLive", () => {
       expect(result.entries).toEqual(["atomic.txt"]);
     });
   });
+
+  test("stat reports directories with isDirectory true", async () => {
+    await withTempDir(async (dir) => {
+      const subdir = join(dir, "nested");
+
+      const stats = await Effect.runPromise(
+        Effect.flatMap(FileSystem, (fileSystem) =>
+          Effect.gen(function* () {
+            yield* fileSystem.mkdir(subdir);
+            return yield* fileSystem.stat(subdir);
+          }),
+        ).pipe(Effect.provide(FileSystemLive)),
+      );
+
+      expect(stats.isDirectory).toBe(true);
+      expect(stats.isFile).toBe(false);
+    });
+  });
+
+  test("stat on missing path fails with FileNotFoundError", async () => {
+    await withTempDir(async (dir) => {
+      const missing = join(dir, "no-such-thing");
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(FileSystem, (fileSystem) => fileSystem.stat(missing)).pipe(
+          Effect.provide(FileSystemLive),
+        ),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(FileNotFoundError);
+          expect(failure.value.path).toBe(missing);
+        }
+      }
+    });
+  });
 });
