@@ -75,8 +75,8 @@ const write = async (path: string, content: string | Uint8Array): Promise<void> 
 
 const writeAtomic = async (path: string, content: string | Uint8Array): Promise<void> => {
   const tempPath = `${path}.tmp-${crypto.randomUUID()}`;
-  await Bun.write(tempPath, content);
   try {
+    await Bun.write(tempPath, content);
     await Bun.write(path, Bun.file(tempPath));
   } finally {
     if (await Bun.file(tempPath).exists()) {
@@ -120,8 +120,15 @@ const remove = async (path: string): Promise<void> => {
     return;
   }
 
-  for await (const entry of new Bun.Glob("**/*").scan({ cwd: path, onlyFiles: true, dot: true })) {
-    await Bun.file(joinPath(path, entry)).delete();
+  // path may not exist at all — Bun.Glob.scan throws ENOENT for a non-existent cwd,
+  // so catch that case and return silently (no-op semantics for missing paths).
+  try {
+    for await (const entry of new Bun.Glob("**/*").scan({ cwd: path, onlyFiles: true, dot: true })) {
+      await Bun.file(joinPath(path, entry)).delete();
+    }
+  } catch (err) {
+    if (codeFrom(err) === "ENOENT") return;
+    throw err;
   }
 };
 
