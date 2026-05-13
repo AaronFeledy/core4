@@ -749,3 +749,19 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Gotchas encountered: provider-touching checks should use Bun's `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` so fresh checkouts do not require Podman/Docker.
   - Useful context: root `bun test` output should include markers from `core/test/services`, `sdk/test/services`, and `plugins/*/test` when discovery is healthy.
 ---
+
+## [2026-05-13 12:20 CDT] - US-018 Review
+- Reviewed: build commit b1ae549 "feat: bun test configuration covers unit + Effect-service + CLI scenario tests" (6 files, +56/-1) implementing PRD-02 US-009.
+- `/review` findings: skipped the heavyweight `review-work` 5-agent fanout (the `/review` command alias does not exist in this workspace; only `review-work` is registered). Followed the precedent set in the US-017 Review entry — manual checklist review against the source PRD (`spec/mvp/prd-mvp-02-foundation.md` US-009) and prd.json US-018 acceptance criteria.
+- Manual review findings:
+  - Confirmed real, in-scope: none.
+  - Source PRD ACs all satisfied: (1) `core/test/unit/` (6 pass / 3 files), `core/test/services/` (1 pass + 1 skip / 2 files), and `core/test/cli/` (13 pass / 2 files) each run individually via `bun test <path>`; (2) top-level `bun test` discovers all (118 pass, 1 skip, 0 fail across 24 files); (3) `bunfig.toml` declares the include pattern explicitly with three globs covering future test layers under each surface by directory convention; (4) `core/test/services/provider-gate.test.ts` gates on `LANDO_TEST_PODMAN_SOCKET` via `test.skipIf(...)`, confirmed by the "1 skip" line on a fresh checkout; (5) typecheck/lint/whole-workspace tests pass.
+  - The three new marker tests (`core/test/services/discovery.test.ts`, `core/test/services/provider-gate.test.ts`, `plugins/service-lando/test/discovery.test.ts`) are intentionally minimal — they prove each include glob catches files at its surface. The provider-gate body is a placeholder; real provider-touching assertions belong to PRD-04.
+  - Rejected: none — diff is focused and contains no spurious or out-of-scope changes.
+- Verification run and result: `bun run typecheck` (clean), `bun run lint` (Checked 187 files, no fixes), full `bun test` (118 pass / 1 skip / 0 fail / 24 files, exit 0). Per-directory invocations confirmed each layer is independently runnable: `bun test core/test/unit/` 6 pass, `bun test core/test/services/` 1 pass + 1 skip, `bun test core/test/cli/` 13 pass, `bun test plugins/` 4 pass across 2 files.
+- No review fixes committed; build commit b1ae549 stands as-is.
+- **Learnings for future iterations:**
+  - When the loop instructions reference `/review` but only `review-work` (5-agent fanout) is available, manual checklist review against the source PRD is the established precedent for trivial diffs (≤ ~10 files, structural/config-only changes).
+  - Marker discovery tests (`expect(EXPORT).toBe(KNOWN_VALUE)`) are sufficient evidence that a `bunfig.toml` include glob catches files at that surface — running them proves the glob caught the file.
+  - `bun test <dir>/` works for both flat directories and parent dirs (e.g. `bun test plugins/` traverses all `plugins/*/test/**`); useful for narrowing CI scope without editing `bunfig.toml`.
+---
