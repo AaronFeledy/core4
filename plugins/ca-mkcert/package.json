@@ -17,7 +17,7 @@
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "files": ["./src", "./dist", "./plugin.yaml"],
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
   "keywords": ["lando", "lando-plugin", "lando-ca", "mkcert"],
   "lando": {
     "manifest": "./plugin.yaml"
@@ -28,7 +28,7 @@
   },
   "scripts": {
     "build": "tsc -b",
-    "clean": "rm -rf dist .tsbuildinfo *.tsbuildinfo",
+    "clean": "rm -rf dist .tsbuildinfo",
     "typecheck": "tsc -b"
   }
 }

@@ -39,6 +39,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     const binary = await stat(binaryPath);
     expect(binary.isFile()).toBe(true);
     expect(binary.mode & 0o111).not.toBe(0);
+    expect(await Bun.file(binaryPath).text()).not.toContain(".tsbuildinfo");
 
     const version = await runCommand([binaryPath, "--version"]);
     expect(version.exitCode).toBe(0);

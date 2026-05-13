@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
@@ -775,4 +776,40 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 76a31d0 "Explicit Bun test discovery with bunfig.toml and service/provider test fixtures (#20)"
 - Local main / branch refreshed: yes — on main at 76a31d0, us-018-bun-test-discovery branch deleted
 - Remaining local state: two stale local branches (align-scaffolding-with-spec, us-011-oclif-init-hook) — not product code for this iteration
+---
+
+## [2026-05-13 UTC] - Sync
+- Previous branch: us-019-tsbuildinfo-runtime-leak (from .last-branch)
+- Previous PR: none (no PR found for this branch)
+- Action: Case E, count=0 — branch existed at same commit as main with no work; deleted stale local branch, stayed on main
+- Stash created: yes (loop-sync-autostash — contained uncommitted progress note from prior sync step re US-018/PR#20; human can pop to recover)
+- Local main updated: yes (already at origin/main 4e84e25)
+- Branch after sync: main
+---
+
+## [2026-05-13 17:54 UTC] - US-019
+- Implemented runtime/build guards so TypeScript build-info artifacts are not opened by the `@lando/core` runtime import and `.tsbuildinfo` markers are scrubbed from the compiled binary.
+- Files changed: `core/test/build/no-runtime-tsbuildinfo.test.ts`, `core/test/build/compile.test.ts`, `scripts/sanitize-compiled-binary.ts`, package clean/files settings, CLI version source, `AGENTS.md`, and MVP progress/PRD metadata.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (120 pass, 1 skip, 0 fail); `bun run build` passed and `./core/dist/lando --version` printed `0.0.0`; binary `.tsbuildinfo` count was 0.
+- **Learnings for future iterations:**
+  - Compiled Bun binaries can include dependency/tooling marker strings even when runtime behavior is clean, so release-only forbidden markers may need byte-preserving post-compile sanitization plus a runnable-binary regression test.
+  - Avoid importing full package metadata in compiled binary fast paths; keep tiny build-time constants in source modules instead.
+---
+
+## [2026-05-13 18:01 UTC] - US-019 Review
+- Reviewed: build commit d79ff79 "feat: tsc -b build-info file dist/.tsbuildinfo does not leak into runtime" (18 files, +193/-28) implementing PRD-02 US-010.
+- `/review` slash command findings: skipped the heavyweight `review-work` 5-agent fanout (the `/review` command alias does not exist in this workspace; only `review-work` is registered). Followed the precedent set in the US-017/US-018 Review entries — manual checklist review against the source PRD (`spec/mvp/prd-mvp-02-foundation.md` US-010) and prd.json US-019 acceptance criteria.
+- Manual review findings:
+  - Confirmed real, in-scope: none.
+  - Source PRD ACs all satisfied: (1) `core/test/build/no-runtime-tsbuildinfo.test.ts` instruments `node:fs` `openSync`/`readFileSync` and asserts that `await import('@lando/core')` opens zero `.tsbuildinfo` paths; (2) the same file's second test writes 16 fake `.tsbuildinfo` artifacts across `core/`, `sdk/`, and every `plugins/*` workspace plus root, runs `bun run clean`, and asserts none remain; (3) root `clean` script now cascades `bun run --filter='*' clean && rm -rf dist .tsbuildinfo *.tsbuildinfo`, and every per-workspace `clean` already rmrf's `dist .tsbuildinfo *.tsbuildinfo`; (4) `.gitignore` excludes `*.tsbuildinfo` and `**/*.tsbuildinfo` (pre-existing); (5) `core/package.json` and every plugin's `files` field excludes `./dist/**/*.tsbuildinfo` so published tarballs cannot leak the artifact.
+  - Compiled binary regression guard (`core/test/build/compile.test.ts`) extended with `expect(await Bun.file(binaryPath).text()).not.toContain(".tsbuildinfo")` — passes; sanitizer `scripts/sanitize-compiled-binary.ts` does byte-length-preserving `.tsbuildinfo` → `.tsbuildnoop` rewrite. After `bun run build`, `grep -ac '\.tsbuildinfo' ./core/dist/lando` returns 0.
+  - Hard-coded `CORE_VERSION = "0.0.0"` in `core/src/version.ts` introduces a manual sync requirement against `core/package.json#version`. Existing fast-path test (`core/test/cli/fast-path.test.ts:84,95`) compares CLI output to `corePackage.version`, so any future drift surfaces as a test failure rather than silent breakage. Documented in `AGENTS.md`. Out of scope for US-019 review fix — design choice required to prevent `core/package.json` script/metadata strings from leaking into the compiled binary.
+  - Test side-effect note: the two new build tests clobber any local `core/dist/.tsbuildinfo` and force `bun run clean` to nuke real `dist/`/`oclif.manifest.json` outputs. Acceptable per PRD AC pattern; developers re-run `bun run build` afterward.
+  - Rejected: none — diff is focused, no spurious or out-of-scope changes.
+- Verification run and result: `bun run typecheck` (clean), `bun run lint` (Checked 190 files, no fixes), full `bun test` (120 pass / 1 skip / 0 fail / 25 files, exit 0), `bun run build` (8 workspaces built; compile+sanitize succeeded), `./core/dist/lando --version` / `version` / `-v` all print `0.0.0`, `./core/dist/lando --help` renders OCLIF USAGE/TOPICS/COMMANDS, and `grep -ac '\.tsbuildinfo' ./core/dist/lando` returned `0`.
+- No review fixes committed; build commit d79ff79 stands as-is.
+- **Learnings for future iterations:**
+  - Tests that exercise root `clean` semantics are inherently destructive of any unfixtured local build outputs — keep them concentrated under `core/test/build/` so contributors can predict the blast radius and rerun `bun run build`.
+  - Workspace `files` fields support gitignore-style negation (`"!./dist/**/*.tsbuildinfo"`) so a single `dist` whitelist plus targeted exclusions is enough — no separate `.npmignore` needed for this surface.
+  - When a slash command referenced by the loop instructions (`/review`) is unavailable, the established precedent (US-017/US-018) is manual checklist review against the source PRD, not a forced detour through `review-work`.
 ---

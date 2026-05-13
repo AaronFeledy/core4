@@ -23,7 +23,7 @@
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "clean": "bun run --filter='*' clean",
+    "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
     "release": "bun run scripts/release.ts"
