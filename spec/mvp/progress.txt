@@ -1102,3 +1102,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: no (pending merge)
 - Remaining local state: clean after committing progress.txt
 ---
+
+## [2026-05-13 22:55 UTC] - Push Triage Round 1
+- CI on PR #27 HEAD 6790345: windows-x64 FAILURE; linux/macos all SUCCESS; Cursor Bugbot NEUTRAL
+- Windows failure: `ConfigServiceLive > malformed YAML fails with ConfigError carrying the file path` — path separator mismatch. Implementation used template literal `${userConfRoot}/config.yml` (forward slash); test used `node:path.join(dir, "config.yml")` (backslash on Windows). REAL BUG.
+- Cursor Bugbot issue 1 (Medium): column-0 YAML comments (`# comment`) not stripped by `/\s+#.*$/` regex. REAL BUG.
+- Cursor Bugbot issue 2 (Low): `get` re-reads config file on every call. Advisory only; MVP design choice; `reviewDecision` is ""; not blocking merge. REJECTED as out-of-scope for this story.
+- Fixes applied in commit 282a628: added `node:path.join`, fixed comment skip condition, added column-0 comment test.
+- Verification: typecheck clean, lint clean, `bun test` 140 pass / 1 skip / 0 fail.
+- Pushed to origin, re-running CI on new HEAD.
+---
