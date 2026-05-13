@@ -1130,3 +1130,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-13 18:25 CDT] - US-025
+- Implemented `LandofileServiceLive` discovery from the current working directory up to the first `.lando.yml`, dependency-free MVP YAML parsing, strict `LandofileShape` validation, missing-file parse, and unsupported-key error handling.
+- Files changed: `core/src/landofile/parser.ts`, `core/src/landofile/service.ts`, `core/src/runtime/layer.ts`, `core/test/services/landofile.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/services/landofile.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual QA script discovered a temp app Landofile and printed `manual-app` with `web`/`db` services.
+- **Learnings for future iterations:**
+  - Patterns discovered: Live service layers use `Context.Tag.Service<typeof Tag>` plus `Layer.succeed`; validation errors should be created from strict Effect Schema decode results with `onExcessProperty: "error"`.
+  - Gotchas encountered: current Bun docs have `Bun.YAML`, but the repo's pinned Bun 1.2.18 environment still needs the dependency-free parser approach unless the runtime is upgraded.
+  - Useful context: detailed source PRD paths can differ from the summary index; the source PRD named `core/test/services/landofile.test.ts`, so the test file follows that path.
+---
