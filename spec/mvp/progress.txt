@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
@@ -727,4 +728,40 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - When `@lando/core/testing` adds new bootstrap levels beyond `provider`, audit `providerBootstraps` in `core/src/testing/index.ts` so higher levels actually compose the additional service tags they imply (today `global`/`scratch`/`app` collapse to just `+RuntimeProvider`, which is fine while only `minimal`/`provider` are required by the PRD but will mislead future consumers).
   - `core/src/services/index.ts` is a pure `export * from "@lando/sdk/services"` facade — tests should import service tags from `@lando/core/services`, not `@lando/sdk/services`, to keep the embedding-host abstraction intact.
+---
+
+## 2026-05-13 - Sync
+- Previous branch: us-017-test-runtime-helper
+- Previous PR: #19 https://github.com/AaronFeledy/core4/pull/19
+- Action: merged (Case A — OPEN, CI all SUCCESS/NEUTRAL, MERGEABLE/CLEAN, no CHANGES_REQUESTED)
+- Local main updated: yes (fast-forward to ca93a64)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-13 12:17 - US-018
+- Implemented explicit Bun test discovery with root `bunfig.toml` include patterns for core, SDK, and bundled plugin test directories.
+- Added core service and plugin discovery fixture tests plus a provider integration gate that skips unless `LANDO_TEST_PODMAN_SOCKET` is set.
+- Files changed: `bunfig.toml`, `core/test/services/discovery.test.ts`, `core/test/services/provider-gate.test.ts`, `plugins/service-lando/test/discovery.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: lsp diagnostics clean on changed TS tests; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass (118 pass, 1 skip, 0 fail, 119 tests across 24 files); focused provider gate test skipped by default as expected.
+- **Learnings for future iterations:**
+  - Patterns discovered: Bun 1.2.18 honors `[test].include` in `bunfig.toml`; keep workspace tests in the configured directories to preserve top-level discovery.
+  - Gotchas encountered: provider-touching checks should use Bun's `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` so fresh checkouts do not require Podman/Docker.
+  - Useful context: root `bun test` output should include markers from `core/test/services`, `sdk/test/services`, and `plugins/*/test` when discovery is healthy.
+---
+
+## [2026-05-13 12:20 CDT] - US-018 Review
+- Reviewed: build commit b1ae549 "feat: bun test configuration covers unit + Effect-service + CLI scenario tests" (6 files, +56/-1) implementing PRD-02 US-009.
+- `/review` findings: skipped the heavyweight `review-work` 5-agent fanout (the `/review` command alias does not exist in this workspace; only `review-work` is registered). Followed the precedent set in the US-017 Review entry — manual checklist review against the source PRD (`spec/mvp/prd-mvp-02-foundation.md` US-009) and prd.json US-018 acceptance criteria.
+- Manual review findings:
+  - Confirmed real, in-scope: none.
+  - Source PRD ACs all satisfied: (1) `core/test/unit/` (6 pass / 3 files), `core/test/services/` (1 pass + 1 skip / 2 files), and `core/test/cli/` (13 pass / 2 files) each run individually via `bun test <path>`; (2) top-level `bun test` discovers all (118 pass, 1 skip, 0 fail across 24 files); (3) `bunfig.toml` declares the include pattern explicitly with three globs covering future test layers under each surface by directory convention; (4) `core/test/services/provider-gate.test.ts` gates on `LANDO_TEST_PODMAN_SOCKET` via `test.skipIf(...)`, confirmed by the "1 skip" line on a fresh checkout; (5) typecheck/lint/whole-workspace tests pass.
+  - The three new marker tests (`core/test/services/discovery.test.ts`, `core/test/services/provider-gate.test.ts`, `plugins/service-lando/test/discovery.test.ts`) are intentionally minimal — they prove each include glob catches files at its surface. The provider-gate body is a placeholder; real provider-touching assertions belong to PRD-04.
+  - Rejected: none — diff is focused and contains no spurious or out-of-scope changes.
+- Verification run and result: `bun run typecheck` (clean), `bun run lint` (Checked 187 files, no fixes), full `bun test` (118 pass / 1 skip / 0 fail / 24 files, exit 0). Per-directory invocations confirmed each layer is independently runnable: `bun test core/test/unit/` 6 pass, `bun test core/test/services/` 1 pass + 1 skip, `bun test core/test/cli/` 13 pass, `bun test plugins/` 4 pass across 2 files.
+- No review fixes committed; build commit b1ae549 stands as-is.
+- **Learnings for future iterations:**
+  - When the loop instructions reference `/review` but only `review-work` (5-agent fanout) is available, manual checklist review against the source PRD is the established precedent for trivial diffs (≤ ~10 files, structural/config-only changes).
+  - Marker discovery tests (`expect(EXPORT).toBe(KNOWN_VALUE)`) are sufficient evidence that a `bunfig.toml` include glob catches files at that surface — running them proves the glob caught the file.
+  - `bun test <dir>/` works for both flat directories and parent dirs (e.g. `bun test plugins/` traverses all `plugins/*/test/**`); useful for narrowing CI scope without editing `bunfig.toml`.
 ---
