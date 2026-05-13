@@ -813,3 +813,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Workspace `files` fields support gitignore-style negation (`"!./dist/**/*.tsbuildinfo"`) so a single `dist` whitelist plus targeted exclusions is enough — no separate `.npmignore` needed for this surface.
   - When a slash command referenced by the loop instructions (`/review`) is unavailable, the established precedent (US-017/US-018) is manual checklist review against the source PRD, not a forced detour through `review-work`.
 ---
+
+## [2026-05-13 18:20 UTC] - Push
+- Branch pushed: us-019-tsc-b-build-info → origin/us-019-tsc-b-build-info (2 commits: d79ff79 feat, 6b14de6 docs)
+- PR: #21 https://github.com/AaronFeledy/core4/pull/21 (created)
+- CI outcome (round 1): fail — windows-x64 FAILURE (`bun run clean` exited 1 in the new no-runtime-tsbuildinfo test)
+- Triage (round 1): Real issue. Root cause: shell glob `*.tsbuildinfo` in every workspace clean script fails on Windows when no matching files exist (all workspaces use `tsBuildInfoFile: "./.tsbuildinfo"` so the glob is unnecessary). Fix: removed `*.tsbuildinfo` from all 9 clean scripts (root + 8 workspaces). Local `bun run typecheck`, `bun run lint`, `bun test` (120 pass / 1 skip / 0 fail) confirmed before pushing fix commit 71e0d1b.
+- CI outcome (round 2): pass — linux-x64 ✅, linux-arm64 ✅, macos-arm64 ✅, windows-x64 ✅; Cursor Bugbot still IN_PROGRESS (not required)
+- Review feedback: none
+- Triage rounds used: 1
+- Merge: merged (squash) — d3cc26e "Guard tsc build-info artifacts from runtime and compiled binary (#21)"
+- Local main / branch refreshed: yes (main at d3cc26e, local us-019 branch deleted)
+- Remaining local state: none, working tree clean on main
+---
