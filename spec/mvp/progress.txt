@@ -1121,3 +1121,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Pushed to origin; CI run 25831624173 completed SUCCESS on all platforms (linux-x64, linux-arm64, macos-arm64, windows-x64).
 - Triage rounds used: 2 of 3 cap.
 - PR #27 squash-merged; main pulled; local branch deleted.
+
+## [2026-05-13 23:20 UTC] - Sync
+- Previous branch: us-024-config-service-live
+- Previous PR: #27 https://github.com/AaronFeledy/core4/pull/27
+- Action: Case B — PR was OPEN with windows-x64 CI failing (test cleanup used `= undefined` instead of `delete`, leaving string "undefined" in env on Windows/Bun 1.3.14). Committed uncommitted triage-round-1 progress note, delegated to push sub-agent which fixed the test, pushed, CI went green on all 4 platforms, PR squash-merged.
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
