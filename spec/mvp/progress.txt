@@ -969,3 +969,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Pattern for "rethrown tagged error must not be re-wrapped": guard the `catch` callback with a `_tag` discriminant (`cause._tag === "MyTagError"`) and return the cause unchanged when matched. This avoids the common bug where a service's typed payload (exitCode, stdout, stderr) gets buried inside a generic wrapping error's `cause`.
   - When a SDK tag failure channel changes from one tagged error to another (here `ToolingExecError` → `ShellExecError`), check `sdk/test/services/tags.test.ts` for the `EXPECTED_TAGS` methods list, the `freezes each documented service method name` ordered array, the in-memory service stub, AND the `assertTaggedFailure<...ReturnType<...["run"]>>(true)` line at the bottom — all four spots must stay synchronized.
 ---
+
+## [2026-05-13 20:37 UTC] - Push (US-022)
+- Branch pushed: `us-022-shell-runner-live` → `origin/us-022-shell-runner-live`
+- Commits: `6507d34 feat: ShellRunner Live implementation (Bun.$)`, `c248d97 docs(US-022): record review step outcome`
+- PR: #24 https://github.com/AaronFeledy/core4/pull/24 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none (no reviews, no comments)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit `db65e2a Add ShellRunner Live implementation backed by Bun.$ (#24)`
+- Local main / branch refreshed: yes — on `main` at `db65e2a`, local story branch deleted
+- Remaining local state: clean
+---
