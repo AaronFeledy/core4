@@ -66,6 +66,9 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ConfigError).toBeDefined();
     expect(errors.CacheError).toBeDefined();
     expect(errors.EventError).toBeDefined();
+    expect(errors.FileNotFoundError).toBeDefined();
+    expect(errors.FilePermissionError).toBeDefined();
+    expect(errors.FileIoError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {

@@ -51,7 +51,19 @@ const EXPECTED_TAGS = [
   {
     tag: FileSystem,
     key: "@lando/core/FileSystem",
-    methods: ["readFile", "writeFile", "writeAtomic", "exists"],
+    methods: [
+      "read",
+      "readText",
+      "write",
+      "writeAtomic",
+      "exists",
+      "stat",
+      "mkdir",
+      "remove",
+      "readDir",
+      "readFile",
+      "writeFile",
+    ],
   },
   { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
   { tag: ShellRunner, key: "@lando/core/ShellRunner", methods: ["exec", "run", "runScript"] },
@@ -104,7 +116,19 @@ describe("Effect service tags", () => {
       ["discover"],
       ["list", "load"],
       ["read", "write", "invalidate"],
-      ["readFile", "writeFile", "writeAtomic", "exists"],
+      [
+        "read",
+        "readText",
+        "write",
+        "writeAtomic",
+        "exists",
+        "stat",
+        "mkdir",
+        "remove",
+        "readDir",
+        "readFile",
+        "writeFile",
+      ],
       ["run", "stream"],
       ["exec", "run", "runScript"],
     ]);
@@ -141,10 +165,26 @@ describe("Effect service tags", () => {
       runScript: (_path: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     };
 
+    const fileSystem: Context.Tag.Service<typeof FileSystem> = {
+      read: (_path: string) => Stream.empty,
+      readText: (_path: string) => Effect.succeed(""),
+      write: (_path: string, _content: string | Uint8Array) => Effect.void,
+      writeAtomic: (_path: string, _content: string | Uint8Array) => Effect.void,
+      exists: (_path: string) => Effect.succeed(false),
+      stat: (_path: string) => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+      mkdir: (_path: string) => Effect.void,
+      remove: (_path: string) => Effect.void,
+      readDir: (_path: string) => Effect.succeed([]),
+      readFile: (_path: string) => Effect.succeed(""),
+      writeFile: (_path: string, _content: string) => Effect.void,
+    };
+
     expect(Effect.isEffect(logger.info("ready"))).toBe(true);
     expect(Effect.isEffect(eventService.publish({ _tag: "test-event" }))).toBe(true);
     expect(Stream.StreamTypeId in Object(eventService.subscribe("test-event"))).toBe(true);
     expect(Effect.isEffect(cacheService.read("key"))).toBe(true);
+    expect(Effect.isEffect(fileSystem.readText("/tmp/file"))).toBe(true);
+    expect(Stream.StreamTypeId in Object(fileSystem.read("/tmp/file"))).toBe(true);
     expect(Effect.isEffect(processRunner.run({ cmd: "true", args: [] }))).toBe(true);
     expect(Stream.StreamTypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
     expect(Effect.isEffect(shellRunner.exec("echo ok"))).toBe(true);

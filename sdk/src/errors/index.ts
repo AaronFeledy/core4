@@ -199,6 +199,25 @@ export class ProcessTimeoutError extends Schema.TaggedError<ProcessTimeoutError>
   elapsedMs: Schema.Number,
 }) {}
 
+// -- Filesystem ------------------------------------------------------------
+export class FileNotFoundError extends Schema.TaggedError<FileNotFoundError>()("FileNotFoundError", {
+  message: Schema.String,
+  path: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+export class FilePermissionError extends Schema.TaggedError<FilePermissionError>()("FilePermissionError", {
+  message: Schema.String,
+  path: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+export class FileIoError extends Schema.TaggedError<FileIoError>()("FileIoError", {
+  message: Schema.String,
+  path: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 // -- Lifecycle / events ----------------------------------------------------
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,

@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
 - ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
@@ -980,4 +981,52 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit `db65e2a Add ShellRunner Live implementation backed by Bun.$ (#24)`
 - Local main / branch refreshed: yes — on `main` at `db65e2a`, local story branch deleted
 - Remaining local state: clean
+---
+
+## [2026-05-13 15:38] - Sync
+- Previous branch: us-022-shell-runner-live
+- Previous PR: #24 https://github.com/AaronFeledy/core4/pull/24
+- Action: caught up after prior merge (PR #24 already MERGED; local main already at origin/main; local branch was absent)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-13 15:58] - US-023
+- Implemented Bun-backed FileSystem Live service with read streams, readText, write, writeAtomic, exists, stat, mkdir, remove, readDir, and legacy readFile/writeFile aliases.
+- Files changed: sdk error/service contracts, core FileSystem Live implementation, test runtime doubles, runtime stubs, SDK export/tag tests, and FileSystem service tests.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; focused FileSystem tests passed; lsp diagnostics clean on changed files.
+- **Learnings for future iterations:**
+  - Bun.file exposes exists/stat/stream/delete and Bun.write creates missing parent directories, which lets mkdir be represented by writing then deleting a temporary marker.
+  - Bun has no direct public atomic rename primitive in the file API; the MVP FileSystem implementation writes a temp file, copies it into place with Bun.write, then deletes the temp file and verifies cleanup.
+  - Keep FileSystem aliases (`readFile`/`writeFile`) while newer stories migrate consumers to `readText`/`write` to avoid churn in existing runtime tests.
+---
+
+## [2026-05-13 16:15 CDT] - US-023 Review
+- Reviewed: build commit `b75b7b0 feat: FileSystem Live implementation (Bun.file)` (10 files, +459/-19) implementing PRD-03 US-003.
+- `/review` slash command: not registered in this workspace (only `review-work` is, per US-017..US-022 precedent). Performed manual checklist review against `spec/mvp/prd-mvp-03-effect-services.md` US-003 and `spec/mvp/prd.json` US-023 acceptance criteria.
+- Manual review findings:
+  - PRD-03 US-003 AC#1 (test exercises read/write/exists/stat/mkdir/remove/readDir on a Bun temp dir): satisfied by `core/test/services/file-system.test.ts` "writes, reads, stats, lists, and removes files" — covers all 7 methods plus `readText` and `read` Stream collect.
+  - AC#2 (failure channels are FileNotFoundError/FilePermissionError/FileIoError): contract enforced via SDK `FileSystemError = FileNotFoundError | FilePermissionError | FileIoError` and `mapFileError` ENOENT→FileNotFoundError / EACCES|EPERM→FilePermissionError / else→FileIoError mapping; missing-read path covered by the "fails missing reads with FileNotFoundError carrying the path" test asserting `path` payload preservation.
+  - AC#3 (read → `Stream<Uint8Array>` + `readText` → `Effect<string, ...>`): satisfied; first test runs `Stream.runCollect` over `fileSystem.read(filePath)` and decodes bytes back to `"hello"`.
+  - AC#4 (no `node:fs` in impl, Bun.file/Bun.write only): verified by grep — `core/src/services/file-system.ts` imports only `effect` and `@lando/sdk/...`; uses `Bun.file`, `Bun.write`, and `Bun.Glob`. The test fixture uses `node:fs/promises` for tempdir helpers, which is fine (test-only, not implementation).
+  - AC#5 (Live impl at `core/src/services/file-system.ts`): present, 174 lines, exports `FileSystemLive` Layer.
+  - AC#6 (typecheck/lint/tests pass): verified — `bun run typecheck` clean (`tsc -b`), `bun run lint` clean (`biome check .` 197 files), `bun test` 133 pass / 1 skip / 0 fail across 29 files, focused `core/test/services/file-system.test.ts` 3/3 pass.
+  - prd.json US-023 AC#1-#3 satisfied (write→read roundtrip, missing read tagged with path, atomic write interface plus temp cleanup verified in dedicated test).
+- Confirmed-real, in-scope bugs: none.
+- Confirmed-real, out-of-scope (deferred, recorded in AGENTS.md as a gotcha):
+  - `writeAtomic` is NOT true POSIX rename atomicity. Bun 1.2.18 has no public rename primitive on `Bun.file`; `Bun.write(target, Bun.file(tempPath))` is a streaming copy, not `rename(2)`. The AC constraint "Bun.file/Bun.write only" forbids using `node:fs/promises.rename`. Interface and temp cleanup hold, crash-atomicity does not. Spec/12.3 callers depending on crash-atomicity must layer in a rename adapter later or wait for a Bun primitive.
+  - `FileSystem.remove` silently empties (files only) and never removes a directory itself; missing paths also silently succeed (BunFile.exists() returns false for directories). No consumer needs `rm -rf`/`rmdir` semantics yet; AC requires only file remove, which the test covers. Future stories that need directory removal must extend the implementation.
+  - `FileSystem.mkdir` uses a UUID temp-marker write+delete trick to rely on Bun.write's parent-directory auto-creation; works but is stylistically hacky. Already documented in the build step's learnings.
+- Rejected findings: none (no /review fanout ran; nothing to reject).
+- Verification run and result:
+  - `bun run typecheck` — pass (`tsc -b`, no errors).
+  - `bun run lint` — pass (`biome check .` 197 files clean).
+  - `bun test` — pass (133 pass, 1 skip, 0 fail across 29 files).
+  - `bun test core/test/services/file-system.test.ts` — pass (3/3 in 229ms).
+- Files changed by review: `AGENTS.md` (added one gotcha line documenting the Bun rename limitation + the `FileSystem.remove` directory caveat so the next consumer doesn't get burned); `spec/mvp/progress.txt` (this entry).
+- **Learnings for future iterations:**
+  - When a service contract documents "atomic" semantics (spec/12.3 `writeAtomic`), verify the underlying runtime primitive actually provides them. Bun's `Bun.write(target, Bun.file(source))` is a `copy_file_range`-backed COPY, not a POSIX rename — the API surface can claim atomicity that the implementation does not deliver. For MVP we accept the gap; for any production crash-recovery path, layer a `node:fs/promises.rename` adapter OUTSIDE the `Bun.file/Bun.write only` constraint or wait for a public Bun rename primitive.
+  - `BunFile.exists()` returns `false` for directory paths. `Bun.file(dir).delete()` is a no-op shape; directory teardown needs a different primitive than `BunFile.delete()`. The current `FileSystem.remove` reflects this by quietly handling only the file branch.
+  - Service-method test coverage that exercises happy paths only is fine for MVP-grade ACs but leaves the "no-op on missing path / partial behavior on directory" cases unguarded. When the next story consumes `remove`, extend the test set with a missing-path case so the FileNotFoundError contract is locked.
 ---

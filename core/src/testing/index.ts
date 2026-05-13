@@ -25,7 +25,18 @@ export interface LoggerCall {
 }
 
 export interface FileSystemCall {
-  readonly operation: "readFile" | "writeFile" | "writeAtomic" | "exists";
+  readonly operation:
+    | "read"
+    | "readText"
+    | "write"
+    | "writeAtomic"
+    | "exists"
+    | "stat"
+    | "mkdir"
+    | "remove"
+    | "readDir"
+    | "readFile"
+    | "writeFile";
   readonly path: string;
   readonly content?: string;
 }
@@ -96,7 +107,66 @@ export const makeTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime =
       Effect.sync(() => recordLoggerCall(calls, "error", message, data)),
   };
 
-  const fileSystemService = {
+  const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
+    read: (path: string) => {
+      calls.fileSystem.push({ operation: "read", path });
+      const content = files.get(path) ?? "";
+      return Stream.fromIterable([new TextEncoder().encode(content)]);
+    },
+    readText: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "readText", path });
+        return files.get(path) ?? "";
+      }),
+    write: (path: string, content: string | Uint8Array) =>
+      Effect.sync(() => {
+        const text = typeof content === "string" ? content : new TextDecoder().decode(content);
+        calls.fileSystem.push({ operation: "write", path, content: text });
+        files.set(path, text);
+      }),
+    writeAtomic: (path: string, content: string | Uint8Array) =>
+      Effect.sync(() => {
+        const text = typeof content === "string" ? content : new TextDecoder().decode(content);
+        calls.fileSystem.push({ operation: "writeAtomic", path, content: text });
+        files.set(path, text);
+      }),
+    exists: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "exists", path });
+        return files.has(path);
+      }),
+    stat: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "stat", path });
+        return {
+          size: files.get(path)?.length ?? 0,
+          mtimeMs: 0,
+          isFile: files.has(path),
+          isDirectory: false,
+        };
+      }),
+    mkdir: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "mkdir", path });
+      }),
+    remove: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "remove", path });
+        files.delete(path);
+      }),
+    readDir: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "readDir", path });
+        const prefix = path.endsWith("/") ? path : `${path}/`;
+        const entries = Array.from(files.keys())
+          .filter((filePath) => filePath.startsWith(prefix))
+          .flatMap((filePath) => {
+            const entry = filePath.slice(prefix.length).split("/")[0];
+            return entry === undefined ? [] : [entry];
+          });
+
+        return entries.filter((entry, index) => entries.indexOf(entry) === index).sort();
+      }),
     readFile: (path: string) =>
       Effect.sync(() => {
         calls.fileSystem.push({ operation: "readFile", path });
@@ -106,16 +176,6 @@ export const makeTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime =
       Effect.sync(() => {
         calls.fileSystem.push({ operation: "writeFile", path, content });
         files.set(path, content);
-      }),
-    writeAtomic: (path: string, content: string) =>
-      Effect.sync(() => {
-        calls.fileSystem.push({ operation: "writeAtomic", path, content });
-        files.set(path, content);
-      }),
-    exists: (path: string) =>
-      Effect.sync(() => {
-        calls.fileSystem.push({ operation: "exists", path });
-        return files.has(path);
       }),
   };
 

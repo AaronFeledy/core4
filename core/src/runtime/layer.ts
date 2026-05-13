@@ -172,10 +172,17 @@ const configService: Context.Tag.Service<typeof ConfigService> = {
 };
 
 const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
-  readFile: () => Effect.succeed(""),
-  writeFile: () => Effect.void,
+  read: () => Stream.empty,
+  readText: () => Effect.succeed(""),
+  write: () => Effect.void,
   writeAtomic: () => Effect.void,
   exists: () => Effect.succeed(false),
+  stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: false, isDirectory: false }),
+  mkdir: () => Effect.void,
+  remove: () => Effect.void,
+  readDir: () => Effect.succeed([]),
+  readFile: () => Effect.succeed(""),
+  writeFile: () => Effect.void,
 };
 
 const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
