@@ -1,13 +1,16 @@
 /**
  * `LandofileService` Live Layer.
  *
- * Discovery:
- * - Walks upward from CWD; first matching directory becomes the *app root*.
- * - Bounded by filesystem root (`/`), `.lando.stop` sentinel, and configurable
- *   `discovery.maxDepth` (default `8`).
- * - Uses `FileSystem.readdir` and is cached per-CWD for the lifetime of a
- *   CLI invocation.
+ * Discovery (MVP scope per PRD-03 US-005):
+ * - Walks upward from `process.cwd()`; first directory containing `.lando.yml`
+ *   becomes the *app root*.
+ * - Bounded by filesystem root (`dirname(current) === current`).
+ * - Uses `Bun.file(...).exists()` directly; no caching at MVP.
  *
+ * Deferred for later passes (NOT implemented here):
+ * - `.lando.stop` sentinel
+ * - configurable `discovery.maxDepth`
+ * - `FileSystem.readdir` integration and per-CWD caching
  */
 import { dirname, join } from "node:path";
 
