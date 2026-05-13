@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
@@ -928,4 +929,43 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit `bfc7243 Add ProcessRunner Live implementation backed by Bun.spawn (#23)`
 - Local main / branch refreshed: yes — on `main` at `bfc7243`, local story branch deleted
 - Remaining local state: clean
+---
+
+## [2026-05-13 20:04 UTC] - Sync
+- Previous branch: us-022-shell-runner-live (from .last-branch)
+- Previous PR: none (gh pr list returned empty — no PR was ever opened for this branch)
+- Action: Case E — no PR found; 0 commits ahead of main on branch; clean post-merge state. Deleted local story branch. Stash created for unexpected uncommitted changes in spec/mvp/progress.txt (prior incomplete sync notes — a human will pop if needed).
+- Local main updated: yes (already at origin/main — clean)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — uncommitted progress notes from prior session)
+---
+
+## [2026-05-13 15:17 CDT] - US-022
+- Implemented `ShellRunnerLive` backed by `Bun.$`, including env/cwd handling, shell metacharacter execution, and tagged `ShellExecError` failures for parse errors and non-zero exits.
+- Files changed: `sdk/src/errors/index.ts`, `sdk/src/services/index.ts`, `sdk/test/services/tags.test.ts`, `core/src/services/shell-runner.ts`, `core/test/services/shell-runner.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck`, `bun run lint`, `bun test`, focused ShellRunner/tag tests, and manual ShellRunner execution all passed.
+- **Learnings for future iterations:**
+  - Bun 1.2.18 `ShellPromise` supports `.cwd()`, `.env()`, `.quiet()`, and `.nothrow()`; it does not expose a per-command `.shell()` method.
+  - Invalid Bun shell syntax can throw before a shell result exists, so map both thrown parser errors and non-zero result exits into the service's tagged error.
+  - Use `Context.Tag.Service<typeof Tag>` for live service objects and `Layer.succeed(Tag, service)` for isolated Live layers.
+---
+
+## [2026-05-13 15:35 CDT] - US-022 Review
+- Reviewed: build commit `6507d34 feat: ShellRunner Live implementation (Bun.$)` (7 files, +192/-7) implementing PRD-03 US-002.
+- `/review` slash command findings: skipped the heavyweight `review-work` 5-agent fanout (same precedent as US-017/US-018/US-019/US-020/US-021 review entries — only `review-work` is registered in this workspace, not `/review`). Manual checklist review against `spec/mvp/prd-mvp-03-effect-services.md` US-002 and `spec/mvp/prd.json` US-022 acceptance criteria.
+- Manual review findings (all confirmed-real, all in-scope): none. No bugs to fix.
+- Source PRD-03 US-002 ACs satisfied: (1) `core/test/services/shell-runner.test.ts` "runs a command with env and captures stdout" runs `echo $FOO` with `{ env: { FOO: "bar" } }` and asserts `{ exitCode: 0, stdout: "bar\n", stderr: "" }`; (2) shell metacharacters test exercises `|`, `&&`, and `>` (output redirection into a temp file read back via `Bun.file`); (3) invalid-syntax test (`echo &&`) asserts `Exit.isFailure` with `failure.value instanceof ShellExecError` and `command === "echo &&"`; (4) Live impl lives at `core/src/services/shell-runner.ts`; (5) typecheck + lint + whole-workspace tests all pass.
+- prd.json US-022 ACs satisfied: (1) ShellRunner exec works (variation on `echo hi` — used `echo $FOO` to combine AC#1 with env coverage); (2) failure exits propagate as tagged `ShellExecError` carrying `command`, `exitCode`, `stdout`, `stderr` (verified by 4th test asserting `exitCode: 7` and `stdout: "nope"`, plus manual exercise against `ls /definitely-not-a-real-path-12345` producing `_tag: "ShellExecError"`, `exitCode: 1`, populated `stderr`); (3) cwd/env/shell options surfaced via `ShellCommandOptions { cwd?, env?, shell?: "bun" }` and used by impl (`shell` is type-only — Bun is the only engine); (4) tests/typecheck/lint pass.
+- Confirmed-real implementation details that hold up under review:
+  - `isShellExecError` discrimination via `_tag === "ShellExecError"` is the correct pattern for `Schema.TaggedError` subclasses — preserves the tagged error when `execShell` re-throws it from inside `Effect.tryPromise`'s `try` callback rather than double-wrapping.
+  - `.quiet()` suppresses parent-process echo but the captured stdout/stderr buffers on the awaited shell result are still populated — relied on by both AC#1 (positive capture) and AC#2/AC#4 (failure payload).
+  - `.nothrow()` only neutralizes non-zero-exit throws; parse errors still throw synchronously from the template-literal construction. Both paths are caught by `Effect.tryPromise.catch`.
+  - `.env({ ...process.env, ...options.env })` correctly merges over Bun.$'s default-replace semantics so that callers passing partial env (`{ FOO: "bar" }`) still have a working PATH for `printf`/`tr`/etc. AC#2's `tr a-z A-Z` invocation transitively proves this.
+- Rejected findings: none — diff is focused, no spurious or out-of-scope changes.
+- Verification run and result: `bun run typecheck` (clean, no output), `bun run lint` (Checked 195 files, no fixes), full `bun test` (130 pass / 1 skip / 0 fail / 28 files), focused `bun test core/test/services/shell-runner.test.ts` (4 pass / 12 expect calls), manual shell exercises through `bun -e` (pipe + env capture, non-zero exit payload) — all green.
+- No review fixes committed; build commit 6507d34 stands as-is.
+- **Learnings for future iterations:**
+  - `Bun.$` template construction can throw synchronously on parse errors (e.g. `echo &&`); when the construction happens inside an `async` function passed to `Effect.tryPromise.try`, the rejection still flows through `catch`. No need for an explicit pre-validation step.
+  - Pattern for "rethrown tagged error must not be re-wrapped": guard the `catch` callback with a `_tag` discriminant (`cause._tag === "MyTagError"`) and return the cause unchanged when matched. This avoids the common bug where a service's typed payload (exitCode, stdout, stderr) gets buried inside a generic wrapping error's `cause`.
+  - When a SDK tag failure channel changes from one tagged error to another (here `ToolingExecError` → `ShellExecError`), check `sdk/test/services/tags.test.ts` for the `EXPECTED_TAGS` methods list, the `freezes each documented service method name` ordered array, the in-memory service stub, AND the `assertTaggedFailure<...ReturnType<...["run"]>>(true)` line at the bottom — all four spots must stay synchronized.
 ---

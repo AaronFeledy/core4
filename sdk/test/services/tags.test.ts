@@ -54,7 +54,7 @@ const EXPECTED_TAGS = [
     methods: ["readFile", "writeFile", "writeAtomic", "exists"],
   },
   { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
-  { tag: ShellRunner, key: "@lando/core/ShellRunner", methods: ["run", "runScript"] },
+  { tag: ShellRunner, key: "@lando/core/ShellRunner", methods: ["exec", "run", "runScript"] },
 ] as const;
 
 type FailureOf<T> = T extends Effect.Effect<unknown, infer E, unknown>
@@ -106,7 +106,7 @@ describe("Effect service tags", () => {
       ["read", "write", "invalidate"],
       ["readFile", "writeFile", "writeAtomic", "exists"],
       ["run", "stream"],
-      ["run", "runScript"],
+      ["exec", "run", "runScript"],
     ]);
   });
 
@@ -136,6 +136,7 @@ describe("Effect service tags", () => {
     };
 
     const shellRunner: Context.Tag.Service<typeof ShellRunner> = {
+      exec: (_command: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       run: (_command: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       runScript: (_path: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     };
@@ -146,7 +147,7 @@ describe("Effect service tags", () => {
     expect(Effect.isEffect(cacheService.read("key"))).toBe(true);
     expect(Effect.isEffect(processRunner.run({ cmd: "true", args: [] }))).toBe(true);
     expect(Stream.StreamTypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
-    expect(Effect.isEffect(shellRunner.run("echo ok"))).toBe(true);
+    expect(Effect.isEffect(shellRunner.exec("echo ok"))).toBe(true);
   });
 
   test("method failure channels use SDK tagged errors", () => {

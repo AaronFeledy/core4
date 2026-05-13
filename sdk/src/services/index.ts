@@ -47,7 +47,7 @@ import type {
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
-  ToolingExecError,
+  ShellExecError,
 } from "../errors/index.ts";
 
 export type ProviderError =
@@ -157,6 +157,7 @@ export interface ListFilter {
 export interface ShellCommandOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly shell?: "bun";
 }
 
 // =============================================================================
@@ -388,14 +389,18 @@ export class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
 export class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
   ShellRunner,
   {
+    readonly exec: (
+      command: string,
+      options?: ShellCommandOptions,
+    ) => Effect.Effect<ProcessResult, ShellExecError>;
     readonly run: (
       command: string,
       options?: ShellCommandOptions,
-    ) => Effect.Effect<ProcessResult, ToolingExecError>;
+    ) => Effect.Effect<ProcessResult, ShellExecError>;
     readonly runScript: (
       path: string,
       options?: ShellCommandOptions,
-    ) => Effect.Effect<ProcessResult, ToolingExecError>;
+    ) => Effect.Effect<ProcessResult, ShellExecError>;
   }
 >() {}
 
