@@ -38,6 +38,8 @@ import type {
   NoProviderInstalledError,
   PluginLoadError,
   PluginManifestError,
+  ProcessExecError,
+  ProcessTimeoutError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
@@ -349,9 +351,12 @@ export class FileSystem extends Context.Tag("@lando/core/FileSystem")<
  * Replaceable for telemetry, sandbox, dry-run modes.
  */
 export interface ProcessSpawnOptions {
+  readonly cmd: string;
   readonly args: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly stdin?: string | Uint8Array;
+  readonly timeoutMs?: number;
 }
 
 export interface ProcessResult {
@@ -360,10 +365,20 @@ export interface ProcessResult {
   readonly stderr: string;
 }
 
+export interface ProcessStreamChunk {
+  readonly kind: "stdout" | "stderr";
+  readonly chunk: Uint8Array;
+}
+
 export class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
   ProcessRunner,
   {
-    readonly spawn: (options: ProcessSpawnOptions) => Effect.Effect<ProcessResult, ToolingExecError>;
+    readonly run: (
+      options: ProcessSpawnOptions,
+    ) => Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError>;
+    readonly stream: (
+      options: ProcessSpawnOptions,
+    ) => Stream.Stream<ProcessStreamChunk, ProcessExecError | ProcessTimeoutError>;
   }
 >() {}
 

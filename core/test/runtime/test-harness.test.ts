@@ -13,14 +13,14 @@ describe("makeTestRuntime", () => {
       Effect.gen(function* () {
         yield* (yield* Logger).debug("checking runtime");
         yield* (yield* FileSystem).readFile("/tmp/source");
-        yield* (yield* ProcessRunner).spawn({ args: ["true"] });
+        yield* (yield* ProcessRunner).run({ cmd: "true", args: [] });
         yield* (yield* ConfigService).load;
       }).pipe(Effect.provide(runtime.layer)),
     );
 
     expect(runtime.calls.logger).toEqual([{ level: "debug", message: "checking runtime" }]);
     expect(runtime.calls.fileSystem).toEqual([{ operation: "readFile", path: "/tmp/source" }]);
-    expect(runtime.calls.processRunner).toEqual([{ args: ["true"] }]);
+    expect(runtime.calls.processRunner).toEqual([{ cmd: "true", args: [] }]);
     expect(runtime.calls.config).toEqual(["load"]);
   });
 });

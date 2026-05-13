@@ -1,7 +1,7 @@
 /**
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
-import { type Context, Effect, Layer, Schema } from "effect";
+import { type Context, Effect, Layer, Schema, Stream } from "effect";
 
 import { GlobalConfig } from "@lando/sdk/schema";
 import {
@@ -119,12 +119,16 @@ export const makeTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime =
       }),
   };
 
-  const processRunnerService = {
-    spawn: (spawnOptions: ProcessSpawnOptions) =>
+  const processRunnerService: Context.Tag.Service<typeof ProcessRunner> = {
+    run: (spawnOptions) =>
       Effect.sync(() => {
         calls.processRunner.push(spawnOptions);
         return { exitCode: 0, stdout: "", stderr: "" };
       }),
+    stream: (spawnOptions) => {
+      calls.processRunner.push(spawnOptions);
+      return Stream.empty;
+    },
   };
 
   const configService = {
