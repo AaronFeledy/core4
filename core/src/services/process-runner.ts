@@ -101,12 +101,47 @@ async function* streamProcess(input: ProcessSpawnOptions): AsyncGenerator<Proces
 
   writeStdin(proc.stdin as BunFileSink | null | undefined, input.stdin);
 
-  for await (const chunk of proc.stdout) {
-    yield { kind: "stdout", chunk };
+  // Interleave stdout and stderr via a shared async queue so that chunks are
+  // yielded in arrival order and neither pipe can block the other.
+  type Queued = { value: ProcessStreamChunk } | { done: true };
+  const queue: Queued[] = [];
+  const resolvers: Array<() => void> = [];
+
+  const enqueue = (item: Queued): void => {
+    queue.push(item);
+    resolvers.shift()?.();
+  };
+
+  const dequeue = (): Promise<Queued> =>
+    new Promise<Queued>((res) => {
+      if (queue.length > 0) {
+        res(queue.shift() as Queued);
+      } else {
+        resolvers.push(() => res(queue.shift() as Queued));
+      }
+    });
+
+  let open = 2;
+  const close = (): void => {
+    if (--open === 0) enqueue({ done: true });
+  };
+
+  void (async () => {
+    for await (const chunk of proc.stdout) enqueue({ value: { kind: "stdout", chunk } });
+    close();
+  })();
+
+  void (async () => {
+    for await (const chunk of proc.stderr) enqueue({ value: { kind: "stderr", chunk } });
+    close();
+  })();
+
+  for (;;) {
+    const item = await dequeue();
+    if ("done" in item) break;
+    yield item.value;
   }
-  for await (const chunk of proc.stderr) {
-    yield { kind: "stderr", chunk };
-  }
+
   await proc.exited;
 }
 
