@@ -53,7 +53,7 @@ const EXPECTED_TAGS = [
     key: "@lando/core/FileSystem",
     methods: ["readFile", "writeFile", "writeAtomic", "exists"],
   },
-  { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["spawn"] },
+  { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
   { tag: ShellRunner, key: "@lando/core/ShellRunner", methods: ["run", "runScript"] },
 ] as const;
 
@@ -105,7 +105,7 @@ describe("Effect service tags", () => {
       ["list", "load"],
       ["read", "write", "invalidate"],
       ["readFile", "writeFile", "writeAtomic", "exists"],
-      ["spawn"],
+      ["run", "stream"],
       ["run", "runScript"],
     ]);
   });
@@ -131,8 +131,8 @@ describe("Effect service tags", () => {
     };
 
     const processRunner: Context.Tag.Service<typeof ProcessRunner> = {
-      spawn: (_options: { readonly args: ReadonlyArray<string> }) =>
-        Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      run: (_options) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      stream: (_options) => Stream.empty,
     };
 
     const shellRunner: Context.Tag.Service<typeof ShellRunner> = {
@@ -144,7 +144,8 @@ describe("Effect service tags", () => {
     expect(Effect.isEffect(eventService.publish({ _tag: "test-event" }))).toBe(true);
     expect(Stream.StreamTypeId in Object(eventService.subscribe("test-event"))).toBe(true);
     expect(Effect.isEffect(cacheService.read("key"))).toBe(true);
-    expect(Effect.isEffect(processRunner.spawn({ args: ["true"] }))).toBe(true);
+    expect(Effect.isEffect(processRunner.run({ cmd: "true", args: [] }))).toBe(true);
+    expect(Stream.StreamTypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
     expect(Effect.isEffect(shellRunner.run("echo ok"))).toBe(true);
   });
 
@@ -174,7 +175,7 @@ describe("Effect service tags", () => {
         TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof FileSystem>["exists"]>>>
       >(true),
       assertTaggedFailure<
-        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof ProcessRunner>["spawn"]>>>
+        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof ProcessRunner>["run"]>>>
       >(true),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof ShellRunner>["run"]>>>

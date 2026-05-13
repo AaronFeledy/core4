@@ -19,7 +19,7 @@ describe("@lando/core/testing", () => {
         yield* logger.info("boot", { bootstrap: "minimal" });
         const content = yield* fileSystem.readFile("/app/.lando.yml");
         yield* fileSystem.writeAtomic("/tmp/generated", "ok");
-        const processResult = yield* processRunner.spawn({ args: ["lando", "version"], cwd: "/app" });
+        const processResult = yield* processRunner.run({ cmd: "lando", args: ["version"], cwd: "/app" });
         const globalConfig = yield* config.load;
 
         return { content, processResult, globalConfig };
@@ -36,7 +36,7 @@ describe("@lando/core/testing", () => {
       { operation: "readFile", path: "/app/.lando.yml" },
       { operation: "writeAtomic", path: "/tmp/generated", content: "ok" },
     ]);
-    expect(runtime.calls.processRunner).toEqual([{ args: ["lando", "version"], cwd: "/app" }]);
+    expect(runtime.calls.processRunner).toEqual([{ cmd: "lando", args: ["version"], cwd: "/app" }]);
     expect(runtime.calls.config).toEqual(["load"]);
     expect(runtime.files.get("/tmp/generated")).toBe("ok");
   });

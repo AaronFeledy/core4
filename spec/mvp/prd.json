@@ -336,8 +336,8 @@
         "Lint passes"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented at core/src/services/process-runner.ts; review-step consolidated commit covers PRD-03 US-001 ACs and fixes typecheck/lint/test regressions left by the build step."
     },
     {
       "id": "US-022",
