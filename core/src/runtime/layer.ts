@@ -19,10 +19,10 @@
 import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
 
 import { LandoRuntimeBootstrapError, NoProviderInstalledError } from "@lando/sdk/errors";
-import { AbsolutePath, GlobalConfig, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanner,
-  ConfigService,
+  type ConfigService,
   FileSystem,
   LandofileService,
   Logger,
@@ -30,6 +30,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { ConfigServiceLive } from "../services/config.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
 // Differences from CLI defaults:
@@ -131,10 +132,6 @@ type RuntimeLayer =
   | Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<unknown, LandoRuntimeBootstrapError>;
 
-const defaultGlobalConfig: GlobalConfig = Schema.decodeUnknownSync(GlobalConfig)({
-  telemetry: { enabled: false },
-});
-
 const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   artifactBuild: false,
   artifactPull: false,
@@ -164,11 +161,6 @@ const loggerService: Context.Tag.Service<typeof Logger> = {
   info: () => Effect.void,
   warn: () => Effect.void,
   error: () => Effect.void,
-};
-
-const configService: Context.Tag.Service<typeof ConfigService> = {
-  load: Effect.succeed(defaultGlobalConfig),
-  get: (key) => Effect.succeed(defaultGlobalConfig[key]),
 };
 
 const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
@@ -231,7 +223,7 @@ const appPlannerService: Context.Tag.Service<typeof AppPlanner> = {
 
 const MinimalRuntimeLive = Layer.mergeAll(
   Layer.succeed(Logger, loggerService),
-  Layer.succeed(ConfigService, configService),
+  ConfigServiceLive,
   Layer.succeed(FileSystem, fileSystemService),
 );
 
