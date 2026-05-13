@@ -16,9 +16,11 @@ const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<
     process.env.LANDO_USER_CONF_ROOT = dir;
     return await run(dir);
   } finally {
-    if (previousRoot === undefined) process.env.LANDO_USER_CONF_ROOT = undefined;
+    // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
+    if (previousRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousRoot;
-    if (previousProvider === undefined) process.env.LANDO_DEFAULT_PROVIDER_ID = undefined;
+    // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
+    if (previousProvider === undefined) delete process.env.LANDO_DEFAULT_PROVIDER_ID;
     else process.env.LANDO_DEFAULT_PROVIDER_ID = previousProvider;
     await rm(dir, { recursive: true, force: true });
   }
