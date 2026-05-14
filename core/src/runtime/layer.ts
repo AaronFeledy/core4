@@ -24,12 +24,13 @@ import {
   AppPlanner,
   type ConfigService,
   FileSystem,
-  LandofileService,
+  type LandofileService,
   Logger,
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { LandofileServiceLive } from "../landofile/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -213,10 +214,6 @@ const runtimeProviderRegistryService: Context.Tag.Service<typeof RuntimeProvider
     ),
 };
 
-const landofileService: Context.Tag.Service<typeof LandofileService> = {
-  discover: Effect.die("landofile discovery is not implemented yet"),
-};
-
 const appPlannerService: Context.Tag.Service<typeof AppPlanner> = {
   plan: () => Effect.die("app planning is not implemented yet"),
 };
@@ -235,7 +232,7 @@ const ProviderRuntimeLive = Layer.mergeAll(
 
 const AppRuntimeLive = Layer.mergeAll(
   ProviderRuntimeLive,
-  Layer.succeed(LandofileService, landofileService),
+  LandofileServiceLive,
   Layer.succeed(AppPlanner, appPlannerService),
 );
 

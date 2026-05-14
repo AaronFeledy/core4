@@ -1130,3 +1130,37 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-13 18:25 CDT] - US-025
+- Implemented `LandofileServiceLive` discovery from the current working directory up to the first `.lando.yml`, dependency-free MVP YAML parsing, strict `LandofileShape` validation, missing-file parse, and unsupported-key error handling.
+- Files changed: `core/src/landofile/parser.ts`, `core/src/landofile/service.ts`, `core/src/runtime/layer.ts`, `core/test/services/landofile.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/services/landofile.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual QA script discovered a temp app Landofile and printed `manual-app` with `web`/`db` services.
+- **Learnings for future iterations:**
+  - Patterns discovered: Live service layers use `Context.Tag.Service<typeof Tag>` plus `Layer.succeed`; validation errors should be created from strict Effect Schema decode results with `onExcessProperty: "error"`.
+  - Gotchas encountered: current Bun docs have `Bun.YAML`, but the repo's pinned Bun 1.2.18 environment still needs the dependency-free parser approach unless the runtime is upgraded.
+  - Useful context: detailed source PRD paths can differ from the summary index; the source PRD named `core/test/services/landofile.test.ts`, so the test file follows that path.
+---
+
+## [2026-05-13 18:50 CDT] - US-025 Review
+- Reviewed build commit `5a51fc7 feat: LandofileService Live implementation (YAML + Compose subset)` against PRD-03 US-005 (`spec/mvp/prd-mvp-03-effect-services.md`) and `spec/mvp/prd.json` US-025 acceptance criteria.
+- `/review` slash command: not registered in this workspace (same as US-022/US-023/US-024 precedent). Performed manual checklist review of diff + tests + spec + edge-case QA.
+- PRD-03 US-005 AC mapping:
+  - AC#1 (fixture .lando.yml with node:lts + postgres in subdir, discover, assert parsed shape): satisfied by test "discovers and parses a minimal Node and Postgres .lando.yml from a subdirectory" — fixture covers image, ports, environment, volumes, command, dependsOn, plus second service `db: postgres:16`.
+  - AC#2 (missing .lando.yml fails with `LandofileNotFoundError` carrying search path list): satisfied by test "fails missing .lando.yml with searched paths in the message" — asserts `cwd` payload + search paths appear in `message`.
+  - AC#3 (malformed YAML fails with `LandofileParseError` carrying `{ filePath, message, line }`): satisfied by test "fails malformed YAML with file path and line" — fixture is `name: myapp\nservices\n`; asserts `filePath` matches and `line === 2`.
+  - AC#4 (Compose key outside allowlist e.g. `deploy:` rejected with `LandofileValidationError` naming the rejected key + remediation pointing at the spec): satisfied by test "rejects Compose keys outside the MVP allowlist with remediation" — `error.issues` contains `services.web.deploy` and `error.message` contains `spec/07-landofile-and-config.md`. Strict decode via `Schema.decodeUnknownEither(LandofileShape, { onExcessProperty: "error" })`.
+  - AC#5 (no `includes:`, `landofile.ts`, or expressions at MVP): parser explicitly throws on `${...}` and on inline objects; no `includes:` handling exists; no `landofile.ts` runtime.
+  - AC#6 (Uses Bun.file or workspace YAML dep — implementer's choice): uses `Bun.file(...).exists()` + `Bun.file(...).text()`; YAML parsing is a dependency-free MVP parser (justified in build-step progress entry — repo's pinned Bun 1.2.18 lacks `Bun.YAML` and no YAML package is a workspace dep).
+  - AC#7 (Live impl at `core/src/landofile/`): present at `core/src/landofile/{parser.ts,service.ts}`, wired into `MinimalRuntimeLive` (`core/src/runtime/layer.ts`).
+  - AC#8 (typecheck/lint/whole-workspace tests pass): verified — `bun run typecheck` clean, `bun run lint` clean (200 files), `bun test` 144 pass / 1 skip / 0 fail across 31 files, focused `core/test/services/landofile.test.ts` 4/4 pass.
+- prd.json US-025 AC: all 6 points satisfied. The prd.json text references `core/test/services/landofile-service.test.ts`; PRD-03 (authoritative) and the actual test file use `core/test/services/landofile.test.ts`. Build step already noted this divergence and followed the source PRD.
+- Edge-case manual QA (parser): empty `.lando.yml` decodes to `{}`; trailing `# comment` on a value line is stripped; column-0 comment lines are skipped; tab characters fail with `LandofileParseError` carrying the line number. All behaviors match parser intent.
+- Manual review findings — confirmed-real, in-scope bugs:
+  - `core/src/landofile/service.ts` module docstring claimed `.lando.stop` sentinel, configurable `discovery.maxDepth` (default `8`), and "Uses `FileSystem.readdir` and is cached per-CWD" — none implemented in the MVP code. The pre-existing stub docstring had a `Status: stub.` line; the build commit removed that line, which converted these aspirational claims into seemingly-live behavior contracts. Fixed by rewriting the docstring to describe MVP scope (`Bun.file(...).exists()` walk-up bounded by filesystem root, no caching) and explicitly listing `.lando.stop` / `maxDepth` / `FileSystem.readdir` caching as deferred. Files changed: `core/src/landofile/service.ts`.
+- Manual review findings — rejected: none (no `/review` agent run to produce findings).
+- Verification after fix: `bun run typecheck` clean, `bun run lint` clean, focused `core/test/services/landofile.test.ts` 4/4 pass.
+- **Learnings for future iterations:**
+  - Patterns: when a stub module is converted to a live implementation, audit the pre-existing docstring for aspirational claims and either implement them or move them under an explicit "Deferred" header. Removing only a `Status: stub.` line silently promotes stale design notes into live API contracts.
+  - Gotchas: `Effect.mapError` only transforms FAIL channel; `Effect.catchAllCause` is needed if a defect (e.g. sync throw inside a `tryPromise` `catch`) could surface. The LandofileService Live keeps both as belt-and-suspenders since the failure channel is part of the service contract.
+  - Useful context: `LandofileShape` makes `services` (and all top-level fields) optional, so an empty `.lando.yml` decodes successfully to `{}` rather than failing — keep this in mind for downstream AppPlanner stories that need a `name`/`services` guarantee.
+---
