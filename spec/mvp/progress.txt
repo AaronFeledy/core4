@@ -1202,3 +1202,29 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `Stream.fromPubSub` subscriptions are scoped to the stream consumer; start the subscriber fiber before publishing or the event can be missed because the PubSub has no replay.
   - Keep EventService subscriber failure tests at the stream-consumer boundary because the current SDK tag exposes `subscribe(name): Stream`, not a handler registration API.
 ---
+
+## [2026-05-13 19:43 CDT] - US-026 Review
+- Reviewed build commit `2f761cb feat: EventService Live implementation (basic pub/sub)` against PRD-03 US-006 (`spec/mvp/prd-mvp-03-effect-services.md`) and prd.json US-026 acceptance criteria.
+- `/review` slash command: not registered in this workspace (same precedent as US-022/023/024/025). Performed manual checklist review of diff + tests + spec + end-to-end smoke test.
+- PRD-03 US-006 AC mapping:
+  - AC#1 (failing test subscribes, publishes `pre-app-start`, asserts handler ran with typed payload): satisfied by test "publishes lifecycle events to subscribers in order" — subscribes via `eventService.subscribe("*")`, publishes `preAppStartEvent` and `postAppStartEvent`, asserts both received in order.
+  - AC#2 (fan-out to every active subscriber): satisfied by test "fans out events to every active subscriber" — two parallel subscribers on `"pre-app-start"`, both receive the event.
+  - AC#3 (subscriber failure does not abort publish or other subscribers): satisfied by test "a failing subscriber does not abort publish or other subscribers" — failing subscriber exits failure (`Exit.isFailure(failingExit)` true), healthy subscriber still receives event. With the current SDK `subscribe(name): Stream` API there is no handler registration, so failure isolation is verified at the stream consumer boundary, which is the only place isolation is observable.
+  - AC#4 (no priority bands at MVP, subscribers fire in registration order): the PubSub-backed impl has no priority bands; per-subscriber order within a single stream is preserved.
+  - AC#5 (subscriptions scope-bound, handler unregistered when owning Scope closes): satisfied by test "subscriptions are scope-bound" — fiber forked inside `Effect.scoped` is interrupted (`Exit.isInterrupted`) when the scope closes before publish.
+  - AC#6 (Live impl lives at `core/src/services/event-service.ts`): present at that path.
+  - AC#7 (typecheck/lint/whole-workspace tests pass): verified — `bun run typecheck` clean, `bun run lint` clean (202 files), `bun test` 150 pass / 1 skip / 0 fail across 32 files.
+- prd.json US-026 AC: all 6 points satisfied (failing test, fan-out, subscriber-error isolation, tests pass, typecheck, lint).
+- Scope check: US-026 does NOT require wiring `EventServiceLive` into any bootstrap level. PRD-02 US-001 lists the service sets per level (`minimal`: Logger|ConfigService|FileSystem; `provider`: + RuntimeProvider/Registry; `app`: + LandofileService|AppPlanner) and EventService is intentionally absent from those sets — providers will publish via EventService starting in PRD-04. The Live layer being importable from `core/src/services/event-service.ts` is the contract this story owes.
+- End-to-end smoke (outside the test runner): wrote a one-shot driver under `core/test/smoke-event.ts` that provides `EventServiceLive`, subscribes via `Stream.fromPubSub`, publishes a decoded `PreAppStartEvent`, awaits the fiber, and `process.exit(0)`s. Driver printed `RECEIVED: {"_tag":"pre-app-start", ...}` + `DONE` and exited 0. Driver deleted after run (no diff).
+- Triaged review notes that are NOT in-scope to fix here (recorded for traceability):
+  - `publish` uses `Effect.catchAllCause` which also catches interrupt causes and converts them into `EventError`. For unbounded PubSub this is harmless because publish has no failure channel in practice, but it does mean an interrupted parent's interrupt could be observed as a domain failure. Out of scope for US-026 — narrowing the catch is a behavior change that does not affect any current AC. Rejected.
+  - `name === "*"` wildcard is a convention introduced by the Live impl, not documented on the SDK tag (`subscribe(name: string)`). Acceptable for MVP; documenting the wildcard belongs to a future SDK tag update. Rejected.
+  - `waitFor` and any stream consumer must subscribe before `publish` (PubSub has no replay). Already documented in `AGENTS.md` by the build step. Not a bug; tests use a 10ms `Effect.sleep` to order subscription before publish.
+- Verification run on the as-committed diff: `bun run typecheck` ✅, `bun run lint` ✅ (202 files), `bun test` ✅ (150 pass / 1 skip / 0 fail / 32 files), focused `core/test/services/event-service.test.ts` ✅ (5/5 pass), manual smoke driver ✅.
+- Files changed in this review step: none (no in-scope bugs to fix; this progress entry only).
+- **Learnings for future iterations:**
+  - Patterns discovered: For PubSub-backed services, manual smoke drivers outside the test runner must `process.exit(0)` explicitly after `Effect.runPromise` resolves — Bun's test runner force-exits between files but a standalone `bun script.ts` will sit on idle PubSub resources/finalizers. Effect's scoped layer DOES close (the subscriber received and was interrupted), but Node's event loop alone does not necessarily drain.
+  - Gotchas encountered: When a story's PRD AC does not enumerate a runtime-wiring requirement, do not invent one. PRD-02 US-001 is the authoritative source for "which services live at which bootstrap level"; cross-check it before flagging a missing `Layer.mergeAll` entry as a bug.
+  - Useful context: The `subscribe(name): Stream` API on the SDK tag means "subscriber failure isolation" must be tested at the stream-consumer boundary (`Stream.runForEach(() => Effect.fail(...))`), not at handler registration — there is no handler registration. Future stories that want priority bands or handler-style registration must extend the SDK tag first.
+---
