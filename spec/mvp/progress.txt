@@ -1582,3 +1582,20 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Provider-lando can unit-test capability introspection by passing `makeProviderLayer({ podmanApi })`; use `makePodmanInfoRequest(socketPath)` to lock the Podman API request shape separately from daemon availability.
   - The current SDK capability schema uses `copyMounts`; PRD wording about `copyOnWriteAppRoot` maps to `copyMounts: false` in the published contract.
 ---
+
+## 2026-05-14 09:55 CDT - Push (US-034)
+- Branch pushed: us-034-provider-lando-capabilities → origin (1 story commit + 3 triage fix commits)
+- Story commit: 2ff8565 "feat: provider-lando capability matrix introspection"
+- PR: #37 https://github.com/AaronFeledy/core4/pull/37 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS; Cursor Bugbot SKIPPING each round)
+- Review feedback triage (3 rounds used):
+  - Round 1 (commit 2ff8565): Bugbot flagged ProviderUnavailableError swallowed by tryPromise catch handler. REAL ISSUE. Fixed in commit 1993914 — refactored to Effect.gen + Effect.fail.
+  - Round 2 (commit 1993914): Bugbot flagged JSON.parse(stdout) as untyped defect inside Effect.gen. REAL ISSUE. Fixed in commit d47022d — wrapped in Effect.try.
+  - Round 3 (commit d47022d): Bugbot flagged redundant Schema.decode of pre-validated linuxMvpCapabilities constant. REAL ISSUE (dead error path). Fixed in commit 33f8b45 — replaced with Effect.map(() => linuxMvpCapabilities).
+  - Round 4 (commit 33f8b45): Bugbot flagged contradictory bindMounts: true + bindMountPerformance: "none" on non-Linux (spec §5.4 says "none" means bind mounts unsupported). REAL ISSUE. NOT FIXED — 3-round triage limit exhausted.
+- Unresolved thread: Thread 4 on capabilities.ts:60 — bindMounts/bindMountPerformance inconsistency on non-Linux (medium severity). Needs fix: change bindMounts to false on non-Linux, or use "slow"/"emulated" for bindMountPerformance on non-Linux if Podman supports them there.
+- Triage rounds used: 3 (limit reached)
+- Merge: DEFERRED — unresolved blocking Bugbot thread after 3 rounds; reviewDecision="" but thread 4 is unresolved. Next sync step should address the bindMounts inconsistency before merging.
+- Local main / branch refreshed: no (on story branch, main not updated)
+- Remaining local state: on us-034-provider-lando-capabilities at HEAD 33f8b45; PR #37 open; next iteration should fix bindMounts contradiction then re-run Phase 3-5.
+---
