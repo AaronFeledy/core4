@@ -9,6 +9,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
+import { type BringUpOptions, bringUp } from "./bring-up.ts";
 import {
   type PodmanApiClient,
   introspectProviderCapabilities,
@@ -18,6 +19,8 @@ import {
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
+export { bringUp } from "./bring-up.ts";
+export type { BringUpOptions } from "./bring-up.ts";
 
 export {
   decodeProviderCapabilities,
@@ -40,6 +43,7 @@ const makeUnavailable = (operation: string) =>
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly socketPath?: string;
+  readonly eventService?: BringUpOptions["eventService"];
 }
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
@@ -66,7 +70,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,
-        apply: () => Effect.succeed({ changed: false }),
+        apply: (plan) =>
+          bringUp(plan, {
+            ...(podmanApi === undefined ? {} : { podmanApi }),
+            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+          }),
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,

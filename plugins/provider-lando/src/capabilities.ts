@@ -1,6 +1,6 @@
 import { Effect, Schema } from "effect";
 
-import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
@@ -11,8 +11,22 @@ export interface PodmanApiRequest {
   readonly socketUrl: `unix://${string}`;
 }
 
+export interface PodmanHttpRequest {
+  readonly method: "GET" | "POST" | "DELETE";
+  readonly path: `/${string}`;
+  readonly body?: unknown;
+}
+
+export interface PodmanHttpResponse {
+  readonly status: number;
+  readonly body: string;
+}
+
 export interface PodmanApiClient {
   readonly info: Effect.Effect<unknown, ProviderCapabilityError | ProviderUnavailableError>;
+  readonly request?: (
+    request: PodmanHttpRequest,
+  ) => Effect.Effect<PodmanHttpResponse, ProviderUnavailableError | ProviderInternalError>;
 }
 
 export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => ({
@@ -69,6 +83,72 @@ export const linuxMvpCapabilities: ProviderCapabilities = Schema.decodeSync(Prov
 });
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
+  request: (request) =>
+    Effect.gen(function* () {
+      const args = [
+        "--silent",
+        "--show-error",
+        "--unix-socket",
+        socketPath,
+        "--request",
+        request.method,
+        "--write-out",
+        "\n%{http_code}",
+      ];
+
+      if (request.body !== undefined) {
+        args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(request.body));
+      }
+
+      args.push(`http://localhost/v5.0.0${request.path}`);
+
+      const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
+        try: async () => {
+          const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
+          const [stdout, stderr, exitCode] = await Promise.all([
+            new Response(proc.stdout).text(),
+            new Response(proc.stderr).text(),
+            proc.exited,
+          ]);
+          return { stdout, stderr, exitCode };
+        },
+        catch: (cause) =>
+          new ProviderUnavailableError({
+            providerId: PROVIDER_ID,
+            operation: "podman-api",
+            message: "Failed to call the Podman API.",
+            details: { method: request.method, path: request.path },
+            cause,
+          }),
+      });
+
+      if (exitCode !== 0) {
+        yield* Effect.fail(
+          new ProviderUnavailableError({
+            providerId: PROVIDER_ID,
+            operation: "podman-api",
+            message: `Podman API request failed with exit code ${exitCode}.`,
+            details: { method: request.method, path: request.path, stderr },
+          }),
+        );
+      }
+
+      const marker = stdout.lastIndexOf("\n");
+      const statusText = marker === -1 ? stdout : stdout.slice(marker + 1);
+      const status = Number.parseInt(statusText, 10);
+      if (!Number.isInteger(status)) {
+        yield* Effect.fail(
+          new ProviderInternalError({
+            providerId: PROVIDER_ID,
+            operation: "podman-api",
+            message: "Podman API response did not include an HTTP status code.",
+            details: { method: request.method, path: request.path, stdout },
+          }),
+        );
+      }
+
+      return { status, body: marker === -1 ? "" : stdout.slice(0, marker) };
+    }),
   info: Effect.gen(function* () {
     const request = makePodmanInfoRequest(socketPath);
     // Unexpected JS exceptions (spawn failure, etc.) become ProviderCapabilityError.

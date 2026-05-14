@@ -62,6 +62,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - EventService Live is `PubSub.unbounded`-backed; use `Stream.fromPubSub(pubsub)` for scoped subscriptions, support exact `_tag` filtering plus `"*"` for all lifecycle events, and start subscriber fibers before publishing in tests because PubSub does not replay by default.
 - CacheService Live is in-memory only for MVP; store unknown values, decode them on read with the caller's Effect Schema, and use Effect `Clock` for TTL so tests can run under `TestContext.TestContext` with `TestClock.adjust(...)`.
 - Provider plugin capability tests should inject a tiny Podman API client into the provider layer so unit tests do not need a real daemon; keep real HTTP-over-UNIX request construction in a separate helper and reserve `LANDO_TEST_PODMAN_SOCKET` for socket-backed QA.
+- Provider-lando lifecycle code should use the `PodmanApiClient.request` HTTP-over-UNIX seam for Podman API calls; fake it in unit tests and reserve live Node/Postgres checks for `LANDO_TEST_PODMAN_SOCKET`.
 
 
 ## Iteration Log
@@ -122,6 +123,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main)
 - Branch after sync: ralph/mvp-walking-skeleton (fresh from main)
 - Stash created: no
+---
+
+## [2026-05-14 13:04 CDT] - US-036
+- Implemented provider-lando `bringUp` over Podman API requests, including network/container create/start/inspect flow, lifecycle event publication, cancellation cleanup, and idempotent second-run behavior.
+- Files changed: `plugins/provider-lando/src/bring-up.ts`, `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/bring-up.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `lsp_diagnostics` clean on changed TypeScript files; `bun test plugins/provider-lando/test/bring-up.integration.test.ts` passed (live socket case skipped because `LANDO_TEST_PODMAN_SOCKET` was not set); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; manual QA via `bun --eval` showed first `bringUp` returned `{ changed: true }`, second returned `{ changed: false }`, and the fake Podman API had `lando-qaapp-web` running.
+- **Learnings for future iterations:**
+  - Use Docker-compatible Podman endpoints for idempotent bring-up: inspect first, create only on 404, treat create 409 and start 304 as success, then inspect again for `Running`.
+  - Keep live Podman tests self-cleaning with direct stop/remove requests until bringDown lands.
 ---
 
 ## 2026-05-10 20:11 CDT - US-003
@@ -1635,4 +1645,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → 943191c "provider-lando: Compose file emission to per-app temp dir (#38)"
 - Local main / branch refreshed: yes (main at 943191c, story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 12:40 CDT] - Sync
+- Previous branch: us-035-compose-temp-dir
+- Previous PR: #38 https://github.com/AaronFeledy/core4/pull/38
+- Action: caught up after prior merge (PR #38 was already MERGED; local story branch was already absent)
+- Local main updated: yes (already up to date with origin/main at 554271a)
+- Branch after sync: main
+- Stash created: no
 ---
