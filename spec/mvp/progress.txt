@@ -1618,3 +1618,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Use `FileSystem.writeAtomic` for provider-generated internal files so tests can assert the service boundary instead of raw Bun writes.
   - Keep provider-lando Compose output intentionally small and allowlisted until later lifecycle stories require more Compose keys.
 ---
+
+## 2026-05-14 11:27 CDT - Push (US-035)
+- Branch pushed: us-035-compose-temp-dir → origin (2 commits: 1 story + 1 triage fix)
+- Story commit: 4534f78 "feat: provider-lando Compose file emission to per-app temp dir"
+- Triage fix commit: efe4c45 "fix: correct depends_on condition, tmpfs mounts, pathJoin edge case, and Effect error handling in compose emitter"
+- PR: #38 https://github.com/AaronFeledy/core4/pull/38 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot pass — both CI runs)
+- Review feedback triage (1 round):
+  - Thread 1: depends_on silently drops condition. REAL ISSUE. Fixed — long-form object depends_on with service_started/service_healthy mapping.
+  - Thread 2: tmpfs mounts rendered as anonymous volumes. REAL ISSUE. Fixed — tmpfs targets moved to service-level tmpfs: key.
+  - Thread 3: pathJoin loses leading slash for root-only input. REAL ISSUE (low). Fixed — preserve leading slash before filtering segments.
+  - Thread 4: throw inside Effect.gen becomes defect bypassing mapError. REAL ISSUE. Fixed — wrapped renderCompose in Effect.try.
+  - All 4 threads auto-resolved by Bugbot after fix commit pushed.
+- Triage rounds used: 1
+- Merge: merged (squash) → 943191c "provider-lando: Compose file emission to per-app temp dir (#38)"
+- Local main / branch refreshed: yes (main at 943191c, story branch deleted)
+- Remaining local state: clean, on main
+---
