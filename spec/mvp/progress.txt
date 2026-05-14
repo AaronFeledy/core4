@@ -1825,3 +1825,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - RuntimeProvider `list({ app })` can derive per-service snapshots from plans captured during `apply`; keep inspect itself read-only and restricted to Podman GET calls.
   - `ServiceRuntimeInfo` now carries optional provider snapshot details (`state`, `containerId`, `endpoints`, `lastStartedAt`) while preserving the existing `app`/`service`/`providerId`/`status` contract.
 ---
+
+## [2026-05-14 16:49 CDT] - Push
+- Branch pushed: us-040-provider-lando-inspect → origin
+- Commits: e580016 (feat: provider-lando inspect returns structured snapshot)
+- PR: #43 https://github.com/AaronFeledy/core4/pull/43 (created)
+- CI outcome: pass (linux-x64, linux-arm64, macos-arm64, windows-x64 all SUCCESS; Cursor Bugbot NEUTRAL/skipping)
+- Review feedback: Cursor Bugbot (Low Severity) — `containerName` helper duplicated in 3 files (bring-up.ts, bring-down.ts, inspect.ts), suggests extracting to shared module. Rejected as non-blocking advisory: first two copies were already merged in prior PRs; this is a maintainability note, not a correctness issue; reviewDecision was empty; Bugbot check NEUTRAL. Future cleanup story should consolidate the helper.
+- Triage rounds used: 1 (triage sub-agent timed out; judgment call made by push step directly)
+- Merge: merged (squash) — squash commit 4216a60 "feat: provider-lando inspect returns structured snapshot (#43)"
+- Local main / branch refreshed: yes (main at 4216a60, local story branch deleted)
+- Remaining local state: clean, on main
+---
