@@ -1794,3 +1794,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Logs stream chunks are multiplexed with the same 8-byte stdout/stderr frame header shape as exec attach output.
   - Keep live Podman log checks gated on `LANDO_TEST_PODMAN_SOCKET`; fake `PodmanApiClient.stream` covers deterministic frame decoding.
 ---
+
+## [2026-05-14 16:33 CDT] - Push
+- Branch pushed: us-039-provider-lando-logs → origin
+- Commits: 9a0abba (feat: provider-lando logs returns follow Stream), a1e4aa7 (chore: sync metadata), e808ff7 (fix: wrap logs stream in Stream.suspend for fresh decoder on re-subscription)
+- PR: #42 https://github.com/AaronFeledy/core4/pull/42 (created)
+- CI outcome: pass (linux-x64, linux-arm64, macos-arm64, windows-x64 all SUCCESS; Cursor Bugbot NEUTRAL/skipping)
+- Review feedback: Cursor Bugbot flagged makeLogsDecoder called eagerly — real issue, fixed by wrapping in Stream.suspend with local const capture (matching exec.ts pattern). Typecheck/lint/tests all pass after fix.
+- Triage rounds used: 1
+- Merge: merged (squash) — squash commit 6239d42 "provider-lando logs returns follow Stream (#42)"
+- Local main / branch refreshed: yes (main at 6239d42, local story branch deleted)
+- Remaining local state: clean, on main
+---
