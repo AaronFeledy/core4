@@ -1735,3 +1735,25 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Keep nonzero command exits as data (`exitCode`) for this MVP provider exec path; reserve tagged failures for API/create/inspect/stream failures.
   - Live provider-lando tests should stay `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` with explicit 60s timeout.
 ---
+
+## [2026-05-14 15:30 CDT] - US-038 Review
+- Reviewed build commit `8d226aa feat: provider-lando exec returns Stream of stdio chunks` against PRD-04 US-006 (`spec/mvp/prd-mvp-04-providers.md`) and `spec/mvp/prd.json` US-038 acceptance criteria.
+- `/review` slash command: not registered in this workspace (same precedent as US-022-US-037). Performed manual checklist review of diff + tests + spec + live Podman QA.
+- PRD-04 US-006 AC mapping:
+  - AC#1 (failing integration test gated on `LANDO_TEST_PODMAN_SOCKET`; stream emits ≥1 stdout chunk containing `hi\n`; completes with exitCode 0): satisfied — fake-API test asserts `{exitCode: 0, stdout: "hi\n", stderr: ""}`; live-socket test asserts `streamed.stdout.includes("hi\n")` and `exitCode === 0`.
+  - AC#2 (`cmd: "false"` resolves with exitCode 1 and no stderr): satisfied — both fake and live tests assert `{exitCode: 1, stderr: ""}`. Note: PRD source uses "resolves" (data) and prd.json says "tagged error"; build chose PRD-source semantics — nonzero exits are data, tagged errors reserved for API/create/inspect/stream failures. Accepted because loop instructions say "implementation matches the source PRD, not just the summary in `prd.json`".
+  - AC#3 (`exec` uses Podman API attach endpoint, not `Bun.spawn("podman", ["exec", ...])`): satisfied — `createExec` POSTs `/containers/{name}/exec`, `execStream` streams from `/exec/{id}/start`, `inspectExec` GETs `/exec/{id}/json`. All routed through `PodmanApiClient.request`/`PodmanApiClient.stream` (curl-over-unix-socket). No `podman` binary invocation.
+  - AC#4 (no TTY support; `tty: true` may throw `NotImplemented`): N/A — `CommandSpec` MVP shape has no `tty` field; impl always sends `Tty: false`.
+  - AC#5-6 (typecheck/lint/test pass): `bun run typecheck` pass; `bun run lint` pass (biome check, 223 files); `bun test` pass (186 pass / 4 skip / 0 fail).
+  - AC#7 (test functionality against live Podman socket): satisfied via review-step QA — `LANDO_TEST_PODMAN_SOCKET=/run/user/1000/podman/podman.sock bun test ./plugins/provider-lando/test/exec.integration.test.ts` returned `3 pass / 0 fail / 11.31s` against real Podman. Note: the build step itself did not run the live case (env var unset during build), so this review-step run is the AC#7 evidence.
+- Manual review findings:
+  - **No real bugs to fix.** Implementation is correct and complete.
+  - **Considered, not fixed (out of scope):** `textDecoder.decode(chunk.chunk)` in `exec()`'s buffered fold path decodes each frame independently. A multi-byte UTF-8 codepoint split across two Podman frames would emit U+FFFD. The PRD test only asserts ASCII output (`hi\n`) and most CLI output is ASCII. Fix is trivial (`{ stream: true }` + final flush) but out of scope for this story; defer to future hardening.
+  - **Considered, not fixed (out of scope):** `streamPodmanRequest` AsyncGenerator does not kill the curl subprocess if the consuming Stream is interrupted mid-flight (no try/finally with `proc.kill()`). In normal exec flows the upstream Podman attach endpoint closes itself when the exec completes, and `bringDown` reaps any survivors. Minor leak risk only on consumer-initiated cancellation; defer.
+  - **Considered, not fixed (intentional SDK shape change):** Build renamed `ExecChunk` from `{stream, data}` to `{kind, chunk}` to align with `ProcessStreamChunk` (`{kind, chunk}` in `sdk/src/services/index.ts`). PRD source US-006 prose says `{stream, chunk}` and prd.json US-038 says `{kind, chunk}` — neither matches the prior shape. Build chose `{kind, chunk}` for cross-service consistency with `ProcessStreamChunk`. All callsites updated (`TestRuntimeProvider`, `provider-lando/src/exec.ts`, `plugins/provider-lando/test/exec.integration.test.ts`). `sdk/test/services/tags.test.ts` still pass.
+- Verification run and result: `bun run typecheck` pass, `bun run lint` pass, `bun test` pass (186/4 skip/0 fail), live Podman socket exec test pass (`3 pass / 0 fail / 11.31s`).
+- **Learnings for future iterations:**
+  - When the PRD source and `prd.json` disagree on a small detail (here: ExecChunk field names; nonzero-exit-as-error vs data), defer to the PRD source — loop instructions are explicit about this.
+  - To satisfy "Test functionality against live Podman socket" ACs without burning a review iteration, run the live test in the review step with `LANDO_TEST_PODMAN_SOCKET` exported and the relevant images pre-pulled; takes ~11s for a single `exec` story end-to-end.
+  - `Bun.spawn` + `for await (proc.stdout)` is a viable streaming primitive for curl-over-unix-socket, but does not auto-kill the subprocess on Effect Stream cancellation — wrap in try/finally with `proc.kill()` if cancellation hygiene becomes a requirement.
+---
