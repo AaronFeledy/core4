@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Context, Effect, Stream } from "effect";
 
 import {
+  AppPlanner,
   CacheService,
   ConfigService,
   EventService,
@@ -50,6 +51,7 @@ const EXPECTED_TAGS = [
   },
   { tag: ConfigService, key: "@lando/core/ConfigService", methods: ["load", "get"] },
   { tag: LandofileService, key: "@lando/core/LandofileService", methods: ["discover"] },
+  { tag: AppPlanner, key: "@lando/core/AppPlanner", methods: ["plan"] },
   { tag: PluginRegistry, key: "@lando/core/PluginRegistry", methods: ["list", "load"] },
   { tag: CacheService, key: "@lando/core/CacheService", methods: ["read", "write", "invalidate"] },
   {
@@ -118,6 +120,7 @@ describe("Effect service tags", () => {
       ["list", "capabilities", "select"],
       ["load", "get"],
       ["discover"],
+      ["plan"],
       ["list", "load"],
       ["read", "write", "invalidate"],
       [
@@ -212,6 +215,9 @@ describe("Effect service tags", () => {
       assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof LandofileService>["discover"]>>>(
         true,
       ),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof AppPlanner>["plan"]>>>
+      >(true),
       assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof PluginRegistry>["list"]>>>(true),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof CacheService>["read"]>>>

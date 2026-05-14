@@ -21,7 +21,7 @@ import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  type AppPlanner,
   type ConfigService,
   FileSystem,
   type LandofileService,
@@ -35,6 +35,7 @@ import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
+import { AppPlannerLive } from "../services/planner.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
 // Differences from CLI defaults:
@@ -200,10 +201,6 @@ const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   list: () => Effect.succeed([]),
 };
 
-const appPlannerService: Context.Tag.Service<typeof AppPlanner> = {
-  plan: () => Effect.die("app planning is not implemented yet"),
-};
-
 const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     LoggerLive({ mode: loggerMode }),
@@ -225,11 +222,7 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
 };
 
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode),
-    LandofileServiceLive,
-    Layer.succeed(AppPlanner, appPlannerService),
-  );
+  Layer.mergeAll(makeProviderRuntimeLive(loggerMode), LandofileServiceLive, AppPlannerLive);
 
 const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {
   switch (bootstrap) {
