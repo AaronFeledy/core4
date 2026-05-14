@@ -1410,3 +1410,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The SDK `PluginRegistry` service tag's `list` field is `Effect<...>`, not `() => Effect<...>`. Live impl must expose `Effect.succeed(...)` directly (not a thunk); test consumers do `Effect.flatMap(PluginRegistry, (registry) => registry.list)`.
   - To exercise `PluginRegistryLive` from a one-off driver, place the driver under `core/test/_<scratch>.ts` and import the Live layer via relative path (`../src/plugins/registry.ts`); `@lando/core/plugins/registry` is NOT in the package `exports` map, only `@lando/core/services`.
 ---
+
+## 2026-05-14 02:44 CDT - Push
+- Branch pushed: us-029-bundled-plugin-registry → origin/us-029-bundled-plugin-registry
+- Commits involved: b7f2a26 (feat: PluginRegistry Live, bundled-only), c445e21 (chore: US-029 review notes)
+- PR: #32 https://github.com/AaronFeledy/core4/pull/32 (created)
+- CI outcome: pass (linux-x64 ✓, linux-arm64 ✓, macos-arm64 ✓, windows-x64 ✓, Cursor Bugbot ✓)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 6555655 on main
+- Local main / branch refreshed: yes (main fast-forwarded to 6555655; local story branch deleted)
+- Remaining local state: clean, on main
+---
