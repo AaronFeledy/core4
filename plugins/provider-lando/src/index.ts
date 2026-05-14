@@ -16,6 +16,9 @@ import {
   makePodmanApiClient,
 } from "./capabilities.ts";
 
+export { composePath, emitCompose, renderCompose } from "./compose.ts";
+export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
+
 export {
   decodeProviderCapabilities,
   introspectProviderCapabilities,
