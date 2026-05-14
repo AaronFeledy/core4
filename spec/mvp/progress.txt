@@ -53,6 +53,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - To probe an SDK schema's internals interactively, drop a throwaway `*.tmp.test.ts` under `sdk/test/schema/` (Bun resolves the workspace `@lando/sdk` self-import inside the workspace tree). Scripts run from `/tmp` or repo root cannot resolve workspace exports, so the temporary-test approach is the path of least resistance.
 - Biome's lint rules collapse short multi-line array spreads onto a single line; keep contract-test field-set initializers single-line where reasonable to avoid an unnecessary lint round-trip.
 - Bun's `Error` superclass auto-populates `line` and `column` properties with the constructor's source location. `Schema.TaggedError` extends `Error`, so a TaggedError field declared as `Schema.optional(Schema.Number)` and named `line` or `column` will silently report Bun's source-line number when the caller omits the field (the optional declaration leaves the property unset, so the Bun built-in shines through). Use `Schema.UndefinedOr(Schema.Number)` instead — Effect explicitly assigns `undefined` to the instance property, overriding the Bun built-in. The same trap applies to any TaggedError field whose name collides with an `Error` built-in. Verify suspect cases with a throwaway probe: omit the field, log `instance.fieldName` and `Object.hasOwn(instance, "fieldName")` — `Schema.optional` shows the Bun bleed-through, `Schema.UndefinedOr` shows `undefined` with `hasOwn === true`.
+- EventService Live is `PubSub.unbounded`-backed; use `Stream.fromPubSub(pubsub)` for scoped subscriptions, support exact `_tag` filtering plus `"*"` for all lifecycle events, and start subscriber fibers before publishing in tests because PubSub does not replay by default.
 
 
 ## Iteration Log
@@ -1182,4 +1183,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: squash-merged (commit 1691793 on main).
 - Local main refreshed: yes (fast-forward).
 - Local story branch deleted: yes (already absent post-merge).
+---
+
+## [2026-05-13 19:17 CDT] - Sync
+- Previous branch: us-025-landofileservice-live-implementation-yaml
+- Previous PR: #28 https://github.com/AaronFeledy/core4/pull/28
+- Action: caught up after prior merge (PR #28 MERGED, remote branch already pruned, local main already at tip)
+- Local main updated: yes (already up to date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-13 19:33 CDT] - US-026
+- Implemented `EventServiceLive` as a scoped Effect PubSub-backed service with publish, exact/wildcard subscribe, and waitFor behavior.
+- Files changed: `core/src/services/event-service.ts`, `core/test/services/event-service.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/services/event-service.test.ts` pass; lsp diagnostics clean for changed EventService files; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass; manual QA driver published `pre-app-start` and received it through the live subscriber stream.
+- **Learnings for future iterations:**
+  - `Stream.fromPubSub` subscriptions are scoped to the stream consumer; start the subscriber fiber before publishing or the event can be missed because the PubSub has no replay.
+  - Keep EventService subscriber failure tests at the stream-consumer boundary because the current SDK tag exposes `subscribe(name): Stream`, not a handler registration API.
 ---
