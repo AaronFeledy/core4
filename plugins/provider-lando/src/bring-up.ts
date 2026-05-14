@@ -334,8 +334,12 @@ export const bringUp = (
         yield* cleanupStarted(resolvedApi, started);
         yield* Effect.fail(podmanFailure(service, "Podman bringUp was cancelled."));
       }
+      const thisName = containerName(plan, service);
       const result = yield* startService(resolvedApi, plan, service, options).pipe(
-        Effect.tapError(() => cleanupStarted(resolvedApi, started)),
+        // Include the current container in cleanup: the container may have been
+        // created and started before the failure (e.g., during event publish),
+        // and result.name is not yet in `started` at the tapError call site.
+        Effect.tapError(() => cleanupStarted(resolvedApi, [...started, thisName])),
       );
       started.push(result.name);
       changed = changed || result.changed;
