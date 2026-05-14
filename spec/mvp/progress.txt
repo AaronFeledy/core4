@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
 - FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
 - ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
@@ -1250,4 +1251,39 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main)
 - Branch after sync: main
 - Stash created: yes (loop-sync-autostash — contains a progress.txt note referencing us-026/PR #29 from a prior sync run)
+---
+
+## 2026-05-13 20:28 CDT - US-027
+- Implemented `LoggerLive` as the Lando Logger service backed by Effect pretty/silent loggers.
+- Files changed: `core/src/logging/effect-logger.ts`, `core/src/logging/service.ts`, `core/src/runtime/layer.ts`, `core/test/services/logger.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual LoggerLive driver printed `[time] INFO (#0): manual logger qa`.
+- **Learnings for future iterations:**
+  - Patterns discovered: service tests can capture `console.log` to assert Effect pretty logger output without depending on exact timestamps.
+  - Gotchas encountered: `Logger.pretty` is a Layer, not the raw logger object for `Logger.replace`; use `Logger.prettyLoggerDefault` for replacement.
+  - Useful context: library/runtime options currently map only explicit `logger: "pretty"` to pretty output; other values stay silent for library defaults.
+---
+
+## 2026-05-13 20:35 CDT - US-027 Review
+- Reviewed build commit `2ee4c5f feat: Logger Live implementation (Effect Logger.pretty wrapper)` against PRD-03 §US-007 (`spec/mvp/prd-mvp-03-effect-services.md`) and `spec/mvp/prd.json` US-027 acceptance criteria.
+- `/review` slash command: not registered in this workspace (same precedent as US-022..US-026). Performed manual checklist review of diff + tests + spec.
+- PRD-03 US-007 AC mapping:
+  - AC#1 (failing test captures stdout, runs `Logger.info("hello")`, asserts output contains the message + a level marker `INFO` or equivalent): satisfied by test "logs info, warn, and error through Effect pretty output" — captures `console.log` and asserts `INFO/WARN/ERROR` + message presence for info/warn/error.
+  - AC#2 (silent configuration produces no output): satisfied by test "silent mode produces no output" — `LoggerLive({ mode: "silent" })` yields empty captured array.
+  - AC#3 (Live Layer is a thin wrapper that picks `Logger.pretty` vs `Logger.silent` based on config): satisfied — `core/src/logging/effect-logger.ts` returns `EffectLogger.prettyLoggerDefault` for `"pretty"` and `EffectLogger.none` for `"silent"`. `@lando/logger-pretty` plugin is still empty per PRD.
+  - AC#4 (Live impl lives at `core/src/logging/`): satisfied — `core/src/logging/{service,effect-logger}.ts`. `LoggerLive` is wired into `MinimalRuntimeLive` in `core/src/runtime/layer.ts`, so the minimal bootstrap level provides `Logger` (prd.json AC "Logger.Live is provided by the minimal bootstrap level" also satisfied).
+  - AC#5 (typecheck/lint/whole-workspace tests pass): verified — `bun run typecheck` clean, `bun run lint` clean (203 files), `bun test` 152 pass / 1 skip / 0 fail across 33 files, focused `core/test/services/logger.test.ts` 2/2 pass.
+- prd.json US-027 AC: all 5 satisfied (failing test asserts pretty output, minimal bootstrap provides Logger, tests pass, typecheck, lint).
+- End-to-end smoke (outside the test runner): wrote a one-shot driver under `core/test/smoke-logger.ts` providing `LoggerLive({ mode: "pretty" })` then `LoggerLive({ mode: "silent" })`; pretty rendered `[time] INFO/WARN/ERROR (#0): manual logger qa ...` (with annotation `kind: demo` indented under the info line), silent rendered nothing. Driver deleted after run (no diff).
+- Manual review findings — confirmed-real, in-scope bugs: none.
+- Manual review findings — rejected (out-of-scope or by design):
+  - CLI default logger mode is `"silent"` because `core/src/cli/oclif/hooks/init.ts` calls `makeLandoRuntime({ bootstrap })` without `logger: "pretty"`. The layer.ts comment block says CLI should default to pretty/json. Rejected: no current CLI command consumes `Logger`, so the behavior change is hypothetical; CLI-side `logger`/`renderer` wiring belongs to a later CLI story, not US-027.
+  - `logger` option accepts arbitrary `Schema.String`; only the literal `"pretty"` enables pretty mode and every other string (including a future `"json"`) silences. Rejected: narrowing to `Schema.Literal("pretty","silent")` is a contract change outside US-027's wrapper scope (PRD says picks pretty vs silent based on config — the wrapper does so).
+  - `debug` calls do not render in pretty mode by default due to Effect's `minimumLogLevel: Info`. Rejected: PRD AC #1 enumerates info/warn/error only; raising the default log level belongs to renderer/CLI flag stories.
+  - `captureConsoleLog` test helper swaps the global `console.log`; would race with concurrent tests in the same file. Rejected: Bun runs tests within a single file sequentially, and no other test in this file touches `console`.
+- Verification run on the as-committed diff: `bun run typecheck` ✅, `bun run lint` ✅ (203 files), `bun test` ✅ (152 pass / 1 skip / 0 fail / 33 files), focused `core/test/services/logger.test.ts` ✅ (2/2 pass), manual smoke driver ✅.
+- Files changed in this review step: none (no in-scope bugs to fix; this progress entry only).
+- **Learnings for future iterations:**
+  - Patterns discovered: `Effect.annotateLogs(effect, data)` is the right way to attach `Record<string, unknown>` context to a `logDebug/Info/Warning/Error` call; the SDK `Logger` tag's optional `data` parameter maps cleanly onto it (the implementation in `core/src/logging/service.ts` keeps a small `log()` helper to skip the wrapper when `data === undefined`).
+  - Gotchas encountered: Effect's default `minimumLogLevel` is `Info`, so `Logger.debug(...)` is a no-op through `prettyLoggerDefault` without an explicit log-level layer. Don't assert on debug output unless the test (or runtime) installs `Logger.minimumLogLevel(LogLevel.Debug)`.
+  - Useful context: `Layer.Layer<Logger>` returned by `LoggerLive` covers both the `Logger` service tag (via `Layer.succeed`) and Effect's pretty-vs-silent default-logger swap (via `EffectLogger.replace(defaultLogger, ...)`). Callers don't need to merge a separate logger-replacement layer.
 ---

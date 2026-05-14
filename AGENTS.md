@@ -14,6 +14,7 @@ This file is for non-obvious repo context only. It is a living document that you
 - For a single workspace package, follow the repo's Bun filter style, e.g. `bun run --filter='@lando/core' typecheck`.
 
 ## Gotchas
+- For LoggerLive, `Effect.Logger.pretty` is a Layer; when using `Logger.replace`, pass logger instances such as `Logger.prettyLoggerDefault` or `Logger.none`.
 
 - For CLI entry fast paths (e.g. `core/src/cli/index.ts`), ESM hoists every static `import` AND `export * from "./x.ts"` declaration ahead of the module body, so any top-level `if (import.meta.main)` block runs AFTER those declarations have already evaluated their target modules. The fast-path entry must contain NO static imports/re-exports of OCLIF or Effect (or modules that transitively import them); use dynamic `await import(...)` from inside a wrapper function for the OCLIF runner, and host embedding-host APIs that need Effect on a separate subpath (`@lando/core/cli/operations`). Regression coverage lives in `core/test/cli/fast-path.test.ts` via the `fast-path-canary-preload.ts` Bun-plugin canary.
 - In non-interactive shells, Bun may be installed at `/home/aaron/.bun/bin/bun` but absent from `PATH`; prefix repo commands with `PATH=/home/aaron/.bun/bin:$PATH` if workspace scripts invoke `bun` internally.

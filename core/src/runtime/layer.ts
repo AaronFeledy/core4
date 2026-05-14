@@ -25,12 +25,13 @@ import {
   type ConfigService,
   FileSystem,
   type LandofileService,
-  Logger,
+  type Logger,
   RuntimeProvider,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { LandofileServiceLive } from "../landofile/service.ts";
+import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -157,13 +158,6 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   providerExtensions: [],
 });
 
-const loggerService: Context.Tag.Service<typeof Logger> = {
-  debug: () => Effect.void,
-  info: () => Effect.void,
-  warn: () => Effect.void,
-  error: () => Effect.void,
-};
-
 const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
   read: () => Stream.empty,
   readText: () => Effect.succeed(""),
@@ -218,25 +212,28 @@ const appPlannerService: Context.Tag.Service<typeof AppPlanner> = {
   plan: () => Effect.die("app planning is not implemented yet"),
 };
 
-const MinimalRuntimeLive = Layer.mergeAll(
-  Layer.succeed(Logger, loggerService),
-  ConfigServiceLive,
-  Layer.succeed(FileSystem, fileSystemService),
-);
+const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
+  Layer.mergeAll(
+    LoggerLive({ mode: loggerMode }),
+    ConfigServiceLive,
+    Layer.succeed(FileSystem, fileSystemService),
+  );
 
-const ProviderRuntimeLive = Layer.mergeAll(
-  MinimalRuntimeLive,
-  Layer.succeed(RuntimeProvider, runtimeProviderService),
-  Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),
-);
+const makeProviderRuntimeLive = (loggerMode: LoggerMode) =>
+  Layer.mergeAll(
+    makeMinimalRuntimeLive(loggerMode),
+    Layer.succeed(RuntimeProvider, runtimeProviderService),
+    Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),
+  );
 
-const AppRuntimeLive = Layer.mergeAll(
-  ProviderRuntimeLive,
-  LandofileServiceLive,
-  Layer.succeed(AppPlanner, appPlannerService),
-);
+const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
+  Layer.mergeAll(
+    makeProviderRuntimeLive(loggerMode),
+    LandofileServiceLive,
+    Layer.succeed(AppPlanner, appPlannerService),
+  );
 
-const runtimeLayerFor = (bootstrap: BootstrapLevel): RuntimeLayer => {
+const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {
   switch (bootstrap) {
     case "none":
       return Layer.empty;
@@ -244,13 +241,13 @@ const runtimeLayerFor = (bootstrap: BootstrapLevel): RuntimeLayer => {
     case "plugins":
     case "commands":
     case "tooling":
-      return MinimalRuntimeLive;
+      return makeMinimalRuntimeLive(loggerMode);
     case "provider":
     case "global":
     case "scratch":
-      return ProviderRuntimeLive;
+      return makeProviderRuntimeLive(loggerMode);
     case "app":
-      return AppRuntimeLive;
+      return makeAppRuntimeLive(loggerMode);
   }
 };
 
@@ -293,5 +290,8 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     return Layer.fail(bootstrapError("Invalid Lando runtime options.", decoded.left));
   }
 
-  return runtimeLayerFor(decoded.right.bootstrap ?? "app");
+  return runtimeLayerFor(
+    decoded.right.bootstrap ?? "app",
+    decoded.right.logger === "pretty" ? "pretty" : "silent",
+  );
 }
