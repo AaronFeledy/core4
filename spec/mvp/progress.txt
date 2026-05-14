@@ -1164,3 +1164,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Gotchas: `Effect.mapError` only transforms FAIL channel; `Effect.catchAllCause` is needed if a defect (e.g. sync throw inside a `tryPromise` `catch`) could surface. The LandofileService Live keeps both as belt-and-suspenders since the failure channel is part of the service contract.
   - Useful context: `LandofileShape` makes `services` (and all top-level fields) optional, so an empty `.lando.yml` decodes successfully to `{}` rather than failing — keep this in mind for downstream AppPlanner stories that need a `name`/`services` guarantee.
 ---
+
+## [2026-05-14 00:15 UTC] - Push (US-025)
+- Branch pushed: us-025-landofileservice-live-implementation-yaml → origin
+- Commits: 5a51fc7 feat: LandofileService Live implementation (YAML + Compose subset), 484657a docs(landofile): scope service docstring to MVP behavior
+- PR: #28 https://github.com/AaronFeledy/core4/pull/28 (created)
+- CI round 1: macos-arm64 FAILURE — mkdtemp returns /var/folders/... but process.cwd() resolves to /private/var/folders/... on macOS; path comparison in withTempCwd assertions failed. linux-x64, linux-arm64, windows-x64 SUCCESS.
+- Triage round 1: Fixed by calling realpath() on mkdtemp result in withTempCwd. Committed fec6bdf, pushed.
+- CI round 2: All 4 platforms SUCCESS. Cursor Bugbot reviewed commit 484657a (original), found 3 issues:
+  - Thread 1 (medium): || vs && in inline-object guard (parser.ts:72). REAL. Fixed: changed to &&.
+  - Thread 2 (medium): parseScalar auto-types numbers/booleans; environment schema expects strings. REAL. Fixed: schema transform coerces string|number|boolean → string for environment values. Added regression test.
+  - Thread 3 (low): stripComment corrupts quoted values with # inside. MVP parser limitation. REJECTED as out-of-scope.
+- Triage round 2: Committed 3d392cc (parser + schema + regression test), pushed.
+- CI round 3: All 4 platforms SUCCESS. Cursor Bugbot NEUTRAL (skipped re-review).
+- Review feedback: 2 fixed, 1 rejected (low-severity MVP limitation).
+- Triage rounds used: 2 of 3.
+- Merge: squash-merged (commit 1691793 on main).
+- Local main refreshed: yes (fast-forward).
+- Local story branch deleted: yes (already absent post-merge).
+---
