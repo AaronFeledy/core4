@@ -1757,3 +1757,8 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - To satisfy "Test functionality against live Podman socket" ACs without burning a review iteration, run the live test in the review step with `LANDO_TEST_PODMAN_SOCKET` exported and the relevant images pre-pulled; takes ~11s for a single `exec` story end-to-end.
   - `Bun.spawn` + `for await (proc.stdout)` is a viable streaming primitive for curl-over-unix-socket, but does not auto-kill the subprocess on Effect Stream cancellation — wrap in try/finally with `proc.kill()` if cancellation hygiene becomes a requirement.
 ---
+
+## [2026-05-14 15:50 CDT] - Triage (Round 1)
+- Bugbot inline comment 1: FIXED. Signed `<<` shift in `makeAttachDecoder` could produce a negative `frameLength` when `buffer[4] >= 128`, bypassing the length guard and causing an infinite loop. Added `>>> 0` to force unsigned 32-bit integer. Fix: `exec.ts` line 156, commit `04b898c`.
+- Bugbot inline comment 2: REJECTED (low severity / not-a-bug). Duplicate `containerName` in exec.ts, bring-up.ts, bring-down.ts is a maintenance concern, not a correctness issue. Deferred to a dedicated refactor story.
+- Checks run before push: typecheck pass, lint pass (after `bun run format`), full test suite 186 pass / 4 skip / 0 fail.
