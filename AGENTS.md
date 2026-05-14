@@ -12,6 +12,7 @@ This file is for non-obvious repo context only. It is a living document that you
 - Run a focused test by path, e.g. `bun test core/test/unit/bootstrap.test.ts`.
 - Root `typecheck` is `tsc -b`; it may create `dist/` and `.tsbuildinfo` despite older prose saying no emit. `bun run clean` removes generated package outputs.
 - For a single workspace package, follow the repo's Bun filter style, e.g. `bun run --filter='@lando/core' typecheck`.
+- After adding a new `plugins/*` workspace package, run `bun install` so root `node_modules` gets the workspace symlink before testing imports from the repo root.
 
 ## Gotchas
 - For LoggerLive, `Effect.Logger.pretty` is a Layer; when using `Logger.replace`, pass logger instances such as `Logger.prettyLoggerDefault` or `Logger.none`.

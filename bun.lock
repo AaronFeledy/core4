@@ -51,6 +51,17 @@
         "effect": "^3.21.2",
       },
     },
+    "plugins/provider-lando": {
+      "name": "@lando/provider-lando",
+      "version": "0.0.0",
+      "dependencies": {
+        "effect": "^3.21.2",
+      },
+      "peerDependencies": {
+        "@lando/core": "workspace:*",
+        "@lando/sdk": "workspace:*",
+      },
+    },
     "plugins/proxy-traefik": {
       "name": "@lando/proxy-traefik",
       "version": "0.0.0",
@@ -223,6 +234,8 @@
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 
     "@lando/provider-docker": ["@lando/provider-docker@workspace:plugins/provider-docker"],
+
+    "@lando/provider-lando": ["@lando/provider-lando@workspace:plugins/provider-lando"],
 
     "@lando/proxy-traefik": ["@lando/proxy-traefik@workspace:plugins/proxy-traefik"],
 
