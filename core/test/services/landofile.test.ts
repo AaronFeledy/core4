@@ -161,3 +161,30 @@ describe("LandofileServiceLive", () => {
     });
   });
 });
+
+describe("LandofileServiceLive — numeric/boolean environment values", () => {
+  test("coerces numeric and boolean environment values to strings", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "    environment:",
+          "      PORT: 3000",
+          "      DEBUG: true",
+          "      NODE_ENV: development",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+
+      const web = landofile.services?.[ServiceName.make("web")];
+      expect(web?.environment).toEqual({ PORT: "3000", DEBUG: "true", NODE_ENV: "development" });
+    });
+  });
+});

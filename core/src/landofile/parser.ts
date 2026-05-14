@@ -69,7 +69,7 @@ const parseScalar = (value: string, filePath: string, line: number): unknown => 
   if (trimmed === "false") return false;
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) return parseInlineArray(trimmed, filePath, line);
-  if (trimmed.startsWith("{") || trimmed.endsWith("}")) {
+  if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
   }
   if (
