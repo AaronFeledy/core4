@@ -133,7 +133,7 @@ export interface ExecResult {
 }
 
 export type ExecChunk =
-  | { readonly stream: "stdout" | "stderr"; readonly data: Uint8Array }
+  | { readonly kind: "stdout" | "stderr"; readonly chunk: Uint8Array }
   | { readonly exitCode: number };
 
 export interface EphemeralRunSpec {

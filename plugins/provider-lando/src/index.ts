@@ -6,7 +6,7 @@
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { PluginManifest } from "@lando/sdk/schema";
+import { type AppPlan, PluginManifest } from "@lando/sdk/schema";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { type BringUpOptions, bringUp } from "./bring-up.ts";
@@ -16,6 +16,7 @@ import {
   linuxMvpCapabilities,
   makePodmanApiClient,
 } from "./capabilities.ts";
+import { exec, execStream } from "./exec.ts";
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
@@ -23,6 +24,8 @@ export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";
 export { bringDown } from "./bring-down.ts";
 export type { BringDownOptions } from "./bring-down.ts";
+export { exec, execStream } from "./exec.ts";
+export type { ExecOptions } from "./exec.ts";
 
 export {
   decodeProviderCapabilities,
@@ -49,6 +52,7 @@ export interface ProviderLayerOptions {
 }
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
+  const plans = new Map<string, AppPlan>();
   const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
   const podmanApi =
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
@@ -76,13 +80,23 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           bringUp(plan, {
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
-          }),
+          }).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan)))),
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
         destroy: () => Effect.void,
-        exec: () => Effect.fail(makeUnavailable("exec")),
-        execStream: () => Stream.fail(makeUnavailable("execStream")),
+        exec: (target, command) => {
+          const plan = plans.get(target.app);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("exec"))
+            : exec(plan, target, command, { ...(podmanApi === undefined ? {} : { podmanApi }) });
+        },
+        execStream: (target, command) => {
+          const plan = plans.get(target.app);
+          return plan === undefined
+            ? Stream.fail(makeUnavailable("execStream"))
+            : execStream(plan, target, command, { ...(podmanApi === undefined ? {} : { podmanApi }) });
+        },
         run: () => Effect.fail(makeUnavailable("run")),
         logs: () => Stream.empty,
         inspect: () => Effect.fail(makeUnavailable("inspect")),

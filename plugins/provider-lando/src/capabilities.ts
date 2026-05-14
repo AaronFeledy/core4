@@ -1,4 +1,4 @@
-import { Effect, Schema } from "effect";
+import { Effect, Schema, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { ProviderCapabilities } from "@lando/sdk/schema";
@@ -27,6 +27,62 @@ export interface PodmanApiClient {
   readonly request?: (
     request: PodmanHttpRequest,
   ) => Effect.Effect<PodmanHttpResponse, ProviderUnavailableError | ProviderInternalError>;
+  readonly stream?: (
+    request: PodmanHttpRequest,
+  ) => Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError>;
+}
+
+const podmanApiFailure = (
+  request: PodmanHttpRequest,
+  cause: unknown,
+): ProviderUnavailableError | ProviderInternalError =>
+  cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
+    ? cause
+    : new ProviderUnavailableError({
+        providerId: PROVIDER_ID,
+        operation: "podman-api",
+        message: "Failed to call the Podman API.",
+        details: { method: request.method, path: request.path },
+        cause,
+      });
+
+async function* streamPodmanRequest(
+  socketPath: string,
+  request: PodmanHttpRequest,
+): AsyncGenerator<Uint8Array> {
+  const args = [
+    "--silent",
+    "--show-error",
+    "--fail",
+    "--no-buffer",
+    "--unix-socket",
+    socketPath,
+    "--request",
+    request.method,
+  ];
+
+  if (request.body !== undefined) {
+    args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(request.body));
+  }
+
+  args.push(`http://localhost/v5.0.0${request.path}`);
+
+  const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
+  const stderr = new Response(proc.stderr).text();
+
+  for await (const chunk of proc.stdout) {
+    yield chunk;
+  }
+
+  const [stderrText, exitCode] = await Promise.all([stderr, proc.exited]);
+  if (exitCode !== 0) {
+    throw new ProviderUnavailableError({
+      providerId: PROVIDER_ID,
+      operation: "podman-api",
+      message: `Podman API stream request failed with exit code ${exitCode}.`,
+      details: { method: request.method, path: request.path, stderr: stderrText },
+    });
+  }
 }
 
 export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => ({
@@ -83,6 +139,10 @@ export const linuxMvpCapabilities: ProviderCapabilities = Schema.decodeSync(Prov
 });
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
+  stream: (request) =>
+    Stream.fromAsyncIterable(streamPodmanRequest(socketPath, request), (cause) =>
+      podmanApiFailure(request, cause),
+    ),
   request: (request) =>
     Effect.gen(function* () {
       const args = [
