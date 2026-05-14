@@ -60,6 +60,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bun's `Error` superclass auto-populates `line` and `column` properties with the constructor's source location. `Schema.TaggedError` extends `Error`, so a TaggedError field declared as `Schema.optional(Schema.Number)` and named `line` or `column` will silently report Bun's source-line number when the caller omits the field (the optional declaration leaves the property unset, so the Bun built-in shines through). Use `Schema.UndefinedOr(Schema.Number)` instead — Effect explicitly assigns `undefined` to the instance property, overriding the Bun built-in. The same trap applies to any TaggedError field whose name collides with an `Error` built-in. Verify suspect cases with a throwaway probe: omit the field, log `instance.fieldName` and `Object.hasOwn(instance, "fieldName")` — `Schema.optional` shows the Bun bleed-through, `Schema.UndefinedOr` shows `undefined` with `hasOwn === true`.
 - EventService Live is `PubSub.unbounded`-backed; use `Stream.fromPubSub(pubsub)` for scoped subscriptions, support exact `_tag` filtering plus `"*"` for all lifecycle events, and start subscriber fibers before publishing in tests because PubSub does not replay by default.
 - CacheService Live is in-memory only for MVP; store unknown values, decode them on read with the caller's Effect Schema, and use Effect `Clock` for TTL so tests can run under `TestContext.TestContext` with `TestClock.adjust(...)`.
+- Provider plugin capability tests should inject a tiny Podman API client into the provider layer so unit tests do not need a real daemon; keep real HTTP-over-UNIX request construction in a separate helper and reserve `LANDO_TEST_PODMAN_SOCKET` for socket-backed QA.
 
 
 ## Iteration Log
@@ -1562,4 +1563,39 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → cb760e8 "Add @lando/provider-lando workspace package skeleton (#36)"
 - Local main / branch refreshed: yes (main at cb760e8, story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## 2026-05-14 - Sync
+- Previous branch: us-033-provider-lando-skeleton (or "none")
+- Previous PR: #36 https://github.com/AaronFeledy/core4/pull/36
+- Action: caught up after prior merge (PR #36 was already MERGED; remote branch already pruned; local branch did not exist)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-14 09:07 CDT - US-034
+- Implemented provider-lando capability introspection plumbing with SDK schema decoding, Linux MVP capability defaults, and a Podman HTTP-over-UNIX request helper that does not invoke the `podman` binary.
+- Files changed: `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/capabilities.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `lsp_diagnostics` clean on changed TypeScript files; `bun test plugins/provider-lando/test/package.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual QA via `bun --eval` showed provider id `lando`, `bindMountPerformance: native`, `sharedCrossAppNetwork: false`, `copyMounts: false`, and a `curl --unix-socket` request for `http://localhost/v5.0.0/libpod/info`.
+- **Learnings for future iterations:**
+  - Provider-lando can unit-test capability introspection by passing `makeProviderLayer({ podmanApi })`; use `makePodmanInfoRequest(socketPath)` to lock the Podman API request shape separately from daemon availability.
+  - The current SDK capability schema uses `copyMounts`; PRD wording about `copyOnWriteAppRoot` maps to `copyMounts: false` in the published contract.
+---
+
+## 2026-05-14 09:55 CDT - Push (US-034)
+- Branch pushed: us-034-provider-lando-capabilities → origin (1 story commit + 3 triage fix commits)
+- Story commit: 2ff8565 "feat: provider-lando capability matrix introspection"
+- PR: #37 https://github.com/AaronFeledy/core4/pull/37 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS; Cursor Bugbot SKIPPING each round)
+- Review feedback triage (3 rounds used):
+  - Round 1 (commit 2ff8565): Bugbot flagged ProviderUnavailableError swallowed by tryPromise catch handler. REAL ISSUE. Fixed in commit 1993914 — refactored to Effect.gen + Effect.fail.
+  - Round 2 (commit 1993914): Bugbot flagged JSON.parse(stdout) as untyped defect inside Effect.gen. REAL ISSUE. Fixed in commit d47022d — wrapped in Effect.try.
+  - Round 3 (commit d47022d): Bugbot flagged redundant Schema.decode of pre-validated linuxMvpCapabilities constant. REAL ISSUE (dead error path). Fixed in commit 33f8b45 — replaced with Effect.map(() => linuxMvpCapabilities).
+  - Round 4 (commit 33f8b45): Bugbot flagged contradictory bindMounts: true + bindMountPerformance: "none" on non-Linux (spec §5.4 says "none" means bind mounts unsupported). REAL ISSUE. NOT FIXED — 3-round triage limit exhausted.
+- Unresolved thread: Thread 4 on capabilities.ts:60 — bindMounts/bindMountPerformance inconsistency on non-Linux (medium severity). Needs fix: change bindMounts to false on non-Linux, or use "slow"/"emulated" for bindMountPerformance on non-Linux if Podman supports them there.
+- Triage rounds used: 3 (limit reached)
+- Merge: DEFERRED — unresolved blocking Bugbot thread after 3 rounds; reviewDecision="" but thread 4 is unresolved. Next sync step should address the bindMounts inconsistency before merging.
+- Local main / branch refreshed: no (on story branch, main not updated)
+- Remaining local state: on us-034-provider-lando-capabilities at HEAD 33f8b45; PR #37 open; next iteration should fix bindMounts contradiction then re-run Phase 3-5.
 ---
