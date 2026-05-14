@@ -124,4 +124,6 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
-  api.info.pipe(Effect.flatMap(() => decodeProviderCapabilities(linuxMvpCapabilities)));
+  // linuxMvpCapabilities is pre-validated at module load; map directly to avoid
+  // a redundant decode that always succeeds and adds an unreachable error path.
+  api.info.pipe(Effect.map(() => linuxMvpCapabilities));
