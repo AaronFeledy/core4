@@ -62,6 +62,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - EventService Live is `PubSub.unbounded`-backed; use `Stream.fromPubSub(pubsub)` for scoped subscriptions, support exact `_tag` filtering plus `"*"` for all lifecycle events, and start subscriber fibers before publishing in tests because PubSub does not replay by default.
 - CacheService Live is in-memory only for MVP; store unknown values, decode them on read with the caller's Effect Schema, and use Effect `Clock` for TTL so tests can run under `TestContext.TestContext` with `TestClock.adjust(...)`.
 - Provider plugin capability tests should inject a tiny Podman API client into the provider layer so unit tests do not need a real daemon; keep real HTTP-over-UNIX request construction in a separate helper and reserve `LANDO_TEST_PODMAN_SOCKET` for socket-backed QA.
+- Provider-lando lifecycle code should use the `PodmanApiClient.request` HTTP-over-UNIX seam for Podman API calls; fake it in unit tests and reserve live Node/Postgres checks for `LANDO_TEST_PODMAN_SOCKET`.
 
 
 ## Iteration Log
@@ -122,6 +123,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main)
 - Branch after sync: ralph/mvp-walking-skeleton (fresh from main)
 - Stash created: no
+---
+
+## [2026-05-14 13:04 CDT] - US-036
+- Implemented provider-lando `bringUp` over Podman API requests, including network/container create/start/inspect flow, lifecycle event publication, cancellation cleanup, and idempotent second-run behavior.
+- Files changed: `plugins/provider-lando/src/bring-up.ts`, `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/bring-up.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `lsp_diagnostics` clean on changed TypeScript files; `bun test plugins/provider-lando/test/bring-up.integration.test.ts` passed (live socket case skipped because `LANDO_TEST_PODMAN_SOCKET` was not set); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; manual QA via `bun --eval` showed first `bringUp` returned `{ changed: true }`, second returned `{ changed: false }`, and the fake Podman API had `lando-qaapp-web` running.
+- **Learnings for future iterations:**
+  - Use Docker-compatible Podman endpoints for idempotent bring-up: inspect first, create only on 404, treat create 409 and start 304 as success, then inspect again for `Running`.
+  - Keep live Podman tests self-cleaning with direct stop/remove requests until bringDown lands.
 ---
 
 ## 2026-05-10 20:11 CDT - US-003
@@ -1635,4 +1645,33 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → 943191c "provider-lando: Compose file emission to per-app temp dir (#38)"
 - Local main / branch refreshed: yes (main at 943191c, story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 12:40 CDT] - Sync
+- Previous branch: us-035-compose-temp-dir
+- Previous PR: #38 https://github.com/AaronFeledy/core4/pull/38
+- Action: caught up after prior merge (PR #38 was already MERGED; local story branch was already absent)
+- Local main updated: yes (already up to date with origin/main at 554271a)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-14 13:16 CDT] - US-036 Review
+- Reviewed build commit `1087cd4 feat: provider-lando bringUp brings services to running state` against PRD-04 US-004 (`spec/mvp/prd-mvp-04-providers.md`) and `spec/mvp/prd.json` US-036 acceptance criteria.
+- `/review` slash command: not registered in this workspace (same precedent as US-022-US-035). Performed manual checklist review of diff + tests + spec + live socket QA.
+- PRD-04 US-004 AC mapping:
+  - AC#1 (failing integration test gated on `LANDO_TEST_PODMAN_SOCKET`, Node+Postgres reach Running via API inspect, lifecycle events published, endpoints reachable, AbortSignal cleanup): satisfied by `plugins/provider-lando/test/bring-up.integration.test.ts` — fake-API tests cover events, idempotency, and cancellation; live-socket test asserts `"Running":true` via inspect, `fetch("http://127.0.0.1:31080") === "lando-bringup-ok"`, and TCP-accept on 55432.
+  - AC#2 (Podman API over socket, no `Bun.spawn("podman", ...)`): satisfied — `makePodmanApiClient` uses `Bun.spawn(["curl", "--unix-socket", socketPath, ...])` against `/v5.0.0/...`. No `podman` binary invoked.
+  - AC#3 (idempotent on second call): satisfied — `inspectContainer` returns `{exists, running}` and `bringUp` short-circuits create/start; fake-API test asserts `second.changed === false`.
+  - AC#4-5 (typecheck/lint/test pass): `bun run typecheck` pass, `bun run lint` pass, `bun test` pass (183 pass / 2 skip / 0 fail).
+  - AC#6 (test functionality against live Podman socket): satisfied AFTER review fix below — verified end-to-end against `/run/user/$UID/podman/podman.sock` with pre-pulled `node:22-alpine` + `postgres:16-alpine`: bringUp returned `{changed: true}`, both containers Running, fetch resolved, Postgres TCP accepted, cleanup stopped+removed both containers (21.1s).
+- Manual review findings:
+  - **FIXED (REAL):** Live integration test had no per-test timeout override. Bun's default 5s timeout aborted the live-socket case (~21s real-world cost: ~10 curl spawns + Postgres bind + fetch + TCP connect + stop/delete cleanup). PRD AC explicitly requires verifying against a live socket; without the override, the test was effectively unrunnable on a real host. Fix: added `60_000` ms third-arg timeout to the `test.skipIf(!LANDO_TEST_PODMAN_SOCKET)(...)` block in `plugins/provider-lando/test/bring-up.integration.test.ts`. Fake-API tests (which use no socket) keep the default 5s.
+  - **Considered, not fixed (out of scope):** No port-readiness retry around `fetch`/`Bun.connect`. Podman `State.Running=true` doesn't strictly guarantee the in-container process has bound; live run on this host succeeded without retries because curl-per-call latency naturally adds ~50-200ms of slack and Postgres bound within that window. Adding retries is hardening, not a build-step regression — defer to a bringDown/health-aware story.
+  - **Considered, not fixed (out of scope):** `apply: (plan) => bringUp(plan, ...)` in `index.ts` drops the `ApplyOptions.reconcile` flag and does not forward an `AbortSignal`. PRD-MVP `ApplyOptions` shape (`sdk/src/services/index.ts:102`) only exposes `reconcile: boolean` with no signal field, so there's nothing to forward at the public surface. Internal cancellation already works through the plugin-private `BringUpOptions.signal` (covered by the cancellation test).
+- Files changed: `plugins/provider-lando/test/bring-up.integration.test.ts`, `spec/mvp/progress.txt`.
+- Verification run and result: `lsp_diagnostics` clean on the patched test; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass (183 pass / 2 skip / 0 fail) when `LANDO_TEST_PODMAN_SOCKET` unset; live-socket run passed in 21.1s when `LANDO_TEST_PODMAN_SOCKET=/run/user/$UID/podman/podman.sock` with `node:22-alpine` + `postgres:16-alpine` pre-pulled.
+- **Learnings for future iterations:**
+  - Bun's default 5s per-test timeout is *not* a viable budget for any test that spawns real container lifecycle ops via curl-per-call against the Podman API socket; add an explicit per-test timeout (Bun `test(label, fn, timeoutMs)` third arg) on the live-gated case so a real run on a developer or CI host with the socket env var actually exercises the path.
+  - Live Podman tests for `bringUp` assume the artifact ref (image) is already resident locally; image pull is a separate story (`pullArtifact` currently returns `ProviderUnavailableError`). Document this dependency in any future "live podman" CI job or pre-pull explicitly.
 ---
