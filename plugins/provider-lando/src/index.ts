@@ -17,6 +17,7 @@ import {
   makePodmanApiClient,
 } from "./capabilities.ts";
 import { exec, execStream } from "./exec.ts";
+import { logs } from "./logs.ts";
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
@@ -26,6 +27,8 @@ export { bringDown } from "./bring-down.ts";
 export type { BringDownOptions } from "./bring-down.ts";
 export { exec, execStream } from "./exec.ts";
 export type { ExecOptions } from "./exec.ts";
+export { logs } from "./logs.ts";
+export type { LogsOptions } from "./logs.ts";
 
 export {
   decodeProviderCapabilities,
@@ -98,7 +101,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             : execStream(plan, target, command, { ...(podmanApi === undefined ? {} : { podmanApi }) });
         },
         run: () => Effect.fail(makeUnavailable("run")),
-        logs: () => Stream.empty,
+        logs: (target, logOptions) => {
+          const plan = plans.get(target.app);
+          return plan === undefined
+            ? Stream.fail(makeUnavailable("logs"))
+            : logs(plan, target, logOptions, { ...(podmanApi === undefined ? {} : { podmanApi }) });
+        },
         inspect: () => Effect.fail(makeUnavailable("inspect")),
         list: () => Effect.succeed([]),
       }),
