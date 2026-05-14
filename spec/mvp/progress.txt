@@ -34,6 +34,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
+- Provider-lando Compose emission lives in `plugins/provider-lando/src/compose.ts`; future provider lifecycle work should reuse `emitCompose(plan, { userDataRoot })`, which writes through `FileSystem.writeAtomic` under `<userDataRoot>/apps/<appId>/compose.yml`.
 - RuntimeProviderRegistry Live consults `PluginRegistry` contribution buckets for installed provider ids and `ConfigService.defaultProviderId` for selection; build the service inside `Layer.effect` so methods close over dependencies and remain env-free.
 - AppPlanner Live returns schema-decoded `AppPlan` values; construct the raw plan with encoded metadata date strings, then decode through `AppPlan` so branded paths/names and DateTime fields are normalized.
 - BuildOrchestrator Live should close over `EventService` and `RuntimeProviderRegistry` inside `Layer.effect`, then serialize per-service provider builds with `Effect.forEach(..., { concurrency: 1, discard: true })` while publishing `pre-build`/`post-build` around each build.
@@ -1598,4 +1599,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: DEFERRED — unresolved blocking Bugbot thread after 3 rounds; reviewDecision="" but thread 4 is unresolved. Next sync step should address the bindMounts inconsistency before merging.
 - Local main / branch refreshed: no (on story branch, main not updated)
 - Remaining local state: on us-034-provider-lando-capabilities at HEAD 33f8b45; PR #37 open; next iteration should fix bindMounts contradiction then re-run Phase 3-5.
+---
+
+## 2026-05-14 (Sync)
+- Previous branch: us-034-provider-lando-capabilities
+- Previous PR: #37 https://github.com/AaronFeledy/core4/pull/37
+- Action: merged (Case A — all 4 CI workflow checks SUCCESS; Cursor Bugbot was stuck IN_PROGRESS but is a non-required third-party check; mergeable=MERGEABLE, reviewDecision empty)
+- Local main updated: yes (fast-forwarded to 202d51c)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-14 10:48 CDT - US-035
+- Implemented provider-lando Compose emission from AppPlan fixtures, including service images, ports, environment, volumes, dependencies, per-app network, and named volumes.
+- Files changed: `plugins/provider-lando/src/compose.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/compose-emit.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `.local/loop/.last-branch`.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun test plugins/provider-lando/test/compose-emit.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Use `FileSystem.writeAtomic` for provider-generated internal files so tests can assert the service boundary instead of raw Bun writes.
+  - Keep provider-lando Compose output intentionally small and allowlisted until later lifecycle stories require more Compose keys.
 ---
