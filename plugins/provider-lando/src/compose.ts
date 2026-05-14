@@ -15,12 +15,17 @@ export interface EmitComposeResult {
   readonly content: string;
 }
 
+interface DependsOnEntry {
+  readonly condition: string;
+}
+
 interface ComposeService {
   readonly image: string;
   readonly ports?: ReadonlyArray<string>;
   readonly environment?: Readonly<Record<string, string>>;
   readonly volumes?: ReadonlyArray<string>;
-  readonly depends_on?: ReadonlyArray<string>;
+  readonly tmpfs?: ReadonlyArray<string>;
+  readonly depends_on?: Readonly<Record<string, DependsOnEntry>>;
   readonly networks?: ReadonlyArray<string>;
 }
 
@@ -39,11 +44,13 @@ const composeError = (message: string, details?: unknown) =>
     details,
   });
 
-const pathJoin = (...parts: ReadonlyArray<string>) =>
-  parts
-    .map((part, index) => (index === 0 ? part.replace(/\/+$/u, "") : part.replace(/^\/+|\/+$/gu, "")))
-    .filter((part) => part.length > 0)
-    .join("/");
+// Strips redundant slashes while correctly preserving a leading slash on
+// absolute paths (including the edge case where the first segment is "/").
+const pathJoin = (...parts: ReadonlyArray<string>) => {
+  const hasLeadingSlash = (parts[0] ?? "").startsWith("/");
+  const segments = parts.map((part) => part.replace(/^\/+|\/+$/gu, "")).filter((part) => part.length > 0);
+  return (hasLeadingSlash ? "/" : "") + segments.join("/");
+};
 
 const serviceImage = (service: ServicePlan) => {
   if (service.artifact?.kind === "ref") {
@@ -63,9 +70,10 @@ const serviceVolumes = (service: ServicePlan): ReadonlyArray<string> => {
     service.appMount === undefined
       ? []
       : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
-  const mounts = service.mounts.map((mount) => {
+  const mounts = service.mounts.flatMap((mount) => {
     if (mount.type === "tmpfs") {
-      return mount.target;
+      // tmpfs mounts are emitted under the service-level `tmpfs:` key, not `volumes:`.
+      return [];
     }
 
     if (mount.source === undefined) {
@@ -75,7 +83,7 @@ const serviceVolumes = (service: ServicePlan): ReadonlyArray<string> => {
       });
     }
 
-    return `${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`;
+    return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
   const storage = service.storage.map(
     (storeMount) => `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`,
@@ -83,6 +91,10 @@ const serviceVolumes = (service: ServicePlan): ReadonlyArray<string> => {
 
   return [...appMount, ...mounts, ...storage];
 };
+
+// Collects tmpfs mount targets for the service-level `tmpfs:` key in Compose.
+const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
+  service.mounts.flatMap((mount) => (mount.type === "tmpfs" ? [mount.target] : []));
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   service.endpoints.flatMap((endpoint) => {
@@ -94,6 +106,17 @@ const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
     return [`${endpoint.port}:${endpoint.port}${suffix}`];
   });
 
+// Maps DependencyPlan conditions to Docker Compose long-form depends_on entries
+// so that `condition: "healthy"` correctly produces `service_healthy` (not the
+// default `service_started` implied by the short-form string list).
+const serviceDependsOn = (service: ServicePlan): Readonly<Record<string, DependsOnEntry>> =>
+  Object.fromEntries(
+    service.dependsOn.map((dep) => [
+      dep.service,
+      { condition: dep.condition === "healthy" ? "service_healthy" : "service_started" },
+    ]),
+  );
+
 const removeEmpty = (service: ComposeService): ComposeService => ({
   image: service.image,
   ...(service.ports === undefined || service.ports.length === 0 ? {} : { ports: service.ports }),
@@ -101,7 +124,8 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
     ? {}
     : { environment: service.environment }),
   ...(service.volumes === undefined || service.volumes.length === 0 ? {} : { volumes: service.volumes }),
-  ...(service.depends_on === undefined || service.depends_on.length === 0
+  ...(service.tmpfs === undefined || service.tmpfs.length === 0 ? {} : { tmpfs: service.tmpfs }),
+  ...(service.depends_on === undefined || Object.keys(service.depends_on).length === 0
     ? {}
     : { depends_on: service.depends_on }),
   ...(service.networks === undefined || service.networks.length === 0 ? {} : { networks: service.networks }),
@@ -117,7 +141,8 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         ports: servicePorts(service),
         environment: service.environment,
         volumes: serviceVolumes(service),
-        depends_on: service.dependsOn.map((dependency) => String(dependency.service)),
+        tmpfs: serviceTmpfs(service),
+        depends_on: serviceDependsOn(service),
         networks: networkNames,
       }),
     ]),
@@ -173,9 +198,18 @@ export const renderCompose = (plan: AppPlan): string => {
       writeScalarList(lines, "      ", service.volumes);
     }
 
+    if (service.tmpfs !== undefined) {
+      lines.push("    tmpfs:");
+      writeScalarList(lines, "      ", service.tmpfs);
+    }
+
     if (service.depends_on !== undefined) {
       lines.push("    depends_on:");
-      writeScalarList(lines, "      ", service.depends_on);
+      for (const [depService, entry] of Object.entries(service.depends_on).sort(([left], [right]) =>
+        left.localeCompare(right),
+      )) {
+        lines.push(`      ${depService}:`, `        condition: ${scalar(entry.condition)}`);
+      }
     }
 
     if (service.networks !== undefined) {
@@ -213,7 +247,16 @@ export const emitCompose = (
     const fileSystem = yield* FileSystem;
     const appRoot = pathJoin(options.userDataRoot, "apps", String(plan.id));
     const outputPath = pathJoin(appRoot, "compose.yml");
-    const content = renderCompose(plan);
+    // Wrap synchronous renderCompose in Effect.try so that any throw from
+    // serviceImage/serviceVolumes surfaces as a typed ProviderInternalError
+    // failure (not an unhandled defect bypassing the mapError handler below).
+    const content = yield* Effect.try({
+      try: () => renderCompose(plan),
+      catch: (e) =>
+        e instanceof ProviderInternalError
+          ? e
+          : composeError("Unexpected error rendering Compose.", { cause: e }),
+    });
 
     yield* fileSystem.mkdir(pathJoin(options.userDataRoot, "apps"));
     yield* fileSystem.mkdir(appRoot);

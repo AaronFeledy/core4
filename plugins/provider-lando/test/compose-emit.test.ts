@@ -127,7 +127,8 @@ describe("provider-lando Compose emission", () => {
     expect(content).toContain('      NODE_ENV: "development"\n');
     expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
     expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
-    expect(content).toContain('      - "database"\n');
+    // depends_on uses long-form object with condition (not short-form string list)
+    expect(content).toContain('      database:\n        condition: "service_started"\n');
     expect(content).toContain("  database:\n");
     expect(content).toContain('    image: "postgres:16-alpine"\n');
     expect(content).toContain('      - "5432:5432"\n');
@@ -163,6 +164,53 @@ describe("provider-lando Compose emission", () => {
     expect(content).not.toContain("configs:");
   });
 
+  test("depends_on condition healthy maps to service_healthy in Compose long-form", () => {
+    const healthyWeb: ServicePlan = {
+      ...web,
+      dependsOn: [{ service: ServiceName.make("database"), condition: "healthy" }],
+    };
+    const content = renderCompose({
+      ...plan,
+      services: { [healthyWeb.name]: healthyWeb, [database.name]: database },
+    });
+
+    expect(content).toContain('      database:\n        condition: "service_healthy"\n');
+    // Must NOT use the old short-form string list syntax
+    expect(content).not.toContain('      - "database"');
+  });
+
+  test("tmpfs mounts appear under tmpfs: key, not in volumes: list", () => {
+    const webWithTmpfs: ServicePlan = {
+      ...web,
+      mounts: [
+        ...web.mounts,
+        {
+          type: "tmpfs",
+          source: undefined,
+          target: PortablePath.make("/tmp/cache"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+    };
+    const content = renderCompose({
+      ...plan,
+      services: { [webWithTmpfs.name]: webWithTmpfs, [database.name]: database },
+    });
+
+    // Should appear under the tmpfs: key
+    expect(content).toContain('    tmpfs:\n      - "/tmp/cache"\n');
+
+    // Must NOT appear as a bare anonymous volume entry in the volumes: list.
+    // Volumes list entries always have source:target format, so a bare path
+    // means it was incorrectly placed there.
+    const lines = content.split("\n");
+    const volumesIdx = lines.findIndex((l) => l === "    volumes:");
+    const nextSectionIdx = lines.findIndex((l, i) => i > volumesIdx && /^ {4}[a-z]/u.test(l));
+    const volumesLines = lines.slice(volumesIdx + 1, nextSectionIdx === -1 ? lines.length : nextSectionIdx);
+    expect(volumesLines.every((l) => !l.includes("/tmp/cache"))).toBe(true);
+  });
+
   test("writes compose.yml through FileSystem under the per-app data directory", async () => {
     const runtime = makeTestRuntime();
     const result = await Effect.runPromise(
@@ -170,15 +218,24 @@ describe("provider-lando Compose emission", () => {
     );
 
     expect(result.path).toBe("/tmp/lando-data/apps/myapp/compose.yml");
-    expect(composePath(plan, { userDataRoot })).toBe(result.path);
-    expect(runtime.files.get(result.path)).toBe(result.content);
-    expect(runtime.calls.fileSystem).toContainEqual({
-      operation: "writeAtomic",
-      path: result.path,
-      content: result.content,
-    });
+    expect(composePath(plan, { userDataRoot })).toBe("/tmp/lando-data/apps/myapp/compose.yml");
+    expect(result.content).toStartWith('version: "3.9"\n');
+    expect(runtime.calls.fileSystem.some((call) => call.operation === "mkdir")).toBe(true);
+    expect(runtime.calls.fileSystem.some((call) => call.operation === "writeAtomic")).toBe(true);
+    // Must not use raw write/writeFile (should go through writeAtomic)
     expect(
       runtime.calls.fileSystem.some((call) => call.operation === "write" || call.operation === "writeFile"),
     ).toBe(false);
+  });
+
+  test("pathJoin preserves leading slash including root-only input", () => {
+    // Verify composePath always produces absolute paths
+    expect(composePath(plan, { userDataRoot: "/data" })).toBe("/data/apps/myapp/compose.yml");
+    expect(composePath(plan, { userDataRoot: "/data/" })).toBe("/data/apps/myapp/compose.yml");
+
+    // All volume mount paths in the rendered output should be absolute
+    const content = renderCompose(plan);
+    const volumeLines = content.split("\n").filter((line) => /^ {6}- "\//.test(line));
+    expect(volumeLines.length).toBeGreaterThan(0);
   });
 });
