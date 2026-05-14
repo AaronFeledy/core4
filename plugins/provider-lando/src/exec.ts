@@ -153,7 +153,8 @@ const makeAttachDecoder = () => {
     while (buffer.length >= 8) {
       const streamType = buffer[0] ?? 0;
       const frameLength =
-        ((buffer[4] ?? 0) << 24) | ((buffer[5] ?? 0) << 16) | ((buffer[6] ?? 0) << 8) | (buffer[7] ?? 0);
+        (((buffer[4] ?? 0) << 24) | ((buffer[5] ?? 0) << 16) | ((buffer[6] ?? 0) << 8) | (buffer[7] ?? 0)) >>>
+        0;
       if (buffer.length < 8 + frameLength) {
         break;
       }
