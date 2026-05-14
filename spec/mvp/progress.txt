@@ -1675,3 +1675,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Bun's default 5s per-test timeout is *not* a viable budget for any test that spawns real container lifecycle ops via curl-per-call against the Podman API socket; add an explicit per-test timeout (Bun `test(label, fn, timeoutMs)` third arg) on the live-gated case so a real run on a developer or CI host with the socket env var actually exercises the path.
   - Live Podman tests for `bringUp` assume the artifact ref (image) is already resident locally; image pull is a separate story (`pullArtifact` currently returns `ProviderUnavailableError`). Document this dependency in any future "live podman" CI job or pre-pull explicitly.
 ---
+
+## 2026-05-14 19:20 CDT - Push (US-036)
+- Branch pushed: us-036-provider-lando-bring-up → origin (2 story commits: feat + test-timeout fix)
+- Story commits: 1087cd4 "feat: provider-lando bringUp brings services to running state", 63236cb "test(provider-lando): bump live bringUp timeout to 60s"
+- PR: #39 https://github.com/AaronFeledy/core4/pull/39 (created)
+- CI outcome (round 1): pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot NEUTRAL/1 issue)
+- Triage round 1:
+  - Thread 1 (Medium): "Port binding generates garbage for portless endpoints" — REAL ISSUE. hostConfig mapped undefined-port endpoints producing "undefined/tcp" keys. Fixed in c750b27: added .filter(endpoint => endpoint.port !== undefined) before .map(). Bugbot re-raised same BUGBOT_BUG_ID on new commit as stale/repositioned comment.
+- CI outcome (round 2, after c750b27): pass (all 4 SUCCESS, Bugbot NEUTRAL/2 issues)
+- Triage round 2:
+  - Thread 1 (Medium): same stale "Port binding" comment repositioned to line 135 (our fix line) — FALSE POSITIVE, already fixed, rejected.
+  - Thread 2 (Low): "Error cleanup misses the just-started container" — REAL ISSUE. tapError passed `started` without the current container name; if startService fails after create+start, container leaks. Fixed in ccb324b: pre-compute thisName = containerName(plan, service), pass [...started, thisName] to cleanupStarted.
+- CI outcome (round 3, after ccb324b): pass (all 4 SUCCESS, Bugbot SUCCESS/no new issues)
+- Review feedback: all threads addressed; Bugbot SUCCESS on ccb324b; reviewDecision empty
+- Triage rounds used: 2
+- Merge: merged (squash) → b74d7f5 "provider-lando bringUp brings services to running state (#39)"
+- Local main / branch refreshed: yes (main at b74d7f5, local story branch deleted)
+- Remaining local state: clean, on main
+---
