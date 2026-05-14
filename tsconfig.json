@@ -4,6 +4,7 @@
   "references": [
     { "path": "./core" },
     { "path": "./sdk" },
+    { "path": "./plugins/provider-lando" },
     { "path": "./plugins/service-lando" },
     { "path": "./plugins/provider-docker" },
     { "path": "./plugins/proxy-traefik" },

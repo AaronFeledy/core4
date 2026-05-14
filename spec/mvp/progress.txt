@@ -29,6 +29,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
+- After adding a new `plugins/*` workspace package, run `bun install` to refresh root `node_modules` workspace links before manual package-import QA from the repo root.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
@@ -1513,4 +1514,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → b57d15c "feat: BuildOrchestrator Live implementation (sequential) (#35)"
 - Local main / branch refreshed: yes (main at b57d15c, story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## 2026-05-14 08:32 CDT - Sync
+- Previous branch: us-033-provider-lando-skeleton
+- Previous PR: none
+- Action: no PR found; branch had 0 commits ahead of main (clean state); deleted local story branch
+- Local main updated: yes (already up to date with origin/main at 85c04f4)
+- Branch after sync: main
+- Stash created: yes ("loop-sync-autostash" — uncommitted changes to spec/mvp/progress.txt from story branch; left for human review)
+---
+
+## 2026-05-14 08:40 CDT - US-033
+- What was implemented: created the `@lando/provider-lando` workspace package skeleton with package metadata, plugin manifest, TypeScript config, stub Layer export, decoded manifest export, and package import test.
+- Files changed: `plugins/provider-lando/package.json`, `plugins/provider-lando/plugin.yaml`, `plugins/provider-lando/tsconfig.json`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/package.test.ts`, `tsconfig.json`, `bun.lock`, `AGENTS.md`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test plugins/provider-lando/test/package.test.ts` passed; `bun run --filter='@lando/provider-lando' typecheck` passed; `bun run --filter='@lando/provider-lando' build` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual import QA printed `{"PLUGIN_NAME":"@lando/provider-lando","isLayer":true,"manifestName":"@lando/provider-lando","providers":["lando"]}`.
+- **Learnings for future iterations:**
+  - Root imports of a newly added workspace package require `bun install` first so Bun creates the root `node_modules` workspace symlink.
+  - The current SDK `PluginManifest` schema uses `api: 4` plus optional `contributes` buckets; it does not include the older PRD wording's `kind`/`landoCompat` fields.
 ---

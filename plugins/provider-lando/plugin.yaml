@@ -1,0 +1,18 @@
+# @lando/provider-lando — Lando-managed RuntimeProvider.
+
+name: "@lando/provider-lando"
+version: "0.0.0"
+api: 4
+description: "Reference Lando-managed RuntimeProvider implementation."
+enabled: true
+updateable: true
+
+provides:
+  providers:
+    - id: lando
+      module: ./src/provider.ts
+      defaultFor:
+        platform: [linux]
+
+requires:
+  "@lando/core": "^4.0.0"
