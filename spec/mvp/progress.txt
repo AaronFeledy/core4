@@ -39,6 +39,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - AppPlanner Live returns schema-decoded `AppPlan` values; construct the raw plan with encoded metadata date strings, then decode through `AppPlan` so branded paths/names and DateTime fields are normalized.
 - BuildOrchestrator Live should close over `EventService` and `RuntimeProviderRegistry` inside `Layer.effect`, then serialize per-service provider builds with `Effect.forEach(..., { concurrency: 1, discard: true })` while publishing `pre-build`/`post-build` around each build.
 - Provider-lando exec uses the Podman API exec flow (`/containers/{name}/exec`, `/exec/{id}/start`, `/exec/{id}/json`) and decodes the attach stream's 8-byte stdout/stderr frame headers; do not shell out to `podman exec`.
+- Provider-lando logs should use the Podman HTTP logs endpoint (`/containers/{name}/logs`) with `stdout=true`, `stderr=true`, and `follow`/`tail` query params; decode the same 8-byte stdout/stderr multiplex frames used by exec attach.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1773,4 +1774,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → b9a524b on main
 - Local main / branch refreshed: yes (main at b9a524b; local story branch deleted / already absent)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 16:01 CDT] - US-039
+- Implemented provider-lando log streaming through the Podman logs endpoint with follow/tail query handling and stdout/stderr frame decoding into `LogChunk` values.
+- Files changed: `plugins/provider-lando/src/logs.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/logs.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test plugins/provider-lando/test/logs.integration.test.ts` passed (2 pass, 1 live Podman skip); manual Bun driver emitted `node:stdout:manual log line`; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed with live Podman-gated tests skipped because `LANDO_TEST_PODMAN_SOCKET` is not set.
+- **Learnings for future iterations:**
+  - Podman logs uses `/containers/{name}/logs` with `stdout=true`, `stderr=true`, and `follow`/`tail` params.
+  - Logs stream chunks are multiplexed with the same 8-byte stdout/stderr frame header shape as exec attach output.
+  - Keep live Podman log checks gated on `LANDO_TEST_PODMAN_SOCKET`; fake `PodmanApiClient.stream` covers deterministic frame decoding.
 ---
