@@ -1551,3 +1551,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When a PRD's acceptance prose references stale schema fields (`kind`, `landoCompat`, etc.), the AGENTS.md gotchas are the source of truth — match the actual schema in code, not the PRD wording.
   - `plugin.yaml` shape across the repo (`provides:` + `requires:`) is decoupled from the SDK `PluginManifest` Effect schema (`contributes:` + `api: 4` literal). Treat them as two different surfaces until a loader unifies them.
 ---
+
+## 2026-05-14 09:50 CDT - Push
+- Branch pushed: us-033-provider-lando-skeleton → origin (2 commits: 2ecba3a feat, 7ede2ae chore)
+- Commits: 2ecba3a "feat: Create @lando/provider-lando workspace package skeleton", 7ede2ae "chore(loop): record US-033 review outcome"
+- PR: #36 https://github.com/AaronFeledy/core4/pull/36 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) → cb760e8 "Add @lando/provider-lando workspace package skeleton (#36)"
+- Local main / branch refreshed: yes (main at cb760e8, story branch deleted)
+- Remaining local state: clean, on main
+---
