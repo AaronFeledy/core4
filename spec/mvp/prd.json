@@ -639,7 +639,7 @@
         "Test functionality against live Podman socket"
       ],
       "priority": 40,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
