@@ -35,6 +35,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 - RuntimeProviderRegistry Live consults `PluginRegistry` contribution buckets for installed provider ids and `ConfigService.defaultProviderId` for selection; build the service inside `Layer.effect` so methods close over dependencies and remain env-free.
 - AppPlanner Live returns schema-decoded `AppPlan` values; construct the raw plan with encoded metadata date strings, then decode through `AppPlan` so branded paths/names and DateTime fields are normalized.
+- BuildOrchestrator Live should close over `EventService` and `RuntimeProviderRegistry` inside `Layer.effect`, then serialize per-service provider builds with `Effect.forEach(..., { concurrency: 1, discard: true })` while publishing `pre-build`/`post-build` around each build.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1482,4 +1483,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - AppPlanner’s raw object should be decoded through `AppPlan` before returning so branded schema fields and `DateTimeUtc` metadata normalize consistently.
   - `Schema.decodeUnknownEither(AppPlan)` expects encoded metadata date strings, not already-constructed `DateTime` values.
   - Provider bind-mount performance is capability metadata only at MVP; even `bindMountPerformance: "slow"` remains a passthrough bind and does not imply Mutagen/accelerated mounts.
+---
+
+## 2026-05-14 - Sync
+- Previous branch: us-031-app-planner-live
+- Previous PR: #34 https://github.com/AaronFeledy/core4/pull/34
+- Action: dispatched leftover push (no PR existed for recorded branch; 1 commit ahead of main) — all 4 CI checks passed; squash-merged PR #34
+- Local main updated: yes (squash commit 9ebf030 on main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-14 08:11 CDT - US-032
+- Implemented sequential BuildOrchestrator Live service that selects the active runtime provider, builds each service one at a time, short-circuits on provider failure, and publishes pre/post build events per service.
+- Files changed: core/src/services/build-orchestrator.ts, core/test/services/build-orchestrator.test.ts, sdk/src/services/index.ts, sdk/src/events/index.ts, sdk/test/services/tags.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual QA driver printed `manual build order: web -> db`.
+- **Learnings for future iterations:**
+  - Build orchestration can use the existing provider `buildArtifact({ app, service })` contract; no new provider API is needed for MVP.
+  - Keep app-level build lifecycle schemas backward-compatible by making per-service `serviceName` optional on `pre-build`/`post-build`; the orchestrator still supplies it for per-service events.
 ---

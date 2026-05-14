@@ -313,6 +313,21 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
 >() {}
 
 /**
+ * BuildOrchestrator — sequential provider artifact builds for an AppPlan.
+ */
+export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
+  BuildOrchestrator,
+  {
+    readonly build: (
+      plan: AppPlan,
+    ) => Effect.Effect<
+      void,
+      EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
+    >;
+  }
+>() {}
+
+/**
  * EventService — pub/sub over typed lifecycle events.
  *
  * Note: `LandoEvent` is a placeholder; the full discriminated union of
@@ -320,6 +335,7 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
  */
 export interface LandoEvent {
   readonly _tag: string;
+  readonly [key: string]: unknown;
 }
 
 export class EventService extends Context.Tag("@lando/core/EventService")<

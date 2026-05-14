@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { Context, Effect, Stream } from "effect";
+import { Context, DateTime, Effect, Stream } from "effect";
+
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
 import {
   AppPlanner,
+  BuildOrchestrator,
   CacheService,
   ConfigService,
   EventService,
@@ -52,6 +55,7 @@ const EXPECTED_TAGS = [
   { tag: ConfigService, key: "@lando/core/ConfigService", methods: ["load", "get"] },
   { tag: LandofileService, key: "@lando/core/LandofileService", methods: ["discover"] },
   { tag: AppPlanner, key: "@lando/core/AppPlanner", methods: ["plan"] },
+  { tag: BuildOrchestrator, key: "@lando/core/BuildOrchestrator", methods: ["build"] },
   { tag: PluginRegistry, key: "@lando/core/PluginRegistry", methods: ["list", "load"] },
   { tag: CacheService, key: "@lando/core/CacheService", methods: ["read", "write", "invalidate"] },
   {
@@ -121,6 +125,7 @@ describe("Effect service tags", () => {
       ["load", "get"],
       ["discover"],
       ["plan"],
+      ["build"],
       ["list", "load"],
       ["read", "write", "invalidate"],
       [
@@ -186,6 +191,28 @@ describe("Effect service tags", () => {
       writeFile: (_path: string, _content: string) => Effect.void,
     };
 
+    const buildOrchestrator: Context.Tag.Service<typeof BuildOrchestrator> = {
+      build: (_plan) => Effect.void,
+    };
+
+    const appPlan: AppPlan = {
+      id: AppId.make("myapp"),
+      name: "My App",
+      slug: "myapp",
+      root: AbsolutePath.make("/srv/apps/myapp"),
+      provider: ProviderId.make("test"),
+      services: {},
+      routes: [],
+      networks: [],
+      stores: [],
+      metadata: {
+        resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
+        source: "tags.test",
+        runtime: 4,
+      },
+      extensions: {},
+    };
+
     expect(Effect.isEffect(logger.info("ready"))).toBe(true);
     expect(Effect.isEffect(eventService.publish({ _tag: "test-event" }))).toBe(true);
     expect(Stream.StreamTypeId in Object(eventService.subscribe("test-event"))).toBe(true);
@@ -195,6 +222,7 @@ describe("Effect service tags", () => {
     expect(Effect.isEffect(processRunner.run({ cmd: "true", args: [] }))).toBe(true);
     expect(Stream.StreamTypeId in Object(processRunner.stream({ cmd: "true", args: [] }))).toBe(true);
     expect(Effect.isEffect(shellRunner.exec("echo ok"))).toBe(true);
+    expect(Effect.isEffect(buildOrchestrator.build(appPlan))).toBe(true);
   });
 
   test("method failure channels use SDK tagged errors", () => {
@@ -217,6 +245,9 @@ describe("Effect service tags", () => {
       ),
       assertTaggedFailure<
         TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof AppPlanner>["plan"]>>>
+      >(true),
+      assertTaggedFailure<
+        TaggedFailure<FailureOf<ReturnType<Context.Tag.Service<typeof BuildOrchestrator>["build"]>>>
       >(true),
       assertTaggedFailure<TaggedFailure<FailureOf<Context.Tag.Service<typeof PluginRegistry>["list"]>>>(true),
       assertTaggedFailure<
