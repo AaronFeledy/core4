@@ -1228,3 +1228,17 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Gotchas encountered: When a story's PRD AC does not enumerate a runtime-wiring requirement, do not invent one. PRD-02 US-001 is the authoritative source for "which services live at which bootstrap level"; cross-check it before flagging a missing `Layer.mergeAll` entry as a bug.
   - Useful context: The `subscribe(name): Stream` API on the SDK tag means "subscriber failure isolation" must be tested at the stream-consumer boundary (`Stream.runForEach(() => Effect.fail(...))`), not at handler registration — there is no handler registration. Future stories that want priority bands or handler-style registration must extend the SDK tag first.
 ---
+
+## [2026-05-13 20:04 CDT] - Push
+- Branch pushed: us-026-event-service-pubsub → origin
+- Commits: e04f266 chore(loop): record US-026 review, 2f761cb feat: EventService Live implementation (basic pub/sub)
+- PR: #29 https://github.com/AaronFeledy/core4/pull/29 (created)
+- CI round 1: all 4 platform checks SUCCESS; Cursor Bugbot NEUTRAL (skipping) on first commit set.
+- Triage round 1: Cursor Bugbot inline comment — `catchAllCause` swallows fiber interrupts in `publish` (medium severity). REAL issue confirmed. Fixed by replacing `Effect.catchAllCause` with `Effect.catchSomeCause(cause => Cause.isDie(cause) ? Option.some(...) : Option.none())` so only defects are caught and interrupts propagate naturally. Added `Cause` to imports. typecheck/lint/test all pass after fix. Committed 75987da, pushed.
+- CI round 2: all 5 checks SUCCESS including Cursor Bugbot `pass`.
+- Review feedback: 1 fixed (interrupt propagation bug).
+- Triage rounds used: 1 of 3.
+- Merge: squash-merged (commit 5648c68 on main).
+- Local main refreshed: yes (fast-forward).
+- Local story branch deleted: yes.
+---
