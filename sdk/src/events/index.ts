@@ -166,7 +166,7 @@ export type PostServiceStartEvent = typeof PostServiceStartEvent.Type;
 export const PreServiceStopEvent = Schema.TaggedStruct("pre-service-stop", {
   eventName: Schema.Literal("pre-service-stop"),
   appRef: AppRef,
-  serviceName: ServiceName,
+  serviceName: Schema.optional(ServiceName),
   providerId: ProviderId,
   timestamp: Timestamp,
 });
@@ -175,7 +175,7 @@ export type PreServiceStopEvent = typeof PreServiceStopEvent.Type;
 export const PostServiceStopEvent = Schema.TaggedStruct("post-service-stop", {
   eventName: Schema.Literal("post-service-stop"),
   appRef: AppRef,
-  serviceName: ServiceName,
+  serviceName: Schema.optional(ServiceName),
   providerId: ProviderId,
   timestamp: Timestamp,
 });
@@ -184,6 +184,7 @@ export type PostServiceStopEvent = typeof PostServiceStopEvent.Type;
 export const PreBuildEvent = Schema.TaggedStruct("pre-build", {
   eventName: Schema.Literal("pre-build"),
   appRef: AppRef,
+  serviceName: Schema.optional(ServiceName),
   providerId: ProviderId,
   timestamp: Timestamp,
 });
@@ -192,6 +193,7 @@ export type PreBuildEvent = typeof PreBuildEvent.Type;
 export const PostBuildEvent = Schema.TaggedStruct("post-build", {
   eventName: Schema.Literal("post-build"),
   appRef: AppRef,
+  serviceName: Schema.optional(ServiceName),
   providerId: ProviderId,
   timestamp: Timestamp,
 });
