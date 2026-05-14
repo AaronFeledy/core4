@@ -38,6 +38,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - RuntimeProviderRegistry Live consults `PluginRegistry` contribution buckets for installed provider ids and `ConfigService.defaultProviderId` for selection; build the service inside `Layer.effect` so methods close over dependencies and remain env-free.
 - AppPlanner Live returns schema-decoded `AppPlan` values; construct the raw plan with encoded metadata date strings, then decode through `AppPlan` so branded paths/names and DateTime fields are normalized.
 - BuildOrchestrator Live should close over `EventService` and `RuntimeProviderRegistry` inside `Layer.effect`, then serialize per-service provider builds with `Effect.forEach(..., { concurrency: 1, discard: true })` while publishing `pre-build`/`post-build` around each build.
+- Provider-lando exec uses the Podman API exec flow (`/containers/{name}/exec`, `/exec/{id}/start`, `/exec/{id}/json`) and decodes the attach stream's 8-byte stdout/stderr frame headers; do not shell out to `podman exec`.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1713,4 +1714,24 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Reuse the existing provider-lando container/network naming convention (`lando-${plan.slug}-${service.name}` and `lando-${plan.slug}`) for stop/remove flows.
   - `bringDown` can prove volume preservation by asserting no `/volumes/*` delete requests occur; live tests can pre-create the named volume and inspect it after stop.
   - Stop services in reverse `Object.values(plan.services)` order so dependents are stopped before dependencies.
+---
+
+## [2026-05-14 15:07 CDT] - Sync
+- Previous branch: us-038-provider-exec-stream (from .local/loop/.last-branch)
+- Previous PR: none (gh pr list returned empty — branch already merged and cleaned up)
+- Action: no previous branch work to publish; caught up to clean post-merge state (branch had 0 commits ahead of main)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: yes (stash@{0} "loop-sync-autostash" — spec/mvp/progress.txt had 9 lines of unrecommitted progress notes from the prior iteration; human should inspect and pop if desired)
+- Local story branch deleted: yes (us-038-provider-exec-stream was at 9ab7fd5, same as main HEAD)
+---
+
+## [2026-05-14 15:18 CDT] - US-038
+- Implemented provider-lando exec helpers returning streamed stdout/stderr chunks plus final exit code, backed by Podman API exec create/start/inspect calls.
+- Files changed: `plugins/provider-lando/src/exec.ts`, `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/exec.integration.test.ts`, `sdk/src/services/index.ts`, `sdk/src/test/index.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed after `bun run format`; `bun test ./plugins/provider-lando/test/exec.integration.test.ts` passed 2 and skipped live Podman because `LANDO_TEST_PODMAN_SOCKET` was not set; `bun test` passed with live Podman-gated tests skipped.
+- **Learnings for future iterations:**
+  - Podman exec output is multiplexed when `Tty: false`; decode frame byte 0 as stdout/stderr and bytes 4-7 as payload length.
+  - Keep nonzero command exits as data (`exitCode`) for this MVP provider exec path; reserve tagged failures for API/create/inspect/stream failures.
+  - Live provider-lando tests should stay `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` with explicit 60s timeout.
 ---
