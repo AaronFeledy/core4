@@ -10,17 +10,16 @@
  * "which logger plugin is selected" decision and Effect's `Logger.replace`
  * Layer that swaps in the chosen implementation.
  *
- * Status: stub.
  */
-import type { Logger } from "effect";
+import { Logger as EffectLogger } from "effect";
+
+export type LoggerMode = "pretty" | "silent";
 
 /**
  * Build an Effect `Logger.Logger<unknown, unknown>` from a Lando logger
  * implementation. The returned logger is wired into the runtime via
  * `Logger.replace`.
  *
- * TODO: implement once the Logger plugin contract solidifies.
  */
-export const makeEffectLogger = (): Logger.Logger<unknown, unknown> => {
-  throw new Error("makeEffectLogger: not yet implemented");
-};
+export const makeEffectLogger = (mode: LoggerMode = "pretty"): EffectLogger.Logger<unknown, void> =>
+  mode === "silent" ? EffectLogger.none : EffectLogger.prettyLoggerDefault;

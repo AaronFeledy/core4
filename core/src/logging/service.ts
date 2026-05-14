@@ -17,4 +17,32 @@
  * how lines render. Plugins contribute renderers; the active renderer
  * chooses which Effect Logger configuration to install.
  */
-export { Logger } from "@lando/sdk/services";
+import { type Context, Effect, Logger as EffectLogger, Layer } from "effect";
+
+import { Logger } from "@lando/sdk/services";
+import { type LoggerMode, makeEffectLogger } from "./effect-logger.ts";
+
+export { Logger };
+export type { LoggerMode };
+
+export interface LoggerLiveOptions {
+  readonly mode?: LoggerMode;
+}
+
+const log = (
+  effect: Effect.Effect<void>,
+  data: Readonly<Record<string, unknown>> | undefined,
+): Effect.Effect<void> => (data === undefined ? effect : Effect.annotateLogs(effect, data));
+
+const makeLoggerService = (): Context.Tag.Service<typeof Logger> => ({
+  debug: (message, data) => log(Effect.logDebug(message), data),
+  info: (message, data) => log(Effect.logInfo(message), data),
+  warn: (message, data) => log(Effect.logWarning(message), data),
+  error: (message, data) => log(Effect.logError(message), data),
+});
+
+export const LoggerLive = (options: LoggerLiveOptions = {}): Layer.Layer<Logger> =>
+  Layer.mergeAll(
+    Layer.succeed(Logger, makeLoggerService()),
+    EffectLogger.replace(EffectLogger.defaultLogger, makeEffectLogger(options.mode ?? "pretty")),
+  );

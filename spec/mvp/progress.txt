@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
 - FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
 - ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
@@ -1250,4 +1251,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main)
 - Branch after sync: main
 - Stash created: yes (loop-sync-autostash — contains a progress.txt note referencing us-026/PR #29 from a prior sync run)
+---
+
+## 2026-05-13 20:28 CDT - US-027
+- Implemented `LoggerLive` as the Lando Logger service backed by Effect pretty/silent loggers.
+- Files changed: `core/src/logging/effect-logger.ts`, `core/src/logging/service.ts`, `core/src/runtime/layer.ts`, `core/test/services/logger.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual LoggerLive driver printed `[time] INFO (#0): manual logger qa`.
+- **Learnings for future iterations:**
+  - Patterns discovered: service tests can capture `console.log` to assert Effect pretty logger output without depending on exact timestamps.
+  - Gotchas encountered: `Logger.pretty` is a Layer, not the raw logger object for `Logger.replace`; use `Logger.prettyLoggerDefault` for replacement.
+  - Useful context: library/runtime options currently map only explicit `logger: "pretty"` to pretty output; other values stay silent for library defaults.
 ---
