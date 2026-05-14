@@ -228,6 +228,8 @@ export class EventError extends Schema.TaggedError<EventError>()("EventError", {
 // -- Cache -----------------------------------------------------------------
 export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
   message: Schema.String,
+  key: Schema.optional(Schema.String),
+  decodeError: Schema.optional(Schema.Unknown),
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}

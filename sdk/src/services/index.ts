@@ -12,7 +12,7 @@
  * Status: stub interfaces — methods are typed but Live impls don't exist
  * yet.
  */
-import { Context, type Effect, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Schema, type Scope, type Stream } from "effect";
 
 // Re-export branded primitives so downstream tags can reference them.
 import type {
@@ -333,8 +333,8 @@ export class EventService extends Context.Tag("@lando/core/EventService")<
 export class CacheService extends Context.Tag("@lando/core/CacheService")<
   CacheService,
   {
-    readonly read: <A>(key: string) => Effect.Effect<A | null, CacheError>;
-    readonly write: <A>(key: string, value: A) => Effect.Effect<void, CacheError>;
+    readonly read: <A, I>(key: string, schema?: Schema.Schema<A, I>) => Effect.Effect<A | null, CacheError>;
+    readonly write: <A>(key: string, value: A, ttlMs?: number) => Effect.Effect<void, CacheError>;
     readonly invalidate: (key: string) => Effect.Effect<void, CacheError>;
   }
 >() {}
