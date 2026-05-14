@@ -305,7 +305,10 @@ export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
 export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
   AppPlanner,
   {
-    readonly plan: (landofile: LandofileShape) => Effect.Effect<AppPlan, never>;
+    readonly plan: (
+      landofile: LandofileShape,
+      providerCapabilities: ProviderCapabilities,
+    ) => Effect.Effect<AppPlan, LandofileValidationError>;
   }
 >() {}
 

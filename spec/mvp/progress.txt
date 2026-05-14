@@ -34,6 +34,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 - RuntimeProviderRegistry Live consults `PluginRegistry` contribution buckets for installed provider ids and `ConfigService.defaultProviderId` for selection; build the service inside `Layer.effect` so methods close over dependencies and remain env-free.
+- AppPlanner Live returns schema-decoded `AppPlan` values; construct the raw plan with encoded metadata date strings, then decode through `AppPlan` so branded paths/names and DateTime fields are normalized.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1462,4 +1463,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → 68d701c "RuntimeProvider + RuntimeProviderRegistry Live implementations (#33)"
 - Local main / branch refreshed: yes (main at 68d701c, story branch deleted)
 - Remaining local state: untracked core/test/services/_us030-scratch.test.ts (dev artifact, not committed)
+---
+
+## 2026-05-14 03:29 CDT - Sync
+- Previous branch: us-030-runtime-provider-registry
+- Previous PR: #33 https://github.com/AaronFeledy/core4/pull/33
+- Action: caught up after prior merge — PR #33 was already MERGED; local story branch was absent; main was already at origin/main
+- Local main updated: yes (already at b4a6dbd, origin/main current)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash) — untracked dev artifact core/test/services/_us030-scratch.test.ts preserved; human should pop or discard
+---
+
+## 2026-05-14 03:45 CDT - US-031
+- What was implemented: AppPlanner Live now emits a minimal schema-decoded AppPlan for Node and Postgres services, including provider id, image artifacts, app-root bind mounts, endpoints from published ports, and LandofileValidationError failures for unsupported service types.
+- Files changed: core/src/services/planner.ts, core/src/runtime/layer.ts, core/test/services/app-planner.test.ts, sdk/src/services/index.ts, sdk/test/services/tags.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification run and result: lsp_diagnostics on changed TypeScript files passed; `bun test core/test/services/app-planner.test.ts` passed; `bun test sdk/test/services/tags.test.ts core/test/runtime/make-runtime.test.ts core/test/services/app-planner.test.ts` passed; `bun run typecheck && bun run lint && bun test` passed.
+- **Learnings for future iterations:**
+  - AppPlanner’s raw object should be decoded through `AppPlan` before returning so branded schema fields and `DateTimeUtc` metadata normalize consistently.
+  - `Schema.decodeUnknownEither(AppPlan)` expects encoded metadata date strings, not already-constructed `DateTime` values.
+  - Provider bind-mount performance is capability metadata only at MVP; even `bindMountPerformance: "slow"` remains a passthrough bind and does not imply Mutagen/accelerated mounts.
 ---
