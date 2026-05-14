@@ -1533,3 +1533,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Root imports of a newly added workspace package require `bun install` first so Bun creates the root `node_modules` workspace symlink.
   - The current SDK `PluginManifest` schema uses `api: 4` plus optional `contributes` buckets; it does not include the older PRD wording's `kind`/`landoCompat` fields.
 ---
+
+## 2026-05-14 09:00 CDT - US-033 Review
+- What was reviewed: HEAD commit `2ecba3a` (US-033 `@lando/provider-lando` workspace package skeleton) against PRD-04 US-001 acceptance criteria.
+- Files changed by review: none (no fixes required).
+- `/review` findings:
+  - Rejected: `prd.json` says `skeleton.test.ts` but source PRD says `package.test.ts` — source PRD is authoritative.
+  - Rejected: `plugin.yaml` uses `provides:` instead of SDK schema's `contributes:` — matches all sibling plugin yamls; yaml is not decoded against `PluginManifest` schema at MVP. Out-of-scope design issue, not introduced by this story.
+  - Rejected: PRD acceptance mentions `kind: provider`/`landoCompat` fields — stale PRD wording per AGENTS.md gotcha; the actual schema uses `contributes`. Implementation is correct.
+  - Rejected: `provider` exported as `Layer.empty` — PRD US-001 explicitly permits a stub at this story.
+  - Rejected: `Schema.decodeSync` at module load — consistent with existing `core/src/plugins/bundled.ts` pattern.
+  - Verified: `BUNDLED_PLUGINS` already lists `@lando/provider-lando` (added in earlier scaffolding via `core/build.config.ts` + `core/src/plugins/bundled.ts`).
+  - Verified: root `tsconfig.json` references `plugins/provider-lando`; workspace covered by existing `plugins/*` glob in root `package.json`.
+  - Verified: `node_modules/@lando/provider-lando` symlink in place after `bun install`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (170 pass / 1 skip / 0 fail); focused `bun test plugins/provider-lando/test/package.test.ts` passed.
+- **Learnings for future iterations:**
+  - When a PRD's acceptance prose references stale schema fields (`kind`, `landoCompat`, etc.), the AGENTS.md gotchas are the source of truth — match the actual schema in code, not the PRD wording.
+  - `plugin.yaml` shape across the repo (`provides:` + `requires:`) is decoupled from the SDK `PluginManifest` Effect schema (`contributes:` + `api: 4` literal). Treat them as two different surfaces until a loader unifies them.
+---
