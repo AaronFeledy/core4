@@ -18,6 +18,7 @@ import { Context, type Effect, type Schema, type Scope, type Stream } from "effe
 import type {
   AppId,
   AppPlan,
+  EndpointPlan,
   GlobalConfig,
   HostPlatform,
   LandofileShape,
@@ -160,6 +161,10 @@ export interface ServiceRuntimeInfo {
   readonly service: ServiceName;
   readonly providerId: ProviderId;
   readonly status: string;
+  readonly state?: string;
+  readonly containerId?: string;
+  readonly endpoints?: ReadonlyArray<EndpointPlan>;
+  readonly lastStartedAt?: Date;
 }
 
 export interface ListFilter {

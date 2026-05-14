@@ -17,6 +17,7 @@ import {
   makePodmanApiClient,
 } from "./capabilities.ts";
 import { exec, execStream } from "./exec.ts";
+import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
@@ -27,6 +28,8 @@ export { bringDown } from "./bring-down.ts";
 export type { BringDownOptions } from "./bring-down.ts";
 export { exec, execStream } from "./exec.ts";
 export type { ExecOptions } from "./exec.ts";
+export { inspect } from "./inspect.ts";
+export type { InspectOptions } from "./inspect.ts";
 export { logs } from "./logs.ts";
 export type { LogsOptions } from "./logs.ts";
 
@@ -107,8 +110,29 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ? Stream.fail(makeUnavailable("logs"))
             : logs(plan, target, logOptions, { ...(podmanApi === undefined ? {} : { podmanApi }) });
         },
-        inspect: () => Effect.fail(makeUnavailable("inspect")),
-        list: () => Effect.succeed([]),
+        inspect: (target) => {
+          const plan = plans.get(target.app);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("inspect"))
+            : inspect(plan, target, { ...(podmanApi === undefined ? {} : { podmanApi }) });
+        },
+        list: (filter) =>
+          Effect.forEach(Array.from(plans.values()), (plan) =>
+            Effect.forEach(Object.values(plan.services), (service) =>
+              inspect(
+                plan,
+                { app: plan.id, service: service.name },
+                { ...(podmanApi === undefined ? {} : { podmanApi }) },
+              ),
+            ),
+          ).pipe(
+            Effect.map((snapshots) => snapshots.flat()),
+            Effect.map((snapshots) =>
+              filter.app === undefined
+                ? snapshots
+                : snapshots.filter((snapshot) => snapshot.app === filter.app),
+            ),
+          ),
       }),
     ),
   );

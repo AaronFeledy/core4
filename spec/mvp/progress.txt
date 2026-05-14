@@ -40,6 +40,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - BuildOrchestrator Live should close over `EventService` and `RuntimeProviderRegistry` inside `Layer.effect`, then serialize per-service provider builds with `Effect.forEach(..., { concurrency: 1, discard: true })` while publishing `pre-build`/`post-build` around each build.
 - Provider-lando exec uses the Podman API exec flow (`/containers/{name}/exec`, `/exec/{id}/start`, `/exec/{id}/json`) and decodes the attach stream's 8-byte stdout/stderr frame headers; do not shell out to `podman exec`.
 - Provider-lando logs should use the Podman HTTP logs endpoint (`/containers/{name}/logs`) with `stdout=true`, `stderr=true`, and `follow`/`tail` query params; decode the same 8-byte stdout/stderr multiplex frames used by exec attach.
+- Provider-lando inspect should read `/containers/{name}/json`, map Podman `State.Running`/`State.Status` into the provider snapshot status/state, and return endpoints from the decoded `AppPlan` rather than mutating runtime state.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1805,4 +1806,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 6239d42 "provider-lando logs returns follow Stream (#42)"
 - Local main / branch refreshed: yes (main at 6239d42, local story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 21:32 UTC] - Sync
+- Previous branch: us-039-provider-lando-logs
+- Previous PR: #42 https://github.com/AaronFeledy/core4/pull/42
+- Action: caught up after prior merge (PR #42 was already MERGED; remote branch already pruned)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-14 16:41 CDT] - US-040
+- What was implemented: provider-lando inspect snapshots for captured app plans, including read-only Podman inspect calls, running/stopped state, container ids, plan endpoints, RuntimeProvider inspect/list delegation, and a targeted integration test with live-socket coverage gated by `LANDO_TEST_PODMAN_SOCKET`.
+- Files changed: `plugins/provider-lando/src/inspect.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/inspect.integration.test.ts`, `sdk/src/services/index.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test plugins/provider-lando/test/inspect.integration.test.ts` pass (2 pass, 1 live-socket skip); manual `bun --eval` inspect driver returned service `web`, state `running`, container id `container-123`, endpoint `31083/http`; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass. Live Podman socket verification was skipped because `LANDO_TEST_PODMAN_SOCKET` was not set.
+- **Learnings for future iterations:**
+  - RuntimeProvider `list({ app })` can derive per-service snapshots from plans captured during `apply`; keep inspect itself read-only and restricted to Podman GET calls.
+  - `ServiceRuntimeInfo` now carries optional provider snapshot details (`state`, `containerId`, `endpoints`, `lastStartedAt`) while preserving the existing `app`/`service`/`providerId`/`status` contract.
 ---
