@@ -18,7 +18,7 @@
  */
 import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
 
-import { LandoRuntimeBootstrapError, NoProviderInstalledError } from "@lando/sdk/errors";
+import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -27,11 +27,13 @@ import {
   type LandofileService,
   type Logger,
   RuntimeProvider,
-  RuntimeProviderRegistry,
+  type RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
 import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
+import { PluginRegistryLive } from "../plugins/registry.ts";
+import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -198,16 +200,6 @@ const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   list: () => Effect.succeed([]),
 };
 
-const runtimeProviderRegistryService: Context.Tag.Service<typeof RuntimeProviderRegistry> = {
-  list: Effect.succeed([]),
-  select: () =>
-    Effect.fail(
-      new NoProviderInstalledError({
-        message: "No runtime provider has been installed yet.",
-      }),
-    ),
-};
-
 const appPlannerService: Context.Tag.Service<typeof AppPlanner> = {
   plan: () => Effect.die("app planning is not implemented yet"),
 };
@@ -219,12 +211,18 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
     Layer.succeed(FileSystem, fileSystemService),
   );
 
-const makeProviderRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
-    makeMinimalRuntimeLive(loggerMode),
-    Layer.succeed(RuntimeProvider, runtimeProviderService),
-    Layer.succeed(RuntimeProviderRegistry, runtimeProviderRegistryService),
+const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
+    Layer.provide(Layer.mergeAll(minimalRuntimeLive, PluginRegistryLive)),
   );
+
+  return Layer.mergeAll(
+    minimalRuntimeLive,
+    Layer.succeed(RuntimeProvider, runtimeProviderService),
+    providerRegistryLive,
+  );
+};
 
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(

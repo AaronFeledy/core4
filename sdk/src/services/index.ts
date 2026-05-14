@@ -234,10 +234,14 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
   RuntimeProviderRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>;
+    readonly capabilities: Effect.Effect<
+      ProviderCapabilities,
+      ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
+    >;
     readonly select: (
       plan: AppPlan,
     ) => Effect.Effect<
-      RuntimeProvider,
+      RuntimeProviderShape,
       ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
     >;
   }
