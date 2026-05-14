@@ -17,12 +17,13 @@ import { Schema } from "effect";
 
 import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";
 
-const makeManifest = (name: string): PluginManifest =>
+const makeManifest = (name: string, contributes?: PluginManifest["contributes"]): PluginManifest =>
   Schema.decodeSync(PluginManifestSchema)({
     name,
     version: "0.0.0",
     api: 4,
     bundled: true,
+    ...(contributes === undefined ? {} : { contributes }),
   });
 
 export const BUNDLED_PLUGINS: ReadonlyArray<{
@@ -30,8 +31,24 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly layer: Layer.Layer<never, never, never>;
   readonly manifest: PluginManifest;
 }> = [
-  { name: "@lando/provider-lando", layer: Layer.empty, manifest: makeManifest("@lando/provider-lando") },
-  { name: "@lando/provider-docker", layer: Layer.empty, manifest: makeManifest("@lando/provider-docker") },
-  { name: "@lando/service-lando", layer: Layer.empty, manifest: makeManifest("@lando/service-lando") },
-  { name: "@lando/logger-pretty", layer: Layer.empty, manifest: makeManifest("@lando/logger-pretty") },
+  {
+    name: "@lando/provider-lando",
+    layer: Layer.empty,
+    manifest: makeManifest("@lando/provider-lando", { providers: ["lando"] }),
+  },
+  {
+    name: "@lando/provider-docker",
+    layer: Layer.empty,
+    manifest: makeManifest("@lando/provider-docker", { providers: ["docker"] }),
+  },
+  {
+    name: "@lando/service-lando",
+    layer: Layer.empty,
+    manifest: makeManifest("@lando/service-lando", { serviceTypes: ["lando"] }),
+  },
+  {
+    name: "@lando/logger-pretty",
+    layer: Layer.empty,
+    manifest: makeManifest("@lando/logger-pretty", { loggers: ["pretty"] }),
+  },
 ];

@@ -17,6 +17,12 @@ export interface BundledPluginEntry {
   readonly name: string;
   /** Workspace path relative to the repo root. */
   readonly path: string;
+  /** MVP contribution summary embedded in the bundled manifest. */
+  readonly contributes?: {
+    readonly providers?: ReadonlyArray<string>;
+    readonly serviceTypes?: ReadonlyArray<string>;
+    readonly loggers?: ReadonlyArray<string>;
+  };
 }
 
 export interface BundledRecipeEntry {
@@ -37,10 +43,14 @@ export interface BuildConfig {
 
 export const buildConfig: BuildConfig = {
   bundledPlugins: [
-    { name: "@lando/provider-lando", path: "plugins/provider-lando" },
-    { name: "@lando/provider-docker", path: "plugins/provider-docker" },
-    { name: "@lando/service-lando", path: "plugins/service-lando" },
-    { name: "@lando/logger-pretty", path: "plugins/logger-pretty" },
+    { name: "@lando/provider-lando", path: "plugins/provider-lando", contributes: { providers: ["lando"] } },
+    {
+      name: "@lando/provider-docker",
+      path: "plugins/provider-docker",
+      contributes: { providers: ["docker"] },
+    },
+    { name: "@lando/service-lando", path: "plugins/service-lando", contributes: { serviceTypes: ["lando"] } },
+    { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
   ],
   bundledRecipes: [],
   bundledPluginTemplates: [],

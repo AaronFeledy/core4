@@ -1355,3 +1355,58 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (fast-forward; local story branch already absent after merge)
 - Remaining local state: none; on main at 6e350e0
 ---
+
+## [2026-05-14 07:07 UTC] - Sync
+- Previous branch: us-028-cache-service-live
+- Previous PR: #31 https://github.com/AaronFeledy/core4/pull/31
+- Action: caught up after prior merge (PR #31 was already MERGED; local branch was already absent)
+- Local main updated: yes (already at origin/main tip)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-14 02:24 CDT - US-029
+- What was implemented
+  - Implemented bundled-only PluginRegistryLive coverage for listing all MVP bundled plugins, loading provider-lando manifest contribution metadata, and failing missing plugins with PluginLoadError.
+- Files changed
+  - core/build.config.ts
+  - core/src/plugins/bundled.ts
+  - core/src/plugins/registry.ts
+  - core/test/services/plugin-registry.test.ts
+  - scripts/build-bundled-plugins.ts
+  - spec/mvp/prd.json
+  - spec/mvp/progress.txt
+- Verification run and result
+  - lsp_diagnostics on changed TypeScript files: clean.
+  - bun test core/test/services/plugin-registry.test.ts: pass.
+  - bun test core/test/plugins/bundled.test.ts: pass.
+  - bun run typecheck: pass.
+  - bun run lint: pass.
+  - bun test: pass.
+  - Manual QA: PluginRegistryLive driver printed @lando/provider-lando,@lando/provider-docker,@lando/service-lando,@lando/logger-pretty.
+- **Learnings for future iterations:**
+  - PluginRegistry uses the SDK tag shape (`list` + `load`); the bundled-only MVP returns manifests, not plugin layers, through the public service API.
+  - Keep generated `core/src/plugins/bundled.ts` Biome-clean by updating `scripts/build-bundled-plugins.ts` before regenerating.
+---
+## 2026-05-14 02:35 CDT - US-029 Review
+- What was reviewed or fixed
+  - Reviewed build commit b7f2a26 (PluginRegistry Live, bundled-only). No code fixes needed.
+- Files changed
+  - spec/mvp/progress.txt (this entry only)
+- `/review` findings: fixed / rejected
+  - The `/review` slash command does not exist in this workspace; ran an equivalent focused Oracle pass over the build diff plus the required verification gates.
+  - Rejected (one) — `scripts/build-bundled-plugins.ts` string-renders `contributes` keys via `Object.entries(...).map(([k,v]) => ...)`. Reason: generator input is the repo-owned, statically-typed `BundledPluginEntry.contributes` whose keys are fixed `PluginContribution` field names (`providers` / `serviceTypes` / `loggers`). No injection surface, no acceptance criterion in scope; hardening is out-of-scope for US-029.
+- Verification run and result
+  - bun run typecheck: pass.
+  - bun run lint: pass (biome check . — 205 files, no fixes).
+  - bun test: 159 pass / 1 skip / 0 fail across 35 files.
+  - bun run scripts/build-bundled-plugins.ts then git diff --exit-code: clean (no generator drift).
+  - lsp_diagnostics on registry.ts / bundled.ts / plugin-registry.test.ts / build-bundled-plugins.ts / build.config.ts: clean.
+  - Manual end-to-end driver provided `PluginRegistryLive` and printed:
+    - list: @lando/provider-lando,@lando/provider-docker,@lando/service-lando,@lando/logger-pretty
+    - load(@lando/provider-lando).contributes: {"providers":["lando"]}
+    - load("not-bundled")._tag: PluginLoadError, pluginName: not-bundled
+- **Learnings for future iterations:**
+  - `PluginManifest` (sdk/src/schema) has NO `kind` field; the PRD wording "manifest with the expected `kind: provider` discriminator" maps to `manifest.contributes.providers: ["lando"]`. Future PRD entries should reference `contributes.*` arrays, not a phantom `kind` discriminator.
+  - The SDK `PluginRegistry` service tag's `list` field is `Effect<...>`, not `() => Effect<...>`. Live impl must expose `Effect.succeed(...)` directly (not a thunk); test consumers do `Effect.flatMap(PluginRegistry, (registry) => registry.list)`.
+  - To exercise `PluginRegistryLive` from a one-off driver, place the driver under `core/test/_<scratch>.ts` and import the Live layer via relative path (`../src/plugins/registry.ts`); `@lando/core/plugins/registry` is NOT in the package `exports` map, only `@lando/core/services`.
+---
