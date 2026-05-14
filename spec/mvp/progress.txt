@@ -63,6 +63,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - CacheService Live is in-memory only for MVP; store unknown values, decode them on read with the caller's Effect Schema, and use Effect `Clock` for TTL so tests can run under `TestContext.TestContext` with `TestClock.adjust(...)`.
 - Provider plugin capability tests should inject a tiny Podman API client into the provider layer so unit tests do not need a real daemon; keep real HTTP-over-UNIX request construction in a separate helper and reserve `LANDO_TEST_PODMAN_SOCKET` for socket-backed QA.
 - Provider-lando lifecycle code should use the `PodmanApiClient.request` HTTP-over-UNIX seam for Podman API calls; fake it in unit tests and reserve live Node/Postgres checks for `LANDO_TEST_PODMAN_SOCKET`.
+- Provider-lando stop/remove lifecycle should use Podman API container stop + forced container delete and per-app network delete; `app:stop` preserves app-scoped stores by never calling the Podman volumes delete API.
 
 
 ## Iteration Log
@@ -1693,4 +1694,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → b74d7f5 "provider-lando bringUp brings services to running state (#39)"
 - Local main / branch refreshed: yes (main at b74d7f5, local story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 14:07 CDT] - Sync
+- Previous branch: us-036-provider-lando-bring-up
+- Previous PR: #39 https://github.com/AaronFeledy/core4/pull/39
+- Action: caught up after prior merge (PR #39 was already MERGED, local branch already deleted)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-14 14:19 CDT] - US-037
+- Implemented provider-lando `bringDown(plan)` for Podman API-backed container stop/remove, per-app network removal, volume preservation, service stop lifecycle events, and idempotency.
+- Files changed: `plugins/provider-lando/src/bring-down.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/bring-down.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: lsp diagnostics clean on modified provider-lando files; `bun test plugins/provider-lando/test/bring-down.integration.test.ts` passed (live Podman case skipped because `LANDO_TEST_PODMAN_SOCKET` was unset); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Reuse the existing provider-lando container/network naming convention (`lando-${plan.slug}-${service.name}` and `lando-${plan.slug}`) for stop/remove flows.
+  - `bringDown` can prove volume preservation by asserting no `/volumes/*` delete requests occur; live tests can pre-create the named volume and inspect it after stop.
+  - Stop services in reverse `Object.values(plan.services)` order so dependents are stopped before dependencies.
 ---
