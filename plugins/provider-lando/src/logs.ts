@@ -112,10 +112,12 @@ export const logs = (
     query.set("tail", String(options.tail));
   }
 
-  const decodeChunk = makeLogsDecoder(service);
-
-  return stream(runtime.podmanApi, {
-    method: "GET",
-    path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
-  }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+  const podmanApi = runtime.podmanApi;
+  return Stream.suspend(() => {
+    const decodeChunk = makeLogsDecoder(service);
+    return stream(podmanApi, {
+      method: "GET",
+      path: `/containers/${encodeURIComponent(containerName(plan, service))}/logs?${query}`,
+    }).pipe(Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))));
+  });
 };
