@@ -590,7 +590,7 @@
         "Test functionality against live Podman socket"
       ],
       "priority": 37,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
