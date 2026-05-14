@@ -105,7 +105,19 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
         }),
       );
     }
-    return JSON.parse(stdout) as unknown;
+    return yield* Effect.try({
+      try: () => JSON.parse(stdout) as unknown,
+      catch: (cause) =>
+        new ProviderCapabilityError({
+          providerId: PROVIDER_ID,
+          operation: "capabilities",
+          message: "Podman API returned malformed JSON — could not parse info response.",
+          capability: "podman-info",
+          requiredValue: "valid JSON Podman API info response",
+          actualValue: stdout,
+          cause,
+        }),
+    });
   }),
 });
 
