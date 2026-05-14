@@ -61,19 +61,32 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
   const tableRows: Array<string> = [];
 
   for (const entry of entries) {
+    const contributes =
+      entry.contributes === undefined
+        ? "undefined"
+        : `{ ${Object.entries(entry.contributes)
+            .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+            .join(", ")} }`;
     tableRows.push(
-      `  { name: "${entry.name}", layer: Layer.empty, manifest: makeManifest("${entry.name}") },`,
+      [
+        "  {",
+        `    name: "${entry.name}",`,
+        "    layer: Layer.empty,",
+        `    manifest: makeManifest("${entry.name}", ${contributes}),`,
+        "  },",
+      ].join("\n"),
     );
   }
 
   return [
     imports.join("\n"),
-    "const makeManifest = (name: string): PluginManifest =>",
+    'const makeManifest = (name: string, contributes?: PluginManifest["contributes"]): PluginManifest =>',
     "  Schema.decodeSync(PluginManifestSchema)({",
     "    name,",
     '    version: "0.0.0",',
     "    api: 4,",
     "    bundled: true,",
+    "    ...(contributes === undefined ? {} : { contributes }),",
     "  });",
     "",
     "export const BUNDLED_PLUGINS: ReadonlyArray<{",

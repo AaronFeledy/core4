@@ -1355,3 +1355,35 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (fast-forward; local story branch already absent after merge)
 - Remaining local state: none; on main at 6e350e0
 ---
+
+## [2026-05-14 07:07 UTC] - Sync
+- Previous branch: us-028-cache-service-live
+- Previous PR: #31 https://github.com/AaronFeledy/core4/pull/31
+- Action: caught up after prior merge (PR #31 was already MERGED; local branch was already absent)
+- Local main updated: yes (already at origin/main tip)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-14 02:24 CDT - US-029
+- What was implemented
+  - Implemented bundled-only PluginRegistryLive coverage for listing all MVP bundled plugins, loading provider-lando manifest contribution metadata, and failing missing plugins with PluginLoadError.
+- Files changed
+  - core/build.config.ts
+  - core/src/plugins/bundled.ts
+  - core/src/plugins/registry.ts
+  - core/test/services/plugin-registry.test.ts
+  - scripts/build-bundled-plugins.ts
+  - spec/mvp/prd.json
+  - spec/mvp/progress.txt
+- Verification run and result
+  - lsp_diagnostics on changed TypeScript files: clean.
+  - bun test core/test/services/plugin-registry.test.ts: pass.
+  - bun test core/test/plugins/bundled.test.ts: pass.
+  - bun run typecheck: pass.
+  - bun run lint: pass.
+  - bun test: pass.
+  - Manual QA: PluginRegistryLive driver printed @lando/provider-lando,@lando/provider-docker,@lando/service-lando,@lando/logger-pretty.
+- **Learnings for future iterations:**
+  - PluginRegistry uses the SDK tag shape (`list` + `load`); the bundled-only MVP returns manifests, not plugin layers, through the public service API.
+  - Keep generated `core/src/plugins/bundled.ts` Biome-clean by updating `scripts/build-bundled-plugins.ts` before regenerating.
+---
