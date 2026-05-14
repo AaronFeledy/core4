@@ -33,6 +33,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
+- RuntimeProviderRegistry Live consults `PluginRegistry` contribution buckets for installed provider ids and `ConfigService.defaultProviderId` for selection; build the service inside `Layer.effect` so methods close over dependencies and remain env-free.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1421,4 +1422,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 6555655 on main
 - Local main / branch refreshed: yes (main fast-forwarded to 6555655; local story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## 2026-05-14 03:05 CDT - US-030
+- Implemented RuntimeProviderRegistry Live selection from PluginRegistry provider contributions and ConfigService.defaultProviderId, including active-provider capabilities lookup and lando/docker MVP provider layers.
+- Files changed: core/src/providers/registry.ts, core/src/runtime/layer.ts, core/test/services/runtime-provider-registry.test.ts, sdk/src/services/index.ts, sdk/test/services/tags.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt, AGENTS.md.
+- Verification run and result: lsp diagnostics clean on changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; focused registry tests passed and exercised lando selection, docker selection, missing-provider failure, capability lookup, and provider list behavior.
+- **Learnings for future iterations:**
+  - RuntimeProviderRegistry service methods should close over ConfigService and PluginRegistry dependencies created in `Layer.effect`, not return effects with those dependencies in their method environments.
+  - PluginRegistry manifests expose provider candidates through `manifest.contributes.providers`; selection should validate configured provider ids against that contribution list.
+  - Provider bootstrap composition can provide registry dependencies with `Layer.provide(Layer.mergeAll(...))` so PluginRegistry is used internally without becoming part of the runtime's public service surface.
 ---
