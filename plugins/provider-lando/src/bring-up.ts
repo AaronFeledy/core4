@@ -120,11 +120,15 @@ const serviceEnv = (service: ServicePlan) =>
   Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
 
 const hostConfig = (service: ServicePlan) => {
+  // Only map endpoints that have a numeric port; unix-socket endpoints have
+  // port === undefined and must not produce a binding key.
   const portBindings = Object.fromEntries(
-    service.endpoints.map((endpoint) => [
-      `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
-      [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
-    ]),
+    service.endpoints
+      .filter((endpoint) => endpoint.port !== undefined)
+      .map((endpoint) => [
+        `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
+        [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
+      ]),
   );
 
   return Object.keys(portBindings).length === 0 ? {} : { PortBindings: portBindings };
