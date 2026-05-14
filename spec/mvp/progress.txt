@@ -1762,3 +1762,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bugbot inline comment 1: FIXED. Signed `<<` shift in `makeAttachDecoder` could produce a negative `frameLength` when `buffer[4] >= 128`, bypassing the length guard and causing an infinite loop. Added `>>> 0` to force unsigned 32-bit integer. Fix: `exec.ts` line 156, commit `04b898c`.
 - Bugbot inline comment 2: REJECTED (low severity / not-a-bug). Duplicate `containerName` in exec.ts, bring-up.ts, bring-down.ts is a maintenance concern, not a correctness issue. Deferred to a dedicated refactor story.
 - Checks run before push: typecheck pass, lint pass (after `bun run format`), full test suite 186 pass / 4 skip / 0 fail.
+
+## [2026-05-14 16:05 CDT] - Push
+- Branch pushed: us-038-provider-exec-stream pushed to origin (new branch)
+- Commits: 8d226aa (feat: exec Stream), b32de74 (loop: review record), 04b898c (fix: unsigned frameLength shift), 6d7b3c1 (loop: triage note)
+- PR: #41 https://github.com/AaronFeledy/core4/pull/41 (created)
+- CI outcome: pass (linux-arm64, linux-x64, macos-arm64, windows-x64 all SUCCESS; Cursor Bugbot NEUTRAL/skipping on both rounds)
+- Review feedback: 2 Bugbot inline comments — issue 1 (signed shift / infinite loop) fixed in commit 04b898c; issue 2 (duplicate containerName, low severity) rejected as maintenance-only, not a correctness bug
+- Triage rounds used: 1
+- Merge: merged (squash) → b9a524b on main
+- Local main / branch refreshed: yes (main at b9a524b; local story branch deleted / already absent)
+- Remaining local state: clean, on main
+---
