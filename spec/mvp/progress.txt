@@ -1318,3 +1318,28 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Use `Schema.Schema<A, I>` for generic schema parameters; `Schema.Struct` inputs are invariant and do not fit `Schema.Schema<A, unknown>`.
   - `TestClock.adjust(...)` needs `Effect.provide(TestContext.TestContext)` in plain Bun tests/scripts; otherwise the default live clock does not expose test-clock adjustment.
 ---
+
+## 2026-05-13 21:15 CDT - US-028 Review
+- Reviewed build commit `f0fc1bc feat: CacheService Live implementation (in-memory)` against PRD-03 §US-008 (`spec/mvp/prd-mvp-03-effect-services.md`) and `spec/mvp/prd.json` US-028 acceptance criteria.
+- `/review` slash command: not registered in this workspace (same precedent as US-022..US-027). Performed manual checklist review of diff + tests + spec.
+- PRD-03 US-008 AC mapping:
+  - AC#1 (round-trip via schema decode): satisfied by `round-trips cached values through schema decode`.
+  - AC#2 (missing key → null per frozen tag; PRD's `Option.none()` wording defers to the `A | null` tag signature): satisfied by `returns null for missing and expired keys` (missing branch).
+  - AC#3 (TTL expiration → null via controllable Clock; TestClock acceptable): satisfied — same test uses `TestClock.adjust("5 millis")` with `TestContext.TestContext`.
+  - AC#4 (decode drift → CacheError carrying `{ key, decodeError }`): satisfied by `fails loudly when stored data no longer matches the requested schema`.
+  - AC#5 (no persistence): satisfied — implementation is a pure `Ref<ReadonlyMap<string, CacheEntry>>`, no FS writes.
+  - AC#6 (Live impl at `core/src/cache/`): satisfied by `core/src/cache/service.ts`.
+  - AC#7 (typecheck/lint/tests pass): re-verified clean below.
+- prd.json US-028 AC mapping:
+  - Round-trip / namespace isolation / TTL / tests / typecheck / lint: all covered by the four-test suite plus repo-wide checks.
+- Manual `/review` triage:
+  - Fixed: none.
+  - Rejected: (1) Race in `read`'s lazy expired-entry cleanup — `Ref.get` then `Ref.update` is not atomic; a concurrent `write` between the two could be wiped. Out-of-scope for MVP in-memory cache: worst case is a benign cache miss, not corruption, and the PRD does not require strict atomicity. Use `Ref.modify` if/when this becomes load-bearing. (2) `removeKey` always allocates a new `Map` even when the key is absent — stylistic; not worth a fix. (3) `TTL=0` → immediately expired (`expiresAtMs = nowMs`, `<= nowMs` is true) — documented behavior consistent with "TTL semantics work as documented".
+- SDK tag-freeze check: method names (`read`/`write`/`invalidate`) unchanged; only signatures gained optional `schema?` and `ttlMs?` params, so `EXPECTED_TAGS` ordered freeze list in `sdk/test/services/tags.test.ts` still matches.
+- Verification run and result: `bun run typecheck` PASS; `bun run lint` PASS (`Checked 204 files in 67ms`); `bun test` PASS (156 pass / 1 skip / 0 fail across 34 files); focused `bun test core/test/services/cache.test.ts` PASS (4/4).
+- CLI behavior: not applicable — service-level work, no command output to exercise.
+- Files changed by review: none.
+- **Learnings for future iterations:**
+  - When the SDK service tag's frozen contract differs from PRD prose (e.g. tag returns `A | null` but PRD AC text says `Option.none()`), the tag wins — it is the binding contract once shipped. PRD prose is treated as descriptive intent unless the freeze test is updated in the same story.
+  - Lazy expiry via `Ref.get` + `Ref.update` is acceptable for MVP in-memory caches; flag it for promotion to `Ref.modify` if/when persistence or contention arrives.
+---
