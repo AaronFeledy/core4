@@ -1343,3 +1343,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When the SDK service tag's frozen contract differs from PRD prose (e.g. tag returns `A | null` but PRD AC text says `Option.none()`), the tag wins — it is the binding contract once shipped. PRD prose is treated as descriptive intent unless the freeze test is updated in the same story.
   - Lazy expiry via `Ref.get` + `Ref.update` is acceptable for MVP in-memory caches; flag it for promotion to `Ref.modify` if/when persistence or contention arrives.
 ---
+
+## [2026-05-14 07:05 UTC] - Push
+- Branch pushed: us-028-cache-service-live → origin/us-028-cache-service-live
+- Commits: f0fc1bc (feat: CacheService Live implementation (in-memory)), 452337a (chore: record review outcome for US-028)
+- PR: #31 https://github.com/AaronFeledy/core4/pull/31 (created)
+- CI outcome: pass — all 5 checks SUCCESS (linux-x64, linux-arm64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (no reviews, no comments)
+- Triage rounds used: 0
+- Merge: squash-merged (squash commit 6e350e0 on main)
+- Local main / branch refreshed: yes (fast-forward; local story branch already absent after merge)
+- Remaining local state: none; on main at 6e350e0
+---
