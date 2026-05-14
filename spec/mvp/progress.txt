@@ -1287,3 +1287,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Gotchas encountered: Effect's default `minimumLogLevel` is `Info`, so `Logger.debug(...)` is a no-op through `prettyLoggerDefault` without an explicit log-level layer. Don't assert on debug output unless the test (or runtime) installs `Logger.minimumLogLevel(LogLevel.Debug)`.
   - Useful context: `Layer.Layer<Logger>` returned by `LoggerLive` covers both the `Logger` service tag (via `Layer.succeed`) and Effect's pretty-vs-silent default-logger swap (via `EffectLogger.replace(defaultLogger, ...)`). Callers don't need to merge a separate logger-replacement layer.
 ---
+
+## [2026-05-14 01:42 UTC] - Push (US-027)
+- Branch pushed: us-027-logger-live → origin
+- Commits: 2ee4c5f feat: Logger Live implementation (Effect Logger.pretty wrapper), 88e9c61 docs: record US-027 review outcome (LoggerLive)
+- PR: #30 https://github.com/AaronFeledy/core4/pull/30 (created)
+- CI outcome: pass — all 4 platforms (linux-x64, linux-arm64, macos-arm64, windows-x64) SUCCESS; Cursor Bugbot SUCCESS
+- Review feedback: none (no review threads, no comments)
+- Triage rounds used: 0
+- Merge: squash-merged (commit 9a0cf4a on main)
+- Local main refreshed: yes (fast-forward, already on main)
+- Local story branch deleted: yes (git branch -D us-027-logger-live)
+---
