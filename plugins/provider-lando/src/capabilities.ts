@@ -12,7 +12,7 @@ export interface PodmanApiRequest {
 }
 
 export interface PodmanApiClient {
-  readonly info: Effect.Effect<unknown, ProviderCapabilityError>;
+  readonly info: Effect.Effect<unknown, ProviderCapabilityError | ProviderUnavailableError>;
 }
 
 export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => ({
@@ -69,41 +69,47 @@ export const linuxMvpCapabilities: ProviderCapabilities = Schema.decodeSync(Prov
 });
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
-  info: Effect.tryPromise({
-    try: async () => {
-      const request = makePodmanInfoRequest(socketPath);
-      const proc = Bun.spawn([request.command, ...request.args], { stderr: "pipe", stdout: "pipe" });
-      const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
-      ]);
-
-      if (exitCode !== 0) {
-        throw new ProviderUnavailableError({
+  info: Effect.gen(function* () {
+    const request = makePodmanInfoRequest(socketPath);
+    // Unexpected JS exceptions (spawn failure, etc.) become ProviderCapabilityError.
+    const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
+      try: async () => {
+        const proc = Bun.spawn([request.command, ...request.args], { stderr: "pipe", stdout: "pipe" });
+        const [stdout, stderr, exitCode] = await Promise.all([
+          new Response(proc.stdout).text(),
+          new Response(proc.stderr).text(),
+          proc.exited,
+        ]);
+        return { stdout, stderr, exitCode };
+      },
+      catch: (cause) =>
+        new ProviderCapabilityError({
+          providerId: PROVIDER_ID,
+          operation: "capabilities",
+          message: "Failed to inspect provider-lando capabilities through the Podman API.",
+          capability: "podman-info",
+          requiredValue: "Podman HTTP API info response",
+          actualValue: undefined,
+          cause,
+        }),
+    });
+    // Non-zero exit indicates the daemon is unreachable — surface as ProviderUnavailableError
+    // so consumers can discriminate between "daemon down" and "capability query failed".
+    if (exitCode !== 0) {
+      yield* Effect.fail(
+        new ProviderUnavailableError({
           providerId: PROVIDER_ID,
           operation: "capabilities",
           message: `Podman API info request failed with exit code ${exitCode}.`,
           details: { stderr, socketUrl: request.socketUrl },
-        });
-      }
-
-      return JSON.parse(stdout) as unknown;
-    },
-    catch: (cause) =>
-      new ProviderCapabilityError({
-        providerId: PROVIDER_ID,
-        operation: "capabilities",
-        message: "Failed to inspect provider-lando capabilities through the Podman API.",
-        capability: "podman-info",
-        requiredValue: "Podman HTTP API info response",
-        actualValue: undefined,
-        cause,
-      }),
+        }),
+      );
+    }
+    return JSON.parse(stdout) as unknown;
   }),
 });
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
-): Effect.Effect<ProviderCapabilities, ProviderCapabilityError> =>
+): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(Effect.flatMap(() => decodeProviderCapabilities(linuxMvpCapabilities)));
