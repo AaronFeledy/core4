@@ -1424,6 +1424,24 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Remaining local state: clean, on main
 ---
 
+## 2026-05-14 02:46 CDT - Sync
+- Previous branch: us-029-bundled-plugin-registry
+- Previous PR: #32 https://github.com/AaronFeledy/core4/pull/32
+- Action: caught up after prior merge (PR #32 already MERGED, all CI checks SUCCESS)
+- Local main updated: yes (already current at 229be78)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-14 - Sync
+- Previous branch: us-030-runtime-provider-registry
+- Previous PR: none (no PR found for branch)
+- Action: clean state — branch at same commit as main (0 commits ahead), no unpushed work; local branch deleted
+- Local main updated: yes (already at 229be78, origin/main current)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## 2026-05-14 03:05 CDT - US-030
 - Implemented RuntimeProviderRegistry Live selection from PluginRegistry provider contributions and ConfigService.defaultProviderId, including active-provider capabilities lookup and lando/docker MVP provider layers.
 - Files changed: core/src/providers/registry.ts, core/src/runtime/layer.ts, core/test/services/runtime-provider-registry.test.ts, sdk/src/services/index.ts, sdk/test/services/tags.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt, AGENTS.md.
