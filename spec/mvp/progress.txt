@@ -67,6 +67,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Provider plugin capability tests should inject a tiny Podman API client into the provider layer so unit tests do not need a real daemon; keep real HTTP-over-UNIX request construction in a separate helper and reserve `LANDO_TEST_PODMAN_SOCKET` for socket-backed QA.
 - Provider-lando lifecycle code should use the `PodmanApiClient.request` HTTP-over-UNIX seam for Podman API calls; fake it in unit tests and reserve live Node/Postgres checks for `LANDO_TEST_PODMAN_SOCKET`.
 - Provider-lando stop/remove lifecycle should use Podman API container stop + forced container delete and per-app network delete; `app:stop` preserves app-scoped stores by never calling the Podman volumes delete API.
+- The SDK provider contract suite executes `apply` -> `inspect` -> `destroy` against a fixture whose provider id matches the candidate provider; RuntimeProvider implementations that cache applied plans must wire `destroy` through provider teardown and clear that cache.
 
 
 ## Iteration Log
@@ -1836,4 +1837,25 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 4216a60 "feat: provider-lando inspect returns structured snapshot (#43)"
 - Local main / branch refreshed: yes (main at 4216a60, local story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 22:03 UTC] - Sync
+- Previous branch: us-040-provider-lando-inspect
+- Previous PR: #43 https://github.com/AaronFeledy/core4/pull/43
+- Action: caught up after prior merge (PR already MERGED; all CI checks SUCCESS/NEUTRAL)
+- Local main updated: yes (already at d5e2b45, up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-14 17:10 CDT - US-041
+- Implemented provider-lando contract coverage with `plugins/provider-lando/test/contract.integration.test.ts`, including a deterministic Podman API fake and the existing live-socket gate for `LANDO_TEST_PODMAN_SOCKET`.
+- Extended `runProviderContract` to execute the candidate provider's `apply`, `inspect`, and `destroy` against a provider-id-matched fixture so contract conformance proves the lifecycle path, not only method shapes.
+- Wired provider-lando `RuntimeProvider.destroy` through `bringDown` and cleared the applied-plan cache after teardown.
+- Files changed: `sdk/src/test/index.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/contract.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (191 pass, 7 skip, 0 fail); focused contract tests passed (5 pass, 1 live-socket skip).
+- Manual QA: live Podman contract test was not executed because `LANDO_TEST_PODMAN_SOCKET` was not set in this shell; deterministic provider-lando contract test exercised apply/inspect/destroy through the fake Podman API.
+- **Learnings for future iterations:**
+  - `runProviderContract` should stay executable against real provider implementations; keep its fixture minimal and provider-id-derived.
+  - Provider-lando's RuntimeProvider layer caches plans after `apply`; methods that operate by app id need to handle that cache intentionally.
 ---

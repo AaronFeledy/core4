@@ -11,7 +11,6 @@ import {
   AppId,
   type AppPlan,
   type PlanMetadata,
-  PortablePath,
   ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -25,9 +24,9 @@ export class ContractFailure extends Schema.TaggedError<ContractFailure>()("Cont
   details: Schema.optional(Schema.Unknown),
 }) {}
 
-const TEST_PROVIDER_ID = ProviderId.make("test");
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");
+const TEST_PROVIDER_ID = ProviderId.make("test");
 
 const testCapabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -59,21 +58,15 @@ const planMetadata: PlanMetadata = {
   runtime: 4,
 };
 
-const testServicePlan: ServicePlan = {
+const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   name: TEST_SERVICE_NAME,
   type: "node",
-  provider: TEST_PROVIDER_ID,
+  provider: providerId,
   primary: true,
+  artifact: { kind: "ref", ref: "node:22-alpine" },
+  command: ["node", "-e", "setInterval(() => {}, 1000)"],
   environment: {},
-  mounts: [
-    {
-      type: "bind",
-      source: AbsolutePath.make("/srv/apps/myapp"),
-      target: PortablePath.make("/app"),
-      readOnly: false,
-      realization: "passthrough",
-    },
-  ],
+  mounts: [],
   storage: [],
   endpoints: [],
   routes: [],
@@ -81,20 +74,24 @@ const testServicePlan: ServicePlan = {
   hostAliases: [],
   metadata: planMetadata,
   extensions: {},
-};
+});
 
-const testAppPlan: AppPlan = {
-  id: TEST_APP_ID,
-  name: "My App",
-  slug: "myapp",
-  root: AbsolutePath.make("/srv/apps/myapp"),
-  provider: TEST_PROVIDER_ID,
-  services: { [TEST_SERVICE_NAME]: testServicePlan },
-  routes: [],
-  networks: [],
-  stores: [],
-  metadata: planMetadata,
-  extensions: {},
+const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
+  const testServicePlan = makeTestServicePlan(providerId);
+
+  return {
+    id: TEST_APP_ID,
+    name: "My App",
+    slug: "myapp",
+    root: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+    provider: providerId,
+    services: { [TEST_SERVICE_NAME]: testServicePlan },
+    routes: [],
+    networks: [],
+    stores: [],
+    metadata: planMetadata,
+    extensions: {},
+  };
 };
 
 const contractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -119,6 +116,8 @@ const isStream = (value: unknown): boolean => Stream.StreamTypeId in Object(valu
  */
 export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
+    const providerId = ProviderId.make(provider.id);
+    const testAppPlan = makeTestAppPlan(providerId);
     const capabilities = Schema.decodeUnknownEither(ProviderCapabilities)(provider.capabilities);
 
     yield* requireContract(Either.isRight(capabilities), "capability matrix decodes", capabilities);
@@ -145,6 +144,10 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       "inspect is Effect-typed",
     );
 
+    yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
+      Effect.mapError(mapProviderFailure("apply succeeds for the contract fixture")),
+    );
+
     const snapshot = yield* provider
       .inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })
       .pipe(Effect.mapError(mapProviderFailure("inspect returns a structured snapshot")));
@@ -161,6 +164,10 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       snapshot,
     );
     yield* requireContract(typeof snapshot.status === "string", "inspect snapshot includes status", snapshot);
+
+    yield* provider
+      .destroy({ app: TEST_APP_ID }, { volumes: true })
+      .pipe(Effect.mapError(mapProviderFailure("destroy succeeds for the contract fixture")));
   });
 
 /**

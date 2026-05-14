@@ -9,6 +9,7 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, PluginManifest } from "@lando/sdk/schema";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
+import { bringDown } from "./bring-down.ts";
 import { type BringUpOptions, bringUp } from "./bring-up.ts";
 import {
   type PodmanApiClient,
@@ -90,7 +91,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
-        destroy: () => Effect.void,
+        destroy: (target) => {
+          const plan = plans.get(target.app);
+          return plan === undefined
+            ? Effect.void
+            : bringDown(plan, { ...(podmanApi === undefined ? {} : { podmanApi }) }).pipe(
+                Effect.tap(() => Effect.sync(() => plans.delete(target.app))),
+                Effect.asVoid,
+              );
+        },
         exec: (target, command) => {
           const plan = plans.get(target.app);
           return plan === undefined
