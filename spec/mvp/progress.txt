@@ -2584,3 +2584,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Slop-remover result: collapsed `let appDir: string | undefined` + post-init assignment into a single `const appDir = join(dir, "mvp-exit")`, and removed the unreachable `if (appDir !== undefined)` guard in the inner `finally`. The guard could never be false because the `try` block is only entered after `appDir` is assigned. All assertions, timeouts, live-skip gating, and `lando stop` cleanup behavior preserved verbatim.
 - Verification: `lsp_diagnostics` clean on the cleaned file; `bun run typecheck` passed; `bun run lint` passed (`Checked 253 files... No fixes applied.`); `bun test` passed (230 pass, 10 skip — all live-gated — 0 fail). Full live MVP smoke flow not run because no `LANDO_TEST_PODMAN_SOCKET` was configured.
 ---
+
+## [2026-05-15 23:30 UTC] - Push
+- Branch pushed: us-060-mvp-exit-smoke-test → origin/us-060-mvp-exit-smoke-test (commits: 3a3e9bf feat: End-to-end MVP exit-criteria smoke test, a45f86f chore: remove AI slop, 2e0eb58 fix: move stop assertions outside finally to prevent masking start/info errors)
+- PR: #63 https://github.com/AaronFeledy/core4/pull/63 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SKIPPING)
+- Review feedback: Cursor Bugbot flagged 1 medium-severity real issue — assertions in finally block would mask start/info errors. Fixed by capturing stop result in finally and asserting it after the try-finally block (only reached when try block succeeded). Typecheck and lint clean; bun test passes (live case skipped as expected).
+- Triage rounds used: 1
+- Merge: merged (squash) as 0f8da63 "Add end-to-end MVP exit-criteria smoke test (#63)"
+- Local main / branch refreshed: yes (fast-forward to 0f8da63; local us-060-mvp-exit-smoke-test deleted; remote branch deleted by --delete-branch)
+- Remaining local state: on main, clean
+---
