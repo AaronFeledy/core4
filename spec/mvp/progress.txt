@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- Provider package import-boundary tests parse TypeScript source files with the TypeScript compiler API and assert static imports/re-exports avoid `@oclif/*` and `core/src/cli/*`; keep those tests under `plugins/*/test/import-boundary.test.ts`.
 - Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
 - FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
 - ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
@@ -1956,4 +1957,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → ba31f3b on main
 - Local main / branch refreshed: yes (main fast-forwarded to ba31f3b, local story branch deleted)
 - Remaining local state: clean on main (uncommitted progress.txt only)
+---
+## [2026-05-14 23:18 CDT] - US-044
+- Implemented provider import-boundary coverage for `@lando/provider-lando` and `@lando/provider-docker`, scanning TypeScript source imports/re-exports for OCLIF and core CLI internals.
+- Files changed: `plugins/provider-lando/test/import-boundary.test.ts`, `plugins/provider-docker/test/import-boundary.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test plugins/provider-lando/test/import-boundary.test.ts plugins/provider-docker/test/import-boundary.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Use TypeScript AST parsing for static import-boundary checks instead of runtime imports so package entry evaluation is not required.
+  - Keep provider packages CLI-agnostic by blocking both `@oclif/*` package imports and repo-relative `core/src/cli/*` paths from provider source trees.
 ---
