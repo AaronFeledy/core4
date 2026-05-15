@@ -2577,3 +2577,10 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Live scenario tests should follow existing `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` gating and explicit long per-test timeouts because real Podman operations exceed Bun's default timeout.
   - Compiled CLI scenario tests should call `core/dist/lando` by absolute path and run app commands from the scaffolded app directory.
 ---
+
+## [2026-05-15 18:18 CDT] - US-060 slop-remover
+- Branch: us-060-mvp-exit-smoke-test
+- Files cleaned: `core/test/scenario/mvp-exit-criteria.scenario.test.ts`.
+- Slop-remover result: collapsed `let appDir: string | undefined` + post-init assignment into a single `const appDir = join(dir, "mvp-exit")`, and removed the unreachable `if (appDir !== undefined)` guard in the inner `finally`. The guard could never be false because the `try` block is only entered after `appDir` is assigned. All assertions, timeouts, live-skip gating, and `lando stop` cleanup behavior preserved verbatim.
+- Verification: `lsp_diagnostics` clean on the cleaned file; `bun run typecheck` passed; `bun run lint` passed (`Checked 253 files... No fixes applied.`); `bun test` passed (230 pass, 10 skip — all live-gated — 0 fail). Full live MVP smoke flow not run because no `LANDO_TEST_PODMAN_SOCKET` was configured.
+---

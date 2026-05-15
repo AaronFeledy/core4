@@ -61,8 +61,6 @@ const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
   test("reproduces the full init/start/info/stop flow with the compiled binary", async () => {
     await withTempDir(async (dir) => {
-      let appDir: string | undefined;
-
       const codegen = await runCommand([process.execPath, "run", "codegen"], repoRoot);
       expectSuccess("bun run codegen", codegen);
 
@@ -72,7 +70,7 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
       const init = await runCommand([binaryPath, "init", "--full", "--name=mvp-exit"], dir);
       expectSuccess("lando init", init);
       expect(init.stdout).toContain("Created mvp-exit");
-      appDir = join(dir, "mvp-exit");
+      const appDir = join(dir, "mvp-exit");
 
       try {
         const start = await runCommand([binaryPath, "start"], appDir, 180_000);
@@ -86,11 +84,9 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
         expect(info.stdout).toContain("web\trunning");
         expect(info.stdout).toContain("database\trunning");
       } finally {
-        if (appDir !== undefined) {
-          const stop = await runCommand([binaryPath, "stop"], appDir, 180_000);
-          expectSuccess("lando stop", stop);
-          expect(stop.stdout).toContain("stopped: mvp-exit");
-        }
+        const stop = await runCommand([binaryPath, "stop"], appDir, 180_000);
+        expectSuccess("lando stop", stop);
+        expect(stop.stdout).toContain("stopped: mvp-exit");
       }
     });
   }, 300_000);
