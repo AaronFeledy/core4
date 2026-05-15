@@ -34,6 +34,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - After adding a new `plugins/*` workspace package, run `bun install` to refresh root `node_modules` workspace links before manual package-import QA from the repo root.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
+- Database service type implementations may extend the MVP `ServiceConfig` schema with typed convenience keys such as `database`/`port`; decode Landofile-shaped tests through `LandofileShape` so those keys are proven to survive config validation.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
 - Package export-surface tests belong in `sdk/test/library/exports.test.ts` and should use dynamic `await import("@lando/sdk/...")` calls for each public subpath so Bun validates the workspace package `exports` map exactly as embedding hosts consume it.
 - Provider-lando Compose emission lives in `plugins/provider-lando/src/compose.ts`; future provider lifecycle work should reuse `emitCompose(plan, { userDataRoot })`, which writes through `FileSystem.writeAtomic` under `<userDataRoot>/apps/<appId>/compose.yml`.
@@ -2058,4 +2059,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → 7dde782 "feat: node:lts ServiceType implementation (#49)"
 - Local main / branch refreshed: yes (main fast-forwarded to 7dde782; local story branch deleted)
 - Remaining local state: clean on main
+---
+
+## [2026-05-15 04:19 CDT] - Sync
+- Previous branch: us-046-node-lts-service-type
+- Previous PR: #49 https://github.com/AaronFeledy/core4/pull/49
+- Action: caught up after prior merge (PR #49 already MERGED)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 04:28 CDT] - US-047
+- Implemented the `postgres` ServiceType with default `postgres:16` artifact, deterministic app-derived credentials, tcp endpoint planning, Landofile `database`/`user`/`port` overrides, and a persistent `/var/lib/postgresql/data` storage mount.
+- Files changed: `plugins/service-lando/src/services/postgres.ts`, `plugins/service-lando/src/index.ts`, `plugins/service-lando/test/postgres.test.ts`, `sdk/src/schema/index.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: red test first (`bun test plugins/service-lando/test/postgres.test.ts` failed on missing module); focused test pass; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass. Manual QA: executed a real `postgresServiceType.toServicePlan(...)` driver through `@lando/service-lando` and verified printed artifact/environment/storage/endpoint output.
+- **Learnings for future iterations:**
+  - `ServicePlan.storage` carries mounted data-store references (`store`, `target`, `readOnly`); app-level `stores` declarations are separate `AppPlan` data and not emitted by a standalone service type today.
+  - Official Postgres container defaults use port `5432`, data path `/var/lib/postgresql/data`, and `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` for bootstrap credentials.
 ---
