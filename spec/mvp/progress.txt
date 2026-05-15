@@ -1958,6 +1958,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main fast-forwarded to ba31f3b, local story branch deleted)
 - Remaining local state: clean on main (uncommitted progress.txt only)
 ---
+
+## [2026-05-14 UTC] - Sync
+- Previous branch: us-044-provider-oclif-boundary
+- Previous PR: none (gh pr list returned [])
+- Action: Case E / count=0 — branch was at main, no unpushed commits, no PR. Deleted local story branch. Stashed dirty progress.txt (leftover uncommitted sync note from prior iteration) as loop-sync-autostash; a human should `git stash pop` to recover that note.
+- Local main updated: yes (already current at origin/main HEAD 8c89a02)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — contains prior sync's uncommitted progress.txt entry)
+---
 ## [2026-05-14 23:18 CDT] - US-044
 - Implemented provider import-boundary coverage for `@lando/provider-lando` and `@lando/provider-docker`, scanning TypeScript source imports/re-exports for OCLIF and core CLI internals.
 - Files changed: `plugins/provider-lando/test/import-boundary.test.ts`, `plugins/provider-docker/test/import-boundary.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
@@ -1965,4 +1974,20 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Use TypeScript AST parsing for static import-boundary checks instead of runtime imports so package entry evaluation is not required.
   - Keep provider packages CLI-agnostic by blocking both `@oclif/*` package imports and repo-relative `core/src/cli/*` paths from provider source trees.
+---
+
+## [2026-05-14 23:24 CDT] - US-044 Review
+- Reviewed build commit bd09f48 (import-boundary tests for `@lando/provider-lando` and `@lando/provider-docker`) against PRD-04 US-012 / spec/mvp/prd.json US-044.
+- Files changed by review: none (no fixes required).
+- `/review` findings (oracle triage on bd09f48):
+  - REJECTED: dynamic `import(...)` not covered — PRD-04 US-012 only requires static `import` declaration scanning; verified `grep -rn "await import" plugins/{provider-lando,provider-docker}/src` returns no matches, so there is no real gap in this codebase.
+  - REJECTED: `require(...)` not covered — repo is ESM-only Bun workspace; not specified by PRD.
+  - REJECTED: `FORBIDDEN_PREFIXES = ["@oclif/core", "@oclif/"]` is redundant — stylistic; the broader `@oclif/` prefix already covers `@oclif/core`.
+  - REJECTED: `specifier.includes("core/src/cli/")` substring match could theoretically over-match — no plausible false positive exists in this repo (no `mock-core/src/cli/` etc.).
+  - REJECTED: test was not "failing first" before impl — acceptable; this is a boundary-coverage story and provider source already satisfied the boundary from earlier stories (provider-lando exec/logs/info migrated to Podman HTTP API).
+  - REJECTED: `spec/mvp/prd.json` US-044 acceptance criterion writes the test path as `boundary.test.ts` while the source PRD uses `import-boundary.test.ts` — committed path matches the authoritative source PRD at `spec/mvp/prd-mvp-04-providers.md` US-012.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (`Checked 234 files`); `bun test` passed (199 pass / 8 skip / 0 fail / 964 expect). The 8 skips are the documented live-socket integration gates (`LANDO_TEST_PODMAN_SOCKET` / `LANDO_TEST_DOCKER_SOCKET`) and are unrelated to this story.
+- CLI behavior exercised: not applicable — story is test-only and adds no CLI surface.
+- **Learnings for future iterations:**
+  - `prd.json` acceptance-criteria text can drift from source PRD file paths (e.g. `boundary.test.ts` vs. `import-boundary.test.ts`); always cross-check `spec/mvp/prd-mvp-*.md` for the authoritative spec when a path discrepancy appears.
 ---
