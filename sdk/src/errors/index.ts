@@ -147,6 +147,16 @@ export class RecipeMissingPluginError extends Schema.TaggedError<RecipeMissingPl
   },
 ) {}
 
+// -- Init ------------------------------------------------------------------
+export class InitTargetExistsError extends Schema.TaggedError<InitTargetExistsError>()(
+  "InitTargetExistsError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 // -- Service planning ------------------------------------------------------
 export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("ServiceTypeError", {
   message: Schema.String,

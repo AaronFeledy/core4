@@ -34,6 +34,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bundled plugin codegen statically imports plugin packages and can expose package contribution maps (for example `serviceTypes`) through `BUNDLED_PLUGINS`; keep generator output idempotent and Biome-clean.
 - After adding a new `plugins/*` workspace package, run `bun install` to refresh root `node_modules` workspace links before manual package-import QA from the repo root.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
+- Until compiled binaries run the full OCLIF path, any newly working CLI command that must work in `core/dist/lando` needs an explicit handler in `core/src/cli/run.ts`'s compiled `$bunfs` path.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - Database service type implementations may extend the MVP `ServiceConfig` schema with typed convenience keys such as `database`/`port`; decode Landofile-shaped tests through `LandofileShape` so those keys are proven to survive config validation.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
@@ -2241,4 +2242,36 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 70ad732 on main
 - Local main / branch refreshed: yes (on main at 70ad732; local story branch deleted)
 - Remaining local state: none
+---
+
+## [2026-05-15] - Sync
+- Previous branch: us-052-init-full-node-postgres
+- Previous PR: none
+- Action: no PR, branch had 0 commits ahead of main (Case E, count=0); stashed unexpected uncommitted progress.txt changes ("loop-sync-autostash"); switched to main, deleted local story branch
+- Local main updated: yes (already at 6c0e1aa)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — uncommitted progress.txt log entry from prior sync; human should pop/drop)
+---
+
+## [2026-05-15 07:55 CDT] - US-052
+- Implemented `lando init --full --name=<name>` for the hardcoded Node + Postgres MVP scaffold, including `.lando.yml`, `package.json`, and `server.js` generation.
+- Files changed: `core/src/cli/commands/init.ts`, `core/src/cli/oclif/commands/apps/init.ts`, `core/src/cli/run.ts`, `core/src/recipes/builtin/node-postgres/index.ts`, `core/test/cli/init.scenario.test.ts`, `sdk/src/errors/index.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test ./core/test/cli/init.scenario.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; source CLI manual init passed; compiled `core/dist/lando init --full --name=lando-init-bin-check` passed and produced the expected scaffold.
+- **Learnings for future iterations:**
+  - Use `LandofileServiceLive.discover` from inside the scaffold directory to verify generated `.lando.yml` against the current MVP parser/schema.
+  - `apps:init` has top-level alias `init` and must declare bootstrap `commands` for this story.
+  - Compiled binary command support currently needs explicit handling in `core/src/cli/run.ts` before the not-yet-implemented fallback.
+---
+
+## [2026-05-15 08:10 CDT] - US-052 Review
+- Reviewed US-052 build commit 4328521 (lando init --full --name=<name>): all PRD acceptance criteria satisfied by the scenario test and the source/compiled CLI paths.
+- /review findings (manual, no slash command available in this env):
+  - Fixed: compiled-binary init handler in `core/src/cli/run.ts` printed only `error.message` on catch, dropping `InitTargetExistsError.remediation` so the compiled CLI did not point at `--force`. The source CLI (via `apps/init.ts`) already concatenated message + remediation. Mirrored that behavior in the `$bunfs` init handler so both surfaces emit consistent UX.
+  - Rejected: OCLIF flag description "App name (slugified for the project id)" — out of scope (no slugification implemented yet); behavior is acceptable for MVP and not part of US-052 acceptance.
+  - Rejected: unused OCLIF flags (`source`, `recipe`, `destination`, `yes`, `option`) — Alpha features, intentionally inert at MVP.
+  - Rejected: `--name=../foo` path-traversal not validated — out of scope; PRD does not require name validation at MVP.
+- Files changed in review fix: `core/src/cli/run.ts`.
+- Verification: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (214 pass / 8 skip / 0 fail); `bun run build` passed; rebuilt `core/dist/lando` exercised against happy path (`init --full --name=demo` → exit 0 + scaffold), missing-name (`init --full` → exit 1 + "Missing required flag --name."), and existing-dir (`init --full --name=demo` second time → exit 1 + "Init target already exists ... Choose an empty directory or wait for Alpha --force support.").
+- **Learnings for future iterations:**
+  - When forwarding a tagged error from the compiled-binary `$bunfs` CLI path, copy the source-CLI's remediation-concatenation pattern; the AGENTS.md gotcha about explicit compiled-binary handlers covers existence, not error-output parity.
 ---
