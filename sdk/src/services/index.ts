@@ -119,6 +119,7 @@ export interface ServiceSelector {
 
 export interface AppSelector {
   readonly app: AppId;
+  readonly plan?: AppPlan;
 }
 
 export interface ExecTarget extends ServiceSelector {

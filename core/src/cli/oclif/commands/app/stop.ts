@@ -1,4 +1,4 @@
-import { type StopAppResult, stopApp } from "../../../commands/stop.ts";
+import { type StopAppResult, renderStopAppResult, stopApp } from "../../../commands/stop.ts";
 /**
  * `lando app:stop` — OCLIF wrapper.
  */
@@ -11,6 +11,7 @@ export const stopSpec: LandoCommandSpec<StopAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => stopApp(),
+  render: (result) => renderStopAppResult(result as StopAppResult),
 };
 
 export default class StopCommand extends LandoCommandBase {

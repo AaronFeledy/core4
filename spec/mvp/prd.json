@@ -858,7 +858,7 @@
         "Run `./dist/lando stop` end-to-end against live Podman socket"
       ],
       "priority": 54,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

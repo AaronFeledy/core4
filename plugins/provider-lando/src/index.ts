@@ -119,7 +119,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         stop: () => Effect.void,
         restart: () => Effect.void,
         destroy: (target) => {
-          const plan = plans.get(target.app);
+          const plan = target.plan ?? plans.get(target.app);
           return plan === undefined
             ? Effect.void
             : bringDown(plan, { ...(podmanApi === undefined ? {} : { podmanApi }) }).pipe(
