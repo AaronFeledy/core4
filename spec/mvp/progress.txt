@@ -2109,3 +2109,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `BUNDLED_PLUGINS` is the bridge from bundled package exports to core registry objects, so update the codegen script before editing generated bundled output.
   - ServiceType implementations return decoded `ServicePlan`s; AppPlanner encodes them before decoding the enclosing `AppPlan`.
 ---
+
+## [2026-05-15 10:57 UTC] - Push (US-048)
+- Branch pushed: us-048-service-lando-registry → origin (1 story commit: 4e993f4 "feat: service-lando Layer wires both ServiceTypes into core's registry")
+- PR: #51 https://github.com/AaronFeledy/core4/pull/51 (created)
+- CI outcome (round 1): 4/5 pass — linux-arm64, linux-x64, macos-arm64, windows-x64 SUCCESS; Cursor Bugbot pending
+- Triage round 1: Bugbot posted COMMENTED (not CHANGES_REQUESTED) with 1 real low-severity issue — `pluginName: id` in `loadServiceType` error passed service type ID instead of package name. Fixed directly: changed to `"@lando/core"`. Committed b9417e8 "fix: use package name instead of service type ID in PluginLoadError" and pushed.
+- CI outcome (round 2): all 5 checks SUCCESS (linux-arm64, linux-x64, macos-arm64, windows-x64, Cursor Bugbot pass)
+- Review feedback: Bugbot COMMENTED (1 issue, fixed in triage round 1); reviewDecision="" (not CHANGES_REQUESTED)
+- Triage rounds used: 1
+- Merge: merged (squash) → 9a8a2c3 "Wire service-lando ServiceTypes into core's bundled plugin registry (#51)"
+- Local main / branch refreshed: yes (main fast-forwarded to 9a8a2c3; local story branch deleted)
+- Remaining local state: clean on main
+---
