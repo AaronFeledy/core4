@@ -2548,3 +2548,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The `/review` slash command is NOT installed in this environment; `Skill(name="review")` errors with "command not found". Future review steps should either (a) install the slash command or (b) explicitly perform manual triage and record it under "`/review` findings". The `review-work` builtin is the closest substitute but it spawns 5 parallel background agents and is too heavy for test-only commits.
   - Tests that compare compiled-binary stdout/stderr across two invocations should pick an error path with no timestamps/PIDs/random content (Landofile-not-found is a safe choice).
 ---
+
+## [2026-05-15 22:55 UTC] - Push
+- Branch pushed: us-059-app-command-aliases → origin/us-059-app-command-aliases (2 commits: 52cd937 feat: app:start / app:stop / app:info command aliases, 8332342 chore(loop): record US-059 review verification)
+- PR: #62 https://github.com/AaronFeledy/core4/pull/62 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none (no comments, reviewDecision empty)
+- Triage rounds used: 0
+- Merge: merged (squash) as 106bb8a "Add app:start, app:stop, and app:info command aliases (#62)"
+- Local main / branch refreshed: yes (fast-forward to 106bb8a; local us-059-app-command-aliases deleted; remote branch deleted by --delete-branch)
+- Remaining local state: on main, clean
+---
