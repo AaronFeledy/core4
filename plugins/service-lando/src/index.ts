@@ -7,20 +7,17 @@
 import { Layer, Schema } from "effect";
 
 import { PluginManifest } from "@lando/sdk/schema";
+import type { ServiceTypeShape } from "@lando/sdk/services";
 
 import { nodeLtsServiceType } from "./services/node.ts";
 import { postgresServiceType } from "./services/postgres.ts";
 
 export const PLUGIN_NAME = "@lando/service-lando" as const;
 
-export interface ServiceType {
-  readonly id: string;
-}
-
 export { nodeLtsServiceType } from "./services/node.ts";
 export { postgresServiceType } from "./services/postgres.ts";
 
-export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, ServiceType>([
+export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<string, ServiceTypeShape>([
   ["node:lts", nodeLtsServiceType],
   ["postgres", postgresServiceType],
 ]);

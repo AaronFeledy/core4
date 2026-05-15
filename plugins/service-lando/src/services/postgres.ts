@@ -4,8 +4,7 @@ import { basename } from "node:path";
 import { Schema } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
-
-import type { ServiceTypePlanInput } from "./node.ts";
+import type { ServiceTypeShape } from "@lando/sdk/services";
 
 const DEFAULT_IMAGE = "postgres:16";
 const DEFAULT_PORT = 5432;
@@ -16,12 +15,7 @@ const appIdFromRoot = (appRoot: string): string => basename(appRoot) || "app";
 const defaultPassword = (appId: string): string =>
   `lando-${createHash("sha256").update(appId).digest("hex").slice(0, 16)}`;
 
-export interface PostgresServiceType {
-  readonly id: string;
-  readonly toServicePlan: (input: ServiceTypePlanInput) => ServicePlan;
-}
-
-export const postgresServiceType: PostgresServiceType = {
+export const postgresServiceType: ServiceTypeShape = {
   id: "postgres",
   toServicePlan: ({
     name,

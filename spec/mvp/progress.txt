@@ -31,6 +31,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
+- Bundled plugin codegen statically imports plugin packages and can expose package contribution maps (for example `serviceTypes`) through `BUNDLED_PLUGINS`; keep generator output idempotent and Biome-clean.
 - After adding a new `plugins/*` workspace package, run `bun install` to refresh root `node_modules` workspace links before manual package-import QA from the repo root.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
@@ -2088,4 +2089,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) → 044f85e "feat: postgres ServiceType implementation (#50)"
 - Local main / branch refreshed: yes (main fast-forwarded to 044f85e; local story branch absent)
 - Remaining local state: clean on main
+---
+
+## 2026-05-15 09:56 UTC - Sync
+- Previous branch: us-048-service-lando-registry
+- Previous PR: none
+- Action: no previous branch work (0 commits ahead of main; branch was at main tip — clean first-iteration / post-merge state)
+- Local main updated: yes (already at 044f85e)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — uncommitted sync note from prior sync step; human to handle)
+---
+
+## 2026-05-15 10:36 UTC - US-048
+- Implemented service-lando service type registration through the bundled PluginRegistry and made AppPlanner resolve `node:lts` and `postgres` via PluginRegistry service type contributions.
+- Files changed: `sdk/src/services/index.ts`, `core/src/plugins/{bundled,registry}.ts`, `core/src/services/planner.ts`, `core/src/runtime/layer.ts`, `plugins/service-lando/src/**`, `plugins/service-lando/test/registration.test.ts`, related tests, and `scripts/build-bundled-plugins.ts`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual Bun driver confirmed `@lando/service-lando` contributes `["node:lts","postgres"]` and AppPlanner planned `web=node:lts`, `db=postgres`.
+- **Learnings for future iterations:**
+  - AppPlannerLive now closes over PluginRegistry via `Layer.effect`; provide `PluginRegistryLive` when testing AppPlanner directly.
+  - `BUNDLED_PLUGINS` is the bridge from bundled package exports to core registry objects, so update the codegen script before editing generated bundled output.
+  - ServiceType implementations return decoded `ServicePlan`s; AppPlanner encodes them before decoding the enclosing `AppPlan`.
 ---

@@ -37,6 +37,14 @@ describe("PluginRegistryLive", () => {
     });
   });
 
+  test("loads bundled service type contributions", async () => {
+    const serviceType = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.loadServiceType("node:lts")),
+    );
+
+    expect(serviceType.id).toBe("node:lts");
+  });
+
   test("fails with PluginLoadError for plugins outside the bundled registry", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(PluginRegistry, (registry) => registry.load("not-bundled")).pipe(
