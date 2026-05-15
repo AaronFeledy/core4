@@ -41,6 +41,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Provider-lando exec uses the Podman API exec flow (`/containers/{name}/exec`, `/exec/{id}/start`, `/exec/{id}/json`) and decodes the attach stream's 8-byte stdout/stderr frame headers; do not shell out to `podman exec`.
 - Provider-lando logs should use the Podman HTTP logs endpoint (`/containers/{name}/logs`) with `stdout=true`, `stderr=true`, and `follow`/`tail` query params; decode the same 8-byte stdout/stderr multiplex frames used by exec attach.
 - Provider-lando inspect should read `/containers/{name}/json`, map Podman `State.Running`/`State.Status` into the provider snapshot status/state, and return endpoints from the decoded `AppPlan` rather than mutating runtime state.
+- Provider-docker mirrors provider-lando's RuntimeProvider contract flow but targets the Docker Engine HTTP API via `LANDO_TEST_DOCKER_SOCKET`/`DOCKER_HOST`; provider operations must not shell out to the `docker` CLI.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
@@ -1858,4 +1859,33 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - `runProviderContract` should stay executable against real provider implementations; keep its fixture minimal and provider-id-derived.
   - Provider-lando's RuntimeProvider layer caches plans after `apply`; methods that operate by app id need to handle that cache intentionally.
+---
+
+## [2026-05-14 21:18] - Sync
+- Previous branch: us-042-provider-docker-live-layer
+- Previous PR: none
+- Action: no PR found; branch was 0 commits ahead of main (at main HEAD). Deleted local story branch. Note: `spec/mvp/progress.txt` had uncommitted sync notes from prior loop iterations — stashed as "loop-sync-autostash" (stash@{0}).
+- Local main updated: yes (already up to date with origin/main at c79799a)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — contains prior-iteration progress.txt sync notes; safe to drop)
+---
+
+## [2026-05-14 22:15 UTC] - Sync
+- Previous branch: us-042-provider-docker-live-layer
+- Previous PR: none
+- Action: no PR found; branch was 0 commits ahead of main (branch absent locally). Stashed unexpected changes to spec/mvp/progress.txt as "loop-sync-autostash" at start (accumulated uncommitted sync/build notes from prior iterations); stash was popped after work completed. Local story branch did not exist.
+- Local main updated: yes (already up to date with origin/main at c79799a)
+- Branch after sync: main
+- Stash created: yes, then popped (loop-sync-autostash — uncommitted progress.txt entries from prior loop iterations)
+---
+
+## [2026-05-14 21:41 CDT] - US-042
+- Implemented the Docker RuntimeProvider Live layer for Linux Docker Engine, including Docker Engine HTTP API client support for Unix socket and TCP hosts, apply/destroy/inspect/exec/logs provider operations, capability declaration, and compose document rendering.
+- Added `plugins/provider-docker/test/contract.integration.test.ts` with deterministic fake-API contract coverage plus the live Docker socket gate for `LANDO_TEST_DOCKER_SOCKET`/`DOCKER_HOST`.
+- Files changed: `plugins/provider-docker/src/index.ts`, `plugins/provider-docker/src/provider.ts`, `plugins/provider-docker/test/contract.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; focused provider-docker contract test passed (3 pass, 1 live-socket skip).
+- Manual QA: imported `@lando/provider-docker` through Bun and resolved the RuntimeProvider layer with a fake Docker API; observed `{"id":"docker","bindMountPerformance":"native","sharedCrossAppNetwork":false}`.
+- **Learnings for future iterations:**
+  - Docker Engine exec/log streams use the same 8-byte stdout/stderr multiplex framing as Podman when `Tty: false`, so the provider can share the same demuxing approach.
+  - Keep live Docker checks gated on `LANDO_TEST_DOCKER_SOCKET` or `DOCKER_HOST`; the deterministic fake API should remain the default CI path.
 ---
