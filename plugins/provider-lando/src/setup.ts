@@ -84,12 +84,6 @@ const infoPodmanVersion = (info: unknown): string | undefined => {
     return typeof podmanVersion === "string" ? podmanVersion : undefined;
   }
 
-  const host = "host" in info ? info.host : undefined;
-  if (typeof host === "object" && host !== null && "BuildahVersion" in host) {
-    const buildahVersion = host.BuildahVersion;
-    return typeof buildahVersion === "string" ? buildahVersion : undefined;
-  }
-
   return undefined;
 };
 

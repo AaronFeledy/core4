@@ -34,7 +34,8 @@ describe("provider-lando setup", () => {
 
   test("fails with remediation when the Podman socket is not reachable", async () => {
     const previousSocket = process.env.LANDO_TEST_PODMAN_SOCKET;
-    process.env.LANDO_TEST_PODMAN_SOCKET = undefined;
+    // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
+    delete process.env.LANDO_TEST_PODMAN_SOCKET;
 
     try {
       const exit = await Effect.runPromiseExit(
@@ -55,7 +56,8 @@ describe("provider-lando setup", () => {
       }
     } finally {
       if (previousSocket === undefined) {
-        process.env.LANDO_TEST_PODMAN_SOCKET = undefined;
+        // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
+        delete process.env.LANDO_TEST_PODMAN_SOCKET;
       } else {
         process.env.LANDO_TEST_PODMAN_SOCKET = previousSocket;
       }
