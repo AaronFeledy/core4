@@ -1909,3 +1909,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Provider-docker and provider-lando share the same `Bun.spawn(["curl", "--unix-socket", socket, ...])` HTTP-over-UNIX-socket transport for their respective Engine APIs; the PRD's "not Bun.spawn(\"docker\", ...)" rule forbids the docker CLI, not this transport.
   - Loop-review steps without `/review` installed should fall back to Oracle as a `/review`-style reviewer plus an independent Sisyphus walkthrough; record both in the progress log.
 ---
+
+## [2026-05-15 03:15 UTC] - Push
+- Branch pushed: us-042-provider-docker-live-layer → origin/us-042-provider-docker-live-layer
+- Commits pushed: 0d675e5 "feat: @lando/provider-docker Live Layer (Linux Docker Engine, stretch)" + 78dc1ba "chore(loop): record review notes for US-042"
+- PR: #45 https://github.com/AaronFeledy/core4/pull/45 (created)
+- CI outcome: pass on re-run (initial windows-x64 run failed with HTTP 504 on Setup Bun — confirmed infrastructure flake; re-run passed)
+- Review feedback: Cursor Bugbot COMMENTED (not CHANGES_REQUESTED) — low-severity suggestion about `info` calling factory for sibling `request`. Rejected as non-issue: style suggestion, no correctness problem, no required action. reviewDecision was "" (no blocking review).
+- Triage rounds used: 0 (Bugbot finding rejected as inaccurate; windows flake handled by re-run)
+- Merge: merged (squash) as a07cc72 "Add @lando/provider-docker Live Layer for Linux Docker Engine (#45)"
+- Local main / branch refreshed: yes (main fast-forwarded to a07cc72; story branch deleted)
+- Remaining local state: clean, on main
+---
