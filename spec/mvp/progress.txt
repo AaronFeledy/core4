@@ -2403,3 +2403,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Fresh CLI processes cannot rely on provider-lando's in-memory applied-plan cache for service inspection; pass the current `AppPlan` through `ServiceSelector.plan` before calling `RuntimeProvider.inspect`.
   - Manual compiled CLI QA may need `LANDO_USER_CONF_ROOT` pointed at an empty temp dir when the user's `~/.lando/config.yml` is malformed.
 ---
+
+## [2026-05-15 20:08 UTC] - Push
+- Branch pushed: us-055-info-services-endpoints → origin/us-055-info-services-endpoints (1 commit: 12d1c42 feat: lando info prints services + endpoints)
+- PR: #58 https://github.com/AaronFeledy/core4/pull/58 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SKIPPED)
+- Review feedback: Cursor Bugbot COMMENTED (2 potential issues, no CHANGES_REQUESTED, reviewDecision empty)
+  - Findings not visible without Cursor client (hidden behind Cursor link); same pattern as US-054 — treated as advisory/non-blocking bot comment
+- Triage rounds used: 0 (all CI SUCCESS/SKIPPED, no human change requests)
+- Merge: merged (squash) as commit c7a1509 "feat: lando info prints services + endpoints (#58)"
+- Local main / branch refreshed: yes (fast-forward to c7a1509; local us-055-info-services-endpoints already absent after squash-merge; remote branch deleted by --delete-branch)
+- Remaining local state: none
+---
