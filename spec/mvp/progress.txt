@@ -2446,3 +2446,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The `LANDO_DEBUG_THROW_ON_RUNTIME=1` env hook in `core/src/runtime/layer.ts` is a sharp regression guard for any "fast path bypasses Effect runtime" assertion. OCLIF's init hook calls `makeLandoRuntime` UNCONDITIONALLY for every resolved command (even bootstrap `none` ones like `meta:version`), so removing the binary fast-path in `core/bin/lando.ts` would produce exit≠0 + non-empty stderr — making `exit === 0 && stderr === ""` a sufficient indirect proof.
   - `core/bin/lando.ts` intercepts `version` alongside `--version`/`-v` in a SINGLE conditional, so the three forms share regression coverage by construction. Adding the OCLIF subcommand form to compiled-binary tests required no production change.
 ---
+
+## [2026-05-15 20:27 UTC] - Push
+- Branch pushed: us-056-lando-version → origin/us-056-lando-version (2 commits: 95f1735 feat: lando version works at bootstrap level none; 045cc3b chore(loop): record US-056 review outcome)
+- PR: #59 https://github.com/AaronFeledy/core4/pull/59 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none (no comments, no reviews, reviewDecision empty)
+- Triage rounds used: 0
+- Merge: merged (squash) as commit dc63c60 "Add compiled-binary regression test for lando version (#59)"
+- Local main / branch refreshed: yes (fast-forward to dc63c60; local us-056-lando-version deleted; remote branch deleted by --delete-branch; stale remote-tracking ref pruned)
+- Remaining local state: on main, clean
+---
