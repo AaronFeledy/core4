@@ -2415,3 +2415,34 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (fast-forward to c7a1509; local us-055-info-services-endpoints already absent after squash-merge; remote branch deleted by --delete-branch)
 - Remaining local state: none
 ---
+
+## [2026-05-15 20:30 UTC] - Sync
+- Previous branch: us-055-info-services-endpoints (or "none")
+- Previous PR: #58 https://github.com/AaronFeledy/core4/pull/58
+- Action: caught up after prior merge (PR #58 already MERGED; remote branch already pruned; local branch was absent)
+- Local main updated: yes (already up to date with origin/main at 3a7a0dc)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 15:12 CDT] - US-056
+- What was implemented: added compiled-binary coverage for `lando version` proving it exits successfully, prints the package version, and does not reach runtime bootstrap.
+- Files changed: `core/test/cli/version.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/cli/version.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (225 pass, 9 skip, 0 fail); `bun run build && ./core/dist/lando version` printed `0.0.0`.
+- **Learnings for future iterations:**
+  - The binary entry already intercepts `version` alongside `--version`/`-v`; story coverage only needed a compiled-binary regression test with `LANDO_DEBUG_THROW_ON_RUNTIME=1`.
+  - Keep command-output tests that invoke compiled `core/dist/lando` behind a Linux x64 skip and an explicit 120s timeout because they rebuild the binary.
+---
+
+## [2026-05-15 15:20 CDT] - US-056 Review
+- What was reviewed: build commit 95f1735 adding `core/test/cli/version.test.ts` (51 lines, test-only diff). Verified PRD-MVP-06 US-005 acceptance against actual implementation.
+- Files changed: none (review-only; no fixes required).
+- `/review` findings:
+  - Fixed: none — no real bugs found.
+  - Rejected: "redundancy with `core/test/build/compile.test.ts`" — FALSE-POSITIVE: that test covers `--version` only and lacks `LANDO_DEBUG_THROW_ON_RUNTIME=1`, the new test covers the `version` subcommand form AND adds the bootstrap-none regression guard.
+  - Rejected: "version drift risk between `core/package.json` and hand-maintained `core/src/version.ts` CORE_VERSION" — FALSE-POSITIVE / OUT-OF-SCOPE: asserting against `corePackage.version` is exactly what the PRD requires and catches drift by design.
+- Verification run and result: `bun test core/test/cli/version.test.ts` (1 pass), `bun run typecheck` (clean), `bun run lint` (clean), `bun test` full suite (225 pass, 9 skip, 0 fail). Manual compiled-binary QA: `./core/dist/lando version|--version|-v` all printed `0.0.0` exit 0; `LANDO_DEBUG_THROW_ON_RUNTIME=1 ./core/dist/lando version` still printed `0.0.0` exit 0; same env on `lando start` produced exit 1 + 782 bytes of stderr, confirming the env-var-based "no makeLandoRuntime call" assertion is a valid regression guard.
+- **Learnings for future iterations:**
+  - The `LANDO_DEBUG_THROW_ON_RUNTIME=1` env hook in `core/src/runtime/layer.ts` is a sharp regression guard for any "fast path bypasses Effect runtime" assertion. OCLIF's init hook calls `makeLandoRuntime` UNCONDITIONALLY for every resolved command (even bootstrap `none` ones like `meta:version`), so removing the binary fast-path in `core/bin/lando.ts` would produce exit≠0 + non-empty stderr — making `exit === 0 && stderr === ""` a sufficient indirect proof.
+  - `core/bin/lando.ts` intercepts `version` alongside `--version`/`-v` in a SINGLE conditional, so the three forms share regression coverage by construction. Adding the OCLIF subcommand form to compiled-binary tests required no production change.
+---
