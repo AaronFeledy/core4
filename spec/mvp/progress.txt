@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- App lifecycle CLI operations should publish app-level lifecycle events in core, then call `RuntimeProvider.apply(plan, { reconcile, signal })`, inspect each planned service, and render plain-text readiness from the inspected runtime state.
 - Provider package import-boundary tests parse TypeScript source files with the TypeScript compiler API and assert static imports/re-exports avoid `@oclif/*` and `core/src/cli/*`; keep those tests under `plugins/*/test/import-boundary.test.ts`.
 - Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
 - FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
@@ -2297,4 +2298,37 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main)
 - Branch after sync: main
 - Stash created: no
+---
+
+## 2026-05-15 - Sync
+- Previous branch: us-053-lando-start-brings-up
+- Previous PR: none
+- Action: no previous branch work — us-053 branch was at same commit as main (0 commits ahead); deleted local branch
+- Local main updated: yes (already at latest)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — uncommitted progress.txt entry from prior sync step; human should review and drop stash@{0})
+---
+
+## 2026-05-15 08:47 CDT - US-053
+- Implemented `lando start` to discover and plan the current app, publish app start lifecycle events, apply the selected provider with cancellation signal support, inspect started services, and render a plain-text ready line.
+- Files changed: `core/src/cli/commands/start.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/app/start.ts`, `core/src/cli/run.ts`, `core/src/providers/registry.ts`, `core/src/runtime/layer.ts`, `plugins/provider-lando/src/index.ts`, `sdk/src/services/index.ts`, `core/test/cli/start.scenario.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/cli/start.scenario.test.ts` pass (live Podman case skipped because `LANDO_TEST_PODMAN_SOCKET` is unset); `bun run typecheck` pass; `bun run lint` pass; `bun test` pass; `bun run build` pass; manual compiled CLI QA for `./core/dist/lando start` missing/malformed Landofile paths produced expected errors and remediation/line details.
+- **Learnings for future iterations:**
+  - `makeLandoRuntime({ bootstrap: "app" })` must provide `EventServiceLive` for app lifecycle commands.
+  - `RuntimeProvider.apply` is the current provider-lifecycle entry point for bring-up; provider-lando maps it to `bringUp` and now forwards the command abort signal.
+  - The compiled `$bunfs` runner needs explicit handlers for implemented app commands until compiled binaries route through full OCLIF dispatch.
+---
+
+## 2026-05-15 09:05 CDT - US-053 Review
+- Reviewed US-053 build commit d4c73ee (lando start brings up the scaffolded app via provider-lando) against PRD-06 US-002 acceptance criteria. Implementation matches: bootstrap level `app`, scenario test in `core/test/cli/start.scenario.test.ts` covers plan + apply + inspect + render + pre-/post-app-start events + AbortSignal forwarding to `provider.apply` + missing/malformed Landofile remediation paths, with the live `LANDO_TEST_PODMAN_SOCKET` case gated and skipped here.
+- /review findings (manual triage; no slash command available in this env):
+  - Rejected: `commandErrorMessage` helper duplicated between `core/src/cli/oclif/command-base.ts` and `core/src/cli/run.ts` — acceptable interim; the two surfaces are independent execution paths until compiled binaries dispatch through full OCLIF, and consolidating would expand story scope.
+  - Rejected: `endpointText` http/https branch returns the same string as the default branch — cosmetic redundancy, no functional defect.
+  - Rejected: scenario test only asserts the abort signal is propagated (not partial-state teardown) — PRD-06 US-002's "honored" wording is satisfied by signal forwarding plus the existing `bring-up.ts` abort checks; deeper teardown coverage is a future provider concern, not a US-053 acceptance gap.
+  - Rejected: provider-lando's per-service `pre-service-start`/`post-service-start` events are not wired from the CLI (eventService not threaded into `RuntimeProviderRegistry`/`makeRuntimeProvider`) — PRD-06 US-002 only mandates `pre-app-start` and `post-app-start`; prd.json's broader summary defers to the source PRD per loop instructions.
+- Verification run and result: `bun run typecheck` pass; `bun run lint` pass; `bun test` pass (218 pass / 9 skip / 0 fail, including `lando start` scenario suite; live Podman cases skipped because `LANDO_TEST_PODMAN_SOCKET` is unset); `bun run build` pass (compiled `core/dist/lando` produced); manual CLI QA — `bun core/bin/lando.ts start` outside an app dir and against a malformed `.lando.yml` produced the expected `LandofileNotFoundError`/`LandofileParseError` output with init remediation and `filePath: ...`/`line: 3` details, and the compiled `./core/dist/lando start` reproduced the same messages from the `$bunfs` handler.
+- No code changes during review.
+- **Learnings for future iterations:**
+  - When per-service lifecycle events become a CLI-visible requirement, thread `EventService` into `makeRuntimeProvider` via `RuntimeProviderRegistryLive` so provider-lando's `bringUp` publishes through the same bus the CLI subscribes to.
+  - Tagged-error rendering currently has two homes (`command-base.ts` and `run.ts`); when collapsing the compiled `$bunfs` handlers into full OCLIF dispatch, deduplicate into a single helper.
 ---

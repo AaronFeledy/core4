@@ -1,4 +1,4 @@
-import { type StartAppResult, startApp } from "../../../commands/start.ts";
+import { type StartAppResult, renderStartAppResult, startApp } from "../../../commands/start.ts";
 /**
  * `lando app:start` — OCLIF wrapper.
  */
@@ -10,7 +10,14 @@ export const startSpec: LandoCommandSpec<StartAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => startApp(),
+  run: (input) => {
+    const signal =
+      typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
+        ? input.signal
+        : undefined;
+    return startApp(signal === undefined ? {} : { signal });
+  },
+  render: (result) => renderStartAppResult(result as StartAppResult),
 };
 
 export default class StartCommand extends LandoCommandBase {

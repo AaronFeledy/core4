@@ -90,7 +90,29 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
+  readonly render?: (result: unknown) => string | undefined;
 }
+
+const commandErrorMessage = (error: unknown): string => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    const details: string[] = [error.message];
+    const tag = "_tag" in error && typeof error._tag === "string" ? error._tag : undefined;
+    if (tag === "LandofileParseError" && "filePath" in error && typeof error.filePath === "string")
+      details.push(`filePath: ${error.filePath}`);
+    if (tag === "LandofileParseError" && "line" in error && typeof error.line === "number")
+      details.push(`line: ${error.line}`);
+    if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
+    if (tag === "LandofileNotFoundError")
+      details.push("Run `lando init --full --name=<name>` to scaffold an app.");
+    return details.join("\n");
+  }
+  return String(error);
+};
 
 /**
  * Resolve the OCLIF `aliases` array for a `LandoCommandSpec` from its
@@ -150,12 +172,28 @@ export abstract class LandoCommandBase extends Command {
       });
     }
 
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    process.once("SIGINT", abort);
+    process.once("SIGTERM", abort);
     const exit = await Effect.runPromiseExit(
-      Effect.provide(spec.run({ argv: this.argv }), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),
-    );
+      Effect.provide(
+        spec.run({ argv: this.argv, signal: controller.signal }),
+        runtime as Layer.Layer<R, LandoRuntimeBootstrapError>,
+      ),
+    ).finally(() => {
+      process.off("SIGINT", abort);
+      process.off("SIGTERM", abort);
+    });
 
     if (Exit.isFailure(exit)) {
-      throw new Error(Cause.pretty(exit.cause));
+      const failure = Cause.failureOption(exit.cause);
+      throw new Error(
+        failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause),
+      );
     }
+
+    const rendered = spec.render?.(exit.value);
+    if (rendered !== undefined && rendered.length > 0) this.log(rendered);
   }
 }

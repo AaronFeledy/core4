@@ -6,7 +6,13 @@
  */
 import { type Context, Effect, Layer, Stream } from "effect";
 
-import { NoProviderInstalledError, ProviderConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { makeRuntimeProvider as makeLandoRuntimeProvider } from "@lando/provider-lando";
+import {
+  NoProviderInstalledError,
+  ProviderCapabilityError,
+  ProviderConfigError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
 import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
@@ -85,11 +91,9 @@ const makeProvider = (
   list: () => Effect.succeed([]),
 });
 
-const landoProvider = makeProvider("lando", "Lando Runtime Provider", landoCapabilities);
 const dockerProvider = makeProvider("docker", "Docker Runtime Provider", dockerCapabilities);
 
 const providers: Readonly<Record<string, RuntimeProviderShape>> = {
-  lando: landoProvider,
   docker: dockerProvider,
 };
 
@@ -108,6 +112,28 @@ const toProviderConfig = (cause: unknown) =>
     message: "Unable to read the default runtime provider configuration.",
     cause,
   });
+
+const toProviderUnavailableFromCapability = (
+  cause: ProviderCapabilityError | ProviderUnavailableError,
+): ProviderUnavailableError => {
+  if (cause instanceof ProviderUnavailableError) return cause;
+  if (cause instanceof ProviderCapabilityError) {
+    return new ProviderUnavailableError({
+      providerId: cause.providerId,
+      operation: cause.operation,
+      message: cause.message,
+      ...(cause.details === undefined ? {} : { details: cause.details }),
+      ...(cause.remediation === undefined ? {} : { remediation: cause.remediation }),
+      cause,
+    });
+  }
+  return new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "capabilities",
+    message: "Unable to initialize provider-lando capabilities.",
+    cause,
+  });
+};
 
 const makeRuntimeProviderRegistry = (
   configService: Context.Tag.Service<typeof ConfigService>,
@@ -135,7 +161,10 @@ const makeRuntimeProviderRegistry = (
     const installedProviderIds = yield* providerIds;
     const defaultProviderIdText = String(defaultProviderId);
     const installed = installedProviderIds.some((providerId) => String(providerId) === defaultProviderIdText);
-    const provider = providers[defaultProviderIdText];
+    const provider =
+      defaultProviderIdText === "lando"
+        ? yield* makeLandoRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability))
+        : providers[defaultProviderIdText];
 
     if (!installed || provider === undefined) {
       return yield* Effect.fail(
@@ -164,5 +193,8 @@ export const RuntimeProviderRegistryLive = Layer.effect(
   ),
 );
 
-export const LandoRuntimeProviderLive = Layer.succeed(RuntimeProvider, landoProvider);
+export const LandoRuntimeProviderLive = Layer.effect(
+  RuntimeProvider,
+  makeLandoRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability)),
+);
 export const DockerRuntimeProviderLive = Layer.succeed(RuntimeProvider, dockerProvider);

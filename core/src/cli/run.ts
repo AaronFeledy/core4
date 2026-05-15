@@ -15,10 +15,13 @@ import { fileURLToPath } from "node:url";
 
 import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
+import { Cause, Effect, Exit } from "effect";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
 
+import { makeLandoRuntime } from "../runtime/layer.ts";
 import { initApp } from "./commands/init.ts";
+import { renderStartAppResult, startApp } from "./commands/start.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 
 const version = "@lando/core/0.0.0";
@@ -73,6 +76,49 @@ ALIASES
   ${[id, ...(command.aliases ?? [])].join(", ")}`);
 };
 
+const commandErrorMessage = (error: unknown): string => {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof error.message === "string"
+  ) {
+    const details: string[] = [error.message];
+    const tag = "_tag" in error && typeof error._tag === "string" ? error._tag : undefined;
+    if (tag === "LandofileParseError" && "filePath" in error && typeof error.filePath === "string")
+      details.push(`filePath: ${error.filePath}`);
+    if (tag === "LandofileParseError" && "line" in error && typeof error.line === "number")
+      details.push(`line: ${error.line}`);
+    if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
+    if (tag === "LandofileNotFoundError")
+      details.push("Run `lando init --full --name=<name>` to scaffold an app.");
+    return details.join("\n");
+  }
+  return String(error);
+};
+
+const runStart = async (): Promise<void> => {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    const exit = await Effect.runPromiseExit(
+      startApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    );
+    if (Exit.isSuccess(exit)) {
+      console.log(renderStartAppResult(exit.value));
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+    process.exitCode = 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+};
+
 const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
@@ -115,6 +161,11 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
       console.error(message);
       process.exitCode = 1;
     }
+    return;
+  }
+
+  if (argv[0] === "start" || argv[0] === "app:start") {
+    await runStart();
     return;
   }
 

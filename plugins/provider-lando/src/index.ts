@@ -109,10 +109,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,
-        apply: (plan) =>
+        apply: (plan, applyOptions) =>
           bringUp(plan, {
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
+            ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
           }).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan)))),
         start: () => Effect.void,
         stop: () => Effect.void,
