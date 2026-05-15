@@ -73,6 +73,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Provider-lando lifecycle code should use the `PodmanApiClient.request` HTTP-over-UNIX seam for Podman API calls; fake it in unit tests and reserve live Node/Postgres checks for `LANDO_TEST_PODMAN_SOCKET`.
 - Provider-lando stop/remove lifecycle should use Podman API container stop + forced container delete and per-app network delete; `app:stop` preserves app-scoped stores by never calling the Podman volumes delete API.
 - The SDK provider contract suite executes `apply` -> `inspect` -> `destroy` against a fixture whose provider id matches the candidate provider; RuntimeProvider implementations that cache applied plans must wire `destroy` through provider teardown and clear that cache.
+- Bundled plugin codegen should reference each plugin package's real exported `provider`/`services`/`logger` Layer and `manifest`; do not synthesize manifest stubs in `core/src/plugins/bundled.ts`.
 
 
 ## Iteration Log
@@ -2214,4 +2215,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
+---
+
+## 2026-05-15 07:04 CDT - US-051
+- Implemented bundled plugin codegen so `core/src/plugins/bundled.ts` statically references the four MVP plugin packages' real Layer and manifest exports.
+- Files changed: `scripts/build-bundled-plugins.ts`, `core/src/plugins/bundled.ts`, `core/test/plugins/bundled.test.ts`, `core/test/build/compile.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/plugins/bundled.test.ts` passed; `bun test core/test/build/compile.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Generated bundled plugin entries can derive the layer export from `core/build.config.ts` contribution buckets: providers -> `provider`, serviceTypes -> `services`, loggers -> `logger`.
+  - Compiled binary coverage needs an explicit Bun test timeout because the build can exceed Bun's default 5s test ceiling.
+  - The compiled binary assertion can verify plugin inclusion by checking the built artifact text contains all four package names after `bun run build`.
 ---

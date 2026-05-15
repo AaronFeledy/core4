@@ -52,10 +52,9 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
   }
 
   const imports: Array<string> = [
-    'import { Layer } from "effect";',
-    'import { Schema } from "effect";',
+    'import type { Layer } from "effect";',
     "",
-    'import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";',
+    'import type { PluginManifest } from "@lando/sdk/schema";',
     'import type { ServiceTypeShape } from "@lando/sdk/services";',
     "",
   ];
@@ -65,18 +64,13 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
   entries.forEach((entry, index) => {
     const moduleName = `plugin${index}`;
     pluginImports.push({ name: entry.name, statement: `import * as ${moduleName} from "${entry.name}";` });
-    const contributes =
-      entry.contributes === undefined
-        ? "undefined"
-        : `{ ${Object.entries(entry.contributes)
-            .map(([key, value]) => `${key}: ${JSON.stringify(value).replaceAll('","', '", "')}`)
-            .join(", ")} }`;
+    const layerExport = layerExportFor(entry);
     tableRows.push(
       [
         "  {",
         `    name: "${entry.name}",`,
-        `    layer: layerFrom({ ...${moduleName} }),`,
-        `    manifest: makeManifest("${entry.name}", ${contributes}),`,
+        `    layer: ${moduleName}.${layerExport},`,
+        `    manifest: ${moduleName}.manifest,`,
         `    ...serviceTypesFrom({ ...${moduleName} }),`,
         "  },",
       ].join("\n"),
@@ -90,29 +84,11 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
         .sort((left, right) => left.name.localeCompare(right.name))
         .map((entry) => entry.statement),
     ].join("\n"),
-    'const makeManifest = (name: string, contributes?: PluginManifest["contributes"]): PluginManifest =>',
-    "  Schema.decodeSync(PluginManifestSchema)({",
-    "    name,",
-    '    version: "0.0.0",',
-    "    api: 4,",
-    "    bundled: true,",
-    "    ...(contributes === undefined ? {} : { contributes }),",
-    "  });",
-    "",
     "interface BundledPluginModule {",
     "  readonly [key: string]: unknown;",
     "}",
     "",
-    "type BundledLayer = Layer.Layer<unknown, unknown, unknown> | Layer.Layer<never, never, never>;",
-    "",
-    "const isBundledLayer = (value: unknown): value is BundledLayer => Layer.isLayer(value);",
-    "",
-    "const layerFrom = (module: BundledPluginModule): BundledLayer => {",
-    "  if (isBundledLayer(module.provider)) return module.provider;",
-    "  if (isBundledLayer(module.services)) return module.services;",
-    "  if (isBundledLayer(module.logger)) return module.logger;",
-    "  return Layer.empty;",
-    "};",
+    "type BundledLayer = Layer.Layer<never, unknown, unknown>;",
     "",
     "const isServiceTypeShape = (value: unknown): value is ServiceTypeShape =>",
     '  typeof value === "object" &&',
@@ -140,6 +116,16 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "];",
     "",
   ].join("\n");
+};
+
+const layerExportFor = (
+  entry: (typeof buildConfig.bundledPlugins)[number],
+): "provider" | "services" | "logger" => {
+  if (entry.contributes?.providers !== undefined) return "provider";
+  if (entry.contributes?.serviceTypes !== undefined) return "services";
+  if (entry.contributes?.loggers !== undefined) return "logger";
+
+  throw new Error(`Bundled plugin ${entry.name} does not declare a supported layer contribution.`);
 };
 
 const main = async (): Promise<void> => {

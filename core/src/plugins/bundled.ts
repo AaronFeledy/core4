@@ -12,39 +12,20 @@
  * discovery or contribute their own Layers.
  */
 
-import { Layer } from "effect";
-import { Schema } from "effect";
+import type { Layer } from "effect";
 
-import { type PluginManifest, PluginManifest as PluginManifestSchema } from "@lando/sdk/schema";
+import type { PluginManifest } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
 import * as plugin3 from "@lando/logger-pretty";
 import * as plugin1 from "@lando/provider-docker";
 import * as plugin0 from "@lando/provider-lando";
 import * as plugin2 from "@lando/service-lando";
-const makeManifest = (name: string, contributes?: PluginManifest["contributes"]): PluginManifest =>
-  Schema.decodeSync(PluginManifestSchema)({
-    name,
-    version: "0.0.0",
-    api: 4,
-    bundled: true,
-    ...(contributes === undefined ? {} : { contributes }),
-  });
-
 interface BundledPluginModule {
   readonly [key: string]: unknown;
 }
 
-type BundledLayer = Layer.Layer<unknown, unknown, unknown> | Layer.Layer<never, never, never>;
-
-const isBundledLayer = (value: unknown): value is BundledLayer => Layer.isLayer(value);
-
-const layerFrom = (module: BundledPluginModule): BundledLayer => {
-  if (isBundledLayer(module.provider)) return module.provider;
-  if (isBundledLayer(module.services)) return module.services;
-  if (isBundledLayer(module.logger)) return module.logger;
-  return Layer.empty;
-};
+type BundledLayer = Layer.Layer<never, unknown, unknown>;
 
 const isServiceTypeShape = (value: unknown): value is ServiceTypeShape =>
   typeof value === "object" &&
@@ -70,26 +51,26 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
 }> = [
   {
     name: "@lando/provider-lando",
-    layer: layerFrom({ ...plugin0 }),
-    manifest: makeManifest("@lando/provider-lando", { providers: ["lando"] }),
+    layer: plugin0.provider,
+    manifest: plugin0.manifest,
     ...serviceTypesFrom({ ...plugin0 }),
   },
   {
     name: "@lando/provider-docker",
-    layer: layerFrom({ ...plugin1 }),
-    manifest: makeManifest("@lando/provider-docker", { providers: ["docker"] }),
+    layer: plugin1.provider,
+    manifest: plugin1.manifest,
     ...serviceTypesFrom({ ...plugin1 }),
   },
   {
     name: "@lando/service-lando",
-    layer: layerFrom({ ...plugin2 }),
-    manifest: makeManifest("@lando/service-lando", { serviceTypes: ["node:lts", "postgres"] }),
+    layer: plugin2.services,
+    manifest: plugin2.manifest,
     ...serviceTypesFrom({ ...plugin2 }),
   },
   {
     name: "@lando/logger-pretty",
-    layer: layerFrom({ ...plugin3 }),
-    manifest: makeManifest("@lando/logger-pretty", { loggers: ["pretty"] }),
+    layer: plugin3.logger,
+    manifest: plugin3.manifest,
     ...serviceTypesFrom({ ...plugin3 }),
   },
 ];
