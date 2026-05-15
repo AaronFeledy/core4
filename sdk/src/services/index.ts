@@ -105,6 +105,7 @@ export interface ArtifactPullSpec {
 
 export interface ApplyOptions {
   readonly reconcile: boolean;
+  readonly signal?: AbortSignal;
 }
 
 export interface ApplyResult {

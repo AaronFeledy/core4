@@ -23,6 +23,7 @@ import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schem
 import {
   type AppPlanner,
   type ConfigService,
+  type EventService,
   FileSystem,
   type LandofileService,
   type Logger,
@@ -35,6 +36,7 @@ import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
+import { EventServiceLive } from "../services/event-service.ts";
 import { AppPlannerLive } from "../services/planner.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -126,7 +128,7 @@ export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
 type MinimalRuntimeServices = Logger | ConfigService | FileSystem;
 type ProviderRuntimeServices = MinimalRuntimeServices | RuntimeProvider | RuntimeProviderRegistry;
-export type AppRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner;
+export type AppRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner | EventService;
 type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<MinimalRuntimeServices>
@@ -224,6 +226,7 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
+    EventServiceLive,
     LandofileServiceLive,
     AppPlannerLive.pipe(Layer.provide(PluginRegistryLive)),
   );

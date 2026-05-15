@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- App lifecycle CLI operations should publish app-level lifecycle events in core, then call `RuntimeProvider.apply(plan, { reconcile, signal })`, inspect each planned service, and render plain-text readiness from the inspected runtime state.
 - Provider package import-boundary tests parse TypeScript source files with the TypeScript compiler API and assert static imports/re-exports avoid `@oclif/*` and `core/src/cli/*`; keep those tests under `plugins/*/test/import-boundary.test.ts`.
 - Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
 - FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
@@ -2306,4 +2307,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already at latest)
 - Branch after sync: main
 - Stash created: yes (loop-sync-autostash — uncommitted progress.txt entry from prior sync step; human should review and drop stash@{0})
+---
+
+## 2026-05-15 08:47 CDT - US-053
+- Implemented `lando start` to discover and plan the current app, publish app start lifecycle events, apply the selected provider with cancellation signal support, inspect started services, and render a plain-text ready line.
+- Files changed: `core/src/cli/commands/start.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/app/start.ts`, `core/src/cli/run.ts`, `core/src/providers/registry.ts`, `core/src/runtime/layer.ts`, `plugins/provider-lando/src/index.ts`, `sdk/src/services/index.ts`, `core/test/cli/start.scenario.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/cli/start.scenario.test.ts` pass (live Podman case skipped because `LANDO_TEST_PODMAN_SOCKET` is unset); `bun run typecheck` pass; `bun run lint` pass; `bun test` pass; `bun run build` pass; manual compiled CLI QA for `./core/dist/lando start` missing/malformed Landofile paths produced expected errors and remediation/line details.
+- **Learnings for future iterations:**
+  - `makeLandoRuntime({ bootstrap: "app" })` must provide `EventServiceLive` for app lifecycle commands.
+  - `RuntimeProvider.apply` is the current provider-lifecycle entry point for bring-up; provider-lando maps it to `bringUp` and now forwards the command abort signal.
+  - The compiled `$bunfs` runner needs explicit handlers for implemented app commands until compiled binaries route through full OCLIF dispatch.
 ---
