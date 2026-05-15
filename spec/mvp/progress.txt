@@ -2415,3 +2415,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (fast-forward to c7a1509; local us-055-info-services-endpoints already absent after squash-merge; remote branch deleted by --delete-branch)
 - Remaining local state: none
 ---
+
+## [2026-05-15 20:30 UTC] - Sync
+- Previous branch: us-055-info-services-endpoints (or "none")
+- Previous PR: #58 https://github.com/AaronFeledy/core4/pull/58
+- Action: caught up after prior merge (PR #58 already MERGED; remote branch already pruned; local branch was absent)
+- Local main updated: yes (already up to date with origin/main at 3a7a0dc)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 15:12 CDT] - US-056
+- What was implemented: added compiled-binary coverage for `lando version` proving it exits successfully, prints the package version, and does not reach runtime bootstrap.
+- Files changed: `core/test/cli/version.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/cli/version.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (225 pass, 9 skip, 0 fail); `bun run build && ./core/dist/lando version` printed `0.0.0`.
+- **Learnings for future iterations:**
+  - The binary entry already intercepts `version` alongside `--version`/`-v`; story coverage only needed a compiled-binary regression test with `LANDO_DEBUG_THROW_ON_RUNTIME=1`.
+  - Keep command-output tests that invoke compiled `core/dist/lando` behind a Linux x64 skip and an explicit 120s timeout because they rebuild the binary.
+---
