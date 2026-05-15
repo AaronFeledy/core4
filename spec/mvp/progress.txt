@@ -2122,3 +2122,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main fast-forwarded to 9a8a2c3; local story branch deleted)
 - Remaining local state: clean on main
 ---
+
+## [2026-05-15 05:58] - Sync
+- Previous branch: us-048-service-lando-registry
+- Previous PR: #51 https://github.com/AaronFeledy/core4/pull/51
+- Action: caught up after prior merge (PR #51 already MERGED, all CI green)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 06:02 CDT] - US-049
+- Implemented the service-lando import-boundary test to parse every TypeScript source file and reject `@oclif/*` plus `core/src/cli/` imports.
+- Files changed: `plugins/service-lando/test/import-boundary.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test ./plugins/service-lando/test/import-boundary.test.ts` passed; `lsp_diagnostics` on the new test passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Provider import-boundary tests are directly reusable for service plugins: TypeScript AST parsing catches both imports and re-exports while avoiding text-search false positives.
+  - The root Bun test include configuration already discovers `plugins/*/test/**/*.test.ts`; no package-local test script changes are needed for new plugin tests.
+---
