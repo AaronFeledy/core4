@@ -72,6 +72,10 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
       expect(init.stdout).toContain("Created mvp-exit");
       const appDir = join(dir, "mvp-exit");
 
+      // Capture stop result from the finally block so that assertions on it run
+      // only when the try block itself succeeded — prevents a failing finally
+      // block from masking the original start/info error.
+      let stopResult: RunResult | undefined;
       try {
         const start = await runCommand([binaryPath, "start"], appDir, 180_000);
         expectSuccess("lando start", start);
@@ -84,9 +88,16 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
         expect(info.stdout).toContain("web\trunning");
         expect(info.stdout).toContain("database\trunning");
       } finally {
-        const stop = await runCommand([binaryPath, "stop"], appDir, 180_000);
-        expectSuccess("lando stop", stop);
-        expect(stop.stdout).toContain("stopped: mvp-exit");
+        // Best-effort cleanup — runCommand never throws, so this will not mask
+        // any error that propagated out of the try block.
+        stopResult = await runCommand([binaryPath, "stop"], appDir, 180_000);
+      }
+      // Only assert stop results when the try block (start/info) succeeded.
+      // stopResult is always set by the finally block (runCommand never throws),
+      // but the guard satisfies the type checker without a non-null assertion.
+      if (stopResult !== undefined) {
+        expectSuccess("lando stop", stopResult);
+        expect(stopResult.stdout).toContain("stopped: mvp-exit");
       }
     });
   }, 300_000);
