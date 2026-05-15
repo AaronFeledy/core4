@@ -7,6 +7,12 @@ import corePackage from "../../package.json";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
 const binaryPath = resolve(coreRoot, "dist/lando");
+const expectedBundledPluginNames: ReadonlyArray<string> = [
+  "@lando/provider-lando",
+  "@lando/provider-docker",
+  "@lando/service-lando",
+  "@lando/logger-pretty",
+];
 
 interface RunResult {
   readonly exitCode: number;
@@ -39,7 +45,11 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     const binary = await stat(binaryPath);
     expect(binary.isFile()).toBe(true);
     expect(binary.mode & 0o111).not.toBe(0);
-    expect(await Bun.file(binaryPath).text()).not.toContain(".tsbuildinfo");
+    const binaryText = await Bun.file(binaryPath).text();
+    expect(binaryText).not.toContain(".tsbuildinfo");
+    for (const pluginName of expectedBundledPluginNames) {
+      expect(binaryText).toContain(pluginName);
+    }
 
     const version = await runCommand([binaryPath, "--version"]);
     expect(version.exitCode).toBe(0);
@@ -54,5 +64,5 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(help.stdout).toContain("USAGE");
     expect(help.stdout).toContain("TOPICS");
     expect(help.stdout).toContain("COMMANDS");
-  });
+  }, 120_000);
 });

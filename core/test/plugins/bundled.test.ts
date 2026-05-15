@@ -4,30 +4,41 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 
+import * as loggerPretty from "@lando/logger-pretty";
+import * as providerDocker from "@lando/provider-docker";
+import * as providerLando from "@lando/provider-lando";
+import * as serviceLando from "@lando/service-lando";
+
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 import { PluginRegistry, PluginRegistryLive } from "../../src/plugins/registry.ts";
 
-const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
-  "@lando/provider-lando",
-  "@lando/provider-docker",
-  "@lando/service-lando",
-  "@lando/logger-pretty",
+const EXPECTED_BUNDLED_PLUGINS = [
+  { name: "@lando/provider-lando", layer: providerLando.provider, manifest: providerLando.manifest },
+  { name: "@lando/provider-docker", layer: providerDocker.provider, manifest: providerDocker.manifest },
+  { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
+  { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
 ];
 
 const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundled.ts");
 const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundled-plugins.ts");
 
 describe("BUNDLED_PLUGINS", () => {
-  test("exports all MVP bundled plugins with layer and manifest stubs", () => {
-    expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual([...EXPECTED_BUNDLED_PLUGIN_NAMES]);
+  test("exports all MVP bundled plugins with real layer and manifest references", () => {
+    expect(BUNDLED_PLUGINS).toHaveLength(4);
+    expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
+      EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
+    );
 
-    for (const plugin of BUNDLED_PLUGINS) {
+    for (const [index, expected] of EXPECTED_BUNDLED_PLUGINS.entries()) {
+      const plugin = BUNDLED_PLUGINS[index];
+
+      if (plugin === undefined) {
+        throw new Error(`Missing bundled plugin at index ${index}.`);
+      }
+
       expect(Layer.isLayer(plugin.layer)).toBe(true);
-      expect(plugin.manifest).toMatchObject({
-        name: plugin.name,
-        api: 4,
-        bundled: true,
-      });
+      expect(plugin.layer).toBe(expected.layer);
+      expect(plugin.manifest).toBe(expected.manifest);
     }
   });
 
@@ -49,7 +60,7 @@ describe("BUNDLED_PLUGINS", () => {
     const registry = Context.get(context, PluginRegistry);
     const manifests = await Effect.runPromise(registry.list);
     const manifestNames: ReadonlyArray<string> = manifests.map((manifest) => String(manifest.name));
-    expect(manifestNames).toEqual([...EXPECTED_BUNDLED_PLUGIN_NAMES]);
+    expect(manifestNames).toEqual(EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name));
 
     const manifest = await Effect.runPromise(registry.load("@lando/provider-docker"));
     const loadedName: string = String(manifest.name);
