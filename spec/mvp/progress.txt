@@ -2332,3 +2332,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When per-service lifecycle events become a CLI-visible requirement, thread `EventService` into `makeRuntimeProvider` via `RuntimeProviderRegistryLive` so provider-lando's `bringUp` publishes through the same bus the CLI subscribes to.
   - Tagged-error rendering currently has two homes (`command-base.ts` and `run.ts`); when collapsing the compiled `$bunfs` handlers into full OCLIF dispatch, deduplicate into a single helper.
 ---
+
+## [2026-05-15 09:18 CDT] - Push (US-053)
+- Branch pushed: us-053-start-provider-lando → origin (3 commits: 6a2059d sync, d4c73ee story, 87f5a89 review chore)
+- Story commit: d4c73ee feat: lando start brings up the scaffolded app via provider-lando
+- PR: #56 https://github.com/AaronFeledy/core4/pull/56 (created)
+- CI outcome: pass — linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SKIPPING (NEUTRAL)
+- Review feedback: Cursor Bugbot COMMENTED (not CHANGES_REQUESTED) — "2 potential issues" accessible only via proprietary Cursor IDE link; reviewDecision="" → treated as bot acknowledgement, not a work item
+- Triage rounds used: 0
+- Merge: merged (squash) as e8cd18a on main
+- Local main / branch refreshed: yes (reset --hard origin/main at e8cd18a; local story branch already absent after switch; remote tracking ref pruned)
+- Remaining local state: none
+---
