@@ -2226,3 +2226,19 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Compiled binary coverage needs an explicit Bun test timeout because the build can exceed Bun's default 5s test ceiling.
   - The compiled binary assertion can verify plugin inclusion by checking the built artifact text contains all four package names after `bun run build`.
 ---
+
+## [2026-05-15 12:35 CDT] - Push (US-051)
+- Branch pushed: us-051-bundled-plugins-codegen → origin (1 story commit: c2e4ddb + 1 triage fix: 64c017a)
+- Commits:
+  - c2e4ddb feat: BUNDLED_PLUGINS codegen handles all four MVP plugins
+  - 64c017a fix: remove stale bundled:true assertion from plugin-registry test
+- PR: #54 https://github.com/AaronFeledy/core4/pull/54 (created)
+- CI outcome (round 1): FAIL — PluginRegistryLive test asserted `bundled: true` (artifact of old synthetic makeManifest approach, not present in real plugin manifests)
+- Triage: real issue — old test was checking a field injected by the previous approach; removed the stale `bundled: true` assertion from plugin-registry.test.ts; both `bundled.test.ts` (toBe reference check) and `plugin-registry.test.ts` now pass
+- CI outcome (round 2): pass (all 5 checks: linux-x64, linux-arm64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none
+- Triage rounds used: 1
+- Merge: merged (squash) as 70ad732 on main
+- Local main / branch refreshed: yes (on main at 70ad732; local story branch deleted)
+- Remaining local state: none
+---
