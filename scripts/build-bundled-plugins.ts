@@ -65,7 +65,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
       entry.contributes === undefined
         ? "undefined"
         : `{ ${Object.entries(entry.contributes)
-            .map(([key, value]) => `${key}: ${JSON.stringify(value)}`)
+            .map(([key, value]) => `${key}: ${JSON.stringify(value).replaceAll('","', '", "')}`)
             .join(", ")} }`;
     tableRows.push(
       [

@@ -2002,3 +2002,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main fast-forwarded to f7a0bfa; local story branch absent)
 - Remaining local state: clean on main
 ---
+
+## [2026-05-14 23:59 CDT] - US-045
+- What was implemented: `@lando/service-lando` now has a package export, manifest-shaped `plugin.yaml`, stub `services` Layer, `serviceTypes` map for `node:lts` and `postgres`, package skeleton test coverage, and bundled-plugin registration generated from `core/build.config.ts`.
+- Files changed: `plugins/service-lando/package.json`, `plugins/service-lando/plugin.yaml`, `plugins/service-lando/src/index.ts`, `plugins/service-lando/test/package.test.ts`, `core/build.config.ts`, `core/src/plugins/bundled.ts`, `scripts/build-bundled-plugins.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `lsp_diagnostics` passed on changed TypeScript files; focused `bun test plugins/service-lando/test/package.test.ts core/test/plugins/bundled.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; manual package-import QA passed and showed `PLUGIN_NAME`, `node:lts`/`postgres`, a valid Layer, and manifest contributions.
+- **Learnings for future iterations:**
+  - `PluginManifest` uses `contributes.serviceTypes` arrays; do not add the legacy `kind` or `provides` shape from older PRD prose.
+  - Bundled plugin changes should update `core/build.config.ts` and regenerate `core/src/plugins/bundled.ts`; the generator output must stay Biome-clean because lint checks generated files.
+---
