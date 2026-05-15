@@ -1889,3 +1889,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Docker Engine exec/log streams use the same 8-byte stdout/stderr multiplex framing as Podman when `Tty: false`, so the provider can share the same demuxing approach.
   - Keep live Docker checks gated on `LANDO_TEST_DOCKER_SOCKET` or `DOCKER_HOST`; the deterministic fake API should remain the default CI path.
 ---
+
+## [2026-05-14 21:54 CDT] - US-042 Review
+- What was reviewed: HEAD commit 0d675e5 "feat: @lando/provider-docker Live Layer (Linux Docker Engine, stretch)" against PRD-04 US-010 acceptance criteria (PRD-04 is authoritative; prd.json wording about "via Bun.spawn" is stale).
+- Files changed: none (review-only; no fixes required).
+- `/review` invocation: the canonical `/review` slash command is not installed locally, so the loop-review step ran Oracle as a `/review`-style adversarial reviewer (background task `bg_06787402`, ~4 min). Findings were also cross-checked against an independent walkthrough by Sisyphus.
+- `/review` findings: none confirmed real. Specifically verified:
+  - HTTP API transport: all of `apply`/`bringDown`/`exec`/`logs`/`inspect`/`emitCompose` go through `Bun.spawn(["curl", "--unix-socket", ...])` or `fetch` against the Docker Engine HTTP API. No shell-out to the `docker` CLI (`grep -n 'Bun.spawn|docker|child_process' plugins/provider-docker/src/index.ts` shows only curl-based unix-socket transport).
+  - Same transport pattern as provider-lando (`plugins/provider-lando/src/capabilities.ts:70,167`), so PRD "not Bun.spawn(\"docker\", ...)" is satisfied.
+  - 8-byte stdout/stderr demuxer (`makeAttachDecoder`, `plugins/provider-docker/src/index.ts:764-789`) correctly buffers across chunk boundaries (concat-then-process), decodes big-endian unsigned 32-bit frame length at bytes 4-7, and emits stream-typed payloads.
+  - `bringDown` (lines ~601-654) stops + force-removes containers and the network. No DELETE on `/volumes/*` anywhere in the file, so app-scoped volumes are preserved (matches the AGENTS.md provider-lando rule).
+  - `destroy` (RuntimeProvider layer, line ~929) tears down via `bringDown` and clears the cached plan via `plans.delete(target.app)`, satisfying the `runProviderContract` apply->inspect->destroy contract recorded in AGENTS.md.
+  - `apply` performs no image pull (matches MVP rule "provider-lando bringUp does not pull images" already in AGENTS.md).
+  - Capability matrix: `linuxDockerCapabilities` decodes `bindMountPerformance: process.platform === "linux" ? "native" : "none"` (schema-valid `Literal("native","slow","none")`) and `sharedCrossAppNetwork: false`. Contract test explicitly asserts `.not.toBe("slow")`.
+  - Live integration test has an explicit 60_000ms per-test timeout (`plugins/provider-docker/test/contract.integration.test.ts:170`), matching the provider-lando integration-test guidance.
+- `/review` rejections: none -- no findings were rejected as out of scope or false positive; the review found no story-blocking defects to triage.
+- Verification run and result: `bun run typecheck` pass; `bun run lint` pass (`Checked 230 files in 125ms. No fixes applied.`); `bun test` 194 pass / 8 skip / 0 fail (all 8 skips are live-socket-gated integration tests, not regressions); focused `bun test plugins/provider-docker/test/contract.integration.test.ts` 3 pass + 1 live-socket skip. Live Docker socket test was not executed because neither `LANDO_TEST_DOCKER_SOCKET` nor `DOCKER_HOST` is set in this shell.
+- **Learnings for future iterations:**
+  - Provider-docker and provider-lando share the same `Bun.spawn(["curl", "--unix-socket", socket, ...])` HTTP-over-UNIX-socket transport for their respective Engine APIs; the PRD's "not Bun.spawn(\"docker\", ...)" rule forbids the docker CLI, not this transport.
+  - Loop-review steps without `/review` installed should fall back to Oracle as a `/review`-style reviewer plus an independent Sisyphus walkthrough; record both in the progress log.
+---
