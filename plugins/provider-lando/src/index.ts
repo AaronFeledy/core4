@@ -20,6 +20,7 @@ import {
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
+import { type PodmanCommandRunner, setupProviderLando } from "./setup.ts";
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
@@ -33,6 +34,14 @@ export { inspect } from "./inspect.ts";
 export type { InspectOptions } from "./inspect.ts";
 export { logs } from "./logs.ts";
 export type { LogsOptions } from "./logs.ts";
+export {
+  MINIMUM_PODMAN_VERSION,
+  PodmanNotInstalledError,
+  PodmanSocketUnreachableError,
+  makeSystemPodmanCommandRunner,
+  setupProviderLando,
+} from "./setup.ts";
+export type { PodmanCommandRunner, SetupOptions, SetupResult } from "./setup.ts";
 
 export {
   decodeProviderCapabilities,
@@ -54,6 +63,7 @@ const makeUnavailable = (operation: string) =>
 
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
+  readonly podmanCommand?: PodmanCommandRunner;
   readonly socketPath?: string;
   readonly eventService?: BringUpOptions["eventService"];
 }
@@ -63,6 +73,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
   const podmanApi =
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
+  let runtimeVersion: string | undefined;
   const capabilities =
     podmanApi === undefined
       ? Effect.succeed(linuxMvpCapabilities)
@@ -77,9 +88,24 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         platform: process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32",
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
-        setup: () => Effect.void,
+        setup: () =>
+          setupProviderLando({
+            ...(podmanApi === undefined ? {} : { podmanApi }),
+            ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
+            ...(socketPath === undefined ? {} : { socketPath }),
+          }).pipe(
+            Effect.tap((result) =>
+              Effect.sync(() => {
+                runtimeVersion = result.podmanVersion;
+              }),
+            ),
+            Effect.asVoid,
+          ),
         getStatus: Effect.succeed({ running: true, message: "ready" }),
-        getVersions: Effect.succeed({ provider: "0.0.0" }),
+        getVersions: Effect.sync(() => ({
+          provider: "0.0.0",
+          ...(runtimeVersion === undefined ? {} : { runtime: runtimeVersion }),
+        })),
         buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,

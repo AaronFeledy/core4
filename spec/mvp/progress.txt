@@ -25,6 +25,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
 - FileSystem Live uses `Bun.file` for exists/stat/read/stream/delete and `Bun.write` for writes; Bun lacks a dedicated mkdir/rename API, so keep filesystem helpers constrained to Bun-native primitives and cover temp cleanup in tests.
 - ShellRunner Live uses `Bun.$` with raw shell command interpolation (`${{ raw: command }}`), `.quiet().nothrow()`, and maps both parse failures and non-zero exits into `ShellExecError`.
+- provider-lando setup validates the manually installed Podman CLI with `podman --version` and the daemon socket via `PodmanApiClient.info`; tests should inject a fake `podmanCommand` plus fake `podmanApi` instead of depending on host Podman.
 - Compiled binary version output comes from `core/src/version.ts`, not a full `core/package.json` import; package metadata strings can leak into `bun build --compile` artifacts. `core/package.json#build:compile` runs `scripts/sanitize-compiled-binary.ts` after compile to scrub forbidden build-cache markers while keeping the binary runnable.
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
@@ -1920,4 +1921,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as a07cc72 "Add @lando/provider-docker Live Layer for Linux Docker Engine (#45)"
 - Local main / branch refreshed: yes (main fast-forwarded to a07cc72; story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-14 22:27 CDT] - US-043
+- Implemented provider-lando setup verification for manually installed Podman: validates `podman --version`, validates reachable Podman API socket, reports detected runtime version, and surfaces typed remediation errors for missing Podman or unreachable socket.
+- Files changed: `plugins/provider-lando/src/setup.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/setup.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test plugins/provider-lando/test/setup.integration.test.ts` passed; manual Effect driver printed `{"provider":"0.0.0","runtime":"5.2.0"}`; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep provider-lando setup host-dependent checks injectable with `podmanCommand` and `podmanApi` seams so tests remain deterministic.
+  - Gotchas encountered: `RuntimeProvider.setup` requires `Scope`, so tests and drivers must wrap it with `Effect.scoped(...)` before `Effect.runPromise`.
+  - Useful context: MVP setup intentionally verifies manual Podman install/socket availability only; automatic runtime bundle download remains deferred to Alpha.
 ---
