@@ -2156,3 +2156,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - When a story extends an already-reviewed boundary-test pattern to a new plugin, the prior review's triage notes are reusable; a focused single-agent review scoped to "new findings only" is sufficient and avoids redundant work.
   - Root Bun test discovery (`plugins/*/test/**/*.test.ts`) means new plugin tests are picked up by `bun test` without per-package script changes.
 ---
+
+## [2026-05-15 11:15 CDT] - Push (US-049)
+- Branch pushed: us-049-service-lando-oclif-boundary → origin (2 commits: f07524e "feat: service-lando does not import @oclif/core (boundary test)", ac5ddd4 "chore(loop): record US-049 review")
+- PR: #52 https://github.com/AaronFeledy/core4/pull/52 (created)
+- CI outcome: all 5 checks SUCCESS (linux-arm64, linux-x64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (no comments, no reviews, reviewDecision="")
+- Triage rounds used: 0
+- Merge: merged (squash) → a244f37 "Add service-lando OCLIF boundary test (#52)"
+- Local main / branch refreshed: yes (main fast-forwarded to a244f37; local story branch deleted)
+- Remaining local state: clean on main
+---
