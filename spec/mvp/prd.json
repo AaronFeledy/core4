@@ -950,7 +950,7 @@
         "Run the full smoke flow end-to-end against live Podman socket"
       ],
       "priority": 60,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
