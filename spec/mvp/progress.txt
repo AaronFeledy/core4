@@ -2078,3 +2078,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `ServicePlan.storage` carries mounted data-store references (`store`, `target`, `readOnly`); app-level `stores` declarations are separate `AppPlan` data and not emitted by a standalone service type today.
   - Official Postgres container defaults use port `5432`, data path `/var/lib/postgresql/data`, and `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB` for bootstrap credentials.
 ---
+
+## [2026-05-15 09:49 UTC] - Push (US-047)
+- Branch pushed: us-047-postgres-service-type → origin (1 commit: c854332 "feat: postgres ServiceType implementation")
+- PR: #50 https://github.com/AaronFeledy/core4/pull/50 (created)
+- CI outcome: pass — all 5 checks SUCCESS (linux-arm64, linux-x64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (reviewDecision="", 0 comments, 0 reviews)
+- Triage rounds used: 0
+- Merge: merged (squash) → 044f85e "feat: postgres ServiceType implementation (#50)"
+- Local main / branch refreshed: yes (main fast-forwarded to 044f85e; local story branch absent)
+- Remaining local state: clean on main
+---
