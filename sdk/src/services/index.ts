@@ -115,6 +115,7 @@ export interface ApplyResult {
 export interface ServiceSelector {
   readonly app: AppId;
   readonly service: ServiceName;
+  readonly plan?: AppPlan;
 }
 
 export interface AppSelector {

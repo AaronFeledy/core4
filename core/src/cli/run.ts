@@ -20,6 +20,7 @@ import { Cause, Effect, Exit } from "effect";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 
 import { makeLandoRuntime } from "../runtime/layer.ts";
+import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
@@ -133,6 +134,19 @@ const runStop = async (): Promise<void> => {
   process.exitCode = 1;
 };
 
+const runInfo = async (): Promise<void> => {
+  const exit = await Effect.runPromiseExit(
+    infoApp().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderInfoAppResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
@@ -185,6 +199,11 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 
   if (argv[0] === "stop" || argv[0] === "app:stop") {
     await runStop();
+    return;
+  }
+
+  if (argv[0] === "info" || argv[0] === "app:info") {
+    await runInfo();
     return;
   }
 

@@ -37,6 +37,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - Until compiled binaries run the full OCLIF path, any newly working CLI command that must work in `core/dist/lando` needs an explicit handler in `core/src/cli/run.ts`'s compiled `$bunfs` path.
 - App stop/destroy paths that run in a fresh CLI process should pass the planned `AppPlan` through `AppSelector.plan` when calling `RuntimeProvider.destroy({ app, plan }, { volumes: false })`; provider-lando cannot rely on a previous process's in-memory apply cache.
+- App info paths that run in a fresh CLI process should pass the planned `AppPlan` through `ServiceSelector.plan` when calling `RuntimeProvider.inspect({ app, service, plan })`; provider-lando cannot rely on a previous process's in-memory apply cache.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - Database service type implementations may extend the MVP `ServiceConfig` schema with typed convenience keys such as `database`/`port`; decode Landofile-shaped tests through `LandofileShape` so those keys are proven to survive config validation.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
@@ -2374,4 +2375,31 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as commit 56303ea
 - Local main / branch refreshed: yes (fast-forward to 56303ea; local us-054-lando-stop deleted; remote tracking ref pruned)
 - Remaining local state: none
+---
+
+## [2026-05-15] - Sync
+- Previous branch: us-054-lando-stop (or "none")
+- Previous PR: #57 https://github.com/AaronFeledy/core4/pull/57
+- Action: caught up after prior merge (PR #57 was already MERGED; local main already up to date; local story branch was not present)
+- Local main updated: yes (already at origin/main HEAD)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15] - Sync
+- Previous branch: us-055-info-services-endpoints
+- Previous PR: none
+- Action: no previous branch work (branch existed locally at main HEAD with 0 commits ahead; no PR; deleted stale local branch)
+- Local main updated: yes (already at origin/main HEAD)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 14:49 CDT] - US-055
+- What was implemented: `lando info` now replans the current app, inspects each service through the selected runtime provider, and renders a plain-text service/state/endpoints table. Stopped services render `no endpoints`.
+- Files changed: `core/src/cli/commands/info.ts`, `core/src/cli/oclif/commands/app/info.ts`, `core/src/cli/run.ts`, `core/test/cli/info.scenario.test.ts`, `sdk/src/services/index.ts`, `plugins/provider-lando/src/index.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/cli/info.scenario.test.ts` passed; `bun test core/test/cli/info.scenario.test.ts plugins/provider-lando/test/inspect.integration.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; direct `core/` build produced `core/dist/lando`; manual compiled CLI QA ran `core/dist/lando info` against a live Podman socket with isolated config and observed service rows plus endpoint output. Note: the generated Node service container exited under current init/mount behavior, so live output showed `web stopped no endpoints` and `database running postgresql://lando@localhost:5432/info-qa`; fake-provider tests cover the required running Node endpoint output.
+- **Learnings for future iterations:**
+  - Fresh CLI processes cannot rely on provider-lando's in-memory applied-plan cache for service inspection; pass the current `AppPlan` through `ServiceSelector.plan` before calling `RuntimeProvider.inspect`.
+  - Manual compiled CLI QA may need `LANDO_USER_CONF_ROOT` pointed at an empty temp dir when the user's `~/.lando/config.yml` is malformed.
 ---
