@@ -1,34 +1,13 @@
 import { Schema } from "effect";
 
-import {
-  AbsolutePath,
-  type PlanMetadata,
-  PortablePath,
-  ProviderId,
-  type ServiceConfig,
-  ServiceName,
-  ServicePlan,
-} from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import type { ServiceTypeShape } from "@lando/sdk/services";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const DEFAULT_PORT = "3000:3000";
 
-export interface ServiceTypePlanInput {
-  readonly name: string;
-  readonly service: ServiceConfig;
-  readonly appRoot: string;
-  readonly provider?: ProviderId;
-  readonly primary?: boolean;
-  readonly metadata: typeof PlanMetadata.Encoded;
-}
-
-export interface NodeServiceType {
-  readonly id: string;
-  readonly toServicePlan: (input: ServiceTypePlanInput) => ServicePlan;
-}
-
-export const nodeLtsServiceType: NodeServiceType = {
+export const nodeLtsServiceType: ServiceTypeShape = {
   id: "node:lts",
   toServicePlan: ({
     name,

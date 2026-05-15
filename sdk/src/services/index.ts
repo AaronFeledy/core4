@@ -22,11 +22,14 @@ import type {
   GlobalConfig,
   HostPlatform,
   LandofileShape,
+  PlanMetadata,
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  ServiceConfig,
   ServiceInfo,
   ServiceName,
+  ServicePlan,
 } from "../schema/index.ts";
 
 import type {
@@ -213,8 +216,25 @@ export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
   {
     readonly list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>;
     readonly load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>;
+    readonly loadServiceType: (
+      id: string,
+    ) => Effect.Effect<ServiceTypeShape, PluginLoadError | PluginManifestError>;
   }
 >() {}
+
+export interface ServiceTypePlanInput {
+  readonly name: string;
+  readonly service: ServiceConfig;
+  readonly appRoot: string;
+  readonly provider?: ProviderId;
+  readonly primary?: boolean;
+  readonly metadata: typeof PlanMetadata.Encoded;
+}
+
+export interface ServiceTypeShape {
+  readonly id: string;
+  readonly toServicePlan: (input: ServiceTypePlanInput) => ServicePlan;
+}
 
 /**
  * CommandRegistry — OCLIF + tooling command registration.

@@ -222,7 +222,11 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
 };
 
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(makeProviderRuntimeLive(loggerMode), LandofileServiceLive, AppPlannerLive);
+  Layer.mergeAll(
+    makeProviderRuntimeLive(loggerMode),
+    LandofileServiceLive,
+    AppPlannerLive.pipe(Layer.provide(PluginRegistryLive)),
+  );
 
 const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {
   switch (bootstrap) {

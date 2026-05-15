@@ -14,6 +14,7 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
+import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
@@ -79,6 +80,7 @@ const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCap
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLive),
+      Effect.provide(PluginRegistryLive),
     ),
   );
 
@@ -86,6 +88,7 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
   Effect.runPromiseExit(
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLive),
+      Effect.provide(PluginRegistryLive),
     ),
   );
 
@@ -102,9 +105,10 @@ describe("AppPlannerLive", () => {
       const web = appPlan.services[ServiceName.make("web")];
       const db = appPlan.services[ServiceName.make("db")];
 
-      expect(web?.type).toBe("node");
+      expect(web?.type).toBe("node:lts");
       expect(web?.artifact).toEqual({ kind: "ref", ref: "node:lts" });
       expect(web?.environment).toEqual({ NODE_ENV: "development" });
+      expect(String(web?.workingDirectory)).toBe("/app");
       expect(web?.mounts).toContainEqual({
         type: "bind",
         source: appRoot,
@@ -117,8 +121,11 @@ describe("AppPlannerLive", () => {
 
       expect(db?.type).toBe("postgres");
       expect(db?.artifact).toEqual({ kind: "ref", ref: "postgres:16" });
-      expect(db?.environment).toEqual({ POSTGRES_PASSWORD: "lando" });
+      expect(db?.environment.POSTGRES_USER).toBe("lando");
+      expect(db?.environment.POSTGRES_DB?.startsWith("lando-app-planner-")).toBe(true);
+      expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
       expect(db?.endpoints).toEqual([{ port: 5432, protocol: "tcp", name: "db" }]);
+      expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));
     });
   });
 

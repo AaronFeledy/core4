@@ -56,7 +56,7 @@ const EXPECTED_TAGS = [
   { tag: LandofileService, key: "@lando/core/LandofileService", methods: ["discover"] },
   { tag: AppPlanner, key: "@lando/core/AppPlanner", methods: ["plan"] },
   { tag: BuildOrchestrator, key: "@lando/core/BuildOrchestrator", methods: ["build"] },
-  { tag: PluginRegistry, key: "@lando/core/PluginRegistry", methods: ["list", "load"] },
+  { tag: PluginRegistry, key: "@lando/core/PluginRegistry", methods: ["list", "load", "loadServiceType"] },
   { tag: CacheService, key: "@lando/core/CacheService", methods: ["read", "write", "invalidate"] },
   {
     tag: FileSystem,
@@ -126,7 +126,7 @@ describe("Effect service tags", () => {
       ["discover"],
       ["plan"],
       ["build"],
-      ["list", "load"],
+      ["list", "load", "loadServiceType"],
       ["read", "write", "invalidate"],
       [
         "read",

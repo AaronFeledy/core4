@@ -27,6 +27,22 @@ const bundledPluginRegistry: Context.Tag.Service<typeof PluginRegistry> = {
       }),
     );
   },
+  loadServiceType: (id) => {
+    for (const bundledPlugin of BUNDLED_PLUGINS) {
+      const serviceType = bundledPlugin.serviceTypes?.get(id);
+
+      if (serviceType !== undefined) {
+        return Effect.succeed(serviceType);
+      }
+    }
+
+    return Effect.fail(
+      new PluginLoadError({
+        message: `Bundled service type ${id} is not registered.`,
+        pluginName: id,
+      }),
+    );
+  },
 };
 
 export { PluginRegistry };
