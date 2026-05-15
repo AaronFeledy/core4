@@ -2362,3 +2362,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - App stop runs in a fresh CLI process, so provider in-memory plan caches are insufficient for teardown; pass the planned `AppPlan` through `AppSelector.plan` for `RuntimeProvider.destroy`.
   - Compiled CLI command behavior still needs an explicit `$bunfs` branch in `core/src/cli/run.ts` for each command until the binary dispatches all commands through OCLIF.
 ---
+
+## [2026-05-15 15:48 UTC] - Push
+- Branch pushed: us-054-lando-stop → origin/us-054-lando-stop (1 commit: 94f9ca9 feat: lando stop brings down the running app)
+- PR: #57 https://github.com/AaronFeledy/core4/pull/57 (created)
+- CI outcome: pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot NEUTRAL)
+- Review feedback: Cursor Bugbot COMMENTED (no CHANGES_REQUESTED, reviewDecision empty)
+  - Finding 1 (medium): Missing SIGINT/SIGTERM in runStop — rejected as non-blocking; stop is short-lived and recoverable; not in US-054 scope
+  - Finding 2 (low): provider-lando destroy ignores DestroyOptions volumes param — rejected as non-blocking for MVP; bringDown never deletes volumes; no caller passes volumes:true
+- Triage rounds used: 0 (all CI SUCCESS/NEUTRAL, no human change requests)
+- Merge: merged (squash) as commit 56303ea
+- Local main / branch refreshed: yes (fast-forward to 56303ea; local us-054-lando-stop deleted; remote tracking ref pruned)
+- Remaining local state: none
+---
