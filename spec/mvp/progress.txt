@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- App command wrappers that need top-level command ids should set `topLevelAlias: true` in the `LandoCommandSpec` and `static aliases = [...resolveTopLevelAliases(spec)]`; compiled `$bunfs` dispatch must continue accepting both the namespace id (for example `app:start`) and stripped alias (`start`).
 - App lifecycle CLI operations should publish app-level lifecycle events in core, then call `RuntimeProvider.apply(plan, { reconcile, signal })`, inspect each planned service, and render plain-text readiness from the inspected runtime state.
 - Provider package import-boundary tests parse TypeScript source files with the TypeScript compiler API and assert static imports/re-exports avoid `@oclif/*` and `core/src/cli/*`; keep those tests under `plugins/*/test/import-boundary.test.ts`.
 - Logger Live installs Effect logging with `Logger.replace(Logger.defaultLogger, logger)`; use `Logger.prettyLoggerDefault`/`Logger.none` as logger instances, while `Logger.pretty` is itself a Layer.
@@ -2507,4 +2508,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main at 2ab47f9)
 - Branch after sync: main
 - Stash created: no
+---
+
+## [2026-05-15 17:38] - US-059
+- Implemented app command alias coverage for `app:start`, `app:stop`, and `app:info` by asserting command-class aliases, OCLIF manifest metadata, and compiled-binary alias/id parity.
+- Files changed: `core/test/cli/aliases.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/cli/aliases.test.ts`, `bun run typecheck`, `bun run lint`, `bun test`, `bun run --filter='@lando/core' build:compile`, and manual compiled alias/id parity checks all passed.
+- **Learnings for future iterations:**
+  - App command aliases already flow from `topLevelAlias: true` through `resolveTopLevelAliases`; compiled `$bunfs` dispatch separately mirrors both stripped and namespaced ids.
+  - `Config.load({ root: coreRoot, ignoreManifest: true })` is the reliable way to assert generated OCLIF manifest metadata without requiring a checked-in manifest file.
 ---
