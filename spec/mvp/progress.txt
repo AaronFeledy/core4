@@ -2476,3 +2476,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Compiled Bun binaries expose `import.meta.url` through `$bunfs`; use `/proc/self/exe` for the real executable location on Linux x64 fast paths.
   - Keep compiled CLI shellenv tests asserting the actual install directory, not just that an export line exists, to avoid `$bunfs` regressions.
 ---
+
+## [2026-05-15 21:38 UTC] - Push
+- Branch pushed: us-057-shellenv-bootstrap-none → origin/us-057-shellenv-bootstrap-none (1 story commit: 698d1a9 feat: lando shellenv works at bootstrap level none)
+- PR: #60 https://github.com/AaronFeledy/core4/pull/60 (created)
+- CI outcome (round 1): pass (linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot SKIPPED)
+- Review feedback: Bugbot COMMENTED (not CHANGES_REQUESTED) on core/bin/lando.ts — `/proc/self/exe` crashes on macOS/Windows compiled binaries. REAL ISSUE — fixed.
+- Fix: replaced `readlinkSync("/proc/self/exe")` with `process.execPath` (cross-platform). Commit ee5f7d2 pushed to same branch. Updated AGENTS.md note accordingly.
+- CI outcome (round 2, fix commit ee5f7d2): pass (all 5 checks SUCCESS/SKIPPED, Cursor Bugbot: pass)
+- Triage rounds used: 1
+- Merge: merged (squash) as bb8dca0 "lando shellenv works at bootstrap level none (#60)"
+- Local main / branch refreshed: yes (fast-forward to bb8dca0; local us-057-shellenv-bootstrap-none deleted; remote branch deleted by --delete-branch)
+- Remaining local state: on main, clean
+---
