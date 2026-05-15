@@ -39,7 +39,7 @@ const bundledPluginRegistry: Context.Tag.Service<typeof PluginRegistry> = {
     return Effect.fail(
       new PluginLoadError({
         message: `Bundled service type ${id} is not registered.`,
-        pluginName: id,
+        pluginName: "@lando/core",
       }),
     );
   },
