@@ -825,7 +825,7 @@
         "Run `./dist/lando init --full --name=mvp-test` against compiled binary and verify output"
       ],
       "priority": 52,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

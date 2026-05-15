@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
 
+import { initApp } from "./commands/init.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 
 const version = "@lando/core/0.0.0";
@@ -70,7 +71,7 @@ ALIASES
   ${[id, ...(command.aliases ?? [])].join(", ")}`);
 };
 
-const runCompiledCli = (argv: ReadonlyArray<string>): void => {
+const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
     if (commandArg === undefined) {
@@ -89,6 +90,23 @@ const runCompiledCli = (argv: ReadonlyArray<string>): void => {
 
   if (argv.includes("--version") || argv.includes("-v")) {
     console.log(`${version} ${process.platform}-${process.arch} node-${process.version}`);
+    return;
+  }
+
+  if (argv[0] === "init" || argv[0] === "apps:init") {
+    const nameFlag = argv.find((arg) => arg.startsWith("--name="));
+    const name = nameFlag?.slice("--name=".length);
+    const full = argv.includes("--full");
+    try {
+      const result =
+        name === undefined
+          ? await initApp({ cwd: process.cwd(), full })
+          : await initApp({ cwd: process.cwd(), full, name });
+      console.log(`Created ${result.appName} at ${result.directory}`);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exitCode = 1;
+    }
     return;
   }
 
@@ -120,7 +138,7 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
   const args = options.argv as Array<string>;
 
   if (entryPath.includes("$bunfs")) {
-    runCompiledCli(options.argv);
+    await runCompiledCli(options.argv);
     return;
   }
 

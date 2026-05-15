@@ -7,14 +7,22 @@
 import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
+import { InitTargetExistsError } from "@lando/sdk/errors";
+
+import { type InitAppResult, initApp } from "../../../commands/init.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+
+interface InitFlags {
+  readonly full: boolean;
+  readonly name?: string;
+}
 
 export const initSpec: LandoCommandSpec<never> = {
   id: "apps:init",
   summary: "Generate a new Lando app.",
   namespace: "apps",
   topLevelAlias: true,
-  bootstrap: "minimal",
+  bootstrap: "commands",
   run: () => Effect.die("not yet implemented: apps:init"),
 };
 
@@ -37,6 +45,19 @@ export default class InitCommand extends LandoCommandBase {
   static override bootstrap = initSpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(initSpec);
+    const { flags } = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
+    let result: InitAppResult;
+    try {
+      result =
+        flags.name === undefined
+          ? await initApp({ cwd: process.cwd(), full: flags.full })
+          : await initApp({ cwd: process.cwd(), full: flags.full, name: flags.name });
+    } catch (error) {
+      if (error instanceof InitTargetExistsError) {
+        throw new Error(`${error.message}\n${error.remediation}`);
+      }
+      throw error;
+    }
+    this.log(`Created ${result.appName} at ${result.directory}`);
   }
 }
