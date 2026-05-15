@@ -2031,3 +2031,20 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main at e5b7e84, story branch deleted)
 - Remaining local state: clean on main
 ---
+
+## [2026-05-15] - Sync
+- Previous branch: us-046-node-lts-service-type
+- Previous PR: none
+- Action: no previous branch work — branch existed locally at 0 commits ahead of main; deleted stale local branch; stash created for unexpected progress.txt changes (loop-sync-autostash from prior sync iteration)
+- Local main updated: yes (already up to date at efcbe44)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — uncommitted progress.txt edits from prior sync, a human should pop/drop)
+---
+## [2026-05-15 03:58 CDT] - US-046
+- Implemented `node:lts` ServiceType planning with default `node:lts` artifact, `/app` working directory/app bind mount, default idle command, default port 3000 endpoint, dependency propagation, and image/environment/command/port overrides.
+- Files changed: `plugins/service-lando/src/services/node.ts`, `plugins/service-lando/src/index.ts`, `plugins/service-lando/test/node.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test plugins/service-lando/test/node.test.ts` pass; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass. Manual QA: executed a real `nodeLtsServiceType.toServicePlan(...)` driver and verified the printed artifact/command/endpoint output.
+- **Learnings for future iterations:**
+  - Service type implementations can live under `plugins/service-lando/src/services/*.ts` and should decode their output through `ServicePlan` so branded schema fields stay valid.
+  - Keep `plugins/service-lando/src/index.ts#serviceTypes` broad enough for future stub entries until each service type grows a full planner implementation.
+---
