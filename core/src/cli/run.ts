@@ -24,6 +24,7 @@ import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
+import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 
 const version = "@lando/core/0.0.0";
@@ -91,6 +92,11 @@ const commandErrorMessage = (error: unknown): string => {
       details.push(`filePath: ${error.filePath}`);
     if (tag === "LandofileParseError" && "line" in error && typeof error.line === "number")
       details.push(`line: ${error.line}`);
+    if (tag === "NotImplementedError") details.unshift(tag);
+    if (tag === "NotImplementedError" && "commandId" in error && typeof error.commandId === "string")
+      details.push(`commandId: ${error.commandId}`);
+    if (tag === "NotImplementedError" && "specSection" in error && typeof error.specSection === "string")
+      details.push(`specSection: ${error.specSection}`);
     if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
     if (tag === "LandofileNotFoundError")
       details.push("Run `lando init --full --name=<name>` to scaffold an app.");
@@ -212,7 +218,8 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
     throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 
-  throw new Error(`${found[0]}: not yet implemented`);
+  console.error(commandErrorMessage(notImplementedErrorForCommand(found[0])));
+  process.exitCode = 1;
 };
 
 export interface RunCliOptions {

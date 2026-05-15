@@ -52,6 +52,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Provider-docker mirrors provider-lando's RuntimeProvider contract flow but targets the Docker Engine HTTP API via `LANDO_TEST_DOCKER_SOCKET`/`DOCKER_HOST`; provider operations must not shell out to the `docker` CLI.
 
 - Lifecycle event schemas in `sdk/src/events/index.ts` use `Schema.TaggedStruct("event-name", {...})`; for PRD-01 app/service/build lifecycle contracts, keep both `_tag` (from TaggedStruct) and an explicit literal `eventName` field so publishers can discriminate either way.
+- Non-MVP OCLIF commands should route through `notImplementedErrorForCommand(...)` so both source OCLIF and compiled `$bunfs` handlers render `NotImplementedError` with a `commandId`, `specSection`, and remediation instead of surfacing generic stubs or Effect defects.
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
 - Compiled CLI fast paths must not use `Bun.file(new URL(...package.json, import.meta.url))` for package metadata; compiled binaries resolve that through Bun's virtual filesystem. Statically import `core/package.json` instead, and include it in `core/tsconfig.json`.
 - Avoid `--minify` on the MVP compiled OCLIF binary; Bun 1.2.18 can produce a compiled artifact that throws during the dynamic OCLIF import.
@@ -356,6 +357,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main updated: yes (already up to date with origin/main)
 - Branch after sync: main
 - Stash created: no
+---
+
+## [2026-05-15 16:58] - US-058
+- Implemented structured `NotImplementedError` handling for every non-MVP OCLIF command in both source OCLIF execution and compiled `$bunfs` command dispatch.
+- Files changed: `sdk/src/errors/index.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/run.ts`, `core/test/cli/not-implemented.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed; `bun run build` passed; manual QA `./core/dist/lando exec` and `bun core/bin/lando.ts meta:plugin:login --registry=https://example.invalid` both exited 1 with `NotImplementedError`, command id, spec section, and remediation.
+- **Learnings for future iterations:**
+  - Source OCLIF command tests may need placeholder required args/flags so parse reaches command execution and validates the command's own error path.
+  - Compiled `$bunfs` command dispatch bypasses OCLIF command classes for explicit MVP handlers, so user-visible fallback errors need mirrored handling in `core/src/cli/run.ts`.
 ---
 
 ## 2026-05-11 02:53 CDT - Sync
@@ -2488,4 +2498,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as bb8dca0 "lando shellenv works at bootstrap level none (#60)"
 - Local main / branch refreshed: yes (fast-forward to bb8dca0; local us-057-shellenv-bootstrap-none deleted; remote branch deleted by --delete-branch)
 - Remaining local state: on main, clean
+---
+
+## [2026-05-15 16:39] - Sync
+- Previous branch: us-057-shellenv-bootstrap-none
+- Previous PR: #60 https://github.com/AaronFeledy/core4/pull/60
+- Action: caught up after prior merge (PR #60 already MERGED, remote branch already deleted)
+- Local main updated: yes (already up to date with origin/main at 2ab47f9)
+- Branch after sync: main
+- Stash created: no
 ---

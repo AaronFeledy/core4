@@ -28,7 +28,7 @@ import { Command } from "@oclif/core";
 
 import { Cause, Effect, Exit, type Layer } from "effect";
 
-import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import { LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk/errors";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
@@ -93,6 +93,45 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly render?: (result: unknown) => string | undefined;
 }
 
+const MVP_COMMAND_IDS = new Set([
+  "app:info",
+  "app:start",
+  "app:stop",
+  "apps:init",
+  "meta:shellenv",
+  "meta:version",
+]);
+
+const SPEC_SECTION_BY_PREFIX: ReadonlyArray<readonly [string, string]> = [
+  ["meta:plugin:", "spec/10-plugins.md"],
+  ["meta:recipes:", "spec/17-executable-tutorials.md"],
+  ["app:cache:", "spec/12-caches-and-persistence.md"],
+  ["app:includes:", "spec/07-landofile-and-config.md"],
+  ["app:config", "spec/07-landofile-and-config.md"],
+  ["app:exec", "spec/08-cli-and-tooling.md"],
+  ["app:shell", "spec/08-cli-and-tooling.md"],
+  ["app:ssh", "spec/08-cli-and-tooling.md"],
+  ["app:logs", "spec/08-cli-and-tooling.md"],
+  ["meta:bun", "spec/08-cli-and-tooling.md"],
+  ["meta:x", "spec/08-cli-and-tooling.md"],
+];
+
+export const isMvpCommandId = (commandId: string): boolean => MVP_COMMAND_IDS.has(commandId);
+
+export const specSectionForCommand = (commandId: string): string =>
+  SPEC_SECTION_BY_PREFIX.find(([prefix]) => commandId.startsWith(prefix))?.[1] ??
+  "spec/08-cli-and-tooling.md";
+
+export const notImplementedErrorForCommand = (commandId: string): NotImplementedError => {
+  const specSection = specSectionForCommand(commandId);
+  return new NotImplementedError({
+    message: `Command ${commandId} is not implemented in the MVP.`,
+    commandId,
+    specSection,
+    remediation: `See ${specSection} for the command's owning specification and release phase.`,
+  });
+};
+
 const commandErrorMessage = (error: unknown): string => {
   if (
     typeof error === "object" &&
@@ -106,6 +145,11 @@ const commandErrorMessage = (error: unknown): string => {
       details.push(`filePath: ${error.filePath}`);
     if (tag === "LandofileParseError" && "line" in error && typeof error.line === "number")
       details.push(`line: ${error.line}`);
+    if (tag === "NotImplementedError") details.unshift(tag);
+    if (tag === "NotImplementedError" && "commandId" in error && typeof error.commandId === "string")
+      details.push(`commandId: ${error.commandId}`);
+    if (tag === "NotImplementedError" && "specSection" in error && typeof error.specSection === "string")
+      details.push(`specSection: ${error.specSection}`);
     if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
     if (tag === "LandofileNotFoundError")
       details.push("Run `lando init --full --name=<name>` to scaffold an app.");
@@ -163,6 +207,10 @@ export abstract class LandoCommandBase extends Command {
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     await this.parse(this.ctor);
+
+    if (!isMvpCommandId(spec.id)) {
+      throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
+    }
 
     const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {

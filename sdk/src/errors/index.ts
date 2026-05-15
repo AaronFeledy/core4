@@ -274,3 +274,10 @@ export class LandoCommandError extends Schema.TaggedError<LandoCommandError>()("
   exitCode: Schema.optional(Schema.Number),
   cause: Schema.optional(Schema.Unknown),
 }) {}
+
+export class NotImplementedError extends Schema.TaggedError<NotImplementedError>()("NotImplementedError", {
+  message: Schema.String,
+  commandId: Schema.String,
+  specSection: Schema.String,
+  remediation: Schema.String,
+}) {}
