@@ -147,7 +147,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             : logs(plan, target, logOptions, { ...(podmanApi === undefined ? {} : { podmanApi }) });
         },
         inspect: (target) => {
-          const plan = plans.get(target.app);
+          const plan = target.plan ?? plans.get(target.app);
           return plan === undefined
             ? Effect.fail(makeUnavailable("inspect"))
             : inspect(plan, target, { ...(podmanApi === undefined ? {} : { podmanApi }) });

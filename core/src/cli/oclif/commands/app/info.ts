@@ -1,4 +1,4 @@
-import { type InfoAppResult, infoApp } from "../../../commands/info.ts";
+import { type InfoAppResult, infoApp, renderInfoAppResult } from "../../../commands/info.ts";
 /**
  * `lando app:info` — OCLIF wrapper.
  */
@@ -11,6 +11,7 @@ export const infoSpec: LandoCommandSpec<InfoAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => infoApp(),
+  render: (result) => renderInfoAppResult(result as InfoAppResult),
 };
 
 export default class InfoCommand extends LandoCommandBase {
