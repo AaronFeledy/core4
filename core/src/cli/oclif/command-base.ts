@@ -118,6 +118,14 @@ const SPEC_SECTION_BY_PREFIX: ReadonlyArray<readonly [string, string]> = [
 
 export const isMvpCommandId = (commandId: string): boolean => MVP_COMMAND_IDS.has(commandId);
 
+/**
+ * True for canonical namespace-prefixed Lando command ids (i.e. `app:*`,
+ * `apps:*`, `meta:*`). Test fixtures and ad-hoc commands with non-canonical
+ * ids fall outside this set and are not subject to the MVP-only
+ * `NotImplementedError` guard in `runEffect`.
+ */
+export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
+
 export const specSectionForCommand = (commandId: string): string =>
   SPEC_SECTION_BY_PREFIX.find(([prefix]) => commandId.startsWith(prefix))?.[1] ??
   "spec/08-cli-and-tooling.md";
@@ -208,7 +216,7 @@ export abstract class LandoCommandBase extends Command {
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     await this.parse(this.ctor);
 
-    if (!isMvpCommandId(spec.id)) {
+    if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
     }
 
