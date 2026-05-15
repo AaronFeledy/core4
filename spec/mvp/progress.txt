@@ -1923,6 +1923,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Remaining local state: clean, on main
 ---
 
+## [2026-05-14 - Sync]
+- Previous branch: us-043-lando-setup-manual-install
+- Previous PR: none
+- Action: no PR found; branch had 0 commits ahead of main (clean post-merge state); local branch deleted
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: yes ("loop-sync-autostash") — stashed uncommitted progress.txt sync note from prior sync run; human to review/pop stash@{0}
+---
+
 ## [2026-05-14 22:27 CDT] - US-043
 - Implemented provider-lando setup verification for manually installed Podman: validates `podman --version`, validates reachable Podman API socket, reports detected runtime version, and surfaces typed remediation errors for missing Podman or unreachable socket.
 - Files changed: `plugins/provider-lando/src/setup.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/setup.integration.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
@@ -1931,4 +1940,20 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Patterns discovered: keep provider-lando setup host-dependent checks injectable with `podmanCommand` and `podmanApi` seams so tests remain deterministic.
   - Gotchas encountered: `RuntimeProvider.setup` requires `Scope`, so tests and drivers must wrap it with `Effect.scoped(...)` before `Effect.runPromise`.
   - Useful context: MVP setup intentionally verifies manual Podman install/socket availability only; automatic runtime bundle download remains deferred to Alpha.
+---
+
+## [2026-05-14 22:55 CDT] - Push (US-043)
+- Branch pushed: us-043-lando-setup-manual-install → origin (new branch, 1 story commit: 4c5a058 "feat: lando setup manual-install acceptance")
+- PR: #46 https://github.com/AaronFeledy/core4/pull/46 (created)
+- CI outcome (round 1): linux-x64 pass, linux-arm64 pass, macos-arm64 pass, windows-x64 pass, Cursor Bugbot NEUTRAL (2 potential issues found)
+- Triage round 1: Both Bugbot findings confirmed real
+  - Finding 1 (REAL): `process.env.LANDO_TEST_PODMAN_SOCKET = undefined` sets to string "undefined" in Bun/Node; fix: `delete process.env.LANDO_TEST_PODMAN_SOCKET` + biome-ignore (Biome noDelete rule is unsafe for process.env)
+  - Finding 2 (REAL): `infoPodmanVersion` fell back to `host.BuildahVersion` (Buildah 1.37.x, not Podman 5.2.x); fix: remove the BuildahVersion branch so parsePodmanVersion(CLI output) is used as final fallback
+  - Fix commit: 6c7f388 pushed
+- CI outcome (round 2): all 5 checks pass including Cursor Bugbot pass
+- Review feedback: none actionable remaining
+- Triage rounds used: 1
+- Merge: merged (squash) → ba31f3b on main
+- Local main / branch refreshed: yes (main fast-forwarded to ba31f3b, local story branch deleted)
+- Remaining local state: clean on main (uncommitted progress.txt only)
 ---
