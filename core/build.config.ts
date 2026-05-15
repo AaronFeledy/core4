@@ -49,7 +49,11 @@ export const buildConfig: BuildConfig = {
       path: "plugins/provider-docker",
       contributes: { providers: ["docker"] },
     },
-    { name: "@lando/service-lando", path: "plugins/service-lando", contributes: { serviceTypes: ["lando"] } },
+    {
+      name: "@lando/service-lando",
+      path: "plugins/service-lando",
+      contributes: { serviceTypes: ["node:lts", "postgres"] },
+    },
     { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
   ],
   bundledRecipes: [],

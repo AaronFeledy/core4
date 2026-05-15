@@ -4,4 +4,29 @@
  * Status: stub. Manifest at `./plugin.yaml`. Service-type and feature
  * modules will land under `./src/service-type.ts` and `./src/features/*.ts`.
  */
+import { Layer, Schema } from "effect";
+
+import { PluginManifest } from "@lando/sdk/schema";
+
 export const PLUGIN_NAME = "@lando/service-lando" as const;
+
+export interface ServiceType {
+  readonly id: string;
+}
+
+export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map([
+  ["node:lts", { id: "node:lts" }],
+  ["postgres", { id: "postgres" }],
+]);
+
+export const services = Layer.empty;
+
+export const manifest = Schema.decodeSync(PluginManifest)({
+  name: PLUGIN_NAME,
+  version: "0.0.0",
+  api: 4,
+  description: "The opinionated `lando` service base.",
+  enabled: true,
+  contributes: { serviceTypes: ["node:lts", "postgres"] },
+  entry: "./src/index.ts",
+});

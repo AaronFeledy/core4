@@ -44,7 +44,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   {
     name: "@lando/service-lando",
     layer: Layer.empty,
-    manifest: makeManifest("@lando/service-lando", { serviceTypes: ["lando"] }),
+    manifest: makeManifest("@lando/service-lando", { serviceTypes: ["node:lts", "postgres"] }),
   },
   {
     name: "@lando/logger-pretty",
