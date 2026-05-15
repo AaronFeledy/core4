@@ -2275,3 +2275,17 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - When forwarding a tagged error from the compiled-binary `$bunfs` CLI path, copy the source-CLI's remediation-concatenation pattern; the AGENTS.md gotcha about explicit compiled-binary handlers covers existence, not error-output parity.
 ---
+
+## [2026-05-15 08:20 CDT] - Push (US-052)
+- Branch pushed: us-052-init-full-node-postgres → origin (2 story commits: 4328521 + 037cd20)
+- Commits:
+  - 4328521 feat: lando init --full --name=<name> scaffolds a Node+Postgres app
+  - 037cd20 fix(cli): compiled init handler prints InitTargetExistsError remediation
+- PR: #55 https://github.com/AaronFeledy/core4/pull/55 (created)
+- CI outcome: pass — linux-x64 SUCCESS, linux-arm64 SUCCESS, macos-arm64 SUCCESS, windows-x64 SUCCESS, Cursor Bugbot NEUTRAL
+- Review feedback: Cursor Bugbot COMMENTED (not CHANGES_REQUESTED) that it found 1 potential issue (details behind proprietary Cursor IDE link); reviewDecision="" → treated as bot acknowledgement, not a work item
+- Triage rounds used: 0
+- Merge: merged (squash) as 5c50de9 on main
+- Local main / branch refreshed: yes (on main at 5c50de9; local story branch already absent after merge)
+- Remaining local state: none
+---
