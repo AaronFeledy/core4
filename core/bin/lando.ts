@@ -25,8 +25,12 @@ if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0]
 }
 
 if (argv.length === 1 && argv[0] === "shellenv") {
+  const { readlinkSync } = await import("node:fs");
+  const { dirname } = await import("node:path");
   const { fileURLToPath } = await import("node:url");
-  const installDir = fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
+  const installDir = import.meta.url.includes("$bunfs")
+    ? dirname(readlinkSync("/proc/self/exe"))
+    : fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
 
   console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
   console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');

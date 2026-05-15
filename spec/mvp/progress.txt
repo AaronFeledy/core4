@@ -78,6 +78,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Provider-lando stop/remove lifecycle should use Podman API container stop + forced container delete and per-app network delete; `app:stop` preserves app-scoped stores by never calling the Podman volumes delete API.
 - The SDK provider contract suite executes `apply` -> `inspect` -> `destroy` against a fixture whose provider id matches the candidate provider; RuntimeProvider implementations that cache applied plans must wire `destroy` through provider teardown and clear that cache.
 - Bundled plugin codegen should reference each plugin package's real exported `provider`/`services`/`logger` Layer and `manifest`; do not synthesize manifest stubs in `core/src/plugins/bundled.ts`.
+- Compiled binary shellenv cannot derive the install directory from `import.meta.url` because it resolves through Bun's `$bunfs`; use `/proc/self/exe` on Linux x64 to locate the real binary directory.
 
 
 ## Iteration Log
@@ -2456,4 +2457,22 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as commit dc63c60 "Add compiled-binary regression test for lando version (#59)"
 - Local main / branch refreshed: yes (fast-forward to dc63c60; local us-056-lando-version deleted; remote branch deleted by --delete-branch; stale remote-tracking ref pruned)
 - Remaining local state: on main, clean
+---
+
+## [2026-05-15 20:28 UTC] - Sync
+- Previous branch: us-056-lando-version
+- Previous PR: #59 https://github.com/AaronFeledy/core4/pull/59
+- Action: caught up after prior merge (PR already MERGED before sync ran)
+- Local main updated: yes (already at origin/main; ff-only pull confirmed up-to-date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 20:45 UTC] - US-057
+- Implemented `lando shellenv` bootstrap-none behavior for the compiled binary and the namespaced OCLIF command body, printing `LANDO_INSTALL_DIR` plus the PATH prepend line.
+- Files changed: `core/bin/lando.ts`, `core/src/cli/oclif/commands/meta/shellenv.ts`, `core/test/cli/shellenv.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/cli/shellenv.test.ts` pass; manual `core/dist/lando shellenv` printed the real `core/dist` install dir and PATH export; `bun run typecheck` pass; `bun run lint` pass; `bun test` pass.
+- **Learnings for future iterations:**
+  - Compiled Bun binaries expose `import.meta.url` through `$bunfs`; use `/proc/self/exe` for the real executable location on Linux x64 fast paths.
+  - Keep compiled CLI shellenv tests asserting the actual install directory, not just that an export line exists, to avoid `$bunfs` regressions.
 ---
