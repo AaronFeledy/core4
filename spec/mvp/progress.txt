@@ -2048,3 +2048,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Service type implementations can live under `plugins/service-lando/src/services/*.ts` and should decode their output through `ServicePlan` so branded schema fields stay valid.
   - Keep `plugins/service-lando/src/index.ts#serviceTypes` broad enough for future stub entries until each service type grows a full planner implementation.
 ---
+
+## [2026-05-15 09:20 UTC] - Push (US-046)
+- Branch pushed: us-046-node-lts-service-type → origin (1 commit: 757431d "feat: node:lts ServiceType implementation")
+- PR: #49 https://github.com/AaronFeledy/core4/pull/49 (created)
+- CI outcome: pass — all 5 checks SUCCESS (linux-arm64, linux-x64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (reviewDecision="", 0 comments, 0 reviews)
+- Triage rounds used: 0
+- Merge: merged (squash) → 7dde782 "feat: node:lts ServiceType implementation (#49)"
+- Local main / branch refreshed: yes (main fast-forwarded to 7dde782; local story branch deleted)
+- Remaining local state: clean on main
+---
