@@ -1991,3 +1991,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - `prd.json` acceptance-criteria text can drift from source PRD file paths (e.g. `boundary.test.ts` vs. `import-boundary.test.ts`); always cross-check `spec/mvp/prd-mvp-*.md` for the authoritative spec when a path discrepancy appears.
 ---
+
+## [2026-05-15 04:31 UTC] - Push (US-044)
+- Branch pushed: us-044-provider-oclif-boundary → origin (new branch; 2 commits: bd09f48 "feat: Provider-lando does not import @oclif/core (boundary test)" + 3b0f482 "chore(loop): record sync and review notes for US-044")
+- PR: #47 https://github.com/AaronFeledy/core4/pull/47 (created)
+- CI outcome: pass — all 5 checks SUCCESS (linux-x64, linux-arm64, macos-arm64, windows-x64, Cursor Bugbot)
+- Review feedback: none (reviewDecision="", 0 comments, 0 reviews)
+- Triage rounds used: 0
+- Merge: merged (squash) as f7a0bfa "Add OCLIF import-boundary tests for provider-lando and provider-docker (#47)"
+- Local main / branch refreshed: yes (main fast-forwarded to f7a0bfa; local story branch absent)
+- Remaining local state: clean on main
+---
