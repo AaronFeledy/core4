@@ -2559,3 +2559,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (fast-forward to 106bb8a; local us-059-app-command-aliases deleted; remote branch deleted by --delete-branch)
 - Remaining local state: on main, clean
 ---
+
+## [2026-05-15 17:58 CDT] - Sync
+- Previous branch: us-059-app-command-aliases
+- Previous PR: #62 https://github.com/AaronFeledy/core4/pull/62
+- Action: caught up after prior merge (PR #62 was already MERGED before sync ran)
+- Local main updated: yes (already up to date with origin/main at b773eb6)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-15 18:05 CDT] - US-060
+- Implemented a live-gated MVP exit-criteria scenario test that runs codegen, builds the compiled CLI, scaffolds the built-in full app, starts it, verifies `info` reports both services running, stops it, and removes the temp directory.
+- Files changed: `core/test/scenario/mvp-exit-criteria.scenario.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `lsp_diagnostics core/test/scenario/mvp-exit-criteria.scenario.test.ts` clean; `bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts` passed with the live case skipped because `LANDO_TEST_PODMAN_SOCKET` is unset; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed with live Podman tests skipped because `LANDO_TEST_PODMAN_SOCKET` is unset. Full live smoke flow was not run because no live Podman socket was configured in this environment.
+- **Learnings for future iterations:**
+  - Live scenario tests should follow existing `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` gating and explicit long per-test timeouts because real Podman operations exceed Bun's default timeout.
+  - Compiled CLI scenario tests should call `core/dist/lando` by absolute path and run app commands from the scaffolded app directory.
+---
