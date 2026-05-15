@@ -16,6 +16,8 @@ import { fileURLToPath } from "node:url";
 import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
 
+import { InitTargetExistsError } from "@lando/sdk/errors";
+
 import { initApp } from "./commands/init.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 
@@ -104,7 +106,13 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
           : await initApp({ cwd: process.cwd(), full, name });
       console.log(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
-      console.error(error instanceof Error ? error.message : String(error));
+      const message =
+        error instanceof InitTargetExistsError
+          ? `${error.message}\n${error.remediation}`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      console.error(message);
       process.exitCode = 1;
     }
     return;

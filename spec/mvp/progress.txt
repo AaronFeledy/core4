@@ -2262,3 +2262,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `apps:init` has top-level alias `init` and must declare bootstrap `commands` for this story.
   - Compiled binary command support currently needs explicit handling in `core/src/cli/run.ts` before the not-yet-implemented fallback.
 ---
+
+## [2026-05-15 08:10 CDT] - US-052 Review
+- Reviewed US-052 build commit 4328521 (lando init --full --name=<name>): all PRD acceptance criteria satisfied by the scenario test and the source/compiled CLI paths.
+- /review findings (manual, no slash command available in this env):
+  - Fixed: compiled-binary init handler in `core/src/cli/run.ts` printed only `error.message` on catch, dropping `InitTargetExistsError.remediation` so the compiled CLI did not point at `--force`. The source CLI (via `apps/init.ts`) already concatenated message + remediation. Mirrored that behavior in the `$bunfs` init handler so both surfaces emit consistent UX.
+  - Rejected: OCLIF flag description "App name (slugified for the project id)" — out of scope (no slugification implemented yet); behavior is acceptable for MVP and not part of US-052 acceptance.
+  - Rejected: unused OCLIF flags (`source`, `recipe`, `destination`, `yes`, `option`) — Alpha features, intentionally inert at MVP.
+  - Rejected: `--name=../foo` path-traversal not validated — out of scope; PRD does not require name validation at MVP.
+- Files changed in review fix: `core/src/cli/run.ts`.
+- Verification: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (214 pass / 8 skip / 0 fail); `bun run build` passed; rebuilt `core/dist/lando` exercised against happy path (`init --full --name=demo` → exit 0 + scaffold), missing-name (`init --full` → exit 1 + "Missing required flag --name."), and existing-dir (`init --full --name=demo` second time → exit 1 + "Init target already exists ... Choose an empty directory or wait for Alpha --force support.").
+- **Learnings for future iterations:**
+  - When forwarding a tagged error from the compiled-binary `$bunfs` CLI path, copy the source-CLI's remediation-concatenation pattern; the AGENTS.md gotcha about explicit compiled-binary handlers covers existence, not error-output parity.
+---
