@@ -2140,3 +2140,19 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Provider import-boundary tests are directly reusable for service plugins: TypeScript AST parsing catches both imports and re-exports while avoiding text-search false positives.
   - The root Bun test include configuration already discovers `plugins/*/test/**/*.test.ts`; no package-local test script changes are needed for new plugin tests.
 ---
+
+## [2026-05-15 06:07 CDT] - US-049 Review
+- Reviewed commit f07524e: new `plugins/service-lando/test/import-boundary.test.ts` (98 lines) + prd.json (passes=true) + progress.txt entry.
+- Files changed by review: none (no fixes required).
+- `/review` (oracle, focused) findings on f07524e:
+  - "no new findings" — test file is a near-clone of `plugins/provider-lando/test/import-boundary.test.ts` (only describe label differs); the US-044 review already triaged the same pattern-level concerns and the same rejections apply here (dynamic `import(...)`, `require(...)`, redundant `FORBIDDEN_PREFIXES`, `core/src/cli/` substring match).
+- Independent PRD-fit checks against `spec/mvp/prd-mvp-05-bundled-services.md` US-005:
+  - Test parses every `.ts` file under `plugins/service-lando/src/**` via the TypeScript AST and asserts no `@oclif/core`, `@oclif/...`, or `core/src/cli/` import or re-export — ✓.
+  - `grep -rn "@oclif\|core/src/cli" plugins/service-lando/src/` returns empty — boundary genuinely satisfied (not just test-passing). `grep -rn "await import\|require(" plugins/service-lando/src/` also empty, so no dynamic-import escape hatch in scope.
+  - `prd.json` US-049 acceptance text says `boundary.test.ts` but source PRD says `import-boundary.test.ts`; committed file matches the authoritative source PRD path (same drift previously triaged in US-044).
+- Verification run and result: `bun test plugins/service-lando/test/import-boundary.test.ts` 1 pass; `bun run typecheck` pass; `bun run lint` pass (Checked 241 files); `bun test` 210 pass / 8 skip / 0 fail (8 skips are the documented `LANDO_TEST_*_SOCKET` integration gates, unrelated to this story).
+- CLI behavior exercised: not applicable — story is test-only and adds no CLI surface.
+- **Learnings for future iterations:**
+  - When a story extends an already-reviewed boundary-test pattern to a new plugin, the prior review's triage notes are reusable; a focused single-agent review scoped to "new findings only" is sufficient and avoids redundant work.
+  - Root Bun test discovery (`plugins/*/test/**/*.test.ts`) means new plugin tests are picked up by `bun test` without per-package script changes.
+---
