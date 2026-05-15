@@ -9,6 +9,7 @@ import { Layer, Schema } from "effect";
 import { PluginManifest } from "@lando/sdk/schema";
 
 import { nodeLtsServiceType } from "./services/node.ts";
+import { postgresServiceType } from "./services/postgres.ts";
 
 export const PLUGIN_NAME = "@lando/service-lando" as const;
 
@@ -17,10 +18,11 @@ export interface ServiceType {
 }
 
 export { nodeLtsServiceType } from "./services/node.ts";
+export { postgresServiceType } from "./services/postgres.ts";
 
 export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, ServiceType>([
   ["node:lts", nodeLtsServiceType],
-  ["postgres", { id: "postgres" }],
+  ["postgres", postgresServiceType],
 ]);
 
 export const services = Layer.empty;
