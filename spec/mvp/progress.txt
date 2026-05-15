@@ -2510,6 +2510,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-15] - Sync
+- Previous branch: us-059-command-aliases
+- Previous PR: none
+- Action: Case E / count=0 — branch existed locally but 0 commits ahead of main (already merged or never started); deleted local branch. Stashed pre-existing uncommitted progress.txt edits from prior sync run (stash "loop-sync-autostash"; a human should pop or drop).
+- Local main updated: yes (already at origin/main c5c0be0)
+- Branch after sync: main
+- Stash created: yes ("loop-sync-autostash" — uncommitted progress.txt entries from prior sync step)
+---
+
 ## [2026-05-15 17:38] - US-059
 - Implemented app command alias coverage for `app:start`, `app:stop`, and `app:info` by asserting command-class aliases, OCLIF manifest metadata, and compiled-binary alias/id parity.
 - Files changed: `core/test/cli/aliases.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
@@ -2517,4 +2526,25 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - App command aliases already flow from `topLevelAlias: true` through `resolveTopLevelAliases`; compiled `$bunfs` dispatch separately mirrors both stripped and namespaced ids.
   - `Config.load({ root: coreRoot, ignoreManifest: true })` is the reliable way to assert generated OCLIF manifest metadata without requiring a checked-in manifest file.
+---
+
+## [2026-05-15 18:10 CDT] - US-059 Review
+- What was reviewed: build commit 52cd937 adding `core/test/cli/aliases.test.ts` (99 lines, test-only diff) plus `prd.json` flip to `passes: true`. Verified PRD-MVP-06 US-008 acceptance against actual implementation.
+- Files changed: none (review-only; no fixes required).
+- `/review` findings: the `/review` slash command is not installed in this environment (`Skill(name="review")` returns "command not found"). Performed equivalent manual triage instead, looking for bugs/missing guards/edge cases/behavior changes in the diff.
+  - Manual triage findings:
+    - Fixed: none — no real bugs found.
+    - Considered: stderr/stdout strict equality between `alias` and `app:id` invocations in the compiled-binary test. Risk = flakiness from non-deterministic content. Verified manually: the "No .lando.yml found" error path has no timestamps/PIDs/randomness, byte-for-byte stderr matches across `info` vs `app:info` in /tmp. NOT-A-BUG.
+    - Considered: PRD-06 US-008 wording "(mocking out `bringUp`)" vs. the implementation which uses a no-Landofile temp dir instead of a bringUp mock. The substitute is valid — both alias paths fail identically at the SAME earlier resolution stage, which proves they bind to the same command class and code path (the entire intent of the acceptance criterion). Accept implementation as-is.
+- Verification run and result:
+  - `bun test core/test/cli/aliases.test.ts` → 3 pass (incl. compiled-binary alias parity), 0 fail.
+  - `bun run typecheck` → clean.
+  - `bun run lint` → clean (252 files checked, no fixes).
+  - `bun test` (full workspace) → 230 pass, 9 skip (live integration), 0 fail.
+  - Manual CLI behavior QA on compiled `./core/dist/lando`:
+    - `start --help` and `app:start --help` both list `ALIASES: app:start, start` (same for stop / info).
+    - In an empty temp dir, `info` and `app:info` both exit 1 with byte-identical stdout (empty) and stderr ("No .lando.yml found ...\nRun `lando init --full --name=<name>` to scaffold an app.").
+- **Learnings for future iterations:**
+  - The `/review` slash command is NOT installed in this environment; `Skill(name="review")` errors with "command not found". Future review steps should either (a) install the slash command or (b) explicitly perform manual triage and record it under "`/review` findings". The `review-work` builtin is the closest substitute but it spawns 5 parallel background agents and is too heavy for test-only commits.
+  - Tests that compare compiled-binary stdout/stderr across two invocations should pick an error path with no timestamps/PIDs/random content (Landofile-not-found is a safe choice).
 ---
