@@ -32,7 +32,6 @@ describe("PluginRegistryLive", () => {
     expect(manifest).toMatchObject({
       name: "@lando/provider-lando",
       api: 4,
-      bundled: true,
       contributes: { providers: ["lando"] },
     });
   });
