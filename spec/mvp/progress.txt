@@ -36,6 +36,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - After adding a new `plugins/*` workspace package, run `bun install` to refresh root `node_modules` workspace links before manual package-import QA from the repo root.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
 - Until compiled binaries run the full OCLIF path, any newly working CLI command that must work in `core/dist/lando` needs an explicit handler in `core/src/cli/run.ts`'s compiled `$bunfs` path.
+- App stop/destroy paths that run in a fresh CLI process should pass the planned `AppPlan` through `AppSelector.plan` when calling `RuntimeProvider.destroy({ app, plan }, { volumes: false })`; provider-lando cannot rely on a previous process's in-memory apply cache.
 - OCLIF init-hook tests should use a fixture CLI root and `Config.load({ root, ignoreManifest: true })` so stale `oclif.manifest.json` files do not bypass fixture commands; reset `process.exitCode` after expected OCLIF command failures so Bun exits green when assertions pass.
 - Database service type implementations may extend the MVP `ServiceConfig` schema with typed convenience keys such as `database`/`port`; decode Landofile-shaped tests through `LandofileShape` so those keys are proven to survive config validation.
 - For repo codegen, generate `core/oclif.manifest.json` programmatically with `Config.load({ root: CORE_ROOT, ignoreManifest: true })` instead of shelling to `bunx oclif manifest`; the CLI path can hit Bun's node_modules TypeScript stripping limitation through workspace symlinks.
@@ -2343,4 +2344,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as e8cd18a on main
 - Local main / branch refreshed: yes (reset --hard origin/main at e8cd18a; local story branch already absent after switch; remote tracking ref pruned)
 - Remaining local state: none
+---
+
+## [2026-05-15 14:05 UTC] - Sync
+- Previous branch: us-053-start-provider-lando
+- Previous PR: #56 https://github.com/AaronFeledy/core4/pull/56
+- Action: caught up after prior merge (PR #56 was already MERGED; local main was already at origin/main; local story branch was absent)
+- Local main updated: yes (already up to date)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-15 10:24 CDT] - US-054
+- Implemented `lando stop` app lifecycle operation with app/service stop events, provider destroy without volume deletion, source OCLIF rendering, and compiled `$bunfs` stop routing.
+- Files changed: `core/src/cli/commands/stop.ts`, `core/src/cli/oclif/commands/app/stop.ts`, `core/src/cli/run.ts`, `sdk/src/services/index.ts`, `plugins/provider-lando/src/index.ts`, `core/test/cli/stop.scenario.test.ts`, `spec/mvp/prd.json`, `AGENTS.md`.
+- Verification run and result: `bun test core/test/cli/stop.scenario.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed after formatting; `bun test` passed; `bun run build` passed; manual compiled CLI QA `./core/dist/lando stop` outside an app exited 1 with `LandofileNotFoundError` and init remediation. Live Podman QA was not run because `LANDO_TEST_PODMAN_SOCKET` was not set.
+- **Learnings for future iterations:**
+  - App stop runs in a fresh CLI process, so provider in-memory plan caches are insufficient for teardown; pass the planned `AppPlan` through `AppSelector.plan` for `RuntimeProvider.destroy`.
+  - Compiled CLI command behavior still needs an explicit `$bunfs` branch in `core/src/cli/run.ts` for each command until the binary dispatches all commands through OCLIF.
 ---
