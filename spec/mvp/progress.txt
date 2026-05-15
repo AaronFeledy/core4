@@ -2595,3 +2595,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (fast-forward to 0f8da63; local us-060-mvp-exit-smoke-test deleted; remote branch deleted by --delete-branch)
 - Remaining local state: on main, clean
 ---
+
+## 2026-05-15 - Sync
+- Previous branch: us-061-ci-static-checks
+- Previous PR: none (no PR found for branch at any state)
+- Action: Case E count=0 — branch existed locally at main with no commits ahead and no PR; deleted local story branch. Stashed leftover uncommitted progress.txt changes from prior sync run (stash@{0} on us-061-ci-static-checks).
+- Local main updated: yes (already current, fast-forward confirmed; origin/main = 6d393d8)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — contains leftover uncommitted progress.txt note from prior sync; humans may pop or drop)
+---
+
+## 2026-05-15 18:54 - US-061
+- Implemented the CI static-checks workflow on `ubuntu-22.04` for PRs and pushes to `main` with read-only contents permissions.
+- Files changed: `.github/workflows/ci.yml`, `.bun-version`, `core/test/build/ci-workflow.test.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun test core/test/build/ci-workflow.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
+- **Learnings for future iterations:**
+  - Keep CI workflow tests under `core/test/build/` so root `bun test` discovers them through `bunfig.toml`.
+  - Use `bun-version-file: .bun-version` in GitHub Actions when pinning the Bun setup action for reproducible CI.
+---
