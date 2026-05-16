@@ -2663,6 +2663,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Keep smoke checks before upload-artifact so broken binaries are not uploaded.
 ---
 
+## [2026-05-15 19:47 CDT] - Sync
+- Previous branch: us-062-ci-binary-artifact
+- Previous PR: #65 https://github.com/AaronFeledy/core4/pull/65
+- Action: caught up after prior merge (PR already MERGED, local branch already absent)
+- Local main updated: yes (already at origin/main, fast-forward not needed)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-16 00:47 UTC] - Push (US-062)
 - Branch pushed: us-062-ci-binary-artifact → origin/us-062-ci-binary-artifact
 - Commit: b8bdfa1 feat: CI runs binary build and uploads it as workflow artifact
@@ -2673,4 +2682,13 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 37d8993 on main
 - Local main / branch refreshed: yes (fast-forward to 37d8993; local us-062-ci-binary-artifact deleted by gh pr merge)
 - Remaining local state: on main, clean
+---
+
+## [2026-05-16 01:10 UTC] - US-063
+- Implemented the provider-integration-linux-x64 CI job with Podman installation, private socket startup, provider/scenario integration test runs, teardown, and failure diagnostics artifact upload.
+- Files changed: .github/workflows/ci.yml, core/test/build/ci-workflow.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt.
+- Verification run and result: lsp_diagnostics on core/test/build/ci-workflow.test.ts clean; bun test core/test/build/ci-workflow.test.ts passed; bun run typecheck passed; bun run lint passed; bun test passed.
+- **Learnings for future iterations:**
+  - CI workflow tests currently use string block assertions via findIndentedBlock rather than a YAML parser.
+  - Provider integration CI should reuse the existing live-test environment gate by exporting LANDO_TEST_PODMAN_SOCKET before running provider-lando integration tests.
 ---
