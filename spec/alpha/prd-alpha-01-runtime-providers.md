@@ -12,6 +12,7 @@ Depends on: **—**.
 - [`spec/05-runtime-providers.md`](../05-runtime-providers.md) — RuntimeProvider contract and managed/runtime provider behavior.
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) — `meta:setup`, `meta:doctor`, command behavior.
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) — persisted provider/cache state rules.
+- [`spec/15-binary-build-and-release.md`](../15-binary-build-and-release.md) — `lando setup` install-dir resolution and `shellenv` parity in the compiled binary (§17.1 stage 7).
 
 ## Goals
 
@@ -31,6 +32,7 @@ Depends on: **—**.
 - [ ] Checksum verification follows §5.8.1 and fails closed with a tagged remediation error
 - [ ] Setup stores provider state in the configured cache/state directory, not process memory
 - [ ] Compiled `$bunfs` path and source OCLIF path produce equivalent setup output
+- [ ] `lando setup` and `lando shellenv` derive `LANDO_INSTALL_DIR` from `process.execPath` in the compiled binary per §17.1 stage 7; tests assert agreement between the two commands
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -55,7 +57,7 @@ Depends on: **—**.
 **Acceptance Criteria:**
 - [ ] Schema test asserts every Alpha capability field has a provider-lando value for Linux and macOS
 - [ ] Planner rejects unsupported Alpha features with a tagged error before apply
-- [ ] Capability output is surfaced by `meta:doctor` basic diagnostics
+- [ ] Capability output is surfaced by `meta:doctor` diagnostics: every `ProviderCapabilities` field from §5.4 appears in the selected-provider check, and missing-capability failures include service, feature, capability, provider id, and suggested fix per §5.4
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -67,7 +69,7 @@ Depends on: **—**.
 **Acceptance Criteria:**
 - [ ] Docker Engine HTTP API fake-client tests cover apply, inspect, exec, logs, and destroy
 - [ ] Linux socket and macOS Docker Desktop paths are supported through config/env discovery
-- [ ] Provider declares `bindMountPerformance: "slow"` where appropriate
+- [ ] Provider declares `bindMountPerformance: "slow"` for Docker Desktop or VM-mediated paths and `"native"` for Linux native Docker sockets per §5.4
 - [ ] Live Docker tests are gated by `LANDO_TEST_DOCKER_SOCKET` or `DOCKER_HOST`
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -92,7 +94,7 @@ Depends on: **—**.
 **Acceptance Criteria:**
 - [ ] Fake provider tests cover partial apply failure after network creation and after one service start
 - [ ] Cleanup removes app-scoped containers/networks and preserves volumes by default
-- [ ] Errors include remediation and enough provider IDs for manual cleanup
+- [ ] Errors include remediation plus `providerId`, operation name, redacted details, and original cause fields required by §5.7 so manual cleanup identifies the affected provider operation
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -102,9 +104,9 @@ Depends on: **—**.
 **Description:** As a tester filing bugs, I can run `lando doctor` and include provider/runtime diagnostics.
 
 **Acceptance Criteria:**
-- [ ] `meta:doctor` reports selected provider, version, socket/machine status, capability summary, and common remediation
+- [ ] `meta:doctor` reports selected provider, version, socket/machine status, the §5.4 capability summary, and §10.9 solution records with `automatic` or `manual` remediation
 - [ ] Doctor never requires app bootstrap unless app-specific diagnostics are requested
-- [ ] JSON renderer output is stable enough for tests
+- [ ] JSON renderer output is covered by the named snapshot fixture `meta-doctor.provider-status.ndjson`, asserting event order, provider fields, capability fields, severity, context, and solution records per §10.9
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes

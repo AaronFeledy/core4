@@ -26,7 +26,7 @@ Depends on: **PRD-01, PRD-02**.
 **Description:** As a user, I can define basic tooling commands in `.lando.yml`.
 
 **Acceptance Criteria:**
-- [ ] Landofile parser tests cover `tooling:` tasks with `cmds:`, `service:`, `description:`, and basic `vars:`
+- [ ] Landofile parser tests cover `tooling:` tasks with `cmds:`, `service:`, `description:`, and Alpha `vars:` forms: literal value, `default:`, `sh:`, and `prompt:` per §8.5.3; remote vars and unsafe `raw:` interpolation are deferred
 - [ ] Unsupported Beta-only tooling features fail with remediation, not silent ignore
 - [ ] Parsed tooling contributes to command registry at bootstrap `tooling`
 - [ ] Tests pass
@@ -39,7 +39,7 @@ Depends on: **PRD-01, PRD-02**.
 
 **Acceptance Criteria:**
 - [ ] ToolingEngine unit tests verify command execution delegates to `RuntimeProvider.exec`
-- [ ] Service resolution selects the declared service or a deterministic default
+- [ ] Service resolution selects the declared `service:` value or the primary app service from the planned `ServiceInfo` set per §6.10; tests cover the no-primary error path
 - [ ] Exit code/stdout/stderr are preserved through CLI rendering
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -53,6 +53,7 @@ Depends on: **PRD-01, PRD-02**.
 - [ ] Host engine tests cover success, non-zero exit, cwd, and env propagation
 - [ ] Shell errors map to tagged ShellExecError/remediation patterns from existing services
 - [ ] Host mode is available for `lando shell` in Alpha; service shell remains Beta
+- [ ] Host engine is the runtime for `.bun.sh` script-backed tasks (§8.5.9) and `vars.<name>.sh:` evaluation (§8.5.3); the §8.5.9 realpath-containment rule applies and is regression-tested
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -89,7 +90,7 @@ Depends on: **PRD-01, PRD-02**.
 - [ ] Scenario tests cover `exec` against providerExec with fake provider output
 - [ ] `ssh` behavior is documented as provider-exec TTY command behavior only; SSH sidecar/subsystem work remains deferred
 - [ ] `shell` host mode works; service shell and SSH subsystem/sidecar features return NotImplemented/Beta remediation
-- [ ] Compiled and source CLI paths match for supported commands
+- [ ] Compiled and source CLI paths match for supported commands: identical exit code, stdout, stderr tag/remediation structure, and JSON renderer event fields after normalizing timestamps and temp paths per §8.2 and §17.1 stage 7
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -99,7 +100,7 @@ Depends on: **PRD-01, PRD-02**.
 **Description:** As an app user, most `app:*` commands work except explicitly deferred commands.
 
 **Acceptance Criteria:**
-- [ ] Scenario tests cover app start/stop/restart/rebuild/destroy/info/logs/config/cache basics according to §8.2
+- [ ] Scenario tests cover the §8.2 command subset `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `app:info`, `app:logs`, `app:config`, and `app:cache`
 - [ ] Deferred `app:includes:*` and `app:config:translate` return structured NotImplemented remediation
 - [ ] Compiled `$bunfs` handlers mirror source command behavior until full OCLIF dispatch lands
 - [ ] Tests pass
@@ -114,6 +115,7 @@ Depends on: **PRD-01, PRD-02**.
 - [ ] Scenario tests cover `apps:list`, `apps:poweroff`, `meta:config`, `meta:plugin:add` npm source, `meta:plugin:remove`, `meta:setup`, `meta:doctor`, `meta:bun`, and `meta:x`
 - [ ] `meta:plugin:add` npm source validates manifest/module containment before loading any plugin code
 - [ ] `meta:plugin:add` warns/confirms that plugins run as trusted host code while trust/signing is deferred; non-interactive mode requires an explicit trust/confirm flag
+- [ ] Trust decisions are in-memory for the current install only — no persistent trust store in Alpha; a persistent trust store is deferred to Beta and a test asserts the prompt fires with a fresh `<userConfRoot>` per test invocation
 - [ ] Deferred plugin trust/new/test/build/link/unlink/publish commands return structured remediation
 - [ ] Command aliases follow the top-level alias conflict rules
 - [ ] Tests pass
@@ -137,6 +139,7 @@ Depends on: **PRD-01, PRD-02**.
 
 - Use the spec part referenced by each story as the source of truth when details conflict with this PRD.
 - Prefer fake-client/unit coverage for provider and CLI behavior; live runtime tests must be env-gated.
+- Default runtime provider for tests in this PRD is `TestRuntimeProvider` from `@lando/sdk/test`; live `provider-lando`/`provider-docker` cases must be gated on `LANDO_TEST_PODMAN_SOCKET` / `LANDO_TEST_DOCKER_SOCKET` (or `DOCKER_HOST`).
 - Keep tagged errors and remediation text consistent across source OCLIF and compiled `$bunfs` paths.
 - Avoid broad refactors while implementing a story; each story should be reviewable independently.
 
