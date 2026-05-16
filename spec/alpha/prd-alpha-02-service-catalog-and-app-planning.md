@@ -27,7 +27,7 @@ Depends on: **PRD-01**.
 
 **Acceptance Criteria:**
 - [ ] ServiceType tests cover normalized plans for php versions and framework options
-- [ ] Generated service plans include expected mounts, env, healthcheck intent, and web server integration hints
+- [ ] Generated service plans include app mounts from §6.4, `LANDO_*` env from §6.9, healthcheck intent from §6.7, and framework web server hints from §6.12.2
 - [ ] Unsupported PHP versions fail during planning with remediation
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -51,7 +51,7 @@ Depends on: **PRD-01**.
 
 **Acceptance Criteria:**
 - [ ] ServiceType tests cover django, fastapi, flask, and none framework options
-- [ ] Plans expose predictable default ports and command metadata where the framework implies them
+- [ ] Plans expose default endpoint ports from §6.6 and command metadata from the selected framework preset in §6.12.2
 - [ ] Unsupported framework values fail schema validation
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -64,7 +64,7 @@ Depends on: **PRD-01**.
 **Acceptance Criteria:**
 - [ ] ServiceType tests cover rails and none framework options
 - [ ] Rails default command/port metadata is represented as provider-neutral intent
-- [ ] Planner output remains portable across provider-lando and provider-docker
+- [ ] Planner output uses provider-neutral `ServicePlan` fields from §6.2 and §6.10, with provider-specific fields limited to `providerInfo` or `providers.<id>` extensions per §5.6
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -75,7 +75,8 @@ Depends on: **PRD-01**.
 
 **Acceptance Criteria:**
 - [ ] Each listed service has schema and ServiceType plan tests
-- [ ] Raw Compose passthrough is explicitly marked non-portable/provider-extension where required
+- [ ] Raw Compose passthrough accepts `image:` and Compose `build:` for `type: compose` per §6.12.1; fields without provider-neutral semantics must live under `providers.<id>` and are marked non-portable per §5.6. Tests exercise both `provider-lando` and `provider-docker` codepaths
+- [ ] Compose-declared volumes follow the same destroy-preserves-volumes rule as Lando-managed volumes (per provider-lando lifecycle contract)
 - [ ] Database services declare storage scope defaults and credentials/env contract
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -89,6 +90,20 @@ Depends on: **PRD-01**.
 - [ ] Landofile parser tests cover `mounts:` bind and volume entries plus `excludes:` patterns
 - [ ] Planner maps excludes to volume-shadow behavior only; Mutagen/file sync is not implemented
 - [ ] Storage `scope: global` is rejected until the global app phase
+- [ ] Landofile parser rejects Beta-only sections (`includes:` per §7.7, configuration expressions per §7.3.1, `secrets:` per §4.2 SecretStore + §7.4 top-level key, env overrides per §7.6) with a tagged NotImplemented + Beta remediation; one test per rejected section
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-014b: Extend LandofileService to load `landofile.ts`
+
+**Description:** As an advanced recipe author, I can author a programmatic Landofile (`landofile.ts`) and have `LandofileService` execute it deterministically. Unblocks PRD-04 US-029. (PRD-02 US-014b)
+
+**Acceptance Criteria:**
+- [ ] `LandofileService` loads `landofile.ts` files via Bun's TS loader and returns a parsed Landofile equivalent to the YAML form; YAML and TS forms produce identical `AppPlan` output
+- [ ] Programmatic execution is sandboxed: no remote module fetch, no host shell-out, no filesystem access outside the app root; violations fail with a tagged `LandofileSandboxError` + remediation
+- [ ] Execution timeout is bounded and configurable; default timeout fails with `LandofileTimeoutError`
+- [ ] Schema validation runs on the returned object; failures surface the same `LandofileParseError` shape as the YAML path
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -98,7 +113,7 @@ Depends on: **PRD-01**.
 **Description:** As code running inside services, I can rely on basic app/service/host path environment variables.
 
 **Acceptance Criteria:**
-- [ ] Service plan tests assert app id, service id, and host path env vars for all common service families
+- [ ] Service plan tests assert app id, service id, and §6.9 host path env vars for every §6.12.1 catalog family shipped in Alpha
 - [ ] Provider exec tests verify env reaches command execution
 - [ ] Env var names are documented in the PRD/source docs touched by the implementation
 - [ ] Tests pass
@@ -134,6 +149,7 @@ Depends on: **PRD-01**.
 
 - Use the spec part referenced by each story as the source of truth when details conflict with this PRD.
 - Prefer fake-client/unit coverage for provider and CLI behavior; live runtime tests must be env-gated.
+- Default runtime provider for tests in this PRD is `TestRuntimeProvider` from `@lando/sdk/test`; live `provider-lando`/`provider-docker` cases must be gated on `LANDO_TEST_PODMAN_SOCKET` / `LANDO_TEST_DOCKER_SOCKET` (or `DOCKER_HOST`).
 - Keep tagged errors and remediation text consistent across source OCLIF and compiled `$bunfs` paths.
 - Avoid broad refactors while implementing a story; each story should be reviewable independently.
 
