@@ -52,18 +52,18 @@ Depends on: **PRD-02, PRD-03**.
 **Acceptance Criteria:**
 - [ ] Recipe source tests cover built-in/cwd discovery and reject git, tarball, npm, registry sources with Beta remediation
 - [ ] Recipe resolution is deterministic and does not perform network access
-- [ ] Bundled recipe files are included in the compiled binary artifact
+- [ ] Bundled recipe files are embedded in the compiled binary via `scripts/build-bundled-recipes.ts` → `core/src/recipes/bundled.ts` with no disk read at runtime; codegen drift is caught by the bundled-codegen gate in PRD-07 US-049
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
 
 ### US-028: Ship canonical common-stack recipes
 
-**Description:** As an alpha tester, I can scaffold Drupal, WordPress, Laravel, Node, Django, and Rails apps.
+**Description:** As an alpha tester, I can scaffold the canonical v4.0 recipe set from §8.8.10, including WordPress, Laravel, node-api, Django, FastAPI, and Rails apps.
 
 **Acceptance Criteria:**
-- [ ] Each canonical recipe has a scenario test that runs init, parses generated Landofile, and verifies expected services/tooling
-- [ ] At least six recipes ship with the binary; optional seventh/eighth recipes may be added only if fully tested
+- [ ] Each §8.8.10 canonical recipe has a scenario test that runs init, parses the generated Landofile, and verifies the recipe snapshot names the generated service ids, `type:` entries, and tooling command ids
+- [ ] The binary ships the full §8.8.10 canonical recipe set in Alpha; Drupal and v3-style recipe compatibility shims remain out of scope per §8.8.10
 - [ ] Recipe READMEs document alpha limitations and required host prerequisites
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -103,7 +103,7 @@ Depends on: **PRD-02, PRD-03**.
 **Acceptance Criteria:**
 - [ ] Interactive scenario test covers choosing a recipe and answering prompts through stdin
 - [ ] Non-interactive flags can supply prompt values for CI scenarios
-- [ ] Renderer output works in plain/json/lando modes for init progress
+- [ ] Init progress renderer-mode coverage is owned by PRD-05 US-039
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -137,6 +137,7 @@ Depends on: **PRD-02, PRD-03**.
 
 - Use the spec part referenced by each story as the source of truth when details conflict with this PRD.
 - Prefer fake-client/unit coverage for provider and CLI behavior; live runtime tests must be env-gated.
+- Default runtime provider for tests in this PRD is `TestRuntimeProvider` from `@lando/sdk/test`; live `provider-lando`/`provider-docker` cases must be gated on `LANDO_TEST_PODMAN_SOCKET` / `LANDO_TEST_DOCKER_SOCKET` (or `DOCKER_HOST`).
 - Keep tagged errors and remediation text consistent across source OCLIF and compiled `$bunfs` paths.
 - Avoid broad refactors while implementing a story; each story should be reviewable independently.
 
