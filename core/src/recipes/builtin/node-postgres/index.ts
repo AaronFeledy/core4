@@ -11,7 +11,7 @@ export const landofile = (name: string): string =>
     "      NODE_ENV: development",
     "    volumes:",
     "      - ./:/app",
-    "    command: bun run server.js",
+    "    command: node server.js",
     "    dependsOn:",
     "      - database",
     "  database:",
@@ -25,22 +25,22 @@ export const packageJson = (name: string): string =>
       name,
       type: "module",
       scripts: {
-        start: "bun run server.js",
+        start: "node server.js",
       },
     },
     null,
     2,
   )}\n`;
 
-export const serverJs =
-  `const server = Bun.serve({
-  port: process.env.PORT ?? 3000,
-  fetch() {
-    return new Response("Hello from Lando");
-  },
+export const serverJs = `import { createServer } from "http";
+
+const server = createServer((_req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Hello from Lando\n");
 });
 
-console.log(` +
-  "`Listening on ${server.url}`" +
-  `);
+const port = Number(process.env.PORT ?? 3000);
+server.listen(port, () => {
+  console.log(\`Listening on http://localhost:\${port}\`);
+});
 `;
