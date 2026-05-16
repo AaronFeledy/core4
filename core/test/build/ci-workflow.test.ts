@@ -1,8 +1,10 @@
+import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
+const workflowsDir = resolve(repoRoot, ".github/workflows");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
 
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
@@ -30,6 +32,16 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
+  test("keeps ci.yml as the only active workflow", async () => {
+    const entries = await readdir(workflowsDir, { withFileTypes: true });
+    const activeWorkflowFiles = entries
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort();
+
+    expect(activeWorkflowFiles).toEqual(["ci.yml"]);
+  });
+
   test("runs static checks for pushes and pull requests to main", async () => {
     const workflow = await readWorkflow();
     const triggers = findIndentedBlock(workflow, "on");
