@@ -2800,3 +2800,12 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main fast-forwarded to cd72b41, local story branch deleted)
 - Remaining local state: clean
 ---
+
+## 2026-05-16 01:54 - US-067
+- Implemented a branch-protection documentation assertion for the required GitHub status checks before merging to main.
+- Files changed: `core/test/build/branch-protection.test.ts`, `docs/ci-runbook.md`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: focused red test failed before docs were added; focused `bun test core/test/build/branch-protection.test.ts core/test/build/ci-runbook.test.ts` passed after docs/test fix; full `bun run typecheck`, `bun run lint`, and `bun test` passed.
+- **Learnings for future iterations:**
+  - The CI runbook is the existing discoverable home for CI job reproduction and failure-policy documentation.
+  - Branch-protection policy can be validated from the documented-only path without requiring GitHub admin/API access.
+---

@@ -40,3 +40,7 @@ bun test plugins/provider-docker/test --filter=integration
 ```
 
 On a failed provider integration run, download diagnostics from `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics`.
+
+## Branch protection
+
+The `main` branch must be protected in GitHub with required status checks enabled. The required status checks are `static-checks`, `build-linux-x64`, and `provider-integration-linux-x64`; all three must pass before a pull request can merge to `main`.
