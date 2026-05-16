@@ -2809,3 +2809,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - The CI runbook is the existing discoverable home for CI job reproduction and failure-policy documentation.
   - Branch-protection policy can be validated from the documented-only path without requiring GitHub admin/API access.
 ---
+
+## [2026-05-16 07:09 UTC] - Push
+- Branch pushed: us-067-required-ci-checks → origin
+- Commits: abf826c "feat: require CI checks before main merges"
+- PR: #71 https://github.com/AaronFeledy/core4/pull/71 (created)
+- CI outcome: pass (static-checks ✓, build-linux-x64 ✓, provider-integration-linux-x64 ✓, Cursor Bugbot ✓)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 854442f "feat: require CI checks before main merges (#71)"
+- Local main / branch refreshed: yes (main fast-forwarded to 854442f, local story branch absent after gh --delete-branch)
+- Remaining local state: none; on main, working tree clean
+---
