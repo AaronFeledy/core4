@@ -2713,3 +2713,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - `core/test/build/ci-workflow.test.ts` is the active home for MVP CI workflow policy assertions.
 ---
+
+## [2026-05-16 03:18 UTC] - Push (US-064)
+- Branch pushed: us-064-ci-workflow-source → origin/us-064-ci-workflow-source
+- Commit: 7874808 feat: CI workflow is the only permitted source of truth for CI config
+- PR: #67 https://github.com/AaronFeledy/core4/pull/67 (created)
+- CI outcome: pass — static-checks SUCCESS (52s), build-linux-x64 SUCCESS (42s), provider-integration-linux-x64 SUCCESS (1m59s), Cursor Bugbot SUCCESS (1m34s)
+- Review feedback: none (reviewDecision empty, no comments, no latestReviews)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit c1cd4e6 on main
+- Local main / branch refreshed: yes (fast-forward to c1cd4e6; local us-064-ci-workflow-source already absent after gh pr merge)
+- Remaining local state: on main, clean
+---
