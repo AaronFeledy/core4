@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Integration tests gated on env: LANDO_TEST_PODMAN_SOCKET (Linux x64 only).
 
 ## Codebase Patterns
+- CI failure-debugging expectations live in `docs/ci-runbook.md`; keep diagnostic artifact behavior in `scripts/build-ci-workflow.ts` and regenerate `.github/workflows/ci.yml` via `bun run codegen` rather than editing the workflow directly.
 - App command wrappers that need top-level command ids should set `topLevelAlias: true` in the `LandoCommandSpec` and `static aliases = [...resolveTopLevelAliases(spec)]`; compiled `$bunfs` dispatch must continue accepting both the namespace id (for example `app:start`) and stripped alias (`start`).
 - App lifecycle CLI operations should publish app-level lifecycle events in core, then call `RuntimeProvider.apply(plan, { reconcile, signal })`, inspect each planned service, and render plain-text readiness from the inspected runtime state.
 - Provider package import-boundary tests parse TypeScript source files with the TypeScript compiler API and assert static imports/re-exports avoid `@oclif/*` and `core/src/cli/*`; keep those tests under `plugins/*/test/import-boundary.test.ts`.
@@ -33,7 +34,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bun test discovery is now explicit in root `bunfig.toml` via `[test].include`; keep new test layers under `core/test/**/*.test.ts`, `sdk/test/**/*.test.ts`, or `plugins/*/test/**/*.test.ts` so top-level `bun test` finds them.
 - `@lando/core/testing` exposes `makeTestRuntime()`/`provideTestRuntime()` for Effect-service tests; the returned runtime includes a `layer` plus mutable `calls`/`files` handles for assertions, and provider-level tests can override `RuntimeProvider` with `TestRuntimeProvider` from `@lando/sdk/test`.
 - Bundled plugin codegen reads `core/build.config.ts`, writes `core/src/plugins/bundled.ts`, and should produce Biome-clean output because lint checks generated files.
-- CI workflow codegen runs through `scripts/build-ci-workflow.ts` from `bun run codegen`; it reads `package.json#engines.bun`, `bunfig.toml` test includes, and `BUNDLED_PLUGINS`, then writes `.github/workflows/ci.yml` with the generated-file header.
+- CI workflow codegen runs through `scripts/build-ci-workflow.ts` from `bun run codegen`; it reads `.bun-version`, `bunfig.toml` test includes, and `BUNDLED_PLUGINS`, then writes `.github/workflows/ci.yml` with the generated-file header.
 - Bundled plugin codegen statically imports plugin packages and can expose package contribution maps (for example `serviceTypes`) through `BUNDLED_PLUGINS`; keep generator output idempotent and Biome-clean.
 - After adding a new `plugins/*` workspace package, run `bun install` to refresh root `node_modules` workspace links before manual package-import QA from the repo root.
 - Pre-OCLIF CLI fast paths must avoid static imports/re-exports of the OCLIF runner; ESM evaluates static dependencies before module bodies, so use dynamic imports and `import.meta.main` for executable entry checks.
@@ -2768,4 +2769,23 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 7f2c411 "codegen.ts regenerates the CI workflow (#69)"
 - Local main / branch refreshed: yes (main fast-forwarded to 7f2c411, story branch deleted)
 - Remaining local state: package.json has cosmetic/engines.bun unstaged change (not committed — not required for CI fix); stash@{0} is loop-sync-autostash on the now-deleted branch (no-op, left for human)
+---
+
+## [2026-05-16 05:30 UTC] - Sync
+- Previous branch: us-065-codegen-ci-workflow
+- Previous PR: #69 https://github.com/AaronFeledy/core4/pull/69
+- Action: dispatched leftover push (sub-agent pushed branch + fix, CI passed, PR squash-merged)
+- Local main updated: yes (squash commit 7f2c411)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — dirty working tree with MM ci.yml / staged deletes + sync-conflict file found at start; stash@{0} left for human)
+- Note: Two sub-agent timeouts occurred during push/triage; work completed successfully despite timeouts (sub-agents pushed fix commit da810ee, CI passed, merged at 05:25:40Z)
+---
+## [2026-05-16 00:33 CDT] - US-066
+- Implemented CI debuggability runbook coverage, README/PR-template links, always-on workflow artifact uploads with missing-file tolerance, and provider journal diagnostics capture.
+- Files changed: `.github/workflows/ci.yml`, `.github/pull_request_template.md`, `README.md`, `docs/ci-runbook.md`, `core/test/build/ci-runbook.test.ts`, `core/test/build/ci-workflow.test.ts`, `scripts/build-ci-workflow.ts`, `spec/mvp/prd.json`, `spec/mvp/progress.txt`.
+- Verification run and result: `bun run codegen` passed; focused CI tests passed; `lsp_diagnostics` clean on modified TypeScript files; `bun run typecheck` passed; `bun run lint` passed after formatting fix; `bun test` passed.
+- **Learnings for future iterations:**
+  - CI workflow changes must be made in `scripts/build-ci-workflow.ts` and regenerated with `bun run codegen`.
+  - Runbook references are intentionally lightweight: README plus a one-line PR-template link.
+  - Diagnostic artifact uploads should use `if: always()` with `if-no-files-found: ignore` so failure paths do not hide the original failure.
 ---

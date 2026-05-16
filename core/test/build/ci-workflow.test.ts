@@ -82,8 +82,10 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          ./dist/lando --version");
     expect(buildLinux).toContain("          ./dist/lando --help");
     expect(buildLinux).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
     expect(buildLinux).toContain("          path: dist/lando");
+    expect(buildLinux).toContain("          if-no-files-found: ignore");
     expect(buildLinux).toContain("          retention-days: 7");
 
     expect(buildLinux.indexOf("./dist/lando --help")).toBeLessThan(
@@ -138,9 +140,13 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("      - name: Collect provider diagnostics");
     expect(providerIntegration).toContain("        if: failure()");
+    expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
+    expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("        uses: actions/upload-artifact@v4");
     expect(providerIntegration).toContain("          name: provider-integration-diagnostics");
+    expect(providerIntegration).toContain("          if-no-files-found: ignore");
+    expect(providerIntegration).not.toContain("--silent");
 
     expect(providerIntegration.indexOf("Teardown Podman")).toBeGreaterThan(
       providerIntegration.indexOf("bun test plugins/provider-docker/test"),

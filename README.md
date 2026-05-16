@@ -53,6 +53,8 @@ bun run format
 bun test
 ```
 
+CI failures can be reproduced locally with the [CI runbook](./docs/ci-runbook.md).
+
 ## Status
 
 This is **scaffolding-only**. Service tags and interfaces exist but are not

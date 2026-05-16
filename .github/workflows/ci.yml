@@ -71,10 +71,12 @@ jobs:
           ./dist/lando --help
 
       - name: Upload Linux x64 binary
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lando-linux-x64
           path: dist/lando
+          if-no-files-found: ignore
           retention-days: 7
 
   provider-integration-linux-x64:
@@ -153,15 +155,17 @@ jobs:
           mkdir -p provider-diagnostics/test-logs
           cp /tmp/podman-service.log provider-diagnostics/podman-service.log || true
           cp dist/lando provider-diagnostics/lando || true
+          journalctl --no-pager --since "-30 minutes" > provider-diagnostics/journalctl.log 2>&1 || true
           for log in /tmp/lando-provider-test-logs/*.log; do
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
           done
 
       - name: Upload provider integration diagnostics
-        if: failure()
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: provider-integration-diagnostics
           path: provider-diagnostics
+          if-no-files-found: ignore
           retention-days: 7
