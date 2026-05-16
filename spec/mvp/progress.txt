@@ -2757,3 +2757,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Re-ran `bun run codegen`; all three jobs in the regenerated `.github/workflows/ci.yml` now use `bun-version-file: .bun-version`.
 - Local checks: `bun run typecheck` ✓, `bun run lint` ✓, `bun test --filter='!*.integration.test.ts'` ✓ (239 pass, 10 skip, 0 fail).
 ---
+
+## [2026-05-16 00:24 CDT] - Push
+- Branch pushed: us-065-codegen-ci-workflow → origin (1 story commit + 1 fix commit)
+- Commits: 8aee7c4 "feat: scripts/codegen.ts regenerates the CI workflow", da810ee "fix: codegen emits bun-version-file to match .bun-version, not engines.bun"
+- PR: #69 https://github.com/AaronFeledy/core4/pull/69 (created)
+- CI outcome: initial run FAIL (static-checks: typecheck failed — workspace symlinks missing with Bun 1.3.0); after fix commit re-run PASS (static-checks ✓, build-linux-x64 ✓, provider-integration-linux-x64 ✓, Cursor Bugbot ✓)
+- Review feedback: none
+- Triage rounds used: 1 (switched codegen from package.json#engines.bun to bun-version-file: .bun-version; updated tests)
+- Merge: merged (squash) — squash commit 7f2c411 "codegen.ts regenerates the CI workflow (#69)"
+- Local main / branch refreshed: yes (main fast-forwarded to 7f2c411, story branch deleted)
+- Remaining local state: package.json has cosmetic/engines.bun unstaged change (not committed — not required for CI fix); stash@{0} is loop-sync-autostash on the now-deleted branch (no-op, left for human)
+---
