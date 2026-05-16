@@ -2613,3 +2613,34 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Keep CI workflow tests under `core/test/build/` so root `bun test` discovers them through `bunfig.toml`.
   - Use `bun-version-file: .bun-version` in GitHub Actions when pinning the Bun setup action for reproducible CI.
 ---
+
+## [2026-05-16 00:15 UTC] - Push (PR #64 triage round 1)
+- Branch pushed: us-061-ci-static-checks → origin/us-061-ci-static-checks
+- PR: #64 https://github.com/AaronFeledy/core4/pull/64 (created)
+- CI outcome: FAIL — static-checks: TypeScript reported module-not-found for all workspace packages (@lando/logger-pretty, @lando/provider-docker, @lando/provider-lando, @lando/service-lando). Root cause: `.bun-version` was set to 1.3.0 but the repo uses Bun 1.2.18; bun install --frozen-lockfile under 1.3.0 did not create workspace symlinks, causing tsc to fail.
+- Review feedback: Cursor Bugbot NEUTRAL/COMMENTED (1 flagged issue, no details visible; reviewDecision empty — not blocking).
+- Triage decisions:
+  - REAL BUG: .bun-version 1.3.0 → fixed by changing to 1.2.18 (matches AGENTS.md documented version).
+  - The registry.ts exactOptionalPropertyTypes errors were secondary effects of missing workspace types; no separate fix needed.
+  - Cursor Bugbot: reviewDecision empty, status NEUTRAL — no action required.
+- Fix commit: 2afb782 fix: pin .bun-version to 1.2.18 to match repo toolchain
+- Local checks after fix: typecheck ✓, lint ✓, test 232 pass / 10 skip / 0 fail ✓
+- Triage rounds used: 1 of 3
+- Merge: deferred — awaiting CI round 2
+---
+
+## [2026-05-16 00:35 UTC] - Push (final outcome for US-061)
+- Branch pushed: us-061-ci-static-checks → origin/us-061-ci-static-checks (2 commits: 7b3d37a feat: .github/workflows/ci.yml exists and gates static-checks pipeline, 2afb782 fix: pin .bun-version to 1.2.18 to match repo toolchain)
+- PR: #64 https://github.com/AaronFeledy/core4/pull/64 (created and merged)
+- CI round 1: FAIL — static-checks: workspace packages not found because .bun-version pinned to 1.3.0 while repo uses 1.2.18; Bun 1.3.0 + frozen-lockfile did not create workspace symlinks → tsc module-not-found for all @lando/* workspace imports.
+- CI round 2: PASS — static-checks SUCCESS, Cursor Bugbot NEUTRAL — after fixing .bun-version to 1.2.18.
+- Review feedback: Cursor Bugbot NEUTRAL (reviewDecision empty), no CHANGES_REQUESTED — no action required.
+- Triage decisions:
+  - REAL BUG: .bun-version 1.3.0 → fixed by downgrading to 1.2.18 (matches AGENTS.md documented toolchain).
+  - Secondary tsc errors in registry.ts were effects of missing workspace types; no separate fix.
+  - Cursor Bugbot: reviewDecision empty, NEUTRAL — not blocking.
+- Triage rounds used: 1 of 3
+- Merge: merged (squash) as 02ac483 "Add CI workflow with static-checks pipeline (#64)"
+- Local main / branch refreshed: yes (fast-forward to 02ac483; local us-061-ci-static-checks to be deleted)
+- Remaining local state: on main, triage note committed
+---
