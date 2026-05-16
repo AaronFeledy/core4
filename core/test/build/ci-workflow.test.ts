@@ -94,6 +94,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
+    expect(providerIntegration).toContain(
+      '          echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"',
+    );
     expect(providerIntegration).toContain("          bun test core/test/scenario");
     expect(providerIntegration).toContain(
       "          bun test plugins/provider-lando/test --filter=integration",
