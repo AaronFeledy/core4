@@ -57,6 +57,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Bun resolves `@lando/sdk` workspace self-imports for tests inside `sdk/test/`. Use the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, etc.) in SDK tests so the test exercises the same import surface plugin authors use.
 - Compiled CLI fast paths must not use `Bun.file(new URL(...package.json, import.meta.url))` for package metadata; compiled binaries resolve that through Bun's virtual filesystem. Statically import `core/package.json` instead, and include it in `core/tsconfig.json`.
 - Avoid `--minify` on the MVP compiled OCLIF binary; Bun 1.2.18 can produce a compiled artifact that throws during the dynamic OCLIF import.
+- Root CI binary artifacts should copy `core/dist/lando` to `dist/lando` after `bun run build`; `@lando/core` owns the compiled output path, while workflow artifacts use the repo-root `dist/` path.
 - `tsc -b` (root `bun run typecheck`) only walks projects listed in `tsconfig.json#references`. Tests live outside those project roots, so they are not type-checked by `bun run typecheck`. Bun runs them directly. Treat a passing `bun test` plus a passing `bun run typecheck` as the test/typecheck gate; do not assume tests are TS-strict-checked.
 - The SDK schema module (`sdk/src/schema/index.ts`) uses `// ====` section banners with a one-line description and a `SPEC:` reference. Keep this style when adding new schema sections so the public-API contract surface stays self-documenting.
 - When relocating a contract from core to `@lando/sdk`, leave a `export { X } from "@lando/sdk/..."` re-export at the original core path so internal call sites keep working without churn. Add a short module docstring noting where the canonical home now lives.
@@ -2643,4 +2644,21 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - Merge: merged (squash) as 02ac483 "Add CI workflow with static-checks pipeline (#64)"
 - Local main / branch refreshed: yes (fast-forward to 02ac483; local us-061-ci-static-checks to be deleted)
 - Remaining local state: on main, triage note committed
+---
+
+## [2026-05-15 19:28 CDT] - Sync
+- Previous branch: us-061-ci-static-checks
+- Previous PR: #64 https://github.com/AaronFeledy/core4/pull/64
+- Action: caught up after prior merge (PR was already MERGED; main already at 662dae8)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-15 19:33 CDT] - US-062
+- Implemented CI binary artifact job after static checks, including build, artifact-path preparation, binary smoke checks, and upload-artifact retention.
+- Files changed: .github/workflows/ci.yml, core/test/build/ci-workflow.test.ts, spec/mvp/prd.json, spec/mvp/progress.txt
+- Verification run and result: focused CI workflow test passed; bun run typecheck passed; bun run lint passed; bun test passed; bun run build passed; manual binary smoke path passed with ./dist/lando --version and ./dist/lando --help.
+- **Learnings for future iterations:**
+  - Root workflow artifact path is dist/lando, but the core package build emits core/dist/lando; copy it into the root artifact path before smoke/upload.
+  - Keep smoke checks before upload-artifact so broken binaries are not uploaded.
 ---
