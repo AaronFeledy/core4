@@ -58,13 +58,19 @@ describe("ci workflow codegen", () => {
     expect(await readFile(workflowPath, "utf8")).toBe(firstWorkflow);
   });
 
-  test("uses package.json engines.bun as the only Bun-version source", async () => {
+  test("uses .bun-version file as the Bun version source, not package.json engines.bun", async () => {
     await runCodegen();
 
-    const originalPackageJson = await readFile(packageJsonPath, "utf8");
-    const originalWorkflow = await readFile(workflowPath, "utf8");
-    const packageJson = JSON.parse(originalPackageJson) as { engines: { bun: string } };
+    const workflow = await readFile(workflowPath, "utf8");
 
+    // All three jobs must reference the .bun-version file, not a hardcoded version string
+    const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
+    expect(versionFileMatches).toBe(3);
+    expect(workflow).not.toContain("bun-version: ");
+
+    // Mutating package.json engines.bun must NOT change the generated workflow
+    const originalPackageJson = await readFile(packageJsonPath, "utf8");
+    const packageJson = JSON.parse(originalPackageJson) as { engines: { bun: string } };
     packageJson.engines.bun = ">=9.8.7";
 
     try {
@@ -72,11 +78,7 @@ describe("ci workflow codegen", () => {
       await runCodegen();
 
       const updatedWorkflow = await readFile(workflowPath, "utf8");
-      expect(changedLines(originalWorkflow, updatedWorkflow)).toEqual([
-        { before: "          bun-version: 1.3.0", after: "          bun-version: 9.8.7" },
-        { before: "          bun-version: 1.3.0", after: "          bun-version: 9.8.7" },
-        { before: "          bun-version: 1.3.0", after: "          bun-version: 9.8.7" },
-      ]);
+      expect(changedLines(workflow, updatedWorkflow)).toEqual([]);
     } finally {
       await writeFile(packageJsonPath, originalPackageJson);
       await runCodegen();

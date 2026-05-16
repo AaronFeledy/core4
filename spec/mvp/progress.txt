@@ -2736,3 +2736,24 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - `scripts/build-ci-workflow.ts` should keep consuming repo source-of-truth files rather than duplicating CI-owned lists by hand.
   - `oven-sh/setup-bun@v2` supports direct `bun-version`, which lets workflow diffs reflect only the package engine version string.
 ---
+
+---
+## PR #69 Triage — 2026-05-16
+
+### CI Failures on us-065-codegen-ci-workflow
+
+**Root cause:** `scripts/build-ci-workflow.ts` read `package.json#engines.bun` (`>=1.3.0`), stripped the range prefix, and emitted `bun-version: 1.3.0` in the generated CI workflow. The lockfile was generated with Bun 1.2.18 (as declared in `.bun-version`). With Bun 1.3.0 in CI, `bun install --frozen-lockfile` failed to create workspace symlinks for `@lando/*` packages, causing four "Cannot find module" TypeScript errors in `bundled.ts` and `registry.ts`.
+
+**Triage decisions:**
+- `Cannot find module '@lando/logger-pretty|provider-docker|provider-lando|service-lando'` — **REAL ISSUE** (workspace symlinks missing). Fixed by switching to `bun-version-file`.
+- `registry.ts(182,5)` and `(183,19)` Effect type errors — **NOT INDEPENDENT** (cascaded from missing `@lando/provider-lando` types). Resolved automatically by the same fix.
+- No review comments on the PR.
+
+**Fix applied:**
+- `scripts/build-ci-workflow.ts`: removed `PackageJson` interface, `readBunVersion()`, and `bunVersion` from `CiWorkflowInput`; replaced `bun-version: ${input.bunVersion}` (3 occurrences) with `bun-version-file: .bun-version` in the rendered YAML.
+- `core/test/scripts/codegen-ci.test.ts`: replaced "uses package.json engines.bun as the only Bun-version source" test with "uses .bun-version file as the Bun version source" — verifies 3×`bun-version-file: .bun-version` and that mutating `package.json#engines.bun` produces no workflow diff.
+- `core/test/build/ci-workflow.test.ts`: updated the assertion from `bun-version: 1.3.0` to `bun-version-file: .bun-version`.
+- `AGENTS.md`: updated codegen bullet to reference `.bun-version` file and note the `package.json#engines.bun` pitfall.
+- Re-ran `bun run codegen`; all three jobs in the regenerated `.github/workflows/ci.yml` now use `bun-version-file: .bun-version`.
+- Local checks: `bun run typecheck` ✓, `bun run lint` ✓, `bun test --filter='!*.integration.test.ts'` ✓ (239 pass, 10 skip, 0 fail).
+---
