@@ -2789,3 +2789,14 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Runbook references are intentionally lightweight: README plus a one-line PR-template link.
   - Diagnostic artifact uploads should use `if: always()` with `if-no-files-found: ignore` so failure paths do not hide the original failure.
 ---
+
+## [2026-05-16 05:48 UTC] - Push
+- Branch pushed: us-066-ci-debuggability → origin (1 story commit: 0a9d875 "feat: CI failure modes are debuggable (logs + artifacts on failure)")
+- PR: #70 https://github.com/AaronFeledy/core4/pull/70 (created)
+- CI outcome: pass (static-checks ✓, build-linux-x64 ✓, provider-integration-linux-x64 ✓, Cursor Bugbot ✓)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit cd72b41 "feat: CI failure modes are debuggable (logs + artifacts on failure) (#70)"
+- Local main / branch refreshed: yes (main fast-forwarded to cd72b41, local story branch deleted)
+- Remaining local state: clean
+---
