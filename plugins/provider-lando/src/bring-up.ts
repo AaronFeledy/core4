@@ -149,12 +149,24 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
     });
   }
 
+  // Normalize command to array; Podman container create requires Cmd as an array of strings.
+  const normalizeCmd = (cmd: typeof service.command): Array<string> | undefined => {
+    if (cmd === undefined) return undefined;
+    if (Array.isArray(cmd)) return cmd as Array<string>;
+    return (cmd as string).split(/\s+/).filter((s) => s.length > 0);
+  };
+
   return {
     Image: service.artifact.ref,
     name,
     Env: serviceEnv(service),
-    Cmd: service.command,
-    Entrypoint: service.entrypoint,
+    Cmd: normalizeCmd(service.command),
+    Entrypoint:
+      service.entrypoint === undefined
+        ? undefined
+        : Array.isArray(service.entrypoint)
+          ? service.entrypoint
+          : [service.entrypoint],
     WorkingDir: service.workingDirectory,
     Labels: {
       "dev.lando.app": plan.id,
