@@ -10,7 +10,8 @@ Depends on: **PRD-03, PRD-04**.
 ## Source References
 
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) — §8.9 renderer/message/task tree contracts.
-- [`spec/11-subsystems.md`](../11-subsystems.md) — subsystems and diagnostics interactions.
+- [`spec/03-architecture.md`](../03-architecture.md) — §3.5 lifecycle event payloads consumed by the renderer and §11.2 redaction shape for host-proxy events.
+- [`spec/11-subsystems.md`](../11-subsystems.md) — §10.9 logs/diagnostics surface and §10.10 host-proxy behavior.
 - [`spec/14-appendices.md`](../14-appendices.md) — non-goals/open decisions that remediation should name accurately.
 
 ## Goals
@@ -39,8 +40,9 @@ Depends on: **PRD-03, PRD-04**.
 
 **Acceptance Criteria:**
 - [ ] Renderer tests cover `task.tree.start`, `task.start`, `task.complete`, and `task.fail` events
-- [ ] Concurrent task ordering is deterministic enough for JSON snapshot tests
+- [ ] Concurrent task ordering is covered by the named snapshot fixture `renderer.task-tree.concurrent.ndjson`, asserting `task.tree.start`, child `task.start`, `task.detail`, terminal event, and `task.tree.complete` order per §8.9.2
 - [ ] Plain renderer remains readable in non-TTY CI logs
+- [ ] Renderer subscriber stream is materialized before the first event publish per the EventService no-replay contract; cold-start regression test asserts no events are dropped between bootstrap and the first `task.tree.start`
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -62,7 +64,7 @@ Depends on: **PRD-03, PRD-04**.
 **Description:** As a user, the lando renderer paints a useful first banner before long-running work.
 
 **Acceptance Criteria:**
-- [ ] TTY fixture test covers basic `paint.banner` behavior
+- [ ] TTY fixture test covers `paint.banner` first-paint behavior from §8.9.1: a single-line pre-bootstrap banner on stdout, emitted before plugin import, within the 50 ms cold first-byte budget, and handed off once to the Renderer Layer
 - [ ] Full first-paint contract and expand/collapse remain marked RC/deferred
 - [ ] Non-TTY output avoids control sequences
 - [ ] Tests pass
@@ -74,8 +76,9 @@ Depends on: **PRD-03, PRD-04**.
 **Description:** As a user hitting a Beta/RC command, I see when and why it is unavailable.
 
 **Acceptance Criteria:**
+- [ ] Fixture lists every deferred command surface for Alpha: `apps:scratch:*`, `meta:global:*`, `app:includes:*`, `app:config:translate`, `meta:plugin:trust*`, and `meta:plugin:{new,test,build,link,unlink,publish}`. A snapshot test asserts each command returns a tagged NotImplementedError with phase-specific remediation
 - [ ] Tests assert every not-yet-shipped command returns NotImplementedError with target phase remediation
-- [ ] Remediation text matches roadmap phase names and does not mention internal stack traces
+- [ ] Remediation text uses the roadmap phase names from `spec/ROADMAP.md` Phase 2 and §14 open-decision labels, and does not include stack traces or source file paths
 - [ ] Compiled `$bunfs` fallback mirrors source OCLIF guard behavior
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -101,6 +104,7 @@ Depends on: **PRD-03, PRD-04**.
 - [ ] Scenario tests assert setup/start/init emit task events for provider setup, service apply, recipe rendering, and postInit
 - [ ] Provider fake clients can inject progress events without coupling to provider internals
 - [ ] Plain renderer snapshots remain stable
+- [ ] Init progress (recipe rendering + postInit) renders correctly in plain/json/lando renderer modes; snapshot tests cover all three modes
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -134,6 +138,7 @@ Depends on: **PRD-03, PRD-04**.
 
 - Use the spec part referenced by each story as the source of truth when details conflict with this PRD.
 - Prefer fake-client/unit coverage for provider and CLI behavior; live runtime tests must be env-gated.
+- Default runtime provider for tests in this PRD is `TestRuntimeProvider` from `@lando/sdk/test`; live `provider-lando`/`provider-docker` cases must be gated on `LANDO_TEST_PODMAN_SOCKET` / `LANDO_TEST_DOCKER_SOCKET` (or `DOCKER_HOST`).
 - Keep tagged errors and remediation text consistent across source OCLIF and compiled `$bunfs` paths.
 - Avoid broad refactors while implementing a story; each story should be reviewable independently.
 

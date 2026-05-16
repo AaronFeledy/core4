@@ -40,7 +40,7 @@ Depends on: **PRD-01, PRD-02, PRD-03**.
 **Acceptance Criteria:**
 - [ ] Plan cache tests cover key derivation from Landofile/config/plugin/service inputs
 - [ ] Changing relevant input invalidates the cached plan
-- [ ] Cache writes use true write-temp-then-rename semantics per §12; if Bun cannot provide that directly, implementation must use an approved rename adapter or record an explicit architecture decision before this story is accepted
+- [ ] Cache writes use `CacheService.writeAtomic` true atomic rename semantics (write-temp-then-rename) per §12; the rename adapter lives outside `FileSystem` and uses `node:fs/promises.rename` because Bun 1.2.18 has no atomic rename primitive on `Bun.file`; regression test asserts the temp file is renamed (not copied) into place
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -93,14 +93,15 @@ Depends on: **PRD-01, PRD-02, PRD-03**.
 - [ ] Typecheck passes
 - [ ] Lint passes
 
-### US-047: Expose `@lando/core/cli` command invocation API
+### US-047: Expose `@lando/core/cli/operations` command invocation API
 
-**Description:** As an embedding host, I can invoke CLI commands programmatically for the Alpha-supported surface.
+**Description:** As an embedding host, I can invoke CLI commands programmatically for the Alpha-supported surface through the Effect-bearing operations subpath.
 
 **Acceptance Criteria:**
-- [ ] Library API test invokes a supported command through `@lando/core/cli` without spawning a process
+- [ ] Library API test invokes a supported command through `@lando/core/cli/operations` (the Effect-bearing host API) without spawning a process
 - [ ] Errors/renderer output are returned in a host-consumable shape
 - [ ] API is documented as unstable and not semver-stable until later phase
+- [ ] Fast-path canary `core/test/cli/fast-path.test.ts` still passes — the static-import boundary in `core/src/cli/index.ts` is preserved
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -134,6 +135,7 @@ Depends on: **PRD-01, PRD-02, PRD-03**.
 
 - Use the spec part referenced by each story as the source of truth when details conflict with this PRD.
 - Prefer fake-client/unit coverage for provider and CLI behavior; live runtime tests must be env-gated.
+- Default runtime provider for tests in this PRD is `TestRuntimeProvider` from `@lando/sdk/test`; live `provider-lando`/`provider-docker` cases must be gated on `LANDO_TEST_PODMAN_SOCKET` / `LANDO_TEST_DOCKER_SOCKET` (or `DOCKER_HOST`).
 - Keep tagged errors and remediation text consistent across source OCLIF and compiled `$bunfs` paths.
 - Avoid broad refactors while implementing a story; each story should be reviewable independently.
 
