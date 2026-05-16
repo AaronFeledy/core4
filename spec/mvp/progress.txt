@@ -2662,3 +2662,15 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - Root workflow artifact path is dist/lando, but the core package build emits core/dist/lando; copy it into the root artifact path before smoke/upload.
   - Keep smoke checks before upload-artifact so broken binaries are not uploaded.
 ---
+
+## [2026-05-16 00:47 UTC] - Push (US-062)
+- Branch pushed: us-062-ci-binary-artifact → origin/us-062-ci-binary-artifact
+- Commit: b8bdfa1 feat: CI runs binary build and uploads it as workflow artifact
+- PR: #65 https://github.com/AaronFeledy/core4/pull/65 (created)
+- CI outcome: pass — static-checks SUCCESS (54s), build-linux-x64 SUCCESS (36s), Cursor Bugbot SUCCESS (3m54s)
+- Review feedback: none (reviewDecision empty, no comments, no latestReviews)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 37d8993 on main
+- Local main / branch refreshed: yes (fast-forward to 37d8993; local us-062-ci-binary-artifact deleted by gh pr merge)
+- Remaining local state: on main, clean
+---
