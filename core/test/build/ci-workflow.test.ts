@@ -108,7 +108,9 @@ describe("ci workflow", () => {
       "          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts",
     );
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
+    expect(providerIntegration).toContain("          podman pull node:lts");
     expect(providerIntegration).toContain("          podman pull node:22-alpine");
+    expect(providerIntegration).toContain("          podman pull postgres:16");
     expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
     expect(providerIntegration).toContain("      - name: Teardown Podman");
     expect(providerIntegration).toContain("        if: always()");

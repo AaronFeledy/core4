@@ -107,7 +107,9 @@ jobs:
 
       - name: Pre-pull container images
         run: |
+          podman pull node:lts
           podman pull node:22-alpine
+          podman pull postgres:16
           podman pull postgres:16-alpine
 
       - name: Run provider integration tests
