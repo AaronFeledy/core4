@@ -31,3 +31,38 @@ jobs:
 
       - name: Test
         run: bun test --filter='!*.integration.test.ts'
+
+  build-linux-x64:
+    needs: [static-checks]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build binary
+        run: bun run build
+
+      - name: Prepare artifact path
+        run: |
+          mkdir -p dist
+          cp core/dist/lando dist/lando
+
+      - name: Smoke test binary
+        run: |
+          test -f dist/lando
+          ./dist/lando --version
+          ./dist/lando --help
+
+      - name: Upload Linux x64 binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist/lando
+          retention-days: 7

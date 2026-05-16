@@ -57,4 +57,25 @@ describe("ci workflow", () => {
     expect(workflow).not.toContain("secrets.");
     expect(workflow).not.toContain("contents: write");
   });
+
+  test("builds and uploads the Linux x64 binary after static checks", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const buildLinux = findIndentedBlock(jobs, "build-linux-x64", 2);
+
+    expect(buildLinux).toContain("    needs: [static-checks]");
+    expect(buildLinux).toContain("    runs-on: ubuntu-22.04");
+    expect(buildLinux).toContain("        run: bun run build");
+    expect(buildLinux).toContain("          test -f dist/lando");
+    expect(buildLinux).toContain("          ./dist/lando --version");
+    expect(buildLinux).toContain("          ./dist/lando --help");
+    expect(buildLinux).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildLinux).toContain("          name: lando-linux-x64");
+    expect(buildLinux).toContain("          path: dist/lando");
+    expect(buildLinux).toContain("          retention-days: 7");
+
+    expect(buildLinux.indexOf("./dist/lando --help")).toBeLessThan(
+      buildLinux.indexOf("uses: actions/upload-artifact@v4"),
+    );
+  });
 });
