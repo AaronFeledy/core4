@@ -66,7 +66,8 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
       expect(codegen.exitCode, "bun run codegen exit code").toBe(0);
 
       const build = await runCommand([process.execPath, "run", "build"], repoRoot, 180_000);
-      expectSuccess("bun run build", build);
+      // bun workspace scripts echo the command to stderr; only assert exit code
+      expect(build.exitCode, "bun run build exit code").toBe(0);
 
       const init = await runCommand([binaryPath, "init", "--full", "--name=mvp-exit"], dir);
       expectSuccess("lando init", init);
