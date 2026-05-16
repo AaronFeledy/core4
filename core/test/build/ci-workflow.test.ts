@@ -1,0 +1,60 @@
+import { resolve } from "node:path";
+
+import { describe, expect, test } from "bun:test";
+
+const repoRoot = resolve(import.meta.dirname, "../../..");
+const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
+
+const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
+
+const findIndentedBlock = (source: string, key: string, indent = 0): string => {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => line === `${" ".repeat(indent)}${key}:`);
+  expect(start).toBeGreaterThanOrEqual(0);
+
+  const childIndent = indent + 2;
+  const block: Array<string> = [];
+
+  for (const line of lines.slice(start + 1)) {
+    if (line.trim() === "") {
+      block.push(line);
+      continue;
+    }
+
+    const lineIndent = line.length - line.trimStart().length;
+    if (lineIndent < childIndent) break;
+    block.push(line);
+  }
+
+  return block.join("\n");
+};
+
+describe("ci workflow", () => {
+  test("runs static checks for pushes and pull requests to main", async () => {
+    const workflow = await readWorkflow();
+    const triggers = findIndentedBlock(workflow, "on");
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const staticChecks = findIndentedBlock(jobs, "static-checks", 2);
+
+    expect(triggers).toContain("  pull_request:");
+    expect(triggers).toContain("    branches: [main]");
+    expect(triggers).toContain("  push:");
+    expect(staticChecks).toContain("    runs-on: ubuntu-22.04");
+    expect(staticChecks).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(staticChecks).toContain("          bun-version-file: .bun-version");
+    expect(staticChecks).toContain("        run: bun install --frozen-lockfile");
+    expect(staticChecks).toContain("        run: bun run typecheck");
+    expect(staticChecks).toContain("        run: bun run lint");
+    expect(staticChecks).toContain("        run: bun test --filter='!*.integration.test.ts'");
+  });
+
+  test("uses minimal read-only permissions for fork-safe pull requests", async () => {
+    const workflow = await readWorkflow();
+    const permissions = findIndentedBlock(workflow, "permissions");
+
+    expect(permissions).toContain("  contents: read");
+    expect(workflow).not.toContain("pull_request_target");
+    expect(workflow).not.toContain("secrets.");
+    expect(workflow).not.toContain("contents: write");
+  });
+});
