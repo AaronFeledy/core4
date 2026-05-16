@@ -11,7 +11,7 @@ export const landofile = (name: string): string =>
     "      NODE_ENV: development",
     "    volumes:",
     "      - ./:/app",
-    "    command: node server.js",
+    "    command: node /app/server.js",
     "    dependsOn:",
     "      - database",
     "  database:",
@@ -23,7 +23,6 @@ export const packageJson = (name: string): string =>
   `${JSON.stringify(
     {
       name,
-      type: "module",
       scripts: {
         start: "node server.js",
       },
@@ -32,15 +31,16 @@ export const packageJson = (name: string): string =>
     2,
   )}\n`;
 
-export const serverJs = `import { createServer } from "http";
+export const serverJs = `"use strict";
+const http = require("http");
 
-const server = createServer((_req, res) => {
+const server = http.createServer(function (_req, res) {
   res.writeHead(200, { "Content-Type": "text/plain" });
-  res.end("Hello from Lando\n");
+  res.end("Hello from Lando\\n");
 });
 
-const port = Number(process.env.PORT ?? 3000);
-server.listen(port, () => {
-  console.log(\`Listening on http://localhost:\${port}\`);
+const port = Number(process.env.PORT || 3000);
+server.listen(port, function () {
+  console.log("Listening on port " + port);
 });
 `;
