@@ -39,8 +39,11 @@
       "name": "@lando/logger-pretty",
       "version": "0.0.0",
       "dependencies": {
-        "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
+      },
+      "peerDependencies": {
+        "@lando/core": "workspace:*",
+        "@lando/sdk": "workspace:*",
       },
     },
     "plugins/provider-docker": {
@@ -82,8 +85,11 @@
       "name": "@lando/service-lando",
       "version": "0.0.0",
       "dependencies": {
-        "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
+      },
+      "peerDependencies": {
+        "@lando/core": "workspace:*",
+        "@lando/sdk": "workspace:*",
       },
     },
     "sdk": {
