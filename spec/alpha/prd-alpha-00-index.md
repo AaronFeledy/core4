@@ -81,6 +81,7 @@ MVP proved one Linux x64 happy path. Alpha adds common-stack breadth, managed-ru
 The following are explicitly not part of Phase 2 Alpha. If something below sneaks into a story, push it back to Beta/RC/GA:
 
 - Windows managed-runtime support.
+- `@lando/provider-podman` opt-in (Beta).
 - Go, MongoDB, Solr, Elastic, Opensearch, Meilisearch, Memcached, Valkey, and Mailpit service types.
 - Mutagen/file-sync implementation.
 - Global app, scratch apps, proxy, certs, scanner, host integration, and SSH sidecar/subsystem work. Alpha `ssh` is limited to provider-exec TTY command behavior.
@@ -95,10 +96,12 @@ The following are explicitly not part of Phase 2 Alpha. If something below sneak
 
 ## Exit criteria for the whole Alpha set
 
-A fresh alpha tester on Linux or macOS can install the dev-channel artifact, run `lando setup`, scaffold at least Drupal and Rails apps through interactive `lando init`, run `lando start`, execute framework tooling (`lando drush` / `lando rails`), inspect logs/info, stop/destroy the app from a separate CLI process, and file a bug report with `lando doctor` output. CI publishes the Linux x64 dev prerelease and npm `dev` packages only after static checks, schema gates, library API tests, recipe tests, and default unit/scenario tests pass.
+A fresh alpha tester on Linux or macOS can install the dev-channel artifact, run `lando setup`, scaffold at least WordPress and Rails apps through interactive `lando init`, run `lando start`, execute framework tooling (`lando wp` / `lando rails`), inspect logs/info, stop/destroy the app from a separate CLI process, and file a bug report with `lando doctor` output. CI publishes the Linux x64 dev prerelease and npm `dev` packages only after static checks, schema gates, library API tests, recipe tests, and default unit/scenario tests pass.
 
 ## Open Questions
 
-- Should macOS provider-lando validation be required in default CI during Alpha, or remain manual/opt-in until Beta's platform matrix?
-- Which six canonical recipes are mandatory if implementation time forces a smaller set: Drupal, WordPress, Laravel, Node, Django, Rails, or another ordering?
-- Should macOS users install Alpha primarily through npm/dev packages until macOS binary promotion lands, or should an unsigned macOS binary artifact be produced manually for testers?
+None blocking. Three questions in earlier drafts were resolved during PRD review:
+
+- macOS provider-lando validation is opt-in and not required in default CI for Alpha — see PRD-07 US-056.
+- The Alpha binary ships the full §8.8.10 canonical recipe set; Drupal and v3-style recipe compatibility shims are deferred — see PRD-04 US-028.
+- macOS testers install Alpha through the npm `dev` tag (`npm install @lando/core@dev`); a signed macOS binary is deferred to Beta — see PRD-07 US-052 and US-054.

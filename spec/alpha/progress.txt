@@ -1,6 +1,5 @@
 # Alpha Progress Log — Lando v4 Alpha (happy path coverage)
 
-Branch: alpha-happy-path-coverage
 Source PRDs: spec/alpha/prd-alpha-{01..07}-*.md
 Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 
@@ -12,6 +11,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
     9-16  -> prd-alpha-02-service-catalog-and-app-planning.md US-009..016
     17-24 -> prd-alpha-03-tooling-and-cli-coverage.md US-017..024
     25-32 -> prd-alpha-04-recipes-and-app-initialization.md US-025..032
+    28.5  -> prd-alpha-02-service-catalog-and-app-planning.md US-014b (out-of-sequence; landofile.ts loader, unblocks PRD-04 US-029)
     33-40 -> prd-alpha-05-renderer-errors-and-diagnostics.md US-033..040
     41-48 -> prd-alpha-06-persistent-caches-and-library-api.md US-041..048
     49-56 -> prd-alpha-07-ci-distribution-and-release-channel.md US-049..056
@@ -20,3 +20,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Read the corresponding source PRD section before starting a story for full acceptance criteria detail.
 - Verification gate (mandatory on every story): bun run typecheck, bun run lint, bun test all green.
 - Live integration tests stay gated on explicit env vars and host runtime prerequisites.
+
+## Iteration Log
+
+(Loop appends one entry per iteration below.)
+
