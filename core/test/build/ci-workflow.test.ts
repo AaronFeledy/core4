@@ -109,14 +109,23 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       '          echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"',
     );
-    expect(providerIntegration).toContain("          bun test core/test/scenario");
+    expect(providerIntegration).toContain("      - name: Configure Docker socket");
+    expect(providerIntegration).toContain("          test -S /var/run/docker.sock");
+    expect(providerIntegration).toContain(
+      '          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"',
+    );
+    expect(providerIntegration).toContain("      - name: Restore binary executable bit");
+    expect(providerIntegration).toContain("        run: chmod +x dist/lando");
+    expect(providerIntegration).toContain(
+      '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
+    );
     expect(providerIntegration).toContain(
       "          bun test plugins/provider-lando/test --filter=integration",
     );
     expect(providerIntegration).toContain(
       "          bun test plugins/provider-docker/test --filter=integration",
     );
-    expect(providerIntegration).toContain(
+    expect(providerIntegration).not.toContain(
       "          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts",
     );
     expect(providerIntegration).toContain("      - name: Pre-pull container images");
@@ -124,6 +133,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("          podman pull node:22-alpine");
     expect(providerIntegration).toContain("          podman pull postgres:16");
     expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
+    expect(providerIntegration).toContain("          docker pull node:22-alpine");
     expect(providerIntegration).toContain("      - name: Teardown Podman");
     expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration).toContain("      - name: Collect provider diagnostics");

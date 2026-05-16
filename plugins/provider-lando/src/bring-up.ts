@@ -119,6 +119,8 @@ const inspectContainer = (
 const serviceEnv = (service: ServicePlan) =>
   Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
 
+const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
+
 const hostConfig = (service: ServicePlan) => {
   // Only map endpoints that have a numeric port; unix-socket endpoints have
   // port === undefined and must not produce a binding key.
@@ -132,13 +134,22 @@ const hostConfig = (service: ServicePlan) => {
   );
 
   // Map passthrough bind mounts; other realization types are not yet supported.
-  const binds = service.mounts
-    .filter((m) => m.type === "bind" && m.realization === "passthrough")
-    .map((m) => `${m.source}:${m.target}${m.readOnly ? ":ro" : ""}`);
+  const appMounts =
+    service.appMount === undefined || service.appMount.realization !== "passthrough"
+      ? []
+      : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
+  const binds = service.mounts.flatMap((mount) => {
+    if (mount.type !== "bind" || mount.realization !== "passthrough") return [];
+    if (mount.source === undefined) {
+      throw podmanFailure(service, "provider-lando bind mounts require a source.", { mount });
+    }
+    return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+  });
+  const allBinds = Array.from(new Set([...appMounts, ...binds]));
 
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
-    ...(binds.length > 0 ? { Binds: binds } : {}),
+    ...(allBinds.length > 0 ? { Binds: allBinds } : {}),
   };
 };
 
@@ -150,10 +161,11 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
   }
 
   // Normalize command to array; Podman container create requires Cmd as an array of strings.
-  const normalizeCmd = (cmd: typeof service.command): Array<string> | undefined => {
+  // Treat a string command as shell form so quoted arguments and shell operators are preserved.
+  const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
     if (cmd === undefined) return undefined;
-    if (Array.isArray(cmd)) return cmd as Array<string>;
-    return (cmd as string).split(/\s+/).filter((s) => s.length > 0);
+    if (typeof cmd === "string") return ["sh", "-lc", cmd];
+    return [...cmd];
   };
 
   return {

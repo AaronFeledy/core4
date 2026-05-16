@@ -22,6 +22,11 @@ const metadata = {
   source: "bring-up.integration.test",
   runtime: 4 as const,
 };
+const nodeCommand = [
+  "node",
+  "-e",
+  "require('http').createServer((_,res)=>res.end('lando-bringup-ok')).listen(31080)",
+];
 
 const servicePlan = (name: "node" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
@@ -29,10 +34,7 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
   provider: providerId,
   primary: name === "node",
   artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
-  command:
-    name === "node"
-      ? ["node", "-e", "require('http').createServer((_,res)=>res.end('lando-bringup-ok')).listen(31080)"]
-      : ["postgres", "-c", "port=55432"],
+  command: name === "node" ? nodeCommand : ["postgres", "-c", "port=55432"],
   environment: name === "node" ? {} : { POSTGRES_PASSWORD: "lando", POSTGRES_DB: "lando" },
   appMount:
     name === "node"
@@ -74,6 +76,13 @@ const plan: AppPlan = {
   metadata,
   extensions: {},
 };
+
+interface CreateContainerBody {
+  readonly Cmd?: ReadonlyArray<string>;
+  readonly HostConfig?: {
+    readonly Binds?: ReadonlyArray<string>;
+  };
+}
 
 const makeFakeApi = () => {
   const running = new Set<string>();
@@ -153,6 +162,65 @@ describe("provider-lando bringUp", () => {
     ]);
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path.includes("/start"))).toBe(true);
+    const nodeCreate = fake.calls.find(
+      (call) =>
+        call.method === "POST" &&
+        call.path.startsWith("/containers/create") &&
+        new URL(`http://localhost${call.path}`).searchParams.get("name") === "lando-bringupapp-node",
+    );
+    const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
+    expect(nodeCreateBody?.Cmd).toEqual(nodeCommand);
+    expect(nodeCreateBody?.HostConfig?.Binds).toEqual([`${appRoot}:/app`]);
+  });
+
+  test("fails passthrough bind mounts without a source before creating the container", async () => {
+    const fake = makeFakeApi();
+    const invalidNode: ServicePlan = {
+      ...node,
+      dependsOn: [],
+      appMount: undefined,
+      mounts: [
+        {
+          type: "bind",
+          target: PortablePath.make("/cache"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+    };
+    const invalidPlan: AppPlan = {
+      ...plan,
+      services: { [invalidNode.name]: invalidNode },
+      stores: [],
+    };
+
+    const exit = await Effect.runPromiseExit(bringUp(invalidPlan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(fake.calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
+  });
+
+  test("preserves string command quoting by using shell form", async () => {
+    const fake = makeFakeApi();
+    const command = "node -e \"console.log('hello world')\"";
+    const shellNode: ServicePlan = {
+      ...node,
+      dependsOn: [],
+      command,
+    };
+    const shellPlan: AppPlan = {
+      ...plan,
+      services: { [shellNode.name]: shellNode },
+      stores: [],
+    };
+
+    await Effect.runPromise(bringUp(shellPlan, { podmanApi: fake.api }));
+
+    const nodeCreate = fake.calls.find(
+      (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
+    );
+    const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
+    expect(nodeCreateBody?.Cmd).toEqual(["sh", "-lc", command]);
   });
 
   test("cleans up already-started services when cancellation is observed", async () => {
@@ -210,9 +278,9 @@ describe("provider-lando bringUp", () => {
           expect(response.body).toContain('"Running":true');
         }
 
-        await expect(fetch("http://127.0.0.1:31080").then((response) => response.text())).resolves.toBe(
-          "lando-bringup-ok",
-        );
+        const httpResponse = await fetch("http://127.0.0.1:31080");
+        const responseBody = await httpResponse.text();
+        expect(responseBody).toBe("lando-bringup-ok");
         const socket = await Bun.connect({
           hostname: "127.0.0.1",
           port: 55432,
