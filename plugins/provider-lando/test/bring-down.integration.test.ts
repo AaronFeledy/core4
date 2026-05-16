@@ -217,11 +217,11 @@ describe("provider-lando bringDown", () => {
           expect(response.status).toBe(404);
         }
         const network = await Effect.runPromise(
-          liveRequest({ method: "GET", path: `/networks/lando-${plan.slug}/json` }),
+          liveRequest({ method: "GET", path: `/networks/lando-${plan.slug}` }),
         );
         expect(network.status).toBe(404);
         const volume = await Effect.runPromise(
-          liveRequest({ method: "GET", path: "/volumes/bringdownapp_database_data/json" }),
+          liveRequest({ method: "GET", path: "/volumes/bringdownapp_database_data" }),
         );
         expect(volume.status).toBe(200);
       } finally {

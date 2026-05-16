@@ -78,4 +78,53 @@ describe("ci workflow", () => {
       buildLinux.indexOf("uses: actions/upload-artifact@v4"),
     );
   });
+
+  test("runs provider integration tests against a private Podman socket", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
+
+    expect(providerIntegration).toContain("    needs: [build-linux-x64]");
+    expect(providerIntegration).toContain("    runs-on: ubuntu-22.04");
+    expect(providerIntegration).toContain("    timeout-minutes: 20");
+    expect(providerIntegration).toContain("      - name: Install Podman");
+    expect(providerIntegration).toContain("          sudo apt-get install -y podman");
+    expect(providerIntegration).toContain("      - name: Start Podman socket");
+    expect(providerIntegration).toContain("          podman system service --time=0 unix:///tmp/podman.sock");
+    expect(providerIntegration).toContain(
+      '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
+    );
+    expect(providerIntegration).toContain(
+      '          echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"',
+    );
+    expect(providerIntegration).toContain("          bun test core/test/scenario");
+    expect(providerIntegration).toContain(
+      "          bun test plugins/provider-lando/test --filter=integration",
+    );
+    expect(providerIntegration).toContain(
+      "          bun test plugins/provider-docker/test --filter=integration",
+    );
+    expect(providerIntegration).toContain(
+      "          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts",
+    );
+    expect(providerIntegration).toContain("      - name: Pre-pull container images");
+    expect(providerIntegration).toContain("          podman pull node:lts");
+    expect(providerIntegration).toContain("          podman pull node:22-alpine");
+    expect(providerIntegration).toContain("          podman pull postgres:16");
+    expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
+    expect(providerIntegration).toContain("      - name: Teardown Podman");
+    expect(providerIntegration).toContain("        if: always()");
+    expect(providerIntegration).toContain("      - name: Collect provider diagnostics");
+    expect(providerIntegration).toContain("        if: failure()");
+    expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
+    expect(providerIntegration).toContain("        uses: actions/upload-artifact@v4");
+    expect(providerIntegration).toContain("          name: provider-integration-diagnostics");
+
+    expect(providerIntegration.indexOf("Teardown Podman")).toBeGreaterThan(
+      providerIntegration.indexOf("bun test plugins/provider-docker/test"),
+    );
+    expect(providerIntegration.indexOf("Upload provider integration diagnostics")).toBeGreaterThan(
+      providerIntegration.indexOf("Collect provider diagnostics"),
+    );
+  });
 });

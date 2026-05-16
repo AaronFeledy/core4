@@ -66,3 +66,84 @@ jobs:
           name: lando-linux-x64
           path: dist/lando
           retention-days: 7
+
+  provider-integration-linux-x64:
+    needs: [build-linux-x64]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
+      - name: Download Linux x64 binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist
+
+      - name: Start Podman socket
+        run: |
+          podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
+          echo "$!" > /tmp/podman-service.pid
+          for _ in {1..30}; do
+            test -S /tmp/podman.sock && break
+            sleep 1
+          done
+          test -S /tmp/podman.sock
+          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
+          echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"
+
+      - name: Pre-pull container images
+        run: |
+          podman pull node:lts
+          podman pull node:22-alpine
+          podman pull postgres:16
+          podman pull postgres:16-alpine
+
+      - name: Run provider integration tests
+        run: |
+          mkdir -p /tmp/lando-provider-test-logs
+          set -o pipefail
+          bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
+          bun test plugins/provider-lando/test --filter=integration | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+          bun test plugins/provider-docker/test --filter=integration | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts | tee /tmp/lando-provider-test-logs/mvp-exit-criteria.log
+
+      - name: Teardown Podman
+        if: always()
+        run: |
+          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
+          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
+          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
+          rm -f /tmp/podman.sock /tmp/podman-service.pid
+
+      - name: Collect provider diagnostics
+        if: failure()
+        run: |
+          mkdir -p provider-diagnostics/test-logs
+          cp /tmp/podman-service.log provider-diagnostics/podman-service.log || true
+          cp dist/lando provider-diagnostics/lando || true
+          for log in /tmp/lando-provider-test-logs/*.log; do
+            test -f "$log" || continue
+            tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
+          done
+
+      - name: Upload provider integration diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-integration-diagnostics
+          path: provider-diagnostics
+          retention-days: 7
