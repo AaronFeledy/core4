@@ -53,7 +53,7 @@ describe("ci workflow", () => {
     expect(triggers).toContain("  push:");
     expect(staticChecks).toContain("    runs-on: ubuntu-22.04");
     expect(staticChecks).toContain("        uses: oven-sh/setup-bun@v2");
-    expect(staticChecks).toContain("          bun-version-file: .bun-version");
+    expect(staticChecks).toContain("          bun-version: 1.3.0");
     expect(staticChecks).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecks).toContain("        run: bun run typecheck");
     expect(staticChecks).toContain("        run: bun run lint");

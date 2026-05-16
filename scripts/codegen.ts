@@ -32,6 +32,11 @@ const generators: ReadonlyArray<Generator> = [
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
     cwd: CORE_ROOT,
   },
+  {
+    id: "ci-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-ci-workflow.ts`],
+    cwd: REPO_ROOT,
+  },
 ] satisfies ReadonlyArray<Generator>;
 
 const run = async (cmd: Array<string>, cwd: string): Promise<void> => {
