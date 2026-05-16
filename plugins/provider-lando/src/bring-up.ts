@@ -131,7 +131,15 @@ const hostConfig = (service: ServicePlan) => {
       ]),
   );
 
-  return Object.keys(portBindings).length === 0 ? {} : { PortBindings: portBindings };
+  // Map passthrough bind mounts; other realization types are not yet supported.
+  const binds = service.mounts
+    .filter((m) => m.type === "bind" && m.realization === "passthrough")
+    .map((m) => `${m.source}:${m.target}${m.readOnly ? ":ro" : ""}`);
+
+  return {
+    ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
+    ...(binds.length > 0 ? { Binds: binds } : {}),
+  };
 };
 
 const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) => {
