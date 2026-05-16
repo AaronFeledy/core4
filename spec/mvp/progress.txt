@@ -2692,3 +2692,16 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
   - CI workflow tests currently use string block assertions via findIndentedBlock rather than a YAML parser.
   - Provider integration CI should reuse the existing live-test environment gate by exporting LANDO_TEST_PODMAN_SOCKET before running provider-lando integration tests.
 ---
+
+## 2026-05-15 21:58 UTC - Sync
+- Previous branch: us-063-provider-integration-suite
+- Previous PR: #66 https://github.com/AaronFeledy/core4/pull/66
+- Action: triaged CI failures and merged
+  - Round 1 fix: changed CI pre-pull from `node:lts`/`postgres:16` to `node:22-alpine`/`postgres:16-alpine` (integration tests use alpine variants)
+  - Round 2 fix: added `node:lts` and `postgres:16` back (mvp-exit-criteria scenario uses service-lando defaults which resolve to those tags) — all four images now pre-pulled
+  - Round 3 fix: corrected wrong Podman API endpoints in bring-down live test (`/volumes/{name}/json` → `/volumes/{name}`, `/networks/{name}/json` → `/networks/{name}`; the `/json` suffix is valid for containers but not volumes or networks in the Docker-compatible Podman API)
+  - All three CI checks (static-checks, build-linux-x64, provider-integration-linux-x64) green; Cursor Bugbot NEUTRAL
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
