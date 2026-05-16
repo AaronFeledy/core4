@@ -5,7 +5,10 @@ import { join, resolve } from "node:path";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(repoRoot, "core");
-const binaryPath = resolve(coreRoot, "dist/lando");
+const configuredBinaryPath = process.env.LANDO_MVP_BINARY_PATH;
+const binaryPath =
+  configuredBinaryPath === undefined ? resolve(coreRoot, "dist/lando") : resolve(configuredBinaryPath);
+const shouldBuildBinary = configuredBinaryPath === undefined;
 const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET;
 const canRunLiveSmoke = socketPath !== undefined && process.platform === "linux" && process.arch === "x64";
 
@@ -61,13 +64,18 @@ const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
   test("reproduces the full init/start/info/stop flow with the compiled binary", async () => {
     await withTempDir(async (dir) => {
-      const codegen = await runCommand([process.execPath, "run", "codegen"], repoRoot);
-      // codegen may emit non-fatal OCLIF tsconfig-resolution warnings to stderr; only assert exit code
-      expect(codegen.exitCode, "bun run codegen exit code").toBe(0);
+      if (shouldBuildBinary) {
+        const codegen = await runCommand([process.execPath, "run", "codegen"], repoRoot);
+        // codegen may emit non-fatal OCLIF tsconfig-resolution warnings to stderr; only assert exit code
+        expect(codegen.exitCode, "bun run codegen exit code").toBe(0);
 
-      const build = await runCommand([process.execPath, "run", "build"], repoRoot, 180_000);
-      // bun workspace scripts echo the command to stderr; only assert exit code
-      expect(build.exitCode, "bun run build exit code").toBe(0);
+        const build = await runCommand([process.execPath, "run", "build"], repoRoot, 180_000);
+        // bun workspace scripts echo the command to stderr; only assert exit code
+        expect(build.exitCode, "bun run build exit code").toBe(0);
+      } else {
+        const binarySmoke = await runCommand([binaryPath, "--version"], repoRoot);
+        expectSuccess("downloaded lando --version", binarySmoke);
+      }
 
       const init = await runCommand([binaryPath, "init", "--full", "--name=mvp-exit"], dir);
       expectSuccess("lando init", init);

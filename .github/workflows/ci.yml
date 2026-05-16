@@ -93,6 +93,9 @@ jobs:
           name: lando-linux-x64
           path: dist
 
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando
+
       - name: Start Podman socket
         run: |
           podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
@@ -105,21 +108,26 @@ jobs:
           echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
           echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"
 
+      - name: Configure Docker socket
+        run: |
+          test -S /var/run/docker.sock
+          echo "LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock" >> "$GITHUB_ENV"
+
       - name: Pre-pull container images
         run: |
           podman pull node:lts
           podman pull node:22-alpine
           podman pull postgres:16
           podman pull postgres:16-alpine
+          docker pull node:22-alpine
 
       - name: Run provider integration tests
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
+          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
           bun test plugins/provider-lando/test --filter=integration | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
           bun test plugins/provider-docker/test --filter=integration | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
-          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts | tee /tmp/lando-provider-test-logs/mvp-exit-criteria.log
 
       - name: Teardown Podman
         if: always()
