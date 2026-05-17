@@ -55,6 +55,12 @@ export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProvid
     };
   });
 
+const renderCapabilityValue = (value: unknown): string => {
+  if (value === null || value === undefined) return String(value);
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+};
+
 export const renderDoctorResult = (result: DoctorResult): string =>
   result.checks
     .flatMap((check) => [
@@ -63,6 +69,8 @@ export const renderDoctorResult = (result: DoctorResult): string =>
       `providerName: ${check.providerName}`,
       `providerVersion: ${check.providerVersion}`,
       `runtimeStatus: ${check.runtimeStatus}`,
-      ...Object.entries(check.capabilities).map(([field, value]) => `${field}: ${String(value)}`),
+      ...Object.entries(check.capabilities).map(
+        ([field, value]) => `${field}: ${renderCapabilityValue(value)}`,
+      ),
     ])
     .join("\n");

@@ -26,4 +26,42 @@ describe("meta:doctor command", () => {
       expect(output).toContain(`${field}:`);
     }
   });
+
+  test("renders array-valued capabilities as JSON, not [object Object]", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, providerExtensions: ["compose", "exec"] },
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, registry))),
+    );
+    const output = renderDoctorResult(result);
+
+    expect(output).toContain('providerExtensions: ["compose","exec"]');
+    expect(output).not.toContain("[object Object]");
+  });
+
+  test("renders empty array capabilities as []", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, registry))),
+    );
+    const output = renderDoctorResult(result);
+
+    expect(output).toContain("providerExtensions: []");
+    expect(output).not.toContain("[object Object]");
+  });
 });
