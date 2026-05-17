@@ -3,7 +3,20 @@ import { Effect, Schema, Stream } from "effect";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
 
+import { redactDetails } from "./redact.ts";
+
 const PROVIDER_ID = "lando";
+
+const TRANSPORT_REMEDIATION =
+  "Run `lando doctor` to inspect the Lando runtime, then retry the failing command. Run `lando setup` if the runtime is not installed or healthy.";
+
+const bindMountPerformanceForPlatform = (
+  platform: HostPlatform,
+): ProviderCapabilities["bindMountPerformance"] => {
+  if (platform === "linux") return "native";
+  if (platform === "darwin") return "slow";
+  return "none";
+};
 
 export interface PodmanApiRequest {
   readonly command: "curl";
@@ -42,7 +55,8 @@ const podmanApiFailure = (
         providerId: PROVIDER_ID,
         operation: "podman-api",
         message: "Failed to call the Podman API.",
-        details: { method: request.method, path: request.path },
+        details: redactDetails({ method: request.method, path: request.path }),
+        remediation: TRANSPORT_REMEDIATION,
         cause,
       });
 
@@ -80,7 +94,8 @@ async function* streamPodmanRequest(
       providerId: PROVIDER_ID,
       operation: "podman-api",
       message: `Podman API stream request failed with exit code ${exitCode}.`,
-      details: { method: request.method, path: request.path, stderr: stderrText },
+      details: redactDetails({ method: request.method, path: request.path, stderr: stderrText }),
+      remediation: TRANSPORT_REMEDIATION,
     });
   }
 }
@@ -128,7 +143,7 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     sharedCrossAppNetwork: false,
     persistentStorage: true,
     bindMounts: platform === "linux" || platform === "darwin",
-    bindMountPerformance: platform === "linux" ? "native" : platform === "darwin" ? "slow" : "none",
+    bindMountPerformance: bindMountPerformanceForPlatform(platform),
     copyMounts: false,
     hostPortPublish: "proxy",
     routeProvider: false,
@@ -183,7 +198,8 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
             providerId: PROVIDER_ID,
             operation: "podman-api",
             message: "Failed to call the Podman API.",
-            details: { method: request.method, path: request.path },
+            details: redactDetails({ method: request.method, path: request.path }),
+            remediation: TRANSPORT_REMEDIATION,
             cause,
           }),
       });
@@ -194,7 +210,8 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
             providerId: PROVIDER_ID,
             operation: "podman-api",
             message: `Podman API request failed with exit code ${exitCode}.`,
-            details: { method: request.method, path: request.path, stderr },
+            details: redactDetails({ method: request.method, path: request.path, stderr }),
+            remediation: TRANSPORT_REMEDIATION,
           }),
         );
       }
@@ -208,7 +225,8 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
             providerId: PROVIDER_ID,
             operation: "podman-api",
             message: "Podman API response did not include an HTTP status code.",
-            details: { method: request.method, path: request.path, stdout },
+            details: redactDetails({ method: request.method, path: request.path, stdout }),
+            remediation: TRANSPORT_REMEDIATION,
           }),
         );
       }
@@ -244,7 +262,8 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
           providerId: PROVIDER_ID,
           operation: "capabilities",
           message: `Podman API info request failed with exit code ${exitCode}.`,
-          details: { stderr, socketUrl: request.socketUrl },
+          details: redactDetails({ stderr, socketUrl: request.socketUrl }),
+          remediation: TRANSPORT_REMEDIATION,
         }),
       );
     }
