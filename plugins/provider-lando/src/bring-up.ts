@@ -405,10 +405,7 @@ export const bringUp = (
 ): Effect.Effect<ApplyResult, BringUpError> =>
   Effect.gen(function* () {
     const api = options.podmanApi;
-    if (api === undefined) {
-      return yield* Effect.fail(missingApi());
-    }
-    if (api.request === undefined) {
+    if (api?.request === undefined) {
       return yield* Effect.fail(missingApi());
     }
     const resolvedApi: PodmanApiClient = api;

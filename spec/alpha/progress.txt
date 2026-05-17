@@ -284,3 +284,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: tests asserting redaction must check the original secret value is ABSENT, not only that `[REDACTED]` appears; the former is the actual security contract. Tests that fire `Effect.tapError` rollback should assert the rolled-back state (e.g. `fake.networks.size === 0` and a DELETE call), not just the absence of the next forward call.
   - Useful context: `podman-api` is a legitimate operation name at the transport layer per §5.7; rewriting it to per-lifecycle names requires either restructuring the `request` helper or adding `mapError` at every callsite — out of scope for a rollback-and-error-fields story. The targeted fix is just adding `remediation` (operation context can be inferred from the wrapping Effect chain in stack traces).
 ---
+
+## [2026-05-17 18:19 CDT] - US-006 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-006 branch changes; critical review kept only behavior-preserving cleanup and reverted the attempted test guard removal because it broke TypeScript narrowing.
+- Files changed by cleanup: `plugins/provider-lando/src/bring-down.ts`, `plugins/provider-lando/src/bring-up.ts`, `plugins/provider-lando/src/capabilities.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed redundant local Podman API aliases/duplicate guards and replaced a nested bind-mount performance ternary with a typed helper. No public APIs, imports, error handling, side effects, return values, or test assertions changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test plugins/provider-lando/test/bring-up.integration.test.ts plugins/provider-lando/test/redact.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed. Full serial `bun test --concurrency=1` passed (294 pass, 11 skip, 0 fail).
+---

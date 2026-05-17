@@ -10,6 +10,14 @@ const PROVIDER_ID = "lando";
 const TRANSPORT_REMEDIATION =
   "Run `lando doctor` to inspect the Lando runtime, then retry the failing command. Run `lando setup` if the runtime is not installed or healthy.";
 
+const bindMountPerformanceForPlatform = (
+  platform: HostPlatform,
+): ProviderCapabilities["bindMountPerformance"] => {
+  if (platform === "linux") return "native";
+  if (platform === "darwin") return "slow";
+  return "none";
+};
+
 export interface PodmanApiRequest {
   readonly command: "curl";
   readonly args: ReadonlyArray<string>;
@@ -135,7 +143,7 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     sharedCrossAppNetwork: false,
     persistentStorage: true,
     bindMounts: platform === "linux" || platform === "darwin",
-    bindMountPerformance: platform === "linux" ? "native" : platform === "darwin" ? "slow" : "none",
+    bindMountPerformance: bindMountPerformanceForPlatform(platform),
     copyMounts: false,
     hostPortPublish: "proxy",
     routeProvider: false,

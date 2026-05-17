@@ -221,16 +221,14 @@ export const bringDown = (
     if (api.request === undefined) {
       return yield* Effect.fail(missingApi());
     }
-    const resolvedApi: PodmanApiClient = api;
 
     let changed = false;
     for (const service of Object.values(plan.services).reverse()) {
-      const result = yield* stopService(resolvedApi, plan, service, options);
+      const result = yield* stopService(api, plan, service, options);
       changed = changed || result.changed;
     }
-    const networkRemoved = yield* removeNetwork(resolvedApi, plan);
-    const volumesRemoved =
-      options.volumes === true ? yield* removeAppScopedVolumes(resolvedApi, plan) : false;
+    const networkRemoved = yield* removeNetwork(api, plan);
+    const volumesRemoved = options.volumes === true ? yield* removeAppScopedVolumes(api, plan) : false;
 
     return { changed: changed || networkRemoved || volumesRemoved };
   });
