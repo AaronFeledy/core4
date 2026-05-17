@@ -209,3 +209,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: Docker exec inspect routes (`/exec/<id>/json`) must be matched before container inspect routes in fake clients, or tests accidentally parse exec ids as container names.
   - Useful context: provider-docker realizes planner-marked `accelerated` appMount/bind mounts as native Docker binds until the FileSyncEngine path is implemented.
 ---
+
+## [2026-05-17 11:46 CDT] - US-004 Review
+- Reviewed provider-docker US-004 build commit `4280769` against PRD-01 US-004 and `review-work` findings; fixed real blockers around default Docker host discovery and Docker Desktop/VM-mediated bind-mount capability reporting.
+- Files changed: `plugins/provider-docker/src/index.ts`, `plugins/provider-docker/test/capabilities.test.ts`, `plugins/provider-docker/test/contract.integration.test.ts`, `spec/alpha/progress.txt`.
+- `review-work` findings: fixed — provider-docker now creates an API client from the resolved default Docker host instead of reporting ready without an API client; fixed — capabilities are host-aware so Linux native `/var/run/docker.sock` reports `native` while Docker Desktop/remote/VM-mediated hosts report `slow`; fixed — Docker create payload tests now assert shell-form command/entrypoint normalization and port bindings. Rejected — Docker logs driver limitations are a Docker API/runtime caveat, not a US-004 implementation blocker; rejected — structured `Mounts` objects over `Binds` is non-blocking hardening outside this review fix; rejected — fresh-process `target.plan` lifecycle behavior belongs to pending US-005, not US-004; rejected — `DOCKER_CONTEXT` support and negative `/info` capability tests are useful follow-ups but not PRD-01 US-004 blockers.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` passed (9 pass, 1 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (270 pass, 11 skip).
+- **Learnings for future iterations:**
+  - Patterns discovered: provider capability values that depend on runtime topology should be derived from the resolved host/socket, not just `process.platform` or a platform override.
+  - Gotchas encountered: `resolveDockerHost()` tests are not enough; provider construction must prove it actually uses the resolved host when creating the API client.
+  - Useful context: Docker Desktop for Linux uses `~/.docker/desktop/docker.sock`, so bind-mount performance is slow even though the host platform is Linux.
+---
