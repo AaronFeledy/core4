@@ -6,11 +6,17 @@ import { type AppPlan, type AppRef, ProviderId, type ServicePlan } from "@lando/
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
+import { redactDetails } from "./redact.ts";
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 type BringUpError = ServiceStartError | ProviderUnavailableError | ProviderInternalError;
+
+const APPLY_REMEDIATION =
+  "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
+const SETUP_REMEDIATION =
+  "Run `lando setup` to install or repair the Lando runtime, then retry `lando start`.";
 
 interface InspectResult {
   readonly exists: boolean;
@@ -53,15 +59,24 @@ const missingApi = () =>
     providerId: PROVIDER_ID,
     operation: "bringUp",
     message: "provider-lando bringUp requires a Podman API client.",
+    remediation: SETUP_REMEDIATION,
   });
 
-const podmanFailure = (service: ServicePlan, message: string, details?: unknown) =>
+const podmanFailure = (
+  service: ServicePlan,
+  operation: string,
+  message: string,
+  details?: unknown,
+  cause?: unknown,
+) =>
   new ServiceStartError({
     providerId: PROVIDER_ID,
-    operation: "bringUp",
+    operation,
     service: service.name,
     message,
-    ...(details === undefined ? {} : { details }),
+    remediation: APPLY_REMEDIATION,
+    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    ...(cause === undefined ? {} : { cause }),
   });
 
 const request = (
@@ -81,7 +96,8 @@ const parseJson = (
         providerId: PROVIDER_ID,
         operation,
         message: "Podman API returned malformed JSON.",
-        details: { status: response.status, body: response.body },
+        details: redactDetails({ status: response.status, body: response.body }),
+        remediation: APPLY_REMEDIATION,
         cause,
       }),
   });
@@ -104,7 +120,8 @@ const inspectContainer = (
           providerId: PROVIDER_ID,
           operation: "bringUp.inspect",
           message: `Podman inspect failed with HTTP ${response.status}.`,
-          details: { name, body: response.body },
+          details: redactDetails({ name, status: response.status, body: response.body }),
+          remediation: APPLY_REMEDIATION,
         }),
       );
     }
@@ -122,8 +139,6 @@ const serviceEnv = (service: ServicePlan) =>
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 
 const hostConfig = (service: ServicePlan) => {
-  // Only map endpoints that have a numeric port; unix-socket endpoints have
-  // port === undefined and must not produce a binding key.
   const portBindings = Object.fromEntries(
     service.endpoints
       .filter((endpoint) => endpoint.port !== undefined)
@@ -133,11 +148,6 @@ const hostConfig = (service: ServicePlan) => {
       ]),
   );
 
-  // Map bind/appMount realizations to native Podman binds. "passthrough" is the
-  // native path; "accelerated" is the planner hint for slow-bind-mount providers
-  // (macOS, VM-backed Docker). The accelerated FileSyncEngine (spec §10.6) is not
-  // yet implemented, so accelerated bind mounts are realized as plain binds for now
-  // — matching the planner-declared capability so the mount actually attaches.
   const isRealizableBind = (realization: "passthrough" | "accelerated") =>
     realization === "passthrough" || realization === "accelerated";
   const appMounts =
@@ -147,7 +157,9 @@ const hostConfig = (service: ServicePlan) => {
   const binds = service.mounts.flatMap((mount) => {
     if (mount.type !== "bind" || !isRealizableBind(mount.realization)) return [];
     if (mount.source === undefined) {
-      throw podmanFailure(service, "provider-lando bind mounts require a source.", { mount });
+      throw podmanFailure(service, "bringUp.mount", "provider-lando bind mounts require a source.", {
+        mount,
+      });
     }
     return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
@@ -161,13 +173,14 @@ const hostConfig = (service: ServicePlan) => {
 
 const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) => {
   if (service.artifact?.kind !== "ref") {
-    throw podmanFailure(service, "provider-lando bringUp requires pre-built artifact references.", {
-      artifact: service.artifact,
-    });
+    throw podmanFailure(
+      service,
+      "bringUp.artifact",
+      "provider-lando bringUp requires pre-built artifact references.",
+      { artifact: service.artifact },
+    );
   }
 
-  // Normalize command to array; Podman container create requires Cmd as an array of strings.
-  // Treat a string command as shell form so quoted arguments and shell operators are preserved.
   const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
     if (cmd === undefined) return undefined;
     if (typeof cmd === "string") return ["sh", "-lc", cmd];
@@ -216,7 +229,8 @@ const ensureNetwork = (
               providerId: PROVIDER_ID,
               operation: "bringUp.network",
               message: `Podman network create failed with HTTP ${response.status}.`,
-              details: { body: response.body },
+              details: redactDetails({ status: response.status, body: response.body }),
+              remediation: APPLY_REMEDIATION,
             }),
           ),
     ),
@@ -233,7 +247,13 @@ const createContainer = (
     catch: (cause) =>
       cause instanceof ServiceStartError
         ? cause
-        : podmanFailure(service, "Failed to build Podman container create payload.", cause),
+        : podmanFailure(
+            service,
+            "bringUp.create",
+            "Failed to build Podman container create payload.",
+            undefined,
+            cause,
+          ),
   }).pipe(
     Effect.flatMap((body) =>
       request(api, { method: "POST", path: `/containers/create?name=${encodeURIComponent(name)}`, body }),
@@ -244,8 +264,9 @@ const createContainer = (
         : Effect.fail(
             podmanFailure(
               service,
+              "bringUp.create",
               `Podman container create failed with HTTP ${response.status}.`,
-              response.body,
+              { status: response.status, body: response.body },
             ),
           ),
     ),
@@ -263,17 +284,29 @@ const startContainer = (
         : Effect.fail(
             podmanFailure(
               service,
+              "bringUp.start",
               `Podman container start failed with HTTP ${response.status}.`,
-              response.body,
+              { status: response.status, body: response.body },
             ),
           ),
     ),
   );
 
-const stopContainer = (api: PodmanApiClient, name: string): Effect.Effect<void> =>
+const stopContainerSilent = (api: PodmanApiClient, name: string): Effect.Effect<void> =>
   request(api, { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
     Effect.catchAll(() => Effect.void),
   );
+
+const removeContainerSilent = (api: PodmanApiClient, name: string): Effect.Effect<void> =>
+  request(api, { method: "DELETE", path: `/containers/${encodeURIComponent(name)}?force=true` }).pipe(
+    Effect.catchAll(() => Effect.void),
+  );
+
+const removeNetworkSilent = (api: PodmanApiClient, plan: AppPlan): Effect.Effect<void> =>
+  request(api, {
+    method: "DELETE",
+    path: `/networks/${encodeURIComponent(networkName(plan))}`,
+  }).pipe(Effect.catchAll(() => Effect.void));
 
 const publish = (
   eventService: BringUpOptions["eventService"],
@@ -288,6 +321,7 @@ const publish = (
               providerId: PROVIDER_ID,
               operation: "bringUp.event",
               message: `Failed to publish lifecycle event: ${event._tag}`,
+              remediation: APPLY_REMEDIATION,
               cause,
             }),
         ),
@@ -302,7 +336,9 @@ const startService = (
   const name = containerName(plan, service);
   return Effect.gen(function* () {
     if (options.signal?.aborted === true) {
-      yield* Effect.fail(podmanFailure(service, "Podman bringUp was cancelled before service start."));
+      yield* Effect.fail(
+        podmanFailure(service, "bringUp", "Podman bringUp was cancelled before service start."),
+      );
     }
 
     yield* publish(
@@ -329,7 +365,9 @@ const startService = (
 
     const after = yield* inspectContainer(api, name);
     if (!after.running) {
-      yield* Effect.fail(podmanFailure(service, "Podman container did not reach running state."));
+      yield* Effect.fail(
+        podmanFailure(service, "bringUp.start", "Podman container did not reach running state."),
+      );
     }
 
     yield* publish(
@@ -347,8 +385,19 @@ const startService = (
   });
 };
 
-const cleanupStarted = (api: PodmanApiClient, names: ReadonlyArray<string>) =>
-  Effect.forEach(names, (name) => stopContainer(api, name), { discard: true });
+const rollbackPartialApply = (
+  api: PodmanApiClient,
+  plan: AppPlan,
+  touched: ReadonlyArray<string>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    // stop+force-remove every container we touched, then remove the app network.
+    // stop/DELETE are idempotent on 404 so this is safe for never-created
+    // containers. Volumes are preserved on rollback per spec destroy-default contract.
+    yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
+    yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
+    yield* removeNetworkSilent(api, plan);
+  });
 
 export const bringUp = (
   plan: AppPlan,
@@ -365,21 +414,18 @@ export const bringUp = (
     const resolvedApi: PodmanApiClient = api;
 
     yield* ensureNetwork(resolvedApi, plan);
-    const started: string[] = [];
+    const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {
       if (options.signal?.aborted === true) {
-        yield* cleanupStarted(resolvedApi, started);
-        yield* Effect.fail(podmanFailure(service, "Podman bringUp was cancelled."));
+        yield* rollbackPartialApply(resolvedApi, plan, touched);
+        yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
       }
       const thisName = containerName(plan, service);
+      touched.push(thisName);
       const result = yield* startService(resolvedApi, plan, service, options).pipe(
-        // Include the current container in cleanup: the container may have been
-        // created and started before the failure (e.g., during event publish),
-        // and result.name is not yet in `started` at the tapError call site.
-        Effect.tapError(() => cleanupStarted(resolvedApi, [...started, thisName])),
+        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched)),
       );
-      started.push(result.name);
       changed = changed || result.changed;
     }
 

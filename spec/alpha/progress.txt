@@ -30,6 +30,9 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Provider capability tests should force the target platform through provider factory options (for example `makeProviderLayer({ platform, ... })`) instead of relying on `process.platform` when asserting Linux vs macOS matrices.
 - Provider lifecycle state should persist an encoded `AppPlan` under the provider state directory and treat stale/corrupt state as a cache miss, not a hard failure.
 - App stop must preserve applied plan state for later fresh-process info/destroy commands; app destroy should remove that state after provider cleanup.
+- Provider partial-apply rollback removes (force DELETE) every touched container and the app network; volumes are NEVER removed on rollback. Volume removal is `destroy(--volumes)`-only.
+- Provider error `details` must be passed through `redactDetails` (see `plugins/provider-lando/src/redact.ts`) before attachment; it masks credential-named keys plus env-style `NAME=VALUE` substrings in string bodies.
+- Provider errors should carry an operation-scoped name (e.g. `bringUp.network`, `bringUp.create`, `bringUp.start`) so manual cleanup can identify the exact failing API call, plus `remediation` and `cause` per spec §5.7.
 
 ## Iteration Log
 
@@ -231,4 +234,33 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: provider lifecycle state should persist an encoded `AppPlan` under the provider state dir and treat stale/corrupt state as a cache miss.
   - Gotchas encountered: app stop should preserve applied plan state (`removeState: false`) so later fresh-process info/destroy commands still have a plan; app destroy should remove that state after provider cleanup.
   - Useful context: registry selection must prefer `AppPlan.provider` when a plan is provided so existing apps do not drift if the configured default provider changes.
+---
+
+## [2026-05-17 17:18 CDT] - Sync
+- Previous branch: us-005-persist-provider-state
+- Previous PR: #79 https://github.com/AaronFeledy/core4/pull/79
+- Action: caught up after prior merge (PR #79 was already MERGED with all CI checks SUCCESS)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash — spec/alpha/progress.txt had uncommitted modifications; stashed before fetch, a human should review and pop or drop)
+---
+
+## [2026-05-17 17:38 CDT] - US-006
+- Hardened provider-lando partial-apply cleanup so failed bringUp removes started/created containers and the app network while preserving volumes; added remediation, redacted details, and cause to provider error constructors per spec §5.7.
+- Files changed: `plugins/provider-lando/src/bring-up.ts`, `plugins/provider-lando/src/bring-down.ts`, `plugins/provider-lando/src/redact.ts`, `plugins/provider-lando/test/bring-up.integration.test.ts`, `plugins/provider-lando/test/redact.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics clean for changed TypeScript files; `bun test plugins/provider-lando/test/bring-up.integration.test.ts plugins/provider-lando/test/redact.test.ts` passed (15 pass, 1 skip); `bun test plugins/provider-lando/test/` passed (53 pass, 7 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (294 pass, 11 skip, 0 fail); `bun run build` passed; compiled `./core/dist/lando --version` and `--help` smoke checks succeeded. Parallel `bun test` runs intermittently fail one of `compile.test.ts`/`version.test.ts`/`shellenv.test.ts` due to the documented compiled-binary race; serial run is fully green.
+- **Learnings for future iterations:**
+  - Patterns discovered: provider partial-apply rollback should stop+force-remove every touched container before removing the app network; stop/DELETE on Podman are idempotent on 404 so tracking attempted container names is sufficient. Volume removal must remain a `destroy(--volumes)` opt-in and is intentionally never part of rollback.
+  - Gotchas encountered: provider error `details` may transitively carry env-style secrets in HTTP response bodies; route every details payload through `redactDetails` (key-based + env-style `NAME=value` substring masking) before attaching it to a tagged error.
+  - Useful context: `Effect.tapError` + a shared rollback effect cleanly attaches cleanup to per-service Effect chains without changing the success path; the `touched` array tracks both "created but not started" and "started but later failed" containers so a single rollback handles both.
+---
+
+## [2026-05-17 17:38 CDT] - US-006
+- Hardened provider-lando partial-apply cleanup: bringUp now stops, force-removes every touched container, and removes the app network on failure (volumes are intentionally preserved). Provider error constructors in bring-up.ts and bring-down.ts now carry providerId, operation, message, redacted details, remediation, and (where applicable) cause per spec §5.7.
+- Files changed: `plugins/provider-lando/src/redact.ts` (new), `plugins/provider-lando/src/bring-up.ts`, `plugins/provider-lando/src/bring-down.ts`, `plugins/provider-lando/test/bring-up.integration.test.ts`, `plugins/provider-lando/test/redact.test.ts` (new), `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for `plugins/provider-lando/src`; focused `bun test plugins/provider-lando/test/` passed (53 pass, 7 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (294 pass, 11 skip, 0 fail). Parallel `bun test` runs intermittently failed on compiled-binary tests (compile.test.ts/version.test.ts/shellenv.test.ts) due to the documented `core/dist/lando` race in AGENTS.md; serial run is 100% green. `bun run build` succeeded; smoke-tested compiled `core/dist/lando --version` and `--help` after build.
+- **Learnings for future iterations:**
+  - Patterns discovered: provider partial-apply rollback should remove (force DELETE) all containers it touched plus the app network; stop alone leaks created-but-stopped containers. Volume removal must remain destroy(--volumes)-only — rollback is data-preserving by contract.
+  - Gotchas encountered: env-style redaction regex must exclude `]` and `}` from the value character class or it eats trailing brackets in JSON-like payloads. `Authorization`/`auth` plain key names need anchored matchers (`^auth$`) because the broader credential pattern doesn't match short generic keys.
+  - Useful context: provider-lando bringUp errors now carry an `operation` per step (`bringUp.network`, `bringUp.inspect`, `bringUp.create`, `bringUp.start`, `bringUp.event`, `bringUp.mount`, `bringUp.artifact`) so manual cleanup logs identify the exact failing call. Tests reading these fields should match against the specific operation string, not just the `_tag`.
 ---

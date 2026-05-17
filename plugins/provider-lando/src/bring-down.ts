@@ -6,11 +6,17 @@ import { type AppPlan, type AppRef, ProviderId, type ServicePlan } from "@lando/
 import type { EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
+import { redactDetails } from "./redact.ts";
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 type BringDownError = ProviderUnavailableError | ProviderInternalError;
+
+const DESTROY_REMEDIATION =
+  "Run `lando doctor` to inspect the runtime, then `lando destroy` to retry cleanup. Use `--volumes` to remove app-scoped volumes.";
+const SETUP_REMEDIATION =
+  "Run `lando setup` to install or repair the Lando runtime, then retry `lando destroy`.";
 
 interface StopResult {
   readonly changed: boolean;
@@ -40,6 +46,7 @@ const missingApi = () =>
     providerId: PROVIDER_ID,
     operation: "bringDown",
     message: "provider-lando bringDown requires a Podman API client.",
+    remediation: SETUP_REMEDIATION,
   });
 
 const request = (
@@ -48,12 +55,14 @@ const request = (
 ): Effect.Effect<PodmanHttpResponse, BringDownError> =>
   api.request === undefined ? Effect.fail(missingApi()) : api.request(input);
 
-const podmanFailure = (operation: string, message: string, details?: unknown) =>
+const podmanFailure = (operation: string, message: string, details?: unknown, cause?: unknown) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
     message,
-    ...(details === undefined ? {} : { details }),
+    remediation: DESTROY_REMEDIATION,
+    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    ...(cause === undefined ? {} : { cause }),
   });
 
 const publish = (
@@ -69,6 +78,7 @@ const publish = (
               providerId: PROVIDER_ID,
               operation: "bringDown.event",
               message: `Failed to publish lifecycle event: ${event._tag}`,
+              remediation: DESTROY_REMEDIATION,
               cause,
             }),
         ),

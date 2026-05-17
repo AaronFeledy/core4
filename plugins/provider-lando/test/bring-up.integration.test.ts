@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Exit } from "effect";
+import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
+import type { ServiceStartError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -84,9 +85,17 @@ interface CreateContainerBody {
   };
 }
 
-const makeFakeApi = () => {
+interface FakeApiHooks {
+  readonly failStartFor?: ReadonlySet<string>;
+  readonly failCreateFor?: ReadonlySet<string>;
+  readonly failCreateBody?: string;
+}
+
+const makeFakeApi = (hooks: FakeApiHooks = {}) => {
   const running = new Set<string>();
   const existing = new Set<string>();
+  const networks = new Set<string>();
+  const volumes = new Set<string>();
   const calls: PodmanHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -98,7 +107,14 @@ const makeFakeApi = () => {
         const action = containerMatch?.[2];
 
         if (request.path === "/networks/create") {
+          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          networks.add(requestedName);
           return { status: 201, body: "{}" };
+        }
+        if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          const network = decodeURIComponent(request.path.slice("/networks/".length));
+          const deleted = networks.delete(network);
+          return { status: deleted ? 204 : 404, body: "" };
         }
         if (request.method === "GET" && action === "json") {
           if (!existing.has(name)) {
@@ -113,6 +129,12 @@ const makeFakeApi = () => {
         }
         if (request.method === "POST" && request.path.startsWith("/containers/create")) {
           const createdName = new URL(`http://localhost${request.path}`).searchParams.get("name") ?? "";
+          if (hooks.failCreateFor?.has(createdName) === true) {
+            return {
+              status: 500,
+              body: `forced create failure for ${createdName}: env POSTGRES_PASSWORD=hunter2 rejected`,
+            };
+          }
           if (existing.has(createdName)) {
             return { status: 409, body: "already exists" };
           }
@@ -120,6 +142,9 @@ const makeFakeApi = () => {
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && action === "start") {
+          if (hooks.failStartFor?.has(name) === true) {
+            return { status: 500, body: `forced start failure for ${name}` };
+          }
           if (running.has(name)) {
             return { status: 304, body: "" };
           }
@@ -130,10 +155,15 @@ const makeFakeApi = () => {
           running.delete(name);
           return { status: 204, body: "" };
         }
+        if (request.method === "DELETE" && request.path.startsWith("/containers/")) {
+          const deleted = existing.delete(name);
+          running.delete(name);
+          return { status: deleted ? 204 : 404, body: "" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
   };
-  return { api, calls, running };
+  return { api, calls, running, existing, networks, volumes };
 };
 
 describe("provider-lando bringUp", () => {
@@ -284,6 +314,101 @@ describe("provider-lando bringUp", () => {
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.running.size).toBe(0);
     expect(fake.calls.some((call) => call.path.includes("/stop"))).toBe(true);
+  });
+
+  test("rolls back containers and network when the first service start fails after network create", async () => {
+    const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
+
+    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(fake.existing.size).toBe(0);
+    expect(fake.networks.size).toBe(0);
+    expect(
+      fake.calls.some(
+        (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-database"),
+      ),
+    ).toBe(true);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
+      false,
+    );
+  });
+
+  test("rolls back the first service and network when the second service start fails", async () => {
+    const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-node"]) });
+
+    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(fake.existing.size).toBe(0);
+    expect(fake.running.size).toBe(0);
+    expect(fake.networks.size).toBe(0);
+    const databaseDeleted = fake.calls.some(
+      (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-database"),
+    );
+    const nodeDeleted = fake.calls.some(
+      (call) => call.method === "DELETE" && call.path.startsWith("/containers/lando-bringupapp-node"),
+    );
+    expect(databaseDeleted).toBe(true);
+    expect(nodeDeleted).toBe(true);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
+      false,
+    );
+  });
+
+  test("failure errors include providerId, operation, redacted details, remediation, and cause", async () => {
+    const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
+
+    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const failures = Array.from(Cause.failures(exit.cause));
+    const startError = failures.find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError).toBeDefined();
+    if (startError === undefined) return;
+    expect(startError.providerId).toBe("lando");
+    expect(startError.operation).toBe("bringUp.start");
+    expect(startError.service).toBe("database");
+    expect(typeof startError.message).toBe("string");
+    expect(startError.remediation).toMatch(/lando destroy/u);
+    expect(startError.details).toEqual({
+      status: 500,
+      body: "forced start failure for lando-bringupapp-database",
+    });
+  });
+
+  test("redacts credential-like env values in error details", async () => {
+    const fake = makeFakeApi({ failCreateFor: new Set(["lando-bringupapp-database"]) });
+
+    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const failures = Array.from(Cause.failures(exit.cause));
+    const startError = failures.find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError).toBeDefined();
+    if (startError === undefined) return;
+    expect(startError.operation).toBe("bringUp.create");
+    expect(startError.service).toBe("database");
+    const details = startError.details as { status: number; body: string } | undefined;
+    expect(details?.status).toBe(500);
+    expect(details?.body).toContain("[REDACTED]");
   });
 
   test("RuntimeProvider apply delegates to bringUp", async () => {
