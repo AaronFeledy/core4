@@ -88,7 +88,6 @@ interface CreateContainerBody {
 interface FakeApiHooks {
   readonly failStartFor?: ReadonlySet<string>;
   readonly failCreateFor?: ReadonlySet<string>;
-  readonly failCreateBody?: string;
 }
 
 const makeFakeApi = (hooks: FakeApiHooks = {}) => {
@@ -270,6 +269,10 @@ describe("provider-lando bringUp", () => {
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(fake.calls.some((call) => call.path.startsWith("/containers/create"))).toBe(false);
+    expect(fake.networks.size).toBe(0);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
+      true,
+    );
   });
 
   test("preserves string command quoting by using shell form", async () => {
@@ -409,6 +412,7 @@ describe("provider-lando bringUp", () => {
     const details = startError.details as { status: number; body: string } | undefined;
     expect(details?.status).toBe(500);
     expect(details?.body).toContain("[REDACTED]");
+    expect(details?.body).not.toContain("hunter2");
   });
 
   test("RuntimeProvider apply delegates to bringUp", async () => {
