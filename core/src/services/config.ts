@@ -7,6 +7,7 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 const DEFAULT_CONFIG_ROOT = `${process.env.HOME ?? "."}/.lando`;
+const DEFAULT_DATA_ROOT = `${process.env.XDG_DATA_HOME ?? `${process.env.HOME ?? "."}/.local/share`}/lando`;
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
@@ -93,6 +94,8 @@ const envOverlay = (): Record<string, unknown> => {
 };
 
 const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string, unknown>): unknown => ({
+  userDataRoot: DEFAULT_DATA_ROOT,
+  defaultProviderId: "lando",
   ...fileConfig,
   ...overlay,
   telemetry: {
