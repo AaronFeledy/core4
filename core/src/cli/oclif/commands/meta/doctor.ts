@@ -1,5 +1,3 @@
-/**
- */
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { type DoctorResult, doctor, renderDoctorResult } from "../../../commands/doctor.ts";

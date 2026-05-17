@@ -7,7 +7,7 @@
  * ```ts
  * export default class StartCommand extends LandoCommandBase {
  *   static description = "Start a Lando app";
- *   static landoSpec = startCommandSpec;  // LandoCommandSpec
+ *   static landoSpec = startCommandSpec;
  *   async run(): Promise<void> {
  *     await this.runEffect(startCommandSpec);
  *   }
@@ -22,7 +22,6 @@
  *   5. Runs `spec.run(input)` via `Effect.runPromiseExit` and translates
  *      tagged errors → OCLIF exit codes.
  *
- * Status: stub.
  */
 import { Command } from "@oclif/core";
 

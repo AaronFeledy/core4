@@ -109,3 +109,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `Effect.runPromise` surfaces failures with a thrown stack trace, whereas `Effect.runPromiseExit + Exit.isSuccess` swallows the cause behind a generic boolean — prefer `runPromise` for happy paths so failures point at the real defect.
   - Useful context: `providerExtensions: Schema.Array(Schema.String)` is currently the only non-primitive `ProviderCapabilities` field; if more array/object fields land, `renderCapabilityValue` (`typeof value === "object"` → `JSON.stringify`) already covers them without further change.
 ---
+
+
+## [2026-05-17 05:38 CDT] - US-003 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-003 branch changes; critical review kept only behavior-preserving cleanup and restored useful design notes that were not AI slop.
+- Files changed by cleanup: `core/src/cli/commands/info.ts`, `core/src/cli/commands/start.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/meta/doctor.ts`, `core/src/cli/run.ts`, `sdk/src/services/index.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed redundant endpoint branches, stale `Status: stub`/`TODO: implement` comments, an empty JSDoc block, a redundant type annotation in a doc example, and a misleading SDK export comment. No public APIs, imports, error handling, side effects, or return values changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Attempted sandboxed `lando4-dev` test execution first per `.local/DEV-ENV.md`, but WSLInterop failed with `Exec format error`; checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
+---

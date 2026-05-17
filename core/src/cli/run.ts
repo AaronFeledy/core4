@@ -8,8 +8,6 @@
  *   3. Hands argv to OCLIF for parsing.
  *   4. OCLIF resolves the command; the command's `run()` calls into Effect
  *      via `LandoCommandBase.runEffect`.
- *
- * Status: stub.
  */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";

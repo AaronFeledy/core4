@@ -660,6 +660,4 @@ export class SecretStore extends Context.Tag("@lando/core/SecretStore")<
   }
 >() {}
 
-// Re-export tags useful to plug-everything plugin authors. The unused-import
-// vars (ServiceName, ServiceInfo) above are referenced by future Live impls.
 export type { AppId, ServiceName, ServiceInfo };
