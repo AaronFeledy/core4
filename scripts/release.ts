@@ -100,12 +100,12 @@ const stages: ReadonlyArray<Stage> = [
   },
   {
     id: "4-test",
-    description: "bun test (unit + library + scenario + smoke).",
+    description: "bun --no-orphans test (unit + library + scenario + smoke).",
     forBinary: true,
     forLibrary: true,
     status: "ready",
     run: async () => {
-      await $`bun test`;
+      await $`bun --no-orphans test`;
     },
   },
   {
