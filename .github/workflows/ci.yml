@@ -40,7 +40,7 @@ jobs:
         run: bun run lint
 
       - name: Test
-        run: bun test --filter='!*.integration.test.ts'
+        run: bun run test:unit
 
   build-linux-x64:
     needs: [static-checks]
