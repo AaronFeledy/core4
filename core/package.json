@@ -10,7 +10,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "bun": ">=1.3.0"
+    "bun": ">=1.3.14"
   },
   "bin": {
     "lando": "./bin/lando.ts"
