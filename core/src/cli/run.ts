@@ -11,6 +11,7 @@
  *
  * Status: stub.
  */
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { execute } from "@oclif/core";
@@ -25,6 +26,7 @@ import { initApp } from "./commands/init.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
+import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 
 const version = "@lando/core/0.0.0";
@@ -153,6 +155,22 @@ const runInfo = async (): Promise<void> => {
   process.exitCode = 1;
 };
 
+const runSetup = async (): Promise<void> => {
+  const installDir = dirname(process.execPath);
+  const exit = await Effect.runPromiseExit(
+    setupSpec.run({ installDir }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    const rendered = setupSpec.render?.(exit.value);
+    if (rendered !== undefined) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  const message = failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause);
+  console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
+  process.exitCode = 1;
+};
+
 const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
@@ -210,6 +228,11 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 
   if (argv[0] === "info" || argv[0] === "app:info") {
     await runInfo();
+    return;
+  }
+
+  if (argv[0] === "setup" || argv[0] === "meta:setup") {
+    await runSetup();
     return;
   }
 

@@ -6,18 +6,55 @@
  * embedding hosts construct equivalent flows from `@lando/core/services`
  * and `PrivilegeService`.
  */
+import { fileURLToPath } from "node:url";
+
 import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
+import { RuntimeProviderRegistry } from "@lando/sdk/services";
+
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-export const setupSpec: LandoCommandSpec<never> = {
+interface SetupResult {
+  readonly providerId: string;
+  readonly installDir: string;
+}
+
+const sourceInstallDir = (): string =>
+  fileURLToPath(new URL("../../../../../", import.meta.url)).replace(/[\\/]$/u, "");
+
+const inputInstallDir = (input: unknown): string | undefined => {
+  if (typeof input !== "object" || input === null || !("installDir" in input)) return undefined;
+  const installDir = input.installDir;
+  return typeof installDir === "string" ? installDir : undefined;
+};
+
+export const setupSpec: LandoCommandSpec<SetupResult, unknown, RuntimeProviderRegistry> = {
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "provider",
-  run: () => Effect.die("not yet implemented: meta:setup"),
+  run: (input) =>
+    Effect.gen(function* () {
+      const registry = yield* RuntimeProviderRegistry;
+      const provider = yield* registry.select();
+
+      yield* Effect.scoped(provider.setup({ force: false }));
+
+      return { providerId: provider.id, installDir: inputInstallDir(input) ?? sourceInstallDir() };
+    }),
+  render: (result) => {
+    if (
+      typeof result !== "object" ||
+      result === null ||
+      !("providerId" in result) ||
+      !("installDir" in result)
+    ) {
+      return undefined;
+    }
+    return `setup complete: Lando runtime (${String(result.providerId)})\nLANDO_INSTALL_DIR="${String(result.installDir)}"`;
+  },
 };
 
 export default class SetupCommand extends LandoCommandBase {

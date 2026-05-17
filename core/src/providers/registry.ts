@@ -161,9 +161,12 @@ const makeRuntimeProviderRegistry = (
     const installedProviderIds = yield* providerIds;
     const defaultProviderIdText = String(defaultProviderId);
     const installed = installedProviderIds.some((providerId) => String(providerId) === defaultProviderIdText);
+    const userDataRoot = yield* Effect.mapError(configService.get("userDataRoot"), toProviderConfig);
     const provider =
       defaultProviderIdText === "lando"
-        ? yield* makeLandoRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability))
+        ? yield* makeLandoRuntimeProvider({
+            ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+          }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
         : providers[defaultProviderIdText];
 
     if (!installed || provider === undefined) {

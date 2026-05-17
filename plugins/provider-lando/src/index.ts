@@ -20,7 +20,7 @@ import {
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
-import { type PodmanCommandRunner, setupProviderLando } from "./setup.ts";
+import { type PodmanCommandRunner, type RuntimeBundleDownloader, setupProviderLando } from "./setup.ts";
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
@@ -38,10 +38,18 @@ export {
   MINIMUM_PODMAN_VERSION,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
+  RuntimeBundleVerificationError,
   makeSystemPodmanCommandRunner,
+  providerStatePath,
   setupProviderLando,
 } from "./setup.ts";
-export type { PodmanCommandRunner, SetupOptions, SetupResult } from "./setup.ts";
+export type {
+  PodmanCommandRunner,
+  RuntimeBundle,
+  RuntimeBundleDownloader,
+  SetupOptions,
+  SetupResult,
+} from "./setup.ts";
 
 export {
   decodeProviderCapabilities,
@@ -64,6 +72,8 @@ const makeUnavailable = (operation: string) =>
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
+  readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
+  readonly stateDir?: string;
   readonly socketPath?: string;
   readonly eventService?: BringUpOptions["eventService"];
 }
@@ -92,6 +102,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
+            ...(options.runtimeBundleDownloader === undefined
+              ? {}
+              : { runtimeBundleDownloader: options.runtimeBundleDownloader }),
+            ...(options.stateDir === undefined ? {} : { stateDir: options.stateDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
           }).pipe(
             Effect.tap((result) =>

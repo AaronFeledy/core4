@@ -98,6 +98,7 @@ const MVP_COMMAND_IDS = new Set([
   "app:start",
   "app:stop",
   "apps:init",
+  "meta:setup",
   "meta:shellenv",
   "meta:version",
 ]);

@@ -21,7 +21,40 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification gate (mandatory on every story): bun run typecheck, bun run lint, bun test all green.
 - Live integration tests stay gated on explicit env vars and host runtime prerequisites.
 
+## Codebase Patterns
+
+- `meta:setup` runs at provider bootstrap through `RuntimeProviderRegistry.select()`; compiled `$bunfs` commands that bypass OCLIF need matching handlers in `core/src/cli/run.ts`.
+- `provider-lando` setup state is persisted under `<userDataRoot>/providers/provider-lando/setup-state.json` when a state directory is configured.
+
 ## Iteration Log
 
 (Loop appends one entry per iteration below.)
 
+
+## [2026-05-16 20:36 CDT] - Sync
+- Previous branch: us-001-provider-lando-linux-setup
+- Previous PR: none
+- Action: skipped (no PR found; recorded branch had 0 commits ahead of main, stale local branch deleted)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-16 21:04 CDT] - US-001
+- Implemented provider-lando setup bundle checksum verification, persistent setup state, and `meta:setup` provider invocation.
+- Files changed: `plugins/provider-lando/src/setup.ts`, `plugins/provider-lando/src/index.ts`, `core/src/cli/oclif/commands/meta/setup.ts`, `core/src/cli/run.ts`, `core/src/providers/registry.ts`, `core/src/services/config.ts`, `sdk/src/services/index.ts`, `core/test/cli/setup.test.ts`, `plugins/provider-lando/test/setup.integration.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (245 pass, 10 skip); `bun run build` passed; manual CLI QA in `lando4-dev` showed compiled `lando setup` fails closed without Podman and reports the same install dir as `lando shellenv`.
+- **Learnings for future iterations:**
+  - Provider-bootstrap commands should select the active provider through `RuntimeProviderRegistry`, not the stub `RuntimeProvider` service.
+  - Compiled CLI behavior must be implemented explicitly in `core/src/cli/run.ts` until full OCLIF routing lands.
+  - Use a fake bundle downloader plus fake Podman API client for provider-lando setup tests; no live runtime prerequisites are needed for this story.
+---
+## 2026-05-16 23:40 CDT - US-001
+- Implemented command-level coverage for provider-lando Linux setup using fake bundle download and fake Podman API clients, including persisted setup state assertions.
+- Files changed: core/test/cli/setup.test.ts, spec/alpha/progress.txt.
+- Verification run and result: lsp_diagnostics core/test/cli/setup.test.ts (clean); bun test core/test/cli/setup.test.ts (3 pass); bun run typecheck (pass); bun run lint (pass); bun test (246 pass, 10 skip); lando4-dev manual QA built core/dist/lando, ran setup failure path with isolated env (exit 1 with remediation and compiled install dir), and ran shellenv (matching compiled install dir).
+- **Learnings for future iterations:**
+  - Patterns discovered: provider-lando setup command tests can exercise the real provider through `makeRuntimeProvider` with all host/runtime dependencies faked.
+  - Gotchas encountered: source OCLIF setup output can include source-map warnings; compare normalized semantic error/remediation lines for source-vs-compiled parity.
+  - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox from `.local/DEV-ENV.md`.
+---

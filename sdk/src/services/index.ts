@@ -267,7 +267,7 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
       ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
     >;
     readonly select: (
-      plan: AppPlan,
+      plan?: AppPlan,
     ) => Effect.Effect<
       RuntimeProviderShape,
       ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError
