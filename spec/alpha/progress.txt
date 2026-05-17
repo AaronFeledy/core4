@@ -285,6 +285,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `podman-api` is a legitimate operation name at the transport layer per §5.7; rewriting it to per-lifecycle names requires either restructuring the `request` helper or adding `mapError` at every callsite — out of scope for a rollback-and-error-fields story. The targeted fix is just adding `remediation` (operation context can be inferred from the wrapping Effect chain in stack traces).
 ---
 
+## [2026-05-17 18:35 CDT] - Push
+- Branch pushed: us-006-harden-provider-cleanup (3 story commits: c0ad053, 3cc14cd, 93701f9)
+- PR: #80 https://github.com/AaronFeledy/core4/pull/80 (created)
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit fea7251 on main
+- Local main / branch refreshed: yes (main fast-forwarded, local story branch deleted)
+- Remaining local state: none; on main, clean
+---
+
 ## [2026-05-17 18:19 CDT] - US-006 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-006 branch changes; critical review kept only behavior-preserving cleanup and reverted the attempted test guard removal because it broke TypeScript narrowing.
 - Files changed by cleanup: `plugins/provider-lando/src/bring-down.ts`, `plugins/provider-lando/src/bring-up.ts`, `plugins/provider-lando/src/capabilities.ts`, `spec/alpha/progress.txt`.
