@@ -1,4 +1,4 @@
-/** `@lando/provider-docker` — Linux Docker Engine RuntimeProvider. */
+/** `@lando/provider-docker` — Docker Engine RuntimeProvider. */
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -9,7 +9,13 @@ import {
   ServiceNotFoundError,
   ServiceStartError,
 } from "@lando/sdk/errors";
-import { type AppPlan, PluginManifest, ProviderCapabilities, type ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type HostPlatform,
+  PluginManifest,
+  ProviderCapabilities,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import {
   type CommandSpec,
   type ExecChunk,
@@ -57,6 +63,13 @@ export interface DockerApiClient {
 export interface ProviderLayerOptions {
   readonly dockerApi?: DockerApiClient;
   readonly dockerHost?: string;
+  readonly platform?: HostPlatform;
+}
+
+export interface ResolveDockerHostOptions {
+  readonly dockerHost?: string;
+  readonly platform?: HostPlatform;
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface EmitComposeOptions {
@@ -272,29 +285,36 @@ const isUnixDockerHost = (dockerHost: string) =>
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
 
-export const linuxDockerCapabilities = Schema.decodeSync(ProviderCapabilities)({
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: false,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: process.platform === "linux" ? "native" : "none",
-  copyMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "none",
-  rootless: false,
-  privilegedServices: false,
-  composeSpec: "portable",
-  providerExtensions: [],
-});
+const platformFromProcess = (): HostPlatform =>
+  process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
+
+export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
+  Schema.decodeSync(ProviderCapabilities)({
+    artifactBuild: false,
+    artifactPull: false,
+    buildSecrets: false,
+    buildSsh: false,
+    multiServiceApply: true,
+    serviceExec: true,
+    serviceLogs: true,
+    serviceHealth: "lando",
+    hostReachability: "emulated",
+    sharedCrossAppNetwork: false,
+    persistentStorage: true,
+    bindMounts: true,
+    bindMountPerformance: platform === "linux" || platform === "wsl" ? "native" : "slow",
+    copyMounts: false,
+    hostPortPublish: "proxy",
+    routeProvider: false,
+    tlsCertificates: "none",
+    rootless: false,
+    privilegedServices: false,
+    composeSpec: "portable",
+    providerExtensions: [],
+  });
+
+export const linuxDockerCapabilities = dockerCapabilitiesForPlatform("linux");
+export const macosDockerCapabilities = dockerCapabilitiesForPlatform("darwin");
 
 export const decodeProviderCapabilities = (input: unknown) =>
   Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
@@ -314,6 +334,7 @@ export const decodeProviderCapabilities = (input: unknown) =>
 
 export const introspectProviderCapabilities = (
   api: DockerApiClient,
+  platform: HostPlatform = platformFromProcess(),
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
     Effect.mapError((cause) =>
@@ -329,7 +350,7 @@ export const introspectProviderCapabilities = (
           })
         : cause,
     ),
-    Effect.map(() => linuxDockerCapabilities),
+    Effect.map(() => dockerCapabilitiesForPlatform(platform)),
   );
 
 const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
@@ -433,8 +454,22 @@ export const makeDockerApiClient = (
     ? makeUnixDockerApiClient(unixSocketPath(dockerHost))
     : makeHttpDockerApiClient(dockerHttpBase(dockerHost));
 
+export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
+  const env = options.env ?? process.env;
+  if (options.dockerHost !== undefined) return options.dockerHost;
+  if (env.LANDO_TEST_DOCKER_SOCKET !== undefined) return env.LANDO_TEST_DOCKER_SOCKET;
+  if (env.DOCKER_HOST !== undefined) return env.DOCKER_HOST;
+  const platform = options.platform ?? platformFromProcess();
+  if (platform === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
+    return `${env.HOME}/.docker/desktop/docker.sock`;
+  }
+  return "/var/run/docker.sock";
+};
+
 const serviceEnv = (service: ServicePlan) =>
   Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
+
+const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 
 const hostConfig = (service: ServicePlan) => {
   const portBindings = Object.fromEntries(
@@ -446,7 +481,23 @@ const hostConfig = (service: ServicePlan) => {
       ]),
   );
 
-  return Object.keys(portBindings).length === 0 ? {} : { PortBindings: portBindings };
+  const appMounts =
+    service.appMount === undefined
+      ? []
+      : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
+  const binds = service.mounts.flatMap((mount) => {
+    if (mount.type !== "bind") return [];
+    if (mount.source === undefined) {
+      throw serviceStartFailure(service, "provider-docker bind mounts require a source.", { mount });
+    }
+    return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+  });
+  const allBinds = Array.from(new Set([...appMounts, ...binds]));
+
+  return {
+    ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
+    ...(allBinds.length > 0 ? { Binds: allBinds } : {}),
+  };
 };
 
 const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
@@ -895,13 +946,18 @@ const makeUnavailable = (operation: string) =>
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
-  const dockerHost = options.dockerHost ?? process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
+  const platform = options.platform ?? platformFromProcess();
+  const configuredDockerHost =
+    options.dockerHost ?? process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
   const dockerApi =
-    options.dockerApi ?? (dockerHost === undefined ? undefined : makeDockerApiClient(dockerHost));
+    options.dockerApi ??
+    (configuredDockerHost === undefined
+      ? undefined
+      : makeDockerApiClient(resolveDockerHost({ dockerHost: configuredDockerHost, platform })));
   const capabilities =
     dockerApi === undefined
-      ? Effect.succeed(linuxDockerCapabilities)
-      : introspectProviderCapabilities(dockerApi);
+      ? Effect.succeed(dockerCapabilitiesForPlatform(platform))
+      : introspectProviderCapabilities(dockerApi, platform);
 
   return capabilities.pipe(
     Effect.map(
@@ -909,7 +965,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         id: PROVIDER_ID,
         displayName: "Docker Runtime Provider",
         version: "0.0.0",
-        platform: process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32",
+        platform,
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
         setup: () => Effect.void,

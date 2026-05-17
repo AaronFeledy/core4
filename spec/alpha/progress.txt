@@ -27,6 +27,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `meta:setup` runs at provider bootstrap through `RuntimeProviderRegistry.select()`; compiled `$bunfs` commands that bypass OCLIF need matching handlers in `core/src/cli/run.ts`.
 - `provider-lando` setup state is persisted under `<userDataRoot>/providers/provider-lando/setup-state.json` when a state directory is configured.
 - provider-lando live macOS machine lifecycle checks stay gated behind `LANDO_TEST_PROVIDER_LANDO_MACOS`; fake `PodmanMachineRunner` tests cover default behavior.
+- Provider capability tests should force the target platform through provider factory options (for example `makeProviderLayer({ platform, ... })`) instead of relying on `process.platform` when asserting Linux vs macOS matrices.
 
 ## Iteration Log
 
@@ -188,4 +189,23 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) as `cbc69dc`
 - Local main / branch refreshed: yes; local story branch deleted/absent
 - Remaining local state: none before recording this merge note
+---
+
+## [2026-05-17 11:12 CDT] - Sync
+- Previous branch: us-003-provider-lando-capability-matrix
+- Previous PR: #77 https://github.com/AaronFeledy/core4/pull/77
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-17 11:27 CDT] - US-004
+- Implemented provider-docker Linux/macOS capability selection, Docker host discovery, bind/appMount realization, and fake Docker Engine API coverage for apply, inspect, exec, logs, and destroy.
+- Files changed: `plugins/provider-docker/src/index.ts`, `plugins/provider-docker/test/capabilities.test.ts`, `plugins/provider-docker/test/contract.integration.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics clean on changed TypeScript files; `bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` passed (7 pass, 1 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (268 pass, 11 skip); manual provider-docker fake API QA exercised macOS slow capabilities plus apply/inspect/exec/logs/destroy and printed Docker API calls.
+- **Learnings for future iterations:**
+  - Patterns discovered: provider-docker platform-specific capabilities can be tested without live Docker by passing `platform` and a fake `DockerApiClient` into `makeProviderLayer`.
+  - Gotchas encountered: Docker exec inspect routes (`/exec/<id>/json`) must be matched before container inspect routes in fake clients, or tests accidentally parse exec ids as container names.
+  - Useful context: provider-docker realizes planner-marked `accelerated` appMount/bind mounts as native Docker binds until the FileSyncEngine path is implemented.
 ---
