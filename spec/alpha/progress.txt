@@ -58,3 +58,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: source OCLIF setup output can include source-map warnings; compare normalized semantic error/remediation lines for source-vs-compiled parity.
   - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox from `.local/DEV-ENV.md`.
 ---
+
+## [2026-05-17 01:04 CDT] - Sync
+- Previous branch: us-001-provider-lando-linux-setup
+- Previous PR: #74 https://github.com/AaronFeledy/core4/pull/74
+- Action: dispatched leftover push (branch had 1 commit ahead of main with no PR found initially; pushed branch, created PR #74, CI and Bugbot passed, squash-merged)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: yes (stash@{0}: loop-sync-autostash)
+---
