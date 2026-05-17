@@ -13,6 +13,7 @@ This file is for non-obvious repo context only. It is a living document that you
 - Root `typecheck` is `tsc -b`; it may create `dist/` and `.tsbuildinfo` despite older prose saying no emit. `bun run clean` removes generated package outputs.
 - For a single workspace package, follow the repo's Bun filter style, e.g. `bun run --filter='@lando/core' typecheck`.
 - After adding a new `plugins/*` workspace package, run `bun install` so root `node_modules` gets the workspace symlink before testing imports from the repo root.
+- For manual `lando` CLI execution that might alter the host, enter the `lando4-dev` tmux workflow from `.local/DEV-ENV.md`; do not use host `sudo` just to enter the sandbox.
 
 ## Gotchas
 

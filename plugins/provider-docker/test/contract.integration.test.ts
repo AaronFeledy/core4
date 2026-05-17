@@ -10,13 +10,95 @@ import {
   makeProviderLayer,
   renderCompose,
 } from "@lando/provider-docker";
-import { AbsolutePath, AppId, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  PortablePath,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract } from "@lando/sdk/test";
+
+const appId = AppId.make("myapp");
+const serviceName = ServiceName.make("web");
+const providerId = ProviderId.make("docker");
+const textEncoder = new TextEncoder();
+const metadata = {
+  resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
+  source: "provider-docker.test",
+  runtime: 4 as const,
+};
+
+const attachFrame = (stream: 1 | 2, text: string) => {
+  const payload = textEncoder.encode(text);
+  const frame = new Uint8Array(8 + payload.length);
+  frame[0] = stream;
+  frame[4] = (payload.length >>> 24) & 0xff;
+  frame[5] = (payload.length >>> 16) & 0xff;
+  frame[6] = (payload.length >>> 8) & 0xff;
+  frame[7] = payload.length & 0xff;
+  frame.set(payload, 8);
+  return frame;
+};
+
+const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoint">> = {}): ServicePlan => ({
+  name: serviceName,
+  type: "node",
+  provider: providerId,
+  primary: true,
+  artifact: { kind: "ref", ref: "node:22-alpine" },
+  command: ["node", "-e", "setInterval(() => {}, 1000)"],
+  environment: {},
+  appMount: {
+    source: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+    target: PortablePath.make("/app"),
+    readOnly: false,
+    excludes: [],
+    includes: [],
+    realization: "accelerated",
+  },
+  mounts: [
+    {
+      type: "bind",
+      source: "/tmp/lando-sdk-cache",
+      target: PortablePath.make("/cache"),
+      readOnly: true,
+      realization: "accelerated",
+    },
+  ],
+  storage: [],
+  endpoints: [{ port: 31080, protocol: "http", name: "http" }],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata,
+  extensions: {},
+  ...overrides,
+});
+
+const makePlan = (service = makeService()): AppPlan => {
+  return {
+    id: appId,
+    name: "My App",
+    slug: "myapp",
+    root: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+    provider: providerId,
+    services: { [serviceName]: service },
+    routes: [],
+    networks: [],
+    stores: [],
+    metadata,
+    extensions: {},
+  };
+};
 
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
+  const execs = new Map<string, number>();
   const calls: DockerHttpRequest[] = [];
 
   const api: DockerApiClient = {
@@ -31,10 +113,26 @@ const makeFakeApi = () => {
         if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
+        if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
+          const execId = decodeURIComponent(request.path.slice("/exec/".length, -"/json".length));
+          if (!execs.has(execId)) {
+            return { status: 404, body: "" };
+          }
+          return { status: 200, body: JSON.stringify({ ExitCode: execs.get(execId) }) };
+        }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           existing.add(name);
           return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
+        }
+        if (request.path.endsWith("/exec") && request.method === "POST") {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/exec".length));
+          if (!existing.has(name)) {
+            return { status: 404, body: "" };
+          }
+          const execId = `${name}-exec`;
+          execs.set(execId, 0);
+          return { status: 201, body: JSON.stringify({ Id: execId }) };
         }
         if (request.path.endsWith("/start")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
@@ -53,7 +151,7 @@ const makeFakeApi = () => {
           running.delete(name);
           return { status: existed ? 204 : 404, body: "" };
         }
-        if (request.path.endsWith("/json")) {
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
           if (!existing.has(name)) {
             return { status: 404, body: "" };
@@ -74,6 +172,12 @@ const makeFakeApi = () => {
       }),
     stream: (request) => {
       calls.push(request);
+      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
+        return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
+      }
+      if (request.path.includes("/logs?")) {
+        return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+      }
       return Stream.empty;
     },
   };
@@ -85,21 +189,79 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("passes the SDK provider contract suite through the Docker Engine HTTP API", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
 
     await Effect.runPromise(runProviderContract(provider));
 
-    expect(provider.capabilities.bindMountPerformance).toBe(process.platform === "linux" ? "native" : "none");
+    expect(provider.capabilities.bindMountPerformance).toBe("native");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
     expect(fake.calls.every((call) => call.path.startsWith("/"))).toBe(true);
   });
 
+  test("covers Docker Engine HTTP API apply, inspect, exec, logs, and destroy with a fake client", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const inspected = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
+    const exec = await Effect.runPromise(
+      provider.exec({ app: appId, service: serviceName }, { command: ["echo", "ok"] }),
+    );
+    const logs = await Effect.runPromise(
+      provider.logs({ app: appId, service: serviceName }, { follow: false }).pipe(
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+      ),
+    );
+    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+
+    expect(inspected.status).toBe("running");
+    expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
+    expect(logs).toEqual([
+      {
+        service: serviceName,
+        stream: "stdout",
+        line: "ready",
+        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+      },
+    ]);
+    expect(
+      fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
+    ).toMatchObject({
+      Cmd: ["sh", "-lc", "npm start"],
+      Entrypoint: ["docker-entrypoint.sh"],
+      HostConfig: {
+        Binds: ["/tmp/lando-sdk-contract-myapp:/app", "/tmp/lando-sdk-cache:/cache:ro"],
+        PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
+      },
+    });
+    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /networks/create",
+      "GET /containers/lando-myapp-web/json",
+      "POST /containers/create?name=lando-myapp-web",
+      "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
+      "POST /containers/lando-myapp-web/exec",
+      "POST /exec/lando-myapp-web-exec/start",
+      "GET /exec/lando-myapp-web-exec/json",
+      "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
+      "POST /containers/lando-myapp-web/stop",
+      "DELETE /containers/lando-myapp-web?force=true",
+      "DELETE /networks/lando-myapp",
+    ]);
+  });
+
   test("declares the Linux Docker Engine capability matrix", async () => {
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: { info: Effect.succeed({}) } }))),
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: { info: Effect.succeed({}) } })),
+      ),
     );
 
     expect(provider.capabilities).toEqual(linuxDockerCapabilities);
@@ -108,45 +270,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   });
 
   test("emits a compose document for provider-owned orchestration state", () => {
-    const compose = renderCompose({
-      id: AppId.make("myapp"),
-      name: "My App",
-      slug: "myapp",
-      root: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
-      provider: ProviderId.make("docker"),
-      services: {
-        [ServiceName.make("web")]: {
-          name: ServiceName.make("web"),
-          type: "node",
-          provider: ProviderId.make("docker"),
-          primary: true,
-          artifact: { kind: "ref", ref: "node:22-alpine" },
-          command: ["node", "-e", "setInterval(() => {}, 1000)"],
-          environment: {},
-          mounts: [],
-          storage: [],
-          endpoints: [{ port: 31080, protocol: "http", name: "http" }],
-          routes: [],
-          dependsOn: [],
-          hostAliases: [],
-          metadata: {
-            resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
-            source: "provider-docker.test",
-            runtime: 4,
-          },
-          extensions: {},
-        },
-      },
-      routes: [],
-      networks: [],
-      stores: [],
-      metadata: {
-        resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
-        source: "provider-docker.test",
-        runtime: 4,
-      },
-      extensions: {},
-    });
+    const compose = renderCompose(makePlan());
 
     expect(compose).toContain('image: "node:22-alpine"');
     expect(compose).toContain('"127.0.0.1:31080:31080/tcp"');

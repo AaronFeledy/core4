@@ -27,6 +27,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `meta:setup` runs at provider bootstrap through `RuntimeProviderRegistry.select()`; compiled `$bunfs` commands that bypass OCLIF need matching handlers in `core/src/cli/run.ts`.
 - `provider-lando` setup state is persisted under `<userDataRoot>/providers/provider-lando/setup-state.json` when a state directory is configured.
 - provider-lando live macOS machine lifecycle checks stay gated behind `LANDO_TEST_PROVIDER_LANDO_MACOS`; fake `PodmanMachineRunner` tests cover default behavior.
+- Provider capability tests should force the target platform through provider factory options (for example `makeProviderLayer({ platform, ... })`) instead of relying on `process.platform` when asserting Linux vs macOS matrices.
 
 ## Iteration Log
 
@@ -58,7 +59,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Patterns discovered: provider-lando setup command tests can exercise the real provider through `makeRuntimeProvider` with all host/runtime dependencies faked.
   - Gotchas encountered: source OCLIF setup output can include source-map warnings; compare normalized semantic error/remediation lines for source-vs-compiled parity.
-  - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox from `.local/DEV-ENV.md`.
+  - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox workflow from `.local/DEV-ENV.md`.
 ---
 
 ## [2026-05-17 01:04 CDT] - Sync
@@ -76,7 +77,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp_diagnostics on changed TypeScript files clean; `bun test plugins/provider-lando/test/setup.integration.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed via bash; manual CLI QA ran `bun core/bin/lando.ts setup` inside `lando4-dev` and confirmed fail-closed Podman remediation output.
 - **Learnings for future iterations:**
   - Patterns discovered: macOS provider-lando lifecycle should stay behind explicit `LANDO_TEST_PROVIDER_LANDO_MACOS` live gating; fake `PodmanMachineRunner` clients cover default transitions without host runtime prerequisites.
-  - Gotchas encountered: `lando setup` manual QA belongs in `lando4-dev`; if WSLInterop is missing, use the documented `.local/DEV-ENV.md` binfmt registration fix before invoking `wsl.exe`.
+  - Gotchas encountered: `lando setup` manual QA belongs in the persistent `lando4-dev` workflow documented in `.local/DEV-ENV.md`.
   - Useful context: Podman machine prerequisite failures should surface as `PodmanMachinePrerequisiteError` with virtualization/helper remediation before API socket validation.
 ---
 
@@ -136,7 +137,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## [2026-05-17 04:34 CDT] - US-003
 - Implemented additional planner capability gates so planned endpoint publishing and persistent storage fail before provider apply when the selected provider cannot support them.
 - Files changed: `core/src/services/planner.ts`, `core/test/services/app-planner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
-- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused tests `bun test core/test/services/app-planner.test.ts plugins/provider-lando/test/capabilities.test.ts core/test/cli/doctor.test.ts` passed (12 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (251 pass, 10 skip). Manual planner QA printed a `CapabilityError` payload with service `web`, feature `host port publish`, capability `hostPortPublish`, provider id `lando`, and remediation. Sandboxed `lando doctor` CLI QA could not run because host WSLInterop registration for `lando4-dev` failed with an I/O error before the command could start.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused tests `bun test core/test/services/app-planner.test.ts plugins/provider-lando/test/capabilities.test.ts core/test/cli/doctor.test.ts` passed (12 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (251 pass, 10 skip). Manual planner QA printed a `CapabilityError` payload with service `web`, feature `host port publish`, capability `hostPortPublish`, provider id `lando`, and remediation. Additional sandboxed `lando doctor` CLI QA did not complete.
 - **Learnings for future iterations:**
   - Patterns discovered: planner capability checks should happen against the provider-neutral `ServicePlan` immediately after service type planning and before adding the service to the encoded `AppPlan`.
   - Gotchas encountered: avoid running full `bun test` concurrently with build/lint checks; compiled-binary tests can contend on `core/dist/lando`.
@@ -169,7 +170,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-003 branch changes; critical review kept only behavior-preserving cleanup and restored useful design notes that were not AI slop.
 - Files changed by cleanup: `core/src/cli/commands/info.ts`, `core/src/cli/commands/start.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/meta/doctor.ts`, `core/src/cli/run.ts`, `sdk/src/services/index.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: removed redundant endpoint branches, stale `Status: stub`/`TODO: implement` comments, an empty JSDoc block, a redundant type annotation in a doc example, and a misleading SDK export comment. No public APIs, imports, error handling, side effects, or return values changed.
-- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Attempted sandboxed `lando4-dev` test execution first per `.local/DEV-ENV.md`, but WSLInterop failed with `Exec format error`; checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
 ---
 
 ## [2026-05-17 10:42 CDT] - Push Triage
@@ -188,4 +189,34 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) as `cbc69dc`
 - Local main / branch refreshed: yes; local story branch deleted/absent
 - Remaining local state: none before recording this merge note
+---
+
+## [2026-05-17 11:12 CDT] - Sync
+- Previous branch: us-003-provider-lando-capability-matrix
+- Previous PR: #77 https://github.com/AaronFeledy/core4/pull/77
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-17 11:27 CDT] - US-004
+- Implemented provider-docker Linux/macOS capability selection, Docker host discovery, bind/appMount realization, and fake Docker Engine API coverage for apply, inspect, exec, logs, and destroy.
+- Files changed: `plugins/provider-docker/src/index.ts`, `plugins/provider-docker/test/capabilities.test.ts`, `plugins/provider-docker/test/contract.integration.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics clean on changed TypeScript files; `bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` passed (7 pass, 1 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (268 pass, 11 skip); manual provider-docker fake API QA exercised macOS slow capabilities plus apply/inspect/exec/logs/destroy and printed Docker API calls.
+- **Learnings for future iterations:**
+  - Patterns discovered: provider-docker platform-specific capabilities can be tested without live Docker by passing `platform` and a fake `DockerApiClient` into `makeProviderLayer`.
+  - Gotchas encountered: Docker exec inspect routes (`/exec/<id>/json`) must be matched before container inspect routes in fake clients, or tests accidentally parse exec ids as container names.
+  - Useful context: provider-docker realizes planner-marked `accelerated` appMount/bind mounts as native Docker binds until the FileSyncEngine path is implemented.
+---
+
+## [2026-05-17 11:46 CDT] - US-004 Review
+- Reviewed provider-docker US-004 build commit `4280769` against PRD-01 US-004 and `review-work` findings; fixed real blockers around default Docker host discovery and Docker Desktop/VM-mediated bind-mount capability reporting.
+- Files changed: `plugins/provider-docker/src/index.ts`, `plugins/provider-docker/test/capabilities.test.ts`, `plugins/provider-docker/test/contract.integration.test.ts`, `spec/alpha/progress.txt`.
+- `review-work` findings: fixed — provider-docker now creates an API client from the resolved default Docker host instead of reporting ready without an API client; fixed — capabilities are host-aware so Linux native `/var/run/docker.sock` reports `native` while Docker Desktop/remote/VM-mediated hosts report `slow`; fixed — Docker create payload tests now assert shell-form command/entrypoint normalization and port bindings. Rejected — Docker logs driver limitations are a Docker API/runtime caveat, not a US-004 implementation blocker; rejected — structured `Mounts` objects over `Binds` is non-blocking hardening outside this review fix; rejected — fresh-process `target.plan` lifecycle behavior belongs to pending US-005, not US-004; rejected — `DOCKER_CONTEXT` support and negative `/info` capability tests are useful follow-ups but not PRD-01 US-004 blockers.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` passed (9 pass, 1 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (270 pass, 11 skip).
+- **Learnings for future iterations:**
+  - Patterns discovered: provider capability values that depend on runtime topology should be derived from the resolved host/socket, not just `process.platform` or a platform override.
+  - Gotchas encountered: `resolveDockerHost()` tests are not enough; provider construction must prove it actually uses the resolved host when creating the API client.
+  - Useful context: Docker Desktop for Linux uses `~/.docker/desktop/docker.sock`, so bind-mount performance is slow even though the host platform is Linux.
 ---
