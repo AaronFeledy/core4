@@ -37,7 +37,7 @@ describe("provider-lando capabilities", () => {
 
     expect(runtimeProvider.capabilities).toEqual(linuxMvpCapabilities);
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe(
-      process.platform === "linux" ? "native" : process.platform === "darwin" ? "slow" : "none",
+      providerLandoCapabilitiesForPlatform(process.platform).bindMountPerformance,
     );
     expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(false);
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);
