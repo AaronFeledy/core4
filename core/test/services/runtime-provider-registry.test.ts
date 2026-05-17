@@ -25,6 +25,11 @@ const appPlan: AppPlan = {
   extensions: {},
 };
 
+const dockerAppPlan: AppPlan = {
+  ...appPlan,
+  provider: ProviderId.make("docker"),
+};
+
 const registryLayer = (defaultProviderId: "lando" | "docker" | "missing") => {
   const config: GlobalConfig = {
     defaultProviderId: ProviderId.make(defaultProviderId),
@@ -61,7 +66,17 @@ describe("RuntimeProviderRegistryLive", () => {
   test("selects the configured provider-docker RuntimeProvider", async () => {
     const provider = await runWithRegistry(
       "docker",
-      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(appPlan)),
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select()),
+    );
+
+    expect(provider.id).toBe("docker");
+    expect(provider.displayName).toBe("Docker Runtime Provider");
+  });
+
+  test("selects the provider encoded in an AppPlan over the configured default", async () => {
+    const provider = await runWithRegistry(
+      "lando",
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(dockerAppPlan)),
     );
 
     expect(provider.id).toBe("docker");
@@ -70,7 +85,7 @@ describe("RuntimeProviderRegistryLive", () => {
 
   test("fails with NoProviderInstalledError for missing providers", async () => {
     const exit = await Effect.runPromiseExit(
-      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select(appPlan)).pipe(
+      Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select()).pipe(
         Effect.provide(registryLayer("missing")),
       ),
     );

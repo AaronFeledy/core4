@@ -19,6 +19,7 @@ import { Cause, Effect, Exit } from "effect";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 
 import { makeLandoRuntime } from "../runtime/layer.ts";
+import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
 import { doctor, renderDoctorResult } from "./commands/doctor.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
@@ -154,6 +155,21 @@ const runInfo = async (): Promise<void> => {
   process.exitCode = 1;
 };
 
+const runDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const volumes = argv.includes("--volumes");
+  const yes = argv.includes("--yes") || argv.includes("-y");
+  const exit = await Effect.runPromiseExit(
+    destroyApp({ volumes, yes }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderDestroyAppResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runSetup = async (): Promise<void> => {
   const installDir = dirname(process.execPath);
   const exit = await Effect.runPromiseExit(
@@ -240,6 +256,11 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 
   if (argv[0] === "info" || argv[0] === "app:info") {
     await runInfo();
+    return;
+  }
+
+  if (argv[0] === "destroy" || argv[0] === "app:destroy") {
+    await runDestroy(argv.slice(1));
     return;
   }
 

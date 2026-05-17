@@ -28,6 +28,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `provider-lando` setup state is persisted under `<userDataRoot>/providers/provider-lando/setup-state.json` when a state directory is configured.
 - provider-lando live macOS machine lifecycle checks stay gated behind `LANDO_TEST_PROVIDER_LANDO_MACOS`; fake `PodmanMachineRunner` tests cover default behavior.
 - Provider capability tests should force the target platform through provider factory options (for example `makeProviderLayer({ platform, ... })`) instead of relying on `process.platform` when asserting Linux vs macOS matrices.
+- Provider lifecycle state should persist an encoded `AppPlan` under the provider state directory and treat stale/corrupt state as a cache miss, not a hard failure.
+- App stop must preserve applied plan state for later fresh-process info/destroy commands; app destroy should remove that state after provider cleanup.
 
 ## Iteration Log
 
@@ -219,4 +221,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: provider capability values that depend on runtime topology should be derived from the resolved host/socket, not just `process.platform` or a platform override.
   - Gotchas encountered: `resolveDockerHost()` tests are not enough; provider construction must prove it actually uses the resolved host when creating the API client.
   - Useful context: Docker Desktop for Linux uses `~/.docker/desktop/docker.sock`, so bind-mount performance is slow even though the host platform is Linux.
+---
+
+## [2026-05-17 15:25 CDT] - US-005
+- Implemented persisted provider-lando applied plan state so fresh provider layers can inspect and destroy apps without relying on in-memory caches; added app-aware provider selection from encoded `AppPlan.provider`; wired `lando destroy` source and compiled CLI paths with `--volumes` support and stop-vs-destroy state retention.
+- Files changed: `plugins/provider-lando/src/applied-state.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/src/bring-down.ts`, `plugins/provider-lando/test/applied-state.integration.test.ts`, `plugins/provider-lando/test/cross-process.integration.test.ts`, `core/src/providers/registry.ts`, `core/src/cli/commands/destroy.ts`, `core/src/cli/commands/stop.ts`, `core/src/cli/oclif/commands/app/destroy.ts`, `core/src/cli/run.ts`, `core/test/cli/destroy.scenario.test.ts`, `core/test/cli/stop.scenario.test.ts`, `core/test/services/runtime-provider-registry.test.ts`, `sdk/src/services/index.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics clean for changed TypeScript files; focused `bun test core/test/services/runtime-provider-registry.test.ts core/test/cli/stop.scenario.test.ts core/test/cli/destroy.scenario.test.ts plugins/provider-lando/test/applied-state.integration.test.ts plugins/provider-lando/test/cross-process.integration.test.ts` passed (23 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed once (285 pass, 11 skip), with later duplicate runs interrupted by the known compiled-binary build/test race; `bun run build` passed; manual CLI QA ran compiled `./core/dist/lando destroy --volumes` and source `bun core/bin/lando.ts destroy --volumes` outside an app and both failed closed with init remediation. Attempted `lando4-dev` entry failed before sandbox startup with `wsl.exe: cannot execute binary file`, so only safe no-app host CLI checks were run.
+- **Learnings for future iterations:**
+  - Patterns discovered: provider lifecycle state should persist an encoded `AppPlan` under the provider state dir and treat stale/corrupt state as a cache miss.
+  - Gotchas encountered: app stop should preserve applied plan state (`removeState: false`) so later fresh-process info/destroy commands still have a plan; app destroy should remove that state after provider cleanup.
+  - Useful context: registry selection must prefer `AppPlan.provider` when a plan is provided so existing apps do not drift if the configured default provider changes.
 ---

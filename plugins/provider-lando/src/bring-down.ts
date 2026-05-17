@@ -19,6 +19,7 @@ interface StopResult {
 export interface BringDownOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly eventService?: EventPublisher;
+  readonly volumes?: boolean;
 }
 
 const appRef = (plan: AppPlan): AppRef => ({
@@ -129,6 +130,38 @@ const removeNetwork = (api: PodmanApiClient, plan: AppPlan): Effect.Effect<boole
   );
 };
 
+const removeVolume = (api: PodmanApiClient, name: string): Effect.Effect<boolean, BringDownError> =>
+  request(api, { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }).pipe(
+    Effect.flatMap((response) => {
+      if (response.status === 200 || response.status === 204) {
+        return Effect.succeed(true);
+      }
+      if (response.status === 404) {
+        return Effect.succeed(false);
+      }
+      return Effect.fail(
+        podmanFailure("bringDown.volume", `Podman volume remove failed with HTTP ${response.status}.`, {
+          name,
+          body: response.body,
+        }),
+      );
+    }),
+  );
+
+const removeAppScopedVolumes = (
+  api: PodmanApiClient,
+  plan: AppPlan,
+): Effect.Effect<boolean, BringDownError> =>
+  Effect.gen(function* () {
+    let changed = false;
+    for (const store of plan.stores) {
+      if (store.scope === "global") continue;
+      const removed = yield* removeVolume(api, store.name);
+      changed = changed || removed;
+    }
+    return changed;
+  });
+
 const stopService = (
   api: PodmanApiClient,
   plan: AppPlan,
@@ -186,6 +219,8 @@ export const bringDown = (
       changed = changed || result.changed;
     }
     const networkRemoved = yield* removeNetwork(resolvedApi, plan);
+    const volumesRemoved =
+      options.volumes === true ? yield* removeAppScopedVolumes(resolvedApi, plan) : false;
 
-    return { changed: changed || networkRemoved };
+    return { changed: changed || networkRemoved || volumesRemoved };
   });

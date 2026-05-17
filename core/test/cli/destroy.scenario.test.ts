@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
-import { renderStopAppResult, stopApp } from "@lando/core/cli/operations";
+import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
@@ -55,7 +55,7 @@ const capabilities: ProviderCapabilities = {
 
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-15T00:00:00Z"),
-  source: "stop.scenario.test",
+  source: "destroy.scenario.test",
   runtime: 4 as const,
 };
 
@@ -72,7 +72,7 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
     name === "database"
       ? [
           {
-            store: "test_stop_database_data",
+            store: "test_destroy_database_data",
             target: PortablePath.make("/var/lib/postgresql/data"),
             readOnly: false,
           },
@@ -92,21 +92,21 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
 const web = servicePlan("web");
 const database = servicePlan("database");
 const plan: AppPlan = {
-  id: AppId.make("test-stop"),
-  name: "test-stop",
-  slug: "test-stop",
-  root: AbsolutePath.make("/tmp/test-stop"),
+  id: AppId.make("test-destroy"),
+  name: "test-destroy",
+  slug: "test-destroy",
+  root: AbsolutePath.make("/tmp/test-destroy"),
   provider: providerId,
   services: { [web.name]: web, [database.name]: database },
   routes: [],
   networks: [],
-  stores: [{ name: "test_stop_database_data", scope: "app" }],
+  stores: [{ name: "test_destroy_database_data", scope: "app" }],
   metadata,
   extensions: {},
 };
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-stop-scenario-")));
+  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-destroy-scenario-")));
   try {
     return await run(dir);
   } finally {
@@ -131,10 +131,9 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeStopLayer = () => {
+const makeDestroyLayer = () => {
   const events: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
-  const stopped = new Set<ServiceName>();
   const volumes = new Set(plan.stores.map((store) => store.name));
   const provider: RuntimeProviderShape = {
     id: "lando",
@@ -170,26 +169,30 @@ const makeStopLayer = () => {
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
-        for (const service of Object.values(plan.services)) stopped.add(service.name);
+        if (options.volumes) {
+          for (const store of plan.stores) {
+            if (store.scope !== "global") volumes.delete(store.name);
+          }
+        }
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.die("not used"),
-    inspect: (target) =>
+    inspect: () =>
       Effect.succeed({
         app: plan.id,
-        service: target.service,
+        service: ServiceName.make("web"),
         providerId,
-        status: stopped.has(target.service) ? "stopped" : "running",
-        state: stopped.has(target.service) ? "stopped" : "running",
+        status: "stopped",
+        state: "stopped",
         endpoints: [],
       }),
     list: () => Effect.succeed([]),
   };
 
   const layer = Layer.mergeAll(
-    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+    Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -206,40 +209,43 @@ const makeStopLayer = () => {
   return { layer, events, destroyCalls, volumes };
 };
 
-describe("lando stop", () => {
-  test("plans the app, destroys provider-lando without volumes, publishes stop events, and renders stopped services", async () => {
-    const harness = makeStopLayer();
-    const result = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+describe("lando destroy", () => {
+  test("plans the app, destroys without removing volumes by default, and emits destroy events", async () => {
+    const harness = makeDestroyLayer();
+    const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
 
-    expect(harness.events).toEqual([
-      "pre-app-stop",
-      "pre-service-stop",
-      "pre-service-stop",
-      "post-service-stop",
-      "post-service-stop",
-      "post-app-stop",
-    ]);
+    expect(harness.events).toEqual(["pre-destroy", "post-destroy"]);
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.destroyCalls[0]?.target).toEqual({ app: plan.id, plan });
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
-    expect(harness.volumes.has("test_stop_database_data")).toBe(true);
-    expect(result.servicesStopped).toEqual(["database", "web"]);
-    expect(renderStopAppResult(result)).toBe("stopped: test-stop - database, web");
+    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: true });
+    expect(harness.volumes.has("test_destroy_database_data")).toBe(true);
+    expect(result.servicesDestroyed).toEqual(["database", "web"]);
+    expect(renderDestroyAppResult(result)).toContain("destroyed: test-destroy");
+    expect(renderDestroyAppResult(result)).toContain("volumes preserved");
   });
 
-  test("succeeds when the app is already stopped", async () => {
-    const harness = makeStopLayer();
+  test("removes app-scoped volumes when volumes: true is requested", async () => {
+    const harness = makeDestroyLayer();
+    const result = await Effect.runPromise(destroyApp({ volumes: true }).pipe(Effect.provide(harness.layer)));
 
-    await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
-    const second = await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: true, removeState: true });
+    expect(harness.volumes.has("test_destroy_database_data")).toBe(false);
+    expect(renderDestroyAppResult(result)).toContain("volumes removed");
+  });
 
-    expect(second.servicesStopped).toEqual(["database", "web"]);
-    expect(harness.destroyCalls).toHaveLength(2);
+  test("compiled CLI exposes lando destroy --volumes flag", async () => {
+    await withTempCwd(async (dir) => {
+      const result = await runCli(["destroy", "--volumes"], dir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("No .lando.yml found");
+      expect(result.stderr).toContain("lando init");
+    });
   });
 
   test("fails outside an app directory with init remediation", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["stop"], dir);
+      const result = await runCli(["destroy"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No .lando.yml found");

@@ -321,6 +321,7 @@ export interface RuntimeProviderShape {
 
 export interface DestroyOptions {
   readonly volumes: boolean;
+  readonly removeState?: boolean;
 }
 
 export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
