@@ -78,3 +78,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `lando setup` manual QA belongs in `lando4-dev`; if WSLInterop is missing, use the documented `.local/DEV-ENV.md` binfmt registration fix before invoking `wsl.exe`.
   - Useful context: Podman machine prerequisite failures should surface as `PodmanMachinePrerequisiteError` with virtualization/helper remediation before API socket validation.
 ---
+
+## [2026-05-17 02:28:50 CDT] - Sync
+- Previous branch: us-002-provider-lando-macos-lifecycle
+- Previous PR: #75 https://github.com/AaronFeledy/core4/pull/75
+- Action: merged
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: yes (loop-sync-autostash)
+---
