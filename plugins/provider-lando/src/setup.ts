@@ -171,23 +171,44 @@ export const makeSystemPodmanMachineRunner = (
   machineName = "lando",
 ): PodmanMachineRunner => ({
   inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect").pipe(
-    Effect.map((stdout) => {
-      const machines = JSON.parse(stdout) as unknown;
-      const machine = Array.isArray(machines) ? machines[0] : machines;
-      if (typeof machine !== "object" || machine === null) {
-        return "missing" as const;
-      }
-      const state = "State" in machine ? machine.State : "state" in machine ? machine.state : undefined;
-      return typeof state === "string" && /running/i.test(state) ? "running" : "stopped";
-    }),
-    Effect.catchAll((cause) =>
-      typeof cause.cause === "object" &&
-      cause.cause !== null &&
-      "exitCode" in cause.cause &&
-      cause.cause.exitCode === 125
-        ? Effect.succeed("missing" as const)
-        : Effect.fail(cause),
+    // `Effect.map` does not catch synchronous throws, so a malformed `podman machine inspect`
+    // payload would become an Effect defect instead of a typed `ProviderUnavailableError`.
+    // Channel parse failures through `Effect.try` so callers always see the tagged error.
+    Effect.flatMap((stdout) =>
+      Effect.try({
+        try: (): PodmanMachineStatus => {
+          const machines = JSON.parse(stdout) as unknown;
+          const machine = Array.isArray(machines) ? machines[0] : machines;
+          if (typeof machine !== "object" || machine === null) {
+            return "missing";
+          }
+          const state = "State" in machine ? machine.State : "state" in machine ? machine.state : undefined;
+          return typeof state === "string" && /running/i.test(state) ? "running" : "stopped";
+        },
+        catch: (cause) =>
+          new ProviderUnavailableError({
+            providerId: PROVIDER_ID,
+            operation: "inspect",
+            message: "Failed to parse `podman machine inspect` output.",
+            remediation: "Verify the Podman machine state and rerun `lando setup`.",
+            cause,
+          }),
+      }),
     ),
+    // Exit code 125 from `podman machine inspect` is "no such machine" only when stderr
+    // confirms the absence; other 125 failures (prerequisite errors, broken state) must
+    // surface so we don't silently treat them as a missing machine.
+    Effect.catchAll((cause) => {
+      const raw = cause.cause;
+      if (typeof raw !== "object" || raw === null) {
+        return Effect.fail(cause);
+      }
+      const exitCode = "exitCode" in raw ? raw.exitCode : undefined;
+      const stderr = "stderr" in raw && typeof raw.stderr === "string" ? raw.stderr : "";
+      return exitCode === 125 && /not\s*(exist|found)|no such|cannot find/i.test(stderr)
+        ? Effect.succeed("missing" as const)
+        : Effect.fail(cause);
+    }),
   ),
   create: runMachineCommand(command, ["machine", "init", machineName], "create").pipe(Effect.asVoid),
   start: runMachineCommand(command, ["machine", "start", machineName], "start").pipe(Effect.asVoid),
