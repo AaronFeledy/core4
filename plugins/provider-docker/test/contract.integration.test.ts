@@ -44,7 +44,7 @@ const attachFrame = (stream: 1 | 2, text: string) => {
   return frame;
 };
 
-const makeService = (): ServicePlan => ({
+const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoint">> = {}): ServicePlan => ({
   name: serviceName,
   type: "node",
   provider: providerId,
@@ -76,10 +76,10 @@ const makeService = (): ServicePlan => ({
   hostAliases: [],
   metadata,
   extensions: {},
+  ...overrides,
 });
 
-const makePlan = (): AppPlan => {
-  const service = makeService();
+const makePlan = (service = makeService()): AppPlan => {
   return {
     id: appId,
     name: "My App",
@@ -189,14 +189,12 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("passes the SDK provider contract suite through the Docker Engine HTTP API", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
     );
 
     await Effect.runPromise(runProviderContract(provider));
 
-    expect(provider.capabilities.bindMountPerformance).toBe(
-      process.platform === "darwin" ? "slow" : "native",
-    );
+    expect(provider.capabilities.bindMountPerformance).toBe("native");
     expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
@@ -208,7 +206,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
     );
-    const plan = makePlan();
+    const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
 
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
     const inspected = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
@@ -236,8 +234,11 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(
       fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
     ).toMatchObject({
+      Cmd: ["sh", "-lc", "npm start"],
+      Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
         Binds: ["/tmp/lando-sdk-contract-myapp:/app", "/tmp/lando-sdk-cache:/cache:ro"],
+        PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
     });
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
@@ -258,7 +259,9 @@ describe("provider-docker RuntimeProvider contract", () => {
 
   test("declares the Linux Docker Engine capability matrix", async () => {
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: { info: Effect.succeed({}) } }))),
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: { info: Effect.succeed({}) } })),
+      ),
     );
 
     expect(provider.capabilities).toEqual(linuxDockerCapabilities);

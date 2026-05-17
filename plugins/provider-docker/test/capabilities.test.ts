@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import {
+  dockerCapabilitiesForHost,
   dockerCapabilitiesForPlatform,
   linuxDockerCapabilities,
   macosDockerCapabilities,
@@ -24,6 +25,15 @@ describe("provider-docker capabilities", () => {
     expect(macos.bindMounts).toBe(true);
   });
 
+  test("classifies Docker host bind mount performance", () => {
+    expect(dockerCapabilitiesForHost("linux", "/var/run/docker.sock").bindMountPerformance).toBe("native");
+    expect(
+      dockerCapabilitiesForHost("linux", "/home/alice/.docker/desktop/docker.sock").bindMountPerformance,
+    ).toBe("slow");
+    expect(dockerCapabilitiesForHost("linux", "tcp://127.0.0.1:2375").bindMountPerformance).toBe("slow");
+    expect(dockerCapabilitiesForHost("darwin", "/var/run/docker.sock").bindMountPerformance).toBe("slow");
+  });
+
   test("introspects platform-specific Docker capabilities after API discovery", async () => {
     const linuxProvider = await Effect.runPromise(
       RuntimeProvider.pipe(
@@ -38,6 +48,42 @@ describe("provider-docker capabilities", () => {
 
     expect(linuxProvider.capabilities).toEqual(linuxDockerCapabilities);
     expect(macosProvider.capabilities).toEqual(macosDockerCapabilities);
+  });
+
+  test("uses resolved Docker hosts for API creation and capabilities", async () => {
+    const createdHosts: Array<string> = [];
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApiFactory: (dockerHost) => {
+              createdHosts.push(dockerHost);
+              return { info: Effect.succeed({}) };
+            },
+          }),
+        ),
+      ),
+    );
+    const desktopProvider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: { HOME: "/home/alice", LANDO_DOCKER_DESKTOP: "1" },
+            dockerApiFactory: (dockerHost) => {
+              createdHosts.push(dockerHost);
+              return { info: Effect.succeed({}) };
+            },
+          }),
+        ),
+      ),
+    );
+
+    expect(createdHosts).toEqual(["/var/run/docker.sock", "/home/alice/.docker/desktop/docker.sock"]);
+    expect(provider.capabilities.bindMountPerformance).toBe("native");
+    expect(desktopProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 
   test("supports explicit config and env Docker host discovery", () => {

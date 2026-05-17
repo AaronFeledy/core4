@@ -62,8 +62,10 @@ export interface DockerApiClient {
 
 export interface ProviderLayerOptions {
   readonly dockerApi?: DockerApiClient;
+  readonly dockerApiFactory?: (dockerHost: string) => DockerApiClient;
   readonly dockerHost?: string;
   readonly platform?: HostPlatform;
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export interface ResolveDockerHostOptions {
@@ -288,7 +290,19 @@ const unixSocketPath = (dockerHost: string) =>
 const platformFromProcess = (): HostPlatform =>
   process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
 
-export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
+const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boolean => {
+  if (platform === "darwin" || platform === "win32") return true;
+  const socketPath = unixSocketPath(dockerHost);
+  return (
+    dockerHost.startsWith("tcp://") ||
+    dockerHost.startsWith("http://") ||
+    dockerHost.startsWith("https://") ||
+    socketPath.includes("/.docker/desktop/") ||
+    socketPath.includes("/.docker/run/")
+  );
+};
+
+export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: string): ProviderCapabilities =>
   Schema.decodeSync(ProviderCapabilities)({
     artifactBuild: false,
     artifactPull: false,
@@ -302,7 +316,7 @@ export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
     sharedCrossAppNetwork: false,
     persistentStorage: true,
     bindMounts: true,
-    bindMountPerformance: platform === "linux" || platform === "wsl" ? "native" : "slow",
+    bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
     copyMounts: false,
     hostPortPublish: "proxy",
     routeProvider: false,
@@ -313,8 +327,11 @@ export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
     providerExtensions: [],
   });
 
-export const linuxDockerCapabilities = dockerCapabilitiesForPlatform("linux");
-export const macosDockerCapabilities = dockerCapabilitiesForPlatform("darwin");
+export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
+  dockerCapabilitiesForHost(platform, "/var/run/docker.sock");
+
+export const linuxDockerCapabilities = dockerCapabilitiesForHost("linux", "/var/run/docker.sock");
+export const macosDockerCapabilities = dockerCapabilitiesForHost("darwin", "/var/run/docker.sock");
 
 export const decodeProviderCapabilities = (input: unknown) =>
   Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
@@ -335,6 +352,7 @@ export const decodeProviderCapabilities = (input: unknown) =>
 export const introspectProviderCapabilities = (
   api: DockerApiClient,
   platform: HostPlatform = platformFromProcess(),
+  dockerHost = "/var/run/docker.sock",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   api.info.pipe(
     Effect.mapError((cause) =>
@@ -350,7 +368,7 @@ export const introspectProviderCapabilities = (
           })
         : cause,
     ),
-    Effect.map(() => dockerCapabilitiesForPlatform(platform)),
+    Effect.map(() => dockerCapabilitiesForHost(platform, dockerHost)),
   );
 
 const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
@@ -471,6 +489,20 @@ const serviceEnv = (service: ServicePlan) =>
 
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 
+const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
+  if (cmd === undefined) return undefined;
+  if (typeof cmd === "string") return ["sh", "-lc", cmd];
+  return [...cmd];
+};
+
+const normalizeEntrypoint = (
+  entrypoint: ReadonlyArray<string> | string | undefined,
+): Array<string> | undefined => {
+  if (entrypoint === undefined) return undefined;
+  if (typeof entrypoint === "string") return [entrypoint];
+  return [...entrypoint];
+};
+
 const hostConfig = (service: ServicePlan) => {
   const portBindings = Object.fromEntries(
     service.endpoints
@@ -510,8 +542,8 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
   return {
     Image: service.artifact.ref,
     Env: serviceEnv(service),
-    Cmd: service.command,
-    Entrypoint: service.entrypoint,
+    Cmd: normalizeCmd(service.command),
+    Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
     Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name },
     HostConfig: hostConfig(service),
@@ -947,17 +979,14 @@ const makeUnavailable = (operation: string) =>
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
   const platform = options.platform ?? platformFromProcess();
-  const configuredDockerHost =
-    options.dockerHost ?? process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
+  const resolvedDockerHost = resolveDockerHost({
+    platform,
+    ...(options.dockerHost === undefined ? {} : { dockerHost: options.dockerHost }),
+    ...(options.env === undefined ? {} : { env: options.env }),
+  });
   const dockerApi =
-    options.dockerApi ??
-    (configuredDockerHost === undefined
-      ? undefined
-      : makeDockerApiClient(resolveDockerHost({ dockerHost: configuredDockerHost, platform })));
-  const capabilities =
-    dockerApi === undefined
-      ? Effect.succeed(dockerCapabilitiesForPlatform(platform))
-      : introspectProviderCapabilities(dockerApi, platform);
+    options.dockerApi ?? (options.dockerApiFactory ?? makeDockerApiClient)(resolvedDockerHost);
+  const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
 
   return capabilities.pipe(
     Effect.map(
