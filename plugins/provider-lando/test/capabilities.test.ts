@@ -38,6 +38,15 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 
+  test("uses platform-specific MVP capabilities before Podman API discovery", async () => {
+    const layer = makeProviderLayer({ platform: "win32" });
+    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+
+    expect(runtimeProvider.platform).toBe("win32");
+    expect(runtimeProvider.capabilities).toEqual(mvpProviderCapabilities("win32"));
+    expect(runtimeProvider.capabilities.bindMountPerformance).toBe("none");
+  });
+
   test("builds Podman API HTTP-over-UNIX requests without invoking the podman binary", () => {
     const request = makePodmanInfoRequest("/tmp/podman.sock");
 

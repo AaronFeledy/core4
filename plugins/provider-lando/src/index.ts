@@ -14,9 +14,8 @@ import { type BringUpOptions, bringUp } from "./bring-up.ts";
 import {
   type PodmanApiClient,
   introspectProviderCapabilities,
-  linuxMvpCapabilities,
-  macosMvpCapabilities,
   makePodmanApiClient,
+  mvpProviderCapabilities,
 } from "./capabilities.ts";
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
@@ -112,7 +111,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     (process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32");
   const capabilities =
     podmanApi === undefined
-      ? Effect.succeed(platform === "darwin" ? macosMvpCapabilities : linuxMvpCapabilities)
+      ? Effect.succeed(mvpProviderCapabilities(platform))
       : introspectProviderCapabilities(podmanApi, platform);
 
   return capabilities.pipe(
