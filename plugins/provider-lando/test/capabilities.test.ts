@@ -5,26 +5,37 @@ import {
   decodeProviderCapabilities,
   introspectProviderCapabilities,
   linuxMvpCapabilities,
+  macosMvpCapabilities,
   makePodmanInfoRequest,
   makeProviderLayer,
+  mvpProviderCapabilities,
 } from "@lando/provider-lando";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
 describe("provider-lando capabilities", () => {
   test("declares the Linux MVP ProviderCapabilities through the Live Layer", async () => {
-    const layer = makeProviderLayer({ podmanApi: { info: Effect.succeed({}) } });
+    const layer = makeProviderLayer({ platform: "linux", podmanApi: { info: Effect.succeed({}) } });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities).toEqual(linuxMvpCapabilities);
-    expect(runtimeProvider.capabilities.bindMountPerformance).toBe(
-      process.platform === "linux" ? "native" : "none",
-    );
+    expect(runtimeProvider.capabilities.bindMountPerformance).toBe("native");
     expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(false);
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);
     expect(Object.keys(runtimeProvider.capabilities).sort()).toEqual(
       Object.keys(ProviderCapabilities.fields).sort(),
     );
+  });
+
+  test("declares macOS support with slow bind mount performance", async () => {
+    const layer = makeProviderLayer({ platform: "darwin", podmanApi: { info: Effect.succeed({}) } });
+    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+
+    expect(runtimeProvider.platform).toBe("darwin");
+    expect(runtimeProvider.capabilities).toEqual(macosMvpCapabilities);
+    expect(runtimeProvider.capabilities).toEqual(mvpProviderCapabilities("darwin"));
+    expect(runtimeProvider.capabilities.bindMounts).toBe(true);
+    expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 
   test("builds Podman API HTTP-over-UNIX requests without invoking the podman binary", () => {
@@ -40,7 +51,7 @@ describe("provider-lando capabilities", () => {
 
   test("decodes capabilities through the SDK schema", async () => {
     const capabilities = await Effect.runPromise(
-      introspectProviderCapabilities({ info: Effect.succeed({}) }),
+      introspectProviderCapabilities({ info: Effect.succeed({}) }, "linux"),
     );
 
     expect(capabilities).toEqual(linuxMvpCapabilities);
