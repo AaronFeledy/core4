@@ -9,6 +9,7 @@
 import { Effect } from "effect";
 
 import type {
+  CapabilityError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -54,6 +55,7 @@ type InfoAppError =
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
+  | CapabilityError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError

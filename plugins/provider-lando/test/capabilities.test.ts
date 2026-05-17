@@ -7,18 +7,37 @@ import {
   linuxMvpCapabilities,
   makePodmanInfoRequest,
   makeProviderLayer,
+  providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
 describe("provider-lando capabilities", () => {
+  test("declares every ProviderCapabilities field for Linux and macOS", () => {
+    const expectedFields = Object.keys(ProviderCapabilities.fields).sort();
+    const linux = providerLandoCapabilitiesForPlatform("linux");
+    const macos = providerLandoCapabilitiesForPlatform("darwin");
+    const windows = providerLandoCapabilitiesForPlatform("win32");
+    const unsupported = providerLandoCapabilitiesForPlatform("freebsd");
+
+    expect(Object.keys(linux).sort()).toEqual(expectedFields);
+    expect(Object.keys(macos).sort()).toEqual(expectedFields);
+    expect(Object.keys(windows).sort()).toEqual(expectedFields);
+    expect(Object.keys(unsupported).sort()).toEqual(expectedFields);
+    expect(linux.bindMountPerformance).toBe("native");
+    expect(macos.bindMountPerformance).toBe("slow");
+    expect(windows.bindMountPerformance).toBe("slow");
+    expect(unsupported.bindMounts).toBe(false);
+    expect(unsupported.bindMountPerformance).toBe("none");
+  });
+
   test("declares the Linux MVP ProviderCapabilities through the Live Layer", async () => {
     const layer = makeProviderLayer({ podmanApi: { info: Effect.succeed({}) } });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities).toEqual(linuxMvpCapabilities);
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe(
-      process.platform === "linux" ? "native" : "none",
+      process.platform === "linux" ? "native" : process.platform === "darwin" ? "slow" : "none",
     );
     expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(false);
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);

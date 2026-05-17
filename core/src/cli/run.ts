@@ -21,6 +21,7 @@ import { Cause, Effect, Exit } from "effect";
 import { InitTargetExistsError } from "@lando/sdk/errors";
 
 import { makeLandoRuntime } from "../runtime/layer.ts";
+import { doctor, renderDoctorResult } from "./commands/doctor.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
@@ -171,6 +172,19 @@ const runSetup = async (): Promise<void> => {
   process.exitCode = 1;
 };
 
+const runDoctor = async (): Promise<void> => {
+  const exit = await Effect.runPromiseExit(
+    doctor().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderDoctorResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
@@ -233,6 +247,11 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 
   if (argv[0] === "setup" || argv[0] === "meta:setup") {
     await runSetup();
+    return;
+  }
+
+  if (argv[0] === "doctor" || argv[0] === "meta:doctor") {
+    await runDoctor();
     return;
   }
 

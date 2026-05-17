@@ -114,29 +114,35 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
-export const linuxMvpCapabilities: ProviderCapabilities = Schema.decodeSync(ProviderCapabilities)({
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: false,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: process.platform === "linux" ? "native" : "none",
-  copyMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
-  composeSpec: "portable",
-  providerExtensions: [],
-});
+export const providerLandoCapabilitiesForPlatform = (
+  platform: NodeJS.Platform = process.platform,
+): ProviderCapabilities =>
+  Schema.decodeSync(ProviderCapabilities)({
+    artifactBuild: false,
+    artifactPull: false,
+    buildSecrets: false,
+    buildSsh: false,
+    multiServiceApply: true,
+    serviceExec: true,
+    serviceLogs: true,
+    serviceHealth: "lando",
+    hostReachability: "emulated",
+    sharedCrossAppNetwork: false,
+    persistentStorage: true,
+    bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
+    bindMountPerformance:
+      platform === "linux" ? "native" : platform === "darwin" || platform === "win32" ? "slow" : "none",
+    copyMounts: false,
+    hostPortPublish: "proxy",
+    routeProvider: false,
+    tlsCertificates: "lando",
+    rootless: true,
+    privilegedServices: false,
+    composeSpec: "portable",
+    providerExtensions: [],
+  });
+
+export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform();
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
   stream: (request) =>

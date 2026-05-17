@@ -57,6 +57,7 @@ export {
   linuxMvpCapabilities,
   makePodmanApiClient,
   makePodmanInfoRequest,
+  providerLandoCapabilitiesForPlatform,
 } from "./capabilities.ts";
 export type { PodmanApiClient, PodmanApiRequest } from "./capabilities.ts";
 

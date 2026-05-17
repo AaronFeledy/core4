@@ -6,6 +6,7 @@
 import { DateTime, Effect } from "effect";
 
 import type {
+  CapabilityError,
   EventError,
   LandoCommandError,
   LandofileNotFoundError,
@@ -43,6 +44,7 @@ type StopAppError =
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
+  | CapabilityError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
