@@ -133,13 +133,19 @@ const hostConfig = (service: ServicePlan) => {
       ]),
   );
 
-  // Map passthrough bind mounts; other realization types are not yet supported.
+  // Map bind/appMount realizations to native Podman binds. "passthrough" is the
+  // native path; "accelerated" is the planner hint for slow-bind-mount providers
+  // (macOS, VM-backed Docker). The accelerated FileSyncEngine (spec §10.6) is not
+  // yet implemented, so accelerated bind mounts are realized as plain binds for now
+  // — matching the planner-declared capability so the mount actually attaches.
+  const isRealizableBind = (realization: "passthrough" | "accelerated") =>
+    realization === "passthrough" || realization === "accelerated";
   const appMounts =
-    service.appMount === undefined || service.appMount.realization !== "passthrough"
+    service.appMount === undefined || !isRealizableBind(service.appMount.realization)
       ? []
       : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
   const binds = service.mounts.flatMap((mount) => {
-    if (mount.type !== "bind" || mount.realization !== "passthrough") return [];
+    if (mount.type !== "bind" || !isRealizableBind(mount.realization)) return [];
     if (mount.source === undefined) {
       throw podmanFailure(service, "provider-lando bind mounts require a source.", { mount });
     }

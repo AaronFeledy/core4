@@ -9,6 +9,7 @@
 import { Effect } from "effect";
 
 import type {
+  CapabilityError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -54,6 +55,7 @@ type InfoAppError =
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
+  | CapabilityError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -84,16 +86,13 @@ const endpointText = (service: ServicePlan, endpoint: EndpointPlan): string => {
     const database = service.environment.POSTGRES_DB ?? "postgres";
     return `postgresql://${user}@localhost:${endpoint.port}/${database}`;
   }
-  if (endpoint.protocol === "http" || endpoint.protocol === "https") {
-    return `${endpoint.protocol}://localhost:${endpoint.port}`;
-  }
   return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
 export const renderInfoAppResult = (result: InfoAppResult): string => {
   if (result.services.length === 0) return `${result.app}\n(no services)`;
   const rows = result.services.map((service) => {
-    const endpoints = service.endpoints ?? [];
+    const endpoints = service.endpoints;
     const renderedEndpoints = endpoints.length === 0 ? "no endpoints" : endpoints.join(", ");
     return `${service.service}\t${service.status}\t${renderedEndpoints}`;
   });

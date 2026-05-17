@@ -114,7 +114,7 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
-const mvpCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
+export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
   Schema.decodeSync(ProviderCapabilities)({
     artifactBuild: false,
     artifactPull: false,
@@ -127,7 +127,7 @@ const mvpCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilitie
     hostReachability: "emulated",
     sharedCrossAppNetwork: false,
     persistentStorage: true,
-    bindMounts: true,
+    bindMounts: platform === "linux" || platform === "darwin",
     bindMountPerformance: platform === "linux" ? "native" : platform === "darwin" ? "slow" : "none",
     copyMounts: false,
     hostPortPublish: "proxy",
@@ -139,10 +139,10 @@ const mvpCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilitie
     providerExtensions: [],
   });
 
-export const linuxMvpCapabilities: ProviderCapabilities = mvpCapabilitiesForPlatform("linux");
-export const macosMvpCapabilities: ProviderCapabilities = mvpCapabilitiesForPlatform("darwin");
+export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("linux");
+export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("darwin");
 export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
-  mvpCapabilitiesForPlatform(platform);
+  providerLandoCapabilitiesForPlatform(platform);
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
   stream: (request) =>

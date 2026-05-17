@@ -173,6 +173,48 @@ describe("provider-lando bringUp", () => {
     expect(nodeCreateBody?.HostConfig?.Binds).toEqual([`${appRoot}:/app`]);
   });
 
+  test("realizes accelerated appMount and bind mounts as native Podman binds", async () => {
+    const fake = makeFakeApi();
+    const acceleratedAppRoot = AbsolutePath.make("/tmp/lando-accel-app");
+    const acceleratedNode: ServicePlan = {
+      ...node,
+      dependsOn: [],
+      appMount: {
+        source: acceleratedAppRoot,
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        excludes: [],
+        includes: [],
+        realization: "accelerated",
+      },
+      mounts: [
+        {
+          type: "bind",
+          source: AbsolutePath.make("/tmp/lando-accel-cache"),
+          target: PortablePath.make("/cache"),
+          readOnly: true,
+          realization: "accelerated",
+        },
+      ],
+    };
+    const acceleratedPlan: AppPlan = {
+      ...plan,
+      services: { [acceleratedNode.name]: acceleratedNode },
+      stores: [],
+    };
+
+    await Effect.runPromise(bringUp(acceleratedPlan, { podmanApi: fake.api }));
+
+    const create = fake.calls.find(
+      (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
+    );
+    const body = create?.body as CreateContainerBody | undefined;
+    expect(body?.HostConfig?.Binds).toEqual([
+      `${acceleratedAppRoot}:/app`,
+      "/tmp/lando-accel-cache:/cache:ro",
+    ]);
+  });
+
   test("fails passthrough bind mounts without a source before creating the container", async () => {
     const fake = makeFakeApi();
     const invalidNode: ServicePlan = {

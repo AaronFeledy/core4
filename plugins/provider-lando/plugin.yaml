@@ -12,7 +12,7 @@ provides:
     - id: lando
       module: ./src/provider.ts
       defaultFor:
-        platform: [linux]
+        platform: [darwin, linux]
 
 requires:
   "@lando/core": "^4.0.0"

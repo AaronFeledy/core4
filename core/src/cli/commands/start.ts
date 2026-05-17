@@ -9,6 +9,7 @@
 import { DateTime, Effect } from "effect";
 
 import type {
+  CapabilityError,
   EventError,
   LandoCommandError,
   LandofileNotFoundError,
@@ -47,6 +48,7 @@ type StartAppError =
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
+  | CapabilityError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -66,8 +68,6 @@ const endpointText = (endpoint: {
 }) => {
   if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
   if (endpoint.port === undefined) return endpoint.protocol;
-  if (endpoint.protocol === "http" || endpoint.protocol === "https")
-    return `${endpoint.protocol}://localhost:${endpoint.port}`;
   return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
@@ -86,8 +86,6 @@ export const renderStartAppResult = (result: StartAppResult): string => {
  *
  * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanner`,
  * `RuntimeProviderRegistry`, `EventService`, `Logger`.
- *
- * TODO: implement.
  */
 export const startApp = (
   options: StartAppOptions = {},

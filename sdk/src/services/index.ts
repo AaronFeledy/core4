@@ -34,6 +34,7 @@ import type {
 
 import type {
   CacheError,
+  CapabilityError,
   ConfigError,
   EventError,
   FileIoError,
@@ -336,7 +337,7 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     readonly plan: (
       landofile: LandofileShape,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<AppPlan, LandofileValidationError>;
+    ) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError>;
   }
 >() {}
 
@@ -659,6 +660,4 @@ export class SecretStore extends Context.Tag("@lando/core/SecretStore")<
   }
 >() {}
 
-// Re-export tags useful to plug-everything plugin authors. The unused-import
-// vars (ServiceName, ServiceInfo) above are referenced by future Live impls.
 export type { AppId, ServiceName, ServiceInfo };

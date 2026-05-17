@@ -72,6 +72,7 @@ export {
   makePodmanApiClient,
   makePodmanInfoRequest,
   mvpProviderCapabilities,
+  providerLandoCapabilitiesForPlatform,
 } from "./capabilities.ts";
 export type {
   PodmanApiClient,

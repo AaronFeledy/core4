@@ -1,6 +1,6 @@
 import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
-import { LandofileValidationError } from "@lando/sdk/errors";
+import { CapabilityError, LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -38,6 +38,28 @@ const unsupportedServiceType = (appRoot: string, serviceName: string, serviceTyp
     issues: [`services.${serviceName}.type`],
   });
 
+const missingCapability = (
+  providerId: ProviderId,
+  serviceName: string,
+  feature: string,
+  capability: keyof ProviderCapabilities,
+  remediation: string,
+) =>
+  new CapabilityError({
+    message: `Service ${serviceName} requires provider capability ${String(capability)} for ${feature}.`,
+    service: serviceName,
+    feature,
+    capability: String(capability),
+    providerId: String(providerId),
+    remediation,
+  });
+
+const serviceBindRemediation = (serviceName: string) =>
+  `Choose a provider with bind mount support or remove bind mounts from service ${serviceName}.`;
+
+const bindRealization = (providerCapabilities: ProviderCapabilities) =>
+  providerCapabilities.bindMountPerformance === "slow" ? "accelerated" : "passthrough";
+
 const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, LandofileValidationError> => {
   const decoded = Schema.decodeUnknownEither(AppPlan)(plan);
   if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
@@ -54,8 +76,8 @@ const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, L
 const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   landofile: LandofileShape,
-  _providerCapabilities: ProviderCapabilities,
-): Effect.Effect<AppPlan, LandofileValidationError> => {
+  providerCapabilities: ProviderCapabilities,
+): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError> => {
   const appRoot = process.cwd();
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
@@ -74,16 +96,65 @@ const planApp = (
         .loadServiceType(serviceTypeId)
         .pipe(Effect.mapError(() => unsupportedServiceType(appRoot, name, serviceTypeId)));
 
-      services[name] = Schema.encodeSync(ServicePlan)(
-        serviceType.toServicePlan({
-          name,
-          service,
-          appRoot,
-          provider,
-          primary: name === "web",
-          metadata,
-        }),
-      );
+      const servicePlan = serviceType.toServicePlan({
+        name,
+        service,
+        appRoot,
+        provider,
+        primary: name === "web",
+        metadata,
+      });
+
+      if (
+        (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
+        (!providerCapabilities.bindMounts || providerCapabilities.bindMountPerformance === "none")
+      ) {
+        return yield* Effect.fail(
+          missingCapability(provider, name, "bind mount", "bindMounts", serviceBindRemediation(name)),
+        );
+      }
+
+      const servicePlanWithCapabilityRealization: ServicePlan = {
+        ...servicePlan,
+        ...(servicePlan.appMount === undefined
+          ? {}
+          : { appMount: { ...servicePlan.appMount, realization: bindRealization(providerCapabilities) } }),
+        mounts: servicePlan.mounts.map((mount) =>
+          mount.type === "bind" ? { ...mount, realization: bindRealization(providerCapabilities) } : mount,
+        ),
+      };
+
+      if (
+        servicePlanWithCapabilityRealization.endpoints.some((endpoint) => endpoint.port !== undefined) &&
+        providerCapabilities.hostPortPublish === "none"
+      ) {
+        return yield* Effect.fail(
+          missingCapability(
+            provider,
+            name,
+            "host port publish",
+            "hostPortPublish",
+            `Choose a provider with host port publish support or remove published ports from service ${name}.`,
+          ),
+        );
+      }
+
+      if (
+        servicePlanWithCapabilityRealization.storage.length > 0 &&
+        !providerCapabilities.persistentStorage
+      ) {
+        return yield* Effect.fail(
+          missingCapability(
+            provider,
+            name,
+            "persistent storage",
+            "persistentStorage",
+            `Choose a provider with persistent storage support or remove persistent storage from service ${name}.`,
+          ),
+        );
+      }
+
+      services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
     }
 
     return yield* decodeAppPlan(appRoot, {

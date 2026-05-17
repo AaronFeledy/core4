@@ -23,6 +23,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 
 ## Codebase Patterns
 
+- Planner capability gates live in `core/src/services/planner.ts`; service-plan fields that require provider support should fail before apply with `CapabilityError` carrying service, feature, capability, provider id, and remediation.
 - `meta:setup` runs at provider bootstrap through `RuntimeProviderRegistry.select()`; compiled `$bunfs` commands that bypass OCLIF need matching handlers in `core/src/cli/run.ts`.
 - `provider-lando` setup state is persisted under `<userDataRoot>/providers/provider-lando/setup-state.json` when a state directory is configured.
 - provider-lando live macOS machine lifecycle checks stay gated behind `LANDO_TEST_PROVIDER_LANDO_MACOS`; fake `PodmanMachineRunner` tests cover default behavior.
@@ -121,4 +122,58 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes
 - Branch after sync: main
 - Stash created: no
+
+## [2026-05-17 03:25 CDT] - US-003
+- Implemented provider-lando Linux/macOS capability matrix coverage, planner-time bind mount capability rejection with `CapabilityError`, and `lando doctor` selected-provider capability diagnostics for source and compiled CLI paths.
+- Files changed: `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/capabilities.test.ts`, `core/src/services/planner.ts`, `core/src/cli/commands/doctor.ts`, `core/src/cli/oclif/commands/meta/doctor.ts`, `core/src/cli/run.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/commands/info.ts`, `core/src/cli/commands/start.ts`, `core/src/cli/commands/stop.ts`, `core/test/services/app-planner.test.ts`, `core/test/cli/doctor.test.ts`, `sdk/src/services/index.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics on changed TypeScript files clean; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (249 pass, 10 skip); `bun run build` passed; manual CLI QA in `lando4-dev` ran source `bun core/bin/lando.ts doctor` and compiled `./core/dist/lando doctor`, both showing selected provider `lando` and every `ProviderCapabilities` field.
+- **Learnings for future iterations:**
+  - Patterns discovered: provider capability matrices should be generated through `Schema.decodeSync(ProviderCapabilities)` and tested against `Object.keys(ProviderCapabilities.fields)` so schema additions fail loudly.
+  - Gotchas encountered: planner capability failures must be included in app command error unions because `AppPlanner.plan()` is shared by start/info/stop.
+  - Useful context: `meta:doctor` is now an MVP command and compiled `$bunfs` commands need an explicit handler in `core/src/cli/run.ts` for source/compiled parity.
+---
+
+## [2026-05-17 04:34 CDT] - US-003
+- Implemented additional planner capability gates so planned endpoint publishing and persistent storage fail before provider apply when the selected provider cannot support them.
+- Files changed: `core/src/services/planner.ts`, `core/test/services/app-planner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused tests `bun test core/test/services/app-planner.test.ts plugins/provider-lando/test/capabilities.test.ts core/test/cli/doctor.test.ts` passed (12 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (251 pass, 10 skip). Manual planner QA printed a `CapabilityError` payload with service `web`, feature `host port publish`, capability `hostPortPublish`, provider id `lando`, and remediation. Sandboxed `lando doctor` CLI QA could not run because host WSLInterop registration for `lando4-dev` failed with an I/O error before the command could start.
+- **Learnings for future iterations:**
+  - Patterns discovered: planner capability checks should happen against the provider-neutral `ServicePlan` immediately after service type planning and before adding the service to the encoded `AppPlan`.
+  - Gotchas encountered: avoid running full `bun test` concurrently with build/lint checks; compiled-binary tests can contend on `core/dist/lando`.
+  - Useful context: tagged `CapabilityError` fields are accessible as properties, but Bun's `toMatchObject` is unreliable on these Error instances; assert fields explicitly.
+---
+
+## [2026-05-17 04:55 CDT] - US-003 Review Fixes
+- Addressed post-review provider capability blockers: provider-lando now advertises macOS support consistently, unsupported platforms disable bind mounts, slow bind mounts are realized as accelerated, appMount-only services are gated by bind mount support, Unix-socket endpoints do not require host port publishing, and remediation strings avoid misleading pluralized feature names.
+- Files changed: `core/src/services/planner.ts`, `core/test/services/app-planner.test.ts`, `plugins/provider-lando/plugin.yaml`, `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/test/capabilities.test.ts`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed files; focused tests `bun test core/test/services/app-planner.test.ts plugins/provider-lando/test/capabilities.test.ts core/test/cli/doctor.test.ts` passed (14 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (253 pass, 10 skip). A duplicate full-suite run failed once with `EACCES` on `core/dist/lando` while another test/build process was still active; after the stale process ended, rerunning `bun test` passed.
+- **Learnings for future iterations:**
+  - Patterns discovered: app-level mounts (`appMount`) need the same provider capability gate and realization adjustment as explicit bind mounts.
+  - Gotchas encountered: do not run multiple full `bun test` suites or build/test suites concurrently because compiled CLI tests rewrite and execute `core/dist/lando`.
+  - Useful context: Unix socket endpoints have `socketPath` and no `port`, so host port publish checks should only consider endpoints with a numeric `port`.
+---
+
+## [2026-05-17 05:26 CDT] - US-003 Review
+- Reviewed uncommitted polish iteration on top of bc9fdea: doctor renders array-valued capabilities as JSON, provider-lando realizes accelerated bind/appMounts as native Podman binds, AGENTS.md captures planner/provider learnings. Verified all three follow-up gaps closed against the PRD-01 US-003 acceptance criteria.
+- Files changed by review: `core/test/cli/doctor.test.ts` (added regression tests for array capability rendering), `plugins/provider-lando/test/bring-up.integration.test.ts` (aligned new happy-path test with `Effect.runPromise` convention).
+- `review-work` findings: fixed — (1) added regression tests asserting `providerExtensions` array renders as JSON not `[object Object]` for both empty and populated arrays [Context Mining IMPORTANT]; (2) switched accelerated-realization happy-path test from `Effect.runPromiseExit + Exit.isSuccess` to `Effect.runPromise` to match neighboring happy-path tests for clearer failure diagnostics [Code Quality MINOR]. Rejected — (a) provider-lando `persistentStorage: true` capability vs `bringUp` ignoring `service.storage`/`plan.stores` [Goal Verification WARN]: pre-existing planner↔provider gap outside this polish iteration's scope; storage realization belongs to a dedicated story or US-006 cleanup hardening. (b) provider-docker analogous accelerated-mount gap [Context Mining IMPORTANT]: explicitly owned by US-004. (c) `isRealizableBind` switch+never refactor and `Array.isArray` ordering in `renderCapabilityValue` [Code Quality NITPICKs]: reviewers themselves agreed current literal-typed signature is the intentional compile-time tripwire; no behavior change warranted.
+- Verification run and result: lsp diagnostics clean for changed test files; focused `bun test core/test/cli/doctor.test.ts plugins/provider-lando/test/bring-up.integration.test.ts` passed (9 pass, 1 skip); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip — 2 net additions from new doctor regression tests).
+- **Learnings for future iterations:**
+  - Patterns discovered: regression tests for human-readable renderers should explicitly assert against the buggy form (e.g. `not.toContain("[object Object]")`) in addition to the corrected output — a positive-only assertion can pass on accidentally regressed code that still happens to contain the field name.
+  - Gotchas encountered: `Effect.runPromise` surfaces failures with a thrown stack trace, whereas `Effect.runPromiseExit + Exit.isSuccess` swallows the cause behind a generic boolean — prefer `runPromise` for happy paths so failures point at the real defect.
+  - Useful context: `providerExtensions: Schema.Array(Schema.String)` is currently the only non-primitive `ProviderCapabilities` field; if more array/object fields land, `renderCapabilityValue` (`typeof value === "object"` → `JSON.stringify`) already covers them without further change.
+---
+
+
+## [2026-05-17 05:38 CDT] - US-003 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-003 branch changes; critical review kept only behavior-preserving cleanup and restored useful design notes that were not AI slop.
+- Files changed by cleanup: `core/src/cli/commands/info.ts`, `core/src/cli/commands/start.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/meta/doctor.ts`, `core/src/cli/run.ts`, `sdk/src/services/index.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed redundant endpoint branches, stale `Status: stub`/`TODO: implement` comments, an empty JSDoc block, a redundant type annotation in a doc example, and a misleading SDK export comment. No public APIs, imports, error handling, side effects, or return values changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Attempted sandboxed `lando4-dev` test execution first per `.local/DEV-ENV.md`, but WSLInterop failed with `Exec format error`; checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
+---
+
+## [2026-05-17 10:42 CDT] - Push Triage
+- PR #77 Bugbot flagged a capability-test expectation that could drift from the provider platform matrix.
+- Decision: real issue; fixed the assertions to compare against `mvpProviderCapabilities(...)` so Linux, macOS, and win32 expectations stay aligned with the merged provider capability matrix.
+- Verification run and result: `bun test plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip).
 ---
