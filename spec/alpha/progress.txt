@@ -59,7 +59,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Patterns discovered: provider-lando setup command tests can exercise the real provider through `makeRuntimeProvider` with all host/runtime dependencies faked.
   - Gotchas encountered: source OCLIF setup output can include source-map warnings; compare normalized semantic error/remediation lines for source-vs-compiled parity.
-  - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox from `.local/DEV-ENV.md`.
+  - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox workflow from `.local/DEV-ENV.md`.
 ---
 
 ## [2026-05-17 01:04 CDT] - Sync
@@ -77,7 +77,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp_diagnostics on changed TypeScript files clean; `bun test plugins/provider-lando/test/setup.integration.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed via bash; manual CLI QA ran `bun core/bin/lando.ts setup` inside `lando4-dev` and confirmed fail-closed Podman remediation output.
 - **Learnings for future iterations:**
   - Patterns discovered: macOS provider-lando lifecycle should stay behind explicit `LANDO_TEST_PROVIDER_LANDO_MACOS` live gating; fake `PodmanMachineRunner` clients cover default transitions without host runtime prerequisites.
-  - Gotchas encountered: `lando setup` manual QA belongs in `lando4-dev`; if WSLInterop is missing, use the documented `.local/DEV-ENV.md` binfmt registration fix before invoking `wsl.exe`.
+  - Gotchas encountered: `lando setup` manual QA belongs in the persistent `lando4-dev` workflow documented in `.local/DEV-ENV.md`.
   - Useful context: Podman machine prerequisite failures should surface as `PodmanMachinePrerequisiteError` with virtualization/helper remediation before API socket validation.
 ---
 
@@ -137,7 +137,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## [2026-05-17 04:34 CDT] - US-003
 - Implemented additional planner capability gates so planned endpoint publishing and persistent storage fail before provider apply when the selected provider cannot support them.
 - Files changed: `core/src/services/planner.ts`, `core/test/services/app-planner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
-- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused tests `bun test core/test/services/app-planner.test.ts plugins/provider-lando/test/capabilities.test.ts core/test/cli/doctor.test.ts` passed (12 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (251 pass, 10 skip). Manual planner QA printed a `CapabilityError` payload with service `web`, feature `host port publish`, capability `hostPortPublish`, provider id `lando`, and remediation. Sandboxed `lando doctor` CLI QA could not run because host WSLInterop registration for `lando4-dev` failed with an I/O error before the command could start.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused tests `bun test core/test/services/app-planner.test.ts plugins/provider-lando/test/capabilities.test.ts core/test/cli/doctor.test.ts` passed (12 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (251 pass, 10 skip). Manual planner QA printed a `CapabilityError` payload with service `web`, feature `host port publish`, capability `hostPortPublish`, provider id `lando`, and remediation. Additional sandboxed `lando doctor` CLI QA did not complete.
 - **Learnings for future iterations:**
   - Patterns discovered: planner capability checks should happen against the provider-neutral `ServicePlan` immediately after service type planning and before adding the service to the encoded `AppPlan`.
   - Gotchas encountered: avoid running full `bun test` concurrently with build/lint checks; compiled-binary tests can contend on `core/dist/lando`.
@@ -170,7 +170,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-003 branch changes; critical review kept only behavior-preserving cleanup and restored useful design notes that were not AI slop.
 - Files changed by cleanup: `core/src/cli/commands/info.ts`, `core/src/cli/commands/start.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/meta/doctor.ts`, `core/src/cli/run.ts`, `sdk/src/services/index.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: removed redundant endpoint branches, stale `Status: stub`/`TODO: implement` comments, an empty JSDoc block, a redundant type annotation in a doc example, and a misleading SDK export comment. No public APIs, imports, error handling, side effects, or return values changed.
-- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Attempted sandboxed `lando4-dev` test execution first per `.local/DEV-ENV.md`, but WSLInterop failed with `Exec format error`; checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
 ---
 
 ## [2026-05-17 10:42 CDT] - Push Triage
