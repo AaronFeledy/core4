@@ -25,6 +25,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 
 - `meta:setup` runs at provider bootstrap through `RuntimeProviderRegistry.select()`; compiled `$bunfs` commands that bypass OCLIF need matching handlers in `core/src/cli/run.ts`.
 - `provider-lando` setup state is persisted under `<userDataRoot>/providers/provider-lando/setup-state.json` when a state directory is configured.
+- provider-lando live macOS machine lifecycle checks stay gated behind `LANDO_TEST_PROVIDER_LANDO_MACOS`; fake `PodmanMachineRunner` tests cover default behavior.
 
 ## Iteration Log
 
@@ -66,4 +67,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes
 - Branch after sync: main
 - Stash created: yes (stash@{0}: loop-sync-autostash)
+---
+
+## [2026-05-17 01:24 CDT] - US-002
+- Implemented provider-lando macOS machine lifecycle setup with fake-client create/start/stop/upgrade/teardown transitions, macOS slow bind-mount capabilities, prerequisite remediation, and env-gated live macOS machine coverage.
+- Files changed: `plugins/provider-lando/src/setup.ts`, `plugins/provider-lando/src/capabilities.ts`, `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/test/setup.integration.test.ts`, `plugins/provider-lando/test/capabilities.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics on changed TypeScript files clean; `bun test plugins/provider-lando/test/setup.integration.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed via bash; manual CLI QA ran `bun core/bin/lando.ts setup` inside `lando4-dev` and confirmed fail-closed Podman remediation output.
+- **Learnings for future iterations:**
+  - Patterns discovered: macOS provider-lando lifecycle should stay behind explicit `LANDO_TEST_PROVIDER_LANDO_MACOS` live gating; fake `PodmanMachineRunner` clients cover default transitions without host runtime prerequisites.
+  - Gotchas encountered: `lando setup` manual QA belongs in `lando4-dev`; if WSLInterop is missing, use the documented `.local/DEV-ENV.md` binfmt registration fix before invoking `wsl.exe`.
+  - Useful context: Podman machine prerequisite failures should surface as `PodmanMachinePrerequisiteError` with virtualization/helper remediation before API socket validation.
 ---

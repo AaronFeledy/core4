@@ -1,7 +1,7 @@
 import { Effect, Schema, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderCapabilities } from "@lando/sdk/schema";
+import { type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
 
@@ -114,29 +114,35 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
-export const linuxMvpCapabilities: ProviderCapabilities = Schema.decodeSync(ProviderCapabilities)({
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: false,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: process.platform === "linux" ? "native" : "none",
-  copyMounts: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
-  composeSpec: "portable",
-  providerExtensions: [],
-});
+const mvpCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
+  Schema.decodeSync(ProviderCapabilities)({
+    artifactBuild: false,
+    artifactPull: false,
+    buildSecrets: false,
+    buildSsh: false,
+    multiServiceApply: true,
+    serviceExec: true,
+    serviceLogs: true,
+    serviceHealth: "lando",
+    hostReachability: "emulated",
+    sharedCrossAppNetwork: false,
+    persistentStorage: true,
+    bindMounts: true,
+    bindMountPerformance: platform === "linux" ? "native" : platform === "darwin" ? "slow" : "none",
+    copyMounts: false,
+    hostPortPublish: "proxy",
+    routeProvider: false,
+    tlsCertificates: "lando",
+    rootless: true,
+    privilegedServices: false,
+    composeSpec: "portable",
+    providerExtensions: [],
+  });
+
+export const linuxMvpCapabilities: ProviderCapabilities = mvpCapabilitiesForPlatform("linux");
+export const macosMvpCapabilities: ProviderCapabilities = mvpCapabilitiesForPlatform("darwin");
+export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
+  mvpCapabilitiesForPlatform(platform);
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
   stream: (request) =>
@@ -263,7 +269,12 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
+  platform: HostPlatform = process.platform === "darwin"
+    ? "darwin"
+    : process.platform === "linux"
+      ? "linux"
+      : "win32",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
   // linuxMvpCapabilities is pre-validated at module load; map directly to avoid
   // a redundant decode that always succeeds and adds an unreachable error path.
-  api.info.pipe(Effect.map(() => linuxMvpCapabilities));
+  api.info.pipe(Effect.map(() => mvpProviderCapabilities(platform)));
