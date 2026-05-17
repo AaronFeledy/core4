@@ -78,3 +78,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `lando setup` manual QA belongs in `lando4-dev`; if WSLInterop is missing, use the documented `.local/DEV-ENV.md` binfmt registration fix before invoking `wsl.exe`.
   - Useful context: Podman machine prerequisite failures should surface as `PodmanMachinePrerequisiteError` with virtualization/helper remediation before API socket validation.
 ---
+
+## [2026-05-17 03:35 CDT] - US-002 slop cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push.
+- Cleanup changed `plugins/provider-lando/src/capabilities.ts` only, removing redundant/stale comments while preserving types, imports, public APIs, error handling, side effects, and return values.
+- Slop-remover review result: no safe cleanup was needed in `plugins/provider-lando/src/index.ts`, `plugins/provider-lando/src/setup.ts`, `plugins/provider-lando/test/setup.integration.test.ts`, `plugins/provider-lando/test/capabilities.test.ts`, or `spec/alpha/prd.json`; `spec/alpha/progress.txt` was updated only for this cleanup record.
+- Verification run and result: lsp_diagnostics on changed TypeScript files clean; `bun run typecheck` passed in `lando4-dev`; `bun run lint` passed in `lando4-dev`; `bun test` passed in `lando4-dev` (253 pass, 11 skip).
+---
