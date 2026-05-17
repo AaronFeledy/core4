@@ -36,8 +36,11 @@ describe("ci runbook", () => {
 
     expect(runbook).toContain("bun run typecheck");
     expect(runbook).toContain("bun run lint");
-    expect(runbook).toContain("bun test --filter='!*.integration.test.ts'");
+    expect(runbook).toContain("bun run test:unit");
     expect(runbook).toContain("bun run build");
+    expect(runbook).toContain("CI pins Bun via `.bun-version`");
+    expect(runbook).toContain("Provider integration tests intentionally stay serial");
+    expect(runbook).toContain("BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated");
     expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario");
     expect(runbook).toContain("podman system service --time=0 unix:///tmp/podman.sock");
     expect(runbook).toContain("Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64");

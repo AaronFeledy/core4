@@ -4,7 +4,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Either, Exit, ParseResult, Schema } from "effect";
 
-import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileService } from "@lando/core/services";
 import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 
@@ -118,8 +117,8 @@ describe("node:lts ServiceType", () => {
 
       const failure = await discoverExit();
 
-      expect(failure).toBeInstanceOf(LandofileValidationError);
-      if (failure instanceof LandofileValidationError) {
+      expect(failure?._tag).toBe("LandofileValidationError");
+      if (failure?._tag === "LandofileValidationError") {
         expect(failure.issues).toContain("services.web.framework");
       }
     });

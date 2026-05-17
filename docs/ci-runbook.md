@@ -4,10 +4,12 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
+CI pins Bun via `.bun-version`; update that file first when validating a new Bun release.
+
 ```bash
 bun run typecheck
 bun run lint
-bun test --filter='!*.integration.test.ts'
+bun run test:unit
 ```
 
 ## Linux x64 binary build
@@ -21,6 +23,8 @@ bun run build
 If the build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
 
 ## Provider integration
+
+Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Keep `--parallel` and `--isolate` limited to focused experiments until shared fixtures and plugin class identity are per-test isolated.
 
 Start the same Podman socket pattern used by CI:
 
@@ -44,3 +48,18 @@ On a failed provider integration run, download diagnostics from `Actions > ci > 
 ## Branch protection
 
 The `main` branch must be protected in GitHub with required status checks enabled. The required status checks are `static-checks`, `build-linux-x64`, and `provider-integration-linux-x64`; all three must pass before a pull request can merge to `main`.
+
+## Bun upgrade smoke checks
+
+After updating `.bun-version`, run these before opening a release-tooling PR:
+
+```bash
+bun --version
+bun run test:unit
+bun test --changed
+bun run build
+./core/dist/lando --version
+./core/dist/lando --help
+```
+
+`BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated` is useful for local/CI cache experiments, but keep release builds on `bun install --frozen-lockfile` until Bun's global store is no longer experimental.

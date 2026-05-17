@@ -4,3 +4,8 @@ include = [
   "sdk/test/**/*.test.ts",
   "plugins/*/test/**/*.test.ts",
 ]
+pathIgnorePatterns = [
+  "dist/**",
+  "core/dist/**",
+  "provider-diagnostics/**",
+]

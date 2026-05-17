@@ -57,7 +57,7 @@ describe("ci workflow", () => {
     expect(staticChecks).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecks).toContain("        run: bun run typecheck");
     expect(staticChecks).toContain("        run: bun run lint");
-    expect(staticChecks).toContain("        run: bun test --filter='!*.integration.test.ts'");
+    expect(staticChecks).toContain("        run: bun run test:unit");
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {
