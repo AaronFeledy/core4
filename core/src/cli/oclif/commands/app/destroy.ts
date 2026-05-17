@@ -1,25 +1,48 @@
-import { type DestroyAppResult, destroyApp } from "../../../commands/destroy.ts";
 /**
  * `lando app:destroy` — OCLIF wrapper.
  */
+import { Flags } from "@oclif/core";
+
+import { type DestroyAppResult, destroyApp, renderDestroyAppResult } from "../../../commands/destroy.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+
+interface DestroyFlags {
+  readonly volumes: boolean;
+  readonly yes: boolean;
+}
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   id: "app:destroy",
-  summary: "Destroy the current Lando app (requires confirmation).",
+  summary: "Destroy the current Lando app (preserves volumes unless --volumes).",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
   run: () => destroyApp(),
+  render: (result) => renderDestroyAppResult(result as DestroyAppResult),
 };
 
 export default class DestroyCommand extends LandoCommandBase {
   static override description = destroySpec.summary;
   static override aliases = [...resolveTopLevelAliases(destroySpec)];
+  static override flags = {
+    volumes: Flags.boolean({
+      description: "Also remove app/service-scoped storage volumes.",
+      default: false,
+    }),
+    yes: Flags.boolean({
+      char: "y",
+      description: "Skip the confirmation prompt (no-op until interactive prompts land).",
+      default: false,
+    }),
+  };
   static override landoSpec: LandoCommandSpec = destroySpec;
   static override bootstrap = destroySpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(destroySpec);
+    const { flags } = (await this.parse(DestroyCommand)) as { readonly flags: DestroyFlags };
+    await this.runEffect({
+      ...destroySpec,
+      run: () => destroyApp({ volumes: flags.volumes, yes: flags.yes }),
+    });
   }
 }

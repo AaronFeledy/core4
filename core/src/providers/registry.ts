@@ -1,8 +1,9 @@
 /**
  * `RuntimeProviderRegistry` Live Layer.
  *
- * MVP selection is config-driven: `ConfigService.defaultProviderId` selects a
- * provider id from the provider contributions exposed by `PluginRegistry`.
+ * Provider selection defaults to `ConfigService.defaultProviderId`, but a
+ * planned app keeps using its encoded `AppPlan.provider` so fresh lifecycle
+ * commands do not drift when the global default provider changes.
  */
 import { type Context, Effect, Layer, Stream } from "effect";
 
@@ -146,7 +147,7 @@ const makeRuntimeProviderRegistry = (
     toProviderUnavailable,
   );
 
-  const activeProvider = Effect.gen(function* () {
+  const configuredProviderId = Effect.gen(function* () {
     const defaultProviderId = yield* Effect.mapError(
       configService.get("defaultProviderId"),
       toProviderConfig,
@@ -158,32 +159,39 @@ const makeRuntimeProviderRegistry = (
       );
     }
 
-    const installedProviderIds = yield* providerIds;
-    const defaultProviderIdText = String(defaultProviderId);
-    const installed = installedProviderIds.some((providerId) => String(providerId) === defaultProviderIdText);
-    const userDataRoot = yield* Effect.mapError(configService.get("userDataRoot"), toProviderConfig);
-    const provider =
-      defaultProviderIdText === "lando"
-        ? yield* makeLandoRuntimeProvider({
-            ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
-          }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
-        : providers[defaultProviderIdText];
-
-    if (!installed || provider === undefined) {
-      return yield* Effect.fail(
-        new NoProviderInstalledError({
-          message: `Runtime provider ${defaultProviderIdText} is not installed.`,
-        }),
-      );
-    }
-
-    return provider;
+    return defaultProviderId;
   });
+
+  const providerFor = (providerId: ProviderId) =>
+    Effect.gen(function* () {
+      const installedProviderIds = yield* providerIds;
+      const providerIdText = String(providerId);
+      const installed = installedProviderIds.some((installedId) => String(installedId) === providerIdText);
+      const userDataRoot = yield* Effect.mapError(configService.get("userDataRoot"), toProviderConfig);
+      const provider =
+        providerIdText === "lando"
+          ? yield* makeLandoRuntimeProvider({
+              ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+            }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
+          : providers[providerIdText];
+
+      if (!installed || provider === undefined) {
+        return yield* Effect.fail(
+          new NoProviderInstalledError({
+            message: `Runtime provider ${providerIdText} is not installed.`,
+          }),
+        );
+      }
+
+      return provider;
+    });
+
+  const activeProvider = Effect.flatMap(configuredProviderId, providerFor);
 
   return {
     list: providerIds,
     capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
-    select: () => activeProvider,
+    select: (plan) => (plan === undefined ? activeProvider : providerFor(plan.provider)),
   };
 };
 

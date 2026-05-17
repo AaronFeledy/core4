@@ -99,7 +99,7 @@ export const stopApp = (
       );
     }
 
-    yield* provider.destroy({ app: plan.id, plan }, { volumes: false });
+    yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
 
     for (const service of services) {
       yield* events.publish(
