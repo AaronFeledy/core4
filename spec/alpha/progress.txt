@@ -100,3 +100,27 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Fixed `provider-lando` fallback capability selection to use `mvpProviderCapabilities(platform)` and added win32 regression coverage before Podman API discovery.
 - Verification: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (254 pass, 11 skip).
 ---
+
+## [2026-05-17 04:08 CDT] - Push
+- Branch pushed: `us-002-provider-lando-macos-lifecycle`
+- Commit(s) involved: `b99f282` chore cleanup, `0089f7f` Podman inspect hardening, `13c0dec` Bugbot fix, `fe3a229` merge refresh from main
+- PR: #76 https://github.com/AaronFeledy/core4/pull/76 (created; squash-merged)
+- CI outcome: pass (`static-checks`, `build-linux-x64`, `provider-integration-linux-x64`, `Cursor Bugbot`)
+- Review feedback: fixed (Bugbot win32 no-Podman fallback capability issue)
+- Triage rounds used: 1
+- Merge: merged (squash) as `14cab56`
+- Local main / branch refreshed: yes; local story branch deleted/absent
+- Remaining local state: none before recording this merge note
+---
+
+## [2026-05-17 04:07 CDT] - Push
+- Branch pushed: `us-002-provider-lando-macos-lifecycle`
+- Commit(s) involved: `b99f282` slop cleanup, `0089f7f` Podman inspect hardening, `13c0dec` platform fallback capability fix, `fe3a229` merge from `origin/main`
+- PR: #76 https://github.com/AaronFeledy/core4/pull/76 (created)
+- CI outcome: pass (`static-checks`, `build-linux-x64`, `provider-integration-linux-x64`, Cursor Bugbot)
+- Review feedback: fixed (Bugbot win32 fallback capability comment was real)
+- Triage rounds used: 1
+- Merge: merged (squash) as `14cab56`
+- Local main / branch refreshed: yes
+- Remaining local state, if any: final push progress record pending commit on `main`
+---
