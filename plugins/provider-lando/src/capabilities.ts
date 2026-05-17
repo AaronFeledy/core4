@@ -1,7 +1,7 @@
 import { Effect, Schema, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderCapabilities } from "@lando/sdk/schema";
+import { type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
 
 const PROVIDER_ID = "lando";
 
@@ -114,9 +114,7 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
-export const providerLandoCapabilitiesForPlatform = (
-  platform: NodeJS.Platform = process.platform,
-): ProviderCapabilities =>
+export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
   Schema.decodeSync(ProviderCapabilities)({
     artifactBuild: false,
     artifactPull: false,
@@ -129,9 +127,8 @@ export const providerLandoCapabilitiesForPlatform = (
     hostReachability: "emulated",
     sharedCrossAppNetwork: false,
     persistentStorage: true,
-    bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
-    bindMountPerformance:
-      platform === "linux" ? "native" : platform === "darwin" || platform === "win32" ? "slow" : "none",
+    bindMounts: platform === "linux" || platform === "darwin",
+    bindMountPerformance: platform === "linux" ? "native" : platform === "darwin" ? "slow" : "none",
     copyMounts: false,
     hostPortPublish: "proxy",
     routeProvider: false,
@@ -142,7 +139,10 @@ export const providerLandoCapabilitiesForPlatform = (
     providerExtensions: [],
   });
 
-export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform();
+export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("linux");
+export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("darwin");
+export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
+  providerLandoCapabilitiesForPlatform(platform);
 
 export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
   stream: (request) =>
@@ -217,7 +217,6 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
     }),
   info: Effect.gen(function* () {
     const request = makePodmanInfoRequest(socketPath);
-    // Unexpected JS exceptions (spawn failure, etc.) become ProviderCapabilityError.
     const { stdout, stderr, exitCode } = yield* Effect.tryPromise({
       try: async () => {
         const proc = Bun.spawn([request.command, ...request.args], { stderr: "pipe", stdout: "pipe" });
@@ -239,8 +238,6 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
           cause,
         }),
     });
-    // Non-zero exit indicates the daemon is unreachable — surface as ProviderUnavailableError
-    // so consumers can discriminate between "daemon down" and "capability query failed".
     if (exitCode !== 0) {
       yield* Effect.fail(
         new ProviderUnavailableError({
@@ -269,7 +266,10 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,
+  platform: HostPlatform = process.platform === "darwin"
+    ? "darwin"
+    : process.platform === "linux"
+      ? "linux"
+      : "win32",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
-  // linuxMvpCapabilities is pre-validated at module load; map directly to avoid
-  // a redundant decode that always succeeds and adds an unreachable error path.
-  api.info.pipe(Effect.map(() => linuxMvpCapabilities));
+  api.info.pipe(Effect.map(() => mvpProviderCapabilities(platform)));

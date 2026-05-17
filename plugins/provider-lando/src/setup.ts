@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import type { HostPlatform } from "@lando/sdk/schema";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 
@@ -47,8 +48,32 @@ export class RuntimeBundleVerificationError extends ProviderUnavailableError {
   }
 }
 
+export class PodmanMachinePrerequisiteError extends ProviderUnavailableError {
+  constructor(cause?: unknown) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "setup",
+      message: "Podman machine prerequisites are not available on this macOS host.",
+      remediation:
+        "Enable Apple's virtualization framework support, install the required Podman machine helper components, then rerun `lando setup`.",
+      cause,
+    });
+  }
+}
+
 export interface PodmanCommandRunner {
   readonly version: Effect.Effect<string, PodmanNotInstalledError>;
+}
+
+export type PodmanMachineStatus = "missing" | "stopped" | "running";
+
+export interface PodmanMachineRunner {
+  readonly inspect: Effect.Effect<PodmanMachineStatus, ProviderUnavailableError>;
+  readonly create: Effect.Effect<void, ProviderUnavailableError>;
+  readonly start: Effect.Effect<void, ProviderUnavailableError>;
+  readonly stop: Effect.Effect<void, ProviderUnavailableError>;
+  readonly upgrade: Effect.Effect<void, ProviderUnavailableError>;
+  readonly teardown: Effect.Effect<void, ProviderUnavailableError>;
 }
 
 export interface RuntimeBundle {
@@ -64,6 +89,8 @@ export interface RuntimeBundleDownloader {
 export interface SetupOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
+  readonly podmanMachine?: PodmanMachineRunner;
+  readonly platform?: HostPlatform;
   readonly socketPath?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly stateDir?: string;
@@ -100,6 +127,124 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
     catch: (cause) => (cause instanceof PodmanNotInstalledError ? cause : new PodmanNotInstalledError(cause)),
   }),
 });
+
+const machineFailure = (operation: string, cause: unknown): ProviderUnavailableError => {
+  const output = typeof cause === "object" && cause !== null && "stderr" in cause ? cause.stderr : cause;
+  if (typeof output === "string" && /virtualization|vfkit|hypervisor|qemu|helper/i.test(output)) {
+    return new PodmanMachinePrerequisiteError(cause);
+  }
+
+  return new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation,
+    message: `Podman machine ${operation} failed.`,
+    remediation: "Fix the Podman machine error and rerun `lando setup`.",
+    cause,
+  });
+};
+
+const readProcess = async (proc: ReturnType<typeof Bun.spawn>) => {
+  const stdoutStream = proc.stdout instanceof ReadableStream ? proc.stdout : null;
+  const stderrStream = proc.stderr instanceof ReadableStream ? proc.stderr : null;
+  const [stdout, stderr, exitCode] = await Promise.all([
+    readText(stdoutStream),
+    readText(stderrStream),
+    proc.exited,
+  ]);
+  return { stdout, stderr, exitCode };
+};
+
+const runMachineCommand = (command: string, args: ReadonlyArray<string>, operation: string) =>
+  Effect.tryPromise({
+    try: async () => {
+      const result = await readProcess(Bun.spawn([command, ...args], { stderr: "pipe", stdout: "pipe" }));
+      if (result.exitCode !== 0) {
+        throw result;
+      }
+      return result.stdout;
+    },
+    catch: (cause) => machineFailure(operation, cause),
+  });
+
+export const makeSystemPodmanMachineRunner = (
+  command = "podman",
+  machineName = "lando",
+): PodmanMachineRunner => ({
+  inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect").pipe(
+    // `Effect.map` does not catch synchronous throws, so a malformed `podman machine inspect`
+    // payload would become an Effect defect instead of a typed `ProviderUnavailableError`.
+    // Channel parse failures through `Effect.try` so callers always see the tagged error.
+    Effect.flatMap((stdout) =>
+      Effect.try({
+        try: (): PodmanMachineStatus => {
+          const machines = JSON.parse(stdout) as unknown;
+          const machine = Array.isArray(machines) ? machines[0] : machines;
+          if (typeof machine !== "object" || machine === null) {
+            return "missing";
+          }
+          const state = "State" in machine ? machine.State : "state" in machine ? machine.state : undefined;
+          return typeof state === "string" && /running/i.test(state) ? "running" : "stopped";
+        },
+        catch: (cause) =>
+          new ProviderUnavailableError({
+            providerId: PROVIDER_ID,
+            operation: "inspect",
+            message: "Failed to parse `podman machine inspect` output.",
+            remediation: "Verify the Podman machine state and rerun `lando setup`.",
+            cause,
+          }),
+      }),
+    ),
+    // Exit code 125 from `podman machine inspect` is "no such machine" only when stderr
+    // confirms the absence; other 125 failures (prerequisite errors, broken state) must
+    // surface so we don't silently treat them as a missing machine.
+    Effect.catchAll((cause) => {
+      const raw = cause.cause;
+      if (typeof raw !== "object" || raw === null) {
+        return Effect.fail(cause);
+      }
+      const exitCode = "exitCode" in raw ? raw.exitCode : undefined;
+      const stderr = "stderr" in raw && typeof raw.stderr === "string" ? raw.stderr : "";
+      return exitCode === 125 && /not\s*(exist|found)|no such|cannot find/i.test(stderr)
+        ? Effect.succeed("missing" as const)
+        : Effect.fail(cause);
+    }),
+  ),
+  create: runMachineCommand(command, ["machine", "init", machineName], "create").pipe(Effect.asVoid),
+  start: runMachineCommand(command, ["machine", "start", machineName], "start").pipe(Effect.asVoid),
+  stop: runMachineCommand(command, ["machine", "stop", machineName], "stop").pipe(Effect.asVoid),
+  upgrade: runMachineCommand(command, ["machine", "os", "apply", machineName], "upgrade").pipe(Effect.asVoid),
+  teardown: runMachineCommand(command, ["machine", "rm", "--force", machineName], "teardown").pipe(
+    Effect.asVoid,
+  ),
+});
+
+export const ensureMacOSPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    const status = yield* machine.inspect;
+    if (status === "missing") {
+      yield* machine.create;
+      yield* machine.start;
+      return;
+    }
+    if (status === "stopped") {
+      yield* machine.start;
+    }
+  });
+
+export const upgradeMacOSPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.upgrade;
+
+export const stopMacOSPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.stop;
+
+export const teardownMacOSPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.teardown;
 
 const parsePodmanVersion = (versionOutput: string): string => {
   const match = /\d+\.\d+\.\d+(?:[-+][\w.-]+)?/.exec(versionOutput);
@@ -174,11 +319,17 @@ export const setupProviderLando = (
   options: SetupOptions = {},
 ): Effect.Effect<SetupResult, ProviderUnavailableError> =>
   Effect.gen(function* () {
+    const platform =
+      options.platform ??
+      (process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32");
     const bundle =
       options.runtimeBundleDownloader === undefined
         ? undefined
         : yield* options.runtimeBundleDownloader.download.pipe(Effect.flatMap(verifyRuntimeBundle));
     const podmanVersionOutput = yield* (options.podmanCommand ?? makeSystemPodmanCommandRunner()).version;
+    if (platform === "darwin") {
+      yield* ensureMacOSPodmanMachine(options.podmanMachine ?? makeSystemPodmanMachineRunner());
+    }
     const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
     const api = options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 

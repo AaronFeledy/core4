@@ -6,7 +6,7 @@
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { type AppPlan, PluginManifest } from "@lando/sdk/schema";
+import { type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
 import { RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { bringDown } from "./bring-down.ts";
@@ -14,13 +14,18 @@ import { type BringUpOptions, bringUp } from "./bring-up.ts";
 import {
   type PodmanApiClient,
   introspectProviderCapabilities,
-  linuxMvpCapabilities,
   makePodmanApiClient,
+  mvpProviderCapabilities,
 } from "./capabilities.ts";
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
-import { type PodmanCommandRunner, type RuntimeBundleDownloader, setupProviderLando } from "./setup.ts";
+import {
+  type PodmanCommandRunner,
+  type PodmanMachineRunner,
+  type RuntimeBundleDownloader,
+  setupProviderLando,
+} from "./setup.ts";
 
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
@@ -36,15 +41,23 @@ export { logs } from "./logs.ts";
 export type { LogsOptions } from "./logs.ts";
 export {
   MINIMUM_PODMAN_VERSION,
+  PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
   RuntimeBundleVerificationError,
+  ensureMacOSPodmanMachine,
+  makeSystemPodmanMachineRunner,
   makeSystemPodmanCommandRunner,
   providerStatePath,
   setupProviderLando,
+  stopMacOSPodmanMachine,
+  teardownMacOSPodmanMachine,
+  upgradeMacOSPodmanMachine,
 } from "./setup.ts";
 export type {
   PodmanCommandRunner,
+  PodmanMachineRunner,
+  PodmanMachineStatus,
   RuntimeBundle,
   RuntimeBundleDownloader,
   SetupOptions,
@@ -55,11 +68,18 @@ export {
   decodeProviderCapabilities,
   introspectProviderCapabilities,
   linuxMvpCapabilities,
+  macosMvpCapabilities,
   makePodmanApiClient,
   makePodmanInfoRequest,
+  mvpProviderCapabilities,
   providerLandoCapabilitiesForPlatform,
 } from "./capabilities.ts";
-export type { PodmanApiClient, PodmanApiRequest } from "./capabilities.ts";
+export type {
+  PodmanApiClient,
+  PodmanApiRequest,
+  PodmanHttpRequest,
+  PodmanHttpResponse,
+} from "./capabilities.ts";
 
 export const PLUGIN_NAME = "@lando/provider-lando" as const;
 
@@ -73,6 +93,8 @@ const makeUnavailable = (operation: string) =>
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
+  readonly podmanMachine?: PodmanMachineRunner;
+  readonly platform?: HostPlatform;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly stateDir?: string;
   readonly socketPath?: string;
@@ -85,10 +107,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const podmanApi =
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   let runtimeVersion: string | undefined;
+  const platform =
+    options.platform ??
+    (process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32");
   const capabilities =
     podmanApi === undefined
-      ? Effect.succeed(linuxMvpCapabilities)
-      : introspectProviderCapabilities(podmanApi);
+      ? Effect.succeed(mvpProviderCapabilities(platform))
+      : introspectProviderCapabilities(podmanApi, platform);
 
   return capabilities.pipe(
     Effect.map(
@@ -96,13 +121,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         id: "lando",
         displayName: "Lando Runtime Provider",
         version: "0.0.0",
-        platform: process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32",
+        platform,
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
         setup: () =>
           setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
+            ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
+            platform,
             ...(options.runtimeBundleDownloader === undefined
               ? {}
               : { runtimeBundleDownloader: options.runtimeBundleDownloader }),
