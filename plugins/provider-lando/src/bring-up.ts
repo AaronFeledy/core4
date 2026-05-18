@@ -215,26 +215,38 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
 const ensureNetwork = (
   api: PodmanApiClient,
   plan: AppPlan,
-): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> =>
-  request(api, {
-    method: "POST",
-    path: "/networks/create",
-    body: { Name: networkName(plan), Driver: "bridge" },
-  }).pipe(
-    Effect.flatMap((response) =>
-      response.status === 201 || response.status === 200 || response.status === 409
-        ? Effect.void
-        : Effect.fail(
-            new ProviderUnavailableError({
-              providerId: PROVIDER_ID,
-              operation: "bringUp.network",
-              message: `Podman network create failed with HTTP ${response.status}.`,
-              details: redactDetails({ status: response.status, body: response.body }),
-              remediation: APPLY_REMEDIATION,
-            }),
-          ),
-    ),
+): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
+  const name = networkName(plan);
+  // Inspect first — skip create if the network already exists (idempotent bringUp).
+  return request(api, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
+    Effect.flatMap((inspectResponse) => {
+      if (inspectResponse.status === 200) {
+        // Network already exists; nothing to do.
+        return Effect.void;
+      }
+      // Not found (404) or unexpected — attempt create.
+      return request(api, {
+        method: "POST",
+        path: "/networks/create",
+        body: { Name: name, Driver: "bridge" },
+      }).pipe(
+        Effect.flatMap((response) =>
+          response.status === 201 || response.status === 200 || response.status === 409
+            ? Effect.void
+            : Effect.fail(
+                new ProviderUnavailableError({
+                  providerId: PROVIDER_ID,
+                  operation: "bringUp.network",
+                  message: `Podman network create failed with HTTP ${response.status}.`,
+                  details: redactDetails({ status: response.status, body: response.body }),
+                  remediation: APPLY_REMEDIATION,
+                }),
+              ),
+        ),
+      );
+    }),
   );
+};
 
 const createContainer = (
   api: PodmanApiClient,
