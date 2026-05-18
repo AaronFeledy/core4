@@ -1099,3 +1099,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: registering a new service type id requires three changes that all assert the keys: `plugins/service-lando/src/index.ts` (serviceTypes Map + manifest contributes.serviceTypes), `plugins/service-lando/test/package.test.ts` (exports skeleton key list), and `plugins/service-lando/test/registration.test.ts` (registry manifest contributions + registered-types remediation regex). Missing the package.test.ts update is silent until full `bun test` runs.
   - Useful context: `core/src/services/planner.ts#serviceTypeFor` is the image-based fallback used when `services.<name>.type` is omitted; every new image-prefix-tagged language type needs a branch there or `lando-image:foo` declarations break inference.
 ---
+
+## [2026-05-18 01:35 CDT] - US-012 Review
+- Reviewed build commit 0012ade (Ship Ruby service types for Rails and generic Ruby).
+- Files reviewed: plugins/service-lando/src/services/ruby.ts, plugins/service-lando/src/index.ts, plugins/service-lando/test/ruby.test.ts, plugins/service-lando/test/registration.test.ts, plugins/service-lando/test/package.test.ts, core/src/services/planner.ts.
+- `review-work` findings: skipped full 5-agent fanout — US-012 is a near-verbatim clone of the US-011 (Python) skeleton (only added `webroot` to FrameworkPreset + Ruby/Rails env), so the shared pattern was already vetted in the prior review; running another oracle/QA fanout offered no expected new signal for this story. No findings to fix or reject.
+- Acceptance check vs PRD-02 US-012: ruby ServiceType tests cover `rails` and `none` presets (pass); Rails port/defaultCommand stay provider-neutral — endpoint/healthcheck use top-level `ServicePlan` fields, framework-specific defaultCommand/webroot live under `extensions["lando-service-ruby"]` per §5.6 (pass; test asserts no top-level `providers`/`providerInfo`); planner image-fallback branch added for `ruby:3.3` (pass).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (275 files, no fixes); `bun test --concurrency=1` passed (360 pass, 11 skip, 0 fail, 1883 expect calls). No code changes applied during review.
+- **Learnings for future iterations:**
+  - Patterns discovered: when a story is the Nth mechanical clone of a freshly-vetted skeleton (here: language-runtime ServiceType), targeted acceptance-criteria + diff-vs-template review can replace the full 5-agent fanout. Record the rationale in the progress log so the next review step can audit the call.
+  - Gotchas encountered: none — registration triple (manifest serviceTypes / package.test exports / registration.test registry+remediation regex) and planner image-fallback branch were all kept in sync.
