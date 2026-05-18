@@ -57,6 +57,7 @@ describe("@lando/service-lando registration", () => {
       "postgres",
       "php:8.2",
       "php:8.3",
+      "python:3.12",
     ]);
   });
 
@@ -105,6 +106,42 @@ describe("@lando/service-lando registration", () => {
     expect(api.environment.LANDO_WEBROOT).toBe("/app/public");
   });
 
+  test("AppPlanner resolves python:3.12 through PluginRegistry with framework presets", async () => {
+    const appPlan = await plan({
+      name: "py-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("web")]: { type: "python:3.12", framework: "django" },
+        [ServiceName.make("api")]: { type: "python:3.12", framework: "flask" },
+      },
+    });
+
+    const web = appPlan.services[ServiceName.make("web")];
+    const api = appPlan.services[ServiceName.make("api")];
+    if (web === undefined || api === undefined) throw new Error("python services missing");
+
+    expect(web.type).toBe("python:3.12");
+    expect(web.environment.LANDO_SERVICE_TYPE).toBe("python:3.12");
+    expect(web.environment.DJANGO_SETTINGS_MODULE).toBe("config.settings");
+    expect(web.healthcheck?.port).toBe(8000);
+    expect(web.endpoints[0]?.port).toBe(8000);
+
+    expect(api.type).toBe("python:3.12");
+    expect(api.environment.FLASK_APP).toBe("app");
+    expect(api.healthcheck?.port).toBe(5000);
+    expect(api.endpoints[0]?.port).toBe(5000);
+  });
+
+  test("AppPlanner rejects unsupported python versions with Python-family remediation", async () => {
+    await expect(
+      plan({
+        name: "py-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "python:3.11" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type python:3\.11.*Supported alternatives:.*python:3\.12/);
+  });
+
   test("AppPlanner rejects unsupported php versions with PHP-family remediation", async () => {
     await expect(
       plan({
@@ -131,7 +168,7 @@ describe("@lando/service-lando registration", () => {
         services: { [ServiceName.make("web")]: { type: "totally-fake-type" } },
       }),
     ).rejects.toThrow(
-      /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.2.*php:8\.3.*postgres/,
+      /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.2.*php:8\.3.*postgres.*python:3\.12/,
     );
   });
 });

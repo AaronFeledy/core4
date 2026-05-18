@@ -15,3 +15,4 @@ contributes:
     - "postgres"
     - "php:8.2"
     - "php:8.3"
+    - "python:3.12"

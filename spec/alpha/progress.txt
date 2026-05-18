@@ -504,6 +504,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ---
 
 
+## [2026-05-17 23:41 CDT] - Sync
+- Previous branch: us-010-node-service-types
+- Previous PR: #86 https://github.com/AaronFeledy/core4/pull/86
+- Action: caught up after prior merge — PR #86 was already MERGED; local branch was absent; no action needed
+- Local main updated: yes (already current, ff-only confirmed)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:40 CDT] - Push
 - Branch pushed: us-010-node-service-types → origin (new branch, ea4441f HEAD)
 - Commits: 7afa983 (feat), 786c20a (docs review), ea4441f (chore slop cleanup)
@@ -521,4 +530,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/services/planner.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: replaced a nested remediation ternary in `unsupportedServiceType` with equivalent `if`/`else if` logic. No public APIs, imports, error handling, side effects, return values, tests, or service plan behavior changed.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test --concurrency=1` passed (333 pass, 11 skip, 0 fail, 1757 expect). One overlapping full-test attempt failed with `ETXTBSY` on `core/dist/lando`, matching the known compiled-binary contention gotcha; the non-overlapping serial rerun passed.
+---
+
+## [2026-05-17 23:51 CDT] - US-011
+- Shipped `python:3.12` ServiceType in `@lando/service-lando` covering Django, FastAPI, Flask, and `none` framework presets. Each plan emits the `/app` bind app mount, full `LANDO_*` environment contract, framework-aware default endpoint port (django/fastapi → 8000, flask → 5000, none → 8000), a TCP healthcheck intent on the endpoint port, framework-specific env defaults (`DJANGO_SETTINGS_MODULE`, `FLASK_APP`), Python runtime env (`PYTHONUNBUFFERED`, `PYTHONDONTWRITEBYTECODE`), and a `lando-service-python` extensions hint carrying `{ framework, version, defaultCommand, port }` so build orchestration can pick up framework server presets (uvicorn for django/fastapi, gunicorn for flask). Unsupported Python versions and frameworks throw remediation-bearing errors from `toServicePlan`. Default `command` is the long-running `sh -c 'tail -f /dev/null'` so the container stays up for `lando exec` attach. Registered `python:3.12` in the plugin map/manifest/`plugin.yaml`, taught the planner's `serviceTypeFor` fallback to discriminate `image: python:3.12*`, and added registration coverage for both django/flask presets plus a Python-family remediation rejection.
+- Files changed: `plugins/service-lando/src/services/python.ts` (new), `plugins/service-lando/src/index.ts`, `plugins/service-lando/plugin.yaml`, `plugins/service-lando/test/python.test.ts` (new), `plugins/service-lando/test/package.test.ts`, `plugins/service-lando/test/registration.test.ts`, `core/src/services/planner.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test plugins/service-lando/test/` passed (51 pass, 208 expect); `bun run typecheck` passed; `bun run lint` passed (273 files, no fixes); `bun test --concurrency=1` passed (347 pass, 11 skip, 0 fail, 1819 expect — +14 net new vs US-010 baseline of 333); `bun run build` passed (33-command OCLIF manifest). Story changes are ServiceType/planner additions with no CLI command output change, so no compiled-CLI smoke required per build-step rule.
+- **Learnings for future iterations:**
+  - Patterns discovered: language-runtime types whose base image does NOT auto-start a server (python, node) need a long-running default `command` so the container stays up for `lando exec` attach; framework-specific server commands (uvicorn, gunicorn) belong in `extensions["lando-service-<lang>"].defaultCommand` so build orchestration can surface them as tooling rather than override `plan.command`. The PHP pattern (Apache base image auto-starts) does NOT generalize to non-server-base languages.
+  - Gotchas encountered: `spec/alpha/prd.json` round-trips through a `python3 -m json.tool` style writer in some loop steps and emits `\u00a7` escapes for §. Pinning the Python writer to `json.dump(..., ensure_ascii=False)` keeps the source-text literal and avoids cosmetic-only diff churn across stories — applied here.
+  - Useful context: framework default ports per §6.6 differ across the catalog (django/fastapi 8000, flask 5000). Sharing one port across all Python frameworks would hide a legitimate semantic difference; per-preset port in `FRAMEWORK_PRESETS` keeps the healthcheck and the single endpoint entry in sync without conditional logic at the call site.
 ---

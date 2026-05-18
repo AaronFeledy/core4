@@ -31,6 +31,7 @@ const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.image?.startsWith("postgres")) return "postgres";
   if (service.image?.startsWith("php:8.2")) return "php:8.2";
   if (service.image?.startsWith("php:8.3")) return "php:8.3";
+  if (service.image?.startsWith("python:3.12")) return "python:3.12";
   return name;
 };
 
