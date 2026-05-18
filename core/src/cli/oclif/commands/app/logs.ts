@@ -1,19 +1,14 @@
-/**
- * `lando app:logs` — OCLIF wrapper.
- */
-import { Effect, Stream } from "effect";
-
-import { logsApp } from "../../../commands/logs.ts";
+import { type LogsAppResult, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-export const logsSpec: LandoCommandSpec<void> = {
+export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   id: "app:logs",
   summary: "Stream logs from the current app.",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  // Streaming commands wrap the Stream into an Effect that runs to completion.
-  run: () => logsApp().pipe(Stream.runForEach(() => Effect.void)),
+  run: () => logsApp(),
+  render: (result) => renderLogsAppResult(result as LogsAppResult),
 };
 
 export default class LogsCommand extends LandoCommandBase {
