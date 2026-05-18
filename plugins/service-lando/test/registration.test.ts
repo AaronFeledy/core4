@@ -58,6 +58,7 @@ describe("@lando/service-lando registration", () => {
       "php:8.2",
       "php:8.3",
       "python:3.12",
+      "ruby:3.3",
     ]);
   });
 
@@ -160,6 +161,43 @@ describe("@lando/service-lando registration", () => {
     ).rejects.toThrow(/Unsupported service type php:8\.1.*Supported alternatives:.*php:8\.2.*php:8\.3/);
   });
 
+  test("AppPlanner resolves ruby:3.3 through PluginRegistry with rails framework preset", async () => {
+    const appPlan = await plan({
+      name: "rb-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("web")]: { type: "ruby:3.3", framework: "rails" },
+        [ServiceName.make("api")]: { type: "ruby:3.3" },
+      },
+    });
+
+    const web = appPlan.services[ServiceName.make("web")];
+    const api = appPlan.services[ServiceName.make("api")];
+    if (web === undefined || api === undefined) throw new Error("ruby services missing");
+
+    expect(web.type).toBe("ruby:3.3");
+    expect(web.environment.LANDO_SERVICE_TYPE).toBe("ruby:3.3");
+    expect(web.environment.RAILS_ENV).toBe("development");
+    expect(web.environment.LANDO_WEBROOT).toBe("/app/public");
+    expect(web.healthcheck?.port).toBe(3000);
+    expect(web.endpoints[0]?.port).toBe(3000);
+
+    expect(api.type).toBe("ruby:3.3");
+    expect(api.environment.LANDO_WEBROOT).toBe("/app");
+    expect(api.environment.RAILS_ENV).toBeUndefined();
+    expect(api.healthcheck?.port).toBe(3000);
+  });
+
+  test("AppPlanner rejects unsupported ruby versions with Ruby-family remediation", async () => {
+    await expect(
+      plan({
+        name: "rb-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "ruby:3.2" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type ruby:3\.2.*Supported alternatives:.*ruby:3\.3/);
+  });
+
   test("AppPlanner rejects unknown non-family service types with registered-types remediation", async () => {
     await expect(
       plan({
@@ -168,7 +206,7 @@ describe("@lando/service-lando registration", () => {
         services: { [ServiceName.make("web")]: { type: "totally-fake-type" } },
       }),
     ).rejects.toThrow(
-      /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.2.*php:8\.3.*postgres.*python:3\.12/,
+      /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.2.*php:8\.3.*postgres.*python:3\.12.*ruby:3\.3/,
     );
   });
 });
