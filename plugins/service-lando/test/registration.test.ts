@@ -107,8 +107,8 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.LANDO_APP_NAME).toBe("php-app");
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("php:8.2");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/web");
-    expect(web.healthcheck?.kind).toBe("tcp");
-    expect(web.healthcheck?.port).toBe(80);
+    expect(web.healthcheck?.kind).toBe("command");
+    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"]);
 
     expect(api.type).toBe("php:8.3");
     expect(String(api.workingDirectory)).toBe("/app/public");
@@ -133,12 +133,12 @@ describe("@lando/service-lando registration", () => {
     expect(web.type).toBe("python:3.12");
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("python:3.12");
     expect(web.environment.DJANGO_SETTINGS_MODULE).toBe("config.settings");
-    expect(web.healthcheck?.port).toBe(8000);
+    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]);
     expect(web.endpoints[0]?.port).toBe(8000);
 
     expect(api.type).toBe("python:3.12");
     expect(api.environment.FLASK_APP).toBe("app");
-    expect(api.healthcheck?.port).toBe(5000);
+    expect(api.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000"]);
     expect(api.endpoints[0]?.port).toBe(5000);
   });
 
@@ -188,13 +188,13 @@ describe("@lando/service-lando registration", () => {
     expect(web.environment.LANDO_SERVICE_TYPE).toBe("ruby:3.3");
     expect(web.environment.RAILS_ENV).toBe("development");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/public");
-    expect(web.healthcheck?.port).toBe(3000);
+    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
     expect(web.endpoints[0]?.port).toBe(3000);
 
     expect(api.type).toBe("ruby:3.3");
     expect(api.environment.LANDO_WEBROOT).toBe("/app");
     expect(api.environment.RAILS_ENV).toBeUndefined();
-    expect(api.healthcheck?.port).toBe(3000);
+    expect(api.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
   });
 
   test("AppPlanner rejects unsupported ruby versions with Ruby-family remediation", async () => {

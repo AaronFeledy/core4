@@ -33,6 +33,8 @@ describe("static ServiceType", () => {
     expect(plan.appMount?.readOnly).toBe(true);
     expect(plan.mounts[0]?.readOnly).toBe(true);
     expect(plan.endpoints[0]?.port).toBe(80);
+    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx" });
   });
 
@@ -53,6 +55,8 @@ describe("static ServiceType", () => {
 
     expect(plan.type).toBe("static:caddy");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "caddy:2-alpine" });
+    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy" });
   });
 

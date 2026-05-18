@@ -32,12 +32,12 @@ describe("nginx ServiceType", () => {
     expect(plan.environment.LANDO_SERVICE_TYPE).toBe("nginx");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app");
     expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
-    expect(plan.appMount?.target).toBe("/app");
+    expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.appMount?.readOnly).toBe(false);
     expect(plan.mounts[0]?.type).toBe("bind");
     expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.kind).toBe("tcp");
-    expect(plan.healthcheck?.port).toBe(80);
+    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
   });
 
   test("rejects LANDO_* env overrides", () => {

@@ -8,6 +8,7 @@ import {
   AppId,
   AppPlan,
   type LandofileShape,
+  type NetworkPlan,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -99,6 +100,8 @@ const kebab = (raw: string): string => {
     .replace(/^-+|-+$/g, "");
   return ascii.length === 0 ? "shadow" : ascii;
 };
+
+const appNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const joinPathSegments = (target: string, exclude: string): string => {
   const normalizedTarget = target.endsWith("/") ? target.slice(0, -1) : target;
@@ -208,6 +211,48 @@ const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig)
   return { ...servicePlan, appMount: merged };
 };
 
+const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+  const authored = service.healthcheck;
+  if (authored === undefined) return servicePlan;
+  const existing = servicePlan.healthcheck;
+  const merged: ServicePlan["healthcheck"] = {
+    kind: authored.kind ?? existing?.kind ?? "command",
+    intervalSeconds: authored.intervalSeconds ?? existing?.intervalSeconds ?? 10,
+    timeoutSeconds: authored.timeoutSeconds ?? existing?.timeoutSeconds ?? 5,
+    retries: authored.retries ?? existing?.retries ?? 5,
+    ...(authored.command !== undefined
+      ? { command: authored.command }
+      : existing?.command !== undefined
+        ? { command: existing.command }
+        : {}),
+    ...(authored.url !== undefined
+      ? { url: authored.url }
+      : existing?.url !== undefined
+        ? { url: existing.url }
+        : {}),
+    ...(authored.port !== undefined
+      ? { port: authored.port }
+      : existing?.port !== undefined
+        ? { port: existing.port }
+        : {}),
+    ...(authored.startPeriodSeconds !== undefined
+      ? { startPeriodSeconds: authored.startPeriodSeconds }
+      : existing?.startPeriodSeconds !== undefined
+        ? { startPeriodSeconds: existing.startPeriodSeconds }
+        : {}),
+  };
+  // Guard: a "command" healthcheck with no command is semantically invalid. This can
+  // happen when a user provides a partial authored override (e.g. `{ intervalSeconds: 30 }`)
+  // on a service type that emits no default healthcheck, causing the `?? "command"` fallback
+  // to produce `{ kind: "command" }` with no `command` field. Skip rather than emit an
+  // unexecutable plan; the user must supply a complete override to add a healthcheck to a
+  // service type that doesn't emit one by default.
+  if (merged.kind === "command" && merged.command === undefined) {
+    return servicePlan;
+  }
+  return { ...servicePlan, healthcheck: merged };
+};
+
 const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
   try {
     const userInfo = os.userInfo();
@@ -292,7 +337,7 @@ const planApp = (
         metadata,
         host,
       });
-      const servicePlan = applyAuthoredAppMount(rawPlan, service);
+      const servicePlan = applyAuthoredHealthcheck(applyAuthoredAppMount(rawPlan, service), service);
 
       if (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
@@ -347,6 +392,19 @@ const planApp = (
         );
       }
 
+      const healthcheck = servicePlanWithCapabilityRealization.healthcheck;
+      if (healthcheck !== undefined && healthcheck.kind !== "command" && healthcheck.kind !== "none") {
+        yield* Effect.fail(
+          missingCapability(
+            provider,
+            name,
+            `healthcheck kind ${healthcheck.kind}`,
+            "serviceHealth",
+            `Healthcheck for service ${name} uses kind: ${healthcheck.kind}, but Alpha only supports kind: command (executed via the provider's exec channel). Author healthcheck as kind: command or remove it.`,
+          ),
+        );
+      }
+
       services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
 
       for (const shadow of shadowResult.shadowStores) {
@@ -359,6 +417,17 @@ const planApp = (
       }
     }
 
+    const networks: ReadonlyArray<NetworkPlan> =
+      Object.keys(services).length === 0
+        ? []
+        : [
+            {
+              name: appNetworkName(appName),
+              shared: false,
+              driver: "bridge",
+            },
+          ];
+
     return yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
@@ -367,7 +436,7 @@ const planApp = (
       provider,
       services,
       routes: [],
-      networks: [],
+      networks,
       stores: aggregatedStores,
       metadata,
       extensions: {},

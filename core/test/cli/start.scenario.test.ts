@@ -210,6 +210,55 @@ describe("lando start", () => {
     expect(renderStartAppResult(result)).toContain("database (running) tcp://localhost:5432");
   });
 
+  test("renders starting: prefix when any service is not in a ready state per inspect", () => {
+    const stoppedResult: Parameters<typeof renderStartAppResult>[0] = {
+      app: "test-start",
+      servicesStarted: [
+        {
+          name: "web",
+          state: "stopped",
+          endpoints: ["http://localhost:3000"],
+        },
+        {
+          name: "database",
+          state: "running",
+          endpoints: ["tcp://localhost:5432"],
+        },
+      ],
+    };
+
+    const rendered = renderStartAppResult(stoppedResult);
+
+    expect(rendered).toContain("starting: test-start");
+    expect(rendered).not.toContain("ready: test-start");
+    expect(rendered).toContain("web (stopped)");
+    expect(rendered).toContain("database (running)");
+  });
+
+  test("renders ready: prefix when every service reports ready state per inspect", () => {
+    const readyResult: Parameters<typeof renderStartAppResult>[0] = {
+      app: "test-start",
+      servicesStarted: [
+        {
+          name: "web",
+          state: "ready",
+          endpoints: ["http://localhost:3000"],
+        },
+        {
+          name: "database",
+          state: "running",
+          endpoints: ["tcp://localhost:5432"],
+        },
+      ],
+    };
+
+    const rendered = renderStartAppResult(readyResult);
+
+    expect(rendered).toContain("ready: test-start");
+    expect(rendered).toContain("web (ready)");
+    expect(rendered).toContain("database (running)");
+  });
+
   test("passes an AbortSignal to provider apply for cancellation", async () => {
     const signalSeen: boolean[] = [];
     const controller = new AbortController();

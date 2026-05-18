@@ -32,8 +32,9 @@ describe("apache ServiceType", () => {
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
     expect(plan.environment.LANDO_SERVICE_TYPE).toBe("apache");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app");
-    expect(plan.appMount?.target).toBe("/app");
+    expect(String(plan.appMount?.target)).toBe("/app");
     expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.kind).toBe("tcp");
+    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
   });
 });
