@@ -567,3 +567,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: removed redundant `return` keywords before `yield* Effect.fail(...)` in planner capability-gate branches. No public APIs, imports, error handling, side effects, return values, tests, service plan behavior, or progress-log audit history changed.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (347 pass, 11 skip, 0 fail, 1819 expect). Earlier non-serial full-test attempts failed on generated compiled-binary contention/permission state (`ETXTBSY`/`EACCES` on `core/dist/lando`); after rebuilding `core/dist/lando` and rerunning non-overlapping serial tests, verification passed.
 ---
+
+## [2026-05-18 00:28 CDT] - Push
+- Branch pushed: us-011-python-service-types → origin/us-011-python-service-types
+- Commits pushed: c15f9ac (feat: Ship Python service types), 4721b08 (docs: review outcome), 8c405b4 (chore: remove AI slop)
+- PR: #87 https://github.com/AaronFeledy/core4/pull/87 (created)
+- CI outcome: pass — static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL
+- Review feedback: Bugbot COMMENTED (1 potential issue reported, check conclusion NEUTRAL); reviewDecision empty — no CHANGES_REQUESTED; treated as non-blocking per triage rules
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 2d75673 on main
+- Local main / branch refreshed: yes — main fast-forwarded to 2d75673; local story branch us-011-python-service-types deleted
+- Remaining local state: none; on main at 2d75673
+---
