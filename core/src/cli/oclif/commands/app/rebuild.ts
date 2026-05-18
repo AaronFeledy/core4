@@ -1,5 +1,10 @@
 import { type RebuildAppResult, rebuildApp, renderRebuildAppResult } from "../../../commands/rebuild.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  extractSpecAbortSignal,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   id: "app:rebuild",
@@ -7,7 +12,10 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => rebuildApp(),
+  run: (input) => {
+    const signal = extractSpecAbortSignal(input);
+    return rebuildApp(signal === undefined ? {} : { signal });
+  },
   render: (result) => renderRebuildAppResult(result as RebuildAppResult),
 };
 

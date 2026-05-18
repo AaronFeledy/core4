@@ -14,6 +14,9 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { quoteShellPath } from "./shell-quote.ts";
+import { noCommandsError } from "./tooling-engine.ts";
+
 const HOST_SERVICE = ":host";
 const decoder = new TextDecoder();
 
@@ -76,12 +79,6 @@ const wrapShellAsToolingError = (tool: string, shellError: ShellExecError): Tool
     tool,
     ...(shellError.exitCode === undefined ? {} : { exitCode: shellError.exitCode }),
     cause: shellError,
-  });
-
-const noCommandsError = (tool: string): ToolingExecError =>
-  new ToolingExecError({
-    message: `Tooling task ${tool} has no commands to run.`,
-    tool,
   });
 
 const hostRun = (invocation: ToolingInvocation, _plan: AppPlan, _provider: RuntimeProviderShape) =>
@@ -182,8 +179,6 @@ export const resolveScriptPath = (
         ? cause
         : outsideRootError(scriptPath, permittedRoots, undefined, cause),
   });
-
-const quoteShellPath = (target: string): string => `'${target.replaceAll("'", `'\\''`)}'`;
 
 export const runHostScript = (
   scriptPath: string,

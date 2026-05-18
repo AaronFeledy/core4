@@ -1,5 +1,10 @@
 import { type RestartAppResult, renderRestartAppResult, restartApp } from "../../../commands/restart.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  extractSpecAbortSignal,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   id: "app:restart",
@@ -7,7 +12,10 @@ export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => restartApp(),
+  run: (input) => {
+    const signal = extractSpecAbortSignal(input);
+    return restartApp(signal === undefined ? {} : { signal });
+  },
   render: (result) => renderRestartAppResult(result as RestartAppResult),
 };
 

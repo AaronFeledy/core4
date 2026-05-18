@@ -18,7 +18,7 @@ const availableServiceList = (services: AppPlan["services"]) =>
     .sort()
     .join(", ");
 
-const noCommandsError = (tool: string) =>
+export const noCommandsError = (tool: string): ToolingExecError =>
   new ToolingExecError({
     message: `Tooling task ${tool} has no commands to run.`,
     tool,

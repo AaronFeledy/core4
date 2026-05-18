@@ -4,6 +4,8 @@ import { type Context, Effect, Layer } from "effect";
 import { ShellExecError } from "@lando/sdk/errors";
 import { type ProcessResult, type ShellCommandOptions, ShellRunner } from "@lando/sdk/services";
 
+import { quoteShellPath } from "./shell-quote.ts";
+
 const decoder = new TextDecoder();
 
 interface ShellOutput {
@@ -27,8 +29,6 @@ const shellError = (
     ...(output?.stderr === undefined ? {} : { stderr: output.stderr }),
     cause,
   });
-
-const quoteShellPath = (path: string): string => `'${path.replaceAll("'", `'\\''`)}'`;
 
 const toProcessResult = (output: ShellOutput): ProcessResult => ({
   exitCode: output.exitCode,
