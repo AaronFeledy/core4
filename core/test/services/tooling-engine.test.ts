@@ -219,6 +219,29 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(provider.calls.length).toBe(0);
   });
 
+  test("returns a tagged ToolingExecError when the declared service is an empty string", async () => {
+    const plan = makePlan([baseServicePlan("web", true)]);
+    const provider = makeFakeProvider([]);
+    const invocation: ToolingInvocation = {
+      tool: "composer",
+      service: "",
+      commands: [["composer"]],
+    };
+
+    const exit = await Effect.runPromiseExit(runEngine(invocation, plan, provider));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(provider.calls.length).toBe(0);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("ToolingExecError");
+        expect(failure.value.message).toContain("no such service");
+      }
+    }
+  });
+
   test("runs commands sequentially, accumulates stdout/stderr, and stops at first non-zero exit", async () => {
     const plan = makePlan([baseServicePlan("web", true)]);
     const provider = makeFakeProvider([

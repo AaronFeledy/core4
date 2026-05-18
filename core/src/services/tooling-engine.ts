@@ -62,7 +62,7 @@ const resolveService = (
   invocation: ToolingInvocation,
   plan: AppPlan,
 ): Effect.Effect<ServiceName, ToolingExecError> => {
-  if (invocation.service !== undefined && invocation.service.length > 0) {
+  if (invocation.service !== undefined) {
     const matching = Object.values(plan.services).find((service) => service.name === invocation.service);
     if (matching === undefined) {
       return Effect.fail(unknownServiceError(invocation.tool, invocation.service, plan.services));

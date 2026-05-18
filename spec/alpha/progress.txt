@@ -1459,3 +1459,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: biome's `--unsafe` fix for `noNonNullAssertion` replaces `array[0]!.field` with `array[0]?.field`, which silently widens the inferred return type to `T | undefined`. After length-guarding a non-empty array, destructure with `const [first] = arr` + `if (first === undefined)` instead — type-correct, lint-clean, and the runtime check is the same.
   - Useful context: pre-Alpha SDK tags carry a `Status: stub interfaces — methods are typed but Live impls don't exist yet` comment; widening them with real method signatures is intentional during PRD-02/PRD-03 work. `ToolingEngine` now exposes `run` for the providerExec contract; the US-019 host engine will register a different `id: "host"` Layer against the same tag.
 ---
+
+## [2026-05-18 07:29 CDT] - US-018 Review
+- Reviewed US-018 build commit `31564a1` (Implement providerExec ToolingEngine). Verified against PRD-03 §US-018 AC and §6.10 service-resolution contract.
+- `review-work` findings:
+  - fixed: explicit empty `service: ""` silently fell back to primary because `resolveService()` guarded on `length > 0`. Authored `service: ""` is an invalid config, not a request for default-primary behavior, and silent masking conflicts with the spec's "fail with remediation, not silent ignore" principle (same posture as US-017). Changed the guard to `!== undefined` so empty strings flow into `unknownServiceError`. Added `core/test/services/tooling-engine.test.ts` regression test asserting `ToolingExecError` with "no such service".
+  - rejected: "multiple primaries silently accepted" — Oracle flagged that `findPrimary()` returns all matches but `resolveService()` destructures the first. Planner currently marks only `name === "web"` primary (`core/src/services/planner.ts:336`), so this is not reachable from real plans today; tightening to fail on multi-primary would add behavior not in the AC and would belong with planner-level invariants, not the engine.
+  - rejected: "stderr is written and also returned" — Oracle marked as acceptable for US-018; CLI visibility is the stated requirement, and double-render risk belongs to the eventual renderer boundary (US-022 surface), not US-018.
+  - rejected: "argv quoting and `cmd: []` guard" — explicitly out of scope per US-019/US-022.
+- Files changed: `core/src/services/tooling-engine.ts`, `core/test/services/tooling-engine.test.ts`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (biome clean, 298 files); focused `bun test core/test/services/tooling-engine.test.ts core/test/cli/tooling.scenario.test.ts` passed (18 pass, 0 fail, 60 expect calls — 1 new); full `bun test --concurrency=1` passed (503 pass, 11 skip, 0 fail across 514 tests/93 files).
+- **Learnings for future iterations:**
+  - Patterns discovered: when a normalized invocation field is optional and string-typed, treat `undefined` (caller did not declare) and `""` (caller declared empty) as distinct cases. The compile/normalize layer should preserve authored intent verbatim, and the engine should reject invalid declared values rather than silently falling back. Same pattern as the §8.5.x Beta-rejection scans: surface the config error at the boundary, do not paper over it downstream.
+  - Gotchas encountered: tests with self-explanatory titles do not need a behavioral preamble comment — the hook flags it as redundant. Keep `test("...")` strings descriptive enough that a leading comment block adds no information.
+---
