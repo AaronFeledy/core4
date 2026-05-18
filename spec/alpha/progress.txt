@@ -2941,3 +2941,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-18 14:47 CDT] - US-022
+- Implemented `lando exec`, provider-exec `lando ssh`, and host-mode `lando shell` end-to-end through both source OCLIF and compiled `$bunfs` paths.
+- `execApp` (`core/src/cli/commands/exec.ts`) now resolves the declared `--service` (or primary service) on the planned AppPlan and delegates to `RuntimeProvider.exec`; stderr is piped to `process.stderr` and exit code propagates through `renderExecAppResult` setting `process.exitCode`.
+- `shellApp` (`core/src/cli/commands/shell.ts`, new) spawns a host shell rooted at the planned app root with `LANDO`/`LANDO_APP_NAME`/`LANDO_APP_ROOT` env injected; the launcher is an injectable seam so tests drive deterministic exit codes without spawning a real TTY. `--service` rejects with `NotImplementedError` per §8.2.3.
+- `lando ssh --subsystem`/`--sidecar` rejects with `NotImplementedError` (Beta defer) in both OCLIF and compiled paths; default `ssh` runs `sh -l` interactive in the resolved service via `execApp`.
+- MVP_COMMAND_IDS extended to include `app:exec`, `app:ssh`, `app:shell` so the OCLIF base no longer auto-rejects them.
+- Files changed: `core/src/cli/commands/exec.ts`, `core/src/cli/commands/shell.ts` (new), `core/src/cli/oclif/commands/app/exec.ts`, `core/src/cli/oclif/commands/app/ssh.ts`, `core/src/cli/oclif/commands/app/shell.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/run.ts`, `core/src/cli/operations.ts`, `core/test/cli/exec.scenario.test.ts` (new), `core/test/cli/ssh.scenario.test.ts` (new), `core/test/cli/shell.scenario.test.ts` (new), `core/test/cli/aliases.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test core/test/cli/{exec,ssh,shell}.scenario.test.ts core/test/cli/aliases.test.ts core/test/cli/not-implemented.test.ts` passed (19 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test core/test/build/compile.test.ts` passed; manual CLI QA against `core/bin/lando.ts` (source) and `core/dist/lando` (compiled) confirmed: `exec --help` renders alias list, exec/ssh/shell outside an app dir surface `No .lando.yml found` + init remediation, `ssh --subsystem=sftp` rejects with `NotImplementedError + commandId: app:ssh + specSection: spec/08-cli-and-tooling.md`, and `shell --service=web` rejects with `NotImplementedError + commandId: app:shell`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Alpha CLI commands that propagate child exit codes (exec, shell) can set `process.exitCode` as a side effect inside the `render` function — `LandoCommandBase.runEffect` calls `render` after a successful Exit and the compiled `runX` helpers call the same `renderX` after `Effect.runPromiseExit`, so both source and compiled paths converge without extra plumbing.
+  - Gotchas encountered: `Bun.spawn` with `stdio: "inherit"` would block tests that don't have a real TTY. Injecting a `launch` function into `shellApp` lets unit tests pass a deterministic `{exitCode}` resolver while production still uses `node:child_process.spawn` with inherited stdio.
+  - Useful context: SSH subsystem/sidecar rejection lives only in the OCLIF wrapper and the compiled `runSsh` handler — `execApp` accepts `interactive`/`tty` hints unchanged and remains generic, so future `ssh` flag expansion only touches the wrapper layer.
+---

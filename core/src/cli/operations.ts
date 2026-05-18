@@ -33,6 +33,7 @@ export * from "./commands/destroy.ts";
 export * from "./commands/list.ts";
 export * from "./commands/logs.ts";
 export * from "./commands/exec.ts";
+export * from "./commands/shell.ts";
 export * from "./commands/rebuild.ts";
 export * from "./commands/restart.ts";
 export * from "./commands/poweroff.ts";

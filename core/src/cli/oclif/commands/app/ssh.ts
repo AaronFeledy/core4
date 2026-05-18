@@ -1,25 +1,85 @@
-import { type ExecAppResult, execApp } from "../../../commands/exec.ts";
-/**
- * `lando app:ssh` — OCLIF wrapper.
- */
+import { Args, Flags } from "@oclif/core";
+import { Effect } from "effect";
+
+import { NotImplementedError } from "@lando/sdk/errors";
+
+import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+
+interface SshFlags {
+  readonly service?: string;
+  readonly user?: string;
+  readonly subsystem?: string;
+  readonly sidecar?: boolean;
+}
+
+const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 
 export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   id: "app:ssh",
-  summary: "Open an interactive shell in a Lando service.",
+  summary: "Open an interactive shell in a Lando service (alias of `exec --tty --interactive sh -l`).",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => execApp({ service: "", command: ["sh"], interactive: true, tty: true }),
+  run: () => execApp({ command: DEFAULT_SSH_COMMAND, interactive: true, tty: true }),
+  render: (result) => renderExecAppResult(result as ExecAppResult),
 };
+
+const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =>
+  new NotImplementedError({
+    message: `\`lando ssh --${kind}\`: SSH ${kind} support is deferred to Beta. Alpha \`ssh\` is provider-exec TTY command behavior only.`,
+    commandId: "app:ssh",
+    specSection: "spec/08-cli-and-tooling.md",
+    remediation:
+      "Drop the unsupported flag. Alpha `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec. SSH sidecar/subsystem support lands in Beta.",
+  });
 
 export default class SshCommand extends LandoCommandBase {
   static override description = sshSpec.summary;
   static override aliases = [...resolveTopLevelAliases(sshSpec)];
+  static override strict = false;
+  static override flags = {
+    service: Flags.string({ char: "s", description: "Service to open a shell in." }),
+    user: Flags.string({ char: "u", description: "User to run the shell as inside the service." }),
+    subsystem: Flags.string({
+      description: "(Beta) SSH subsystem to invoke; rejected in Alpha.",
+    }),
+    sidecar: Flags.boolean({
+      description: "(Beta) Open the shell in a per-app SSH sidecar; rejected in Alpha.",
+    }),
+  };
+  static override args = {
+    command: Args.string({
+      name: "command",
+      description: "Optional command to run instead of the default shell.",
+    }),
+  };
   static override landoSpec: LandoCommandSpec = sshSpec;
   static override bootstrap = sshSpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(sshSpec);
+    const parsed = (await this.parse(SshCommand)) as {
+      readonly flags: SshFlags;
+      readonly argv: ReadonlyArray<string>;
+    };
+    const command = parsed.argv.length === 0 ? DEFAULT_SSH_COMMAND : (parsed.argv as ReadonlyArray<string>);
+    await this.runEffect({
+      ...sshSpec,
+      run: () => {
+        if (parsed.flags.subsystem !== undefined) {
+          return Effect.fail(subsystemDeferred("subsystem"));
+        }
+        if (parsed.flags.sidecar === true) {
+          return Effect.fail(subsystemDeferred("sidecar"));
+        }
+        return execApp({
+          command,
+          interactive: true,
+          tty: true,
+          ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
+          ...(parsed.flags.user === undefined ? {} : { user: parsed.flags.user }),
+        });
+      },
+    });
   }
 }
