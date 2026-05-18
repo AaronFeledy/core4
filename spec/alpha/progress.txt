@@ -469,3 +469,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — main fast-forwarded to 6146554; story branch deleted
 - Remaining local state: none
 ---
+
+## [2026-05-17] - Sync
+- Previous branch: us-009-php-service-types
+- Previous PR: #85 https://github.com/AaronFeledy/core4/pull/85
+- Action: caught up after prior merge (PR #85 was already MERGED; remote branch pruned during fetch)
+- Dirty tree fast path: yes — progress.txt-only change stashed, committed to main, and pushed as "docs: update progress log" (a01dd27)
+- Local main updated: yes — ff-only pull (already at 6146554); progress commit pushed (a01dd27)
+- Branch after sync: main
+- Stash created: no (stash was immediately popped and committed)
+---
