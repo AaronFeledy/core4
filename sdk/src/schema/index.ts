@@ -662,6 +662,43 @@ export const ToolingTaskShape = Schema.Struct({
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
 /**
+ * BunShellScriptFrontMatter — Alpha-supported YAML front-matter for
+ * `.lando/scripts/<name>.bun.sh` script-backed tooling tasks.
+ * SPEC: §8.5.9.
+ *
+ * The front-matter is the first contiguous comment block at the top of a
+ * `.bun.sh` file, wrapped in `# ---` markers and uniformly prefixed with
+ * `# `. It supplies the same metadata fields a `tooling:` entry would,
+ * but the script body itself is the task body — `cmd:` / `cmds:` /
+ * `vars:` are intentionally absent because they live inline in the
+ * script.
+ *
+ * Alpha-supported fields (matching `ToolingTaskShape`):
+ * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
+ *   Defaults to `:host` when omitted.
+ * - `desc:` / `description:` / `summary:` — short help text. `desc` is
+ *   accepted as a §8.5.1 alias for `description` per the §8.5.9 field
+ *   list.
+ *
+ * Beta-deferred fields (`aliases`, `topLevelAlias`, `bootstrap`,
+ * `flags`, `args`, `passThrough`, `sources`, `generates`, `status`,
+ * `preconditions`, `run`, `platforms`, `internal`, `disabled`,
+ * `engine`) are detected pre-decode (including nested YAML list/object
+ * forms like `sources:\n  - …`) and rejected with a tagged
+ * `NotImplementedError` carrying `commandId: "landofile.parse"`, the
+ * matching `specSection`, and a Beta-deferral remediation. Unknown keys
+ * outside that set fall through to the strict schema decode and surface
+ * as `BunShellScriptFrontMatterError`.
+ */
+export const BunShellScriptFrontMatter = Schema.Struct({
+  service: Schema.optional(Schema.String),
+  desc: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  summary: Schema.optional(Schema.String),
+});
+export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
+
+/**
  * LandofileShape — the authored Landofile. MVP subset of §7.4, extended in
  * PRD-03 US-017 to cover the Alpha `tooling:` schema.
  * Deferred for later passes: toolingDefaults:, toolingIncludes:,

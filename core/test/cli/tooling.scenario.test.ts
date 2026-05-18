@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
@@ -339,5 +342,225 @@ describe("runTooling — CLI rendering", () => {
     expect(exit._tag).toBe("Failure");
     if (exit._tag !== "Failure") return;
     expect(JSON.stringify(exit.cause)).toContain("ToolingExecError");
+  });
+});
+
+const withAppRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-tooling-scenario-bun-sh-"));
+  const previousCwd = process.cwd();
+  try {
+    await writeFile(join(root, ".lando.yml"), "name: scenario\n");
+    process.chdir(root);
+    return await run(root);
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+};
+
+const writeBunShScript = async (appRoot: string, relativePath: string, contents: string): Promise<string> => {
+  const target = join(appRoot, ".lando", "scripts", relativePath);
+  await mkdir(join(target, ".."), { recursive: true });
+  await writeFile(target, contents);
+  return target;
+};
+
+describe("runTooling — .bun.sh script-backed tasks (§8.5.9)", () => {
+  test("runs a .lando/scripts/<name>.bun.sh task through the host engine and returns its output", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "greet.bun.sh",
+        ["# ---", "# desc: Print a greeting", "# ---", "echo -n 'hi-from-bun-sh'", ""].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([]);
+      const landofile: LandofileShape = { name: "scenario" };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const result = await Effect.runPromise(runTooling({ name: "greet" }).pipe(runtimeFor(layer)));
+
+      expect(result.tool).toBe("app:greet");
+      expect(result.service).toBe(":host");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe("hi-from-bun-sh");
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  test("matches nested script paths to colon-separated canonical ids", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        join("db", "wait.bun.sh"),
+        ["# ---", "# desc: Wait for the DB", "# ---", "echo -n 'db-ok'", ""].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([]);
+      const landofile: LandofileShape = { name: "scenario" };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const result = await Effect.runPromise(runTooling({ name: "db:wait" }).pipe(runtimeFor(layer)));
+
+      expect(result.tool).toBe("app:db:wait");
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toBe("db-ok");
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  test("propagates non-zero exit codes from a failing .bun.sh task as ToolingExecError with the script exit code", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "fail.bun.sh",
+        ["# ---", "# desc: Fail on purpose", "# ---", "exit 7", ""].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider } = makeProvider([]);
+      const landofile: LandofileShape = { name: "scenario" };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const exit = await Effect.runPromiseExit(runTooling({ name: "fail" }).pipe(runtimeFor(layer)));
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag !== "Failure") return;
+      const flat = JSON.stringify(exit.cause);
+      expect(flat).toContain("ToolingExecError");
+      expect(flat).toContain('"exitCode":7');
+    });
+  });
+
+  test("Landofile tooling.<id> overrides an auto-discovered script and routes through providerExec", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "build.bun.sh",
+        [
+          "# ---",
+          "# desc: Script-backed build (should be overridden)",
+          "# ---",
+          "process.stdout.write('from-script');",
+          "",
+        ].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "from-provider" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { build: { service: "appserver", cmd: "make" } },
+      };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const result = await Effect.runPromise(runTooling({ name: "build" }).pipe(runtimeFor(layer)));
+
+      expect(result.service).toBe("appserver");
+      expect(result.stdout).toBe("from-provider");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.command).toEqual(["sh", "-c", "make"]);
+    });
+  });
+
+  test("Landofile tooling.<id> wins over a script even when the user invokes with the canonical app:<id> form", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "build.bun.sh",
+        [
+          "# ---",
+          "# desc: Script-backed build (must NOT run for app:build)",
+          "# ---",
+          "echo from-script",
+          "",
+        ].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "from-provider" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { build: { service: "appserver", cmd: "make" } },
+      };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const result = await Effect.runPromise(runTooling({ name: "app:build" }).pipe(runtimeFor(layer)));
+
+      expect(result.service).toBe("appserver");
+      expect(result.stdout).toBe("from-provider");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.command).toEqual(["sh", "-c", "make"]);
+    });
+  });
+
+  test("rejects a .bun.sh that declares a non-:host service with NotImplementedError (Beta-deferred)", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "in-service.bun.sh",
+        [
+          "# ---",
+          "# desc: Targets a container service",
+          "# service: appserver",
+          "# ---",
+          "console.log('nope');",
+          "",
+        ].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([]);
+      const landofile: LandofileShape = { name: "scenario" };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const exit = await Effect.runPromiseExit(runTooling({ name: "in-service" }).pipe(runtimeFor(layer)));
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag !== "Failure") return;
+      const flat = JSON.stringify(exit.cause);
+      expect(flat).toContain("NotImplementedError");
+      expect(flat).toContain("§8.5.9");
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  test("surfaces a malformed .bun.sh script as BunShellScriptFrontMatterError at invocation time", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(root, "broken.bun.sh", ["console.log('no front matter');", ""].join("\n"));
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider } = makeProvider([]);
+      const landofile: LandofileShape = { name: "scenario" };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const exit = await Effect.runPromiseExit(runTooling({ name: "broken" }).pipe(runtimeFor(layer)));
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag !== "Failure") return;
+      expect(JSON.stringify(exit.cause)).toContain("BunShellScriptFrontMatterError");
+    });
+  });
+
+  test("falls through to ToolingCompileError when neither Landofile nor .bun.sh defines the task", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "build.bun.sh",
+        ["# ---", "# desc: Real task", "# ---", "console.log('build');", ""].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([]);
+      const landofile: LandofileShape = { name: "scenario" };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const exit = await Effect.runPromiseExit(
+        runTooling({ name: "does-not-exist" }).pipe(runtimeFor(layer)),
+      );
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag !== "Failure") return;
+      expect(JSON.stringify(exit.cause)).toContain("ToolingCompileError");
+      expect(calls).toHaveLength(0);
+    });
   });
 });
