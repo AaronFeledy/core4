@@ -1473,3 +1473,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: when a normalized invocation field is optional and string-typed, treat `undefined` (caller did not declare) and `""` (caller declared empty) as distinct cases. The compile/normalize layer should preserve authored intent verbatim, and the engine should reject invalid declared values rather than silently falling back. Same pattern as the §8.5.x Beta-rejection scans: surface the config error at the boundary, do not paper over it downstream.
   - Gotchas encountered: tests with self-explanatory titles do not need a behavioral preamble comment — the hook flags it as redundant. Keep `test("...")` strings descriptive enough that a leading comment block adds no information.
 ---
+
+## [2026-05-18 07:37 CDT] - US-018 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed all US-018 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
+- Files changed by cleanup: `AGENTS.md`, `core/src/cli/commands/tooling.ts`, `core/src/services/tooling-engine.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: tightened several wording-only repo guidance lines in `AGENTS.md`, removed redundant module-level explanatory docblocks from the US-018 tooling command/engine files, and kept the small `cmds` local binding in `normalizeCommands` without the non-null assertion introduced by an initial cleanup pass. Rejected and reverted overbroad documentation removal from `core/src/runtime/layer.ts` and `sdk/src/services/index.ts` because those comments document durable runtime/public API contracts rather than disposable AI slop.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed.
+---
