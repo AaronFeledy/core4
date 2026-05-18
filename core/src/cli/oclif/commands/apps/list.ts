@@ -1,21 +1,46 @@
-import { type ListServicesResult, listServices } from "../../../commands/list.ts";
-/**
- * `lando apps:list` — OCLIF wrapper.
- */
+import { Flags } from "@oclif/core";
+import { Effect } from "effect";
+
+import { type ListServicesResult, listServices, renderAppsListResult } from "../../../commands/list.ts";
+
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+
+const extractFormat = (input: unknown): "json" | "table" => {
+  if (typeof input !== "object" || input === null) return "table";
+  const flags = (input as { flags?: { format?: unknown } }).flags;
+  if (flags === undefined) return "table";
+  return flags.format === "json" ? "json" : "table";
+};
+
+const extractPath = (input: unknown): string | undefined => {
+  if (typeof input !== "object" || input === null) return undefined;
+  const flags = (input as { flags?: { path?: unknown } }).flags;
+  const value = flags?.path;
+  return typeof value === "string" ? value : undefined;
+};
 
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
   id: "apps:list",
-  summary: "List Lando services across apps.",
+  summary: "List Lando apps applied across discovered providers on this host.",
   namespace: "apps",
   topLevelAlias: true,
   bootstrap: "minimal",
-  run: () => listServices(),
+  run: (input) =>
+    Effect.gen(function* () {
+      const path = extractPath(input);
+      return yield* listServices({ ...(path === undefined ? {} : { path }) });
+    }),
+  render: (result, input?: unknown) =>
+    renderAppsListResult(result as ListServicesResult, extractFormat(input)),
 };
 
 export default class ListCommand extends LandoCommandBase {
   static override description = listSpec.summary;
   static override aliases = [...resolveTopLevelAliases(listSpec)];
+  static override flags = {
+    format: Flags.string({ description: "Output format.", options: ["json", "table"], default: "table" }),
+    path: Flags.string({ description: "Filter apps whose root contains the given substring." }),
+  };
   static override landoSpec: LandoCommandSpec = listSpec;
   static override bootstrap = listSpec.bootstrap;
 

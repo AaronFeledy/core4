@@ -23,9 +23,16 @@ import MetaConfigCommand from "./commands/meta/config.ts";
 import DoctorCommand from "./commands/meta/doctor.ts";
 import EventsFollowCommand from "./commands/meta/events/follow.ts";
 import PluginAddCommand from "./commands/meta/plugin/add.ts";
+import PluginBuildCommand from "./commands/meta/plugin/build.ts";
+import PluginLinkCommand from "./commands/meta/plugin/link.ts";
 import PluginLoginCommand from "./commands/meta/plugin/login.ts";
 import PluginLogoutCommand from "./commands/meta/plugin/logout.ts";
+import PluginNewCommand from "./commands/meta/plugin/new.ts";
+import PluginPublishCommand from "./commands/meta/plugin/publish.ts";
 import PluginRemoveCommand from "./commands/meta/plugin/remove.ts";
+import PluginTestCommand from "./commands/meta/plugin/test.ts";
+import PluginTrustCommand from "./commands/meta/plugin/trust.ts";
+import PluginUnlinkCommand from "./commands/meta/plugin/unlink.ts";
 import RecipesListCommand from "./commands/meta/recipes/list.ts";
 import SetupCommand from "./commands/meta/setup.ts";
 import ShellenvCommand from "./commands/meta/shellenv.ts";
@@ -58,9 +65,16 @@ export default {
   "meta:doctor": DoctorCommand,
   "meta:events:follow": EventsFollowCommand,
   "meta:plugin:add": PluginAddCommand,
+  "meta:plugin:build": PluginBuildCommand,
+  "meta:plugin:link": PluginLinkCommand,
   "meta:plugin:login": PluginLoginCommand,
   "meta:plugin:logout": PluginLogoutCommand,
+  "meta:plugin:new": PluginNewCommand,
+  "meta:plugin:publish": PluginPublishCommand,
   "meta:plugin:remove": PluginRemoveCommand,
+  "meta:plugin:test": PluginTestCommand,
+  "meta:plugin:trust": PluginTrustCommand,
+  "meta:plugin:unlink": PluginUnlinkCommand,
   "meta:recipes:list": RecipesListCommand,
   "meta:setup": SetupCommand,
   "meta:shellenv": ShellenvCommand,

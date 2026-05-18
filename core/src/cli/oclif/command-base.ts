@@ -78,10 +78,17 @@ const MVP_COMMAND_IDS = new Set([
   "app:start",
   "app:stop",
   "apps:init",
+  "apps:list",
+  "apps:poweroff",
+  "meta:bun",
+  "meta:config",
   "meta:doctor",
+  "meta:plugin:add",
+  "meta:plugin:remove",
   "meta:setup",
   "meta:shellenv",
   "meta:version",
+  "meta:x",
 ]);
 
 const SPEC_SECTION_BY_PREFIX: ReadonlyArray<readonly [string, string]> = [
@@ -213,7 +220,7 @@ export abstract class LandoCommandBase extends Command {
       throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
     }
 
-    await this.parse(this.ctor);
+    const parsed = await this.parse(this.ctor);
 
     const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
@@ -229,7 +236,12 @@ export abstract class LandoCommandBase extends Command {
     process.once("SIGTERM", abort);
     const exit = await Effect.runPromiseExit(
       Effect.provide(
-        spec.run({ argv: this.argv, signal: controller.signal }),
+        spec.run({
+          argv: this.argv,
+          signal: controller.signal,
+          flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
+          args: (parsed as { args?: Record<string, unknown> }).args ?? {},
+        }),
         runtime as Layer.Layer<R, LandoRuntimeBootstrapError>,
       ),
     ).finally(() => {
