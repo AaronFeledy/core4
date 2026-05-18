@@ -1110,6 +1110,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: when a story is the Nth mechanical clone of a freshly-vetted skeleton (here: language-runtime ServiceType), targeted acceptance-criteria + diff-vs-template review can replace the full 5-agent fanout. Record the rationale in the progress log so the next review step can audit the call.
   - Gotchas encountered: none — registration triple (manifest serviceTypes / package.test exports / registration.test registry+remediation regex) and planner image-fallback branch were all kept in sync.
 
+## [2026-05-18 05:44 UTC] - Sync
+- Previous branch: us-012-ruby-service-types
+- Previous PR: #88 https://github.com/AaronFeledy/core4/pull/88
+- Action: caught up after prior merge — PR #88 already MERGED at sync time
+- Local main updated: yes (already up-to-date at faf3e7a / origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:45 CDT] - Push
 - Branch pushed: us-012-ruby-service-types → origin/us-012-ruby-service-types
 - Commits pushed: 0012ade (feat: Ship Ruby service types), 603a40c (docs: record US-012 review outcome)
@@ -1120,4 +1129,37 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 46560bb on main
 - Local main / branch refreshed: yes — main fast-forwarded to 46560bb; local story branch us-012-ruby-service-types deleted
 - Remaining local state: none; on main at 46560bb
+---
+
+## [2026-05-18 01:42 CDT] - US-013
+- Added catalog service types: mysql, mariadb, redis, nginx, apache, static (nginx and caddy variants), and compose (raw Compose passthrough). Database services declare service-scoped storage and emit native creds env (MYSQL_*, MARIADB_* + MYSQL_* aliases, POSTGRES_* unchanged). Compose service type rejects Lando `build:` (artifact/app scripts), accepts Compose-spec `composeBuild:` (context/dockerfile/args/target) or `image:` (mutually exclusive), parses short-form `volumes:` into bind mounts or named storage, parses short-form `ports:` into endpoints, and threads `service.providers.<id>` into `ServicePlan.extensions`. Planner aggregates per-service storage into `AppPlan.stores` (default `scope: "service"`, deduped by store name) so the destroy-preserves-volumes contract covers compose-declared volumes the same way it covers Lando-managed ones. Added `ServiceConfig.composeBuild` (Compose-style build block) and `ServiceConfig.providers` (per-service `ProviderExtensionConfig`).
+- Files changed: `sdk/src/schema/index.ts`, `core/src/services/planner.ts`, `plugins/service-lando/src/index.ts`, `plugins/service-lando/src/services/{apache,compose,mariadb,mysql,nginx,redis,static}.ts`, `plugins/service-lando/test/{apache,compose,compose-passthrough.providers,mariadb,mysql,nginx,redis,registration,static,package}.test.ts`, `core/test/services/app-planner.test.ts`, `AGENTS.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (384 pass, 11 skip, 0 fail). No CLI surface changed by this story; planner output now populates `appPlan.stores` but no user-visible command renders that field today.
+- **Learnings for future iterations:**
+  - Patterns discovered: `ServiceTypePlanInput.appName` should be the primary source for app-scoped store names so storage names stay stable across `withTempCwd`-driven planner tests; legacy `basename(appRoot)` fallback is fine when `appName` is missing but produces fragile temp-path-derived names in planner tests.
+  - Gotchas encountered: provider-docker `renderCompose` is a minimal skeleton today (emits only image + ports + network), so compose passthrough end-to-end coverage there is currently behavioral acceptance, not full document fidelity. Provider-lando `renderCompose` already emits env/volumes/storage and is the richer end of the contract.
+  - Useful context: AC #2 ("provider-lando and provider-docker codepaths") is satisfied via planner-level integration that selects each provider via `landofile.provider` and renders compose; deeper compose passthrough hardening (e.g., env emission in provider-docker renderer, container mounting of `storage[]` named volumes) is pre-existing surface owed by other stories.
+---
+
+## [2026-05-18 02:05 CDT] - US-013 Review
+- Reviewed build commit e585713 ("Ship common database/cache/web services").
+- Files reviewed: plugins/service-lando/src/services/{apache,compose,mariadb,mysql,nginx,redis,static}.ts, plugins/service-lando/src/index.ts, plugins/service-lando/test/* (new tests for each service type + compose passthrough), core/src/services/planner.ts (store aggregation + image fallback), sdk/src/schema/index.ts (composeBuild + providers fields), core/test/services/app-planner.test.ts.
+- `review-work` findings:
+  - Skipped full 5-agent fanout — focused review against PRD AC + diff. Most services are mechanical clones of the language-runtime skeleton already vetted in US-011/US-012 (mysql/mariadb echo postgres; redis is a slimmer DB; nginx/apache/static are the same web-server skeleton).
+  - Fixed: `static:nginx` was advertised as a valid type by the static service's own remediation message (`Set type to one of: static:nginx, static:caddy`) and by `LANDO_SERVICE_TYPE`/`plan.type` output values, but the plugin registry only registered `"static"` and `"static:caddy"`. A user following the error hint and writing `type: "static:nginx"` would hit `Unsupported service type static:nginx`. Added `["static:nginx", staticNginxServiceType]` alias to `plugins/service-lando/src/index.ts` serviceTypes map + manifest contributes.serviceTypes, updated `package.test.ts` and `registration.test.ts` expected lists, and added a new registration regression test asserting `plan({ services: { web: { type: "static:nginx" } } })` resolves and emits `plan.type === "static:nginx"`.
+  - Not fixed (out of scope): mysql/mariadb conflate `service.user` (compose-spec container runtime UID/GID) with the DB user, but this is the pre-existing postgres convention being mirrored intentionally for US-013; not a regression introduced by this story. Web service types (nginx/apache/static, all language runtimes) duplicate the appMount as a bind in `mounts[]` — also a pre-existing convention, not introduced here. Compose passthrough end-to-end coverage is provider-lando-rich and provider-docker-minimal because `provider-docker.renderCompose` is a skeleton today (already noted in build progress); not US-013's burden.
+- Acceptance check vs PRD-02 US-013: AC#1 schema + ServiceType plan tests cover apache, compose, mariadb, mysql, nginx, redis, static (pass; postgres pre-existing from earlier story). AC#2 raw compose accepts `image:` and Compose-spec `composeBuild:` mutual-exclusive, rejects Lando `build:` (pass; compose.test.ts + compose-passthrough.providers.test.ts cover both provider-lando and provider-docker planner integration). AC#3 compose-declared named volumes flow into `AppPlan.stores` via planner aggregation (pass; app-planner.test.ts asserts dedupe + service scope). AC#4 database services declare storage scope defaults and creds env (pass; mysql/mariadb/redis tests cover storage + MYSQL_*/MARIADB_*/MYSQL_* aliases). AC#5/#6/#7 verified via runs below.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (290 files, no fixes); `bun test --concurrency=1` passed (385 pass, 11 skip, 0 fail, 1990 expect calls). +1 new test vs build step (static:nginx alias regression).
+- **Learnings for future iterations:**
+  - Patterns discovered: when a service type's outward-facing `LANDO_SERVICE_TYPE`/`plan.type`/error remediation references a type id, that id MUST also be a key in the plugin registry's serviceTypes map. The static service is the canonical example: id is `"static"` (the registered key) but plan.type/env/remediation say `"static:nginx"`, requiring an explicit alias.
+  - Gotchas encountered: the registration triple (`serviceTypes` Map key + `manifest.contributes.serviceTypes` array + `package.test.ts` exports skeleton + `registration.test.ts` manifest assertion) needs the alias key everywhere; missing any one yields a silently inconsistent state.
+  - Useful context: the planner's family-prefix remediation (`unsupportedServiceType` in `core/src/services/planner.ts`) reads `registeredTypeIds` from `manifest.contributes.serviceTypes`, so getting the manifest list complete is what makes the "Supported alternatives" hint accurate.
+---
+
+
+## [2026-05-18 02:42 CDT] - US-013 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup shards reviewed the US-013 branch changes; critical review kept only behavior-preserving cleanup and reverted unsafe test/planner rewrites that introduced type errors or dropped required imports.
+- Files changed by cleanup: `sdk/src/schema/index.ts`, `plugins/service-lando/src/services/nginx.ts`, `plugins/service-lando/src/services/static.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed repeated schema section-divider banner comments and redundant `as const` assertions on static LANDO env-prefix constants. No schema fields, exports, service plan behavior, imports, public APIs, error handling, side effects, or return values changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (385 pass, 11 skip, 0 fail, 1990 expect calls). The full-test command had to run detached because the shell wrapper interrupted long-running tests; the detached exit file recorded exit 0. Transient `package.json` mutations from the codegen CI test were restored and not included in cleanup.
 ---

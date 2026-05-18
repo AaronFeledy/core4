@@ -8,13 +8,22 @@ describe("@lando/service-lando package", () => {
     expect(plugin.PLUGIN_NAME).toBe("@lando/service-lando");
     expect(plugin.serviceTypes).toBeInstanceOf(Map);
     expect([...plugin.serviceTypes.keys()]).toEqual([
+      "apache",
+      "compose",
+      "mariadb",
+      "mysql",
+      "nginx",
       "node:lts",
       "node:22",
       "postgres",
       "php:8.2",
       "php:8.3",
       "python:3.12",
+      "redis",
       "ruby:3.3",
+      "static",
+      "static:nginx",
+      "static:caddy",
     ]);
     expect(Layer.isLayer(plugin.services)).toBe(true);
     expect(plugin.manifest).toMatchObject({
@@ -22,7 +31,24 @@ describe("@lando/service-lando package", () => {
       version: "0.0.0",
       api: 4,
       contributes: {
-        serviceTypes: ["node:lts", "node:22", "postgres", "php:8.2", "php:8.3", "python:3.12", "ruby:3.3"],
+        serviceTypes: [
+          "apache",
+          "compose",
+          "mariadb",
+          "mysql",
+          "nginx",
+          "node:lts",
+          "node:22",
+          "postgres",
+          "php:8.2",
+          "php:8.3",
+          "python:3.12",
+          "redis",
+          "ruby:3.3",
+          "static",
+          "static:nginx",
+          "static:caddy",
+        ],
       },
     });
   });
