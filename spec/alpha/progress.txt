@@ -2996,3 +2996,68 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (reset --hard to origin/main e84500f; story branch deleted on remote by --delete-branch)
 - Remaining local state: on main, working tree clean
 ---
+
+## [2026-05-18 Sync] - Sync
+- Previous branch: us-022-exec-ssh-shell
+- Previous PR: #98 https://github.com/AaronFeledy/core4/pull/98
+- Action: caught up after prior merge (PR was already MERGED; remote branch pruned)
+- Also pushed unpushed local main commit db6078f (progress log update) to origin/main
+- Local main updated: yes (already at e84500f; pushed progress commit db6078f to sync origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 16:17 CDT] - US-023
+- Implemented Alpha `app:restart`, `app:rebuild`, `app:logs`, `app:config`, and `app:cache:refresh` so the §8.2 subset compiles, runs, and is testable; deferred `app:includes:*` and `app:config:translate` keep emitting structured NotImplementedError remediation through the existing `LandoCommandBase` guard.
+- Files changed: `core/src/cli/commands/restart.ts`, `core/src/cli/commands/rebuild.ts`, `core/src/cli/commands/logs.ts`, `core/src/cli/commands/app-config.ts` (new), `core/src/cli/commands/app-cache-refresh.ts` (new), `core/src/cli/operations.ts`, `core/src/cli/oclif/command-base.ts` (MVP allowlist), `core/src/cli/oclif/commands/app/restart.ts`, `core/src/cli/oclif/commands/app/rebuild.ts`, `core/src/cli/oclif/commands/app/logs.ts`, `core/src/cli/oclif/commands/app/config/index.ts`, `core/src/cli/oclif/commands/app/cache/refresh.ts`, `core/src/cli/run.ts` (compiled `$bunfs` handlers), `core/test/cli/restart.scenario.test.ts` (new), `core/test/cli/rebuild.scenario.test.ts` (new), `core/test/cli/logs.scenario.test.ts` (new), `core/test/cli/app-config.scenario.test.ts` (new), `core/test/cli/app-cache.scenario.test.ts` (new), `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (606 pass, 11 skip); `bun run build` produced `core/dist/lando`; manual QA on source + compiled CLI confirmed (a) `restart`/`rebuild`/`logs`/`app:config`/`app:cache:refresh` fail closed outside an app with the existing init remediation, (b) `app:config` prints `app\t<name>` and `services\t...` against a fresh `lando init` app, (c) `app:cache:refresh` rebuilds the plan + writes `commands.bin` / `plugin-command-cache.bin` without contacting the provider when isolated env vars are set, and (d) `app:includes:update`, `app:includes:verify`, `app:config:translate` continue to return structured `NotImplementedError` remediation via both the compiled binary and the source CLI.
+- **Learnings for future iterations:**
+  - `restart`/`rebuild` compose cleanly as `stopApp` + `startApp({reconcile})`; tests can assert provider apply receives `reconcile:true` for rebuild to lock the contract without duplicating start/stop coverage.
+  - `provider.logs` returns `Stream<LogChunk>`; for Alpha we aggregate via `Stream.runCollect` so the command is unit-testable in-process. Follow/tail flags are still forwarded to the provider so a future streaming renderer can swap in without an API change.
+  - `app:cache:refresh` must accept an explicit `cacheRoot` override; the underlying `writeAppCommandCache` / `writePluginCommandCache` honor `options.cacheRoot` and `LANDO_USER_CACHE_ROOT`, but only the option keeps tests fully hermetic from XDG state on the test runner's host.
+  - The `LandoCommandBase` `MVP_COMMAND_IDS` set is the gate for "source/compiled command actually executes"; anything still listed as deferred (`app:includes:*`, `app:config:translate`, etc.) automatically falls through to the structured NotImplementedError path via `notImplementedErrorForCommand` plus the per-prefix `specSection` mapping.
+---
+
+## [2026-05-18 16:55 CDT] - US-023 Review
+- What was reviewed or fixed: Ran 5-agent `review-work` on commit 6c4071f (US-023 build step). 4/5 agents returned FAIL; security PASSed with non-blocking MEDIUMs; QA PASSed all host-safe automated checks but was BLOCKED from hands-on CLI probes because `.local/bin/lando4-dev` invokes `wsl.exe`, which doesn't exist on this Linux host (environment-only blocker, unrelated to the story). Confirmed in-scope blockers and applied the smallest correct fixes; rejected out-of-scope findings.
+- Files changed:
+  - `core/src/cli/oclif/command-base.ts` (move MVP guard before `this.parse()` so flagged invocations of deferred commands emit structured `NotImplementedError`, not OCLIF "Nonexistent flag")
+  - `core/src/cli/oclif/commands/app/logs.ts` (declare OCLIF `--service/--follow/--tail/--since` flags; wire `--service/--tail` through; reject `--follow` and `--since` with structured `NotImplementedError`)
+  - `core/src/cli/oclif/commands/app/config/index.ts` (declare OCLIF `--format json|table` flag; thread it into the render call)
+  - `core/src/cli/commands/logs.ts` (fail-closed when `--service <X>` doesn't match the plan — `ToolingExecError` listing available services, validated BEFORE provider selection, mirroring `app:exec`)
+  - `core/src/cli/commands/rebuild.ts` (remove unused `service?` field from `RebuildAppOptions` — dead code; spec'd `lando rebuild <service>` selector is deferred)
+  - `core/src/cli/run.ts` (compiled `$bunfs` parity: `parseLogsArgv` learns `--since`, both `--follow`/`--since` are rejected with structured `NotImplementedError`; new `parseAppConfigArgv` honors `--format`)
+  - `core/test/cli/logs.scenario.test.ts` (3 new regression tests: unknown-service fail-closed, source CLI `--follow` rejection, source CLI `--since` rejection)
+  - `core/test/cli/app-config.scenario.test.ts` (1 new regression: source CLI `--format json` emits parseable JSON)
+  - `core/test/cli/not-implemented.test.ts` (1 new regression: flagged invocations of `app:config:translate --detect`, `app:includes:update --check`, `app:includes:verify --format json` all return structured `NotImplementedError`, not OCLIF unknown-flag)
+- `review-work` findings:
+  - fixed: deferred-command remediation bypassed by OCLIF parsing for flag-bearing invocations (AC#2)
+  - fixed: `app:logs` source OCLIF wrapper declared no flags while compiled `$bunfs` parsed `--service/--tail/--follow` (AC#3 source/compiled parity)
+  - fixed: `app:config` source OCLIF wrapper declared no flags; renderer supported JSON but CLI ignored argv (AC#3)
+  - fixed: `lando logs --follow` would hang forever via `Stream.runCollect` — now rejected with structured deferral until streaming sink lands
+  - fixed: `logs --since` missing entirely — now accepted at OCLIF layer and rejected with structured deferral (provider LogOptions has no since cursor)
+  - fixed: `logs --service <unknown>` silently returned empty — now fails with available service list, matching `app:exec` (US-022 learning)
+  - fixed: `RebuildAppOptions.service` declared but unused — removed
+  - rejected: [MAJOR code-quality] "`logsApp` does not pass `plan` to `provider.logs`" — provider-lando's log path resolves the target from `(app, service)` without needing `plan` for read-only `logs`; only mutating commands (stop/info/destroy) hit the fresh-CLI plan-cache gotcha. Out of scope to retrofit a `plan` field everywhere here.
+  - rejected: [MAJOR code-quality] "`app:cache:refresh` doesn't write the app-plan cache" — context-mining confirmed the persistent app-plan cache is owned by US-042; US-023's `app:cache:refresh` is explicitly the command-index refresh only.
+  - rejected: [MAJOR code-quality] "`discoverScripts` swallows `.bun.sh` errors" + "writeAppCommandCache silently returns undefined on failure" — both helpers are reused from the soft-fail command-index path (`CommandRegistryLive`); changing their contracts is a cross-cutting refactor, not a story-blocking bug.
+  - rejected: [BLOCKING context-mining] "`app:config get/set/unset/edit/validate`/`view --source`/`--path` missing per §8.2.1" — US-023's PRD says "Scenario tests cover the §8.2 command subset" at command-id level and explicitly defers only `app:config:translate`; the full read/write subcommand surface is a separate story. Source CLI now defers the bare command read-only with `--format` parity to compiled, which satisfies AC#3 for `app:config`.
+  - rejected: [MEDIUM security] "`app:config` JSON may leak service env credentials" — landofile output is by-design user-readable; redaction is a Beta hardening item, not US-023.
+  - rejected: [MEDIUM security] "Unbounded log collection DoS via `Stream.runCollect`" — `--follow` is now rejected upfront, so unbounded streams can't reach the collector; `--tail <N>` is the bounded path.
+  - rejected: QA agent BLOCKED status — `.local/bin/lando4-dev` requires WSL on this host and fails with "Exec format error"; sandbox tooling defect, NOT a build-step problem. Bun-based typecheck/lint/test/build are all host-safe and ran clean.
+- Verification run and result: `bun run typecheck` clean; `bun run lint` clean (321 files); `bun run build` succeeded → `core/dist/lando` (107M); focused `bun test core/test/cli/{logs,app-config,not-implemented,restart,rebuild,app-cache}.scenario.test.ts` passed 22/22 (was 16 pre-review; +5 new regression tests + 1 unchanged in not-implemented); full `bun test --concurrency=1` passed 611/611 (11 skip, 0 fail) — a transient `setup.test.ts` flake when test files share the compiled `core/dist/lando` binary across runs is pre-existing and reproduces on commit 6c4071f without the review fixes. Manually probed source + compiled CLI in a tmpdir: `app:config --format json` round-trips parseable JSON identically from both binaries; `logs --follow`, `logs --since`, `app:config:translate --detect`, `app:includes:update --check` all return structured `NotImplementedError` with `commandId:`/`specSection:` lines on both binaries.
+- **Learnings for future iterations:**
+  - Always check OCLIF `static flags` parity with `parseStringFlag` in `core/src/cli/run.ts` BEFORE landing a new command — every flag added in either place needs the mirror in the other, or the source CLI and the compiled `$bunfs` binary will diverge silently. This is the same regression pattern as US-022's `--cwd`.
+  - The MVP guard in `LandoCommandBase.runEffect` MUST fire BEFORE `this.parse(this.ctor)`; otherwise OCLIF strict parsing rejects any documented flag on a deferred wrapper as "Nonexistent flag" and the user never sees the structured NotImplementedError remediation. There's an inline comment locking this ordering at the top of `runEffect` now.
+  - Deferring spec'd CLI flags (e.g. `--follow`, `--since`) by declaring them at the OCLIF layer and rejecting with structured `NotImplementedError` is preferable to omitting them entirely: source/compiled parity stays clean, `--help` shows the spec'd surface, and users get actionable remediation instead of "Nonexistent flag".
+  - For user-supplied service/path/etc. selectors, ALWAYS validate against the plan BEFORE invoking expensive infrastructure (`registry.select`, `planner.materialize`, `provider.apply`). Silent empty-result paths (`selectServices` returning `[]`) hide typos and are a UX regression vs. `app:exec`'s fail-closed pattern.
+  - Sandbox prerequisite: `.local/bin/lando4-dev` requires WSL today. On non-WSL Linux hosts, review-step hands-on CLI probes have to run on the host directly, with `LANDO_*` env isolation and tmpdir scoping; document this if the sandbox isn't fixed before US-024.
+---
+
+## [2026-05-18 17:20 CDT] - US-023 Slop cleanup
+- Ran branch-wide slop-remover after the US-023 review step and before push.
+- Cleanup changed AI-slop/comment-only or cosmetic surfaces in `AGENTS.md`, `core/src/cli/commands/app-config.ts`, `core/src/cli/commands/restart.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/app/config/index.ts`, and `core/src/cli/oclif/commands/app/logs.ts`.
+- Behavior preserved: no public API, error messages, side effects, or command contracts changed; `restartApp` now returns the existing `startApp` result shape directly, and `app:logs` deferred errors keep the same precedence and remediation text.
+- Verification run and result: `lsp_diagnostics` clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (611 pass, 11 skip, 0 fail). Initial full-test run failed due stale generated `core/dist/lando` executable permissions; `bun run clean` removed generated outputs and the rerun passed.
+- Safety note: one accidental duplicate slop-remover agent targeting `app/config/index.ts` was cancelled before final diff review to prevent concurrent edits.
+---

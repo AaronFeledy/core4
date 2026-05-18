@@ -2,26 +2,6 @@
  * `LandoCommandBase` — the OCLIF Command subclass that adapts Effect into
  * OCLIF's `run()` lifecycle.
  *
- * The pattern:
- *
- * ```ts
- * export default class StartCommand extends LandoCommandBase {
- *   static description = "Start a Lando app";
- *   static landoSpec = startCommandSpec;
- *   async run(): Promise<void> {
- *     await this.runEffect(startCommandSpec);
- *   }
- * }
- * ```
- *
- * The base class:
- *   1. Parses argv via OCLIF.
- *   2. Builds `CommandInput` (`stdin`/`stdout`/`stderr` as Stream/Sink).
- *   3. Reads the command's `bootstrap` level off the spec.
- *   4. Builds `LandoRuntimeLive` at that level via `makeLandoRuntime`.
- *   5. Runs `spec.run(input)` via `Effect.runPromiseExit` and translates
- *      tagged errors → OCLIF exit codes.
- *
  */
 import { Command } from "@oclif/core";
 
@@ -85,9 +65,14 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
 }
 
 const MVP_COMMAND_IDS = new Set([
+  "app:cache:refresh",
+  "app:config",
   "app:destroy",
   "app:exec",
   "app:info",
+  "app:logs",
+  "app:rebuild",
+  "app:restart",
   "app:shell",
   "app:ssh",
   "app:start",
@@ -208,11 +193,14 @@ export abstract class LandoCommandBase extends Command {
    * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
-    await this.parse(this.ctor);
-
+    // Guard deferred commands BEFORE OCLIF parses argv so flag-bearing invocations
+    // (e.g. `app:config:translate --detect`) emit structured NotImplementedError
+    // remediation instead of OCLIF "Nonexistent flag" parse errors.
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
     }
+
+    await this.parse(this.ctor);
 
     const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {

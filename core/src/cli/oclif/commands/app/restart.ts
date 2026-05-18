@@ -1,7 +1,4 @@
-import { type RestartAppResult, restartApp } from "../../../commands/restart.ts";
-/**
- * `lando app:restart` — OCLIF wrapper.
- */
+import { type RestartAppResult, renderRestartAppResult, restartApp } from "../../../commands/restart.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
@@ -11,6 +8,7 @@ export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => restartApp(),
+  render: (result) => renderRestartAppResult(result as RestartAppResult),
 };
 
 export default class RestartCommand extends LandoCommandBase {

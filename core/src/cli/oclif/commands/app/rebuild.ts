@@ -1,7 +1,4 @@
-import { type RebuildAppResult, rebuildApp } from "../../../commands/rebuild.ts";
-/**
- * `lando app:rebuild` — OCLIF wrapper.
- */
+import { type RebuildAppResult, rebuildApp, renderRebuildAppResult } from "../../../commands/rebuild.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
@@ -11,6 +8,7 @@ export const rebuildSpec: LandoCommandSpec<RebuildAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => rebuildApp(),
+  render: (result) => renderRebuildAppResult(result as RebuildAppResult),
 };
 
 export default class RebuildCommand extends LandoCommandBase {

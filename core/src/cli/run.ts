@@ -8,11 +8,16 @@ import { Cause, Effect, Exit } from "effect";
 import { InitTargetExistsError, NotImplementedError } from "@lando/sdk/errors";
 
 import { makeLandoRuntime } from "../runtime/layer.ts";
+import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
+import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
 import { doctor, renderDoctorResult } from "./commands/doctor.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
+import { logsApp, renderLogsAppResult } from "./commands/logs.ts";
+import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
+import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
@@ -174,6 +179,197 @@ const runSetup = async (): Promise<void> => {
   const failure = Cause.failureOption(exit.cause);
   const message = failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause);
   console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
+  process.exitCode = 1;
+};
+
+const runRestart = async (): Promise<void> => {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    const exit = await Effect.runPromiseExit(
+      restartApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    );
+    if (Exit.isSuccess(exit)) {
+      console.log(renderRestartAppResult(exit.value));
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+    process.exitCode = 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+};
+
+const runRebuild = async (): Promise<void> => {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    const exit = await Effect.runPromiseExit(
+      rebuildApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    );
+    if (Exit.isSuccess(exit)) {
+      console.log(renderRebuildAppResult(exit.value));
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+    process.exitCode = 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+};
+
+const parseLogsArgv = (
+  argv: ReadonlyArray<string>,
+): {
+  readonly service?: string;
+  readonly follow: boolean;
+  readonly tail?: number;
+  readonly since?: string;
+} => {
+  let service: string | undefined;
+  let follow = false;
+  let tail: number | undefined;
+  let since: string | undefined;
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    const serviceMatch = parseStringFlag(argv, i, "service", "s");
+    if (serviceMatch !== undefined) {
+      service = serviceMatch.value;
+      i += serviceMatch.consumed;
+      continue;
+    }
+    const tailMatch = parseStringFlag(argv, i, "tail");
+    if (tailMatch !== undefined) {
+      const parsed = Number.parseInt(tailMatch.value, 10);
+      if (!Number.isNaN(parsed)) tail = parsed;
+      i += tailMatch.consumed;
+      continue;
+    }
+    const sinceMatch = parseStringFlag(argv, i, "since");
+    if (sinceMatch !== undefined) {
+      since = sinceMatch.value;
+      i += sinceMatch.consumed;
+      continue;
+    }
+    if (arg === "--follow" || arg === "-f") {
+      follow = true;
+      i += 1;
+      continue;
+    }
+    i += 1;
+  }
+  return {
+    ...(service === undefined ? {} : { service }),
+    follow,
+    ...(tail === undefined ? {} : { tail }),
+    ...(since === undefined ? {} : { since }),
+  };
+};
+
+const runLogs = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const parsed = parseLogsArgv(argv);
+  if (parsed.follow) {
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message:
+            "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
+          commandId: "app:logs",
+          specSection: "spec/08-cli-and-tooling.md",
+          remediation: "Drop --follow and rely on --tail <N> for a finite log snapshot.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (parsed.since !== undefined) {
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message:
+            "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
+          commandId: "app:logs",
+          specSection: "spec/08-cli-and-tooling.md",
+          remediation: "Drop --since and use --tail <N> for a finite recent snapshot.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const exit = await Effect.runPromiseExit(
+    logsApp({
+      ...(parsed.service === undefined ? {} : { service: parsed.service }),
+      ...(parsed.tail === undefined ? {} : { tail: parsed.tail }),
+    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderLogsAppResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const parseAppConfigArgv = (argv: ReadonlyArray<string>): { readonly format: "json" | "table" } => {
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    const formatMatch = parseStringFlag(argv, i, "format");
+    if (formatMatch !== undefined) {
+      const value = formatMatch.value;
+      if (value === "json" || value === "table") return { format: value };
+      i += formatMatch.consumed;
+      continue;
+    }
+    i += 1;
+  }
+  return { format: "table" };
+};
+
+const runAppConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const { format } = parseAppConfigArgv(argv);
+  const exit = await Effect.runPromiseExit(
+    appConfig().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderAppConfigResult(exit.value, format));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runAppCacheRefresh = async (): Promise<void> => {
+  const exit = await Effect.runPromiseExit(
+    refreshAppCache().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderAppCacheRefreshResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
   process.exitCode = 1;
 };
 
@@ -499,6 +695,31 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 
   if (argv[0] === "destroy" || argv[0] === "app:destroy") {
     await runDestroy(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "restart" || argv[0] === "app:restart") {
+    await runRestart();
+    return;
+  }
+
+  if (argv[0] === "rebuild" || argv[0] === "app:rebuild") {
+    await runRebuild();
+    return;
+  }
+
+  if (argv[0] === "logs" || argv[0] === "app:logs") {
+    await runLogs(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:config") {
+    await runAppConfig(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:cache:refresh") {
+    await runAppCacheRefresh();
     return;
   }
 
