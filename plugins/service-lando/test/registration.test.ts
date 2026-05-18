@@ -51,7 +51,13 @@ describe("@lando/service-lando registration", () => {
     );
 
     if (manifest.contributes === undefined) throw new Error("service-lando manifest contributions missing");
-    expect(manifest.contributes.serviceTypes).toEqual(["node:lts", "postgres", "php:8.2", "php:8.3"]);
+    expect(manifest.contributes.serviceTypes).toEqual([
+      "node:lts",
+      "node:22",
+      "postgres",
+      "php:8.2",
+      "php:8.3",
+    ]);
   });
 
   test("AppPlanner resolves both service types through PluginRegistry", async () => {
@@ -125,7 +131,7 @@ describe("@lando/service-lando registration", () => {
         services: { [ServiceName.make("web")]: { type: "totally-fake-type" } },
       }),
     ).rejects.toThrow(
-      /Unsupported service type totally-fake-type.*Registered service types:.*node:lts.*php:8\.2.*php:8\.3.*postgres/,
+      /Unsupported service type totally-fake-type.*Registered service types:.*node:22.*node:lts.*php:8\.2.*php:8\.3.*postgres/,
     );
   });
 });

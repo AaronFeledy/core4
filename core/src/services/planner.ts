@@ -26,6 +26,7 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
 
 const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.type !== undefined) return service.type;
+  if (service.image?.startsWith("node:22")) return "node:22";
   if (service.image?.startsWith("node:")) return "node:lts";
   if (service.image?.startsWith("postgres")) return "postgres";
   if (service.image?.startsWith("php:8.2")) return "php:8.2";
@@ -42,12 +43,12 @@ const unsupportedServiceType = (
   const colonIdx = serviceType.indexOf(":");
   const prefix = colonIdx > 0 ? serviceType.slice(0, colonIdx + 1) : null;
   const familyMatches = prefix === null ? [] : registeredTypeIds.filter((id) => id.startsWith(prefix)).sort();
-  const remediation =
-    familyMatches.length > 0
-      ? ` Supported alternatives: ${familyMatches.join(", ")}.`
-      : registeredTypeIds.length > 0
-        ? ` Registered service types: ${[...registeredTypeIds].sort().join(", ")}.`
-        : "";
+  let remediation = "";
+  if (familyMatches.length > 0) {
+    remediation = ` Supported alternatives: ${familyMatches.join(", ")}.`;
+  } else if (registeredTypeIds.length > 0) {
+    remediation = ` Registered service types: ${[...registeredTypeIds].sort().join(", ")}.`;
+  }
   return new LandofileValidationError({
     message: `Unsupported service type ${serviceType} for service ${serviceName}.${remediation}`,
     file: `${appRoot}/.lando.yml`,

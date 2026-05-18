@@ -8,10 +8,10 @@
       "description": "As a Linux alpha tester, I can run `lando setup` and get the managed runtime bundle downloaded, verified, and recorded without manually wiring sockets. (PRD-01 US-001)",
       "acceptanceCriteria": [
         "Failing test covers `meta:setup` invoking provider-lando setup with a fake bundle downloader and fake Podman API client",
-        "Checksum verification follows §5.8.1 and fails closed with a tagged remediation error",
+        "Checksum verification follows \u00a75.8.1 and fails closed with a tagged remediation error",
         "Setup stores provider state in the configured cache/state directory, not process memory",
         "Compiled `$bunfs` path and source OCLIF path produce equivalent setup output",
-        "`lando setup` and `lando shellenv` derive `LANDO_INSTALL_DIR` from `process.execPath` in the compiled binary per §17.1 stage 7; tests assert agreement between the two commands",
+        "`lando setup` and `lando shellenv` derive `LANDO_INSTALL_DIR` from `process.execPath` in the compiled binary per \u00a717.1 stage 7; tests assert agreement between the two commands",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -44,7 +44,7 @@
       "acceptanceCriteria": [
         "Schema test asserts every Alpha capability field has a provider-lando value for Linux and macOS",
         "Planner rejects unsupported Alpha features with a tagged error before apply",
-        "Capability output is surfaced by `meta:doctor` diagnostics: every `ProviderCapabilities` field from §5.4 appears in the selected-provider check, and missing-capability failures include service, feature, capability, provider id, and suggested fix per §5.4",
+        "Capability output is surfaced by `meta:doctor` diagnostics: every `ProviderCapabilities` field from \u00a75.4 appears in the selected-provider check, and missing-capability failures include service, feature, capability, provider id, and suggested fix per \u00a75.4",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -60,7 +60,7 @@
       "acceptanceCriteria": [
         "Docker Engine HTTP API fake-client tests cover apply, inspect, exec, logs, and destroy",
         "Linux socket and macOS Docker Desktop paths are supported through config/env discovery",
-        "Provider declares `bindMountPerformance: \"slow\"` for Docker Desktop or VM-mediated paths and `\"native\"` for Linux native Docker sockets per §5.4",
+        "Provider declares `bindMountPerformance: \"slow\"` for Docker Desktop or VM-mediated paths and `\"native\"` for Linux native Docker sockets per \u00a75.4",
         "Live Docker tests are gated by `LANDO_TEST_DOCKER_SOCKET` or `DOCKER_HOST`",
         "Tests pass",
         "Typecheck passes",
@@ -77,7 +77,7 @@
       "acceptanceCriteria": [
         "Scenario test starts an app, launches a fresh runtime, then runs info/stop/destroy using persisted plan/state",
         "Destroy receives the planned `AppPlan` and preserves app-scoped volumes unless explicitly requested",
-        "Provider-specific transient state is stored under the provider state directory with cache encoding rules from §12.2",
+        "Provider-specific transient state is stored under the provider state directory with cache encoding rules from \u00a712.2",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -93,7 +93,7 @@
       "acceptanceCriteria": [
         "Fake provider tests cover partial apply failure after network creation and after one service start",
         "Cleanup removes app-scoped containers/networks and preserves volumes by default",
-        "Errors include remediation plus `providerId`, operation name, redacted details, and original cause fields required by §5.7 so manual cleanup identifies the affected provider operation",
+        "Errors include remediation plus `providerId`, operation name, redacted details, and original cause fields required by \u00a75.7 so manual cleanup identifies the affected provider operation",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -107,9 +107,9 @@
       "title": "Expose provider diagnostics in `meta:doctor`",
       "description": "As a tester filing bugs, I can run `lando doctor` and include provider/runtime diagnostics. (PRD-01 US-007)",
       "acceptanceCriteria": [
-        "`meta:doctor` reports selected provider, version, socket/machine status, the §5.4 capability summary, and §10.9 solution records with `automatic` or `manual` remediation",
+        "`meta:doctor` reports selected provider, version, socket/machine status, the \u00a75.4 capability summary, and \u00a710.9 solution records with `automatic` or `manual` remediation",
         "Doctor never requires app bootstrap unless app-specific diagnostics are requested",
-        "JSON renderer output is covered by the named snapshot fixture `meta-doctor.provider-status.ndjson`, asserting event order, provider fields, capability fields, severity, context, and solution records per §10.9",
+        "JSON renderer output is covered by the named snapshot fixture `meta-doctor.provider-status.ndjson`, asserting event order, provider fields, capability fields, severity, context, and solution records per \u00a710.9",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -140,7 +140,7 @@
       "description": "As a PHP user, I can define `php:8.2` or `php:8.3` with Drupal, WordPress, Laravel, Symfony, or no framework. (PRD-02 US-009)",
       "acceptanceCriteria": [
         "ServiceType tests cover normalized plans for php versions and framework options",
-        "Generated service plans include app mounts from §6.4, `LANDO_*` env from §6.9, healthcheck intent from §6.7, and framework web server hints from §6.12.2",
+        "Generated service plans include app mounts from \u00a76.4, `LANDO_*` env from \u00a76.9, healthcheck intent from \u00a76.7, and framework web server hints from \u00a76.12.2",
         "Unsupported PHP versions fail during planning with remediation",
         "Tests pass",
         "Typecheck passes",
@@ -163,7 +163,7 @@
         "Lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
@@ -172,7 +172,7 @@
       "description": "As a Python user, I can define Python 3.12 apps with supported framework hints. (PRD-02 US-011)",
       "acceptanceCriteria": [
         "ServiceType tests cover django, fastapi, flask, and none framework options",
-        "Plans expose default endpoint ports from §6.6 and command metadata from the selected framework preset in §6.12.2",
+        "Plans expose default endpoint ports from \u00a76.6 and command metadata from the selected framework preset in \u00a76.12.2",
         "Unsupported framework values fail schema validation",
         "Tests pass",
         "Typecheck passes",
@@ -189,7 +189,7 @@
       "acceptanceCriteria": [
         "ServiceType tests cover rails and none framework options",
         "Rails default command/port metadata is represented as provider-neutral intent",
-        "Planner output uses provider-neutral `ServicePlan` fields from §6.2 and §6.10, with provider-specific fields limited to `providerInfo` or `providers.<id>` extensions per §5.6",
+        "Planner output uses provider-neutral `ServicePlan` fields from \u00a76.2 and \u00a76.10, with provider-specific fields limited to `providerInfo` or `providers.<id>` extensions per \u00a75.6",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -204,7 +204,7 @@
       "description": "As a team, we can compose apps with mysql, mariadb, postgres, redis, nginx, apache, static, and raw Compose passthrough. (PRD-02 US-013)",
       "acceptanceCriteria": [
         "Each listed service has schema and ServiceType plan tests",
-        "Raw Compose passthrough accepts `image:` and Compose `build:` for `type: compose` per §6.12.1; fields without provider-neutral semantics must live under `providers.<id>` and are marked non-portable per §5.6. Tests exercise both `provider-lando` and `provider-docker` codepaths",
+        "Raw Compose passthrough accepts `image:` and Compose `build:` for `type: compose` per \u00a76.12.1; fields without provider-neutral semantics must live under `providers.<id>` and are marked non-portable per \u00a75.6. Tests exercise both `provider-lando` and `provider-docker` codepaths",
         "Compose-declared volumes follow the same destroy-preserves-volumes rule as Lando-managed volumes (per provider-lando lifecycle contract)",
         "Database services declare storage scope defaults and credentials/env contract",
         "Tests pass",
@@ -223,7 +223,7 @@
         "Landofile parser tests cover `mounts:` bind and volume entries plus `excludes:` patterns",
         "Planner maps excludes to volume-shadow behavior only; Mutagen/file sync is not implemented",
         "Storage `scope: global` is rejected until the global app phase",
-        "Landofile parser rejects Beta-only sections (`includes:` per §7.7, configuration expressions per §7.3.1, `secrets:` per §4.2 SecretStore + §7.4 top-level key, env overrides per §7.6) with a tagged NotImplemented + Beta remediation; one test per rejected section",
+        "Landofile parser rejects Beta-only sections (`includes:` per \u00a77.7, configuration expressions per \u00a77.3.1, `secrets:` per \u00a74.2 SecretStore + \u00a77.4 top-level key, env overrides per \u00a77.6) with a tagged NotImplemented + Beta remediation; one test per rejected section",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -254,7 +254,7 @@
       "title": "Emit the basic `LANDO_*` environment contract",
       "description": "As code running inside services, I can rely on basic app/service/host path environment variables. (PRD-02 US-015)",
       "acceptanceCriteria": [
-        "Service plan tests assert app id, service id, and §6.9 host path env vars for every §6.12.1 catalog family shipped in Alpha",
+        "Service plan tests assert app id, service id, and \u00a76.9 host path env vars for every \u00a76.12.1 catalog family shipped in Alpha",
         "Provider exec tests verify env reaches command execution",
         "Env var names are documented in the PRD/source docs touched by the implementation",
         "Tests pass",
@@ -286,7 +286,7 @@
       "title": "Parse Alpha `tooling:` Landofile section",
       "description": "As a user, I can define basic tooling commands in `.lando.yml`. (PRD-03 US-017)",
       "acceptanceCriteria": [
-        "Landofile parser tests cover `tooling:` tasks with `cmds:`, `service:`, `description:`, and Alpha `vars:` forms: literal value, `default:`, `sh:`, and `prompt:` per §8.5.3; remote vars and unsafe `raw:` interpolation are deferred",
+        "Landofile parser tests cover `tooling:` tasks with `cmds:`, `service:`, `description:`, and Alpha `vars:` forms: literal value, `default:`, `sh:`, and `prompt:` per \u00a78.5.3; remote vars and unsafe `raw:` interpolation are deferred",
         "Unsupported Beta-only tooling features fail with remediation, not silent ignore",
         "Parsed tooling contributes to command registry at bootstrap `tooling`",
         "Tests pass",
@@ -303,7 +303,7 @@
       "description": "As a user, default tooling runs inside the selected service through the runtime provider. (PRD-03 US-018)",
       "acceptanceCriteria": [
         "ToolingEngine unit tests verify command execution delegates to `RuntimeProvider.exec`",
-        "Service resolution selects the declared `service:` value or the primary app service from the planned `ServiceInfo` set per §6.10; tests cover the no-primary error path",
+        "Service resolution selects the declared `service:` value or the primary app service from the planned `ServiceInfo` set per \u00a76.10; tests cover the no-primary error path",
         "Exit code/stdout/stderr are preserved through CLI rendering",
         "Tests pass",
         "Typecheck passes",
@@ -321,7 +321,7 @@
         "Host engine tests cover success, non-zero exit, cwd, and env propagation",
         "Shell errors map to tagged ShellExecError/remediation patterns from existing services",
         "Host mode is available for `lando shell` in Alpha; service shell remains Beta",
-        "Host engine is the runtime for `.bun.sh` script-backed tasks (§8.5.9) and `vars.<name>.sh:` evaluation (§8.5.3); the §8.5.9 realpath-containment rule applies and is regression-tested",
+        "Host engine is the runtime for `.bun.sh` script-backed tasks (\u00a78.5.9) and `vars.<name>.sh:` evaluation (\u00a78.5.3); the \u00a78.5.9 realpath-containment rule applies and is regression-tested",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -336,7 +336,7 @@
       "description": "As the CLI, I can discover tooling commands during bootstrap and cache the resulting command index. (PRD-03 US-020)",
       "acceptanceCriteria": [
         "Compilation pipeline tests cover Landofile tooling to command specs",
-        "Cold path writes plugin/tooling command index cache using §12 encoding",
+        "Cold path writes plugin/tooling command index cache using \u00a712 encoding",
         "Hot-path optimization is explicitly not required in Alpha",
         "Tests pass",
         "Typecheck passes",
@@ -351,7 +351,7 @@
       "title": "Support `.bun.sh` script-backed tasks",
       "description": "As a power user, I can define script-backed tasks without a separate plugin. (PRD-03 US-021)",
       "acceptanceCriteria": [
-        "Parser and execution tests cover `.bun.sh` task discovery described by §8.5.9",
+        "Parser and execution tests cover `.bun.sh` task discovery described by \u00a78.5.9",
         "Scripts run with documented cwd/env and failure behavior",
         "Script-backed tasks cannot escape declared host/provider execution mode without explicit config",
         "Tests pass",
@@ -370,7 +370,7 @@
         "Scenario tests cover `exec` against providerExec with fake provider output",
         "`ssh` behavior is documented as provider-exec TTY command behavior only; SSH sidecar/subsystem work remains deferred",
         "`shell` host mode works; service shell and SSH subsystem/sidecar features return NotImplemented/Beta remediation",
-        "Compiled and source CLI paths match for supported commands: identical exit code, stdout, stderr tag/remediation structure, and JSON renderer event fields after normalizing timestamps and temp paths per §8.2 and §17.1 stage 7",
+        "Compiled and source CLI paths match for supported commands: identical exit code, stdout, stderr tag/remediation structure, and JSON renderer event fields after normalizing timestamps and temp paths per \u00a78.2 and \u00a717.1 stage 7",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -384,7 +384,7 @@
       "title": "Fill Alpha app command coverage",
       "description": "As an app user, most `app:*` commands work except explicitly deferred commands. (PRD-03 US-023)",
       "acceptanceCriteria": [
-        "Scenario tests cover the §8.2 command subset `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `app:info`, `app:logs`, `app:config`, and `app:cache`",
+        "Scenario tests cover the \u00a78.2 command subset `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `app:info`, `app:logs`, `app:config`, and `app:cache`",
         "Deferred `app:includes:*` and `app:config:translate` return structured NotImplemented remediation",
         "Compiled `$bunfs` handlers mirror source command behavior until full OCLIF dispatch lands",
         "Tests pass",
@@ -403,7 +403,7 @@
         "Scenario tests cover `apps:list`, `apps:poweroff`, `meta:config`, `meta:plugin:add` npm source, `meta:plugin:remove`, `meta:setup`, `meta:doctor`, `meta:bun`, and `meta:x`",
         "`meta:plugin:add` npm source validates manifest/module containment before loading any plugin code",
         "`meta:plugin:add` warns/confirms that plugins run as trusted host code while trust/signing is deferred; non-interactive mode requires an explicit trust/confirm flag",
-        "Trust decisions are in-memory for the current install only — no persistent trust store in Alpha; a persistent trust store is deferred to Beta and a test asserts the prompt fires with a fresh `<userConfRoot>` per test invocation",
+        "Trust decisions are in-memory for the current install only \u2014 no persistent trust store in Alpha; a persistent trust store is deferred to Beta and a test asserts the prompt fires with a fresh `<userConfRoot>` per test invocation",
         "Deferred plugin trust/new/test/build/link/unlink/publish commands return structured remediation",
         "Command aliases follow the top-level alias conflict rules",
         "Tests pass",
@@ -419,7 +419,7 @@
       "title": "Parse full Alpha `recipe.yml` schema",
       "description": "As a recipe author, I can write `recipe.yml` using the Alpha-supported schema. (PRD-04 US-025)",
       "acceptanceCriteria": [
-        "Parser tests cover metadata, prompts, files, Landofile output, and postInit sections from §8.8",
+        "Parser tests cover metadata, prompts, files, Landofile output, and postInit sections from \u00a78.8",
         "Schema rejects Beta-only remote/dynamic fields with remediation",
         "MVP hardcoded recipe path migrates to the recipe parser without breaking MVP scenario",
         "Tests pass",
@@ -453,7 +453,7 @@
       "acceptanceCriteria": [
         "Recipe source tests cover built-in/cwd discovery and reject git, tarball, npm, registry sources with Beta remediation",
         "Recipe resolution is deterministic and does not perform network access",
-        "Bundled recipe files are embedded in the compiled binary via `scripts/build-bundled-recipes.ts` → `core/src/recipes/bundled.ts` with no disk read at runtime; codegen drift is caught by the bundled-codegen gate in PRD-07 US-049",
+        "Bundled recipe files are embedded in the compiled binary via `scripts/build-bundled-recipes.ts` \u2192 `core/src/recipes/bundled.ts` with no disk read at runtime; codegen drift is caught by the bundled-codegen gate in PRD-07 US-049",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -465,10 +465,10 @@
     {
       "id": "US-028",
       "title": "Ship canonical common-stack recipes",
-      "description": "As an alpha tester, I can scaffold the canonical v4.0 recipe set from §8.8.10, including WordPress, Laravel, node-api, Django, FastAPI, and Rails apps. (PRD-04 US-028)",
+      "description": "As an alpha tester, I can scaffold the canonical v4.0 recipe set from \u00a78.8.10, including WordPress, Laravel, node-api, Django, FastAPI, and Rails apps. (PRD-04 US-028)",
       "acceptanceCriteria": [
-        "Each §8.8.10 canonical recipe has a scenario test that runs init, parses the generated Landofile, and verifies the recipe snapshot names the generated service ids, `type:` entries, and tooling command ids",
-        "The binary ships the full §8.8.10 canonical recipe set in Alpha; Drupal and v3-style recipe compatibility shims remain out of scope per §8.8.10",
+        "Each \u00a78.8.10 canonical recipe has a scenario test that runs init, parses the generated Landofile, and verifies the recipe snapshot names the generated service ids, `type:` entries, and tooling command ids",
+        "The binary ships the full \u00a78.8.10 canonical recipe set in Alpha; Drupal and v3-style recipe compatibility shims remain out of scope per \u00a78.8.10",
         "Recipe READMEs document alpha limitations and required host prerequisites",
         "Tests pass",
         "Typecheck passes",
@@ -567,7 +567,7 @@
       "description": "As a user, long-running operations show task tree progress for concurrent work. (PRD-05 US-034)",
       "acceptanceCriteria": [
         "Renderer tests cover `task.tree.start`, `task.start`, `task.complete`, and `task.fail` events",
-        "Concurrent task ordering is covered by the named snapshot fixture `renderer.task-tree.concurrent.ndjson`, asserting `task.tree.start`, child `task.start`, `task.detail`, terminal event, and `task.tree.complete` order per §8.9.2",
+        "Concurrent task ordering is covered by the named snapshot fixture `renderer.task-tree.concurrent.ndjson`, asserting `task.tree.start`, child `task.start`, `task.detail`, terminal event, and `task.tree.complete` order per \u00a78.9.2",
         "Plain renderer remains readable in non-TTY CI logs",
         "Renderer subscriber stream is materialized before the first event publish per the EventService no-replay contract; cold-start regression test asserts no events are dropped between bootstrap and the first `task.tree.start`",
         "Tests pass",
@@ -599,7 +599,7 @@
       "title": "Implement basic first-paint banner",
       "description": "As a user, the lando renderer paints a useful first banner before long-running work. (PRD-05 US-036)",
       "acceptanceCriteria": [
-        "TTY fixture test covers `paint.banner` first-paint behavior from §8.9.1: a single-line pre-bootstrap banner on stdout, emitted before plugin import, within the 50 ms cold first-byte budget, and handed off once to the Renderer Layer",
+        "TTY fixture test covers `paint.banner` first-paint behavior from \u00a78.9.1: a single-line pre-bootstrap banner on stdout, emitted before plugin import, within the 50 ms cold first-byte budget, and handed off once to the Renderer Layer",
         "Full first-paint contract and expand/collapse remain marked RC/deferred",
         "Non-TTY output avoids control sequences",
         "Tests pass",
@@ -617,7 +617,7 @@
       "acceptanceCriteria": [
         "Fixture lists every deferred command surface for Alpha: `apps:scratch:*`, `meta:global:*`, `app:includes:*`, `app:config:translate`, `meta:plugin:trust*`, and `meta:plugin:{new,test,build,link,unlink,publish}`. A snapshot test asserts each command returns a tagged NotImplementedError with phase-specific remediation",
         "Tests assert every not-yet-shipped command returns NotImplementedError with target phase remediation",
-        "Remediation text uses the roadmap phase names from `spec/ROADMAP.md` Phase 2 and §14 open-decision labels, and does not include stack traces or source file paths",
+        "Remediation text uses the roadmap phase names from `spec/ROADMAP.md` Phase 2 and \u00a714 open-decision labels, and does not include stack traces or source file paths",
         "Compiled `$bunfs` fallback mirrors source OCLIF guard behavior",
         "Tests pass",
         "Typecheck passes",
@@ -682,7 +682,7 @@
       "description": "As the CLI, I can resolve known apps across processes using a durable cwd-app map. (PRD-06 US-041)",
       "acceptanceCriteria": [
         "CacheService tests cover write/read/delete/list for cwd-app-map entries",
-        "Cache encoding follows §12.2 and handles corrupt entries with remediation",
+        "Cache encoding follows \u00a712.2 and handles corrupt entries with remediation",
         "`apps:list` consumes the persistent cache",
         "Tests pass",
         "Typecheck passes",
@@ -699,7 +699,7 @@
       "acceptanceCriteria": [
         "Plan cache tests cover key derivation from Landofile/config/plugin/service inputs",
         "Changing relevant input invalidates the cached plan",
-        "Cache writes use `CacheService.writeAtomic` true atomic rename semantics (write-temp-then-rename) per §12; the rename adapter lives outside `FileSystem` and uses `node:fs/promises.rename` because Bun 1.2.18 has no atomic rename primitive on `Bun.file`; regression test asserts the temp file is renamed (not copied) into place",
+        "Cache writes use `CacheService.writeAtomic` true atomic rename semantics (write-temp-then-rename) per \u00a712; the rename adapter lives outside `FileSystem` and uses `node:fs/promises.rename` because Bun 1.2.18 has no atomic rename primitive on `Bun.file`; regression test asserts the temp file is renamed (not copied) into place",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -729,7 +729,7 @@
       "title": "Make binary cache encoding rules testable",
       "description": "As a maintainer, all Alpha caches use one encoding policy and compatibility checks. (PRD-06 US-044)",
       "acceptanceCriteria": [
-        "Shared tests validate version byte/header/schema version for each binary cache type from §12.2",
+        "Shared tests validate version byte/header/schema version for each binary cache type from \u00a712.2",
         "Old/unknown cache versions are ignored or migrated according to documented policy",
         "Cache test fixtures live in repo and are updated intentionally",
         "Tests pass",
@@ -780,7 +780,7 @@
         "Library API test invokes a supported command through `@lando/core/cli/operations` (the Effect-bearing host API) without spawning a process",
         "Errors/renderer output are returned in a host-consumable shape",
         "API is documented as unstable and not semver-stable until later phase",
-        "Fast-path canary `core/test/cli/fast-path.test.ts` still passes — the static-import boundary in `core/src/cli/index.ts` is preserved",
+        "Fast-path canary `core/test/cli/fast-path.test.ts` still passes \u2014 the static-import boundary in `core/src/cli/index.ts` is preserved",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -848,7 +848,7 @@
         "Dev prerelease publishes a single `SHA256SUMS` text file alongside the binaries (one line per artifact, `<sha256>  <filename>` format); no GPG/cosign signing required in Alpha",
         "No signing, SBOM, installer scripts, or self-update are required in Alpha, but `SHA256SUMS` publication is required",
         "Promotion is generated from scripts/codegen, not hand-edited YAML",
-        "Sandboxed first-launch test runs the distributed artifact in a network namespace with egress blocked and asserts exit 0 plus no non-loopback `connect()` calls under `strace -e trace=network` (no telemetry beacon) — enforces the index non-goal",
+        "Sandboxed first-launch test runs the distributed artifact in a network namespace with egress blocked and asserts exit 0 plus no non-loopback `connect()` calls under `strace -e trace=network` (no telemetry beacon) \u2014 enforces the index non-goal",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"

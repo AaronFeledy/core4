@@ -8,7 +8,7 @@ import { LandofileService } from "@lando/core/services";
 import { LandofileShape, ServiceConfig, ServiceName } from "@lando/sdk/schema";
 
 import { LandofileServiceLive } from "../../../core/src/landofile/service.ts";
-import { nodeLtsServiceType } from "../src/services/node.ts";
+import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
 
 const metadata = {
   resolvedAt: "2026-05-15T08:00:00Z",
@@ -147,5 +147,101 @@ describe("node:lts ServiceType", () => {
       const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
       expect(issues.some((issue) => issue.path.includes("nonsenseKey"))).toBe(true);
     }
+  });
+
+  test("plan is a valid providerExec target: long-running command + app workdir", () => {
+    const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "node:lts" });
+    const plan = nodeLtsServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.name).toBe(ServiceName.make("web"));
+    expect(String(plan.workingDirectory)).toBe("/app");
+    expect(String(plan.appMount?.target)).toBe("/app");
+  });
+});
+
+describe("node:22 ServiceType", () => {
+  test("plans a default Node 22 service", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { type: "node:22" } },
+    });
+    const service = landofile.services?.[ServiceName.make("web")];
+    if (service === undefined) throw new Error("web service missing");
+
+    const plan = node22ServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.type).toBe("node:22");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22" });
+    expect(String(plan.workingDirectory)).toBe("/app");
+    expect(String(plan.appMount?.source)).toBe("/srv/apps/myapp");
+    expect(String(plan.appMount?.target)).toBe("/app");
+    expect(plan.appMount?.readOnly).toBe(false);
+    expect(plan.mounts[0]?.type).toBe("bind");
+    expect(plan.mounts[0]?.source).toBe("/srv/apps/myapp");
+    expect(String(plan.mounts[0]?.target)).toBe("/app");
+    expect(plan.mounts[0]?.realization).toBe("passthrough");
+    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+  });
+
+  test("propagates user overrides including custom image and ports", () => {
+    const service = Schema.decodeUnknownSync(ServiceConfig)({
+      type: "node:22",
+      image: "node:22-alpine",
+      command: "npm run dev",
+      environment: { NODE_ENV: "development" },
+      ports: ["3001:3000"],
+    });
+
+    const plan = node22ServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.type).toBe("node:22");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
+    expect(plan.command).toBe("npm run dev");
+    expect(plan.environment).toEqual({ NODE_ENV: "development" });
+    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+  });
+
+  test("rejects unsupported node versions with remediation", () => {
+    const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "node:18" });
+    expect(() =>
+      node22ServiceType.toServicePlan({
+        name: "web",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      }),
+    ).toThrow(/Unsupported Node version "18".*Set type to one of: node:lts, node:22/);
+  });
+
+  test("plan is a valid providerExec target: long-running command + app workdir", () => {
+    const service = Schema.decodeUnknownSync(ServiceConfig)({ type: "node:22" });
+    const plan = node22ServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
+    expect(plan.name).toBe(ServiceName.make("web"));
+    expect(String(plan.workingDirectory)).toBe("/app");
+    expect(String(plan.appMount?.target)).toBe("/app");
   });
 });

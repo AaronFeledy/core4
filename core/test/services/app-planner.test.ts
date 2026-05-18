@@ -232,6 +232,36 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("resolves type: node:22 and image: node:22-alpine to the node:22 ServiceType", async () => {
+    await withTempCwd(async (appRoot) => {
+      const appPlan = await plan({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "node:22" },
+          [ServiceName.make("worker")]: { image: "node:22-alpine" },
+        },
+      });
+
+      const web = appPlan.services[ServiceName.make("web")];
+      const worker = appPlan.services[ServiceName.make("worker")];
+
+      expect(web?.type).toBe("node:22");
+      expect(web?.artifact).toEqual({ kind: "ref", ref: "node:22" });
+      expect(String(web?.workingDirectory)).toBe("/app");
+      expect(web?.mounts).toContainEqual({
+        type: "bind",
+        source: appRoot,
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        realization: "passthrough",
+      });
+
+      expect(worker?.type).toBe("node:22");
+      expect(worker?.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
+    });
+  });
+
   test("marks slow provider bind mounts as accelerated", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
