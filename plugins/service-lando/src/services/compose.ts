@@ -83,7 +83,6 @@ export const composeServiceType: ServiceTypeShape = {
     }
 
     const appName = appNameFor(input);
-    const appId = appName;
     const composeBuild = service.composeBuild;
     const buildContext = composeBuild?.context;
     const artifact =
@@ -114,7 +113,7 @@ export const composeServiceType: ServiceTypeShape = {
     const storage = parsedVolumes
       .filter((volume) => volume.type === "volume")
       .map((volume) => ({
-        store: `${appId}-${volume.source as string}`,
+        store: `${appName}-${volume.source as string}`,
         target: volume.target,
         readOnly: volume.readOnly,
       }));

@@ -36,8 +36,6 @@ const REMEDIATION_VERSION = (requested: string): string =>
 const REMEDIATION_FRAMEWORK = (requested: string): string =>
   `Set framework to one of: ${SUPPORTED_PHP_FRAMEWORKS.join(", ")} (got ${requested}).`;
 
-const workingDirectoryFor = (framework: SupportedPhpFramework): string => FRAMEWORK_WEBROOT_PATHS[framework];
-
 const validateFramework = (raw: string | undefined): SupportedPhpFramework => {
   if (raw === undefined) return "none";
   if ((SUPPORTED_PHP_FRAMEWORKS as ReadonlyArray<string>).includes(raw)) {
@@ -68,7 +66,8 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => (
     const appName = appNameFor(input);
     const serviceType = `php:${resolvedVersion}`;
     const webroot = FRAMEWORK_WEBROOT_PATHS[framework];
-    const workingDirectory = service.workingDirectory ?? PortablePath.make(workingDirectoryFor(framework));
+    const workingDirectory =
+      service.workingDirectory ?? PortablePath.make(FRAMEWORK_WEBROOT_PATHS[framework]);
     const environment = buildLandoEnv({
       serviceName: name,
       serviceType,
