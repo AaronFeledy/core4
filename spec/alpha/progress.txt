@@ -2850,6 +2850,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `landofile.name` is `Schema.optional(Schema.String)` in `sdk/src/schema/index.ts` — no upstream validation prevents `.` / `..` / empty strings. Defense-in-depth at the cache-path layer is the right place to land guards because the cache writer owns the filesystem-target semantics.
 ---
 
+## [2026-05-18 16:30 CDT] - Push
+- Branch pushed: `us-020-tooling-command-registry-cache`
+- Commits: `2c88560` (feat), `5628183` (fix), `a5f07fc` (docs)
+- PR: #96 https://github.com/AaronFeledy/core4/pull/96 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL)
+- Review feedback: none blocking (Bugbot COMMENTED/NEUTRAL — no CHANGES_REQUESTED)
+- Triage rounds used: 0
+- Merge: merged (squash), remote branch deleted
+- Local main / branch refreshed: yes; us-020-tooling-command-registry-cache deleted
+- Remaining local state: on main, clean
+---
+
 ## [2026-05-18 11:15 CDT] - US-020 Review
 - Reviewed US-020 build commit `2c88560` against PRD-03 §US-020 ACs and §12.1/§12.2 cache-encoding contracts. Ran `review-work` via three parallel Oracle reviews (goal/constraint, code-quality, security).
 - `review-work` findings:
