@@ -1,3 +1,5 @@
+import { Flags } from "@oclif/core";
+
 import { type AppConfigResult, appConfig, renderAppConfigResult } from "../../../../commands/app-config.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
@@ -14,10 +16,22 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
 export default class AppConfigCommand extends LandoCommandBase {
   static override description = appConfigSpec.summary;
   static override aliases = [...resolveTopLevelAliases(appConfigSpec)];
+  static override flags = {
+    format: Flags.string({
+      description: "Output format.",
+      options: ["table", "json"],
+      default: "table",
+    }),
+  };
   static override landoSpec: LandoCommandSpec = appConfigSpec;
   static override bootstrap = appConfigSpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(appConfigSpec);
+    const parsed = (await this.parse(AppConfigCommand)) as { readonly flags: { readonly format?: string } };
+    const format: "json" | "table" = parsed.flags.format === "json" ? "json" : "table";
+    await this.runEffect({
+      ...appConfigSpec,
+      render: (result) => renderAppConfigResult(result as AppConfigResult, format),
+    });
   }
 }

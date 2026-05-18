@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Layer } from "effect";
@@ -73,6 +73,21 @@ describe("lando app:config", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No .lando.yml found");
       expect(result.stderr).toContain("lando init");
+    });
+  });
+
+  test("source CLI --format json emits parseable JSON", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: test-app-config-json\nrecipe: node\nservices:\n  web:\n    type: node\n",
+      );
+      const result = await runCli(["app:config", "--format", "json"], dir);
+
+      expect(result.exitCode).toBe(0);
+      const parsed = JSON.parse(result.stdout) as { readonly name?: string; readonly recipe?: string };
+      expect(parsed.name).toBe("test-app-config-json");
+      expect(parsed.recipe).toBe("node");
     });
   });
 });

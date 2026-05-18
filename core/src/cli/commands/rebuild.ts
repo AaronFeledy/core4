@@ -29,7 +29,6 @@ import { type StartAppResult, startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
 
 export interface RebuildAppOptions {
-  readonly service?: string;
   readonly signal?: AbortSignal;
 }
 

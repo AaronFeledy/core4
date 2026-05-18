@@ -64,4 +64,21 @@ describe("non-MVP OCLIF commands", () => {
       expect(result.stderr, commandId).toContain("See ");
     }
   }, 120_000);
+
+  test("return structured remediation even when invoked with unknown flags", async () => {
+    const probes: ReadonlyArray<{ readonly args: ReadonlyArray<string>; readonly commandId: string }> = [
+      { args: ["app:config:translate", "--detect"], commandId: "app:config:translate" },
+      { args: ["app:includes:update", "--check"], commandId: "app:includes:update" },
+      { args: ["app:includes:verify", "--format", "json"], commandId: "app:includes:verify" },
+    ];
+
+    for (const probe of probes) {
+      const result = await runCli(probe.args);
+
+      expect(result.exitCode, probe.commandId).not.toBe(0);
+      expect(result.stderr, probe.commandId).toContain("NotImplementedError");
+      expect(result.stderr, probe.commandId).toContain(`commandId: ${probe.commandId}`);
+      expect(result.stderr, probe.commandId).not.toContain("Nonexistent flag");
+    }
+  }, 60_000);
 });

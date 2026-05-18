@@ -228,10 +228,16 @@ const runRebuild = async (): Promise<void> => {
 
 const parseLogsArgv = (
   argv: ReadonlyArray<string>,
-): { readonly service?: string; readonly follow: boolean; readonly tail?: number } => {
+): {
+  readonly service?: string;
+  readonly follow: boolean;
+  readonly tail?: number;
+  readonly since?: string;
+} => {
   let service: string | undefined;
   let follow = false;
   let tail: number | undefined;
+  let since: string | undefined;
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i];
@@ -252,6 +258,12 @@ const parseLogsArgv = (
       i += tailMatch.consumed;
       continue;
     }
+    const sinceMatch = parseStringFlag(argv, i, "since");
+    if (sinceMatch !== undefined) {
+      since = sinceMatch.value;
+      i += sinceMatch.consumed;
+      continue;
+    }
     if (arg === "--follow" || arg === "-f") {
       follow = true;
       i += 1;
@@ -263,15 +275,45 @@ const parseLogsArgv = (
     ...(service === undefined ? {} : { service }),
     follow,
     ...(tail === undefined ? {} : { tail }),
+    ...(since === undefined ? {} : { since }),
   };
 };
 
 const runLogs = async (argv: ReadonlyArray<string>): Promise<void> => {
   const parsed = parseLogsArgv(argv);
+  if (parsed.follow) {
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message:
+            "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
+          commandId: "app:logs",
+          specSection: "spec/08-cli-and-tooling.md",
+          remediation: "Drop --follow and rely on --tail <N> for a finite log snapshot.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  if (parsed.since !== undefined) {
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message:
+            "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
+          commandId: "app:logs",
+          specSection: "spec/08-cli-and-tooling.md",
+          remediation: "Drop --since and use --tail <N> for a finite recent snapshot.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
   const exit = await Effect.runPromiseExit(
     logsApp({
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
-      follow: parsed.follow,
       ...(parsed.tail === undefined ? {} : { tail: parsed.tail }),
     }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
   );
@@ -284,12 +326,33 @@ const runLogs = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
-const runAppConfig = async (): Promise<void> => {
+const parseAppConfigArgv = (argv: ReadonlyArray<string>): { readonly format: "json" | "table" } => {
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    const formatMatch = parseStringFlag(argv, i, "format");
+    if (formatMatch !== undefined) {
+      const value = formatMatch.value;
+      if (value === "json" || value === "table") return { format: value };
+      i += formatMatch.consumed;
+      continue;
+    }
+    i += 1;
+  }
+  return { format: "table" };
+};
+
+const runAppConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const { format } = parseAppConfigArgv(argv);
   const exit = await Effect.runPromiseExit(
     appConfig().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
   );
   if (Exit.isSuccess(exit)) {
-    console.log(renderAppConfigResult(exit.value));
+    console.log(renderAppConfigResult(exit.value, format));
     return;
   }
   const failure = Cause.failureOption(exit.cause);
@@ -651,7 +714,7 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
 
   if (argv[0] === "app:config") {
-    await runAppConfig();
+    await runAppConfig(argv.slice(1));
     return;
   }
 

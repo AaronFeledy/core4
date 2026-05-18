@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { logsApp, renderLogsAppResult } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -238,6 +238,49 @@ describe("lando logs", () => {
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("No .lando.yml found");
       expect(result.stderr).toContain("lando init");
+    });
+  });
+
+  test("fails with available service list when --service does not match the plan", async () => {
+    const harness = makeLogsLayer();
+    const exit = await Effect.runPromiseExit(
+      logsApp({ service: "nope" }).pipe(Effect.provide(harness.layer)),
+    );
+
+    expect(harness.logCalls).toEqual([]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        const error = failure.value as { _tag: string; message: string };
+        expect(error._tag).toBe("ToolingExecError");
+        expect(error.message).toContain("nope");
+        expect(error.message).toContain("available: database, web");
+      }
+    }
+  });
+
+  test("source CLI rejects --follow with structured NotImplementedError", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: test-logs-follow\nservices: {}\n");
+      const result = await runCli(["logs", "--follow"], dir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("NotImplementedError");
+      expect(result.stderr).toContain("--follow");
+      expect(result.stderr).toContain("deferred");
+    });
+  });
+
+  test("source CLI rejects --since with structured NotImplementedError", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: test-logs-since\nservices: {}\n");
+      const result = await runCli(["logs", "--since", "1h"], dir);
+
+      expect(result.exitCode).not.toBe(0);
+      expect(result.stderr).toContain("NotImplementedError");
+      expect(result.stderr).toContain("--since");
     });
   });
 });

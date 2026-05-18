@@ -213,11 +213,14 @@ export abstract class LandoCommandBase extends Command {
    * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
-    await this.parse(this.ctor);
-
+    // Guard deferred commands BEFORE OCLIF parses argv so flag-bearing invocations
+    // (e.g. `app:config:translate --detect`) emit structured NotImplementedError
+    // remediation instead of OCLIF "Nonexistent flag" parse errors.
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
     }
+
+    await this.parse(this.ctor);
 
     const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {

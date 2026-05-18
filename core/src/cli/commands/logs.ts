@@ -16,7 +16,8 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import type { ServicePlan } from "@lando/sdk/schema";
+import { ToolingExecError } from "@lando/sdk/errors";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
   LandofileService,
@@ -53,7 +54,8 @@ type LogsAppError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | ToolingExecError;
 
 type LogsAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
 
@@ -62,12 +64,28 @@ export const renderLogsAppResult = (result: LogsAppResult): string => {
   return result.lines.map((line) => `${line.service} ${line.stream}: ${line.line}`).join("\n");
 };
 
+const unknownServiceError = (requested: string, plan: AppPlan): ToolingExecError => {
+  const available = Object.values(plan.services)
+    .map((service) => String(service.name))
+    .sort();
+  return new ToolingExecError({
+    message:
+      available.length === 0
+        ? `logs: service ${requested} is not in the app plan.`
+        : `logs: service ${requested} is not in the app plan (available: ${available.join(", ")}).`,
+    tool: "app:logs",
+  });
+};
+
 const selectServices = (
-  services: ReadonlyArray<ServicePlan>,
+  plan: AppPlan,
   filter?: string,
-): ReadonlyArray<ServicePlan> => {
-  if (filter === undefined) return services;
-  return services.filter((service) => String(service.name) === filter);
+): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
+  const services = Object.values(plan.services);
+  if (filter === undefined) return Effect.succeed(services);
+  const matched = services.filter((service) => String(service.name) === filter);
+  if (matched.length === 0) return Effect.fail(unknownServiceError(filter, plan));
+  return Effect.succeed(matched);
 };
 
 export const logsApp = (
@@ -81,9 +99,8 @@ export const logsApp = (
     const landofile = yield* landofileService.discover;
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
+    const services = yield* selectServices(plan, options.service);
     const provider = yield* registry.select(plan);
-
-    const services = selectServices(Object.values(plan.services), options.service);
 
     const perService = yield* Effect.forEach(services, (service) =>
       provider
