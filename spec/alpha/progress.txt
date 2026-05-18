@@ -1349,9 +1349,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/app-planner.test.ts --concurrency=1` passed; `bun run build` passed; focused compiled-CLI regression tests `bun test core/test/cli/shellenv.test.ts core/test/cli/aliases.test.ts --concurrency=1` passed after rebuilding the compiled binary; full `CI=1 bun test --concurrency=1` passed (461 pass, 11 skip, 0 fail).
 ---
 ---
-## [2026-05-18 10:45 CDT] - PR #92 triage (round 1)
-- Cursor Bugbot (NEUTRAL conclusion, COMMENTED state, reviewDecision="") flagged one real High-severity issue: `apache`/`nginx`/`static` default images (`httpd:2.4-alpine`, `nginx:1.26-alpine`, `caddy:2-alpine`) are Alpine-based and do not ship `bash`, so the `bash -c "exec 3<>/dev/tcp/..."` probe fails with "bash: not found". AGENTS.md note ("users who switch to Alpine variants will need to author their own override") was incorrect — the defaults ARE already Alpine.
-- Fix accepted and applied: switched `apache.ts`, `nginx.ts`, `static.ts` healthcheck commands to `["sh", "-c", "nc -z 127.0.0.1 <port>"]` (busybox nc is present in all Alpine-based httpd/nginx/caddy images). Updated `apache.test.ts`, `nginx.test.ts`, `static.test.ts` assertions to match new probe. PHP, Python, Ruby service types (Debian slim, bash available) unchanged. AGENTS.md healthcheck note updated to describe Alpine vs Debian probe split.
-- Verification: `bun run typecheck` passed; `bun run lint` passed (293 files, no fixes); focused `bun test plugins/service-lando/test/apache.test.ts plugins/service-lando/test/nginx.test.ts plugins/service-lando/test/static.test.ts plugins/service-lando/test/registration.test.ts --concurrency=1` passed (16 pass, 0 fail, 78 expect calls).
-- Triage rounds used: 1
----
+
+## [2026-05-18 10:45 CDT] - PR #92 triage
+- Bugbot was real: apache/nginx/static default images are Alpine and need `sh -c "nc -z 127.0.0.1 <port>"` instead of the bash `/dev/tcp` probe.
+- Kept php/python/ruby on bash because those Debian slim images still provide it.
+- Updated the matching service tests and the stale Alpine healthcheck note in this log.
+- Verification: `bun run typecheck`, `bun run lint`, and `bun test --concurrency=1` passed.
+
