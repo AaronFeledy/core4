@@ -194,6 +194,25 @@ export class ShellExecError extends Schema.TaggedError<ShellExecError>()("ShellE
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+/**
+ * ShellScriptOutsideRootError — raised when a host-shell script path
+ * resolves outside every permitted base directory. The host `ToolingEngine`
+ * (and any other code that loads `.bun.sh` / shell-shaped scripts from
+ * the filesystem) MUST refuse paths whose realpath escapes the app root
+ * (or the user-config-root recipe cache) per the §8.5.9 containment rule.
+ */
+export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptOutsideRootError>()(
+  "ShellScriptOutsideRootError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    realpath: Schema.optional(Schema.String),
+    permittedRoots: Schema.Array(Schema.String),
+    remediation: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 export class ProcessExecError extends Schema.TaggedError<ProcessExecError>()("ProcessExecError", {
   message: Schema.String,
   cmd: Schema.String,
