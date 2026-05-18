@@ -502,3 +502,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `prd.json` is round-tripped through a JSON encoder somewhere in the build step's flow and emits `\uXXXX` escapes for non-ASCII (§, —, →). Cosmetic only, but inflates review diffs. If this recurs, consider pinning a Python/Bun JSON writer with `ensure_ascii=False`.
   - Useful context: the providerExec-default AC (PRD-02 §8.5) is satisfied at the ServiceType layer by long-running default command + `/app` workingDirectory + appRoot bind + ServiceName-keyed plan; no extra wiring needed for this story.
 ---
+
+
+## [2026-05-18 00:10 CDT] - US-010 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-010 branch changes; critical review kept only behavior-preserving cleanup and rejected broad progress-log separator deletion as audit-log churn.
+- Files changed by cleanup: `core/src/services/planner.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: replaced a nested remediation ternary in `unsupportedServiceType` with equivalent `if`/`else if` logic. No public APIs, imports, error handling, side effects, return values, tests, or service plan behavior changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test --concurrency=1` passed (333 pass, 11 skip, 0 fail, 1757 expect). One overlapping full-test attempt failed with `ETXTBSY` on `core/dist/lando`, matching the known compiled-binary contention gotcha; the non-overlapping serial rerun passed.
+---
