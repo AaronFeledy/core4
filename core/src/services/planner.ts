@@ -15,7 +15,7 @@ import {
   ServicePlan,
   type StorageScope,
 } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
+import { AppPlanner, PluginRegistry, type ServiceTypeHostFacts } from "@lando/sdk/services";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -208,15 +208,23 @@ const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig)
   return { ...servicePlan, appMount: merged };
 };
 
-const resolveHostFacts = () => {
-  const userInfo = os.userInfo();
-  return {
-    os: process.platform,
-    user: userInfo.username,
-    uid: String(userInfo.uid),
-    gid: String(userInfo.gid),
-    home: userInfo.homedir,
-  };
+const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
+  try {
+    const userInfo = os.userInfo();
+    return {
+      os: process.platform,
+      user: userInfo.username,
+      uid: String(userInfo.uid),
+      gid: String(userInfo.gid),
+      home: userInfo.homedir,
+    };
+  } catch {
+    // os.userInfo() can throw on some Windows configurations when the user has no
+    // home directory entry. The §6.9 helper already supports omitting LANDO_HOST_*
+    // when host facts are unavailable, so degrade gracefully rather than crashing
+    // the planner.
+    return undefined;
+  }
 };
 
 const planApp = (

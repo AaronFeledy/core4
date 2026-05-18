@@ -243,7 +243,7 @@ export interface ServiceTypePlanInput {
   readonly provider?: ProviderId;
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
-  readonly host?: ServiceTypeHostFacts;
+  readonly host?: ServiceTypeHostFacts | undefined;
 }
 
 export interface ServiceTypeShape {
