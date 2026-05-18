@@ -52,12 +52,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -72,12 +90,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Use a fake bundle downloader plus fake Podman API client for provider-lando setup tests; no live runtime prerequisites are needed for this story.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -91,12 +127,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: any manual `lando` binary execution belongs in the `lando4-dev` sandbox workflow from `.local/DEV-ENV.md`.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -110,12 +164,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: yes (stash@{0}: loop-sync-autostash)
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -130,12 +202,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: Podman machine prerequisite failures should surface as `PodmanMachinePrerequisiteError` with virtualization/helper remediation before API socket validation.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -149,12 +239,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: yes (loop-sync-autostash)
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -166,6 +274,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp_diagnostics on changed TypeScript files clean; `bun run typecheck` passed in `lando4-dev`; `bun run lint` passed in `lando4-dev`; `bun test` passed in `lando4-dev` (253 pass, 11 skip).
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
@@ -176,10 +293,28 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-17 03:54 CDT] - PR #76 triage
 - Bugbot comment was real: no-Podman capability fallback used Linux capabilities for non-darwin platforms, causing win32 bind-mount performance to report `native` instead of `none`.
 - Fixed `provider-lando` fallback capability selection to use `mvpProviderCapabilities(platform)` and added win32 regression coverage before Podman API discovery.
 - Verification: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (254 pass, 11 skip).
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 00:18 CDT] - Sync
@@ -188,6 +323,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -204,12 +348,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none before recording this merge note
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -232,12 +394,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `meta:doctor` is now an MVP command and compiled `$bunfs` commands need an explicit handler in `core/src/cli/run.ts` for source/compiled parity.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -252,12 +432,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: tagged `CapabilityError` fields are accessible as properties, but Bun's `toMatchObject` is unreliable on these Error instances; assert fields explicitly.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -272,12 +470,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: Unix socket endpoints have `socketPath` and no `port`, so host port publish checks should only consider endpoints with a numeric `port`.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -293,12 +509,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `providerExtensions: Schema.Array(Schema.String)` is currently the only non-primitive `ProviderCapabilities` field; if more array/object fields land, `renderCapabilityValue` (`typeof value === "object"` → `JSON.stringify`) already covers them without further change.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -310,6 +544,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip). Checks were non-privileged Bun checks and ran on the checkout without host-system mutation.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
@@ -320,10 +563,28 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-17 10:42 CDT] - Push Triage
 - PR #77 Bugbot flagged a capability-test expectation that could drift from the provider platform matrix.
 - Decision: real issue; fixed the assertions to compare against `mvpProviderCapabilities(...)` so Linux, macOS, and win32 expectations stay aligned with the merged provider capability matrix.
 - Verification run and result: `bun test plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (256 pass, 10 skip).
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 00:18 CDT] - Sync
@@ -332,6 +593,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -348,12 +618,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none before recording this merge note
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -367,12 +655,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -387,12 +693,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: provider-docker realizes planner-marked `accelerated` appMount/bind mounts as native Docker binds until the FileSyncEngine path is implemented.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -408,12 +732,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: Docker Desktop for Linux uses `~/.docker/desktop/docker.sock`, so bind-mount performance is slow even though the host platform is Linux.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -428,12 +770,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: registry selection must prefer `AppPlan.provider` when a plan is provided so existing apps do not drift if the configured default provider changes.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -447,12 +807,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: yes (loop-sync-autostash — spec/alpha/progress.txt had uncommitted modifications; stashed before fetch, a human should review and pop or drop)
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -467,12 +845,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `Effect.tapError` + a shared rollback effect cleanly attaches cleanup to per-service Effect chains without changing the success path; the `touched` array tracks both "created but not started" and "started but later failed" containers so a single rollback handles both.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -487,12 +883,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: provider-lando bringUp errors now carry an `operation` per step (`bringUp.network`, `bringUp.inspect`, `bringUp.create`, `bringUp.start`, `bringUp.event`, `bringUp.mount`, `bringUp.artifact`) so manual cleanup logs identify the exact failing call. Tests reading these fields should match against the specific operation string, not just the `_tag`.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -517,12 +931,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `podman-api` is a legitimate operation name at the transport layer per §5.7; rewriting it to per-lifecycle names requires either restructuring the `request` helper or adding `mapError` at every callsite — out of scope for a rollback-and-error-fields story. The targeted fix is just adding `remediation` (operation context can be inferred from the wrapping Effect chain in stack traces).
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -538,12 +970,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none; on main, clean
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -555,12 +1005,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test plugins/provider-lando/test/bring-up.integration.test.ts plugins/provider-lando/test/redact.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed. Full serial `bun test --concurrency=1` passed (294 pass, 11 skip, 0 fail).
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -574,12 +1042,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -594,12 +1080,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: §10.9 solution records have `kind: "automatic" | "manual"`, with `automatic` reserved for `--fix`-runnable commands and `manual` for instructions doctor can't safely execute. Alpha doctor emits only `manual` solutions because no automatic remediation is wired through `--fix` yet.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -622,12 +1126,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `provider.getStatus` is the seam where real socket/machine probing belongs, not `meta:doctor`. If a future story tightens AC1 to "real socket reachability", fix `provider-lando.getStatus` (and `provider-docker.getStatus`) — `meta:doctor` already surfaces whatever the provider returns. Doctor's data model (`DoctorResult.checks: ReadonlyArray<DoctorCheck>` + `DoctorSolutionKind = "automatic" | "manual"`) is already shaped for plugin-contributed checks and `--fix`-runnable automatic remediation; those wirings are deferred but the shape is forward-compatible.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -639,12 +1161,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (269 files, no fixes); full `bun test` passed on rerun (299 pass, 11 skip, 0 fail, 1614 expect). One earlier full-test attempt failed while an overlapping test/build process was active (`core/test/cli/version.test.ts` build exit 1); rerun after the process cleared passed.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -661,12 +1201,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none; on main, clean
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -681,12 +1239,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -699,12 +1275,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Result: outcome recorded and workspace returned clean
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -718,12 +1312,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -738,12 +1350,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `Object.keys(ProviderCapabilities.fields)` enumerates every capability key at runtime, so the completeness assertion fails loudly when a new field is added to the schema but missing on a provider. `bun run lint` runs Biome and may report a single multi-line formatting violation per file even when the source compiles cleanly — `bunx biome format --write <file>` is the canonical fix.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -765,12 +1395,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: Alpha lifecycle methods `start/stop/restart/exec/run` are part of `RuntimeProviderShape` in `sdk/src/services/index.ts:306-316`. The shared contract previously only covered `apply/destroy/execStream/logs/inspect/list`; shape-only `Effect.isEffect` checks for the remaining methods are the cheapest way to harden the contract without forcing fixture support for full lifecycle exercise (which would require `start` to track running state, etc.).
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -795,12 +1443,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -814,12 +1480,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -834,12 +1518,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `ServiceTypePlanInput.appName` was added as an optional field threaded by `AppPlanner.plan` so service types can emit accurate `LANDO_APP_NAME`/`LANDO_PROJECT` env without falling back to `basename(appRoot)` heuristics; existing node/postgres types remain unchanged because they don't consume the field.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -851,12 +1553,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test` passed (exit 0; Bun emitted only the test banner in this run).
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -873,12 +1593,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -893,12 +1631,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no (stash was immediately popped and committed)
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -913,12 +1669,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: the AC "Plans work with providerExec tooling as a default execution target" is satisfied at the ServiceType layer by (a) a long-running default `command` (so `RuntimeProvider.exec` has a container to attach to per §8.5), (b) a ServiceName-keyed plan entry (exec container naming is `lando-<slug>-<service>`), and (c) `workingDirectory: /app` plus the appRoot bind so exec runs against the user's source tree. No CLI wiring is required at this story level.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -936,12 +1710,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: the providerExec-default AC (PRD-02 §8.5) is satisfied at the ServiceType layer by long-running default command + `/app` workingDirectory + appRoot bind + ServiceName-keyed plan; no extra wiring needed for this story.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -956,12 +1748,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -978,12 +1788,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -995,12 +1823,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test --concurrency=1` passed (333 pass, 11 skip, 0 fail, 1757 expect). One overlapping full-test attempt failed with `ETXTBSY` on `core/dist/lando`, matching the known compiled-binary contention gotcha; the non-overlapping serial rerun passed.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1015,12 +1861,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: framework default ports per §6.6 differ across the catalog (django/fastapi 8000, flask 5000). Sharing one port across all Python frameworks would hide a legitimate semantic difference; per-preset port in `FRAMEWORK_PRESETS` keeps the healthcheck and the single endpoint entry in sync without conditional logic at the call site.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1044,12 +1908,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `extensions["lando-service-<lang>"]` is the right place for framework-specific server commands (uvicorn/gunicorn) — keeps `plan.command` provider-neutral and lets build orchestration surface the framework default as tooling rather than overriding the container command.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1061,12 +1943,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (347 pass, 11 skip, 0 fail, 1819 expect). Earlier non-serial full-test attempts failed on generated compiled-binary contention/permission state (`ETXTBSY`/`EACCES` on `core/dist/lando`); after rebuilding `core/dist/lando` and rerunning non-overlapping serial tests, verification passed.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1083,12 +1983,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none; on main at 2d75673
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:18 CDT] - Sync
 - Previous branch: us-011-python-service-types
 - Previous PR: #87 https://github.com/AaronFeledy/core4/pull/87 (state: MERGED)
 - Action: caught up after prior merge (Case C); local story branch was already absent
 - Fast path: committed pending progress.txt update to local main before reconciling
 - Local main updated: yes (already at origin/main after ff-only pull)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1101,6 +2019,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: language-runtime ServiceTypes that share a framework field follow the same shape — top-level `SUPPORTED_<X>_VERSIONS` + `SUPPORTED_<X>_FRAMEWORKS` arrays, a `FRAMEWORK_PRESETS` record carrying `port`/`defaultCommand`/`webroot`/`env`, a `buildEnv` that injects LANDO_* after framework + user env (so user env wins over preset, LANDO_* always wins last), and an `extensions["lando-service-<id>"]` payload carrying provider-specific intent. Adding a new language runtime is mechanical once this skeleton exists.
   - Gotchas encountered: registering a new service type id requires three changes that all assert the keys: `plugins/service-lando/src/index.ts` (serviceTypes Map + manifest contributes.serviceTypes), `plugins/service-lando/test/package.test.ts` (exports skeleton key list), and `plugins/service-lando/test/registration.test.ts` (registry manifest contributions + registered-types remediation regex). Missing the package.test.ts update is silent until full `bun test` runs.
   - Useful context: `core/src/services/planner.ts#serviceTypeFor` is the image-based fallback used when `services.<name>.type` is omitted; every new image-prefix-tagged language type needs a branch there or `lando-image:foo` declarations break inference.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 01:35 CDT] - US-012 Review
@@ -1122,6 +2049,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:45 CDT] - Push
 - Branch pushed: us-012-ruby-service-types → origin/us-012-ruby-service-types
 - Commits pushed: 0012ade (feat: Ship Ruby service types), 603a40c (docs: record US-012 review outcome)
@@ -1134,6 +2070,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none; on main at 46560bb
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 01:42 CDT] - US-013
 - Added catalog service types: mysql, mariadb, redis, nginx, apache, static (nginx and caddy variants), and compose (raw Compose passthrough). Database services declare service-scoped storage and emit native creds env (MYSQL_*, MARIADB_* + MYSQL_* aliases, POSTGRES_* unchanged). Compose service type rejects Lando `build:` (artifact/app scripts), accepts Compose-spec `composeBuild:` (context/dockerfile/args/target) or `image:` (mutually exclusive), parses short-form `volumes:` into bind mounts or named storage, parses short-form `ports:` into endpoints, and threads `service.providers.<id>` into `ServicePlan.extensions`. Planner aggregates per-service storage into `AppPlan.stores` (default `scope: "service"`, deduped by store name) so the destroy-preserves-volumes contract covers compose-declared volumes the same way it covers Lando-managed ones. Added `ServiceConfig.composeBuild` (Compose-style build block) and `ServiceConfig.providers` (per-service `ProviderExtensionConfig`).
 - Files changed: `sdk/src/schema/index.ts`, `core/src/services/planner.ts`, `plugins/service-lando/src/index.ts`, `plugins/service-lando/src/services/{apache,compose,mariadb,mysql,nginx,redis,static}.ts`, `plugins/service-lando/test/{apache,compose,compose-passthrough.providers,mariadb,mysql,nginx,redis,registration,static,package}.test.ts`, `core/test/services/app-planner.test.ts`, `AGENTS.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
@@ -1142,6 +2087,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: `ServiceTypePlanInput.appName` should be the primary source for app-scoped store names so storage names stay stable across `withTempCwd`-driven planner tests; legacy `basename(appRoot)` fallback is fine when `appName` is missing but produces fragile temp-path-derived names in planner tests.
   - Gotchas encountered: provider-docker `renderCompose` is a minimal skeleton today (emits only image + ports + network), so compose passthrough end-to-end coverage there is currently behavioral acceptance, not full document fidelity. Provider-lando `renderCompose` already emits env/volumes/storage and is the richer end of the contract.
   - Useful context: AC #2 ("provider-lando and provider-docker codepaths") is satisfied via planner-level integration that selects each provider via `landofile.provider` and renders compose; deeper compose passthrough hardening (e.g., env emission in provider-docker renderer, container mounting of `storage[]` named volumes) is pre-existing surface owed by other stories.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 02:05 CDT] - US-013 Review
@@ -1159,12 +2113,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: the planner's family-prefix remediation (`unsupportedServiceType` in `core/src/services/planner.ts`) reads `registeredTypeIds` from `manifest.contributes.serviceTypes`, so getting the manifest list complete is what makes the "Supported alternatives" hint accurate.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 
 ## [2026-05-18 02:42 CDT] - US-013 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup shards reviewed the US-013 branch changes; critical review kept only behavior-preserving cleanup and reverted unsafe test/planner rewrites that introduced type errors or dropped required imports.
 - Files changed by cleanup: `sdk/src/schema/index.ts`, `plugins/service-lando/src/services/nginx.ts`, `plugins/service-lando/src/services/static.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: removed repeated schema section-divider banner comments and redundant `as const` assertions on static LANDO env-prefix constants. No schema fields, exports, service plan behavior, imports, public APIs, error handling, side effects, or return values changed.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (385 pass, 11 skip, 0 fail, 1990 expect calls). The full-test command had to run detached because the shell wrapper interrupted long-running tests; the detached exit file recorded exit 0. Transient `package.json` mutations from the codegen CI test were restored and not included in cleanup.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 07:15 CDT] - Sync
@@ -1174,6 +2146,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes — pulled, pushed progress-log commit (39b0c90), origin/main now at 39b0c90
 - Branch after sync: main
 - Stash created: no (fast-path: stash was only transient during fast-path, already popped and committed)
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 06:50 CDT] - Push
@@ -1187,6 +2168,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 02:14 CDT] - US-014
 - Implemented Alpha mount and storage semantics: parser support for object-form list items so users can author `mounts: [{ type, source, target, ... }]` and `storage: [{ store, target, scope, ... }]`; `MountInput` schema gained optional `excludes`/`includes` for spec §6.4 parity; `LandofileService` pre-scans content for `${...}` / `{{ ... }}` configuration expressions and rejects Beta-only top-level keys (`includes:`, `secrets:`, `env_file:`) with tagged `NotImplementedError` + Beta remediation before schema decode; the `AppPlanner` rejects authored `service.storage[].scope: "global"` with `NotImplementedError` + Beta remediation and expands authored `appMount.excludes` into per-exclude volume-shadow `DataStorePlan` entries in `AppPlan.stores` plus matching `DataStoreMountPlan`s on the service (Mutagen/file sync is intentionally not implemented).
 - Files changed: `sdk/src/schema/index.ts`, `sdk/src/services/index.ts`, `core/src/landofile/parser.ts`, `core/src/landofile/service.ts`, `core/src/services/planner.ts`, `core/src/cli/commands/{destroy,info,start,stop}.ts`, `core/test/services/landofile.test.ts`, `core/test/services/app-planner.test.ts`, `core/test/cli/start.scenario.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
@@ -1197,6 +2187,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: the dependency-free YAML parser's object-form-in-list detection must require a literal space after the `:` (regex `^([A-Za-z][A-Za-z0-9_-]*):(\s.*|)$`); without the space, `- 3000:3000` (Compose port mapping) is mis-parsed as `{ "3000": 3000 }` and breaks every existing fixture that uses short-form ports/volumes.
   - Gotchas encountered: rewiring the `${...}` rejection from `LandofileParseError` to `NotImplementedError` cascades into every command error union (`destroy`/`info`/`start`/`stop`) AND into the public `LandofileService.discover` / `AppPlanner.plan` SDK return types; the `start.scenario` test that exercised the old parse-error message format had to be switched to a tab-on-line-3 fixture (which still hits the existing `Tabs are not supported in Landofiles` ParseError) so it can keep asserting the parser's `filePath:` + `line:` reporting.
   - Useful context: `AppPlanner.plan` runs AFTER `RuntimeProviderRegistry.capabilities` in the CLI start flow, so planner-level rejections (scope: global, capability gates) are not reachable end-to-end on hosts that lack a configured runtime provider — unit tests are the canonical verification surface for those rejections.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 02:24 CDT] - US-014 Review
@@ -1217,11 +2216,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: when adding a new error type to `LandofileService.discover` or `AppPlanner.plan`, the change cascades into every CLI command alias's error union (`StartAppError`, `StopAppError`, `DestroyAppError`, `InfoAppError`). The build step did this consistently. Future stories adding Beta-only rejection paths should grep all four CLI command files plus `sdk/src/services/index.ts` to keep the union in sync.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 02:35 CDT] - US-014 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup shards reviewed all US-014 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
 - Files changed by cleanup: `core/src/landofile/parser.ts`, `core/src/services/planner.ts`, `core/test/services/landofile.test.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: removed impossible regex-capture `undefined` guards in the dependency-free Landofile parser, removed a redundant `appMount.realization` rewrite in planner shadow expansion, removed redundant temp-dir `realpath()` use in the Landofile tests, and replaced awkward null-coercion assertions with explicit union narrowing. Parser regexes, planner storage/appMount behavior, public APIs, errors, side effects, and test coverage are preserved.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; focused `CI=1 bun test core/test/services/landofile.test.ts core/test/services/app-planner.test.ts --concurrency=1` passed (23 pass, 0 fail); `bun run build` passed; full `CI=1 bun test --concurrency=1` passed once (392 pass, 11 skip, 0 fail). A subsequent repeat full-suite run failed in unrelated compiled CLI build/lint-gate setup tests, but direct `bun run lint` and `bun run build:compile` rechecks both passed on the unchanged cleanup tree.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 02:51 CDT] - Push
@@ -1235,11 +2252,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 07:54 UTC] - Sync
 - Previous branch: us-014-alpha-mount-storage
 - Previous PR: #90 https://github.com/AaronFeledy/core4/pull/90
 - Action: caught up after prior merge — PR #90 already merged (squash commit 73e23fd)
 - Local main updated: yes (already at origin/main, no new commits since last iteration)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1252,6 +2287,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: a shared `buildLandoEnv` helper with merge order `extraDefaults → userEnv → reserved LANDO_*` removes 6× duplicated per-service `buildEnv` blocks and makes the §6.9 contract additive (new env fields land in one file). Service types that don't mount the app (databases, caches, compose passthrough) intentionally omit `LANDO_APP_ROOT`/`LANDO_PROJECT_MOUNT` rather than emitting bogus paths.
   - Gotchas encountered: `exactOptionalPropertyTypes: true` rejects `host?: HostEnvFacts` when callers pass `host: undefined`; declare `host?: HostEnvFacts | undefined` (and all other options that may be `undefined`) explicitly on the helper input type. Existing tests using `toEqual` on `service.environment` break on additive env contract changes — prefer `toMatchObject` for service-specific env so the §6.9 contract can grow without test churn. The `exec` integration test fake's request handler order matters: `GET /exec/<id>/json` must be matched before any generic `endsWith("/json")` pattern, otherwise the inspect call hits the container-json route and returns 500.
   - Useful context: the postgres service-type historically derived `POSTGRES_DB`/data-store name from `basename(appRoot)` while mariadb/mysql used `appName`. Unifying postgres on `appName` aligns the DB family contract and is what `mariadb`/`mysql` were already doing — the app-planner test that asserted a temp-dir-based `POSTGRES_DB` was relying on inconsistent legacy behavior.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 03:35 CDT] - US-015 Review
@@ -1279,6 +2323,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: the established service-type validator convention in `plugins/service-lando/src/services/` is to throw raw `Error` with a remediation string (`compose.ts`, `node.ts`, `php.ts`, `python.ts`, `ruby.ts`, `static.ts`); converting one validator to a tagged Effect error would cascade through `AppPlanner.plan`'s error union and every CLI command alias. Reviewers should weigh this cascade cost against the typed-error benefit on a story-by-story basis.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 09:05 UTC] - Push
 - Branch pushed: us-015-lando-env-contract (new branch, 3 story commits: 614be20, c8d31b4, d0fe7e5)
 - PR: #91 https://github.com/AaronFeledy/core4/pull/91 (created)
@@ -1290,6 +2343,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: on main at 6763fa1
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 04:00 CDT] - Sync
 - Previous branch: us-015-lando-env-contract
 - Previous PR: #91 https://github.com/AaronFeledy/core4/pull/91
@@ -1299,11 +2361,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 03:52 CDT] - US-015 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed all US-015 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
 - Files changed by cleanup: `plugins/service-lando/src/services/compose.ts`, `plugins/service-lando/src/services/php.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: removed a redundant `appId` alias in the compose service storage-store naming path and inlined the single-use PHP `workingDirectoryFor` helper. Rejected and reverted an unsafe test-helper rewrite in `core/test/services/app-planner.test.ts` because it introduced `any` and broadened the cleanup beyond cosmetic preservation. Service-plan behavior, env output, public APIs, error handling, side effects, and return values are preserved.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed after formatting the PHP inline; focused `bun test plugins/service-lando/test/compose.test.ts plugins/service-lando/test/php.test.ts --concurrency=1` passed (23 pass, 0 fail); `bun run build` passed. Full `bun test --concurrency=1` was attempted twice and failed in the known compiled-build subprocess tests (`core/test/cli/version.test.ts` / `core/test/build/compile.test.ts`) where nested `bun run build` exited 1; this matches the US-015 review note's pre-existing full-suite flake area and is unrelated to the two service-file cleanup changes.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 19:30 CDT] - US-016
@@ -1316,6 +2396,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: existing service-type tests asserted the legacy `kind: "tcp" + port` shape across six files plus `registration.test.ts`; converting them to `kind: "command" + command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/<port>"]` had to happen in the same commit as the planner gate, or the service-type defaults would self-trigger the new `CapabilityError`. A perl/regex sweep across the test/source pairs is reliable here because every emission and every assertion uses the same template literal pattern keyed on the resolved endpoint port.
   - Gotchas encountered: the `renderStartAppResult` prefix flipping from hardcoded `ready:` to inspect-derived `ready:`/`starting:` does NOT break the existing 2-service start scenario test because the mock provider returns `state: "running"` for every service and the new gate treats `running` as ready. Tests that want to exercise the negative path must explicitly construct a `StartAppResult` with at least one non-`running`/`ready` service state — there is no public seam to make the live provider mock return a stopped state without breaking the apply-then-inspect flow.
   - Useful context: `bash`/`/dev/tcp` remains the lowest-friction portable TCP probe for Debian-derived catalog defaults (`php:apache`, `python:slim`, `ruby:slim`), while Alpine-based defaults (`httpd:2.4-alpine`, `nginx:1.26-alpine`, `caddy:2-alpine`) now use `sh -c "nc -z 127.0.0.1 <port>"` so the default healthcheck works without a bash dependency. The `nc -z` form only checks that the TCP port accepts connections, keeping the probe protocol-agnostic.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 19:50 CDT] - US-016 Review
@@ -1336,11 +2425,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `kind: "none"` is a valid healthcheck literal under §6.7 — a planner-time gate that only allows `"command"` and silently drops `"none"` would regress the user's explicit opt-out. The current gate explicitly allows both.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [$(TZ=America/Chicago date '+%Y-%m-%d %H:%M %Z')] - US-016 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-016 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
 - Files changed by cleanup: `AGENTS.md`, `core/test/services/app-planner.test.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: tightened the repository guidance preamble in `AGENTS.md` and replaced repeated Effect failure-unwrapping boilerplate in `core/test/services/app-planner.test.ts` with a type-safe `expectSomeFailure` helper. The helper preserves every assertion's expected error type, fields, remediation checks, side effects, and test coverage. Rejected no functional simplifications; no service/runtime behavior was changed.
 - Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/app-planner.test.ts --concurrency=1` passed; `bun run build` passed; focused compiled CLI recheck `bun test core/test/cli/shellenv.test.ts core/test/cli/aliases.test.ts --concurrency=1` passed after rebuilding the compiled binary; full `CI=1 bun test --concurrency=1` passed (461 pass, 11 skip, 0 fail, 2417 expect calls).
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 04:37 CDT] - US-016 Slop Cleanup
@@ -1349,6 +2456,24 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: tightened the repo-guidance opener in `AGENTS.md`, extracted repeated failure-unwrapping assertions in `core/test/services/app-planner.test.ts` into a small type-safe helper, and normalized branded `PortablePath` expectations without weakening coverage or changing planner behavior.
 - Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/app-planner.test.ts --concurrency=1` passed; `bun run build` passed; focused compiled-CLI regression tests `bun test core/test/cli/shellenv.test.ts core/test/cli/aliases.test.ts --concurrency=1` passed after rebuilding the compiled binary; full `CI=1 bun test --concurrency=1` passed (461 pass, 11 skip, 0 fail).
 ---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 10:45 CDT] - PR #92 triage
@@ -1365,6 +2490,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Triage rounds used: 2
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 11:05 CDT] - PR #92 triage (round 2)
 - Second Bugbot finding (Medium Severity, commit d558163, NEUTRAL conclusion, reviewDecision=""): `applyAuthoredHealthcheck` could produce `{ kind: "command" }` with no `command` field when a user provides a partial authored override (e.g., `{ intervalSeconds: 30 }`) on a service type that emits no default healthcheck. The `?? "command"` kind fallback fires, but no command is spread into the merged object.
 - Finding accepted as real: confirmed by reading `core/src/services/planner.ts#L219-L228`. The `command` spread only fires when `authored.command !== undefined || existing?.command !== undefined`. When both are undefined (partial override + no service-type default), the merged object has no `command` field, passes schema validation (command is optional in ServicePlan), and passes the capability gate (kind === "command" passes). The resulting plan is semantically invalid.
@@ -1372,6 +2506,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Test added: `"drops partial healthcheck override on a service type with no default rather than producing a commandless plan"` in `core/test/services/app-planner.test.ts`.
 - Verification: `bun run typecheck` passed; `bun run lint` passed (293 files, no fixes); `bun test core/test/services/app-planner.test.ts --concurrency=1` passed (19 pass, 0 fail, 102 expect calls).
 - Triage rounds used: 2
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 11:15 CDT] - Push / Merge
@@ -1386,6 +2529,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: on main at 5c607cb, working tree clean.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 11:20 CDT] - Push
 - Branch pushed: `us-016-app-networking-healthchecks` pushed to origin (original push, new to remote)
 - Commits involved: `9e301fc` (feat), `89fca98` (review docs), `56ccee8` (slop cleanup), and two triage fixes: `2f237d4` (sh/nc probe for Alpine web service defaults), `af00cb9` (commandless kind:command guard in applyAuthoredHealthcheck)
@@ -1398,11 +2550,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: clean (`main`, working tree clean)
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 05:16 CDT] - Sync
 - Previous branch: `us-016-app-networking-healthchecks`
 - Previous PR: #92 https://github.com/AaronFeledy/core4/pull/92
 - Action: caught up after prior merge (PR #92 was already MERGED; remote branch already deleted)
 - Local main updated: yes (already at origin/main `c7c4fb8`, ff-only pull confirmed up-to-date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1417,6 +2587,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: existing `core/src/landofile/parser.ts` already supports nested-map YAML well enough for `tooling.<task>.vars.<name>.{default,sh,prompt}`. Task names with `:` for sub-namespaces (§8.5.1) are NOT supported by the parser's `[A-Za-z0-9_-]+` key regex — that's a deliberate trade-off (loosening risks mis-parsing Compose short-form ports/volumes per the existing AGENTS.md gotcha); sub-namespaced task names are deferred past US-017.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 06:55 CDT] - Push
 - Branch pushed: `us-017-parse-alpha-tooling` → origin
 - Commits: `8c224ef` (feat), `cacae19` (test)
@@ -1427,6 +2606,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — PR #93 merged to main as `6ba155d`
 - Local main / branch refreshed: yes (reset --hard origin/main; local story branch deleted)
 - Remaining local state: clean on main
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 05:41 CDT] - US-017 Review
@@ -1441,11 +2629,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `bunx biome check --write` rather than re-formatting by hand keeps test fixtures consistent with the rest of the repo (`bun run lint` is non-fixing). The new test indentation pattern needed biome's array-formatting rule applied.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 06:57 CDT] - Sync
 - Previous branch: us-017-parse-alpha-tooling
 - Previous PR: #93 https://github.com/AaronFeledy/core4/pull/93
 - Action: caught up after prior merge (PR #93 was already MERGED; remote branch already deleted by push step)
 - Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1458,6 +2664,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: `ToolingEngine.run(invocation, plan, provider)` takes the `RuntimeProviderShape` as an explicit argument because the runtime layer's `RuntimeProvider` Tag is a stub — real providers come from `RuntimeProviderRegistry.select(plan)`. The same seam already drives `startApp`/`stopApp`/`destroyApp`; tooling now follows it.
   - Gotchas encountered: biome's `--unsafe` fix for `noNonNullAssertion` replaces `array[0]!.field` with `array[0]?.field`, which silently widens the inferred return type to `T | undefined`. After length-guarding a non-empty array, destructure with `const [first] = arr` + `if (first === undefined)` instead — type-correct, lint-clean, and the runtime check is the same.
   - Useful context: pre-Alpha SDK tags carry a `Status: stub interfaces — methods are typed but Live impls don't exist yet` comment; widening them with real method signatures is intentional during PRD-02/PRD-03 work. `ToolingEngine` now exposes `run` for the providerExec contract; the US-019 host engine will register a different `id: "host"` Layer against the same tag.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 07:29 CDT] - US-018 Review
@@ -1474,11 +2689,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: tests with self-explanatory titles do not need a behavioral preamble comment — the hook flags it as redundant. Keep `test("...")` strings descriptive enough that a leading comment block adds no information.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 07:37 CDT] - US-018 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed all US-018 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
 - Files changed by cleanup: `AGENTS.md`, `core/src/cli/commands/tooling.ts`, `core/src/services/tooling-engine.ts`, `spec/alpha/progress.txt`.
 - Slop-remover result: tightened several wording-only repo guidance lines in `AGENTS.md`, removed redundant module-level explanatory docblocks from the US-018 tooling command/engine files, and kept the small `cmds` local binding in `normalizeCommands` without the non-null assertion introduced by an initial cleanup pass. Rejected and reverted overbroad documentation removal from `core/src/runtime/layer.ts` and `sdk/src/services/index.ts` because those comments document durable runtime/public API contracts rather than disposable AI slop.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed.
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 07:45 CDT] - Push
@@ -1493,11 +2726,29 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: clean, on main
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## 2026-05-18 07:57 CDT - Sync
 - Previous branch: us-018-provider-exec-tooling-engine
 - Previous PR: #94 https://github.com/AaronFeledy/core4/pull/94
 - Action: caught up after prior merge (PR #94 already MERGED, remote branch pruned); pushed local progress-log commit cbd032c to origin/main
 - Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -1512,6 +2763,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `ShellScriptOutsideRootError` (`message`, `path`, `realpath?`, `permittedRoots`, `remediation?`, `cause?`) is the canonical §8.5.9 containment failure surface. Symlink escapes are caught because the realpath check resolves both the script and each permitted root via `fs.realpath` before comparing prefixes.
 ---
 
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 09:45 CDT] - Push (US-019)
 - Branch pushed: us-019-host-tooling-engine → origin (new remote branch)
 - Commits: 5c7d11f (feat: Implement host ToolingEngine), 1caa39a (docs: record US-019 review outcome)
@@ -1522,6 +2782,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 5210e79
 - Local main / branch refreshed: yes (main fast-forwarded to 5210e79; local story branch deleted)
 - Remaining local state: clean, on main
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-18 09:00 CDT] - US-019 Review
@@ -1541,4 +2810,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: when a `Schema.TaggedError` is constructed inside an `Effect.tryPromise.try` callback and thrown, the `catch:` arm should `instanceof`-check and pass it through unchanged. The "double-wrap risk" only materializes if the catch arm unconditionally constructs a new tagged error from `cause`; pass-through prevents losing the original `permittedRoots` / `realpath` context.
   - Gotchas encountered: Bun shell launch-failure behavior is version-sensitive — `.nothrow()` catches most non-zero exits as `ProcessResult` rather than thrown errors, so tests asserting the thrown-error path should either (a) force a deterministic launch failure (e.g. non-existent `cwd`) or (b) accept either branch and call that out in the test name.
   - Useful context: the engine layer ships without CLI wiring by design — `lando shell` lives in US-022 and per-task engine selection lives in US-020. This staging is the same pattern as US-018 (providerExec engine shipped before US-022 wires its CLI surface).
+---
+
+## [2026-05-18 10:37] - Sync
+- Previous branch: us-019-host-tooling-engine
+- Previous PR: #95 https://github.com/AaronFeledy/core4/pull/95
+- Action: caught up after prior merge (PR #95 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
 ---
