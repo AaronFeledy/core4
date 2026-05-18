@@ -2932,3 +2932,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (reset to origin/main HEAD b424e0b; story branch deleted)
 - Remaining local state: on main, working tree clean
 ---
+
+## [2026-05-18] - Sync
+- Previous branch: us-021-bun-sh-script-tasks
+- Previous PR: #97 https://github.com/AaronFeledy/core4/pull/97
+- Action: caught up after prior merge (PR #97 was already MERGED; fast-path progress.txt commit applied to local main before fetch)
+- Local main updated: yes (already at origin/main; local main 1 commit ahead with progress-log update, not pushed per fast-path rule)
+- Branch after sync: main
+- Stash created: no
+---
