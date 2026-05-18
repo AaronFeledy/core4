@@ -86,7 +86,7 @@ export const refreshAppCache = (
 
     const appCachePath = yield* writeAppCommandCache({
       landofile,
-      scripts,
+      entries,
       cwd,
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });

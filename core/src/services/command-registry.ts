@@ -30,6 +30,7 @@ import { CommandRegistry, LandofileService, type RegisteredCommand } from "@land
 
 import { compileAppCommands } from "../cache/command-compiler.ts";
 import { writeAppCommandCache, writePluginCommandCache } from "../cache/command-index-writer.ts";
+import type { CommandIndexEntry } from "../cache/command-index.ts";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 
@@ -42,11 +43,8 @@ const discoverScriptsForCwd = (cwd: string): Effect.Effect<ReadonlyArray<Discove
     );
   });
 
-const toRegisteredCommands = (
-  landofile: LandofileShape,
-  scripts: ReadonlyArray<DiscoveredBunShellScript>,
-): ReadonlyArray<RegisteredCommand> =>
-  compileAppCommands(landofile, scripts).map((entry) => ({
+const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): ReadonlyArray<RegisteredCommand> =>
+  entries.map((entry) => ({
     id: entry.id,
     summary: entry.summary,
     hidden: entry.hidden,
@@ -54,9 +52,9 @@ const toRegisteredCommands = (
 
 const writeCachesForLandofile = (
   landofile: LandofileShape,
-  scripts: ReadonlyArray<DiscoveredBunShellScript>,
+  entries: ReadonlyArray<CommandIndexEntry>,
 ): Effect.Effect<void, never> =>
-  Effect.all([writeAppCommandCache({ landofile, scripts }), writePluginCommandCache()], {
+  Effect.all([writeAppCommandCache({ landofile, entries }), writePluginCommandCache()], {
     concurrency: 2,
     discard: true,
   });
@@ -69,8 +67,9 @@ export const CommandRegistryLive = Layer.effect(
       list: Effect.gen(function* () {
         const landofile = yield* landofileService.discover;
         const scripts = yield* discoverScriptsForCwd(process.cwd());
-        yield* writeCachesForLandofile(landofile, scripts);
-        return toRegisteredCommands(landofile, scripts);
+        const entries = compileAppCommands(landofile, scripts);
+        yield* writeCachesForLandofile(landofile, entries);
+        return toRegisteredCommands(entries);
       }).pipe(
         Effect.catchAllCause(() =>
           writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),

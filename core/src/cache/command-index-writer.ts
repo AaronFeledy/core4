@@ -5,13 +5,13 @@ import { Effect } from "effect";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
-import type { DiscoveredBunShellScript } from "../landofile/bun-sh-discovery.ts";
 import { findLandofilePath } from "../landofile/discovery.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
-import { compileAppCommands, compilePluginCommands } from "./command-compiler.ts";
+import { compilePluginCommands } from "./command-compiler.ts";
 import {
   type AppCommandIndexPayload,
+  type CommandIndexEntry,
   type PluginCommandIndexPayload,
   encodeAppCommandIndex,
   encodePluginCommandIndex,
@@ -36,7 +36,7 @@ const writeAtomic = async (path: string, bytes: Uint8Array): Promise<void> => {
 
 export interface WriteAppCommandCacheOptions {
   readonly landofile: LandofileShape;
-  readonly scripts?: ReadonlyArray<DiscoveredBunShellScript>;
+  readonly entries: ReadonlyArray<CommandIndexEntry>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
   readonly now?: () => number;
@@ -62,7 +62,7 @@ const writeAppCommandCacheTask = async (
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     generatedAtMs: (options.now ?? Date.now)(),
-    entries: compileAppCommands(options.landofile, options.scripts ?? []),
+    entries: options.entries,
   };
 
   await writeAtomic(cachePath, encodeAppCommandIndex(payload));
