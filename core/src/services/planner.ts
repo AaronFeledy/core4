@@ -147,7 +147,7 @@ const planApp = (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
         (!providerCapabilities.bindMounts || providerCapabilities.bindMountPerformance === "none")
       ) {
-        return yield* Effect.fail(
+        yield* Effect.fail(
           missingCapability(provider, name, "bind mount", "bindMounts", serviceBindRemediation(name)),
         );
       }
@@ -166,7 +166,7 @@ const planApp = (
         servicePlanWithCapabilityRealization.endpoints.some((endpoint) => endpoint.port !== undefined) &&
         providerCapabilities.hostPortPublish === "none"
       ) {
-        return yield* Effect.fail(
+        yield* Effect.fail(
           missingCapability(
             provider,
             name,
@@ -181,7 +181,7 @@ const planApp = (
         servicePlanWithCapabilityRealization.storage.length > 0 &&
         !providerCapabilities.persistentStorage
       ) {
-        return yield* Effect.fail(
+        yield* Effect.fail(
           missingCapability(
             provider,
             name,

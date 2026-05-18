@@ -560,3 +560,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: framework default ports in §6.12.2 differ across catalog entries (django/fastapi 8000, flask 5000); driving the endpoint port from `FRAMEWORK_PRESETS[framework].port` keeps the single endpoint, healthcheck.port, and extensions.port in sync without conditional branches at the call site.
   - Useful context: `extensions["lando-service-<lang>"]` is the right place for framework-specific server commands (uvicorn/gunicorn) — keeps `plan.command` provider-neutral and lets build orchestration surface the framework default as tooling rather than overriding the container command.
 ---
+
+## [2026-05-18 00:05 CDT] - US-011 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-011 branch changes; critical review rejected a non-null-assertion test rewrite and unrelated old progress-log wording churn.
+- Files changed by cleanup: `core/src/services/planner.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed redundant `return` keywords before `yield* Effect.fail(...)` in planner capability-gate branches. No public APIs, imports, error handling, side effects, return values, tests, service plan behavior, or progress-log audit history changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (347 pass, 11 skip, 0 fail, 1819 expect). Earlier non-serial full-test attempts failed on generated compiled-binary contention/permission state (`ETXTBSY`/`EACCES` on `core/dist/lando`); after rebuilding `core/dist/lando` and rerunning non-overlapping serial tests, verification passed.
+---
