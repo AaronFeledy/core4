@@ -501,4 +501,18 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
       "§8.5.3",
     );
   });
+
+  test("rejects step-object `cmds[].task` entry with Beta remediation (not silent schema error)", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - task: assets", ""],
+      "§8.5.2",
+    );
+  });
+
+  test("rejects step-object `cmds[].command` entry with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - command: app:start", ""],
+      "§8.5.2",
+    );
+  });
 });
