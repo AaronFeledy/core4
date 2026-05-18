@@ -1,0 +1,85 @@
+import { deserialize, serialize } from "node:v8";
+
+export const COMMAND_INDEX_SCHEMA_VERSION = 1n;
+
+export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
+
+export const PLUGIN_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x50, 0x43]);
+
+const HEADER_SIZE = 12;
+const VERSION_OFFSET = 4;
+
+export interface CommandIndexEntry {
+  readonly id: string;
+  readonly summary: string;
+  readonly hidden: boolean;
+  readonly service?: string;
+}
+
+export interface AppCommandIndexPayload {
+  readonly schemaVersion: number;
+  readonly landoVersion: string;
+  readonly appName: string;
+  readonly sourceFile: string;
+  readonly sourceMtimeMs: number;
+  readonly sourceSize: number;
+  readonly generatedAtMs: number;
+  readonly entries: ReadonlyArray<CommandIndexEntry>;
+}
+
+export interface PluginCommandIndexPayload {
+  readonly schemaVersion: number;
+  readonly landoVersion: string;
+  readonly pluginNames: ReadonlyArray<string>;
+  readonly generatedAtMs: number;
+  readonly entries: ReadonlyArray<CommandIndexEntry>;
+}
+
+const writeHeader = (magic: Uint8Array): Uint8Array => {
+  const header = new Uint8Array(HEADER_SIZE);
+  header.set(magic, 0);
+  new DataView(header.buffer).setBigUint64(VERSION_OFFSET, COMMAND_INDEX_SCHEMA_VERSION, true);
+  return header;
+};
+
+const concat = (head: Uint8Array, tail: Uint8Array): Uint8Array => {
+  const out = new Uint8Array(head.byteLength + tail.byteLength);
+  out.set(head, 0);
+  out.set(tail, head.byteLength);
+  return out;
+};
+
+const encodePayload = (magic: Uint8Array, payload: unknown): Uint8Array => {
+  const body = new Uint8Array(serialize(payload));
+  return concat(writeHeader(magic), body);
+};
+
+const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {
+  if (bytes.byteLength <= HEADER_SIZE) return false;
+  for (let i = 0; i < magic.length; i++) {
+    if (bytes[i] !== magic[i]) return false;
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return view.getBigUint64(VERSION_OFFSET, true) === COMMAND_INDEX_SCHEMA_VERSION;
+};
+
+const decodePayload = <T>(bytes: Uint8Array, magic: Uint8Array): T | null => {
+  if (!headerMatches(bytes, magic)) return null;
+  try {
+    return deserialize(bytes.subarray(HEADER_SIZE)) as T;
+  } catch {
+    return null;
+  }
+};
+
+export const encodeAppCommandIndex = (payload: AppCommandIndexPayload): Uint8Array =>
+  encodePayload(APP_COMMAND_MAGIC, payload);
+
+export const decodeAppCommandIndex = (bytes: Uint8Array): AppCommandIndexPayload | null =>
+  decodePayload<AppCommandIndexPayload>(bytes, APP_COMMAND_MAGIC);
+
+export const encodePluginCommandIndex = (payload: PluginCommandIndexPayload): Uint8Array =>
+  encodePayload(PLUGIN_COMMAND_MAGIC, payload);
+
+export const decodePluginCommandIndex = (bytes: Uint8Array): PluginCommandIndexPayload | null =>
+  decodePayload<PluginCommandIndexPayload>(bytes, PLUGIN_COMMAND_MAGIC);
