@@ -1396,3 +1396,34 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — local main reset to `5c607cb`, story branch `us-016-app-networking-healthchecks` deleted
 - Remaining local state: clean (`main`, working tree clean)
 ---
+
+## [2026-05-18 05:16 CDT] - Sync
+- Previous branch: `us-016-app-networking-healthchecks`
+- Previous PR: #92 https://github.com/AaronFeledy/core4/pull/92
+- Action: caught up after prior merge (PR #92 was already MERGED; remote branch already deleted)
+- Local main updated: yes (already at origin/main `c7c4fb8`, ff-only pull confirmed up-to-date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 06:00 CDT] - US-017
+- Implemented Alpha `tooling:` Landofile parsing (§8.5.1 subset), per-task Beta-only field rejection (§8.5.x), and `CommandRegistryLive` exposing parsed tooling as `RegisteredCommand` entries at bootstrap level `tooling`.
+- Files changed: `sdk/src/schema/index.ts` (added `ToolingVar`, `ToolingTaskShape`, and `tooling:` field on `LandofileShape`), `sdk/test/schema/landofile.test.ts`, `core/src/landofile/service.ts` (added top-level + per-task + per-cmds[] + per-var Beta rejection scans), `core/test/services/landofile.test.ts`, `core/src/services/command-registry.ts` (new), `core/test/services/command-registry.test.ts` (new), `core/src/runtime/layer.ts` (split `tooling` bootstrap from `minimal`, added `makeToolingRuntimeLive`, threaded `CommandRegistry` through `tooling` + `app` levels), `AGENTS.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (after `biome --write` formatting); focused `bun test sdk/test/schema/landofile.test.ts core/test/services/landofile.test.ts core/test/services/command-registry.test.ts` passed (41 pass, 0 fail, 179 expect calls); full `bun test --concurrency=1` passed (483 pass, 11 skip, 0 fail across 494 tests/91 files). No CLI binary surface changed in this story; the `CommandRegistry` is verified end-to-end via `makeLandoRuntime({ bootstrap: "tooling" })` in `core/test/services/command-registry.test.ts`.
+- **Learnings for future iterations:**
+  - Patterns discovered: `CommandRegistry.list`'s `never` error channel is the spec-mandated contract from §8.7 ("router bootstrap omits app tooling commands rather than reparsing"). `CommandRegistryLive` swallows all `LandofileService.discover` failures via `catchAllCause` → empty list; that is intentional, not a missed error path. Surface Landofile errors at the discovery boundary instead.
+  - Gotchas encountered: `bun run lint` failed in a concurrent `bun test` run when `core/test/build/biome.test.ts` had its violation-temp file briefly on disk while `core/test/cli/setup.test.ts` rebuilt `core/dist/lando` simultaneously. Both fail-and-recover under `--concurrency=1`; the failure mode matches the existing AGENTS.md note "Do not run `bun test` and `bun run build` concurrently". The Effect Layer composition `Layer.provide(...)` (NOT `Effect.provide`) is the right pattern for combining `CommandRegistryLive` with `LandofileServiceLive` when bypassing `makeLandoRuntime`.
+  - Useful context: existing `core/src/landofile/parser.ts` already supports nested-map YAML well enough for `tooling.<task>.vars.<name>.{default,sh,prompt}`. Task names with `:` for sub-namespaces (§8.5.1) are NOT supported by the parser's `[A-Za-z0-9_-]+` key regex — that's a deliberate trade-off (loosening risks mis-parsing Compose short-form ports/volumes per the existing AGENTS.md gotcha); sub-namespaced task names are deferred past US-017.
+---
+
+## [2026-05-18 05:41 CDT] - US-017 Review
+- Reviewed US-017 build commit `8c224ef` (Parse Alpha `tooling:` Landofile section). Verified the implementation against PRD-03 §US-017 acceptance criteria and the §8.5.1/§8.5.3/§8.7 spec sources.
+- `review-work` findings:
+  - fixed: test coverage gap for step-object `cmds[]` Beta rejection — the `scanToolingForBeta` step-object path (one of the most prominent Beta-deferred surfaces per AC2 "fail with remediation, not silent ignore") had no test in `core/test/services/landofile.test.ts`. A regression could silently fall through to schema decode and surface `LandofileValidationError` instead of `NotImplementedError`, losing the §8.5.2 remediation. Added two `assertRejectsLandofile` cases for `cmds: [{ task: ... }]` and `cmds: [{ command: ... }]` asserting §8.5.2 + Beta remediation.
+  - rejected: no other findings warranted in-scope changes. The `desc:` v3 alias is intentionally not in `ToolingTaskShape` (PRD AC explicitly lists `description:` only; v3 alias is Beta scope). The double-`LandofileServiceLive` materialization in `makeToolingRuntimeLive` is functionally equivalent because `LandofileServiceLive` is `Layer.succeed` of a stateless constant; flagging it as an architecture issue would be a stylistic preference, not a defect. String-shorthand `tooling.<name>: <string>` form is documented in §8.5.1 but explicitly outside the PRD-03 US-017 AC.
+- Files changed: `core/test/services/landofile.test.ts`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run lint` passed (295 files, no fixes needed after biome --write on the new test); `bun run typecheck` passed; focused `bun test core/test/services/landofile.test.ts core/test/services/command-registry.test.ts sdk/test/schema/landofile.test.ts` passed (43 pass, 0 fail, 183 expect calls).
+- **Learnings for future iterations:**
+  - Patterns discovered: when Beta-deferred surfaces are gated BEFORE schema decode (the `scanToolingForBeta` pattern), every Beta-deferred sub-surface needs its own unit test, not just a sample. The schema's own `onExcessProperty: "error"` is a backstop that produces a less actionable error, so test coverage must verify the pre-scan emits `NotImplementedError` with the right §section for each documented surface. Compound surfaces like step-object `cmds[]` are easy to forget because they require structurally different input (array of objects) than the top-level-key tests.
+  - Gotchas encountered: `bunx biome check --write` rather than re-formatting by hand keeps test fixtures consistent with the rest of the repo (`bun run lint` is non-fixing). The new test indentation pattern needed biome's array-formatting rule applied.
+---

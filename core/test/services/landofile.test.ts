@@ -366,3 +366,153 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     });
   });
 });
+
+describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
+  test("parses tooling tasks with cmds, service, description, and Alpha vars forms", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "tooling:",
+          "  composer:",
+          "    description: Run Composer in the appserver",
+          "    service: appserver",
+          "    cmd: composer",
+          "  test:",
+          "    description: Run the test suite",
+          "    service: appserver",
+          "    cmds:",
+          "      - composer install",
+          "      - phpunit",
+          "    vars:",
+          "      MODE: dev",
+          "      COUNT: 3",
+          "      DEBUG: true",
+          "      ENV:",
+          "        default: development",
+          "      SHA:",
+          "        sh: git rev-parse HEAD",
+          "      TAG:",
+          "        prompt: Enter the release tag",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+      const composer = landofile.tooling?.composer;
+      const t = landofile.tooling?.test;
+
+      expect(composer?.description).toBe("Run Composer in the appserver");
+      expect(composer?.service).toBe("appserver");
+      expect(composer?.cmd).toBe("composer");
+
+      expect(t?.service).toBe("appserver");
+      expect(t?.cmds).toEqual(["composer install", "phpunit"]);
+      expect(t?.vars?.MODE).toBe("dev");
+      expect(t?.vars?.COUNT).toBe(3);
+      expect(t?.vars?.DEBUG).toBe(true);
+      expect(t?.vars?.ENV).toEqual({ default: "development" });
+      expect(t?.vars?.SHA).toEqual({ sh: "git rev-parse HEAD" });
+      expect(t?.vars?.TAG).toEqual({ prompt: "Enter the release tag" });
+    });
+  });
+});
+
+describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () => {
+  const assertBetaRejection = (error: unknown, expectedSpecSection: string): void => {
+    expect(error).toBeInstanceOf(NotImplementedError);
+    if (!(error instanceof NotImplementedError)) return;
+    expect(error._tag).toBe("NotImplementedError");
+    expect(error.specSection).toBe(expectedSpecSection);
+    expect(error.remediation.toLowerCase()).toContain("beta");
+  };
+
+  const assertRejectsLandofile = async (
+    content: ReadonlyArray<string>,
+    expectedSpecSection: string,
+  ): Promise<void> => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), content.join("\n"));
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, expectedSpecSection);
+      }
+    });
+  };
+
+  test("rejects top-level `toolingDefaults:` with Beta remediation", async () => {
+    await assertRejectsLandofile(["name: myapp", "toolingDefaults:", "  method: checksum", ""], "§8.5");
+  });
+
+  test("rejects top-level `toolingIncludes:` with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "toolingIncludes:", "  docs:", "    file: ./docs/.lando.tasks.yml", ""],
+      "§8.5.8",
+    );
+  });
+
+  test("rejects top-level `events:` with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "events:", "  post-start:", "    - task: db-wait", ""],
+      "§8.5.7",
+    );
+  });
+
+  test("rejects top-level `commandAliases:` with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "commandAliases:", "  custom:", "    start: app-start", ""],
+      "§8.1.2",
+    );
+  });
+
+  test("rejects per-task `deps:` field with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  build:", "    cmd: make", "    deps:", "      - assets", ""],
+      "§8.5.2",
+    );
+  });
+
+  test("rejects per-task `engine:` field with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  echo:", "    cmd: echo hi", "    engine: host", ""],
+      "§8.5.1",
+    );
+  });
+
+  test("rejects unsafe `raw:` var form with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      [
+        "name: myapp",
+        "tooling:",
+        "  run:",
+        "    cmd: echo",
+        "    vars:",
+        "      X:",
+        '        raw: "$(date)"',
+        "",
+      ],
+      "§8.5.3",
+    );
+  });
+
+  test("rejects step-object `cmds[].task` entry with Beta remediation (not silent schema error)", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - task: assets", ""],
+      "§8.5.2",
+    );
+  });
+
+  test("rejects step-object `cmds[].command` entry with Beta remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - command: app:start", ""],
+      "§8.5.2",
+    );
+  });
+});

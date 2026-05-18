@@ -10,7 +10,11 @@ import {
   ProviderId,
   ServiceConfig,
   ServiceName,
+  ToolingTaskShape,
+  ToolingVar,
 } from "@lando/sdk/schema";
+
+const ALPHA_TOOLING_FIELDS = ["service", "description", "summary", "cmd", "cmds", "vars"] as const;
 
 const MVP_COMPOSE_SUBSET = ["image", "ports", "environment", "volumes", "command", "dependsOn"] as const;
 
@@ -160,5 +164,91 @@ describe("GlobalConfig (MVP)", () => {
   test("defaultProviderId accepts an explicit null (opt-out signal)", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({ defaultProviderId: null });
     expect(decoded.defaultProviderId).toBeNull();
+  });
+});
+
+describe("LandofileShape — tooling: Alpha schema", () => {
+  test("decodes tooling tasks with cmd, cmds, service, description, and summary", () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      tooling: {
+        composer: { service: "appserver", description: "Run Composer", cmd: "composer" },
+        test: {
+          service: "appserver",
+          summary: "Run the test suite",
+          cmds: ["composer install", "phpunit"],
+        },
+      },
+    });
+    expect(decoded.tooling?.composer?.service).toBe("appserver");
+    expect(decoded.tooling?.composer?.description).toBe("Run Composer");
+    expect(decoded.tooling?.composer?.cmd).toBe("composer");
+    expect(decoded.tooling?.test?.summary).toBe("Run the test suite");
+    expect(decoded.tooling?.test?.cmds).toEqual(["composer install", "phpunit"]);
+  });
+
+  test("decodes Alpha `vars:` forms: literal, default, sh, and prompt", () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      tooling: {
+        build: {
+          cmd: "make",
+          vars: {
+            MODE: "dev",
+            COUNT: 3,
+            DEBUG: true,
+            ENV: { default: "development" },
+            SHA: { sh: "git rev-parse HEAD" },
+            TAG: { prompt: "Enter the release tag" },
+          },
+        },
+      },
+    });
+    const vars = decoded.tooling?.build?.vars ?? {};
+    expect(vars.MODE).toBe("dev");
+    expect(vars.COUNT).toBe(3);
+    expect(vars.DEBUG).toBe(true);
+    expect(vars.ENV).toEqual({ default: "development" });
+    expect(vars.SHA).toEqual({ sh: "git rev-parse HEAD" });
+    expect(vars.TAG).toEqual({ prompt: "Enter the release tag" });
+  });
+
+  test("strict decoding rejects Beta-only task fields (`deps`)", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      { tooling: { test: { cmds: ["pytest"], deps: ["assets"] } } },
+      { onExcessProperty: "error" },
+    );
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("strict decoding rejects unsafe `raw:` var form", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      { tooling: { run: { cmd: "echo", vars: { X: { raw: "$(date)" } } } } },
+      { onExcessProperty: "error" },
+    );
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("strict decoding rejects step-object cmd entries (`task:`)", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      { tooling: { build: { cmds: [{ task: "assets" }] } } },
+      { onExcessProperty: "error" },
+    );
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("ToolingTaskShape exposes every Alpha-supported field as optional", () => {
+    const fields = Object.keys(ToolingTaskShape.fields);
+    for (const key of ALPHA_TOOLING_FIELDS) {
+      expect(fields).toContain(key);
+    }
+  });
+
+  test("ToolingVar decodes literal, default, sh, and prompt forms", () => {
+    expect(Schema.decodeUnknownSync(ToolingVar)("dev")).toBe("dev");
+    expect(Schema.decodeUnknownSync(ToolingVar)({ default: "latest" })).toEqual({ default: "latest" });
+    expect(Schema.decodeUnknownSync(ToolingVar)({ sh: "git rev-parse HEAD" })).toEqual({
+      sh: "git rev-parse HEAD",
+    });
+    expect(Schema.decodeUnknownSync(ToolingVar)({ prompt: "Tag?" })).toEqual({ prompt: "Tag?" });
   });
 });
