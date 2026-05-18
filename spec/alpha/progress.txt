@@ -2984,3 +2984,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior preserved: no command flow, public API, error handling, side effects, or return values changed.
 - Verification run and result: `lsp_diagnostics` clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (594 pass, 11 skip, 0 fail).
 ---
+
+## [2026-05-18 15:40 CDT] - Push (US-022)
+- Branch pushed: us-022-exec-ssh-shell → origin/us-022-exec-ssh-shell
+- Commits: 1b20b7d feat: Implement lando exec, lando ssh, and lando shell; 4681129 fix(US-022): compiled --cwd parity, service resolution order, shell launcher; 215d6bb chore: remove AI slop; 2472de4 fix: strip trailing newline from exec stdout before console.log passthrough
+- PR: #98 https://github.com/AaronFeledy/core4/pull/98 (created)
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Cursor Bugbot NEUTRAL then SUCCESS after fix)
+- Review feedback: Bugbot (COMMENTED) reported 1 real issue — double trailing newline in renderExecAppResult: stdout ends with \n and console.log/this.log each append another \n. Fixed: strip one trailing \n in renderExecAppResult before return. Committed as 2472de4, pushed; CI re-run all green including Bugbot passing.
+- Triage rounds used: 1
+- Merge: merged (squash) — squash commit e84500f "Implement lando exec, ssh, and shell commands (#98)"
+- Local main / branch refreshed: yes (reset --hard to origin/main e84500f; story branch deleted on remote by --delete-branch)
+- Remaining local state: on main, working tree clean
+---
