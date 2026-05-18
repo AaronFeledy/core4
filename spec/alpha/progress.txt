@@ -1289,6 +1289,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: on main at 6763fa1
 ---
 
+## [2026-05-18 04:00 CDT] - Sync
+- Previous branch: us-015-lando-env-contract
+- Previous PR: #91 https://github.com/AaronFeledy/core4/pull/91
+- Action: caught up after prior merge (PR #91 was already MERGED; remote branch deleted)
+- Local main updated: yes (already at origin/main f421d4b; git pull --ff-only confirmed up to date)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 03:52 CDT] - US-015 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed all US-015 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
 - Files changed by cleanup: `plugins/service-lando/src/services/compose.ts`, `plugins/service-lando/src/services/php.ts`, `spec/alpha/progress.txt`.
