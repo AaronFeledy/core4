@@ -302,3 +302,22 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: removed redundant local Podman API aliases/duplicate guards and replaced a nested bind-mount performance ternary with a typed helper. No public APIs, imports, error handling, side effects, return values, or test assertions changed.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test plugins/provider-lando/test/bring-up.integration.test.ts plugins/provider-lando/test/redact.test.ts plugins/provider-lando/test/capabilities.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed. Full serial `bun test --concurrency=1` passed (294 pass, 11 skip, 0 fail).
 ---
+
+## [2026-05-17 18:55] - Sync
+- Previous branch: us-006-harden-provider-cleanup
+- Previous PR: #80 https://github.com/AaronFeledy/core4/pull/80
+- Action: caught up after prior merge (PR #80 was already MERGED)
+- Local main updated: yes (already up to date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-17 19:05 CDT] - US-007
+- Implemented provider diagnostics in `meta:doctor`: extended `DoctorCheck` with severity, context, runtime info (running/message/version), and §10.9 solution records carrying `automatic` or `manual` remediation. Added `renderDoctorResultAsNdjson()` JSON renderer that emits a deterministic NDJSON event stream (`doctor.start` → one `doctor.check` per check → `doctor.complete`) and the named snapshot fixture `core/test/cli/fixtures/meta-doctor.provider-status.ndjson`.
+- Files changed: `core/src/cli/commands/doctor.ts`, `core/test/cli/doctor.test.ts`, `core/test/cli/fixtures/meta-doctor.provider-status.ndjson` (new), `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun test core/test/cli/doctor.test.ts` passed (8 pass, 85 expect calls); `bun run typecheck` passed; `bun run lint` passed (269 files); `bun test --concurrency=1` passed (299 pass, 11 skip, 0 fail — +5 net new doctor tests); `bun run build` passed. Manual host CLI QA: source and compiled `lando doctor` both hit the pre-existing "Unable to read the default runtime provider configuration." host-environment error (reproduces on `main` too); `lando4-dev` sandbox entry failed with `wsl.exe: cannot execute binary file` as documented in the US-005 entry, so full provider-state CLI run was deferred. Unit tests fully cover both text and NDJSON renderer paths against `TestRuntimeProvider`, including capability fields, runtime version, severity/context/solutions, deterministic-timestamp NDJSON fixture round-trip, and the `running:false` warn-with-manual-solution path.
+- **Learnings for future iterations:**
+  - Patterns discovered: doctor checks return a structured `DoctorCheck` (status/severity/context/solutions/runtime/capabilities) so the JSON renderer can emit one NDJSON event per check while the text renderer keeps line-oriented output. Inject `new Date()` as `options.now` for snapshot determinism rather than freezing wall time in the test harness.
+  - Gotchas encountered: `bun core/bin/lando.ts doctor` and `./core/dist/lando doctor` both fail with the runtime-provider configuration error on a raw host that has never run `lando setup`; this is pre-existing and not a regression. Snapshot fixtures should be regenerated through a small Bun script (or test write-mode) when the underlying capability shape changes, since `JSON.stringify` key order is positional — `orderCapabilityKeys`/`orderContextKeys` enforce stable key order in the NDJSON output.
+  - Useful context: §10.9 solution records have `kind: "automatic" | "manual"`, with `automatic` reserved for `--fix`-runnable commands and `manual` for instructions doctor can't safely execute. Alpha doctor emits only `manual` solutions because no automatic remediation is wired through `--fix` yet.
+---
