@@ -1480,3 +1480,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: tightened several wording-only repo guidance lines in `AGENTS.md`, removed redundant module-level explanatory docblocks from the US-018 tooling command/engine files, and kept the small `cmds` local binding in `normalizeCommands` without the non-null assertion introduced by an initial cleanup pass. Rejected and reverted overbroad documentation removal from `core/src/runtime/layer.ts` and `sdk/src/services/index.ts` because those comments document durable runtime/public API contracts rather than disposable AI slop.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed.
 ---
+
+## [2026-05-18 07:45 CDT] - Push
+- Branch pushed: us-018-provider-exec-tooling-engine → origin
+- Commits: 71d9a4c (slop cleanup docs), e96cc33 (chore), 29f4af4 (fix), 31564a1 (feat), 07adc30 (sync docs)
+- PR: #94 https://github.com/AaronFeledy/core4/pull/94 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL)
+- Review feedback: none (Cursor Bugbot NEUTRAL comment, not CHANGES_REQUESTED — not a work item)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 130c083
+- Local main / branch refreshed: yes (main reset to origin/main at 130c083; story branch deleted)
+- Remaining local state: clean, on main
+---
