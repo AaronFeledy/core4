@@ -52,13 +52,21 @@ describe("@lando/service-lando registration", () => {
 
     if (manifest.contributes === undefined) throw new Error("service-lando manifest contributions missing");
     expect(manifest.contributes.serviceTypes).toEqual([
+      "apache",
+      "compose",
+      "mariadb",
+      "mysql",
+      "nginx",
       "node:lts",
       "node:22",
       "postgres",
       "php:8.2",
       "php:8.3",
       "python:3.12",
+      "redis",
       "ruby:3.3",
+      "static",
+      "static:caddy",
     ]);
   });
 

@@ -29,6 +29,11 @@ const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.image?.startsWith("node:22")) return "node:22";
   if (service.image?.startsWith("node:")) return "node:lts";
   if (service.image?.startsWith("postgres")) return "postgres";
+  if (service.image?.startsWith("mysql")) return "mysql";
+  if (service.image?.startsWith("mariadb")) return "mariadb";
+  if (service.image?.startsWith("redis")) return "redis";
+  if (service.image?.startsWith("nginx")) return "nginx";
+  if (service.image?.startsWith("httpd")) return "apache";
   if (service.image?.startsWith("php:8.2")) return "php:8.2";
   if (service.image?.startsWith("php:8.3")) return "php:8.3";
   if (service.image?.startsWith("python:3.12")) return "python:3.12";
@@ -196,6 +201,18 @@ const planApp = (
       services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
     }
 
+    const stores: Array<{ name: string; scope: "service" | "app" | "global" }> = [];
+    const seenStoreNames = new Set<string>();
+    for (const encodedService of Object.values(services)) {
+      const planRecord = encodedService as { storage?: ReadonlyArray<{ store: string }> };
+      const storageMounts = planRecord.storage ?? [];
+      for (const mount of storageMounts) {
+        if (seenStoreNames.has(mount.store)) continue;
+        seenStoreNames.add(mount.store);
+        stores.push({ name: mount.store, scope: "service" });
+      }
+    }
+
     return yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
@@ -205,7 +222,7 @@ const planApp = (
       services,
       routes: [],
       networks: [],
-      stores: [],
+      stores,
       metadata,
       extensions: {},
     });

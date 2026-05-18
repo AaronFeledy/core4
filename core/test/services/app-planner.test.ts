@@ -286,7 +286,7 @@ describe("AppPlannerLive", () => {
         runtime: 4,
         services: {
           [ServiceName.make("cache")]: {
-            type: "redis",
+            type: "totally-not-a-service",
             image: "redis:7",
           },
         },
@@ -421,6 +421,48 @@ describe("AppPlannerLive", () => {
           }
         }
       }
+    });
+  });
+
+  test("aggregates per-service storage mounts into AppPlan.stores with default service scope", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "stockapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("db")]: { type: "postgres" },
+          [ServiceName.make("cache")]: { type: "redis" },
+        },
+      });
+
+      expect(appPlan.stores).toHaveLength(2);
+      expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
+      const postgresMount = appPlan.services[ServiceName.make("db")]?.storage[0]?.store;
+      const redisMount = appPlan.services[ServiceName.make("cache")]?.storage[0]?.store;
+      expect(postgresMount).toBeDefined();
+      expect(redisMount).toBeDefined();
+      const storeNames = appPlan.stores.map((s) => s.name).sort();
+      expect(storeNames).toEqual([postgresMount ?? "", redisMount ?? ""].sort());
+    });
+  });
+
+  test("aggregates compose-declared named volumes into AppPlan.stores so destroy can preserve them", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "composeapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("worker")]: {
+            type: "compose",
+            image: "alpine:3",
+            volumes: ["worker-state:/var/state", "worker-cache:/var/cache"],
+          },
+        },
+      });
+
+      const storeNames = appPlan.stores.map((s) => s.name).sort();
+      expect(storeNames).toEqual(["composeapp-worker-cache", "composeapp-worker-state"]);
+      expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
     });
   });
 

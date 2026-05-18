@@ -590,6 +590,17 @@ export const ServiceConfig = Schema.Struct({
   healthcheck: Schema.optional(HealthcheckInput),
   hostnames: Schema.optional(Schema.Array(Schema.String)),
   dependsOn: Schema.optional(Schema.Array(Schema.String)),
+
+  composeBuild: Schema.optional(
+    Schema.Struct({
+      context: Schema.String,
+      dockerfile: Schema.optional(Schema.String),
+      args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+      target: Schema.optional(Schema.String),
+    }),
+  ),
+
+  providers: Schema.optional(ProviderExtensionConfig),
 });
 export type ServiceConfig = typeof ServiceConfig.Type;
 

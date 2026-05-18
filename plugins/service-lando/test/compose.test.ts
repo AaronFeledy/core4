@@ -1,0 +1,211 @@
+import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
+
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+
+import { composeServiceType } from "../src/services/compose.ts";
+
+const metadata = {
+  resolvedAt: "2026-05-18T08:00:00Z",
+  source: "/srv/apps/myapp/.lando.yml",
+  runtime: 4 as const,
+};
+
+describe("compose ServiceType (raw passthrough)", () => {
+  test("accepts image:, short-form ports, and named volumes", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        worker: {
+          type: "compose",
+          image: "ghcr.io/example/worker:1.2.3",
+          ports: ["9000:9000", "9001:9001/udp"],
+          volumes: ["worker-data:/var/lib/worker"],
+          environment: { WORKER_ENV: "prod" },
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("worker")];
+    if (service === undefined) throw new Error("worker service missing");
+
+    const plan = composeServiceType.toServicePlan({
+      name: "worker",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.type).toBe("compose");
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "ghcr.io/example/worker:1.2.3" });
+    expect(plan.environment).toEqual({ WORKER_ENV: "prod" });
+    expect(plan.endpoints).toEqual([
+      { port: 9000, protocol: "tcp", name: "worker" },
+      { port: 9001, protocol: "udp", name: "worker" },
+    ]);
+    expect(plan.storage).toHaveLength(1);
+    expect(plan.storage[0]?.store).toBe("myapp-worker-data");
+    expect(String(plan.storage[0]?.target)).toBe("/var/lib/worker");
+    expect(plan.mounts).toEqual([]);
+  });
+
+  test("accepts relative bind volumes resolved against appRoot", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        worker: {
+          type: "compose",
+          image: "alpine:3",
+          volumes: ["./config:/etc/worker:ro"],
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("worker")];
+    if (service === undefined) throw new Error("worker service missing");
+
+    const plan = composeServiceType.toServicePlan({
+      name: "worker",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({
+      type: "bind",
+      source: "/srv/apps/myapp/config",
+      target: "/etc/worker",
+      readOnly: true,
+    });
+    expect(plan.storage).toEqual([]);
+  });
+
+  test("accepts Compose composeBuild: block", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        api: {
+          type: "compose",
+          composeBuild: {
+            context: "./services/api",
+            dockerfile: "Dockerfile.prod",
+            args: { NODE_ENV: "production" },
+            target: "runtime",
+          },
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("api")];
+    if (service === undefined) throw new Error("api service missing");
+
+    const plan = composeServiceType.toServicePlan({
+      name: "api",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.artifact).toMatchObject({
+      kind: "build",
+      context: "/srv/apps/myapp/services/api",
+      spec: "Dockerfile.prod",
+      args: { NODE_ENV: "production" },
+      target: "runtime",
+    });
+  });
+
+  test("routes provider-specific extensions through service.providers.<id>", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        api: {
+          type: "compose",
+          image: "alpine:3",
+          providers: {
+            lando: { labels: { "com.example.team": "platform" } },
+            docker: { restart: "unless-stopped" },
+          },
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("api")];
+    if (service === undefined) throw new Error("api service missing");
+
+    const plan = composeServiceType.toServicePlan({
+      name: "api",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.extensions).toEqual({
+      lando: { labels: { "com.example.team": "platform" } },
+      docker: { restart: "unless-stopped" },
+    });
+  });
+
+  test("rejects compose service without image: or composeBuild:", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { api: { type: "compose" } },
+    });
+    const service = landofile.services?.[ServiceName.make("api")];
+    if (service === undefined) throw new Error("api service missing");
+
+    expect(() =>
+      composeServiceType.toServicePlan({
+        name: "api",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      }),
+    ).toThrow(/requires either "image:" or "composeBuild:"/);
+  });
+
+  test("rejects compose service that declares both image: and composeBuild:", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        api: {
+          type: "compose",
+          image: "alpine:3",
+          composeBuild: { context: "./svc" },
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("api")];
+    if (service === undefined) throw new Error("api service missing");
+
+    expect(() =>
+      composeServiceType.toServicePlan({
+        name: "api",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      }),
+    ).toThrow(/must declare exactly one of "image:" or "composeBuild:"/);
+  });
+
+  test("rejects Lando-style build: blocks (use composeBuild instead)", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: {
+        api: {
+          type: "compose",
+          image: "alpine:3",
+          build: { artifact: "RUN echo hi" },
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("api")];
+    if (service === undefined) throw new Error("api service missing");
+
+    expect(() =>
+      composeServiceType.toServicePlan({
+        name: "api",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      }),
+    ).toThrow(/does not accept Lando "build:".*Use "composeBuild:"/);
+  });
+});
