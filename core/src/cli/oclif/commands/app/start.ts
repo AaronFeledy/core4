@@ -2,7 +2,12 @@ import { type StartAppResult, renderStartAppResult, startApp } from "../../../co
 /**
  * `lando app:start` — OCLIF wrapper.
  */
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  extractSpecAbortSignal,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 export const startSpec: LandoCommandSpec<StartAppResult> = {
   id: "app:start",
@@ -11,10 +16,7 @@ export const startSpec: LandoCommandSpec<StartAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: (input) => {
-    const signal =
-      typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
-        ? input.signal
-        : undefined;
+    const signal = extractSpecAbortSignal(input);
     return startApp(signal === undefined ? {} : { signal });
   },
   render: (result) => renderStartAppResult(result as StartAppResult),

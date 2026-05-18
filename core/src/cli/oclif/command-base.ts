@@ -149,6 +149,19 @@ const commandErrorMessage = (error: unknown): string => {
 };
 
 /**
+ * Extract the `AbortSignal` passed by `runEffect` into `spec.run({ argv, signal })`.
+ *
+ * OCLIF specs whose underlying `*App` callable accepts a `signal` should use this
+ * helper inside `run:` to keep the source-path SIGINT/SIGTERM abort wired up.
+ * Mirrors the threading done by the compiled `$bunfs` handlers in `run.ts` so
+ * source and compiled paths stay at parity.
+ */
+export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>
+  typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
+    ? input.signal
+    : undefined;
+
+/**
  * Resolve the OCLIF `aliases` array for a `LandoCommandSpec` from its
  * `topLevelAlias` rule. Returns the merged alias list,
  * including any explicit `aliases` already on the spec.
