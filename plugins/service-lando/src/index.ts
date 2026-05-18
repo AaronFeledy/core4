@@ -1,9 +1,3 @@
-/**
- * `@lando/service-lando` — the opinionated `lando` service base.
- *
- * Status: stub. Manifest at `./plugin.yaml`. Service-type and feature
- * modules will land under `./src/service-type.ts` and `./src/features/*.ts`.
- */
 import { Layer, Schema } from "effect";
 
 import { PluginManifest } from "@lando/sdk/schema";

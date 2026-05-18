@@ -450,3 +450,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: existing tests that pinned framework rejection at the schema layer (`onExcessProperty: "error"` against `ServiceConfig`) need to migrate to per-type plan-time assertions when a story adds framework support; the `package.test.ts` smoke test pins the exact `serviceTypes` map keys and `manifest.contributes.serviceTypes` list and must be updated when service-lando adds catalog entries.
   - Useful context: `ServiceTypePlanInput.appName` was added as an optional field threaded by `AppPlanner.plan` so service types can emit accurate `LANDO_APP_NAME`/`LANDO_PROJECT` env without falling back to `basename(appRoot)` heuristics; existing node/postgres types remain unchanged because they don't consume the field.
 ---
+
+## [2026-05-17 22:48 CDT] - US-009 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-009 branch changes; critical review kept only behavior-preserving cleanup and rejected broad comment deletion in shared SDK/progress files as useful context, restoring those files before verification.
+- Files changed by cleanup: `plugins/service-lando/src/index.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed a stale `@lando/service-lando` stub header comment. No public APIs, imports, error handling, side effects, or return values changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test` passed (exit 0; Bun emitted only the test banner in this run).
+---
