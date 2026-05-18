@@ -1222,3 +1222,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: removed impossible regex-capture `undefined` guards in the dependency-free Landofile parser, removed a redundant `appMount.realization` rewrite in planner shadow expansion, removed redundant temp-dir `realpath()` use in the Landofile tests, and replaced awkward null-coercion assertions with explicit union narrowing. Parser regexes, planner storage/appMount behavior, public APIs, errors, side effects, and test coverage are preserved.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; focused `CI=1 bun test core/test/services/landofile.test.ts core/test/services/app-planner.test.ts --concurrency=1` passed (23 pass, 0 fail); `bun run build` passed; full `CI=1 bun test --concurrency=1` passed once (392 pass, 11 skip, 0 fail). A subsequent repeat full-suite run failed in unrelated compiled CLI build/lint-gate setup tests, but direct `bun run lint` and `bun run build:compile` rechecks both passed on the unchanged cleanup tree.
 ---
+
+## [2026-05-18 02:51 CDT] - Push
+- Branch pushed: us-014-alpha-mount-storage (3 commits: 513ba11 feat, 2a1df7a docs, 51f1bda chore)
+- PR: #90 https://github.com/AaronFeledy/core4/pull/90 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL)
+- Review feedback: Cursor Bugbot reported 1 potential issue (Low Severity) — `kebab` function lossy, theoretical shadow-volume name collision (`node_modules` / `node-modules` produce same store name). reviewDecision empty (not CHANGES_REQUESTED); Bugbot conclusion NEUTRAL — treated as non-blocking per loop rules. Consistent with PR #89 handling. Deferred: the `kebab` collision is valid but only manifests if two distinct excludes normalize identically, which is extremely edge case in Alpha, and provider apply layers don't wire shadow mounts yet.
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 73e23fd on main "Support Alpha mount and storage semantics (#90)"
+- Local main / branch refreshed: yes — fast-forward to 73e23fd, local us-014-alpha-mount-storage deleted, remote tracking ref pruned
+- Remaining local state: none
+---
