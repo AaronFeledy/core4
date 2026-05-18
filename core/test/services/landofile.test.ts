@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -15,7 +15,7 @@ import { LandofileService } from "@lando/core/services";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-landofile-service-")));
+  const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-"));
   const previousCwd = process.cwd();
   try {
     return await run(dir);
@@ -230,18 +230,24 @@ describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () =
       expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
       expect(web?.mounts?.[0]).toBe("./config:/etc/app:ro");
       const volumeMount = web?.mounts?.[1];
-      expect(typeof volumeMount === "string" ? null : volumeMount).toEqual({
-        type: "volume",
-        source: "shared-vol",
-        target: "/data",
-      });
+      expect(typeof volumeMount).not.toBe("string");
+      if (typeof volumeMount !== "string") {
+        expect(volumeMount).toEqual({
+          type: "volume",
+          source: "shared-vol",
+          target: "/data",
+        });
+      }
       const scopedStorage = web?.storage?.[1];
       expect(web?.storage?.[0]).toBe("/var/lib/cache");
-      expect(typeof scopedStorage === "string" ? null : scopedStorage).toEqual({
-        store: "scoped-vol",
-        target: "/scoped",
-        scope: "app",
-      });
+      expect(typeof scopedStorage).not.toBe("string");
+      if (typeof scopedStorage !== "string") {
+        expect(scopedStorage).toEqual({
+          store: "scoped-vol",
+          target: "/scoped",
+          scope: "app",
+        });
+      }
     });
   });
 });

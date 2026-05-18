@@ -153,7 +153,6 @@ const expandExcludesToShadows = (
   appName: string,
   serviceName: string,
   servicePlan: ServicePlan,
-  realization: "passthrough" | "accelerated",
 ): {
   servicePlan: ServicePlan;
   shadowStores: ReadonlyArray<{ name: string; scope: StorageScope }>;
@@ -187,7 +186,6 @@ const expandExcludesToShadows = (
 
   const nextPlan: ServicePlan = {
     ...servicePlan,
-    appMount: { ...appMount, realization },
     storage: [...servicePlan.storage, ...shadowMounts],
   };
 
@@ -283,7 +281,7 @@ const planApp = (
       }
 
       const realization = bindRealization(providerCapabilities);
-      const shadowResult = expandExcludesToShadows(appName, name, servicePlan, realization);
+      const shadowResult = expandExcludesToShadows(appName, name, servicePlan);
       const planWithShadows = shadowResult.servicePlan;
 
       const servicePlanWithCapabilityRealization: ServicePlan = {

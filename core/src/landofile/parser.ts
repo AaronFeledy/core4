@@ -124,10 +124,7 @@ const parseMap = (
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
 
-    const [, key, rawValue] = match;
-    if (key === undefined || rawValue === undefined) {
-      throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
-    }
+    const [, key, rawValue] = match as [string, string, string];
 
     if (rawValue.trim() === "") {
       const next = lines[index + 1];
@@ -188,22 +185,20 @@ const parseList = (
 
     const mapMatch = value.match(/^([A-Za-z_][A-Za-z0-9_-]*):(?:\s+(.*))?$/);
     if (mapMatch !== null) {
-      const [, firstKey, firstRawValueRaw] = mapMatch;
+      const [, firstKey, firstRawValueRaw] = mapMatch as [string, string, string?];
       const firstRawValue = firstRawValueRaw ?? "";
-      if (firstKey !== undefined) {
-        const [item, nextIndex] = parseListItemMap(
-          lines,
-          filePath,
-          index,
-          line,
-          indent + 2,
-          firstKey,
-          firstRawValue,
-        );
-        result.push(item);
-        index = nextIndex;
-        continue;
-      }
+      const [item, nextIndex] = parseListItemMap(
+        lines,
+        filePath,
+        index,
+        line,
+        indent + 2,
+        firstKey,
+        firstRawValue,
+      );
+      result.push(item);
+      index = nextIndex;
+      continue;
     }
 
     result.push(parseScalar(value, filePath, line.line));
@@ -265,10 +260,7 @@ const parseListItemMap = (
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
-    const [, key, rawValue] = match;
-    if (key === undefined || rawValue === undefined) {
-      throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
-    }
+    const [, key, rawValue] = match as [string, string, string];
     index += 1;
     consumeKey(key, rawValue, line.line, childIndent);
   }
