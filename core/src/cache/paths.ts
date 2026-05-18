@@ -12,7 +12,10 @@ const trimTrailingSlashes = (path: string): string => path.replace(/\/+$/u, "");
 
 const sanitizeAppName = (appName: string): string => {
   const cleaned = appName.replace(/[^A-Za-z0-9._-]+/gu, "-").replace(/^-+|-+$/gu, "");
-  return cleaned.length === 0 ? "unnamed" : cleaned;
+  // Reject all-dot names (`.`, `..`, `...`) so they can't escape the
+  // `<cacheRoot>/apps/<name>/` namespace via path normalization.
+  if (cleaned.length === 0 || /^\.+$/u.test(cleaned)) return "unnamed";
+  return cleaned;
 };
 
 export const pluginCommandCachePath = (cacheRoot: string): string =>
