@@ -57,6 +57,7 @@ import type {
   ServiceNotFoundError,
   ServiceStartError,
   ShellExecError,
+  ToolingExecError,
 } from "../errors/index.ts";
 
 export type ProviderError =
@@ -562,13 +563,63 @@ export class Telemetry extends Context.Tag("@lando/core/Telemetry")<
 >() {}
 
 /**
+ * A normalized tooling invocation passed to a `ToolingEngine`.
+ *
+ * The compiler converts a parsed Landofile `tooling.<name>` task plus any
+ * pass-through CLI args into one or more provider exec calls. The engine
+ * does not see `cmd:` / `cmds:` / shell-wrapping rules directly — only the
+ * argv form it should hand to `RuntimeProvider.exec` (or its host
+ * equivalent). The order of `commands` is significant; engines execute
+ * them sequentially and stop at the first non-zero exit code.
+ */
+export interface ToolingInvocation {
+  /** Tooling task name (the Landofile `tooling.<name>` key). */
+  readonly tool: string;
+  /** Optional declared service from the task; falls back to primary. */
+  readonly service?: string;
+  /** Optional unix user to execute as. */
+  readonly user?: string;
+  /** Optional working directory inside the service. */
+  readonly cwd?: string;
+  /** Optional environment overlay applied to every command. */
+  readonly env?: Readonly<Record<string, string>>;
+  /** Pre-normalized argv forms, executed in order. */
+  readonly commands: ReadonlyArray<ReadonlyArray<string>>;
+}
+
+/**
+ * Result of executing a tooling invocation: the exit code of the last
+ * command that ran plus the aggregated stdout/stderr captured across all
+ * commands.
+ */
+export interface ToolingEngineResult {
+  readonly tool: string;
+  readonly service: string;
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+}
+
+/**
  * ToolingEngine — translate a tooling invocation into a sequence of provider
  * operations. Default: `providerExec`.
+ *
+ * Selection precedence: `tooling.<name>.engine` → Landofile-level
+ * `toolingEngine` → global config `toolingEngine` → default `providerExec`.
+ *
+ * Engines receive a fully-normalized invocation (argv form, resolved service
+ * name still authored as the task `service:` value, etc.) and an `AppPlan`
+ * for any plan-level data they need (primary-service lookup, provider id).
  */
 export class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
   ToolingEngine,
   {
     readonly id: string;
+    readonly run: (
+      invocation: ToolingInvocation,
+      plan: AppPlan,
+      provider: RuntimeProviderShape,
+    ) => Effect.Effect<ToolingEngineResult, ProviderError | ToolingExecError>;
   }
 >() {}
 

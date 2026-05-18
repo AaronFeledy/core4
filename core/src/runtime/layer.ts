@@ -30,6 +30,7 @@ import {
   type Logger,
   RuntimeProvider,
   type RuntimeProviderRegistry,
+  type ToolingEngine,
 } from "@lando/sdk/services";
 
 import { LandofileServiceLive } from "../landofile/service.ts";
@@ -40,6 +41,7 @@ import { CommandRegistryLive } from "../services/command-registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { AppPlannerLive } from "../services/planner.ts";
+import { ProviderExecToolingEngineLive } from "../services/tooling-engine.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
 // Differences from CLI defaults:
@@ -136,7 +138,8 @@ export type AppRuntimeServices =
   | LandofileService
   | CommandRegistry
   | AppPlanner
-  | EventService;
+  | EventService
+  | ToolingEngine;
 type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<MinimalRuntimeServices>
@@ -247,6 +250,7 @@ const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
     AppPlannerLive.pipe(Layer.provide(PluginRegistryLive)),
+    ProviderExecToolingEngineLive,
   );
 
 const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {
