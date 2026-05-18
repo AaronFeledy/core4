@@ -280,4 +280,36 @@ describe("php:8.3 ServiceType", () => {
       }),
     ).toThrow(/Unsupported PHP version "8.4"/);
   });
+
+  test("rejects user environment that targets reserved LANDO_* keys (spec §6.9)", () => {
+    const service = decodeService({
+      type: "php:8.2",
+      environment: { LANDO_PROJECT: "evil", FOO: "bar" },
+    });
+    expect(() =>
+      php82ServiceType.toServicePlan({
+        name: "web",
+        service,
+        appRoot: APP_ROOT,
+        appName: "myapp",
+        metadata,
+      }),
+    ).toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+  });
+
+  test("rejects bare reserved key 'LANDO' on user environment", () => {
+    const service = decodeService({
+      type: "php:8.2",
+      environment: { LANDO: "OFF" },
+    });
+    expect(() =>
+      php82ServiceType.toServicePlan({
+        name: "web",
+        service,
+        appRoot: APP_ROOT,
+        appName: "myapp",
+        metadata,
+      }),
+    ).toThrow(/reserved LANDO_\* keys.*LANDO/);
+  });
 });

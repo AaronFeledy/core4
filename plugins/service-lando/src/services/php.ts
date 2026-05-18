@@ -67,30 +67,40 @@ const workingDirectoryFor = (framework: SupportedPhpFramework): string => {
   return webroot === "" ? "/app" : `/app/${webroot}`;
 };
 
+const RESERVED_ENV_PREFIX = "LANDO" as const;
+
 const buildEnv = (
-  appName: string,
   serviceName: string,
+  appName: string,
   serviceType: string,
   framework: SupportedPhpFramework,
   userEnv: Record<string, string>,
 ): Record<string, string> => {
-  const env: Record<string, string> = {
-    LANDO: "ON",
-    LANDO_APP_NAME: appName,
-    LANDO_APP_KIND: "user",
-    LANDO_APP_ROOT: "/app",
-    LANDO_PROJECT: slug(appName),
-    LANDO_PROJECT_MOUNT: "/app",
-    LANDO_SERVICE_API: "4",
-    LANDO_SERVICE_NAME: serviceName,
-    LANDO_SERVICE_TYPE: serviceType,
-  };
+  const reservedKeys = Object.keys(userEnv).filter(
+    (key) => key === RESERVED_ENV_PREFIX || key.startsWith(`${RESERVED_ENV_PREFIX}_`),
+  );
+  if (reservedKeys.length > 0) {
+    throw new Error(
+      `User environment cannot override reserved LANDO_* keys (spec §6.9): ${reservedKeys.join(", ")}. ` +
+        `Remove these from services.${serviceName}.environment; plugins use LANDO_PLUGIN_<NAME>_* instead.`,
+    );
+  }
+  const env: Record<string, string> = {};
   for (const [key, value] of FRAMEWORK_ENV[framework]) {
     env[key] = value;
   }
   for (const [key, value] of Object.entries(userEnv)) {
     env[key] = value;
   }
+  env.LANDO = "ON";
+  env.LANDO_APP_NAME = appName;
+  env.LANDO_APP_KIND = "user";
+  env.LANDO_APP_ROOT = "/app";
+  env.LANDO_PROJECT = slug(appName);
+  env.LANDO_PROJECT_MOUNT = "/app";
+  env.LANDO_SERVICE_API = "4";
+  env.LANDO_SERVICE_NAME = serviceName;
+  env.LANDO_SERVICE_TYPE = serviceType;
   return env;
 };
 
@@ -124,7 +134,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => (
     const appName = appNameFor(input);
     const serviceType = `php:${resolvedVersion}`;
     const workingDirectory = service.workingDirectory ?? PortablePath.make(workingDirectoryFor(framework));
-    const environment = buildEnv(appName, name, serviceType, framework, service.environment ?? {});
+    const environment = buildEnv(name, appName, serviceType, framework, service.environment ?? {});
     const endpointPort = service.port ?? HEALTHCHECK_PORT;
 
     return Schema.decodeUnknownSync(ServicePlan)({

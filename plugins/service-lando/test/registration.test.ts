@@ -98,4 +98,34 @@ describe("@lando/service-lando registration", () => {
     expect(api.environment.LANDO_SERVICE_TYPE).toBe("php:8.3");
     expect(api.environment.LANDO_WEBROOT).toBe("/app/public");
   });
+
+  test("AppPlanner rejects unsupported php versions with PHP-family remediation", async () => {
+    await expect(
+      plan({
+        name: "php-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "php:8.4" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type php:8\.4.*Supported alternatives:.*php:8\.2.*php:8\.3/);
+
+    await expect(
+      plan({
+        name: "php-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "php:8.1" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type php:8\.1.*Supported alternatives:.*php:8\.2.*php:8\.3/);
+  });
+
+  test("AppPlanner rejects unknown non-family service types with registered-types remediation", async () => {
+    await expect(
+      plan({
+        name: "weird-app",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "totally-fake-type" } },
+      }),
+    ).rejects.toThrow(
+      /Unsupported service type totally-fake-type.*Registered service types:.*node:lts.*php:8\.2.*php:8\.3.*postgres/,
+    );
+  });
 });

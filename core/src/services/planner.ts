@@ -33,12 +33,27 @@ const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   return name;
 };
 
-const unsupportedServiceType = (appRoot: string, serviceName: string, serviceType: string) =>
-  new LandofileValidationError({
-    message: `Unsupported service type ${serviceType} for service ${serviceName}.`,
+const unsupportedServiceType = (
+  appRoot: string,
+  serviceName: string,
+  serviceType: string,
+  registeredTypeIds: ReadonlyArray<string>,
+) => {
+  const colonIdx = serviceType.indexOf(":");
+  const prefix = colonIdx > 0 ? serviceType.slice(0, colonIdx + 1) : null;
+  const familyMatches = prefix === null ? [] : registeredTypeIds.filter((id) => id.startsWith(prefix)).sort();
+  const remediation =
+    familyMatches.length > 0
+      ? ` Supported alternatives: ${familyMatches.join(", ")}.`
+      : registeredTypeIds.length > 0
+        ? ` Registered service types: ${[...registeredTypeIds].sort().join(", ")}.`
+        : "";
+  return new LandofileValidationError({
+    message: `Unsupported service type ${serviceType} for service ${serviceName}.${remediation}`,
     file: `${appRoot}/.lando.yml`,
     issues: [`services.${serviceName}.type`],
   });
+};
 
 const missingCapability = (
   providerId: ProviderId,
@@ -92,11 +107,29 @@ const planApp = (
   const services: Record<string, unknown> = {};
 
   return Effect.gen(function* () {
+    const manifests = yield* pluginRegistry.list.pipe(
+      Effect.mapError(
+        (error) =>
+          new LandofileValidationError({
+            message: `Failed to enumerate plugin contributions: ${error instanceof Error ? error.message : String(error)}.`,
+            file: `${appRoot}/.lando.yml`,
+            issues: [],
+          }),
+      ),
+    );
+    const registeredServiceTypeIds = manifests.flatMap(
+      (manifest) => manifest.contributes?.serviceTypes ?? [],
+    );
+
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
       const serviceTypeId = serviceTypeFor(name, service);
       const serviceType = yield* pluginRegistry
         .loadServiceType(serviceTypeId)
-        .pipe(Effect.mapError(() => unsupportedServiceType(appRoot, name, serviceTypeId)));
+        .pipe(
+          Effect.mapError(() =>
+            unsupportedServiceType(appRoot, name, serviceTypeId, registeredServiceTypeIds),
+          ),
+        );
 
       const servicePlan = serviceType.toServicePlan({
         name,
