@@ -215,6 +215,52 @@ describe("discoverBunShellScripts", () => {
     });
   });
 
+  test("rejects Beta-only front-matter list-form keys (sources:) with NotImplementedError", async () => {
+    await withAppRoot(async (root) => {
+      await writeScript(
+        root,
+        "beta-sources.bun.sh",
+        [
+          "# ---",
+          "# desc: sources list is Beta-deferred",
+          "# sources:",
+          "#   - src/**/*",
+          "#   - package.json",
+          "# ---",
+          "echo hi",
+          "",
+        ].join("\n"),
+      );
+      const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
+      expect(failure._tag).toBe("NotImplementedError");
+      expect(failure.specSection).toBe("§8.5.6");
+      expect(failure.commandId).toBe("landofile.parse");
+    });
+  });
+
+  test("rejects Beta-only front-matter object-form keys (flags:) with NotImplementedError", async () => {
+    await withAppRoot(async (root) => {
+      await writeScript(
+        root,
+        "beta-flags.bun.sh",
+        [
+          "# ---",
+          "# desc: flags map is Beta-deferred",
+          "# flags:",
+          "#   verbose:",
+          "#     type: boolean",
+          "# ---",
+          "echo hi",
+          "",
+        ].join("\n"),
+      );
+      const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
+      expect(failure._tag).toBe("NotImplementedError");
+      expect(failure.specSection).toBe("§8.5.1");
+      expect(failure.commandId).toBe("landofile.parse");
+    });
+  });
+
   test("rejects Beta-only front-matter keys with NotImplementedError", async () => {
     await withAppRoot(async (root) => {
       await writeScript(

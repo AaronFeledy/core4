@@ -165,6 +165,20 @@ const detectBetaKey = (parsed: Record<string, unknown>): { key: string; specSect
   return undefined;
 };
 
+const detectBetaKeyFromBody = (
+  body: ReadonlyArray<string>,
+): { key: string; specSection: string } | undefined => {
+  for (const raw of body) {
+    if (raw === "" || /^\s/.test(raw)) continue;
+    const match = raw.match(/^([A-Za-z][A-Za-z0-9_-]*):/);
+    if (match === null) continue;
+    const key = match[1];
+    const entry = BETA_FRONT_MATTER_KEYS.find((candidate) => candidate.key === key);
+    if (entry !== undefined) return entry;
+  }
+  return undefined;
+};
+
 const sanitizeSegment = (segment: string): string => {
   const lowered = segment.toLowerCase();
   return lowered
@@ -224,6 +238,18 @@ const parseScriptFile = (
               : `.bun.sh script at ${scriptPath} has a malformed front-matter block.`,
           path: scriptPath,
           remediation: FRONT_MATTER_REMEDIATION,
+        }),
+      );
+    }
+
+    const betaFromBody = detectBetaKeyFromBody(region.body);
+    if (betaFromBody !== undefined) {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: `.bun.sh front-matter field "${betaFromBody.key}:" at ${scriptPath} is not supported in Alpha (${betaFromBody.specSection}).`,
+          commandId: "landofile.parse",
+          specSection: betaFromBody.specSection,
+          remediation: BETA_REMEDIATION,
         }),
       );
     }

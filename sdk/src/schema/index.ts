@@ -682,9 +682,13 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  *
  * Beta-deferred fields (`aliases`, `topLevelAlias`, `bootstrap`,
  * `flags`, `args`, `passThrough`, `sources`, `generates`, `status`,
- * `preconditions`, `run`, `platforms`, `internal`, `disabled`) are
- * rejected pre-decode with a tagged
- * `BunShellScriptFrontMatterError`.
+ * `preconditions`, `run`, `platforms`, `internal`, `disabled`,
+ * `engine`) are detected pre-decode (including nested YAML list/object
+ * forms like `sources:\n  - …`) and rejected with a tagged
+ * `NotImplementedError` carrying `commandId: "landofile.parse"`, the
+ * matching `specSection`, and a Beta-deferral remediation. Unknown keys
+ * outside that set fall through to the strict schema decode and surface
+ * as `BunShellScriptFrontMatterError`.
  */
 export const BunShellScriptFrontMatter = Schema.Struct({
   service: Schema.optional(Schema.String),

@@ -185,7 +185,8 @@ export const runTooling = (
     const engine = yield* ToolingEngine;
 
     const landofile = yield* landofileService.discover;
-    const task = landofile.tooling?.[options.name];
+    const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
+    const task = landofile.tooling?.[toolingLookupKey];
 
     if (task === undefined) {
       const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));

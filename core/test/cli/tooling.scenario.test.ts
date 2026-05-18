@@ -464,6 +464,37 @@ describe("runTooling — .bun.sh script-backed tasks (§8.5.9)", () => {
     });
   });
 
+  test("Landofile tooling.<id> wins over a script even when the user invokes with the canonical app:<id> form", async () => {
+    await withAppRoot(async (root) => {
+      await writeBunShScript(
+        root,
+        "build.bun.sh",
+        [
+          "# ---",
+          "# desc: Script-backed build (must NOT run for app:build)",
+          "# ---",
+          "echo from-script",
+          "",
+        ].join("\n"),
+      );
+
+      const plan = makePlan([makeService("appserver", true)]);
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "from-provider" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { build: { service: "appserver", cmd: "make" } },
+      };
+      const layer = makeLayer({ landofile, plan, provider });
+
+      const result = await Effect.runPromise(runTooling({ name: "app:build" }).pipe(runtimeFor(layer)));
+
+      expect(result.service).toBe("appserver");
+      expect(result.stdout).toBe("from-provider");
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.command).toEqual(["sh", "-c", "make"]);
+    });
+  });
+
   test("rejects a .bun.sh that declares a non-:host service with NotImplementedError (Beta-deferred)", async () => {
     await withAppRoot(async (root) => {
       await writeBunShScript(
