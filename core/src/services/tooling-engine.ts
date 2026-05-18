@@ -1,21 +1,3 @@
-/**
- * `ToolingEngine` Live Layer for the default `providerExec` engine.
- *
- * Translates a normalized `ToolingInvocation` into one or more
- * `RuntimeProvider.exec` calls against the planned target service and
- * returns the verbatim exit code plus the aggregated stdout/stderr.
- *
- * Service resolution follows §6.10: the declared `task.service` wins, else
- * the engine looks for the lone `ServicePlan` with `primary: true`. Apps
- * with zero primary services and no declared service fail with a tagged
- * `ToolingExecError`; planner currently marks `name === "web"` as primary,
- * so apps without a `web` service hit the no-primary path.
- *
- * The engine receives the runtime `RuntimeProviderShape` as an explicit
- * argument from the caller, not via the `RuntimeProvider` Tag, because the
- * runtime layer's `RuntimeProvider` is a stub: real providers come from
- * `RuntimeProviderRegistry.select(plan)`.
- */
 import { Effect, Layer } from "effect";
 
 import { ToolingExecError } from "@lando/sdk/errors";

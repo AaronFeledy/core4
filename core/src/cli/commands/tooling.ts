@@ -1,14 +1,3 @@
-/**
- * `runTooling` — execute a parsed Landofile `tooling.<name>` task via the
- * selected `ToolingEngine` (default `providerExec`).
- *
- * `runTooling` is the embedding-host entrypoint and the dispatch target the
- * OCLIF tooling layer plugs into in PRD-03 US-020. It normalizes the parsed
- * `ToolingTaskShape` into argv form, resolves the runtime provider for the
- * planned app, and hands the invocation to `ToolingEngine.run`. The engine
- * preserves the verbatim exit code and aggregated stdout/stderr so the
- * caller can render them.
- */
 import { Effect } from "effect";
 
 import type {
@@ -71,9 +60,10 @@ const normalizeCommands = (
   task: ToolingTaskShape,
   args: ReadonlyArray<string>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
-  if (task.cmds !== undefined && task.cmds.length > 0) {
-    return task.cmds.map((cmd, index) => {
-      const lastIndex = task.cmds === undefined ? -1 : task.cmds.length - 1;
+  const cmds = task.cmds;
+  if (cmds !== undefined && cmds.length > 0) {
+    return cmds.map((cmd, index) => {
+      const lastIndex = cmds.length - 1;
       const tail = index === lastIndex && args.length > 0 ? ` ${joinShell(args)}` : "";
       return ["sh", "-c", `${cmd}${tail}`];
     });
