@@ -1356,3 +1356,19 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Updated the matching service tests and the stale Alpine healthcheck note in this log.
 - Verification: `bun run typecheck`, `bun run lint`, and `bun test --concurrency=1` passed.
 
+
+## [2026-05-18 11:15 CDT] - PR #92 triage (round 2)
+- Bugbot (NEUTRAL, COMMENTED on commit d558163) flagged Medium-severity real issue: `applyAuthoredHealthcheck` in `core/src/services/planner.ts` produces `{ kind: "command" }` with no `command` field when a user provides a partial timing-only override (e.g. `{ intervalSeconds: 30 }`) on a service type that emits no default healthcheck. The `?? "command"` kind fallback fires but neither `authored.command` nor `existing?.command` is set, leaving `command` absent. The resulting plan passes the Alpha capability gate (since `kind === "command"`) but is unexecutable.
+- Fix: added a guard in `applyAuthoredHealthcheck` — if `merged.kind === "command" && merged.command === undefined`, return the servicePlan unchanged (skip the commandless merge). Added test: partial override `{ intervalSeconds: 30 }` on a service type with no default leaves `healthcheck: undefined` on the resulting plan.
+- Verification: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/app-planner.test.ts --concurrency=1` passed (19 pass, 0 fail, 102 expect calls).
+- Triage rounds used: 2
+---
+
+## [2026-05-18 11:05 CDT] - PR #92 triage (round 2)
+- Second Bugbot finding (Medium Severity, commit d558163, NEUTRAL conclusion, reviewDecision=""): `applyAuthoredHealthcheck` could produce `{ kind: "command" }` with no `command` field when a user provides a partial authored override (e.g., `{ intervalSeconds: 30 }`) on a service type that emits no default healthcheck. The `?? "command"` kind fallback fires, but no command is spread into the merged object.
+- Finding accepted as real: confirmed by reading `core/src/services/planner.ts#L219-L228`. The `command` spread only fires when `authored.command !== undefined || existing?.command !== undefined`. When both are undefined (partial override + no service-type default), the merged object has no `command` field, passes schema validation (command is optional in ServicePlan), and passes the capability gate (kind === "command" passes). The resulting plan is semantically invalid.
+- Fix applied: added guard `if (merged.kind === "command" && merged.command === undefined) return servicePlan;` after the merge — skips rather than emits an unexecutable plan. Mirrors the `applyAuthoredAppMount` pattern.
+- Test added: `"drops partial healthcheck override on a service type with no default rather than producing a commandless plan"` in `core/test/services/app-planner.test.ts`.
+- Verification: `bun run typecheck` passed; `bun run lint` passed (293 files, no fixes); `bun test core/test/services/app-planner.test.ts --concurrency=1` passed (19 pass, 0 fail, 102 expect calls).
+- Triage rounds used: 2
+---

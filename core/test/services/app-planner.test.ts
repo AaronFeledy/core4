@@ -644,4 +644,22 @@ describe("AppPlannerLive", () => {
       }
     });
   });
+
+  test("drops partial healthcheck override on a service type with no default rather than producing a commandless plan", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("db")]: {
+            image: "node:lts",
+            healthcheck: {
+              intervalSeconds: 30,
+            },
+          },
+        },
+      });
+      expect(appPlan.services[ServiceName.make("db")]?.healthcheck).toBeUndefined();
+    });
+  });
 });

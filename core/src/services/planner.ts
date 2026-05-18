@@ -241,6 +241,15 @@ const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConf
         ? { startPeriodSeconds: existing.startPeriodSeconds }
         : {}),
   };
+  // Guard: a "command" healthcheck with no command is semantically invalid. This can
+  // happen when a user provides a partial authored override (e.g. `{ intervalSeconds: 30 }`)
+  // on a service type that emits no default healthcheck, causing the `?? "command"` fallback
+  // to produce `{ kind: "command" }` with no `command` field. Skip rather than emit an
+  // unexecutable plan; the user must supply a complete override to add a healthcheck to a
+  // service type that doesn't emit one by default.
+  if (merged.kind === "command" && merged.command === undefined) {
+    return servicePlan;
+  }
   return { ...servicePlan, healthcheck: merged };
 };
 
