@@ -3061,3 +3061,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: `lsp_diagnostics` clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (611 pass, 11 skip, 0 fail). Initial full-test run failed due stale generated `core/dist/lando` executable permissions; `bun run clean` removed generated outputs and the rerun passed.
 - Safety note: one accidental duplicate slop-remover agent targeting `app/config/index.ts` was cancelled before final diff review to prevent concurrent edits.
 ---
+
+## [2026-05-18 17:30 CDT] - Push
+- Branch pushed: us-023-app-command-coverage → origin
+- Commits: 807dac2 (chore: remove AI slop), d705283 (fix(US-023): deferred-flag bypass, OCLIF/compiled parity), 6c4071f (feat: Fill Alpha app command coverage)
+- PR: #99 https://github.com/AaronFeledy/core4/pull/99 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL)
+- Review feedback: none (reviewDecision empty; Bugbot NEUTRAL advisory comment, not CHANGES_REQUESTED)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit f4eafce on main
+- Local main / branch refreshed: yes (reset --hard origin/main; local story branch deleted)
+- Remaining local state: none, on main at f4eafce
+---
