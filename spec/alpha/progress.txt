@@ -358,3 +358,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (main fast-forwarded, local story branch deleted)
 - Remaining local state: none; on main, clean
 ---
+
+## [2026-05-17 20:15 CDT] - Sync
+- Previous branch: us-007-doctor-provider-diagnostics
+- Previous PR: #81 https://github.com/AaronFeledy/core4/pull/81
+- Uncommitted change found: spec/alpha/progress.txt (push log entry for US-007 not committed by prior push step) — landed as improvement PR #82 (all CI green, squash-merged, commit 61777e8)
+- Action: caught up after prior merge (Case C — PR #81 state MERGED)
+- Local main updated: yes (fast-forwarded to 61777e8)
+- Branch after sync: main
+- Stash created: no
+---
