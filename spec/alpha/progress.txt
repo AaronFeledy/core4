@@ -346,3 +346,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: trimmed over-verbose wording in the newest US-007 review entry while preserving facts, commit IDs, PRD references, verification evidence, and the append-only audit-log history. No source code, tests, fixtures, public APIs, type hints, imports, error handling, side effects, or return values changed.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (269 files, no fixes); full `bun test` passed on rerun (299 pass, 11 skip, 0 fail, 1614 expect). One earlier full-test attempt failed while an overlapping test/build process was active (`core/test/cli/version.test.ts` build exit 1); rerun after the process cleared passed.
 ---
+
+## [2026-05-17 19:35 CDT] - Push
+- Branch pushed: us-007-doctor-provider-diagnostics (3 commits: e5346ba feat, 2eb8e09 review log, 725b39f slop cleanup)
+- Commit(s) involved: e5346ba, 2eb8e09, 725b39f
+- PR: #81 https://github.com/AaronFeledy/core4/pull/81 (created)
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 45c814e on main
+- Local main / branch refreshed: yes (main fast-forwarded, local story branch deleted)
+- Remaining local state: none; on main, clean
+---
