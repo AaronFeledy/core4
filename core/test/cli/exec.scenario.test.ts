@@ -96,6 +96,7 @@ interface ExecRecord {
   readonly service: string;
   readonly command: ReadonlyArray<string>;
   readonly user?: string;
+  readonly cwd?: string;
 }
 
 const makeProvider = (
@@ -128,6 +129,7 @@ const makeProvider = (
         service: String(target.service),
         command: spec.command,
         ...(target.user === undefined ? {} : { user: target.user }),
+        ...(spec.cwd === undefined ? {} : { cwd: spec.cwd }),
       });
       const response = responses[i] ?? { exitCode: 0 };
       i += 1;
@@ -285,5 +287,47 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     } finally {
       (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
     }
+  });
+
+  test("threads --cwd through to provider.exec spec", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+
+    await Effect.runPromise(
+      execApp({ service: "appserver", cwd: "/srv/app", command: ["pwd"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+
+    expect(calls[0]?.cwd).toBe("/srv/app");
+  });
+
+  test("unknown --service fails with ToolingExecError even when provider selection would also fail", async () => {
+    const plan = makePlan([makeService("web", true)]);
+    const { provider, calls } = makeProvider([{ exitCode: 0 }]);
+    const failingRegistry = Layer.succeed(RuntimeProviderRegistry, {
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(capabilities),
+      select: () =>
+        Effect.fail(new ProviderUnavailableError({ providerId, operation: "select", message: "boom" })),
+    });
+    const layer = Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "scenario" }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+      failingRegistry,
+    );
+
+    const exit = await Effect.runPromiseExit(
+      execApp({ service: "missing", command: ["ls"] }).pipe(Effect.provide(layer)),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(calls).toHaveLength(0);
+    if (exit._tag !== "Failure") return;
+    const flat = JSON.stringify(exit.cause);
+    expect(flat).toContain("ToolingExecError");
+    expect(flat).toContain("missing");
+    expect(flat).not.toContain("ProviderUnavailableError");
+    void provider;
   });
 });

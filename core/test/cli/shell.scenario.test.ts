@@ -177,6 +177,28 @@ describe("shellApp — host-mode scenarios (US-022)", () => {
     );
     expect(observedCwd).toBe("/tmp/other");
   });
+
+  test("reserved LANDO_* env wins over caller options.env", async () => {
+    let observedEnv: Record<string, string> = {};
+    await Effect.runPromise(
+      shellApp({
+        shellPath: "/bin/sh",
+        args: ["-c", "exit 0"],
+        env: {
+          LANDO_APP_NAME: "spoofed",
+          LANDO_APP_ROOT: "/etc/spoof",
+          MY_CUSTOM: "kept",
+        },
+        launch: async (spec) => {
+          observedEnv = { ...spec.env };
+          return { exitCode: 0 };
+        },
+      }).pipe(Effect.provide(layer())),
+    );
+    expect(observedEnv.LANDO_APP_NAME).toBe("shell-scenario");
+    expect(observedEnv.LANDO_APP_ROOT).toBe("/tmp/shell-scenario");
+    expect(observedEnv.MY_CUSTOM).toBe("kept");
+  });
 });
 
 describe("lando shell — CLI surface (US-022)", () => {

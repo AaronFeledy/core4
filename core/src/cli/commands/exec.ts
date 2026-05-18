@@ -141,9 +141,12 @@ export const execApp = (
     const landofile = yield* landofileService.discover;
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
-    const provider = yield* registry.select(plan);
 
+    // Resolve service before selecting provider so a bad --service surfaces
+    // ToolingExecError with the available list instead of being masked by a
+    // provider-selection failure (e.g. NoProviderInstalledError).
     const service = yield* resolveService(options, plan);
+    const provider = yield* registry.select(plan);
     const target: ExecTarget = {
       app: plan.id,
       service: service.name,

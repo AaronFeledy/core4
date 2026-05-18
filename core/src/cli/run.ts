@@ -204,6 +204,7 @@ const runDoctor = async (): Promise<void> => {
 interface ParsedExecArgv {
   readonly service?: string;
   readonly user?: string;
+  readonly cwd?: string;
   readonly command: ReadonlyArray<string>;
 }
 
@@ -232,6 +233,7 @@ const parseStringFlag = (
 const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
   let service: string | undefined;
   let user: string | undefined;
+  let cwd: string | undefined;
   const command: string[] = [];
   let i = 0;
   let positionalStarted = false;
@@ -259,6 +261,12 @@ const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
         i += userMatch.consumed;
         continue;
       }
+      const cwdMatch = parseStringFlag(argv, i, "cwd");
+      if (cwdMatch !== undefined) {
+        cwd = cwdMatch.value;
+        i += cwdMatch.consumed;
+        continue;
+      }
       positionalStarted = true;
       command.push(arg);
       i += 1;
@@ -271,6 +279,7 @@ const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
   return {
     ...(service === undefined ? {} : { service }),
     ...(user === undefined ? {} : { user }),
+    ...(cwd === undefined ? {} : { cwd }),
     command,
   };
 };
@@ -282,6 +291,7 @@ const runExec = async (argv: ReadonlyArray<string>): Promise<void> => {
       command: parsed.command,
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
       ...(parsed.user === undefined ? {} : { user: parsed.user }),
+      ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
     }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
   );
   if (Exit.isSuccess(exit)) {

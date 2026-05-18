@@ -83,7 +83,7 @@ const SERVICE_SHELL_DEFERRED = new NotImplementedError({
 });
 
 const defaultLauncher: ShellLauncher = (spec) =>
-  new Promise((resolve) => {
+  new Promise((resolve, reject) => {
     const child = nodeSpawn(spec.shell, [...spec.args], {
       cwd: spec.cwd,
       env: { ...spec.env },
@@ -96,8 +96,8 @@ const defaultLauncher: ShellLauncher = (spec) =>
       }
       resolve({ exitCode: typeof signal === "string" ? 1 : 0 });
     });
-    child.once("error", () => {
-      resolve({ exitCode: 1 });
+    child.once("error", (cause) => {
+      reject(cause);
     });
   });
 
@@ -129,10 +129,10 @@ export const shellApp = (
     const cwd = options.cwd ?? String(plan.root);
     const env: Record<string, string> = {
       ...filterStringEnv(process.env),
+      ...(options.env ?? {}),
       LANDO: "1",
       LANDO_APP_NAME: plan.name,
       LANDO_APP_ROOT: String(plan.root),
-      ...(options.env ?? {}),
     };
 
     const launch = options.launch ?? defaultLauncher;
