@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file is for non-obvious repo context only. It is a living document that you should keep up to date. If you lose time to a repo quirk that should have been documented, update this file with the smallest useful note.
+This file is for non-obvious repo context. Keep it up to date. If you hit a repo quirk worth documenting, add the smallest useful note.
 
 ## Context
 

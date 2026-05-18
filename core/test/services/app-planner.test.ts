@@ -200,6 +200,21 @@ const planExitWithCustomRegistry = (
     ),
   );
 
+const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag !== "Some") {
+      throw new Error("Expected Some failure");
+    }
+
+    return failure.value;
+  }
+
+  throw new Error("Expected failure");
+};
+
 describe("AppPlannerLive", () => {
   test("plans a Node and Postgres Landofile into a schema-valid AppPlan", async () => {
     await withTempCwd(async (appRoot) => {
@@ -297,17 +312,11 @@ describe("AppPlannerLive", () => {
         },
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(LandofileValidationError);
-          expect(failure.value._tag).toBe("LandofileValidationError");
-          if (failure.value instanceof LandofileValidationError) {
-            expect(failure.value.issues).toEqual(["services.cache.type"]);
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      expect(failure._tag).toBe("LandofileValidationError");
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues).toEqual(["services.cache.type"]);
       }
     });
   });
@@ -320,22 +329,16 @@ describe("AppPlannerLive", () => {
         bindMountPerformance: "none",
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          expect(failure.value).toMatchObject({
-            _tag: "CapabilityError",
-            service: "web",
-            feature: "bind mount",
-            capability: "bindMounts",
-            providerId: "lando",
-            remediation: "Choose a provider with bind mount support or remove bind mounts from service web.",
-          });
-        }
-      }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      expect(failure).toMatchObject({
+        _tag: "CapabilityError",
+        service: "web",
+        feature: "bind mount",
+        capability: "bindMounts",
+        providerId: "lando",
+        remediation: "Choose a provider with bind mount support or remove bind mounts from service web.",
+      });
     });
   });
 
@@ -346,23 +349,17 @@ describe("AppPlannerLive", () => {
         hostPortPublish: "none",
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          if (failure.value instanceof CapabilityError) {
-            expect(failure.value._tag).toBe("CapabilityError");
-            expect(failure.value.service).toBe("web");
-            expect(failure.value.feature).toBe("host port publish");
-            expect(failure.value.capability).toBe("hostPortPublish");
-            expect(failure.value.providerId).toBe("lando");
-            expect(failure.value.remediation).toBe(
-              "Choose a provider with host port publish support or remove published ports from service web.",
-            );
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure._tag).toBe("CapabilityError");
+        expect(failure.service).toBe("web");
+        expect(failure.feature).toBe("host port publish");
+        expect(failure.capability).toBe("hostPortPublish");
+        expect(failure.providerId).toBe("lando");
+        expect(failure.remediation).toBe(
+          "Choose a provider with host port publish support or remove published ports from service web.",
+        );
       }
     });
   });
@@ -408,23 +405,17 @@ describe("AppPlannerLive", () => {
         },
       );
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          if (failure.value instanceof CapabilityError) {
-            expect(failure.value._tag).toBe("CapabilityError");
-            expect(failure.value.service).toBe("web");
-            expect(failure.value.feature).toBe("bind mount");
-            expect(failure.value.capability).toBe("bindMounts");
-            expect(failure.value.providerId).toBe("lando");
-            expect(failure.value.remediation).toBe(
-              "Choose a provider with bind mount support or remove bind mounts from service web.",
-            );
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure._tag).toBe("CapabilityError");
+        expect(failure.service).toBe("web");
+        expect(failure.feature).toBe("bind mount");
+        expect(failure.capability).toBe("bindMounts");
+        expect(failure.providerId).toBe("lando");
+        expect(failure.remediation).toBe(
+          "Choose a provider with bind mount support or remove bind mounts from service web.",
+        );
       }
     });
   });
@@ -478,23 +469,17 @@ describe("AppPlannerLive", () => {
         persistentStorage: false,
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          if (failure.value instanceof CapabilityError) {
-            expect(failure.value._tag).toBe("CapabilityError");
-            expect(failure.value.service).toBe("db");
-            expect(failure.value.feature).toBe("persistent storage");
-            expect(failure.value.capability).toBe("persistentStorage");
-            expect(failure.value.providerId).toBe("lando");
-            expect(failure.value.remediation).toBe(
-              "Choose a provider with persistent storage support or remove persistent storage from service db.",
-            );
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure._tag).toBe("CapabilityError");
+        expect(failure.service).toBe("db");
+        expect(failure.feature).toBe("persistent storage");
+        expect(failure.capability).toBe("persistentStorage");
+        expect(failure.providerId).toBe("lando");
+        expect(failure.remediation).toBe(
+          "Choose a provider with persistent storage support or remove persistent storage from service db.",
+        );
       }
     });
   });
@@ -519,20 +504,14 @@ describe("AppPlannerLive", () => {
         },
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(NotImplementedError);
-          if (failure.value instanceof NotImplementedError) {
-            expect(failure.value._tag).toBe("NotImplementedError");
-            expect(failure.value.specSection).toBe("§6.5");
-            expect(failure.value.message).toContain("worker");
-            expect(failure.value.message.toLowerCase()).toContain("global");
-            expect(failure.value.remediation.toLowerCase()).toContain("global");
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(NotImplementedError);
+      if (failure instanceof NotImplementedError) {
+        expect(failure._tag).toBe("NotImplementedError");
+        expect(failure.specSection).toBe("§6.5");
+        expect(failure.message).toContain("worker");
+        expect(failure.message.toLowerCase()).toContain("global");
+        expect(failure.remediation.toLowerCase()).toContain("global");
       }
     });
   });
@@ -559,8 +538,14 @@ describe("AppPlannerLive", () => {
 
       const web = appPlan.services[ServiceName.make("web")];
       const shadowTargets = web?.storage.map((entry) => entry.target).sort() ?? [];
-      expect(shadowTargets).toEqual(["/app/node_modules", "/app/vendor"]);
-      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
+      expect(shadowTargets).toEqual([
+        PortablePath.make("/app/node_modules"),
+        PortablePath.make("/app/vendor"),
+      ]);
+      expect(web?.appMount?.excludes).toEqual([
+        PortablePath.make("node_modules"),
+        PortablePath.make("vendor"),
+      ]);
     });
   });
 
@@ -617,20 +602,14 @@ describe("AppPlannerLive", () => {
         },
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          if (failure.value instanceof CapabilityError) {
-            expect(failure.value.service).toBe("web");
-            expect(failure.value.feature).toBe("healthcheck kind tcp");
-            expect(failure.value.capability).toBe("serviceHealth");
-            expect(failure.value.providerId).toBe("lando");
-            expect(failure.value.remediation).toContain("kind: command");
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure.service).toBe("web");
+        expect(failure.feature).toBe("healthcheck kind tcp");
+        expect(failure.capability).toBe("serviceHealth");
+        expect(failure.providerId).toBe("lando");
+        expect(failure.remediation).toContain("kind: command");
       }
     });
   });
@@ -654,20 +633,14 @@ describe("AppPlannerLive", () => {
         },
       });
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(CapabilityError);
-          if (failure.value instanceof CapabilityError) {
-            expect(failure.value.service).toBe("web");
-            expect(failure.value.feature).toBe("healthcheck kind http");
-            expect(failure.value.capability).toBe("serviceHealth");
-            expect(failure.value.providerId).toBe("lando");
-            expect(failure.value.remediation).toContain("kind: command");
-          }
-        }
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure.service).toBe("web");
+        expect(failure.feature).toBe("healthcheck kind http");
+        expect(failure.capability).toBe("serviceHealth");
+        expect(failure.providerId).toBe("lando");
+        expect(failure.remediation).toContain("kind: command");
       }
     });
   });

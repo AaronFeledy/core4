@@ -1334,3 +1334,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: capability gates that depend on user-authored overrides must run AFTER the override-merge seam (`applyAuthoredHealthcheck`), not against the raw service-type plan, otherwise authored `kind: "tcp"` on a service type that emits no default would slip through. This is the same lesson the `applyAuthoredAppMount` seam encoded earlier.
   - Gotchas encountered: `kind: "none"` is a valid healthcheck literal under §6.7 — a planner-time gate that only allows `"command"` and silently drops `"none"` would regress the user's explicit opt-out. The current gate explicitly allows both.
 ---
+
+## [$(TZ=America/Chicago date '+%Y-%m-%d %H:%M %Z')] - US-016 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-016 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
+- Files changed by cleanup: `AGENTS.md`, `core/test/services/app-planner.test.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: tightened the repository guidance preamble in `AGENTS.md` and replaced repeated Effect failure-unwrapping boilerplate in `core/test/services/app-planner.test.ts` with a type-safe `expectSomeFailure` helper. The helper preserves every assertion's expected error type, fields, remediation checks, side effects, and test coverage. Rejected no functional simplifications; no service/runtime behavior was changed.
+- Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/app-planner.test.ts --concurrency=1` passed; `bun run build` passed; focused compiled CLI recheck `bun test core/test/cli/shellenv.test.ts core/test/cli/aliases.test.ts --concurrency=1` passed after rebuilding the compiled binary; full `CI=1 bun test --concurrency=1` passed (461 pass, 11 skip, 0 fail, 2417 expect calls).
+---
+
+## [2026-05-18 04:37 CDT] - US-016 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-016 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
+- Files changed by cleanup: `AGENTS.md`, `core/test/services/app-planner.test.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: tightened the repo-guidance opener in `AGENTS.md`, extracted repeated failure-unwrapping assertions in `core/test/services/app-planner.test.ts` into a small type-safe helper, and normalized branded `PortablePath` expectations without weakening coverage or changing planner behavior.
+- Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/app-planner.test.ts --concurrency=1` passed; `bun run build` passed; focused compiled-CLI regression tests `bun test core/test/cli/shellenv.test.ts core/test/cli/aliases.test.ts --concurrency=1` passed after rebuilding the compiled binary; full `CI=1 bun test --concurrency=1` passed (461 pass, 11 skip, 0 fail).
+---
