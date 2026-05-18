@@ -414,3 +414,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Real issue: Podman network create used CheckDuplicate:true, which can return HTTP 500 for an already-existing network and break idempotent bring-up.
 - Fix: removed CheckDuplicate from provider-lando network creation; existing 409 handling remains as a compatibility fallback.
 - Rejected as not-an-issue: the live contract failure itself and the Bugbot advisory were both symptoms/notes, not separate blockers.
+
+## [2026-05-17 21:50 CDT] - Push
+- Branch pushed: us-008-provider-contract-suite (2 story commits: fd17a60, 20fa0be)
+- PR: #84 https://github.com/AaronFeledy/core4/pull/84 (created)
+- CI outcome (round 1): fail — provider-integration-linux-x64: `Podman network create failed with HTTP 500` in the live contract test. Root cause: `ensureNetwork` in `bring-up.ts` used `CheckDuplicate: true`; Podman returns HTTP 500 (not 409) for an existing network with that flag. Leftover `lando-myapp` network from a prior CI run triggered the failure.
+- Triage round 1: sub-agent removed `CheckDuplicate: true` (commit 8bcca8a). Re-ran CI.
+- CI outcome (round 2): fail — `re-apply under reconcile succeeds` assertion: POST `/networks/create` still returned 500 from Podman when the network already existed (Podman returns 500 regardless of `CheckDuplicate`). Root cause: `ensureNetwork` needed inspect-before-create pattern.
+- Triage round 2 (direct): refactored `ensureNetwork` to GET inspect the network first; only POST create if 404 (commit 71b4ae9). Typecheck, lint, provider-lando tests all pass locally.
+- CI outcome (round 3): pass — all checks SUCCESS or NEUTRAL (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Cursor Bugbot NEUTRAL).
+- Review feedback: Cursor Bugbot NEUTRAL (advisory only, not blocking).
+- Triage rounds used: 2
+- Merge: merged (squash) — squash commit 5d339c9 on main
+- Local main / branch refreshed: yes — main fast-forwarded to 5d339c9; story branch deleted
+- Remaining local state: none
+---
