@@ -7,13 +7,13 @@ describe("@lando/service-lando package", () => {
 
     expect(plugin.PLUGIN_NAME).toBe("@lando/service-lando");
     expect(plugin.serviceTypes).toBeInstanceOf(Map);
-    expect([...plugin.serviceTypes.keys()]).toEqual(["node:lts", "postgres"]);
+    expect([...plugin.serviceTypes.keys()]).toEqual(["node:lts", "postgres", "php:8.2", "php:8.3"]);
     expect(Layer.isLayer(plugin.services)).toBe(true);
     expect(plugin.manifest).toMatchObject({
       name: "@lando/service-lando",
       version: "0.0.0",
       api: 4,
-      contributes: { serviceTypes: ["node:lts", "postgres"] },
+      contributes: { serviceTypes: ["node:lts", "postgres", "php:8.2", "php:8.3"] },
     });
   });
 });

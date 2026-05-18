@@ -557,6 +557,7 @@ export const ServiceConfig = Schema.Struct({
   workingDirectory: Schema.optional(PortablePath),
   database: Schema.optional(Schema.String),
   port: Schema.optional(Schema.Number),
+  framework: Schema.optional(Schema.String),
   // Accept number/boolean values from MVP YAML auto-typing and coerce to string.
   environment: Schema.optional(
     Schema.Record({

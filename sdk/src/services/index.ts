@@ -230,6 +230,7 @@ export interface ServiceTypePlanInput {
   readonly name: string;
   readonly service: ServiceConfig;
   readonly appRoot: string;
+  readonly appName?: string;
   readonly provider?: ProviderId;
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
