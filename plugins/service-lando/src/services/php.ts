@@ -1,9 +1,9 @@
-import { basename } from "node:path";
-
 import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
-import type { ServiceTypePlanInput, ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceTypeShape } from "@lando/sdk/services";
+
+import { appNameFor, buildLandoEnv } from "./env.ts";
 
 export const SUPPORTED_PHP_VERSIONS = ["8.2", "8.3"] as const;
 export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
@@ -22,27 +22,12 @@ const FRAMEWORK_WEBROOTS: Record<SupportedPhpFramework, string> = {
   none: "",
 };
 
-const FRAMEWORK_ENV: Record<SupportedPhpFramework, ReadonlyMap<string, string>> = {
-  drupal: new Map([
-    ["APACHE_DOCUMENT_ROOT", "/app/web"],
-    ["LANDO_WEBROOT", "/app/web"],
-  ]),
-  wordpress: new Map([
-    ["APACHE_DOCUMENT_ROOT", "/app"],
-    ["LANDO_WEBROOT", "/app"],
-  ]),
-  laravel: new Map([
-    ["APACHE_DOCUMENT_ROOT", "/app/public"],
-    ["LANDO_WEBROOT", "/app/public"],
-  ]),
-  symfony: new Map([
-    ["APACHE_DOCUMENT_ROOT", "/app/public"],
-    ["LANDO_WEBROOT", "/app/public"],
-  ]),
-  none: new Map([
-    ["APACHE_DOCUMENT_ROOT", "/app"],
-    ["LANDO_WEBROOT", "/app"],
-  ]),
+const FRAMEWORK_WEBROOT_PATHS: Record<SupportedPhpFramework, string> = {
+  drupal: "/app/web",
+  wordpress: "/app",
+  laravel: "/app/public",
+  symfony: "/app/public",
+  none: "/app",
 };
 
 const REMEDIATION_VERSION = (requested: string): string =>
@@ -50,59 +35,6 @@ const REMEDIATION_VERSION = (requested: string): string =>
 
 const REMEDIATION_FRAMEWORK = (requested: string): string =>
   `Set framework to one of: ${SUPPORTED_PHP_FRAMEWORKS.join(", ")} (got ${requested}).`;
-
-const slug = (input: string): string =>
-  input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-const appNameFor = (input: ServiceTypePlanInput): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
-
-const workingDirectoryFor = (framework: SupportedPhpFramework): string => {
-  const webroot = FRAMEWORK_WEBROOTS[framework];
-  return webroot === "" ? "/app" : `/app/${webroot}`;
-};
-
-const RESERVED_ENV_PREFIX = "LANDO" as const;
-
-const buildEnv = (
-  serviceName: string,
-  appName: string,
-  serviceType: string,
-  framework: SupportedPhpFramework,
-  userEnv: Record<string, string>,
-): Record<string, string> => {
-  const reservedKeys = Object.keys(userEnv).filter(
-    (key) => key === RESERVED_ENV_PREFIX || key.startsWith(`${RESERVED_ENV_PREFIX}_`),
-  );
-  if (reservedKeys.length > 0) {
-    throw new Error(
-      `User environment cannot override reserved LANDO_* keys (spec §6.9): ${reservedKeys.join(", ")}. ` +
-        `Remove these from services.${serviceName}.environment; plugins use LANDO_PLUGIN_<NAME>_* instead.`,
-    );
-  }
-  const env: Record<string, string> = {};
-  for (const [key, value] of FRAMEWORK_ENV[framework]) {
-    env[key] = value;
-  }
-  for (const [key, value] of Object.entries(userEnv)) {
-    env[key] = value;
-  }
-  env.LANDO = "ON";
-  env.LANDO_APP_NAME = appName;
-  env.LANDO_APP_KIND = "user";
-  env.LANDO_APP_ROOT = "/app";
-  env.LANDO_PROJECT = slug(appName);
-  env.LANDO_PROJECT_MOUNT = "/app";
-  env.LANDO_SERVICE_API = "4";
-  env.LANDO_SERVICE_NAME = serviceName;
-  env.LANDO_SERVICE_TYPE = serviceType;
-  return env;
-};
 
 const validateFramework = (raw: string | undefined): SupportedPhpFramework => {
   if (raw === undefined) return "none";
@@ -128,13 +60,24 @@ const validateVersion = (
 const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => ({
   id: `php:${version}`,
   toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata } = input;
+    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
     const resolvedVersion = validateVersion(service.type, version);
     const framework = validateFramework(service.framework);
     const appName = appNameFor(input);
     const serviceType = `php:${resolvedVersion}`;
-    const workingDirectory = service.workingDirectory ?? PortablePath.make(workingDirectoryFor(framework));
-    const environment = buildEnv(name, appName, serviceType, framework, service.environment ?? {});
+    const webroot = FRAMEWORK_WEBROOT_PATHS[framework];
+    const workingDirectory =
+      service.workingDirectory ?? PortablePath.make(FRAMEWORK_WEBROOT_PATHS[framework]);
+    const environment = buildLandoEnv({
+      serviceName: name,
+      serviceType,
+      appName,
+      appPaths: { appRoot: "/app", projectMount: "/app" },
+      webroot,
+      host,
+      extraDefaults: { APACHE_DOCUMENT_ROOT: webroot },
+      userEnv: service.environment ?? {},
+    });
     const endpointPort = service.port ?? HEALTHCHECK_PORT;
 
     return Schema.decodeUnknownSync(ServicePlan)({

@@ -3,6 +3,8 @@ import { Schema } from "effect";
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { appNameFor, buildLandoEnv } from "./env.ts";
+
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
 
@@ -28,16 +30,27 @@ const validateVersion = (
 
 const makeNodeServiceType = (version: SupportedNodeVersion): ServiceTypeShape => ({
   id: `node:${version}`,
-  toServicePlan: ({
-    name,
-    service,
-    appRoot,
-    provider = ProviderId.make("lando"),
-    primary = name === "web",
-    metadata,
-  }) => {
+  toServicePlan: (input) => {
+    const {
+      name,
+      service,
+      appRoot,
+      provider = ProviderId.make("lando"),
+      primary = name === "web",
+      metadata,
+      host,
+    } = input;
     const resolvedVersion = validateVersion(service.type, version);
     const serviceType = `node:${resolvedVersion}`;
+    const appName = appNameFor(input);
+    const environment = buildLandoEnv({
+      serviceName: name,
+      serviceType,
+      appName,
+      appPaths: { appRoot: "/app", projectMount: "/app" },
+      host,
+      userEnv: service.environment ?? {},
+    });
     return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: serviceType,
@@ -46,7 +59,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceTypeShape =>
       artifact: { kind: "ref", ref: service.image ?? serviceType },
       command: service.command ?? [...DEFAULT_COMMAND],
       entrypoint: service.entrypoint,
-      environment: service.environment ?? {},
+      environment,
       user: service.user,
       workingDirectory: service.workingDirectory ?? APP_MOUNT_TARGET,
       appMount: {

@@ -227,6 +227,14 @@ export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
   }
 >() {}
 
+export interface ServiceTypeHostFacts {
+  readonly os: string;
+  readonly user: string;
+  readonly uid: string;
+  readonly gid: string;
+  readonly home: string;
+}
+
 export interface ServiceTypePlanInput {
   readonly name: string;
   readonly service: ServiceConfig;
@@ -235,6 +243,7 @@ export interface ServiceTypePlanInput {
   readonly provider?: ProviderId;
   readonly primary?: boolean;
   readonly metadata: typeof PlanMetadata.Encoded;
+  readonly host?: ServiceTypeHostFacts | undefined;
 }
 
 export interface ServiceTypeShape {

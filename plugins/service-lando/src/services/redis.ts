@@ -1,24 +1,27 @@
-import { basename } from "node:path";
-
 import { Schema } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
-import type { ServiceTypePlanInput, ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceTypeShape } from "@lando/sdk/services";
+
+import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "redis:7";
 const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
 
-const appIdFor = (input: ServiceTypePlanInput): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
-
 export const redisServiceType: ServiceTypeShape = {
   id: "redis",
   toServicePlan: (input) => {
-    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata } = input;
-    const appId = appIdFor(input);
+    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
+    const appName = appNameFor(input);
+
+    const environment = buildLandoEnv({
+      serviceName: name,
+      serviceType: "redis",
+      appName,
+      host,
+      userEnv: service.environment ?? {},
+    });
 
     return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
@@ -28,15 +31,13 @@ export const redisServiceType: ServiceTypeShape = {
       artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
       command: service.command ?? ["redis-server", "--appendonly", "yes"],
       entrypoint: service.entrypoint,
-      environment: {
-        ...(service.environment ?? {}),
-      },
+      environment,
       workingDirectory: service.workingDirectory,
       appMount: undefined,
       mounts: [],
       storage: [
         {
-          store: `${appId}-redis-data`,
+          store: `${appName}-redis-data`,
           target: DATA_TARGET,
           readOnly: false,
         },

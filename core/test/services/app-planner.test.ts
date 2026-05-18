@@ -215,7 +215,7 @@ describe("AppPlannerLive", () => {
 
       expect(web?.type).toBe("node:lts");
       expect(web?.artifact).toEqual({ kind: "ref", ref: "node:lts" });
-      expect(web?.environment).toEqual({ NODE_ENV: "development" });
+      expect(web?.environment).toMatchObject({ NODE_ENV: "development" });
       expect(String(web?.workingDirectory)).toBe("/app");
       expect(web?.mounts).toContainEqual({
         type: "bind",
@@ -230,7 +230,7 @@ describe("AppPlannerLive", () => {
       expect(db?.type).toBe("postgres");
       expect(db?.artifact).toEqual({ kind: "ref", ref: "postgres:16" });
       expect(db?.environment.POSTGRES_USER).toBe("lando");
-      expect(db?.environment.POSTGRES_DB?.startsWith("lando-app-planner-")).toBe(true);
+      expect(db?.environment.POSTGRES_DB).toBe("myapp");
       expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
       expect(db?.endpoints).toEqual([{ port: 5432, protocol: "tcp", name: "db" }]);
       expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));

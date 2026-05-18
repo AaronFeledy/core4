@@ -87,7 +87,7 @@ describe("node:lts ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22" });
     expect(plan.command).toBe("npm start");
-    expect(plan.environment).toEqual({ NODE_ENV: "development" });
+    expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
   });
 
@@ -214,7 +214,7 @@ describe("node:22 ServiceType", () => {
     expect(plan.type).toBe("node:22");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
     expect(plan.command).toBe("npm run dev");
-    expect(plan.environment).toEqual({ NODE_ENV: "development" });
+    expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
   });
 

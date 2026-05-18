@@ -1,61 +1,29 @@
-import { basename } from "node:path";
-
 import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
-import type { ServiceTypePlanInput, ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceTypeShape } from "@lando/sdk/services";
+
+import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
-const slug = (input: string): string =>
-  input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-const appNameFor = (input: ServiceTypePlanInput): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
-
-const RESERVED_ENV_PREFIX = "LANDO" as const;
-
-const buildEnv = (
-  serviceName: string,
-  appName: string,
-  userEnv: Record<string, string>,
-): Record<string, string> => {
-  const reservedKeys = Object.keys(userEnv).filter(
-    (key) => key === RESERVED_ENV_PREFIX || key.startsWith(`${RESERVED_ENV_PREFIX}_`),
-  );
-  if (reservedKeys.length > 0) {
-    throw new Error(
-      `User environment cannot override reserved LANDO_* keys (spec §6.9): ${reservedKeys.join(", ")}. ` +
-        `Remove these from services.${serviceName}.environment; plugins use LANDO_PLUGIN_<NAME>_* instead.`,
-    );
-  }
-  const env: Record<string, string> = { APACHE_DOCUMENT_ROOT: "/app", ...userEnv };
-  env.LANDO = "ON";
-  env.LANDO_APP_NAME = appName;
-  env.LANDO_APP_KIND = "user";
-  env.LANDO_APP_ROOT = "/app";
-  env.LANDO_PROJECT = slug(appName);
-  env.LANDO_PROJECT_MOUNT = "/app";
-  env.LANDO_SERVICE_API = "4";
-  env.LANDO_SERVICE_NAME = serviceName;
-  env.LANDO_SERVICE_TYPE = "apache";
-  env.LANDO_WEBROOT = "/app";
-  return env;
-};
-
 export const apacheServiceType: ServiceTypeShape = {
   id: "apache",
   toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata } = input;
+    const { name, service, appRoot, provider = ProviderId.make("lando"), primary, metadata, host } = input;
     const appName = appNameFor(input);
-    const environment = buildEnv(name, appName, service.environment ?? {});
+    const environment = buildLandoEnv({
+      serviceName: name,
+      serviceType: "apache",
+      appName,
+      appPaths: { appRoot: "/app", projectMount: "/app" },
+      webroot: "/app",
+      host,
+      extraDefaults: { APACHE_DOCUMENT_ROOT: "/app" },
+      userEnv: service.environment ?? {},
+    });
     const endpointPort = service.port ?? DEFAULT_PORT;
 
     return Schema.decodeUnknownSync(ServicePlan)({
