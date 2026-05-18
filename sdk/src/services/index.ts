@@ -44,6 +44,7 @@ import type {
   LandofileParseError,
   LandofileValidationError,
   NoProviderInstalledError,
+  NotImplementedError,
   PluginLoadError,
   PluginManifestError,
   ProcessExecError,
@@ -207,7 +208,7 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
   {
     readonly discover: Effect.Effect<
       LandofileShape,
-      LandofileNotFoundError | LandofileParseError | LandofileValidationError
+      LandofileNotFoundError | LandofileParseError | LandofileValidationError | NotImplementedError
     >;
   }
 >() {}
@@ -339,7 +340,7 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     readonly plan: (
       landofile: LandofileShape,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError>;
+    ) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>;
   }
 >() {}
 

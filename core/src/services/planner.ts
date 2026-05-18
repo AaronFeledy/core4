@@ -1,19 +1,24 @@
 import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
-import { CapabilityError, LandofileValidationError } from "@lando/sdk/errors";
+import { CapabilityError, LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
   AppPlan,
   type LandofileShape,
+  PortablePath,
   type ProviderCapabilities,
   ProviderId,
   type ServiceConfig,
   ServicePlan,
+  type StorageScope,
 } from "@lando/sdk/schema";
 import { AppPlanner, PluginRegistry } from "@lando/sdk/services";
 
 export { AppPlanner } from "@lando/sdk/services";
+
+const GLOBAL_SCOPE_REMEDIATION =
+  "Use scope: app or scope: service. Storage scope: global is deferred until the global app phase.";
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {
@@ -85,6 +90,20 @@ const serviceBindRemediation = (serviceName: string) =>
 const bindRealization = (providerCapabilities: ProviderCapabilities) =>
   providerCapabilities.bindMountPerformance === "slow" ? "accelerated" : "passthrough";
 
+const kebab = (raw: string): string => {
+  const ascii = raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return ascii.length === 0 ? "shadow" : ascii;
+};
+
+const joinPathSegments = (target: string, exclude: string): string => {
+  const normalizedTarget = target.endsWith("/") ? target.slice(0, -1) : target;
+  const normalizedExclude = exclude.startsWith("/") ? exclude.slice(1) : exclude;
+  return `${normalizedTarget}/${normalizedExclude}`;
+};
+
 const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, LandofileValidationError> => {
   const decoded = Schema.decodeUnknownEither(AppPlan)(plan);
   if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
@@ -98,11 +117,100 @@ const decodeAppPlan = (appRoot: string, plan: unknown): Effect.Effect<AppPlan, L
   );
 };
 
+type AuthoredStorageInfo = {
+  readonly scope: StorageScope;
+};
+
+const authoredStorageScopes = (
+  service: ServiceConfig,
+): { byStore: Map<string, AuthoredStorageInfo>; globalEntry?: { index: number; store?: string } } => {
+  const byStore = new Map<string, AuthoredStorageInfo>();
+  const entries = service.storage ?? [];
+  for (const [index, entry] of entries.entries()) {
+    if (typeof entry === "string") continue;
+    const scope = entry.scope ?? "service";
+    if (scope === "global") {
+      return { byStore, globalEntry: { index, store: entry.store } };
+    }
+    byStore.set(entry.store, { scope });
+  }
+  return { byStore };
+};
+
+const rejectGlobalScope = (
+  appRoot: string,
+  serviceName: string,
+  entry: { index: number; store?: string },
+): NotImplementedError =>
+  new NotImplementedError({
+    message: `Service ${serviceName} declares storage scope: global at services.${serviceName}.storage[${entry.index}]${entry.store ? ` (store ${entry.store})` : ""} in ${appRoot}/.lando.yml.`,
+    commandId: "landofile.parse",
+    specSection: "§6.5",
+    remediation: GLOBAL_SCOPE_REMEDIATION,
+  });
+
+const expandExcludesToShadows = (
+  appName: string,
+  serviceName: string,
+  servicePlan: ServicePlan,
+): {
+  servicePlan: ServicePlan;
+  shadowStores: ReadonlyArray<{ name: string; scope: StorageScope }>;
+} => {
+  const appMount = servicePlan.appMount;
+  if (appMount === undefined) return { servicePlan, shadowStores: [] };
+  const excludes = appMount.excludes ?? [];
+  const includes = new Set(appMount.includes ?? []);
+  const effectiveExcludes = excludes.filter((entry) => !entry.startsWith("!") && !includes.has(entry));
+  if (effectiveExcludes.length === 0) return { servicePlan, shadowStores: [] };
+
+  const shadowStores: Array<{ name: string; scope: StorageScope }> = [];
+  const shadowMounts: Array<{
+    readonly store: string;
+    readonly target: PortablePath;
+    readonly readOnly: boolean;
+  }> = [];
+
+  for (const excludePath of effectiveExcludes) {
+    const destination = joinPathSegments(appMount.target, excludePath);
+    const storeName = `${appName}-${serviceName}-${kebab(destination)}`;
+    if (!shadowStores.some((entry) => entry.name === storeName)) {
+      shadowStores.push({ name: storeName, scope: "service" });
+    }
+    shadowMounts.push({
+      store: storeName,
+      target: PortablePath.make(destination),
+      readOnly: false,
+    });
+  }
+
+  const nextPlan: ServicePlan = {
+    ...servicePlan,
+    storage: [...servicePlan.storage, ...shadowMounts],
+  };
+
+  return { servicePlan: nextPlan, shadowStores };
+};
+
+const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+  const authored = service.appMount;
+  if (authored === undefined) return servicePlan;
+  if (servicePlan.appMount === undefined) return servicePlan;
+  const merged = {
+    ...servicePlan.appMount,
+    target: PortablePath.make(authored.target),
+    readOnly: authored.readOnly ?? servicePlan.appMount.readOnly,
+    excludes: authored.excludes ?? servicePlan.appMount.excludes,
+    includes: authored.includes ?? servicePlan.appMount.includes,
+  };
+  return { ...servicePlan, appMount: merged };
+};
+
 const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
-): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError> => {
+): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError> => {
   const appRoot = process.cwd();
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
@@ -113,6 +221,14 @@ const planApp = (
     runtime: 4 as const,
   };
   const services: Record<string, unknown> = {};
+  const aggregatedStores: Array<{ name: string; scope: StorageScope }> = [];
+  const seenStoreNames = new Set<string>();
+
+  const pushStore = (name: string, scope: StorageScope): void => {
+    if (seenStoreNames.has(name)) return;
+    seenStoreNames.add(name);
+    aggregatedStores.push({ name, scope });
+  };
 
   return Effect.gen(function* () {
     const manifests = yield* pluginRegistry.list.pipe(
@@ -130,6 +246,11 @@ const planApp = (
     );
 
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
+      const authored = authoredStorageScopes(service);
+      if (authored.globalEntry !== undefined) {
+        yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
+      }
+
       const serviceTypeId = serviceTypeFor(name, service);
       const serviceType = yield* pluginRegistry
         .loadServiceType(serviceTypeId)
@@ -139,7 +260,7 @@ const planApp = (
           ),
         );
 
-      const servicePlan = serviceType.toServicePlan({
+      const rawPlan = serviceType.toServicePlan({
         name,
         service,
         appRoot,
@@ -148,6 +269,7 @@ const planApp = (
         primary: name === "web",
         metadata,
       });
+      const servicePlan = applyAuthoredAppMount(rawPlan, service);
 
       if (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&
@@ -158,13 +280,17 @@ const planApp = (
         );
       }
 
+      const realization = bindRealization(providerCapabilities);
+      const shadowResult = expandExcludesToShadows(appName, name, servicePlan);
+      const planWithShadows = shadowResult.servicePlan;
+
       const servicePlanWithCapabilityRealization: ServicePlan = {
-        ...servicePlan,
-        ...(servicePlan.appMount === undefined
+        ...planWithShadows,
+        ...(planWithShadows.appMount === undefined
           ? {}
-          : { appMount: { ...servicePlan.appMount, realization: bindRealization(providerCapabilities) } }),
-        mounts: servicePlan.mounts.map((mount) =>
-          mount.type === "bind" ? { ...mount, realization: bindRealization(providerCapabilities) } : mount,
+          : { appMount: { ...planWithShadows.appMount, realization } }),
+        mounts: planWithShadows.mounts.map((mount) =>
+          mount.type === "bind" ? { ...mount, realization } : mount,
         ),
       };
 
@@ -199,17 +325,14 @@ const planApp = (
       }
 
       services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
-    }
 
-    const stores: Array<{ name: string; scope: "service" | "app" | "global" }> = [];
-    const seenStoreNames = new Set<string>();
-    for (const encodedService of Object.values(services)) {
-      const planRecord = encodedService as { storage?: ReadonlyArray<{ store: string }> };
-      const storageMounts = planRecord.storage ?? [];
-      for (const mount of storageMounts) {
-        if (seenStoreNames.has(mount.store)) continue;
-        seenStoreNames.add(mount.store);
-        stores.push({ name: mount.store, scope: "service" });
+      for (const shadow of shadowResult.shadowStores) {
+        pushStore(shadow.name, shadow.scope);
+      }
+
+      for (const mount of servicePlanWithCapabilityRealization.storage) {
+        const authoredInfo = authored.byStore.get(mount.store);
+        pushStore(mount.store, authoredInfo?.scope ?? "service");
       }
     }
 
@@ -222,7 +345,7 @@ const planApp = (
       services,
       routes: [],
       networks: [],
-      stores,
+      stores: aggregatedStores,
       metadata,
       extensions: {},
     });

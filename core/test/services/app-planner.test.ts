@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Schema } from "effect";
 
-import { CapabilityError, LandofileValidationError, PluginLoadError } from "@lando/core/errors";
+import {
+  CapabilityError,
+  LandofileValidationError,
+  NotImplementedError,
+  PluginLoadError,
+} from "@lando/core/errors";
 import {
   AbsolutePath,
   AppPlan,
@@ -491,6 +496,71 @@ describe("AppPlannerLive", () => {
           }
         }
       }
+    });
+  });
+
+  test("rejects storage scope: global with NotImplementedError until the global app phase", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "globalapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("worker")]: {
+            type: "compose",
+            image: "alpine:3",
+            storage: [
+              {
+                store: "cross-app-cache",
+                target: "/cache",
+                scope: "global",
+              },
+            ],
+          },
+        },
+      });
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(NotImplementedError);
+          if (failure.value instanceof NotImplementedError) {
+            expect(failure.value._tag).toBe("NotImplementedError");
+            expect(failure.value.specSection).toBe("§6.5");
+            expect(failure.value.message).toContain("worker");
+            expect(failure.value.message.toLowerCase()).toContain("global");
+            expect(failure.value.remediation.toLowerCase()).toContain("global");
+          }
+        }
+      }
+    });
+  });
+
+  test("expands appMount.excludes into volume-shadow stores in AppPlan.stores", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await planWithCustomRegistry({
+        name: "shadowapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "appmount-only",
+            appMount: {
+              target: "/app",
+              excludes: ["node_modules", "vendor"],
+            },
+          },
+        },
+      });
+
+      const storeNames = appPlan.stores.map((s) => s.name).sort();
+      expect(storeNames).toEqual(["shadowapp-web-app-node-modules", "shadowapp-web-app-vendor"]);
+      expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
+
+      const web = appPlan.services[ServiceName.make("web")];
+      const shadowTargets = web?.storage.map((entry) => entry.target).sort() ?? [];
+      expect(shadowTargets).toEqual(["/app/node_modules", "/app/vendor"]);
+      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
     });
   });
 });
