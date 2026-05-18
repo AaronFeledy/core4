@@ -1110,6 +1110,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: when a story is the Nth mechanical clone of a freshly-vetted skeleton (here: language-runtime ServiceType), targeted acceptance-criteria + diff-vs-template review can replace the full 5-agent fanout. Record the rationale in the progress log so the next review step can audit the call.
   - Gotchas encountered: none — registration triple (manifest serviceTypes / package.test exports / registration.test registry+remediation regex) and planner image-fallback branch were all kept in sync.
 
+## [2026-05-18 05:44 UTC] - Sync
+- Previous branch: us-012-ruby-service-types
+- Previous PR: #88 https://github.com/AaronFeledy/core4/pull/88
+- Action: caught up after prior merge — PR #88 already MERGED at sync time
+- Local main updated: yes (already up-to-date at faf3e7a / origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
 ## [2026-05-18 00:45 CDT] - Push
 - Branch pushed: us-012-ruby-service-types → origin/us-012-ruby-service-types
 - Commits pushed: 0012ade (feat: Ship Ruby service types), 603a40c (docs: record US-012 review outcome)
