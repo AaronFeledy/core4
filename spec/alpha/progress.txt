@@ -1372,3 +1372,27 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification: `bun run typecheck` passed; `bun run lint` passed (293 files, no fixes); `bun test core/test/services/app-planner.test.ts --concurrency=1` passed (19 pass, 0 fail, 102 expect calls).
 - Triage rounds used: 2
 ---
+
+## [2026-05-18 11:15 CDT] - Push / Merge
+- Branch pushed: us-016-app-networking-healthchecks (HEAD 56ccee8, then fix commits 2f237d4 and d558163 and af00cb9)
+- PR: #92 https://github.com/AaronFeledy/core4/pull/92 (created)
+- CI outcome (round 1): static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL. Bugbot flagged High-severity real issue: bash probe on Alpine default images (apache/nginx/static). Fixed in commit 2f237d4.
+- CI outcome (round 2): all 3 GitHub Actions checks SUCCESS, Cursor Bugbot NEUTRAL. Bugbot flagged Medium-severity real issue: commandless kind:command plan from partial healthcheck override. Fixed in commit af00cb9.
+- CI outcome (round 3): static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot SUCCESS. All 4 checks green.
+- Review feedback: none from humans; 2 Bugbot findings addressed in triage rounds 1 and 2. Triage rounds used: 2.
+- Merge: merged (squash) as 5c607cb "Plan per-app bridge networking and provider-exec healthchecks (#92)" at 2026-05-18T10:12:07Z.
+- Local main refreshed: yes (reset --hard origin/main). Local story branch deleted: yes.
+- Remaining local state: on main at 5c607cb, working tree clean.
+---
+
+## [2026-05-18 11:20 CDT] - Push
+- Branch pushed: `us-016-app-networking-healthchecks` pushed to origin (original push, new to remote)
+- Commits involved: `9e301fc` (feat), `89fca98` (review docs), `56ccee8` (slop cleanup), and two triage fixes: `2f237d4` (sh/nc probe for Alpine web service defaults), `af00cb9` (commandless kind:command guard in applyAuthoredHealthcheck)
+- PR: #92 https://github.com/AaronFeledy/core4/pull/92 (created this iteration)
+- CI outcome: pass (all checks SUCCESS on final commit — including Cursor Bugbot which passed, not just NEUTRAL)
+- Review feedback: 2 real Bugbot findings fixed (round 1: Alpine bash probe; round 2: commandless command healthcheck guard). Both accepted as genuine defects and corrected. No false positives rejected.
+- Triage rounds used: 2
+- Merge: merged (squash) as `5c607cb` "Plan per-app bridge networking and provider-exec healthchecks (#92)"
+- Local main / branch refreshed: yes — local main reset to `5c607cb`, story branch `us-016-app-networking-healthchecks` deleted
+- Remaining local state: clean (`main`, working tree clean)
+---
