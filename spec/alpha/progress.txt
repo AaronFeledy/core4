@@ -1439,3 +1439,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: when Beta-deferred surfaces are gated BEFORE schema decode (the `scanToolingForBeta` pattern), every Beta-deferred sub-surface needs its own unit test, not just a sample. The schema's own `onExcessProperty: "error"` is a backstop that produces a less actionable error, so test coverage must verify the pre-scan emits `NotImplementedError` with the right §section for each documented surface. Compound surfaces like step-object `cmds[]` are easy to forget because they require structurally different input (array of objects) than the top-level-key tests.
   - Gotchas encountered: `bunx biome check --write` rather than re-formatting by hand keeps test fixtures consistent with the rest of the repo (`bun run lint` is non-fixing). The new test indentation pattern needed biome's array-formatting rule applied.
 ---
+
+## [2026-05-18 06:57 CDT] - Sync
+- Previous branch: us-017-parse-alpha-tooling
+- Previous PR: #93 https://github.com/AaronFeledy/core4/pull/93
+- Action: caught up after prior merge (PR #93 was already MERGED; remote branch already deleted by push step)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
