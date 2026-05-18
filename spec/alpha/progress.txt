@@ -457,3 +457,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: removed a stale `@lando/service-lando` stub header comment. No public APIs, imports, error handling, side effects, or return values changed.
 - Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test` passed (exit 0; Bun emitted only the test banner in this run).
 ---
+
+## [2026-05-17 23:30 CDT] - Push
+- Branch pushed: us-009-php-service-types (3 story commits: d601615, 3d974d8, bf55743)
+- Note: bf55743 committed by push step — build step left 4 files unstaged (buildEnv arg-order bugfix, LANDO_* env guard, planner remediation messages, new tests). Changes were verified passing before commit.
+- PR: #85 https://github.com/AaronFeledy/core4/pull/85 (created)
+- CI outcome: pass — static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Cursor Bugbot pass (7m45s).
+- Review feedback: none (reviewDecision empty, 0 comments)
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 6146554 on main
+- Local main / branch refreshed: yes — main fast-forwarded to 6146554; story branch deleted
+- Remaining local state: none
+---
