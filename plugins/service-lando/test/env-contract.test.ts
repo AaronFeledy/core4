@@ -1,0 +1,269 @@
+import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
+
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import type { ServiceTypeHostFacts, ServiceTypeShape } from "@lando/sdk/services";
+
+import { apacheServiceType } from "../src/services/apache.ts";
+import { composeServiceType } from "../src/services/compose.ts";
+import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { mysqlServiceType } from "../src/services/mysql.ts";
+import { nginxServiceType } from "../src/services/nginx.ts";
+import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
+import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
+import { postgresServiceType } from "../src/services/postgres.ts";
+import { python312ServiceType } from "../src/services/python.ts";
+import { redisServiceType } from "../src/services/redis.ts";
+import { ruby33ServiceType } from "../src/services/ruby.ts";
+import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
+
+const metadata = {
+  resolvedAt: "2026-05-18T08:00:00Z",
+  source: "/srv/apps/myapp/.lando.yml",
+  runtime: 4 as const,
+};
+
+const host: ServiceTypeHostFacts = {
+  os: "linux",
+  user: "alpha-tester",
+  uid: "1000",
+  gid: "1000",
+  home: "/home/alpha-tester",
+};
+
+interface CatalogCase {
+  readonly id: string;
+  readonly serviceType: ServiceTypeShape;
+  readonly landofileService: Record<string, unknown>;
+  readonly expectedType: string;
+  readonly expectsAppPaths: boolean;
+  readonly expectsWebroot: string | null;
+}
+
+const cases: ReadonlyArray<CatalogCase> = [
+  {
+    id: "apache",
+    serviceType: apacheServiceType,
+    landofileService: { type: "apache" },
+    expectedType: "apache",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "nginx",
+    serviceType: nginxServiceType,
+    landofileService: { type: "nginx" },
+    expectedType: "nginx",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "node:lts",
+    serviceType: nodeLtsServiceType,
+    landofileService: { type: "node:lts" },
+    expectedType: "node:lts",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "node:22",
+    serviceType: node22ServiceType,
+    landofileService: { type: "node:22" },
+    expectedType: "node:22",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "php:8.2",
+    serviceType: php82ServiceType,
+    landofileService: { type: "php:8.2" },
+    expectedType: "php:8.2",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "php:8.3",
+    serviceType: php83ServiceType,
+    landofileService: { type: "php:8.3" },
+    expectedType: "php:8.3",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "python:3.12",
+    serviceType: python312ServiceType,
+    landofileService: { type: "python:3.12" },
+    expectedType: "python:3.12",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "ruby:3.3",
+    serviceType: ruby33ServiceType,
+    landofileService: { type: "ruby:3.3" },
+    expectedType: "ruby:3.3",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "static:nginx",
+    serviceType: staticNginxServiceType,
+    landofileService: { type: "static:nginx" },
+    expectedType: "static:nginx",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "static:caddy",
+    serviceType: staticCaddyServiceType,
+    landofileService: { type: "static:caddy" },
+    expectedType: "static:caddy",
+    expectsAppPaths: true,
+    expectsWebroot: "/app",
+  },
+  {
+    id: "mariadb",
+    serviceType: mariadbServiceType,
+    landofileService: { type: "mariadb" },
+    expectedType: "mariadb",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "mysql",
+    serviceType: mysqlServiceType,
+    landofileService: { type: "mysql" },
+    expectedType: "mysql",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "postgres",
+    serviceType: postgresServiceType,
+    landofileService: { type: "postgres" },
+    expectedType: "postgres",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "redis",
+    serviceType: redisServiceType,
+    landofileService: { type: "redis" },
+    expectedType: "redis",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "compose",
+    serviceType: composeServiceType,
+    landofileService: { type: "compose", image: "busybox" },
+    expectedType: "compose",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+];
+
+const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: appName,
+    services: { [serviceName]: item.landofileService },
+  });
+  const service = landofile.services?.[ServiceName.make(serviceName)];
+  if (service === undefined) throw new Error(`${item.id} service missing from landofile fixture`);
+  return item.serviceType.toServicePlan({
+    name: serviceName,
+    service,
+    appRoot: `/srv/apps/${appName}`,
+    appName,
+    metadata,
+    host,
+  });
+};
+
+describe("§6.9 LANDO_* environment contract (every Alpha catalog family)", () => {
+  for (const item of cases) {
+    test(`${item.id} emits the basic LANDO_* identity, host, and (where applicable) app-path env`, () => {
+      const plan = planFor(item, item.id === "compose" ? "worker" : "web", "myapp");
+
+      expect(plan.environment.LANDO).toBe("ON");
+      expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
+      expect(plan.environment.LANDO_APP_KIND).toBe("user");
+      expect(plan.environment.LANDO_PROJECT).toBe("myapp");
+      expect(plan.environment.LANDO_SERVICE_API).toBe("4");
+      expect(plan.environment.LANDO_SERVICE_NAME).toBe(item.id === "compose" ? "worker" : "web");
+      expect(plan.environment.LANDO_SERVICE_TYPE).toBe(item.expectedType);
+
+      expect(plan.environment.LANDO_HOST_OS).toBe(host.os);
+      expect(plan.environment.LANDO_HOST_USER).toBe(host.user);
+      expect(plan.environment.LANDO_HOST_UID).toBe(host.uid);
+      expect(plan.environment.LANDO_HOST_GID).toBe(host.gid);
+      expect(plan.environment.LANDO_HOST_HOME).toBe(host.home);
+
+      if (item.expectsAppPaths) {
+        expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
+        expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
+      } else {
+        expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
+        expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
+      }
+
+      if (item.expectsWebroot !== null) {
+        expect(plan.environment.LANDO_WEBROOT).toBe(item.expectsWebroot);
+      }
+    });
+
+    test(`${item.id} rejects user environment that collides with reserved LANDO_* keys`, () => {
+      const serviceName = item.id === "compose" ? "worker" : "web";
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          [serviceName]: {
+            ...item.landofileService,
+            environment: { LANDO_PROJECT: "fake" },
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make(serviceName)];
+      if (service === undefined) throw new Error("service missing");
+
+      expect(() =>
+        item.serviceType.toServicePlan({
+          name: serviceName,
+          service,
+          appRoot: "/srv/apps/myapp",
+          appName: "myapp",
+          metadata,
+          host,
+        }),
+      ).toThrow(/reserved LANDO_\* keys.*LANDO_PROJECT/);
+    });
+
+    test(`${item.id} slugifies app names with whitespace into LANDO_PROJECT`, () => {
+      const plan = planFor(item, item.id === "compose" ? "worker" : "web", "My App");
+      expect(plan.environment.LANDO_APP_NAME).toBe("My App");
+      expect(plan.environment.LANDO_PROJECT).toBe("my-app");
+    });
+
+    test(`${item.id} omits LANDO_HOST_* when planner did not supply host facts`, () => {
+      const serviceName = item.id === "compose" ? "worker" : "web";
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: { [serviceName]: item.landofileService },
+      });
+      const service = landofile.services?.[ServiceName.make(serviceName)];
+      if (service === undefined) throw new Error("service missing");
+      const plan = item.serviceType.toServicePlan({
+        name: serviceName,
+        service,
+        appRoot: "/srv/apps/myapp",
+        appName: "myapp",
+        metadata,
+      });
+      expect(plan.environment.LANDO_HOST_OS).toBeUndefined();
+      expect(plan.environment.LANDO_HOST_USER).toBeUndefined();
+      expect(plan.environment.LANDO_HOST_UID).toBeUndefined();
+      expect(plan.environment.LANDO_HOST_GID).toBeUndefined();
+      expect(plan.environment.LANDO_HOST_HOME).toBeUndefined();
+    });
+  }
+});

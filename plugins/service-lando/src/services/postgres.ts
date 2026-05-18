@@ -1,31 +1,37 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 
 import { Schema } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { appNameFor, buildLandoEnv } from "./env.ts";
+
 const DEFAULT_IMAGE = "postgres:16";
 const DEFAULT_PORT = 5432;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
-
-const appIdFromRoot = (appRoot: string): string => basename(appRoot) || "app";
 
 const defaultPassword = (appId: string): string =>
   `lando-${createHash("sha256").update(appId).digest("hex").slice(0, 16)}`;
 
 export const postgresServiceType: ServiceTypeShape = {
   id: "postgres",
-  toServicePlan: ({
-    name,
-    service,
-    appRoot,
-    provider = ProviderId.make("lando"),
-    primary = false,
-    metadata,
-  }) => {
-    const appId = appIdFromRoot(appRoot);
+  toServicePlan: (input) => {
+    const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
+    const appName = appNameFor(input);
+
+    const environment = buildLandoEnv({
+      serviceName: name,
+      serviceType: "postgres",
+      appName,
+      host,
+      extraDefaults: {
+        POSTGRES_USER: service.user ?? "lando",
+        POSTGRES_PASSWORD: defaultPassword(appName),
+        POSTGRES_DB: service.database ?? appName,
+      },
+      userEnv: service.environment ?? {},
+    });
 
     return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
@@ -35,18 +41,13 @@ export const postgresServiceType: ServiceTypeShape = {
       artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
       command: service.command,
       entrypoint: service.entrypoint,
-      environment: {
-        POSTGRES_USER: service.user ?? "lando",
-        POSTGRES_PASSWORD: defaultPassword(appId),
-        POSTGRES_DB: service.database ?? appId,
-        ...(service.environment ?? {}),
-      },
+      environment,
       workingDirectory: service.workingDirectory,
       appMount: undefined,
       mounts: [],
       storage: [
         {
-          store: `${appId}-postgresql-data`,
+          store: `${appName}-postgresql-data`,
           target: DATA_TARGET,
           readOnly: false,
         },

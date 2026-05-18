@@ -37,7 +37,7 @@ describe("compose ServiceType (raw passthrough)", () => {
 
     expect(plan.type).toBe("compose");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "ghcr.io/example/worker:1.2.3" });
-    expect(plan.environment).toEqual({ WORKER_ENV: "prod" });
+    expect(plan.environment).toMatchObject({ WORKER_ENV: "prod" });
     expect(plan.endpoints).toEqual([
       { port: 9000, protocol: "tcp", name: "worker" },
       { port: 9001, protocol: "udp", name: "worker" },

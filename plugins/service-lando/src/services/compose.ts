@@ -1,15 +1,11 @@
-import { basename } from "node:path";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 
 import { Schema } from "effect";
 
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
-import type { ServiceTypePlanInput, ServiceTypeShape } from "@lando/sdk/services";
+import type { ServiceTypeShape } from "@lando/sdk/services";
 
-const appIdFor = (input: ServiceTypePlanInput): string => {
-  if (input.appName !== undefined && input.appName.length > 0) return input.appName;
-  return basename(input.appRoot) || "app";
-};
+import { appNameFor, buildLandoEnv } from "./env.ts";
 
 type VolumeMount = {
   readonly type: "bind" | "volume" | "tmpfs";
@@ -59,7 +55,15 @@ const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "u
 export const composeServiceType: ServiceTypeShape = {
   id: "compose",
   toServicePlan: (input) => {
-    const { name, service, appRoot, provider = ProviderId.make("lando"), primary = false, metadata } = input;
+    const {
+      name,
+      service,
+      appRoot,
+      provider = ProviderId.make("lando"),
+      primary = false,
+      metadata,
+      host,
+    } = input;
     const hasImage = service.image !== undefined && service.image.length > 0;
     const hasBuild = service.composeBuild !== undefined;
     if (!hasImage && !hasBuild) {
@@ -78,7 +82,8 @@ export const composeServiceType: ServiceTypeShape = {
       );
     }
 
-    const appId = appIdFor(input);
+    const appName = appNameFor(input);
+    const appId = appName;
     const composeBuild = service.composeBuild;
     const buildContext = composeBuild?.context;
     const artifact =
@@ -119,6 +124,14 @@ export const composeServiceType: ServiceTypeShape = {
       return { port: parsed.port, protocol: parsed.protocol, name };
     });
 
+    const environment = buildLandoEnv({
+      serviceName: name,
+      serviceType: "compose",
+      appName,
+      host,
+      userEnv: service.environment ?? {},
+    });
+
     return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "compose",
@@ -127,7 +140,7 @@ export const composeServiceType: ServiceTypeShape = {
       artifact,
       command: service.command,
       entrypoint: service.entrypoint,
-      environment: service.environment ?? {},
+      environment,
       user: service.user,
       workingDirectory: service.workingDirectory,
       appMount: undefined,

@@ -29,7 +29,7 @@ describe("postgres ServiceType", () => {
 
     expect(plan.type).toBe("postgres");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "postgres:16" });
-    expect(plan.environment).toEqual({
+    expect(plan.environment).toMatchObject({
       POSTGRES_USER: "lando",
       POSTGRES_PASSWORD: "lando-c1b70247946b2297",
       POSTGRES_DB: "myapp",

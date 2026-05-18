@@ -1,3 +1,5 @@
+import * as os from "node:os";
+
 import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
 import { CapabilityError, LandofileValidationError, NotImplementedError } from "@lando/sdk/errors";
@@ -206,6 +208,17 @@ const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig)
   return { ...servicePlan, appMount: merged };
 };
 
+const resolveHostFacts = () => {
+  const userInfo = os.userInfo();
+  return {
+    os: process.platform,
+    user: userInfo.username,
+    uid: String(userInfo.uid),
+    gid: String(userInfo.gid),
+    home: userInfo.homedir,
+  };
+};
+
 const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   landofile: LandofileShape,
@@ -215,6 +228,7 @@ const planApp = (
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
   const provider = landofile.provider ?? ProviderId.make("lando");
+  const host = resolveHostFacts();
   const metadata = {
     resolvedAt: new Date().toISOString(),
     source: `${appRoot}/.lando.yml`,
@@ -268,6 +282,7 @@ const planApp = (
         provider,
         primary: name === "web",
         metadata,
+        host,
       });
       const servicePlan = applyAuthoredAppMount(rawPlan, service);
 
