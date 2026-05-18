@@ -22,6 +22,7 @@ describe("@lando/service-lando package", () => {
       "redis",
       "ruby:3.3",
       "static",
+      "static:nginx",
       "static:caddy",
     ]);
     expect(Layer.isLayer(plugin.services)).toBe(true);
@@ -45,6 +46,7 @@ describe("@lando/service-lando package", () => {
           "redis",
           "ruby:3.3",
           "static",
+          "static:nginx",
           "static:caddy",
         ],
       },

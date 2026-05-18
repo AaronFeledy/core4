@@ -46,6 +46,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
   ["redis", redisServiceType],
   ["ruby:3.3", ruby33ServiceType],
   ["static", staticNginxServiceType],
+  ["static:nginx", staticNginxServiceType],
   ["static:caddy", staticCaddyServiceType],
 ]);
 
@@ -73,6 +74,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "redis",
       "ruby:3.3",
       "static",
+      "static:nginx",
       "static:caddy",
     ],
   },

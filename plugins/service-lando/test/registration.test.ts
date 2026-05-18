@@ -66,6 +66,7 @@ describe("@lando/service-lando registration", () => {
       "redis",
       "ruby:3.3",
       "static",
+      "static:nginx",
       "static:caddy",
     ]);
   });
@@ -204,6 +205,19 @@ describe("@lando/service-lando registration", () => {
         services: { [ServiceName.make("web")]: { type: "ruby:3.2" } },
       }),
     ).rejects.toThrow(/Unsupported service type ruby:3\.2.*Supported alternatives:.*ruby:3\.3/);
+  });
+
+  test("AppPlanner resolves explicit static:nginx through PluginRegistry as static:nginx alias", async () => {
+    const appPlan = await plan({
+      name: "static-app",
+      runtime: 4,
+      services: { [ServiceName.make("web")]: { type: "static:nginx" } },
+    });
+
+    const web = appPlan.services[ServiceName.make("web")];
+    if (web === undefined) throw new Error("static service missing");
+    expect(web.type).toBe("static:nginx");
+    expect(web.environment.LANDO_SERVICE_TYPE).toBe("static:nginx");
   });
 
   test("AppPlanner rejects unknown non-family service types with registered-types remediation", async () => {
