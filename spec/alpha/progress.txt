@@ -1512,6 +1512,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `ShellScriptOutsideRootError` (`message`, `path`, `realpath?`, `permittedRoots`, `remediation?`, `cause?`) is the canonical §8.5.9 containment failure surface. Symlink escapes are caught because the realpath check resolves both the script and each permitted root via `fs.realpath` before comparing prefixes.
 ---
 
+## [2026-05-18 09:45 CDT] - Push (US-019)
+- Branch pushed: us-019-host-tooling-engine → origin (new remote branch)
+- Commits: 5c7d11f (feat: Implement host ToolingEngine), 1caa39a (docs: record US-019 review outcome)
+- PR: #95 https://github.com/AaronFeledy/core4/pull/95 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL)
+- Review feedback: Bugbot COMMENTED (2 potential issues) but reviewDecision empty — not CHANGES_REQUESTED; same pattern as prior iterations, not a blocking work item
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 5210e79
+- Local main / branch refreshed: yes (main fast-forwarded to 5210e79; local story branch deleted)
+- Remaining local state: clean, on main
+---
+
 ## [2026-05-18 09:00 CDT] - US-019 Review
 - Reviewed US-019 build commit `5c7d11f` (Implement host ToolingEngine) against PRD-03 §US-019 ACs and the §8.5.9 containment + §8.5.3 var.sh contracts. Ran `review-work` via combined Oracle goal/code-quality/security review.
 - `review-work` findings:
