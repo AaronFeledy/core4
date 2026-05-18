@@ -1233,3 +1233,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — fast-forward to 73e23fd, local us-014-alpha-mount-storage deleted, remote tracking ref pruned
 - Remaining local state: none
 ---
+
+## [2026-05-18 07:54 UTC] - Sync
+- Previous branch: us-014-alpha-mount-storage
+- Previous PR: #90 https://github.com/AaronFeledy/core4/pull/90
+- Action: caught up after prior merge — PR #90 already merged (squash commit 73e23fd)
+- Local main updated: yes (already at origin/main, no new commits since last iteration)
+- Branch after sync: main
+- Stash created: no
+---
