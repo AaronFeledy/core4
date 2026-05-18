@@ -13,13 +13,16 @@ describe("@lando/service-lando package", () => {
       "postgres",
       "php:8.2",
       "php:8.3",
+      "python:3.12",
     ]);
     expect(Layer.isLayer(plugin.services)).toBe(true);
     expect(plugin.manifest).toMatchObject({
       name: "@lando/service-lando",
       version: "0.0.0",
       api: 4,
-      contributes: { serviceTypes: ["node:lts", "node:22", "postgres", "php:8.2", "php:8.3"] },
+      contributes: {
+        serviceTypes: ["node:lts", "node:22", "postgres", "php:8.2", "php:8.3", "python:3.12"],
+      },
     });
   });
 });
