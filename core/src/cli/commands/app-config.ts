@@ -1,10 +1,3 @@
-/**
- * `lando app config` — read the current app's Landofile.
- *
- * Alpha implements the bare `app config` (default `view --source resolved`)
- * subcommand only. Write operations and `translate` remain deferred.
- * Bootstrap level: `app`.
- */
 import { Effect } from "effect";
 
 import type {

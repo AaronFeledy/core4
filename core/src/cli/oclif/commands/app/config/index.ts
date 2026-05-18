@@ -28,7 +28,7 @@ export default class AppConfigCommand extends LandoCommandBase {
 
   override async run(): Promise<void> {
     const parsed = (await this.parse(AppConfigCommand)) as { readonly flags: { readonly format?: string } };
-    const format: "json" | "table" = parsed.flags.format === "json" ? "json" : "table";
+    const format = parsed.flags.format === "json" ? "json" : "table";
     await this.runEffect({
       ...appConfigSpec,
       render: (result) => renderAppConfigResult(result as AppConfigResult, format),

@@ -13,21 +13,23 @@ interface LogsFlags {
   readonly since?: string;
 }
 
-const LOGS_FOLLOW_DEFERRED = new NotImplementedError({
-  message:
-    "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
-  commandId: "app:logs",
-  specSection: "spec/08-cli-and-tooling.md",
-  remediation: "Drop --follow and rely on --tail <N> for a finite log snapshot.",
-});
+const deferredLogsError = (message: string, remediation: string): NotImplementedError =>
+  new NotImplementedError({
+    message,
+    commandId: "app:logs",
+    specSection: "spec/08-cli-and-tooling.md",
+    remediation,
+  });
 
-const LOGS_SINCE_DEFERRED = new NotImplementedError({
-  message:
-    "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
-  commandId: "app:logs",
-  specSection: "spec/08-cli-and-tooling.md",
-  remediation: "Drop --since and use --tail <N> for a finite recent snapshot.",
-});
+const LOGS_FOLLOW_DEFERRED = deferredLogsError(
+  "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
+  "Drop --follow and rely on --tail <N> for a finite log snapshot.",
+);
+
+const LOGS_SINCE_DEFERRED = deferredLogsError(
+  "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
+  "Drop --since and use --tail <N> for a finite recent snapshot.",
+);
 
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   id: "app:logs",
@@ -53,12 +55,14 @@ export default class LogsCommand extends LandoCommandBase {
 
   override async run(): Promise<void> {
     const parsed = (await this.parse(LogsCommand)) as { readonly flags: LogsFlags };
-    if (parsed.flags.follow === true) {
-      await this.runEffect({ ...logsSpec, run: () => Effect.fail(LOGS_FOLLOW_DEFERRED) });
-      return;
-    }
-    if (parsed.flags.since !== undefined) {
-      await this.runEffect({ ...logsSpec, run: () => Effect.fail(LOGS_SINCE_DEFERRED) });
+    const deferredError =
+      parsed.flags.follow === true
+        ? LOGS_FOLLOW_DEFERRED
+        : parsed.flags.since !== undefined
+          ? LOGS_SINCE_DEFERRED
+          : undefined;
+    if (deferredError !== undefined) {
+      await this.runEffect({ ...logsSpec, run: () => Effect.fail(deferredError) });
       return;
     }
     await this.runEffect({

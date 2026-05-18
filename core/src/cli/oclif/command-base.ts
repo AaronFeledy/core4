@@ -2,26 +2,6 @@
  * `LandoCommandBase` — the OCLIF Command subclass that adapts Effect into
  * OCLIF's `run()` lifecycle.
  *
- * The pattern:
- *
- * ```ts
- * export default class StartCommand extends LandoCommandBase {
- *   static description = "Start a Lando app";
- *   static landoSpec = startCommandSpec;
- *   async run(): Promise<void> {
- *     await this.runEffect(startCommandSpec);
- *   }
- * }
- * ```
- *
- * The base class:
- *   1. Parses argv via OCLIF.
- *   2. Builds `CommandInput` (`stdin`/`stdout`/`stderr` as Stream/Sink).
- *   3. Reads the command's `bootstrap` level off the spec.
- *   4. Builds `LandoRuntimeLive` at that level via `makeLandoRuntime`.
- *   5. Runs `spec.run(input)` via `Effect.runPromiseExit` and translates
- *      tagged errors → OCLIF exit codes.
- *
  */
 import { Command } from "@oclif/core";
 

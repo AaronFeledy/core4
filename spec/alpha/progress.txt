@@ -3053,3 +3053,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - For user-supplied service/path/etc. selectors, ALWAYS validate against the plan BEFORE invoking expensive infrastructure (`registry.select`, `planner.materialize`, `provider.apply`). Silent empty-result paths (`selectServices` returning `[]`) hide typos and are a UX regression vs. `app:exec`'s fail-closed pattern.
   - Sandbox prerequisite: `.local/bin/lando4-dev` requires WSL today. On non-WSL Linux hosts, review-step hands-on CLI probes have to run on the host directly, with `LANDO_*` env isolation and tmpdir scoping; document this if the sandbox isn't fixed before US-024.
 ---
+
+## [2026-05-18 17:20 CDT] - US-023 Slop cleanup
+- Ran branch-wide slop-remover after the US-023 review step and before push.
+- Cleanup changed AI-slop/comment-only or cosmetic surfaces in `AGENTS.md`, `core/src/cli/commands/app-config.ts`, `core/src/cli/commands/restart.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/app/config/index.ts`, and `core/src/cli/oclif/commands/app/logs.ts`.
+- Behavior preserved: no public API, error messages, side effects, or command contracts changed; `restartApp` now returns the existing `startApp` result shape directly, and `app:logs` deferred errors keep the same precedence and remediation text.
+- Verification run and result: `lsp_diagnostics` clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (611 pass, 11 skip, 0 fail). Initial full-test run failed due stale generated `core/dist/lando` executable permissions; `bun run clean` removed generated outputs and the rerun passed.
+- Safety note: one accidental duplicate slop-remover agent targeting `app/config/index.ts` was cancelled before final diff review to prevent concurrent edits.
+---

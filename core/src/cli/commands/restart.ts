@@ -68,9 +68,8 @@ export const restartApp = (
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
     yield* stopApp();
-    const start = yield* startApp({
+    return yield* startApp({
       reconcile: options.reconcile ?? false,
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
-    return { app: start.app, servicesStarted: start.servicesStarted };
   });
