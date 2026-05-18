@@ -16,7 +16,12 @@ import { dirname, join } from "node:path";
 
 import { Cause, type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
-import { LandofileNotFoundError, LandofileParseError, LandofileValidationError } from "@lando/sdk/errors";
+import {
+  LandofileNotFoundError,
+  LandofileParseError,
+  LandofileValidationError,
+  NotImplementedError,
+} from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
@@ -27,6 +32,46 @@ export { LandofileService } from "@lando/sdk/services";
 const LANDOFILE_NAME = ".lando.yml";
 const REMEDIATION =
   "Remove unsupported keys or update the MVP Landofile subset in spec/07-landofile-and-config.md.";
+
+const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
+
+const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
+  key: string;
+  specSection: string;
+  description: string;
+}> = [
+  { key: "includes", specSection: "§7.7", description: "Landofile includes/fragments" },
+  { key: "secrets", specSection: "§4.2/§7.4", description: "Landofile secrets" },
+  { key: "env_file", specSection: "§7.6", description: "Landofile env file overrides" },
+];
+
+const scanForBetaTopLevelKey = (parsed: unknown): { key: string; specSection: string } | undefined => {
+  if (parsed === null || typeof parsed !== "object") return undefined;
+  const obj = parsed as Record<string, unknown>;
+  for (const entry of BETA_TOP_LEVEL_KEYS) {
+    if (Object.hasOwn(obj, entry.key)) return entry;
+  }
+  return undefined;
+};
+
+const CONFIG_EXPRESSION_PATTERN = /\$\{[A-Za-z_]/;
+const TEMPLATE_EXPRESSION_PATTERN = /\{\{/;
+
+const scanForConfigExpression = (
+  content: string,
+): { specSection: string; description: string } | undefined => {
+  const withoutComments = content
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*#.*$/, "").replace(/\s+#.*$/, ""))
+    .join("\n");
+  if (CONFIG_EXPRESSION_PATTERN.test(withoutComments)) {
+    return { specSection: "§7.3.1", description: "Configuration expressions (${...})" };
+  }
+  if (TEMPLATE_EXPRESSION_PATTERN.test(withoutComments)) {
+    return { specSection: "§7.3.1", description: "Template expressions ({{ ... }})" };
+  }
+  return undefined;
+};
 
 const findLandofile = async (
   cwd: string,
@@ -81,6 +126,38 @@ const validateLandofile = (
   );
 };
 
+const scanContentForBetaExpressions = (
+  filePath: string,
+  content: string,
+): Effect.Effect<string, NotImplementedError> => {
+  const match = scanForConfigExpression(content);
+  if (match === undefined) return Effect.succeed(content);
+  return Effect.fail(
+    new NotImplementedError({
+      message: `${match.description} are not supported in Alpha Landofiles at ${filePath}.`,
+      commandId: "landofile.parse",
+      specSection: match.specSection,
+      remediation: BETA_REMEDIATION,
+    }),
+  );
+};
+
+const rejectBetaTopLevelKeys = (
+  filePath: string,
+  parsed: unknown,
+): Effect.Effect<unknown, NotImplementedError> => {
+  const beta = scanForBetaTopLevelKey(parsed);
+  if (beta === undefined) return Effect.succeed(parsed);
+  return Effect.fail(
+    new NotImplementedError({
+      message: `Top-level "${beta.key}:" is not supported in Alpha Landofiles at ${filePath}.`,
+      commandId: "landofile.parse",
+      specSection: beta.specSection,
+      remediation: BETA_REMEDIATION,
+    }),
+  );
+};
+
 const discoverLandofile = Effect.tryPromise({
   try: async () => await findLandofile(process.cwd()),
   catch: (cause) =>
@@ -106,7 +183,9 @@ const discoverLandofile = Effect.tryPromise({
           cause,
         }),
     }).pipe(
+      Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
       Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
+      Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
       Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
     ),
   ),
@@ -114,7 +193,8 @@ const discoverLandofile = Effect.tryPromise({
     if (
       error instanceof LandofileNotFoundError ||
       error instanceof LandofileParseError ||
-      error instanceof LandofileValidationError
+      error instanceof LandofileValidationError ||
+      error instanceof NotImplementedError
     ) {
       return error;
     }

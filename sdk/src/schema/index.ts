@@ -484,6 +484,10 @@ export const MountInput = Schema.Union(
     source: Schema.optional(Schema.String),
     target: Schema.String,
     readOnly: Schema.optional(Schema.Boolean),
+    /** Excludes (gitignore-flavoured) — bind only; realized as volume shadows. */
+    excludes: Schema.optional(Schema.Array(Schema.String)),
+    /** Includes — re-bind specific excluded paths. */
+    includes: Schema.optional(Schema.Array(Schema.String)),
   }),
 );
 export type MountInput = typeof MountInput.Type;

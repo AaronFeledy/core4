@@ -233,7 +233,7 @@ describe("lando start", () => {
 
   test("reports malformed Landofile file path and line", async () => {
     await withTempCwd(async (dir) => {
-      await Bun.write(join(dir, ".lando.yml"), "name: bad\nservices:\n  web: ${BAD}\n");
+      await Bun.write(join(dir, ".lando.yml"), "name: bad\nservices:\n\tweb: app\n");
 
       const result = await runCli(["start"], dir);
 

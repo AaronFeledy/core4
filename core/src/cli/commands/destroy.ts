@@ -17,6 +17,7 @@ import type {
   LandofileParseError,
   LandofileValidationError,
   NoProviderInstalledError,
+  NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
@@ -46,6 +47,7 @@ type DestroyAppError =
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
+  | NotImplementedError
   | CapabilityError
   | LandoCommandError
   | NoProviderInstalledError

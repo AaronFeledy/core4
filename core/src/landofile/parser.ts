@@ -185,11 +185,95 @@ const parseList = (
         line.line,
       );
     }
+
+    const mapMatch = value.match(/^([A-Za-z_][A-Za-z0-9_-]*):(?:\s+(.*))?$/);
+    if (mapMatch !== null) {
+      const [, firstKey, firstRawValueRaw] = mapMatch;
+      const firstRawValue = firstRawValueRaw ?? "";
+      if (firstKey !== undefined) {
+        const [item, nextIndex] = parseListItemMap(
+          lines,
+          filePath,
+          index,
+          line,
+          indent + 2,
+          firstKey,
+          firstRawValue,
+        );
+        result.push(item);
+        index = nextIndex;
+        continue;
+      }
+    }
+
     result.push(parseScalar(value, filePath, line.line));
     index += 1;
   }
 
   return [result, index];
+};
+
+const parseListItemMap = (
+  lines: ReadonlyArray<ParsedLine>,
+  filePath: string,
+  startIndex: number,
+  startLine: ParsedLine,
+  childIndent: number,
+  firstKey: string,
+  firstRawValue: string,
+): readonly [Record<string, unknown>, number] => {
+  const item: Record<string, unknown> = {};
+  let index = startIndex + 1;
+
+  const consumeKey = (key: string, rawValue: string, keyLine: number, keyIndent: number): void => {
+    if (rawValue.trim() === "") {
+      const next = lines[index];
+      if (next === undefined || next.indent <= keyIndent) {
+        item[key] = {};
+        return;
+      }
+      if (next.text.startsWith("- ")) {
+        const [items, nextIndex] = parseList(lines, filePath, index, next.indent);
+        item[key] = items;
+        index = nextIndex;
+        return;
+      }
+      const [nested, nextIndex] = parseMap(lines, filePath, index, next.indent);
+      item[key] = nested;
+      index = nextIndex;
+      return;
+    }
+    item[key] = parseScalar(rawValue, filePath, keyLine);
+  };
+
+  consumeKey(firstKey, firstRawValue, startLine.line, childIndent);
+
+  while (index < lines.length) {
+    const line = lines[index];
+    if (line === undefined || line.indent < childIndent) break;
+    if (line.text.startsWith("- ")) break;
+    if (line.indent > childIndent) {
+      throw parseError(
+        filePath,
+        `Malformed YAML indentation at line ${line.line}`,
+        line.line,
+        line.indent + 1,
+      );
+    }
+
+    const match = line.text.match(/^([A-Za-z0-9_-]+):(.*)$/);
+    if (match === null) {
+      throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
+    }
+    const [, key, rawValue] = match;
+    if (key === undefined || rawValue === undefined) {
+      throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
+    }
+    index += 1;
+    consumeKey(key, rawValue, line.line, childIndent);
+  }
+
+  return [item, index];
 };
 
 const parseYaml = ({ content, file }: ParseOptions): unknown => {

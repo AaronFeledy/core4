@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { LandofileNotFoundError, LandofileParseError, LandofileValidationError } from "@lando/core/errors";
+import {
+  LandofileNotFoundError,
+  LandofileParseError,
+  LandofileValidationError,
+  NotImplementedError,
+} from "@lando/core/errors";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -185,6 +190,173 @@ describe("LandofileServiceLive — numeric/boolean environment values", () => {
 
       const web = landofile.services?.[ServiceName.make("web")];
       expect(web?.environment).toEqual({ PORT: "3000", DEBUG: "true", NODE_ENV: "development" });
+    });
+  });
+});
+
+describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () => {
+  test("parses mounts: bind shorthand entries, volume object entries, and appMount.excludes patterns", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "    appMount:",
+          "      target: /app",
+          "      excludes:",
+          "        - node_modules",
+          "        - vendor",
+          "    mounts:",
+          "      - ./config:/etc/app:ro",
+          "      - type: volume",
+          "        source: shared-vol",
+          "        target: /data",
+          "    storage:",
+          "      - /var/lib/cache",
+          "      - store: scoped-vol",
+          "        target: /scoped",
+          "        scope: app",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+      const web = landofile.services?.[ServiceName.make("web")];
+      expect(web?.appMount?.target).toBe("/app");
+      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
+      expect(web?.mounts?.[0]).toBe("./config:/etc/app:ro");
+      const volumeMount = web?.mounts?.[1];
+      expect(typeof volumeMount === "string" ? null : volumeMount).toEqual({
+        type: "volume",
+        source: "shared-vol",
+        target: "/data",
+      });
+      const scopedStorage = web?.storage?.[1];
+      expect(web?.storage?.[0]).toBe("/var/lib/cache");
+      expect(typeof scopedStorage === "string" ? null : scopedStorage).toEqual({
+        store: "scoped-vol",
+        target: "/scoped",
+        scope: "app",
+      });
+    });
+  });
+});
+
+describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => {
+  const assertBetaRejection = (error: unknown, expectedSpecSection: string): void => {
+    expect(error).toBeInstanceOf(NotImplementedError);
+    if (!(error instanceof NotImplementedError)) return;
+    expect(error._tag).toBe("NotImplementedError");
+    expect(error.specSection).toBe(expectedSpecSection);
+    expect(error.remediation.toLowerCase()).toContain("beta");
+  };
+
+  test("rejects top-level `includes:` with NotImplementedError + Beta remediation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "includes:",
+          "  - ./fragment.yml",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, "§7.7");
+      }
+    });
+  });
+
+  test("rejects configuration expressions ${...} with NotImplementedError + Beta remediation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "    environment:",
+          "      APP_HOST: ${env.HOST}",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, "§7.3.1");
+      }
+    });
+  });
+
+  test("rejects top-level `secrets:` with NotImplementedError + Beta remediation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "secrets:",
+          "  db_password:",
+          "    file: ./.secrets/db",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, "§4.2/§7.4");
+      }
+    });
+  });
+
+  test("rejects top-level `env_file:` env overrides with NotImplementedError + Beta remediation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "env_file:",
+          "  - ./.env.local",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, "§7.6");
+      }
     });
   });
 });
