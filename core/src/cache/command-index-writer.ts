@@ -1,13 +1,15 @@
 import { mkdir, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
+import type { DiscoveredBunShellScript } from "../landofile/bun-sh-discovery.ts";
+import { findLandofilePath } from "../landofile/discovery.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
-import { compilePluginCommands, compileToolingCommands } from "./command-compiler.ts";
+import { compileAppCommands, compilePluginCommands } from "./command-compiler.ts";
 import {
   type AppCommandIndexPayload,
   type PluginCommandIndexPayload,
@@ -15,8 +17,6 @@ import {
   encodePluginCommandIndex,
 } from "./command-index.ts";
 import { appCommandCachePath, pluginCommandCachePath, resolveUserCacheRoot } from "./paths.ts";
-
-const LANDOFILE_NAME = ".lando.yml";
 
 const removeIfPresent = async (path: string): Promise<void> => {
   await unlink(path).catch(() => undefined);
@@ -34,24 +34,9 @@ const writeAtomic = async (path: string, bytes: Uint8Array): Promise<void> => {
   }
 };
 
-const statIfFile = async (path: string): Promise<boolean> => {
-  const s = await stat(path).catch(() => undefined);
-  return s?.isFile() === true;
-};
-
-const findLandofilePath = async (cwd: string): Promise<string | undefined> => {
-  let current = cwd;
-  for (;;) {
-    const candidate = join(current, LANDOFILE_NAME);
-    if (await statIfFile(candidate)) return candidate;
-    const parent = dirname(current);
-    if (parent === current) return undefined;
-    current = parent;
-  }
-};
-
 export interface WriteAppCommandCacheOptions {
   readonly landofile: LandofileShape;
+  readonly scripts?: ReadonlyArray<DiscoveredBunShellScript>;
   readonly cwd?: string;
   readonly cacheRoot?: string;
   readonly now?: () => number;
@@ -77,7 +62,7 @@ const writeAppCommandCacheTask = async (
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     generatedAtMs: (options.now ?? Date.now)(),
-    entries: compileToolingCommands(options.landofile),
+    entries: compileAppCommands(options.landofile, options.scripts ?? []),
   };
 
   await writeAtomic(cachePath, encodeAppCommandIndex(payload));

@@ -213,6 +213,39 @@ export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptO
   },
 ) {}
 
+/**
+ * BunShellScriptFrontMatterError — raised when a `.bun.sh` script-backed
+ * tooling task (§8.5.9) has a missing or malformed YAML front-matter
+ * block. The front-matter MUST be the first contiguous comment block at
+ * the top of the file wrapped in `# ---` markers and uniformly prefixed
+ * with `# `; it MUST validate against the `BunShellScriptFrontMatter`
+ * schema published from `@lando/sdk`.
+ */
+export class BunShellScriptFrontMatterError extends Schema.TaggedError<BunShellScriptFrontMatterError>()(
+  "BunShellScriptFrontMatterError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    issues: Schema.optional(Schema.Array(Schema.String)),
+    remediation: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+/**
+ * BunShellScriptEmptyError — raised when a `.bun.sh` script-backed
+ * tooling task (§8.5.9) is an empty file. Empty scripts cannot be
+ * compiled into a task.
+ */
+export class BunShellScriptEmptyError extends Schema.TaggedError<BunShellScriptEmptyError>()(
+  "BunShellScriptEmptyError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    remediation: Schema.optional(Schema.String),
+  },
+) {}
+
 export class ProcessExecError extends Schema.TaggedError<ProcessExecError>()("ProcessExecError", {
   message: Schema.String,
   cmd: Schema.String,

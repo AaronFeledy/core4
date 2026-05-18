@@ -6,11 +6,18 @@ import type {
   LandofileParseError,
   LandofileValidationError,
   NoProviderInstalledError,
-  NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  ShellExecError,
+  ShellScriptOutsideRootError,
 } from "@lando/sdk/errors";
-import { ToolingCompileError, type ToolingExecError } from "@lando/sdk/errors";
+import {
+  type BunShellScriptEmptyError,
+  type BunShellScriptFrontMatterError,
+  NotImplementedError,
+  ToolingCompileError,
+  ToolingExecError,
+} from "@lando/sdk/errors";
 import type { ToolingTaskShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -20,6 +27,10 @@ import {
   ToolingEngine,
   type ToolingInvocation,
 } from "@lando/sdk/services";
+
+import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
+import { findAppRoot } from "../../landofile/discovery.ts";
+import { runHostScript } from "../../services/host-tooling-engine.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
@@ -38,6 +49,8 @@ export interface RunToolingResult {
 }
 
 type RunToolingError =
+  | BunShellScriptEmptyError
+  | BunShellScriptFrontMatterError
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
@@ -47,10 +60,14 @@ type RunToolingError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
+  | ShellExecError
+  | ShellScriptOutsideRootError
   | ToolingCompileError
   | ToolingExecError;
 
 type RunToolingServices = AppPlanner | LandofileService | RuntimeProviderRegistry | ToolingEngine;
+
+const HOST_SERVICE = ":host";
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
 
@@ -97,6 +114,67 @@ export const buildToolingInvocation = (
 export const renderRunToolingResult = (result: RunToolingResult): string | undefined =>
   result.stdout.length === 0 ? undefined : result.stdout;
 
+const canonicalLookupKey = (name: string): string => (name.startsWith("app:") ? name : `app:${name}`);
+
+const findBunShellScriptForName = (
+  scripts: ReadonlyArray<DiscoveredBunShellScript>,
+  name: string,
+): DiscoveredBunShellScript | undefined => {
+  const target = canonicalLookupKey(name);
+  return scripts.find((script) => script.id === target);
+};
+
+const runBunShellScript = (
+  script: DiscoveredBunShellScript,
+  appRoot: string,
+  options: RunToolingOptions,
+): Effect.Effect<
+  RunToolingResult,
+  NotImplementedError | ShellExecError | ShellScriptOutsideRootError | ToolingExecError
+> =>
+  Effect.gen(function* () {
+    if (script.service !== HOST_SERVICE) {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: `.bun.sh script "${script.id}" declares service "${script.service}"; service-targeted .bun.sh scripts are deferred to Beta.`,
+          commandId: "tooling.run",
+          specSection: "§8.5.9",
+          remediation:
+            "Remove the `service:` field (or set it to `:host`) so the script runs through the host engine, or move the body into a Landofile tooling task that targets the desired service.",
+        }),
+      );
+    }
+    const cwd = options.cwd ?? appRoot;
+    const env = options.env;
+    const result = yield* runHostScript(script.path, [appRoot], {
+      cwd,
+      ...(env === undefined ? {} : { env }),
+    }).pipe(
+      Effect.catchTag("ShellExecError", (shellError) =>
+        Effect.fail(
+          new ToolingExecError({
+            message: `Script-backed tooling task ${script.id} failed: ${shellError.message}`,
+            tool: script.id,
+            ...(shellError.exitCode === undefined ? {} : { exitCode: shellError.exitCode }),
+            cause: shellError,
+          }),
+        ),
+      ),
+    );
+    if (result.stderr.length > 0) {
+      yield* Effect.sync(() => {
+        process.stderr.write(result.stderr);
+      });
+    }
+    return {
+      tool: script.id,
+      service: HOST_SERVICE,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    } satisfies RunToolingResult;
+  });
+
 export const runTooling = (
   options: RunToolingOptions,
 ): Effect.Effect<RunToolingResult, RunToolingError, RunToolingServices> =>
@@ -108,7 +186,16 @@ export const runTooling = (
 
     const landofile = yield* landofileService.discover;
     const task = landofile.tooling?.[options.name];
+
     if (task === undefined) {
+      const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+      if (appRoot !== undefined) {
+        const scripts = yield* discoverBunShellScripts({ appRoot });
+        const script = findBunShellScriptForName(scripts, options.name);
+        if (script !== undefined) {
+          return yield* runBunShellScript(script, appRoot, options);
+        }
+      }
       return yield* Effect.fail(
         new ToolingCompileError({
           message: `Unknown tooling command: ${options.name}.`,

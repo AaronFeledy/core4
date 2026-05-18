@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
@@ -11,6 +11,12 @@ import { appCommandCachePath, pluginCommandCachePath } from "../../src/cache/pat
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { CommandRegistryLive } from "../../src/services/command-registry.ts";
+
+const writeScript = async (appRoot: string, relativePath: string, contents: string): Promise<void> => {
+  const target = join(appRoot, ".lando", "scripts", relativePath);
+  await mkdir(join(target, ".."), { recursive: true });
+  await writeFile(target, contents);
+};
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-command-registry-"));
@@ -118,6 +124,95 @@ describe("CommandRegistryLive", () => {
 
       const commands = await listFromLive();
       expect(commands).toEqual([]);
+    });
+  });
+
+  test("lists auto-discovered .bun.sh script-backed tasks alongside Landofile tooling tasks", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "tooling:",
+          "  composer:",
+          "    description: Run Composer",
+          "    service: appserver",
+          "    cmd: composer",
+          "",
+        ].join("\n"),
+      );
+      await writeScript(
+        dir,
+        "build.bun.sh",
+        ["# ---", "# desc: Build the app", "# ---", "console.log('build');", ""].join("\n"),
+      );
+      await writeScript(
+        dir,
+        join("db", "wait.bun.sh"),
+        ["# ---", "# desc: Wait for the DB", "# ---", "console.log('wait');", ""].join("\n"),
+      );
+      process.chdir(dir);
+
+      const commands = await listFromLive();
+      const ids = commands.map((c) => c.id).sort();
+      expect(ids).toEqual(["app:build", "app:composer", "app:db:wait"]);
+      expect(commands.find((c) => c.id === "app:build")?.summary).toBe("Build the app");
+      expect(commands.find((c) => c.id === "app:db:wait")?.summary).toBe("Wait for the DB");
+    });
+  });
+
+  test("Landofile tooling.<id> wins over an auto-discovered script with the same canonical id", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "tooling:",
+          "  build:",
+          "    description: Landofile build wins",
+          "    service: appserver",
+          "    cmd: make",
+          "",
+        ].join("\n"),
+      );
+      await writeScript(
+        dir,
+        "build.bun.sh",
+        [
+          "# ---",
+          "# desc: Script-backed build (should be overridden)",
+          "# ---",
+          "console.log('script');",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const commands = await listFromLive();
+      const build = commands.find((c) => c.id === "app:build");
+      expect(build?.summary).toBe("Landofile build wins");
+    });
+  });
+
+  test("returns Landofile-only entries when a .bun.sh script is malformed (router-bootstrap stays best-effort)", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "tooling:",
+          "  test:",
+          "    description: Run tests",
+          "    service: appserver",
+          "    cmd: phpunit",
+          "",
+        ].join("\n"),
+      );
+      await writeScript(dir, "broken.bun.sh", ["console.log('no front matter');", ""].join("\n"));
+      process.chdir(dir);
+
+      const commands = await listFromLive();
+      expect(commands.map((c) => c.id)).toEqual(["app:test"]);
     });
   });
 
@@ -230,6 +325,45 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         expect(decoded.schemaVersion).toBe(1);
         expect(decoded.pluginNames.length).toBeGreaterThan(0);
         expect(Array.isArray(decoded.entries)).toBe(true);
+      });
+    });
+  });
+
+  test("writes auto-discovered .bun.sh script-backed entries into the §12.1 app-command cache", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        await writeFile(
+          join(dir, ".lando.yml"),
+          [
+            "name: scripted-app",
+            "tooling:",
+            "  composer:",
+            "    description: Run Composer",
+            "    service: appserver",
+            "    cmd: composer",
+            "",
+          ].join("\n"),
+        );
+        await writeScript(
+          dir,
+          join("db", "wait.bun.sh"),
+          ["# ---", "# desc: Wait for the DB", "# ---", "console.log('wait');", ""].join("\n"),
+        );
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+        expect(commands.map((c) => c.id).sort()).toEqual(["app:composer", "app:db:wait"]);
+
+        const cachePath = appCommandCachePath(cacheRoot, "scripted-app");
+        const bytes = new Uint8Array(await readFile(cachePath));
+        const decoded = decodeAppCommandIndex(bytes);
+        expect(decoded).not.toBeNull();
+        if (decoded === null) return;
+        const ids = decoded.entries.map((entry) => entry.id).sort();
+        expect(ids).toEqual(["app:composer", "app:db:wait"]);
+        const dbWait = decoded.entries.find((entry) => entry.id === "app:db:wait");
+        expect(dbWait?.service).toBe(":host");
+        expect(dbWait?.summary).toBe("Wait for the DB");
       });
     });
   });

@@ -2890,3 +2890,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-18 14:35 CDT] - US-021
+- Implemented `.bun.sh` script-backed tooling task discovery, front-matter parsing, command-registry merge, app-command cache write, and host-engine execution dispatch via `runTooling`.
+- Files changed: `sdk/src/errors/index.ts`, `sdk/src/schema/index.ts`, `core/src/landofile/bun-sh-discovery.ts` (new), `core/src/landofile/discovery.ts` (new), `core/src/cache/command-compiler.ts`, `core/src/cache/command-index-writer.ts`, `core/src/services/command-registry.ts`, `core/src/cli/commands/tooling.ts`, `core/test/services/bun-sh-discovery.test.ts` (new), `core/test/services/command-registry.test.ts`, `core/test/cli/tooling.scenario.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`, `AGENTS.md`.
+- Verification run and result: lsp_diagnostics clean for changed TypeScript files; focused `bun test core/test/services/bun-sh-discovery.test.ts core/test/services/command-registry.test.ts core/test/cli/tooling.scenario.test.ts core/test/services/host-tooling-engine.test.ts` passed (62 pass); `bun run typecheck` passed; `bun run lint` passed (biome --write applied formatting fixes); `bun test` passed (573 pass, 11 skip); manual driver QA discovered scripts under `/tmp/lando-us021-qa/.lando/scripts/{,db/}*.bun.sh`, listed them via `CommandRegistry.list` with the canonical `app:greet`/`app:db:wait` ids, and ran each via `runTooling` end-to-end (exit 0, expected stdout, no provider exec calls). Negative QA on `topLevelAlias:` front-matter produced a `NotImplementedError` with §8.5.1 + remediation.
+- **Learnings for future iterations:**
+  - Patterns discovered: `.bun.sh` files are interpreted by Bun as Bun Shell scripts (not JavaScript) because of the `.sh` extension — tests and example scripts must use shell syntax (`echo`, `exit N`, `cat`) rather than `process.stdout.write(...)` or `process.exit(...)`. The spec §8.5.9 example uses JS syntax, but that path requires forward work (a JS-mode launcher) we did not ship in Alpha.
+  - Gotchas encountered: Effect `Schema.Struct` decoded with `onExcessProperty: "error"` rejects unknown keys, which is what catches typo'd front-matter keys (`descripshun:`). Beta-only keys must be filtered pre-decode so they emit `NotImplementedError` (Beta-deferred) instead of "excess property" validation noise.
+  - Useful context: `findLandofilePath` was previously private to `command-index-writer.ts`; it now lives in `core/src/landofile/discovery.ts` so both the cache writer and the registry script-discovery branch can share the walk-up implementation. Adding a new caller is a one-import change.
+---
