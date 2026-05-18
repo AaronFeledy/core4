@@ -36,8 +36,8 @@ describe("nginx ServiceType", () => {
     expect(plan.appMount?.readOnly).toBe(false);
     expect(plan.mounts[0]?.type).toBe("bind");
     expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.kind).toBe("tcp");
-    expect(plan.healthcheck?.port).toBe(80);
+    expect(plan.healthcheck?.kind).toBe("command");
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/80"]);
   });
 
   test("rejects LANDO_* env overrides", () => {

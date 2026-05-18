@@ -65,8 +65,8 @@ describe("python:3.12 ServiceType", () => {
     expect(plan.endpoints).toEqual([{ port: 8000, protocol: "http", name: "web" }]);
 
     expect(plan.healthcheck).toEqual({
-      kind: "tcp",
-      port: 8000,
+      kind: "command",
+      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -105,7 +105,7 @@ describe("python:3.12 ServiceType", () => {
     });
 
     expect(plan.endpoints).toEqual([{ port: 8000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.port).toBe(8000);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "django",
       port: 8000,
@@ -125,7 +125,7 @@ describe("python:3.12 ServiceType", () => {
     });
 
     expect(plan.endpoints).toEqual([{ port: 8000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.port).toBe(8000);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8000"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "fastapi",
       port: 8000,
@@ -144,7 +144,7 @@ describe("python:3.12 ServiceType", () => {
     });
 
     expect(plan.endpoints).toEqual([{ port: 5000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.port).toBe(5000);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5000"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({
       framework: "flask",
       port: 5000,
@@ -200,7 +200,7 @@ describe("python:3.12 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/python:3.12-custom" });
     expect(plan.endpoints).toEqual([{ port: 9000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.port).toBe(9000);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/9000"]);
     expect(plan.extensions["lando-service-python"]).toMatchObject({ port: 9000 });
   });
 

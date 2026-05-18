@@ -90,8 +90,8 @@ const makeStaticServiceType = (server: SupportedStaticServer): ServiceTypeShape 
         condition: "started",
       })),
       healthcheck: {
-        kind: "tcp",
-        port: endpointPort,
+        kind: "command",
+        command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${endpointPort}`],
         intervalSeconds: 10,
         timeoutSeconds: 5,
         retries: 5,

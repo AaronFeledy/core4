@@ -563,4 +563,112 @@ describe("AppPlannerLive", () => {
       expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor"]);
     });
   });
+
+  test("emits a per-app bridge network for multi-service apps", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(landofileFixture);
+
+      expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
+    });
+  });
+
+  test("emits a per-app bridge network for single-service apps and slugifies the network name", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "my app",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "node:22" },
+        },
+      });
+
+      expect(appPlan.networks).toEqual([{ name: "lando-my-app", shared: false, driver: "bridge" }]);
+    });
+  });
+
+  test("omits networks when the app declares no services", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "emptyapp",
+        runtime: 4,
+        services: {},
+      });
+
+      expect(appPlan.networks).toEqual([]);
+    });
+  });
+
+  test("rejects healthcheck kind: tcp with a CapabilityError citing serviceHealth", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            image: "node:lts",
+            healthcheck: {
+              kind: "tcp",
+              port: 3000,
+              intervalSeconds: 10,
+              timeoutSeconds: 5,
+              retries: 5,
+            },
+          },
+        },
+      });
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(CapabilityError);
+          if (failure.value instanceof CapabilityError) {
+            expect(failure.value.service).toBe("web");
+            expect(failure.value.feature).toBe("healthcheck kind tcp");
+            expect(failure.value.capability).toBe("serviceHealth");
+            expect(failure.value.providerId).toBe("lando");
+            expect(failure.value.remediation).toContain("kind: command");
+          }
+        }
+      }
+    });
+  });
+
+  test("rejects healthcheck kind: http with a CapabilityError citing serviceHealth", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            image: "node:lts",
+            healthcheck: {
+              kind: "http",
+              url: "http://localhost:3000/health",
+              intervalSeconds: 10,
+              timeoutSeconds: 5,
+              retries: 5,
+            },
+          },
+        },
+      });
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(CapabilityError);
+          if (failure.value instanceof CapabilityError) {
+            expect(failure.value.service).toBe("web");
+            expect(failure.value.feature).toBe("healthcheck kind http");
+            expect(failure.value.capability).toBe("serviceHealth");
+            expect(failure.value.providerId).toBe("lando");
+            expect(failure.value.remediation).toContain("kind: command");
+          }
+        }
+      }
+    });
+  });
 });

@@ -65,8 +65,8 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
 
     expect(plan.healthcheck).toEqual({
-      kind: "tcp",
-      port: 3000,
+      kind: "command",
+      command: ["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -105,7 +105,7 @@ describe("ruby:3.3 ServiceType", () => {
     });
 
     expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.port).toBe(3000);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.RAILS_ENV).toBe("development");
     expect(plan.environment.RAILS_LOG_TO_STDOUT).toBe("true");
@@ -167,7 +167,7 @@ describe("ruby:3.3 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/ruby:3.3-custom" });
     expect(plan.endpoints).toEqual([{ port: 4000, protocol: "http", name: "web" }]);
-    expect(plan.healthcheck?.port).toBe(4000);
+    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/4000"]);
     expect(plan.extensions["lando-service-ruby"]).toMatchObject({ port: 4000 });
   });
 
@@ -184,7 +184,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.extensions["lando-service-ruby"]).toBeDefined();
     expect(plan.artifact.kind).toBe("ref");
     expect(plan.endpoints[0]?.protocol).toBe("http");
-    expect(plan.healthcheck?.kind).toBe("tcp");
+    expect(plan.healthcheck?.kind).toBe("command");
     expect(Object.keys(plan)).not.toContain("providers");
     expect(Object.keys(plan)).not.toContain("providerInfo");
   });

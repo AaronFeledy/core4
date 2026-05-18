@@ -73,6 +73,12 @@ const endpointText = (endpoint: {
   return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
+const READY_STATES = new Set(["running", "ready"]);
+
+const isStartAppReady = (result: StartAppResult): boolean =>
+  result.servicesStarted.length > 0 &&
+  result.servicesStarted.every((service) => READY_STATES.has(service.state));
+
 export const renderStartAppResult = (result: StartAppResult): string => {
   const services = result.servicesStarted
     .map((service) => {
@@ -80,7 +86,8 @@ export const renderStartAppResult = (result: StartAppResult): string => {
       return `${service.name} (${service.state}) ${endpoints}`;
     })
     .join("; ");
-  return `ready: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
+  const prefix = isStartAppReady(result) ? "ready" : "starting";
+  return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
 };
 
 /**
