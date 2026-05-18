@@ -1278,6 +1278,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: the established service-type validator convention in `plugins/service-lando/src/services/` is to throw raw `Error` with a remediation string (`compose.ts`, `node.ts`, `php.ts`, `python.ts`, `ruby.ts`, `static.ts`); converting one validator to a tagged Effect error would cascade through `AppPlanner.plan`'s error union and every CLI command alias. Reviewers should weigh this cascade cost against the typed-error benefit on a story-by-story basis.
 ---
 
+## [2026-05-18 09:05 UTC] - Push
+- Branch pushed: us-015-lando-env-contract (new branch, 3 story commits: 614be20, c8d31b4, d0fe7e5)
+- PR: #91 https://github.com/AaronFeledy/core4/pull/91 (created)
+- CI outcome: pass (static-checks ✅, build-linux-x64 ✅, provider-integration-linux-x64 ✅, Cursor Bugbot NEUTRAL)
+- Review feedback: Cursor Bugbot LOW-severity finding about `FRAMEWORK_WEBROOT_PATHS`/`FRAMEWORK_WEBROOTS` dual-constant maintenance risk in `php.ts` — rejected as non-blocking (NEUTRAL check, no CHANGES_REQUESTED). The dual constants are an accurate observation introduced by the slop-remover inlining `workingDirectoryFor`; could be unified in a future cleanup story.
+- Triage rounds used: 0 (no actionable CI failures; Bugbot NEUTRAL, no CHANGES_REQUESTED)
+- Merge: merged (squash) — squash commit 6763fa1 on main
+- Local main / branch refreshed: yes (git reset --hard origin/main; local story branch deleted)
+- Remaining local state: on main at 6763fa1
+---
+
 ## [2026-05-18 03:52 CDT] - US-015 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed all US-015 branch-changed files; most files were left unchanged because no safe AI-slop cleanup was found.
 - Files changed by cleanup: `plugins/service-lando/src/services/compose.ts`, `plugins/service-lando/src/services/php.ts`, `spec/alpha/progress.txt`.
