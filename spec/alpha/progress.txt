@@ -2881,3 +2881,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: Oracle code-review surfaced a NITPICK about "first `list` call" wording — the comment in `core/src/services/command-registry.ts:13-16` is accurate for the current single-call CLI bootstrap but will need revision once the registry memoizes within a process (deferred past Alpha).
   - Useful context: `landofile.name` is `Schema.optional(Schema.String)` at `sdk/src/schema/index.ts:200` with no character validation — every consumer that uses the name as a path component must defend itself. The same defensive sanitization will be needed by the §12.1 `app-plan` and `app-command` writers in later stories.
 ---
+
+## [2026-05-18 11:31 CDT] - Sync
+- Previous branch: us-020-tooling-command-registry-cache
+- Previous PR: #96 https://github.com/AaronFeledy/core4/pull/96
+- Action: caught up after prior merge (PR #96 was already MERGED; remote branch deleted)
+- Local main updated: yes (already at origin/main HEAD 9f6908e)
+- Branch after sync: main
+- Stash created: no
+---
