@@ -38,7 +38,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 
 (Loop appends one entry per iteration below.)
 
-
 ## [2026-05-16 20:36 CDT] - Sync
 - Previous branch: us-001-provider-lando-linux-setup
 - Previous PR: none
@@ -120,7 +119,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none before recording this merge note
 ---
 
-
 ## [2026-05-17 04:14:23 CDT] - Sync
 - Previous branch: us-002-provider-lando-macos-lifecycle
 - Previous PR: #76 https://github.com/AaronFeledy/core4/pull/76
@@ -169,7 +167,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `Effect.runPromise` surfaces failures with a thrown stack trace, whereas `Effect.runPromiseExit + Exit.isSuccess` swallows the cause behind a generic boolean — prefer `runPromise` for happy paths so failures point at the real defect.
   - Useful context: `providerExtensions: Schema.Array(Schema.String)` is currently the only non-primitive `ProviderCapabilities` field; if more array/object fields land, `renderCapabilityValue` (`typeof value === "object"` → `JSON.stringify`) already covers them without further change.
 ---
-
 
 ## [2026-05-17 05:38 CDT] - US-003 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-003 branch changes; critical review kept only behavior-preserving cleanup and restored useful design notes that were not AI slop.
@@ -376,3 +373,44 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 356dd19 on main
 - Result: outcome recorded and workspace returned clean
 ---
+
+## [2026-05-17 21:00 CDT] - Sync
+- Previous branch: us-008-provider-contract-suite
+- Previous PR: none (no PR found for branch)
+- Action: Case E (0 commits ahead of main) — deleted local story branch; improvement PR #83 (progress.txt) already landed by sub-agent
+- Local main updated: yes (at 356dd19, already current)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-17 21:05 CDT] - US-008
+- Extended the `@lando/sdk/test` provider contract suite with Alpha lifecycle assertions: non-empty provider identity, ProviderCapabilities field-completeness, `isAvailable`/`getStatus`/`getVersions` shape, list/destroy/apply method-typing, ApplyResult shape, re-apply idempotency under reconcile, `list({app})` returning an array, and destroy with `{volumes:false}` preserving volumes before final `{volumes:true}` cleanup. TestRuntimeProvider already satisfies every new assertion; provider-lando and provider-docker fake-client contract tests both pass without further changes; provider-lando live socket case stays gated by `LANDO_TEST_PODMAN_SOCKET`.
+- Files changed: `sdk/src/test/index.ts`, `sdk/test/contract/provider.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun test sdk/test/contract/provider.test.ts` passed (10 pass, 45 expect calls — +6 net new TDD failing-provider cases); `bun test sdk/test plugins/provider-lando/test plugins/provider-docker/test` passed (152 pass, 8 skip); `bun run typecheck` passed; `bun run lint` passed (269 files, no fixes after one biome auto-format on `sdk/src/test/index.ts`); `bun test --concurrency=1` passed (305 pass, 11 skip, 0 fail, 1645 expect calls — +6 net new from US-007 baseline of 299). A prior parallel `bun test` run hit the documented compiled-binary race on `core/test/build/compile.test.ts`; the focused rerun and the serial full-suite run both passed clean. Story changes only test contracts; no CLI output/behavior change, so no compiled-CLI smoke required per build-step rule.
+- **Learnings for future iterations:**
+  - Patterns discovered: `runProviderContract` is the seam for any provider-agnostic Alpha lifecycle assertion. New assertions should be paired with TDD failing-provider unit tests in `sdk/test/contract/provider.test.ts` that target the exact assertion string, so the contract cannot regress silently.
+  - Gotchas encountered: provider-lando's fake `PodmanApiClient` does not expose a `stream` method, so the shared contract cannot pull from `execStream` or `logs` without breaking the existing fake test — keep those as shape-only checks and let per-provider fake tests own the streaming paths. Re-apply assertions are safe because both providers `GET /containers/<name>/json` first and skip create on hit.
+  - Useful context: `Object.keys(ProviderCapabilities.fields)` enumerates every capability key at runtime, so the completeness assertion fails loudly when a new field is added to the schema but missing on a provider. `bun run lint` runs Biome and may report a single multi-line formatting violation per file even when the source compiles cleanly — `bunx biome format --write <file>` is the canonical fix.
+---
+
+## [2026-05-17 21:19 CDT] - US-008 Review
+- Reviewed US-008 build commit `fd17a60` against PRD-01 §US-008 (`spec/alpha/prd-alpha-01-runtime-providers.md` lines 114-124). Ran 5 parallel `review-work` agents (goal/constraint, code quality, security, hands-on QA execution, context mining). Three of five returned FAIL on convergent issues; security PASS / NONE; QA reproduced build-step numbers (P0 PASS, P1 TDD coverage partial).
+- Files changed by review: `sdk/src/test/index.ts`, `sdk/test/contract/provider.test.ts`, `spec/alpha/progress.txt` (this entry).
+- `review-work` findings:
+  - fixed (BLOCKING, goal-verifier + context-miner): missing Alpha lifecycle contract coverage for `start`, `stop`, `restart`, `exec`, `run`. Added five new `Effect.isEffect(provider.<method>(...))` shape assertions in `runProviderContract` with fixture selectors (`ServiceSelector` for start/stop/restart, `ExecTarget`+`CommandSpec` for exec, `EphemeralRunSpec` for run). Added one paired TDD failing-provider test (`"start is Effect-typed"`) as a representative regression guard; the rest are shape-only assertions whose violation would already break per-provider type checks at compile time.
+  - fixed (MAJOR, code-quality): assertion string "destroy preserves volumes by default" overclaimed — the contract only verified `destroy(..., { volumes: false })` resolves, and the fixture has no declared volumes/storage to preserve. Renamed to `"destroy accepts volumes:false"` to match the actual check. No behavior change.
+  - fixed (MAJOR, code-quality): assertion string "apply is idempotent under reconcile" overclaimed — the contract only verified the second `apply` did not throw, not that it reported `changed: false`. Renamed to `"re-apply under reconcile succeeds"` to match the actual check. (Attempted to strengthen with `applyResult.changed === false`, but provider-docker's `bringUp` returns `{ changed: true }` unconditionally — that's a provider-source change, out of scope for this test-only story; reverted to truthful naming.)
+  - rejected (out-of-scope, code-quality MINOR): strengthen list-shape validation beyond `Array.isArray`. Provider fakes' list-item shape is not asserted; per-provider tests already cover field shape. A deeper shared assertion would risk breaking either provider's fake without a documented spec gate.
+  - rejected (build-step pattern aspiration, not story AC): full TDD parity (one failing-provider test per new assertion). AC1 says `runProviderContract` exposes the Alpha lifecycle coverage; it does not require strict 1:1 TDD parity. Existing TDD coverage (now 7 failing-provider tests) is representative; per-assertion parity is left as a future cleanup.
+  - rejected (low impact, security NONE): hardcoded `/tmp/lando-sdk-contract-myapp` fixture path could collide across concurrent contract runs. Test-fixture-only concern; security agent rated severity NONE.
+- Verification run and result: `bun test sdk/test/contract/provider.test.ts` 11 pass / 0 fail / 50 expect; `bun test sdk/test plugins/provider-lando/test plugins/provider-docker/test` 153 pass / 8 skip / 0 fail / 844 expect (provider-docker fake passes the new shape assertions; provider-lando fake passes; provider-lando live case stays env-gated by `LANDO_TEST_PODMAN_SOCKET`); `bun run typecheck` exit 0; `bun run lint` exit 0 (269 files); `bun test --concurrency=1` 306 pass / 11 skip / 0 fail / 1650 expect (+1 test, +5 expects vs build-step baseline 305/11/0/1645); `bun run build` exit 0 (33-command OCLIF manifest). LSP diagnostics clean on changed TypeScript files. Working tree contains review-fix diff against fd17a60: 6 new lifecycle assertions (5 contract + 1 TDD), 2 assertion-text renames; no provider source code touched.
+- **Learnings for future iterations:**
+  - Patterns discovered: when an assertion string makes a behavioral claim (idempotency, preservation) that the fixture or providers don't actually exercise, treat the assertion text as a CONTRACT and either prove the claim or rename to what's actually checked. Renaming is the smallest correct fix when strengthening would require provider source changes.
+  - Gotchas encountered: provider-docker's `bringUp` returns `{ changed: true }` unconditionally (see `plugins/provider-docker/src/index.ts:681`), so the shared contract cannot assert idempotency via `changed === false` without first fixing the provider's reconcile-time `changed` semantics. provider-lando's `bring-down.ts` already computes `changed` from `stopped || removed`, so a future "real idempotency" story would need to align provider-docker's apply semantics first.
+  - Useful context: Alpha lifecycle methods `start/stop/restart/exec/run` are part of `RuntimeProviderShape` in `sdk/src/services/index.ts:306-316`. The shared contract previously only covered `apply/destroy/execStream/logs/inspect/list`; shape-only `Effect.isEffect` checks for the remaining methods are the cheapest way to harden the contract without forcing fixture support for full lifecycle exercise (which would require `start` to track running state, etc.).
+---
+
+## [2026-05-17] - PR #84 triage
+- Real issue: Podman network create used CheckDuplicate:true, which can return HTTP 500 for an already-existing network and break idempotent bring-up.
+- Fix: removed CheckDuplicate from provider-lando network creation; existing 409 handling remains as a compatibility fallback.
+- Rejected as not-an-issue: the live contract failure itself and the Bugbot advisory were both symptoms/notes, not separate blockers.
