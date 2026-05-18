@@ -219,7 +219,7 @@ const ensureNetwork = (
   request(api, {
     method: "POST",
     path: "/networks/create",
-    body: { Name: networkName(plan), Driver: "bridge", CheckDuplicate: true },
+    body: { Name: networkName(plan), Driver: "bridge" },
   }).pipe(
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 200 || response.status === 409

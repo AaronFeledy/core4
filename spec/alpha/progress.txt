@@ -409,3 +409,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: provider-docker's `bringUp` returns `{ changed: true }` unconditionally (see `plugins/provider-docker/src/index.ts:681`), so the shared contract cannot assert idempotency via `changed === false` without first fixing the provider's reconcile-time `changed` semantics. provider-lando's `bring-down.ts` already computes `changed` from `stopped || removed`, so a future "real idempotency" story would need to align provider-docker's apply semantics first.
   - Useful context: Alpha lifecycle methods `start/stop/restart/exec/run` are part of `RuntimeProviderShape` in `sdk/src/services/index.ts:306-316`. The shared contract previously only covered `apply/destroy/execStream/logs/inspect/list`; shape-only `Effect.isEffect` checks for the remaining methods are the cheapest way to harden the contract without forcing fixture support for full lifecycle exercise (which would require `start` to track running state, etc.).
 ---
+
+## [2026-05-17] - PR #84 triage
+- Real issue: Podman network create used CheckDuplicate:true, which can return HTTP 500 for an already-existing network and break idempotent bring-up.
+- Fix: removed CheckDuplicate from provider-lando network creation; existing 409 handling remains as a compatibility fallback.
+- Rejected as not-an-issue: the live contract failure itself and the Bugbot advisory were both symptoms/notes, not separate blockers.
