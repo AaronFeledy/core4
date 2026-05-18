@@ -1,10 +1,3 @@
-/**
- * `lando exec` — run a command in a service through the active runtime
- * provider's exec channel.
- *
- * `ssh` is `exec` with default `--interactive --tty` and a default command
- * of `sh -l`. Bootstrap level: `app`.
- */
 import { Effect } from "effect";
 
 import type {
@@ -177,13 +170,6 @@ export const execApp = (
     };
   });
 
-/**
- * Render the exec result. Returns the captured stdout (already-decoded
- * provider output) for printing through OCLIF's `this.log`. As a side
- * effect, sets `process.exitCode` to the child command's exit code so
- * non-zero exits propagate through both the source OCLIF path and the
- * compiled `$bunfs` dispatcher without requiring extra plumbing.
- */
 export const renderExecAppResult = (result: ExecAppResult): string | undefined => {
   if (result.exitCode !== 0) process.exitCode = result.exitCode;
   return result.stdout.length === 0 ? undefined : result.stdout;

@@ -33,13 +33,6 @@ import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
- * `LandoCommandSpec`.
- *
- * Every command, whether built-in or contributed by a plugin, conforms to
- * this shape. The OCLIF adapter compiles it into an OCLIF `Command`
- * subclass.
- */
-/**
  * The three first-class command namespaces.
  *
  *   - `app`: operations on the current Lando app
@@ -85,7 +78,6 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
     | "global"
     | "scratch"
     | "app";
-  // TODO: typed flag/arg shapes. For now, generic.
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
@@ -198,7 +190,7 @@ export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<st
 
 /**
  * Base class for built-in commands. Plugin-contributed commands compile
- * to subclasses of this via `compileCommandSpec()` (TBD).
+ * to subclasses of this via `compileCommandSpec()`.
  */
 export abstract class LandoCommandBase extends Command {
   /**
@@ -212,11 +204,8 @@ export abstract class LandoCommandBase extends Command {
 
   /**
    * Run the underlying Effect program. Subclasses' `run()` should call this.
-   *
-   * TODO: wire argv → full CommandInput and tagged-error → exit code
-   * translation. For now this is the minimal Effect bridge: the init hook
-   * owns runtime selection, and the base provides that runtime to the command
-   * Effect.
+   * The init hook owns runtime selection, and the base provides that runtime
+   * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     await this.parse(this.ctor);

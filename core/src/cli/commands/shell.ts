@@ -8,8 +8,6 @@
  *   - `--service <name>`: deferred to Beta — fails with
  *     `NotImplementedError`.
  *
- * The launcher is injectable so tests can drive a deterministic exit code
- * without spawning an actual TTY.
  */
 import { spawn as nodeSpawn } from "node:child_process";
 import { Effect } from "effect";
@@ -36,10 +34,7 @@ export interface ShellAppOptions {
   readonly args?: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
-  /**
-   * Test seam: inject a child-process launcher. Production callers MUST
-   * NOT pass this; only the test layer wires it.
-   */
+  /** Test seam: inject a child-process launcher. */
   readonly launch?: ShellLauncher;
 }
 

@@ -2977,3 +2977,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: Effect ordering matters for which error type the user sees. `provider = yield* registry.select(plan)` failing first can mask a much more actionable `ToolingExecError("service X not in plan; available: ...")` from `resolveService`. Default policy: validate user-controlled inputs (`--service`, `--user`, etc.) against the plan BEFORE invoking expensive/failable infrastructure operations.
   - Useful context: `node:child_process.spawn`'s `"error"` event fires for spawn failures (e.g. `ENOENT` when the shell binary doesn't exist) BEFORE any `"exit"` event. Swallowing it with `resolve({ exitCode: 1 })` drops the cause; rejecting lets `Effect.tryPromise.catch` map it into the domain error type (`ShellExecError` with `cause`).
 ---
+
+## [2026-05-18 15:35 CDT] - US-022 Slop cleanup
+- Ran branch-wide slop-remover after the US-022 review step and before push.
+- Cleanup changed AI-slop/comment-only surfaces in `AGENTS.md`, `core/src/cli/commands/exec.ts`, `core/src/cli/commands/shell.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/operations.ts`, and `core/src/cli/run.ts`; removed one redundant `parsed.argv` type assertion in `core/src/cli/oclif/commands/app/exec.ts`.
+- Behavior preserved: no command flow, public API, error handling, side effects, or return values changed.
+- Verification run and result: `lsp_diagnostics` clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (594 pass, 11 skip, 0 fail).
+---

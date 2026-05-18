@@ -39,7 +39,7 @@ export default class ExecCommand extends LandoCommandBase {
       readonly flags: ExecFlags;
       readonly argv: ReadonlyArray<string>;
     };
-    const command = parsed.argv as ReadonlyArray<string>;
+    const command = parsed.argv;
     await this.runEffect({
       ...execSpec,
       run: () =>
