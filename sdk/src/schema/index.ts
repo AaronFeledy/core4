@@ -591,8 +591,80 @@ export const ServiceConfig = Schema.Struct({
 export type ServiceConfig = typeof ServiceConfig.Type;
 
 /**
- * LandofileShape — the authored Landofile. MVP subset of §7.4.
- * Deferred for later passes: tooling:, toolingDefaults:, toolingIncludes:,
+ * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
+ * SPEC: §8.5.3 (Variables and environment).
+ */
+export const ToolingVarLiteral = Schema.Union(Schema.String, Schema.Number, Schema.Boolean);
+export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
+
+/**
+ * ToolingVarDefault — `vars.<name>: { default: <literal> }`.
+ * SPEC: §8.5.3.
+ */
+export const ToolingVarDefault = Schema.Struct({ default: ToolingVarLiteral });
+export type ToolingVarDefault = typeof ToolingVarDefault.Type;
+
+/**
+ * ToolingVarSh — `vars.<name>: { sh: <command> }`. Evaluated at task
+ * invocation time via the task's selected engine.
+ * SPEC: §8.5.3.
+ */
+export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
+export type ToolingVarSh = typeof ToolingVarSh.Type;
+
+/**
+ * ToolingVarPrompt — `vars.<name>: { prompt: <message> }`. Resolved at task
+ * invocation time by prompting the user.
+ * SPEC: §8.5.3.
+ */
+export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
+export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
+
+/**
+ * ToolingVar — Alpha-supported var forms only. Beta-deferred surfaces such
+ * as unsafe `{ raw: ... }` interpolation and remote-source vars are
+ * rejected by `LandofileService` before schema decode with a tagged
+ * `NotImplementedError`.
+ * SPEC: §8.5.3.
+ */
+export const ToolingVar = Schema.Union(ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt);
+export type ToolingVar = typeof ToolingVar.Type;
+
+/**
+ * ToolingTaskShape — Alpha-supported Landofile `tooling.<name>` task entry.
+ * SPEC: §8.5.1.
+ *
+ * Alpha-supported fields:
+ * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
+ * - `description:` / `summary:` — short help text.
+ * - `cmd:` — single command (string or string array).
+ * - `cmds:` — sequential command list (strings only in Alpha).
+ * - `vars:` — Alpha-supported `ToolingVar` forms only.
+ *
+ * Beta-deferred fields (rejected by `LandofileService` with remediation):
+ * `deps:`, step-objects in `cmds:` (`task:`, `command:`, `defer:`,
+ * `for:`, `cmd:` step overrides), `engine:`, `bootstrap:`, `dotenv:`,
+ * `env:`, `user:`, `dir:`, `appMount:`, `stdio:`, `interactive:`,
+ * `passThrough:`, `sources:`, `generates:`, `method:`, `status:`,
+ * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
+ * `silent:`, `output:`, `failFast:`, `disabled:`, `aliases:`,
+ * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
+ * `deprecated:`, `flags:`, `args:`, `examples:`, `usage:`.
+ */
+export const ToolingTaskShape = Schema.Struct({
+  service: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  summary: Schema.optional(Schema.String),
+  cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
+  cmds: Schema.optional(Schema.Array(Schema.String)),
+  vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVar })),
+});
+export type ToolingTaskShape = typeof ToolingTaskShape.Type;
+
+/**
+ * LandofileShape — the authored Landofile. MVP subset of §7.4, extended in
+ * PRD-03 US-017 to cover the Alpha `tooling:` schema.
+ * Deferred for later passes: toolingDefaults:, toolingIncludes:,
  * commandAliases:, events:, env_file:, keys:, includes:, volumes:, networks:,
  * configs:, secrets:, include:, x-* extensions, plugins:, pluginDirs:.
  */
@@ -605,6 +677,7 @@ export const LandofileShape = Schema.Struct({
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
+  tooling: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingTaskShape })),
 });
 export type LandofileShape = typeof LandofileShape.Type;
 

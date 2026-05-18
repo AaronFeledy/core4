@@ -22,6 +22,7 @@ import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type CommandRegistry,
   type ConfigService,
   type EventService,
   FileSystem,
@@ -35,6 +36,7 @@ import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
+import { CommandRegistryLive } from "../services/command-registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { AppPlannerLive } from "../services/planner.ts";
@@ -127,12 +129,20 @@ export const LandoRuntimeOptions = Schema.Struct({
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
 type MinimalRuntimeServices = Logger | ConfigService | FileSystem;
+type ToolingRuntimeServices = MinimalRuntimeServices | LandofileService | CommandRegistry;
 type ProviderRuntimeServices = MinimalRuntimeServices | RuntimeProvider | RuntimeProviderRegistry;
-export type AppRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner | EventService;
+export type AppRuntimeServices =
+  | ProviderRuntimeServices
+  | LandofileService
+  | CommandRegistry
+  | AppPlanner
+  | EventService;
 type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<MinimalRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<ToolingRuntimeServices>
+  | Layer.Layer<ToolingRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
   | Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<AppRuntimeServices>
@@ -223,11 +233,19 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   );
 };
 
+const makeToolingRuntimeLive = (loggerMode: LoggerMode) =>
+  Layer.mergeAll(
+    makeMinimalRuntimeLive(loggerMode),
+    LandofileServiceLive,
+    CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
+  );
+
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
     EventServiceLive,
     LandofileServiceLive,
+    CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
     AppPlannerLive.pipe(Layer.provide(PluginRegistryLive)),
   );
 
@@ -238,8 +256,9 @@ const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): Run
     case "minimal":
     case "plugins":
     case "commands":
-    case "tooling":
       return makeMinimalRuntimeLive(loggerMode);
+    case "tooling":
+      return makeToolingRuntimeLive(loggerMode);
     case "provider":
     case "global":
     case "scratch":
