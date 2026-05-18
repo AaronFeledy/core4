@@ -26,6 +26,7 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
 
 const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.type !== undefined) return service.type;
+  if (service.image?.startsWith("node:22")) return "node:22";
   if (service.image?.startsWith("node:")) return "node:lts";
   if (service.image?.startsWith("postgres")) return "postgres";
   if (service.image?.startsWith("php:8.2")) return "php:8.2";

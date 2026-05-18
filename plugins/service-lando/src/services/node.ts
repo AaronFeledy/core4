@@ -3,12 +3,31 @@ import { Schema } from "effect";
 import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
+export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
+
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
 const DEFAULT_PORT = "3000:3000";
 
-export const nodeLtsServiceType: ServiceTypeShape = {
-  id: "node:lts",
+const REMEDIATION_VERSION = (requested: string): string =>
+  `Set type to one of: ${SUPPORTED_NODE_VERSIONS.map((v) => `node:${v}`).join(", ")} (got node:${requested}).`;
+
+const validateVersion = (
+  declaredType: string | undefined,
+  fallback: SupportedNodeVersion,
+): SupportedNodeVersion => {
+  if (declaredType === undefined) return fallback;
+  if (!declaredType.startsWith("node:")) return fallback;
+  const version = declaredType.slice("node:".length);
+  if ((SUPPORTED_NODE_VERSIONS as ReadonlyArray<string>).includes(version)) {
+    return version as SupportedNodeVersion;
+  }
+  throw new Error(`Unsupported Node version "${version}". ${REMEDIATION_VERSION(version)}`);
+};
+
+const makeNodeServiceType = (version: SupportedNodeVersion): ServiceTypeShape => ({
+  id: `node:${version}`,
   toServicePlan: ({
     name,
     service,
@@ -16,13 +35,15 @@ export const nodeLtsServiceType: ServiceTypeShape = {
     provider = ProviderId.make("lando"),
     primary = name === "web",
     metadata,
-  }) =>
-    Schema.decodeUnknownSync(ServicePlan)({
+  }) => {
+    const resolvedVersion = validateVersion(service.type, version);
+    const serviceType = `node:${resolvedVersion}`;
+    return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
-      type: "node:lts",
+      type: serviceType,
       provider,
       primary: service.primary ?? primary,
-      artifact: { kind: "ref", ref: service.image ?? "node:lts" },
+      artifact: { kind: "ref", ref: service.image ?? serviceType },
       command: service.command ?? [...DEFAULT_COMMAND],
       entrypoint: service.entrypoint,
       environment: service.environment ?? {},
@@ -59,5 +80,9 @@ export const nodeLtsServiceType: ServiceTypeShape = {
       hostAliases: [],
       metadata,
       extensions: {},
-    }),
-};
+    });
+  },
+});
+
+export const nodeLtsServiceType: ServiceTypeShape = makeNodeServiceType("lts");
+export const node22ServiceType: ServiceTypeShape = makeNodeServiceType("22");
