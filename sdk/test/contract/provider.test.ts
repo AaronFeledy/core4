@@ -131,6 +131,15 @@ describe("RuntimeProvider contract", () => {
     await expectContractFailure(provider, "provider exposes a non-empty displayName");
   });
 
+  test("fails with ContractFailure when start does not return an Effect", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      start: () => "not-an-effect",
+    } as unknown as typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "start is Effect-typed");
+  });
+
   test("matches the RuntimeProvider service shape", () => {
     const provider: typeof RuntimeProvider.Service = TestRuntimeProvider;
 

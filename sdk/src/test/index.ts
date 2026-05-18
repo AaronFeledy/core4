@@ -164,6 +164,28 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       "apply is Effect-typed",
     );
     yield* requireContract(
+      Effect.isEffect(provider.start({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
+      "start is Effect-typed",
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.stop({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
+      "stop is Effect-typed",
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.restart({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
+      "restart is Effect-typed",
+    );
+    yield* requireContract(
+      Effect.isEffect(
+        provider.exec({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { command: ["echo", "ok"] }),
+      ),
+      "exec is Effect-typed",
+    );
+    yield* requireContract(
+      Effect.isEffect(provider.run({ image: "node:22-alpine", command: ["echo", "ok"] })),
+      "run is Effect-typed",
+    );
+    yield* requireContract(
       Effect.isEffect(provider.destroy({ app: TEST_APP_ID }, { volumes: true })),
       "destroy is Effect-typed",
     );
@@ -224,7 +246,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
 
     yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
-      Effect.mapError(mapProviderFailure("apply is idempotent under reconcile")),
+      Effect.mapError(mapProviderFailure("re-apply under reconcile succeeds")),
     );
 
     const snapshot = yield* provider
@@ -255,7 +277,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
 
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: false })
-      .pipe(Effect.mapError(mapProviderFailure("destroy preserves volumes by default")));
+      .pipe(Effect.mapError(mapProviderFailure("destroy accepts volumes:false")));
 
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: true })
