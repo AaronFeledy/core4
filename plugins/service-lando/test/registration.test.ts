@@ -51,7 +51,7 @@ describe("@lando/service-lando registration", () => {
     );
 
     if (manifest.contributes === undefined) throw new Error("service-lando manifest contributions missing");
-    expect(manifest.contributes.serviceTypes).toEqual(["node:lts", "postgres"]);
+    expect(manifest.contributes.serviceTypes).toEqual(["node:lts", "postgres", "php:8.2", "php:8.3"]);
   });
 
   test("AppPlanner resolves both service types through PluginRegistry", async () => {
@@ -69,5 +69,63 @@ describe("@lando/service-lando registration", () => {
     expect(appPlan.provider).toBe(ProviderId.make("lando"));
     expect(appPlan.services[ServiceName.make("web")]?.type).toBe("node:lts");
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");
+  });
+
+  test("AppPlanner resolves php:8.2 and php:8.3 through PluginRegistry with framework defaults", async () => {
+    const appPlan = await plan({
+      name: "php-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("web")]: { type: "php:8.2", framework: "drupal" },
+        [ServiceName.make("api")]: { type: "php:8.3", framework: "laravel" },
+      },
+    });
+
+    const web = appPlan.services[ServiceName.make("web")];
+    const api = appPlan.services[ServiceName.make("api")];
+    if (web === undefined || api === undefined) throw new Error("php services missing");
+
+    expect(web.type).toBe("php:8.2");
+    expect(String(web.workingDirectory)).toBe("/app/web");
+    expect(web.environment.LANDO_APP_NAME).toBe("php-app");
+    expect(web.environment.LANDO_SERVICE_TYPE).toBe("php:8.2");
+    expect(web.environment.LANDO_WEBROOT).toBe("/app/web");
+    expect(web.healthcheck?.kind).toBe("tcp");
+    expect(web.healthcheck?.port).toBe(80);
+
+    expect(api.type).toBe("php:8.3");
+    expect(String(api.workingDirectory)).toBe("/app/public");
+    expect(api.environment.LANDO_SERVICE_TYPE).toBe("php:8.3");
+    expect(api.environment.LANDO_WEBROOT).toBe("/app/public");
+  });
+
+  test("AppPlanner rejects unsupported php versions with PHP-family remediation", async () => {
+    await expect(
+      plan({
+        name: "php-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "php:8.4" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type php:8\.4.*Supported alternatives:.*php:8\.2.*php:8\.3/);
+
+    await expect(
+      plan({
+        name: "php-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "php:8.1" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type php:8\.1.*Supported alternatives:.*php:8\.2.*php:8\.3/);
+  });
+
+  test("AppPlanner rejects unknown non-family service types with registered-types remediation", async () => {
+    await expect(
+      plan({
+        name: "weird-app",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "totally-fake-type" } },
+      }),
+    ).rejects.toThrow(
+      /Unsupported service type totally-fake-type.*Registered service types:.*node:lts.*php:8\.2.*php:8\.3.*postgres/,
+    );
   });
 });

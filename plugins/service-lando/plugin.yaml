@@ -12,3 +12,5 @@ contributes:
   serviceTypes:
     - "node:lts"
     - "postgres"
+    - "php:8.2"
+    - "php:8.3"

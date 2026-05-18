@@ -33,6 +33,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Provider partial-apply rollback removes (force DELETE) every touched container and the app network; volumes are NEVER removed on rollback. Volume removal is `destroy(--volumes)`-only.
 - Provider error `details` must be passed through `redactDetails` (see `plugins/provider-lando/src/redact.ts`) before attachment; it masks credential-named keys plus env-style `NAME=VALUE` substrings in string bodies.
 - Provider errors should carry an operation-scoped name (e.g. `bringUp.network`, `bringUp.create`, `bringUp.start`) so manual cleanup can identify the exact failing API call, plus `remediation` and `cause` per spec §5.7.
+- Shared `ServiceConfig` fields used by only a subset of service types (e.g. `framework`) belong on the schema as optional; per-type validation/rejection lives in `ServiceType.toServicePlan` so unrelated types ignore the field and supported types consume it. `LandofileShape` strict decoding stays intact this way.
+- `ServiceTypePlanInput.appName` is the canonical seam for service types that need accurate `LANDO_APP_NAME`/`LANDO_PROJECT`; it is threaded by `AppPlanner.plan` from `landofile.name` and falls back to `basename(appRoot)` when unset.
 
 ## Iteration Log
 
@@ -428,4 +430,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 5d339c9 on main
 - Local main / branch refreshed: yes — main fast-forwarded to 5d339c9; story branch deleted
 - Remaining local state: none
+---
+
+## [2026-05-17 22:00 CDT] - Sync
+- Previous branch: us-008-provider-contract-suite
+- Previous PR: #84 https://github.com/AaronFeledy/core4/pull/84
+- Action: caught up after prior merge (PR #84 already MERGED; pushed dangling progress-log commit 41dfee8 to origin/main)
+- Local main updated: yes (ff-only; already at merge tip, pushed 1 ahead commit)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-17 22:55 CDT] - US-009
+- Shipped `php:8.2` and `php:8.3` ServiceTypes in `@lando/service-lando` covering Drupal, WordPress, Laravel, Symfony, and `none` framework presets. Each plan emits the `/app` bind app mount, basic `LANDO_*` environment contract, a TCP healthcheck intent on the published web endpoint, framework-specific webroot via `workingDirectory`, `APACHE_DOCUMENT_ROOT`/`LANDO_WEBROOT` env defaults, and a `lando-service-php` extensions hint carrying `{ framework, webroot, version }`. Unsupported PHP versions and frameworks throw remediation-bearing errors from `toServicePlan`. Extended `ServiceConfig` schema with an optional `framework` field, threaded an optional `appName` through `ServiceTypePlanInput`/`AppPlanner.plan` for accurate `LANDO_APP_NAME`/`LANDO_PROJECT`, and added `php:8.x` image inference to the planner's `serviceTypeFor` fallback.
+- Files changed: `sdk/src/schema/index.ts`, `sdk/src/services/index.ts`, `core/src/services/planner.ts`, `plugins/service-lando/src/index.ts`, `plugins/service-lando/src/services/php.ts` (new), `plugins/service-lando/plugin.yaml`, `plugins/service-lando/test/php.test.ts` (new), `plugins/service-lando/test/node.test.ts`, `plugins/service-lando/test/registration.test.ts`, `plugins/service-lando/test/package.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun test plugins/service-lando/test/php.test.ts plugins/service-lando/test/node.test.ts plugins/service-lando/test/registration.test.ts plugins/service-lando/test/package.test.ts` passed (26 pass, 89 expect calls); `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes after one biome auto-format on `php.ts` + `php.test.ts`); `bun test --concurrency=1` passed (323 pass, 11 skip, 0 fail, 1720 expect — +18 net new vs US-008 baseline of 305); `bun run build` passed (33-command OCLIF manifest). Story changes are ServiceType/schema additions; no CLI command output changes, so no compiled-CLI smoke required per build-step rule.
+- **Learnings for future iterations:**
+  - Patterns discovered: ServiceConfig schema should accept new fields like `framework` even when only a subset of service types support them; per-type rejection lives in `ServiceType.toServicePlan` so unrelated types (node:lts) can ignore the field while supported types (php:*) consume it. This keeps the `LandofileShape` strict-decode happy without forcing a switch to lax decoding.
+  - Gotchas encountered: existing tests that pinned framework rejection at the schema layer (`onExcessProperty: "error"` against `ServiceConfig`) need to migrate to per-type plan-time assertions when a story adds framework support; the `package.test.ts` smoke test pins the exact `serviceTypes` map keys and `manifest.contributes.serviceTypes` list and must be updated when service-lando adds catalog entries.
+  - Useful context: `ServiceTypePlanInput.appName` was added as an optional field threaded by `AppPlanner.plan` so service types can emit accurate `LANDO_APP_NAME`/`LANDO_PROJECT` env without falling back to `basename(appRoot)` heuristics; existing node/postgres types remain unchanged because they don't consume the field.
+---
+
+## [2026-05-17 22:48 CDT] - US-009 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents reviewed the US-009 branch changes; critical review kept only behavior-preserving cleanup and rejected broad comment deletion in shared SDK/progress files as useful context, restoring those files before verification.
+- Files changed by cleanup: `plugins/service-lando/src/index.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed a stale `@lando/service-lando` stub header comment. No public APIs, imports, error handling, side effects, or return values changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test` passed (exit 0; Bun emitted only the test banner in this run).
 ---

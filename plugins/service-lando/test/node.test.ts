@@ -91,7 +91,7 @@ describe("node:lts ServiceType", () => {
     expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
   });
 
-  test("rejects framework presets at MVP", () => {
+  test("ServiceConfig schema accepts the framework field", () => {
     const result = Schema.decodeUnknownEither(ServiceConfig)(
       { type: "node:lts", framework: "drupal" },
       {
@@ -99,15 +99,13 @@ describe("node:lts ServiceType", () => {
       },
     );
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      expect(ParseResult.isParseError(result.left)).toBe(true);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      expect(issues.some((issue) => issue.path.includes("framework"))).toBe(true);
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect(result.right.framework).toBe("drupal");
     }
   });
 
-  test("LandofileService rejects framework presets at MVP", async () => {
+  test("LandofileService accepts the framework field on services", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -117,10 +115,37 @@ describe("node:lts ServiceType", () => {
 
       const failure = await discoverExit();
 
-      expect(failure?._tag).toBe("LandofileValidationError");
-      if (failure?._tag === "LandofileValidationError") {
-        expect(failure.issues).toContain("services.web.framework");
-      }
+      expect(failure).toBeUndefined();
     });
+  });
+
+  test("node:lts ServiceType ignores framework but never crashes", () => {
+    const service = Schema.decodeUnknownSync(ServiceConfig)({
+      type: "node:lts",
+      framework: "drupal",
+    });
+
+    const plan = nodeLtsServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.type).toBe("node:lts");
+    expect("framework" in plan).toBe(false);
+  });
+
+  test("ServiceConfig still rejects unknown excess keys via strict decoding", () => {
+    const result = Schema.decodeUnknownEither(ServiceConfig)(
+      { type: "node:lts", nonsenseKey: "value" },
+      { onExcessProperty: "error" },
+    );
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(ParseResult.isParseError(result.left)).toBe(true);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((issue) => issue.path.includes("nonsenseKey"))).toBe(true);
+    }
   });
 });
