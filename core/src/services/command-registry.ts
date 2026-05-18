@@ -9,25 +9,33 @@
  *
  * Canonical id derivation matches §8.1.1 / §8.5.1: tooling tasks default
  * to the `app:` namespace, so `tooling.<name>` registers as `app:<name>`.
- * Top-level alias, sub-namespacing, and OCLIF command registration are
- * deferred (PRD-03 US-020).
+ *
+ * On the cold path (the first `list` call), this layer also writes the
+ * §12.1 plugin and app command index caches via the §12.2 binary
+ * encoding. Cache writes are best-effort: a write failure never affects
+ * the returned `RegisteredCommand[]`. Hot-path reads of these caches
+ * are deferred past Alpha.
  */
 import { Effect, Layer } from "effect";
 
-import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
+import type { LandofileShape } from "@lando/sdk/schema";
 import { CommandRegistry, LandofileService, type RegisteredCommand } from "@lando/sdk/services";
 
-const summaryFor = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";
+import { compileToolingCommands } from "../cache/command-compiler.ts";
+import { writeAppCommandCache, writePluginCommandCache } from "../cache/command-index-writer.ts";
 
-const toRegisteredCommands = (landofile: LandofileShape): ReadonlyArray<RegisteredCommand> => {
-  const tooling = landofile.tooling;
-  if (tooling === undefined) return [];
-  return Object.entries(tooling).map(([name, task]) => ({
-    id: `app:${name}`,
-    summary: summaryFor(task),
-    hidden: false,
+const toRegisteredCommands = (landofile: LandofileShape): ReadonlyArray<RegisteredCommand> =>
+  compileToolingCommands(landofile).map((entry) => ({
+    id: entry.id,
+    summary: entry.summary,
+    hidden: entry.hidden,
   }));
-};
+
+const writeCachesForLandofile = (landofile: LandofileShape): Effect.Effect<void, never> =>
+  Effect.all([writeAppCommandCache({ landofile }), writePluginCommandCache()], {
+    concurrency: 2,
+    discard: true,
+  });
 
 export const CommandRegistryLive = Layer.effect(
   CommandRegistry,
@@ -35,8 +43,11 @@ export const CommandRegistryLive = Layer.effect(
     const landofileService = yield* LandofileService;
     return {
       list: landofileService.discover.pipe(
+        Effect.tap((landofile) => writeCachesForLandofile(landofile)),
         Effect.map(toRegisteredCommands),
-        Effect.catchAllCause(() => Effect.succeed([] as ReadonlyArray<RegisteredCommand>)),
+        Effect.catchAllCause(() =>
+          writePluginCommandCache().pipe(Effect.as([] as ReadonlyArray<RegisteredCommand>)),
+        ),
       ),
     };
   }),
