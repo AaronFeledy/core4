@@ -293,7 +293,7 @@ const parseScriptFile = (
     }
 
     const service = frontMatter.service ?? HOST_SERVICE;
-    const summary = frontMatter.description ?? frontMatter.summary ?? frontMatter.desc ?? "";
+    const summary = frontMatter.description ?? frontMatter.desc ?? frontMatter.summary ?? "";
 
     return {
       id: canonical.id,
