@@ -111,8 +111,18 @@ const mapProviderFailure =
 
 const isStream = (value: unknown): boolean => Stream.StreamTypeId in Object(value);
 
+const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
+  keyof typeof ProviderCapabilities.fields
+>;
+
+const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
+
 /**
- * Run the Phase 1 `RuntimeProvider` contract assertions.
+ * Run the `RuntimeProvider` contract assertions. Covers the Phase 1 shape
+ * checks (capability decode, lifecycle method types, fixture apply/inspect/
+ * destroy round-trip) and the Phase 2 Alpha lifecycle additions (identity,
+ * status, versions, capability completeness, ApplyResult shape, re-apply
+ * idempotency, list shape, and volume-preserving destroy).
  */
 export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
@@ -120,7 +130,35 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     const testAppPlan = makeTestAppPlan(providerId);
     const capabilities = Schema.decodeUnknownEither(ProviderCapabilities)(provider.capabilities);
 
+    yield* requireContract(isNonEmptyString(provider.id), "provider exposes a non-empty id", provider.id);
+    yield* requireContract(
+      isNonEmptyString(provider.displayName),
+      "provider exposes a non-empty displayName",
+      provider.displayName,
+    );
+    yield* requireContract(
+      isNonEmptyString(provider.version),
+      "provider exposes a non-empty version",
+      provider.version,
+    );
+    yield* requireContract(
+      isNonEmptyString(provider.platform),
+      "provider exposes a non-empty platform",
+      provider.platform,
+    );
+
     yield* requireContract(Either.isRight(capabilities), "capability matrix decodes", capabilities);
+    for (const key of CAPABILITY_KEYS) {
+      yield* requireContract(
+        (provider.capabilities as Readonly<Record<string, unknown>>)[key] !== undefined,
+        `capability ${String(key)} is populated`,
+        provider.capabilities,
+      );
+    }
+
+    yield* requireContract(Effect.isEffect(provider.isAvailable), "isAvailable is Effect-typed");
+    yield* requireContract(Effect.isEffect(provider.getStatus), "getStatus is Effect-typed");
+    yield* requireContract(Effect.isEffect(provider.getVersions), "getVersions is Effect-typed");
     yield* requireContract(
       Effect.isEffect(provider.apply(testAppPlan, { reconcile: true })),
       "apply is Effect-typed",
@@ -143,9 +181,50 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       Effect.isEffect(provider.inspect({ app: TEST_APP_ID, service: TEST_SERVICE_NAME })),
       "inspect is Effect-typed",
     );
+    yield* requireContract(Effect.isEffect(provider.list({ app: TEST_APP_ID })), "list is Effect-typed");
+
+    const available = yield* provider.isAvailable.pipe(
+      Effect.mapError(mapProviderFailure("isAvailable resolves")),
+    );
+    yield* requireContract(typeof available === "boolean", "isAvailable resolves to a boolean", available);
+
+    const status = yield* provider.getStatus.pipe(Effect.mapError(mapProviderFailure("getStatus resolves")));
+    yield* requireContract(
+      typeof status.running === "boolean",
+      "getStatus returns a running boolean",
+      status,
+    );
+    yield* requireContract(
+      status.message === undefined || typeof status.message === "string",
+      "getStatus message is a string when present",
+      status,
+    );
+
+    const versions = yield* provider.getVersions.pipe(
+      Effect.mapError(mapProviderFailure("getVersions resolves")),
+    );
+    yield* requireContract(
+      isNonEmptyString(versions.provider),
+      "getVersions returns a non-empty provider version",
+      versions,
+    );
+    yield* requireContract(
+      versions.runtime === undefined || typeof versions.runtime === "string",
+      "getVersions runtime is a string when present",
+      versions,
+    );
+
+    const applyResult = yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
+      Effect.mapError(mapProviderFailure("apply succeeds for the contract fixture")),
+    );
+    yield* requireContract(
+      typeof applyResult.changed === "boolean",
+      "apply returns ApplyResult with a boolean changed field",
+      applyResult,
+    );
 
     yield* Effect.scoped(provider.apply(testAppPlan, { reconcile: true })).pipe(
-      Effect.mapError(mapProviderFailure("apply succeeds for the contract fixture")),
+      Effect.mapError(mapProviderFailure("apply is idempotent under reconcile")),
     );
 
     const snapshot = yield* provider
@@ -164,6 +243,19 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       snapshot,
     );
     yield* requireContract(typeof snapshot.status === "string", "inspect snapshot includes status", snapshot);
+
+    const listed = yield* provider
+      .list({ app: TEST_APP_ID })
+      .pipe(Effect.mapError(mapProviderFailure("list resolves for the contract fixture")));
+    yield* requireContract(
+      Array.isArray(listed),
+      "list returns an array of service runtime snapshots",
+      listed,
+    );
+
+    yield* provider
+      .destroy({ app: TEST_APP_ID }, { volumes: false })
+      .pipe(Effect.mapError(mapProviderFailure("destroy preserves volumes by default")));
 
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: true })

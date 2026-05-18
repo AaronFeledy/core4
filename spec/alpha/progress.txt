@@ -38,7 +38,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 
 (Loop appends one entry per iteration below.)
 
-
 ## [2026-05-16 20:36 CDT] - Sync
 - Previous branch: us-001-provider-lando-linux-setup
 - Previous PR: none
@@ -120,7 +119,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Remaining local state: none before recording this merge note
 ---
 
-
 ## [2026-05-17 04:14:23 CDT] - Sync
 - Previous branch: us-002-provider-lando-macos-lifecycle
 - Previous PR: #76 https://github.com/AaronFeledy/core4/pull/76
@@ -169,7 +167,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `Effect.runPromise` surfaces failures with a thrown stack trace, whereas `Effect.runPromiseExit + Exit.isSuccess` swallows the cause behind a generic boolean — prefer `runPromise` for happy paths so failures point at the real defect.
   - Useful context: `providerExtensions: Schema.Array(Schema.String)` is currently the only non-primitive `ProviderCapabilities` field; if more array/object fields land, `renderCapabilityValue` (`typeof value === "object"` → `JSON.stringify`) already covers them without further change.
 ---
-
 
 ## [2026-05-17 05:38 CDT] - US-003 Slop Cleanup
 - Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup agents processed the US-003 branch changes; critical review kept only behavior-preserving cleanup and restored useful design notes that were not AI slop.
@@ -384,4 +381,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes (at 356dd19, already current)
 - Branch after sync: main
 - Stash created: no
+---
+
+## [2026-05-17 21:05 CDT] - US-008
+- Extended the `@lando/sdk/test` provider contract suite with Alpha lifecycle assertions: non-empty provider identity, ProviderCapabilities field-completeness, `isAvailable`/`getStatus`/`getVersions` shape, list/destroy/apply method-typing, ApplyResult shape, re-apply idempotency under reconcile, `list({app})` returning an array, and destroy with `{volumes:false}` preserving volumes before final `{volumes:true}` cleanup. TestRuntimeProvider already satisfies every new assertion; provider-lando and provider-docker fake-client contract tests both pass without further changes; provider-lando live socket case stays gated by `LANDO_TEST_PODMAN_SOCKET`.
+- Files changed: `sdk/src/test/index.ts`, `sdk/test/contract/provider.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun test sdk/test/contract/provider.test.ts` passed (10 pass, 45 expect calls — +6 net new TDD failing-provider cases); `bun test sdk/test plugins/provider-lando/test plugins/provider-docker/test` passed (152 pass, 8 skip); `bun run typecheck` passed; `bun run lint` passed (269 files, no fixes after one biome auto-format on `sdk/src/test/index.ts`); `bun test --concurrency=1` passed (305 pass, 11 skip, 0 fail, 1645 expect calls — +6 net new from US-007 baseline of 299). A prior parallel `bun test` run hit the documented compiled-binary race on `core/test/build/compile.test.ts`; the focused rerun and the serial full-suite run both passed clean. Story changes only test contracts; no CLI output/behavior change, so no compiled-CLI smoke required per build-step rule.
+- **Learnings for future iterations:**
+  - Patterns discovered: `runProviderContract` is the seam for any provider-agnostic Alpha lifecycle assertion. New assertions should be paired with TDD failing-provider unit tests in `sdk/test/contract/provider.test.ts` that target the exact assertion string, so the contract cannot regress silently.
+  - Gotchas encountered: provider-lando's fake `PodmanApiClient` does not expose a `stream` method, so the shared contract cannot pull from `execStream` or `logs` without breaking the existing fake test — keep those as shape-only checks and let per-provider fake tests own the streaming paths. Re-apply assertions are safe because both providers `GET /containers/<name>/json` first and skip create on hit.
+  - Useful context: `Object.keys(ProviderCapabilities.fields)` enumerates every capability key at runtime, so the completeness assertion fails loudly when a new field is added to the schema but missing on a provider. `bun run lint` runs Biome and may report a single multi-line formatting violation per file even when the source compiles cleanly — `bunx biome format --write <file>` is the canonical fix.
 ---
