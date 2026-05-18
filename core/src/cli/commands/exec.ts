@@ -172,5 +172,7 @@ export const execApp = (
 
 export const renderExecAppResult = (result: ExecAppResult): string | undefined => {
   if (result.exitCode !== 0) process.exitCode = result.exitCode;
-  return result.stdout.length === 0 ? undefined : result.stdout;
+  if (result.stdout.length === 0) return undefined;
+  // Strip one trailing newline so console.log / this.log callers don't add a second one.
+  return result.stdout.endsWith("\n") ? result.stdout.slice(0, -1) : result.stdout;
 };
