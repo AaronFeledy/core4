@@ -20,7 +20,7 @@ const appNameFor = (input: ServiceTypePlanInput): string => {
   return basename(input.appRoot) || "app";
 };
 
-const RESERVED_ENV_PREFIX = "LANDO" as const;
+const RESERVED_ENV_PREFIX = "LANDO";
 
 const buildEnv = (
   serviceName: string,

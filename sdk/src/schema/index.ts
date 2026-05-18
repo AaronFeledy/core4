@@ -17,9 +17,7 @@
  */
 import { JSONSchema, Schema } from "effect";
 
-// =============================================================================
 // Branded primitives
-// =============================================================================
 
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
@@ -39,9 +37,7 @@ export type AbsolutePath = typeof AbsolutePath.Type;
 export const PortablePath = Schema.String.pipe(Schema.brand("PortablePath"));
 export type PortablePath = typeof PortablePath.Type;
 
-// =============================================================================
 // Host platform
-// =============================================================================
 
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
@@ -49,10 +45,8 @@ export type HostPlatform = typeof HostPlatform.Type;
 export const HostArchitecture = Schema.Literal("x64", "arm64");
 export type HostArchitecture = typeof HostArchitecture.Type;
 
-// =============================================================================
 // Bootstrap level — declared by every command, ranked by depth.
 // SPEC: roadmap §"SDK contracts shipped"; spec/13-bootstrap-and-runtime.md
-// =============================================================================
 
 export const BootstrapLevel = Schema.Literal(
   "none",
@@ -79,9 +73,7 @@ export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
   app: 8,
 };
 
-// =============================================================================
 // Plan building blocks (referenced by ServicePlan/AppPlan)
-// =============================================================================
 
 /**
  * Plan metadata — every plan node carries this for traceability.
@@ -339,10 +331,8 @@ export const NetworkPlan = Schema.Struct({
 });
 export type NetworkPlan = typeof NetworkPlan.Type;
 
-// =============================================================================
 // Provider capabilities — the typed manifest of what a provider can do.
 // SPEC: §5.4
-// =============================================================================
 
 export const ProviderCapabilities = Schema.Struct({
   artifactBuild: Schema.Boolean,
@@ -369,11 +359,9 @@ export const ProviderCapabilities = Schema.Struct({
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
-// =============================================================================
 // AppRef — shared identity field across App, Global, and Scratch event scopes.
 // SPEC: §11.2 (carries `kind` discriminator splitting the identifier namespace
 // across user, global, and scratch apps).
-// =============================================================================
 
 export const AppRef = Schema.Struct({
   /** Identity namespace this app belongs to. */
@@ -388,10 +376,8 @@ export const AppRef = Schema.Struct({
 });
 export type AppRef = typeof AppRef.Type;
 
-// =============================================================================
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
 // description of what a provider must realize. SPEC: §5.5
-// =============================================================================
 
 export const ServicePlan = Schema.Struct({
   name: ServiceName,
@@ -433,9 +419,7 @@ export const AppPlan = Schema.Struct({
 });
 export type AppPlan = typeof AppPlan.Type;
 
-// =============================================================================
 // BuildPlan — DAG over BuildSteps, two phases (artifact + app). SPEC: §6.13
-// =============================================================================
 
 export const BuildPhase = Schema.Literal("artifact", "app");
 export type BuildPhase = typeof BuildPhase.Type;
@@ -471,10 +455,8 @@ export const BuildPlan = Schema.Struct({
 });
 export type BuildPlan = typeof BuildPlan.Type;
 
-// =============================================================================
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 // MVP subset of §7.4 + §6.2 — full shape lands as features stabilize.
-// =============================================================================
 
 /** Endpoint input as authored under `services.<name>.endpoints`. */
 export const EndpointInput = Schema.Struct({
@@ -622,10 +604,8 @@ export const LandofileShape = Schema.Struct({
 });
 export type LandofileShape = typeof LandofileShape.Type;
 
-// =============================================================================
 // Global config — the host-level merged config.
 // SPEC: §7.5
-// =============================================================================
 
 /**
  * Telemetry opt-in. `enabled` defaults to `false` so a partial decode is
@@ -653,10 +633,8 @@ export const GlobalConfig = Schema.Struct({
 });
 export type GlobalConfig = typeof GlobalConfig.Type;
 
-// =============================================================================
 // Plugin manifest — declared by every plugin's package.json + plugin.yaml.
 // SPEC: §10.2
-// =============================================================================
 
 /** Contribution surface — keys the plugin contributes to. */
 export const PluginContribution = Schema.Struct({
@@ -696,10 +674,8 @@ export const PluginManifest = Schema.Struct({
 });
 export type PluginManifest = typeof PluginManifest.Type;
 
-// =============================================================================
 // ServiceInfo — provider-neutral runtime info returned by `lando info`.
 // SPEC: §6.10
-// =============================================================================
 
 export const ServiceInfo = Schema.Struct({
   app: Schema.String,
@@ -716,10 +692,8 @@ export const ServiceInfo = Schema.Struct({
 });
 export type ServiceInfo = typeof ServiceInfo.Type;
 
-// =============================================================================
 // Recipe manifest — interface only for MVP (recipe model is deferred).
 // SPEC: §8.8
-// =============================================================================
 
 export const RecipeManifest = Schema.Struct({
   name: Schema.String,
@@ -731,9 +705,7 @@ export const RecipeManifest = Schema.Struct({
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
 
-// =============================================================================
 // Template render context — passed to TemplateEngine.render. SPEC: §7.3.2
-// =============================================================================
 
 export const TemplateRenderContext = Schema.Struct({
   /** Bootstrap level the renderer is running at. */
@@ -753,10 +725,8 @@ export const TemplateRenderContext = Schema.Struct({
 });
 export type TemplateRenderContext = typeof TemplateRenderContext.Type;
 
-// =============================================================================
 // JSON Schema accessors
 // SPEC: prd-mvp-01 US-009 package export surface
-// =============================================================================
 
 const JSON_SCHEMA_REGISTRY = {
   BootstrapLevel,

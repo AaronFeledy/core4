@@ -1155,3 +1155,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: the registration triple (`serviceTypes` Map key + `manifest.contributes.serviceTypes` array + `package.test.ts` exports skeleton + `registration.test.ts` manifest assertion) needs the alias key everywhere; missing any one yields a silently inconsistent state.
   - Useful context: the planner's family-prefix remediation (`unsupportedServiceType` in `core/src/services/planner.ts`) reads `registeredTypeIds` from `manifest.contributes.serviceTypes`, so getting the manifest list complete is what makes the "Supported alternatives" hint accurate.
 ---
+
+
+## [2026-05-18 02:42 CDT] - US-013 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push. Per-file cleanup shards reviewed the US-013 branch changes; critical review kept only behavior-preserving cleanup and reverted unsafe test/planner rewrites that introduced type errors or dropped required imports.
+- Files changed by cleanup: `sdk/src/schema/index.ts`, `plugins/service-lando/src/services/nginx.ts`, `plugins/service-lando/src/services/static.ts`, `spec/alpha/progress.txt`.
+- Slop-remover result: removed repeated schema section-divider banner comments and redundant `as const` assertions on static LANDO env-prefix constants. No schema fields, exports, service plan behavior, imports, public APIs, error handling, side effects, or return values changed.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test --concurrency=1` passed (385 pass, 11 skip, 0 fail, 1990 expect calls). The full-test command had to run detached because the shell wrapper interrupted long-running tests; the detached exit file recorded exit 0. Transient `package.json` mutations from the codegen CI test were restored and not included in cleanup.
+---
