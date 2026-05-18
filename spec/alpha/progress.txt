@@ -2996,3 +2996,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (reset --hard to origin/main e84500f; story branch deleted on remote by --delete-branch)
 - Remaining local state: on main, working tree clean
 ---
+
+## [2026-05-18 Sync] - Sync
+- Previous branch: us-022-exec-ssh-shell
+- Previous PR: #98 https://github.com/AaronFeledy/core4/pull/98
+- Action: caught up after prior merge (PR was already MERGED; remote branch pruned)
+- Also pushed unpushed local main commit db6078f (progress log update) to origin/main
+- Local main updated: yes (already at e84500f; pushed progress commit db6078f to sync origin/main)
+- Branch after sync: main
+- Stash created: no
+---
