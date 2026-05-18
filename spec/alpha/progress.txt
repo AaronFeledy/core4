@@ -2920,3 +2920,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: CLI command routing often canonicalizes ids (e.g. `app:<name>`) at the OCLIF / router layer, but the Landofile authoring surface uses bare names (`tooling.<name>`). Any lookup against the Landofile map MUST strip the canonical prefix, or the user's `app:<id>` invocation can silently bypass authored overrides. The same pattern likely applies to any future surface that compares user-facing canonical ids against authoring-side bare keys.
   - Useful context: indentation-sensitive YAML detection without a real YAML parser is feasible for Alpha's 4-field front-matter because we only need to identify TOP-LEVEL keys for Beta classification. The `/^[A-Za-z]/` + leading-whitespace check correctly skips list children (`  - foo`) and map children (`  child: value`) without needing a full YAML tokenizer.
 ---
+
+## [2026-05-18 14:05 CDT] - Push
+- Branch pushed: us-021-bun-sh-script-tasks (3 commits: feat + fix review + doc)
+- Commits: 0622195 feat: Support .bun.sh script-backed tasks, 05058c0 fix(US-021): Beta-key detection ordering + canonical `app:` precedence, b11b842 docs: update progress log
+- PR: #97 https://github.com/AaronFeledy/core4/pull/97 (created)
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Cursor Bugbot NEUTRAL/skipping)
+- Review feedback: Bugbot (COMMENTED, not CHANGES_REQUESTED) reported 1 issue — `desc` alias had lower priority than `summary` in front-matter resolution (line 296 of bun-sh-discovery.ts). Real bug, fixed inline: changed `description ?? summary ?? desc` to `description ?? desc ?? summary`. Committed as `619f9ad`, pushed; CI re-run also passed.
+- Triage rounds used: 1
+- Merge: merged (squash) — squash commit b424e0b "Support .bun.sh script-backed tooling tasks (#97)"
+- Local main / branch refreshed: yes (reset to origin/main HEAD b424e0b; story branch deleted)
+- Remaining local state: on main, working tree clean
+---
