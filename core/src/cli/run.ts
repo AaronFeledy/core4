@@ -1,14 +1,3 @@
-/**
- * CLI runner — invoked from `bin/lando.ts`.
- *
- * This is the *only* place where `@oclif/core`'s top-level `execute`/`run`
- * runs. It is the imperative shell that:
- *   1. Wires OCLIF hooks (init, prerun, postrun, command_not_found).
- *   2. Installs SIGINT/SIGTERM handlers that bridge to `Effect.interrupt`.
- *   3. Hands argv to OCLIF for parsing.
- *   4. OCLIF resolves the command; the command's `run()` calls into Effect
- *      via `LandoCommandBase.runEffect`.
- */
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -16,13 +5,15 @@ import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
 import { Cause, Effect, Exit } from "effect";
 
-import { InitTargetExistsError } from "@lando/sdk/errors";
+import { InitTargetExistsError, NotImplementedError } from "@lando/sdk/errors";
 
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
 import { doctor, renderDoctorResult } from "./commands/doctor.ts";
+import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
+import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
@@ -199,6 +190,253 @@ const runDoctor = async (): Promise<void> => {
   process.exitCode = 1;
 };
 
+interface ParsedExecArgv {
+  readonly service?: string;
+  readonly user?: string;
+  readonly cwd?: string;
+  readonly command: ReadonlyArray<string>;
+}
+
+const parseStringFlag = (
+  argv: ReadonlyArray<string>,
+  index: number,
+  longName: string,
+  shortName?: string,
+): { readonly value: string; readonly consumed: number } | undefined => {
+  const arg = argv[index];
+  if (arg === undefined) return undefined;
+  const longEq = `--${longName}=`;
+  if (arg.startsWith(longEq)) return { value: arg.slice(longEq.length), consumed: 1 };
+  if (arg === `--${longName}` || (shortName !== undefined && arg === `-${shortName}`)) {
+    const next = argv[index + 1];
+    if (next === undefined) return undefined;
+    return { value: next, consumed: 2 };
+  }
+  if (shortName !== undefined) {
+    const shortEq = `-${shortName}=`;
+    if (arg.startsWith(shortEq)) return { value: arg.slice(shortEq.length), consumed: 1 };
+  }
+  return undefined;
+};
+
+const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
+  let service: string | undefined;
+  let user: string | undefined;
+  let cwd: string | undefined;
+  const command: string[] = [];
+  let i = 0;
+  let positionalStarted = false;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    if (!positionalStarted && arg === "--") {
+      positionalStarted = true;
+      i += 1;
+      continue;
+    }
+    if (!positionalStarted && (arg.startsWith("--") || (arg.startsWith("-") && arg.length > 1))) {
+      const serviceMatch = parseStringFlag(argv, i, "service", "s");
+      if (serviceMatch !== undefined) {
+        service = serviceMatch.value;
+        i += serviceMatch.consumed;
+        continue;
+      }
+      const userMatch = parseStringFlag(argv, i, "user", "u");
+      if (userMatch !== undefined) {
+        user = userMatch.value;
+        i += userMatch.consumed;
+        continue;
+      }
+      const cwdMatch = parseStringFlag(argv, i, "cwd");
+      if (cwdMatch !== undefined) {
+        cwd = cwdMatch.value;
+        i += cwdMatch.consumed;
+        continue;
+      }
+      positionalStarted = true;
+      command.push(arg);
+      i += 1;
+      continue;
+    }
+    positionalStarted = true;
+    command.push(arg);
+    i += 1;
+  }
+  return {
+    ...(service === undefined ? {} : { service }),
+    ...(user === undefined ? {} : { user }),
+    ...(cwd === undefined ? {} : { cwd }),
+    command,
+  };
+};
+
+const runExec = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const parsed = parseExecArgv(argv);
+  const exit = await Effect.runPromiseExit(
+    execApp({
+      command: parsed.command,
+      ...(parsed.service === undefined ? {} : { service: parsed.service }),
+      ...(parsed.user === undefined ? {} : { user: parsed.user }),
+      ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
+    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    const rendered = renderExecAppResult(exit.value);
+    if (rendered !== undefined) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+interface ParsedSshArgv {
+  readonly service?: string;
+  readonly user?: string;
+  readonly subsystem?: string;
+  readonly sidecar: boolean;
+  readonly command: ReadonlyArray<string>;
+}
+
+const parseSshArgv = (argv: ReadonlyArray<string>): ParsedSshArgv => {
+  let service: string | undefined;
+  let user: string | undefined;
+  let subsystem: string | undefined;
+  let sidecar = false;
+  const command: string[] = [];
+  let i = 0;
+  let positionalStarted = false;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    if (!positionalStarted && arg === "--") {
+      positionalStarted = true;
+      i += 1;
+      continue;
+    }
+    if (!positionalStarted && (arg.startsWith("--") || (arg.startsWith("-") && arg.length > 1))) {
+      const serviceMatch = parseStringFlag(argv, i, "service", "s");
+      if (serviceMatch !== undefined) {
+        service = serviceMatch.value;
+        i += serviceMatch.consumed;
+        continue;
+      }
+      const userMatch = parseStringFlag(argv, i, "user", "u");
+      if (userMatch !== undefined) {
+        user = userMatch.value;
+        i += userMatch.consumed;
+        continue;
+      }
+      const subsystemMatch = parseStringFlag(argv, i, "subsystem");
+      if (subsystemMatch !== undefined) {
+        subsystem = subsystemMatch.value;
+        i += subsystemMatch.consumed;
+        continue;
+      }
+      if (arg === "--sidecar") {
+        sidecar = true;
+        i += 1;
+        continue;
+      }
+      positionalStarted = true;
+      command.push(arg);
+      i += 1;
+      continue;
+    }
+    positionalStarted = true;
+    command.push(arg);
+    i += 1;
+  }
+  return {
+    ...(service === undefined ? {} : { service }),
+    ...(user === undefined ? {} : { user }),
+    ...(subsystem === undefined ? {} : { subsystem }),
+    sidecar,
+    command,
+  };
+};
+
+const sshDeferred = (kind: "subsystem" | "sidecar"): string =>
+  commandErrorMessage(
+    new NotImplementedError({
+      message: `\`lando ssh --${kind}\`: SSH ${kind} support is deferred to Beta. Alpha \`ssh\` is provider-exec TTY command behavior only.`,
+      commandId: "app:ssh",
+      specSection: "spec/08-cli-and-tooling.md",
+      remediation:
+        "Drop the unsupported flag. Alpha `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec. SSH sidecar/subsystem support lands in Beta.",
+    }),
+  );
+
+const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const parsed = parseSshArgv(argv);
+  if (parsed.subsystem !== undefined) {
+    console.error(sshDeferred("subsystem"));
+    process.exitCode = 1;
+    return;
+  }
+  if (parsed.sidecar) {
+    console.error(sshDeferred("sidecar"));
+    process.exitCode = 1;
+    return;
+  }
+  const command = parsed.command.length === 0 ? ["sh", "-l"] : parsed.command;
+  const exit = await Effect.runPromiseExit(
+    execApp({
+      command,
+      interactive: true,
+      tty: true,
+      ...(parsed.service === undefined ? {} : { service: parsed.service }),
+      ...(parsed.user === undefined ? {} : { user: parsed.user }),
+    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    const rendered = renderExecAppResult(exit.value);
+    if (rendered !== undefined) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const parseShellService = (argv: ReadonlyArray<string>): string | undefined => {
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    const match = parseStringFlag(argv, i, "service", "s");
+    if (match !== undefined) return match.value;
+    i += 1;
+  }
+  return undefined;
+};
+
+const runShell = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const service = parseShellService(argv);
+  const exit = await Effect.runPromiseExit(
+    shellApp({
+      ...(service === undefined ? {} : { service }),
+    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    const rendered = renderShellAppResult(exit.value);
+    if (rendered !== undefined) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
@@ -274,6 +512,21 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
     return;
   }
 
+  if (argv[0] === "exec" || argv[0] === "app:exec") {
+    await runExec(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "ssh" || argv[0] === "app:ssh") {
+    await runSsh(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "shell" || argv[0] === "app:shell") {
+    await runShell(argv.slice(1));
+    return;
+  }
+
   const found = findCommand(argv[0] ?? "");
   if (found === undefined) {
     throw new Error(`Command ${argv[0] ?? ""} not found`);
@@ -290,14 +543,6 @@ export interface RunCliOptions {
   readonly rootUrl: string;
 }
 
-/**
- * Run the Lando CLI.
- *
- * TODO: wire up:
- *   - the OCLIF hooks from `./oclif/hooks/`
- *   - SIGINT/SIGTERM → Effect.interrupt
- *   - exit-code translation from tagged errors
- */
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   const entryPath = fileURLToPath(options.rootUrl);
   const args = options.argv as Array<string>;
@@ -307,8 +552,6 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     return;
   }
 
-  // For now, hand straight to OCLIF. Hooks land via the `oclif` config in
-  // `package.json` once they're wired into the manifest pipeline.
   await execute({
     dir: options.rootUrl,
     args,

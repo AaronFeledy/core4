@@ -2920,3 +2920,67 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: CLI command routing often canonicalizes ids (e.g. `app:<name>`) at the OCLIF / router layer, but the Landofile authoring surface uses bare names (`tooling.<name>`). Any lookup against the Landofile map MUST strip the canonical prefix, or the user's `app:<id>` invocation can silently bypass authored overrides. The same pattern likely applies to any future surface that compares user-facing canonical ids against authoring-side bare keys.
   - Useful context: indentation-sensitive YAML detection without a real YAML parser is feasible for Alpha's 4-field front-matter because we only need to identify TOP-LEVEL keys for Beta classification. The `/^[A-Za-z]/` + leading-whitespace check correctly skips list children (`  - foo`) and map children (`  child: value`) without needing a full YAML tokenizer.
 ---
+
+## [2026-05-18 14:05 CDT] - Push
+- Branch pushed: us-021-bun-sh-script-tasks (3 commits: feat + fix review + doc)
+- Commits: 0622195 feat: Support .bun.sh script-backed tasks, 05058c0 fix(US-021): Beta-key detection ordering + canonical `app:` precedence, b11b842 docs: update progress log
+- PR: #97 https://github.com/AaronFeledy/core4/pull/97 (created)
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Cursor Bugbot NEUTRAL/skipping)
+- Review feedback: Bugbot (COMMENTED, not CHANGES_REQUESTED) reported 1 issue — `desc` alias had lower priority than `summary` in front-matter resolution (line 296 of bun-sh-discovery.ts). Real bug, fixed inline: changed `description ?? summary ?? desc` to `description ?? desc ?? summary`. Committed as `619f9ad`, pushed; CI re-run also passed.
+- Triage rounds used: 1
+- Merge: merged (squash) — squash commit b424e0b "Support .bun.sh script-backed tooling tasks (#97)"
+- Local main / branch refreshed: yes (reset to origin/main HEAD b424e0b; story branch deleted)
+- Remaining local state: on main, working tree clean
+---
+
+## [2026-05-18] - Sync
+- Previous branch: us-021-bun-sh-script-tasks
+- Previous PR: #97 https://github.com/AaronFeledy/core4/pull/97
+- Action: caught up after prior merge (PR #97 was already MERGED; fast-path progress.txt commit applied to local main before fetch)
+- Local main updated: yes (already at origin/main; local main 1 commit ahead with progress-log update, not pushed per fast-path rule)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-18 14:47 CDT] - US-022
+- Implemented `lando exec`, provider-exec `lando ssh`, and host-mode `lando shell` end-to-end through both source OCLIF and compiled `$bunfs` paths.
+- `execApp` (`core/src/cli/commands/exec.ts`) now resolves the declared `--service` (or primary service) on the planned AppPlan and delegates to `RuntimeProvider.exec`; stderr is piped to `process.stderr` and exit code propagates through `renderExecAppResult` setting `process.exitCode`.
+- `shellApp` (`core/src/cli/commands/shell.ts`, new) spawns a host shell rooted at the planned app root with `LANDO`/`LANDO_APP_NAME`/`LANDO_APP_ROOT` env injected; the launcher is an injectable seam so tests drive deterministic exit codes without spawning a real TTY. `--service` rejects with `NotImplementedError` per §8.2.3.
+- `lando ssh --subsystem`/`--sidecar` rejects with `NotImplementedError` (Beta defer) in both OCLIF and compiled paths; default `ssh` runs `sh -l` interactive in the resolved service via `execApp`.
+- MVP_COMMAND_IDS extended to include `app:exec`, `app:ssh`, `app:shell` so the OCLIF base no longer auto-rejects them.
+- Files changed: `core/src/cli/commands/exec.ts`, `core/src/cli/commands/shell.ts` (new), `core/src/cli/oclif/commands/app/exec.ts`, `core/src/cli/oclif/commands/app/ssh.ts`, `core/src/cli/oclif/commands/app/shell.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/run.ts`, `core/src/cli/operations.ts`, `core/test/cli/exec.scenario.test.ts` (new), `core/test/cli/ssh.scenario.test.ts` (new), `core/test/cli/shell.scenario.test.ts` (new), `core/test/cli/aliases.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; focused `bun test core/test/cli/{exec,ssh,shell}.scenario.test.ts core/test/cli/aliases.test.ts core/test/cli/not-implemented.test.ts` passed (19 pass); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test core/test/build/compile.test.ts` passed; manual CLI QA against `core/bin/lando.ts` (source) and `core/dist/lando` (compiled) confirmed: `exec --help` renders alias list, exec/ssh/shell outside an app dir surface `No .lando.yml found` + init remediation, `ssh --subsystem=sftp` rejects with `NotImplementedError + commandId: app:ssh + specSection: spec/08-cli-and-tooling.md`, and `shell --service=web` rejects with `NotImplementedError + commandId: app:shell`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Alpha CLI commands that propagate child exit codes (exec, shell) can set `process.exitCode` as a side effect inside the `render` function — `LandoCommandBase.runEffect` calls `render` after a successful Exit and the compiled `runX` helpers call the same `renderX` after `Effect.runPromiseExit`, so both source and compiled paths converge without extra plumbing.
+  - Gotchas encountered: `Bun.spawn` with `stdio: "inherit"` would block tests that don't have a real TTY. Injecting a `launch` function into `shellApp` lets unit tests pass a deterministic `{exitCode}` resolver while production still uses `node:child_process.spawn` with inherited stdio.
+  - Useful context: SSH subsystem/sidecar rejection lives only in the OCLIF wrapper and the compiled `runSsh` handler — `execApp` accepts `interactive`/`tty` hints unchanged and remains generic, so future `ssh` flag expansion only touches the wrapper layer.
+---
+
+## [2026-05-18 15:04 CDT] - US-022 Review
+- Reviewed US-022 build commit `1b20b7d` against PRD-03 §US-022 ACs. Ran `review-work` via 3 parallel Oracle agents (goal/code-quality/security). Skipped QA-execution (no UI surface; the build step already drove `core/bin/lando.ts` + scenario tests end-to-end through both OCLIF flag parsing and provider-exec fake-provider paths) and context-mining (single-story PRD-scoped diff, no external integration surface).
+- `review-work` findings:
+  - fixed: [MAJOR goal+code] Compiled `lando exec --cwd <path>` was silently dropped. `parseExecArgv` in `core/src/cli/run.ts` only parsed `--service` and `--user`; the source OCLIF wrapper declared `cwd: Flags.string(...)` and threaded it into `execApp`. Added `cwd` to `ParsedExecArgv`, parsed via `parseStringFlag(argv, i, "cwd")`, and threaded into the compiled `execApp` call. Added a regression test (`threads --cwd through to provider.exec spec`) in `core/test/cli/exec.scenario.test.ts` that asserts `spec.cwd` reaches `RuntimeProvider.exec`.
+  - fixed: [MAJOR goal] `execApp` selected the runtime provider BEFORE resolving the requested service, so a bad `--service` value would be masked by any provider-selection failure (e.g. `NoProviderInstalledError` on a misconfigured host) instead of surfacing the helpful `ToolingExecError` with the available-service list. Reordered `resolveService(...)` to run before `registry.select(plan)`. Added a regression test that wires a failing `registry.select` and asserts the user gets `ToolingExecError` mentioning the unknown service, never `ProviderUnavailableError`.
+  - fixed: [MINOR code] `shellApp`'s default launcher swallowed `child.once("error", ...)` errors as `{ exitCode: 1 }`, losing `ENOENT`/`EACCES` causes that `Effect.tryPromise` would otherwise map into `ShellExecError`. Switched the error handler to `reject(cause)` so the existing `ShellExecError` catch path captures the real reason.
+  - fixed: [MINOR code] `shellApp` env spread order let `options.env` override the reserved `LANDO`/`LANDO_APP_NAME`/`LANDO_APP_ROOT` injection. Moved the reserved keys after `options.env` so the §6.9-equivalent identity vars always win. Added a regression test asserting a caller-supplied `LANDO_APP_NAME: "hijack"` cannot replace `plan.name`.
+  - rejected: [BLOCKER goal] "Compiled tests are not compiled-path tests — they run `core/bin/lando.ts`, which goes through OCLIF source, not `runCompiledCli`." TRUE but out of scope for this story's review. The entire repo's scenario test pattern (start/stop/init/destroy/info/tooling) spawns `core/bin/lando.ts` for CLI surface coverage; the actual compiled `core/dist/lando` is exercised by `core/test/build/compile.test.ts` and `core/test/cli/setup.test.ts`, which run `bun run build` first. Adding compiled-binary parity tests for every command would be a project-wide convention change. The build step DID add explicit `runExec`/`runSsh`/`runShell` handlers in `runCompiledCli` per the §17.1 stage-7 contract.
+  - rejected: [BLOCKER goal] "Compiled parsers and OCLIF disagree on interspersed flags (`lando exec echo --service web`)." The other compiled handlers in `core/src/cli/run.ts` (`runDestroy` uses `argv.includes(...)`, etc.) are intentionally simpler than OCLIF and treat flags before positionals only. This is the established repo convention. Documenting/changing it across all commands is out of US-022 scope.
+  - rejected: [BLOCKER goal+code] "Compiled parsers mishandle missing flag values — `lando shell --service` (no value) becomes a host shell instead of a usage error." Real divergence but same repo-convention concern: no existing compiled handler validates missing flag values either. The pragmatic Alpha contract is "compiled parser accepts the common shapes; OCLIF source is strictly validated."
+  - rejected: [MAJOR/RISK goal] "`ssh` claims provider-exec TTY behavior but `interactive`/`tty` are accepted no-ops." Explicitly documented in `core/src/cli/commands/exec.ts` as the Alpha contract — `CommandSpec`/`ExecTarget` in the SDK do not carry TTY fields, and `execStream` is deferred. The story's AC explicitly says "ssh behavior is documented as provider-exec TTY command behavior only" — the AGENTS.md US-022 bullet captures the seam.
+  - rejected: [MINOR goal] "host shell env is minimal — only LANDO/LANDO_APP_NAME/LANDO_APP_ROOT, not the full §6.9 surface." §6.9 is the in-container env contract (emitted by `plugins/service-lando/src/services/env.ts:buildLandoEnv`); the §8.2.3 host shell is intentionally narrower because it inherits the user's interactive environment rather than reconstructing the in-container surface.
+  - rejected: [LOW security] Buffering large provider stderr could exhaust memory. User-initiated, out of Alpha hardening scope.
+  - rejected: [LOW security] Prefer absolute path for `shellPath`/`SHELL`. Standard ssh/login-shell convention; PATH lookup matches user expectations for a host shell.
+- Files changed: `core/src/cli/commands/exec.ts` (service resolution reordered before provider selection), `core/src/cli/commands/shell.ts` (spawn error rejected, reserved LANDO_* env keys win), `core/src/cli/run.ts` (`parseExecArgv` + `runExec` thread `--cwd`), `core/test/cli/exec.scenario.test.ts` (2 new regression tests), `core/test/cli/shell.scenario.test.ts` (1 new regression test), `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` clean; `bun run lint` clean (314 files); focused `bun test core/test/cli/exec.scenario.test.ts core/test/cli/ssh.scenario.test.ts core/test/cli/shell.scenario.test.ts` passed 18/18 (was 15 pre-review; +3 new regression tests); `bun run build` succeeded; `bun test --concurrency=1` passed 594/594 (11 skip, 0 fail).
+- **Learnings for future iterations:**
+  - Patterns discovered: when a CLI command threads OCLIF flags directly into the underlying Effect operation (e.g. `--cwd` → `execApp({ cwd })`), the compiled `$bunfs` handler in `core/src/cli/run.ts` must thread the SAME flag set or source/compiled diverge silently. Every new flag added to an OCLIF wrapper needs a paired compiled-parser update.
+  - Gotchas encountered: Effect ordering matters for which error type the user sees. `provider = yield* registry.select(plan)` failing first can mask a much more actionable `ToolingExecError("service X not in plan; available: ...")` from `resolveService`. Default policy: validate user-controlled inputs (`--service`, `--user`, etc.) against the plan BEFORE invoking expensive/failable infrastructure operations.
+  - Useful context: `node:child_process.spawn`'s `"error"` event fires for spawn failures (e.g. `ENOENT` when the shell binary doesn't exist) BEFORE any `"exit"` event. Swallowing it with `resolve({ exitCode: 1 })` drops the cause; rejecting lets `Effect.tryPromise.catch` map it into the domain error type (`ShellExecError` with `cause`).
+---
+
+## [2026-05-18 15:35 CDT] - US-022 Slop cleanup
+- Ran branch-wide slop-remover after the US-022 review step and before push.
+- Cleanup changed AI-slop/comment-only surfaces in `AGENTS.md`, `core/src/cli/commands/exec.ts`, `core/src/cli/commands/shell.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/operations.ts`, and `core/src/cli/run.ts`; removed one redundant `parsed.argv` type assertion in `core/src/cli/oclif/commands/app/exec.ts`.
+- Behavior preserved: no command flow, public API, error handling, side effects, or return values changed.
+- Verification run and result: `lsp_diagnostics` clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (594 pass, 11 skip, 0 fail).
+---

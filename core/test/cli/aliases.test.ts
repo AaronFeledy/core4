@@ -5,7 +5,10 @@ import { join, resolve } from "node:path";
 
 import { Config } from "@oclif/core";
 
+import ExecCommand from "../../src/cli/oclif/commands/app/exec.ts";
 import InfoCommand from "../../src/cli/oclif/commands/app/info.ts";
+import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
+import SshCommand from "../../src/cli/oclif/commands/app/ssh.ts";
 import StartCommand from "../../src/cli/oclif/commands/app/start.ts";
 import StopCommand from "../../src/cli/oclif/commands/app/stop.ts";
 
@@ -47,6 +50,9 @@ describe("app command aliases", () => {
     expect(commandAliases(StartCommand)).toContain("start");
     expect(commandAliases(StopCommand)).toContain("stop");
     expect(commandAliases(InfoCommand)).toContain("info");
+    expect(commandAliases(ExecCommand)).toContain("exec");
+    expect(commandAliases(SshCommand)).toContain("ssh");
+    expect(commandAliases(AppShellCommand)).toContain("shell");
   });
 
   test("register alias metadata in the OCLIF command manifest model", async () => {
@@ -61,6 +67,9 @@ describe("app command aliases", () => {
     expect(aliasesById.get("app:start")).toContain("start");
     expect(aliasesById.get("app:stop")).toContain("stop");
     expect(aliasesById.get("app:info")).toContain("info");
+    expect(aliasesById.get("app:exec")).toContain("exec");
+    expect(aliasesById.get("app:ssh")).toContain("ssh");
+    expect(aliasesById.get("app:shell")).toContain("shell");
   });
 });
 
