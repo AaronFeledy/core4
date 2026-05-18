@@ -489,3 +489,16 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: the planner's `image:` fallback order matters — `image: node:22*` must be tested *before* the generic `image: node:*` arm, otherwise the most specific match never fires. The same pattern already exists for PHP (`php:8.2` before `php:8.3`) and applies here.
   - Useful context: the AC "Plans work with providerExec tooling as a default execution target" is satisfied at the ServiceType layer by (a) a long-running default `command` (so `RuntimeProvider.exec` has a container to attach to per §8.5), (b) a ServiceName-keyed plan entry (exec container naming is `lando-<slug>-<service>`), and (c) `workingDirectory: /app` plus the appRoot bind so exec runs against the user's source tree. No CLI wiring is required at this story level.
 ---
+
+## [2026-05-17 23:23 CDT] - US-010 Review
+- Reviewed build commit 7afa983 against PRD-02 US-010 acceptance criteria.
+- Files inspected: plugins/service-lando/src/services/node.ts, plugins/service-lando/src/index.ts, plugins/service-lando/plugin.yaml, plugins/service-lando/test/node.test.ts, plugins/service-lando/test/package.test.ts, plugins/service-lando/test/registration.test.ts, core/src/services/planner.ts, core/test/services/app-planner.test.ts, spec/alpha/prd.json, spec/alpha/progress.txt.
+- `review-work` findings: none blocking. Rejected (one-line each with reason):
+  - "Revert prd.json JSON-escape churn (§ → \u00a7, etc.)" — rejected as cosmetic-only; the diff is semantically equivalent JSON and reverting it would burn an extra commit without changing iteration outcome.
+  - "Add regression test for direct mismatched cross-call (e.g. node22ServiceType invoked with service.type=\"node:lts\")" — rejected as out of scope; the planner registry never produces this input, and the same normalize-by-fallthrough convention is the established repo pattern in plugins/service-lando/src/services/php.ts (validateVersion shape identical).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (271 files, no fixes); `bun test --concurrency=1` passed (333 pass, 11 skip, 0 fail, 1757 expect — unchanged from build-step baseline). No fixes applied, so no review-fix commit.
+- **Learnings for future iterations:**
+  - Patterns discovered: when adding a new versioned ServiceType alongside an existing factory (PHP or Node), the four touch-points are (1) `SUPPORTED_<X>_VERSIONS` tuple, (2) registry map + manifest in plugin index, (3) `plugin.yaml` contributes list, (4) planner `serviceTypeFor` image fallback — ordering specific-version-before-generic. Forgetting any of these silently routes the user to the fallback ServiceType.
+  - Gotchas encountered: `prd.json` is round-tripped through a JSON encoder somewhere in the build step's flow and emits `\uXXXX` escapes for non-ASCII (§, —, →). Cosmetic only, but inflates review diffs. If this recurs, consider pinning a Python/Bun JSON writer with `ensure_ascii=False`.
+  - Useful context: the providerExec-default AC (PRD-02 §8.5) is satisfied at the ServiceType layer by long-running default command + `/app` workingDirectory + appRoot bind + ServiceName-keyed plan; no extra wiring needed for this story.
+---
