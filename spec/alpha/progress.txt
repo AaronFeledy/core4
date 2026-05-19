@@ -3158,3 +3158,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc comment scan result: no branch-changed source or test code comments still reference planning docs, development phases, PRDs, story IDs, or section markers.
 - Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test --concurrency=1` passed (635 pass, 11 skip, 0 fail) after a stale generated-binary failure was cleared by rebuilding. A full-suite rerun immediately after `bun run clean` reproduced the known compiled-build race (`version.test.ts`/`compile.test.ts`/`shellenv.test.ts` build exit 1), and the focused `bun test core/test/cli/shellenv.test.ts --concurrency=1` passed after `bun run build`.
 ---
+
+## [2026-05-18 19:55 CDT] - Push
+- Branch pushed: us-024-meta-app-commands (already up to date on remote after pre-push)
+- Commits: a66f37e feat: Fill Alpha meta/app management commands, 6e82fbd fix(US-024 review), 67e8ba1 chore: remove AI slop, d93d69d fix: address Bugbot findings
+- PR: #101 https://github.com/AaronFeledy/core4/pull/101 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot NEUTRAL then SKIPPING on fix commit)
+- Review feedback: Bugbot found 3 real issues; all fixed in d93d69d:
+  1. Medium: `--path` flag in `apps:list` was declared but never applied in `listServices` — fixed by filtering `apps` array by `appRoot.includes(pathFilter)`.
+  2. Low: `renderBunSelfXBanner` exported in `bun-self-runner.ts` but never imported anywhere — removed dead export.
+  3. Low: `PluginRemoveOptions.pluginsRoot` declared in interface but ignored in implementation — fixed to use `options.pluginsRoot ?? join(userDataRoot, "plugins")`.
+- Triage rounds used: 1
+- Merge: merged (squash) — PR #101
+- Local main / branch refreshed: yes (main pulled, us-024-meta-app-commands local branch deleted)
+- Remaining local state: clean, on main
+---
