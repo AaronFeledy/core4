@@ -21,6 +21,7 @@ import { lempRenderer } from "./lemp/render.ts";
 import { nextjsRenderer } from "./nextjs/render.ts";
 import { nodeApiRenderer } from "./node-api/render.ts";
 import { nodePostgresRenderer } from "./node-postgres/render.ts";
+import { nodeTsRenderer } from "./node-ts/render.ts";
 import { railsRenderer } from "./rails/render.ts";
 import { sveltekitRenderer } from "./sveltekit/render.ts";
 import { symfonyRenderer } from "./symfony/render.ts";
@@ -61,6 +62,7 @@ const RENDERERS = [
   hugoRenderer,
   eleventyRenderer,
   emptyRenderer,
+  nodeTsRenderer,
 ] as const satisfies ReadonlyArray<RecipeRenderer>;
 
 /**

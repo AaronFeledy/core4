@@ -189,7 +189,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
 ];
 
 describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
-  test("contains every §8.8.10 canonical recipe id plus the node-postgres MVP scaffold", () => {
+  test("contains every shipped bundled recipe id", () => {
     const ids = builtinRecipeIds();
     const required = [
       "node-postgres",
@@ -209,6 +209,7 @@ describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
       "hugo",
       "eleventy",
       "empty",
+      "node-ts",
     ];
     expect([...ids].sort()).toEqual([...required].sort());
     for (const id of required) {

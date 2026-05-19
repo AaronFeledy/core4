@@ -29,6 +29,7 @@ import {
   nodePostgresRecipeSource,
   nodePostgresRecipeYaml,
 } from "./builtin/node-postgres/manifest.ts";
+import { NODE_TS_RECIPE_ID, nodeTsRecipeSource, nodeTsRecipeYaml } from "./builtin/node-ts/manifest.ts";
 import { RAILS_RECIPE_ID, railsRecipeSource, railsRecipeYaml } from "./builtin/rails/manifest.ts";
 import {
   SVELTEKIT_RECIPE_ID,
@@ -133,5 +134,10 @@ export const BUNDLED_RECIPES: ReadonlyArray<BundledRecipe> = [
     id: EMPTY_RECIPE_ID,
     source: emptyRecipeSource,
     manifestYaml: emptyRecipeYaml,
+  },
+  {
+    id: NODE_TS_RECIPE_ID,
+    source: nodeTsRecipeSource,
+    manifestYaml: nodeTsRecipeYaml,
   },
 ];
