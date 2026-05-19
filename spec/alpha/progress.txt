@@ -3837,3 +3837,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - For `process.chdir`-using test helpers, nest cwd restoration inside an inner `try/finally` so cleanup of created paths runs even if the chdir back fails (rare, but cheap to harden).
   - `BUNDLED_RECIPES` is now the authoritative iteration surface for any future recipe-layer matrix; the existing `CANONICAL_ANSWERS covers every BUNDLED_RECIPES entry` sentinel test will loudly fail any drift, so new bundled recipes need a `CANONICAL_ANSWERS` entry plus a manifest-shaped `recipe:` decision (emit it like the 16 templated recipes or intentionally omit it like node-postgres/node-ts).
 ---
+
+## [2026-05-19 20:35 CDT] - Babysit
+- PR: #110 https://github.com/AaronFeledy/core4/pull/110
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS)
+- Bugbot: NEUTRAL on first run — found 1 low-severity issue: `landofile.recipe ?? recipeId` fallback makes recipe field assertion a no-op for 16 recipes that should emit the field. Fixed with an allowlist for the two intentional omitters (node-postgres, node-ts); all other recipes now assert `.recipe` directly without fallback.
+- Triage rounds used: 1 (Bugbot fix committed locally, not via sub-agent — single-line change, typecheck+lint+test verified before push)
+- Fix commit: e226385 "fix(test): use allowlist for recipes that omit recipe field instead of blanket fallback"
+- Second CI run: all 4 checks SUCCESS (Bugbot pass, no further issues)
+- Review feedback: none (reviewDecision empty)
+- Merge: merged (squash) — PR #110 squash-merged, remote branch deleted
+- Local main / branch refreshed: yes (reset to origin/main dc01ffe, story branch deleted)
+---
