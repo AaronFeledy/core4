@@ -202,10 +202,16 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
         await withScrubbedRecipeEnv(async () => {
           const landofile = await discoverFrom(result.directory);
           expect(landofile.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
-          expect(
-            landofile.recipe ?? recipeId,
-            `[${recipeId}] discovered landofile.recipe (node-postgres and node-ts intentionally omit the top-level recipe field)`,
-          ).toBe(recipeId);
+          const recipeFieldOmitAllowlist = new Set(["node-postgres", "node-ts"]);
+          if (recipeFieldOmitAllowlist.has(recipeId)) {
+            if (landofile.recipe !== undefined) {
+              expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe (when present)`).toBe(
+                recipeId,
+              );
+            }
+          } else {
+            expect(landofile.recipe, `[${recipeId}] discovered landofile.recipe`).toBe(recipeId);
+          }
 
           const appPlan = await planLandofile(landofile);
           expect(appPlan.name, `[${recipeId}] AppPlanner.plan returned wrong app name`).toBe(
