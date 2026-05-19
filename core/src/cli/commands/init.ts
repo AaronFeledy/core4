@@ -1,13 +1,13 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { landofile, packageJson, serverJs } from "../../recipes/builtin/node-postgres/index.ts";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
+import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
 import {
   type PromptAnswers,
@@ -36,17 +36,14 @@ export interface InitAppResult {
   readonly answers: PromptAnswers;
 }
 
-const HARDCODED_FILE_RENDERERS: Record<string, (appName: string) => string> = {
-  ".lando.yml": landofile,
-  "package.json": packageJson,
-  "server.js": () => serverJs,
-};
-
-const loadRecipeManifest = async (recipeRef: string, cwd: string) => {
+const loadRecipe = async (recipeRef: string, cwd: string) => {
   const exit = await Effect.runPromiseExit(
     resolveRecipeRef(recipeRef, { cwd }).pipe(
       Effect.flatMap((resolved) =>
-        Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
+        Effect.map(
+          Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
+          (manifest) => ({ resolved, manifest }),
+        ),
       ),
       Effect.provide(RecipeManifestServiceLive),
     ),
@@ -74,12 +71,12 @@ const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
   const recipeRef = options.recipe ?? NODE_POSTGRES_RECIPE_ID;
-  const manifest = await loadRecipeManifest(recipeRef, cwd);
+  const { resolved, manifest } = await loadRecipe(recipeRef, cwd);
 
-  if (recipeRef !== NODE_POSTGRES_RECIPE_ID) {
+  const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
+  if (renderer === undefined) {
     throw new Error(
-      `Recipe file rendering for "${recipeRef}" is not implemented yet; ` +
-        `only the built-in "${NODE_POSTGRES_RECIPE_ID}" recipe is supported in Alpha.`,
+      `Recipe file rendering for "${recipeRef}" is not implemented yet; only bundled built-in recipes are supported in Alpha.`,
     );
   }
 
@@ -109,6 +106,8 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     throw new Error(`Recipe "${recipeRef}" is missing a files: manifest.`);
   }
 
+  const rendered = renderer.render({ appName, answers: collected });
+
   const directory = join(cwd, appName);
   const existing = await readdir(directory).catch((cause: unknown) => {
     if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
@@ -127,13 +126,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   await mkdir(directory, { recursive: true });
 
   for (const file of files) {
-    const renderer = HARDCODED_FILE_RENDERERS[file.dest];
-    if (renderer === undefined) {
+    const content = rendered.get(file.dest);
+    if (content === undefined) {
       throw new Error(
-        `Recipe "${recipeRef}" references an unknown destination "${file.dest}"; recipe rendering is not implemented yet.`,
+        `Recipe "${recipeRef}" lists file dest "${file.dest}" in its manifest but its renderer did not produce content for it.`,
       );
     }
-    await writeFile(join(directory, file.dest), renderer(appName));
+    const destPath = join(directory, file.dest);
+    await mkdir(dirname(destPath), { recursive: true });
+    await writeFile(destPath, content);
   }
 
   return { appName, directory, answers: collected };
