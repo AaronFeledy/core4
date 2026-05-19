@@ -3407,17 +3407,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 
 ## [2026-05-19 06:55 CDT] - Babysit
 - PR: #104 https://github.com/AaronFeledy/core4/pull/104
-- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot SUCCESS)
-- Review feedback: 2 Bugbot findings triaged and fixed
-  - Round 1: LOW — `listBuiltinRecipeIds` unused export → removed in `9790d8a`
-  - Round 2: MEDIUM — `HARDCODED_FILE_RENDERERS` silently writes node-postgres content for non-node-postgres local recipes → guarded with `recipeRef !== NODE_POSTGRES_RECIPE_ID` check + test in `06ba0a9`; Bugbot returned SUCCESS on new HEAD
-- Triage rounds used: 2
-- Merge: merged (squash) — `1e6f6d5 Implement cwd-only recipe source resolution (#104)`
-- Local main / branch refreshed: yes — on main at 1e6f6d5, story branch deleted
----
-
-## [2026-05-19 06:55 CDT] - Babysit
-- PR: #104 https://github.com/AaronFeledy/core4/pull/104
 - CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot SUCCESS on final HEAD)
 - Review feedback: 2 Bugbot NEUTRAL rounds fixed:
   - Round 1 (Low): `listBuiltinRecipeIds` unused export → removed in `9790d8a`
