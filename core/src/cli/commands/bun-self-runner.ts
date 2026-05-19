@@ -35,7 +35,7 @@ const isReentryBlocked = (env: NodeJS.ProcessEnv): boolean => {
   return typeof value === "string" && value !== "" && value !== "0";
 };
 
-const defaultSpawner: BunSelfSpawner = {
+export const defaultBunSelfSpawner: BunSelfSpawner = {
   spawn: async ({ cmd, env, cwd }) => {
     const proc = Bun.spawn({
       cmd: [...cmd],
@@ -73,7 +73,7 @@ export const bunSelfRun = (
         }),
       );
     }
-    const spawner = options.spawner ?? defaultSpawner;
+    const spawner = options.spawner ?? defaultBunSelfSpawner;
     const execPath = options.execPath ?? process.execPath;
     const cwd = options.cwd ?? process.cwd();
     const { exitCode } = yield* Effect.promise(() =>

@@ -8,6 +8,7 @@ import {
   BUN_BE_BUN_ENV,
   BUN_SELF_REENTRY_ENV,
   type BunSelfSpawner,
+  defaultBunSelfSpawner,
 } from "../../cli/commands/bun-self-runner.ts";
 
 export interface PostInitIO {
@@ -49,9 +50,6 @@ export interface RunPostInitOptions {
 
 const REDACTED = "[REDACTED]";
 
-const SECRET_KEY_PATTERN =
-  /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
-
 const SECRET_ENV_PATTERN =
   /\b([A-Z][A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]\}]+)/gu;
 
@@ -62,14 +60,19 @@ export const redactBunOutput = (text: string): string =>
     .replace(SECRET_ENV_PATTERN, (_, name) => `${String(name)}=${REDACTED}`)
     .replace(REGISTRY_URL_PATTERN, `//$1:${REDACTED}@`);
 
-const filteredChildEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
+/**
+ * Build the child-process env for `bun install`.
+ *
+ * Pass-through by design: `bun install` must inherit registry auth env
+ * (`NPM_TOKEN`, `NPM_CONFIG_AUTH_TOKEN`, etc.) to talk to private registries.
+ * Lando-constructed user-visible messages get redacted via {@link redactBunOutput};
+ * child-process stdout/stderr is inherited so Bun's own UX (progress bars,
+ * prompts) is preserved.
+ */
+const buildChildEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(parentEnv)) {
     if (typeof v !== "string") continue;
-    if (SECRET_KEY_PATTERN.test(k)) {
-      env[k] = v;
-      continue;
-    }
     env[k] = v;
   }
   env[BUN_BE_BUN_ENV] = "1";
@@ -151,26 +154,16 @@ const runBunInstall = async (
   index: number,
   options: RunPostInitOptions,
 ): Promise<void> => {
-  const spawner = options.spawner;
-  if (spawner === undefined) {
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun install): no Bun spawner is wired in this build.`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "install",
-      kind: "exit",
-      remediation:
-        "Run `lando init` through the official CLI; the bundled binary wires Bun via BunSelfRunner automatically.",
-    });
-  }
+  // Production default: re-exec the running Lando binary with BUN_BE_BUN=1
+  // (mirrors the BunSelfRunner pattern). Tests inject a fake spawner.
+  const spawner = options.spawner ?? defaultBunSelfSpawner;
 
   const cwd = await resolveBunCwd(action.cwd, options.destination, options.recipeId, index);
   await ensurePackageJson(cwd, options.recipeId, index);
 
   const execPath = options.execPath ?? process.execPath;
   const parentEnv = options.env ?? process.env;
-  const childEnv = filteredChildEnv(parentEnv);
+  const childEnv = buildChildEnv(parentEnv);
 
   const argv = ["install"];
 
