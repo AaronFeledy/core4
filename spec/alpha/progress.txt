@@ -3399,7 +3399,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## [2026-05-19] - US-027 triage
 - Review: Bugbot comment about `listBuiltinRecipeIds` was a real issue; the export had no consumers and was dead API surface, so I removed the export from `core/src/recipes/source.ts` instead of leaving unused public code behind.
 - CI: no failures to fix on this PR; `gh pr checks 104` was already green, so I only addressed the review finding.
-- Verification pending: local typecheck/lint/test rerun after the code change.
+- Verification: `bun run typecheck`, `bun run lint`, and `bun test` all passed after the export removal.
 
 ## [2026-05-19] - PR #104 verification
 - Final triage: Bugbot's unused-export comment was a real issue; removed `listBuiltinRecipeIds` from `core/src/recipes/source.ts` as dead public API.
