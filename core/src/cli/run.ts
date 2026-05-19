@@ -848,14 +848,39 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
 
   if (argv[0] === "init" || argv[0] === "apps:init") {
-    const nameFlag = argv.find((arg) => arg.startsWith("--name="));
-    const name = nameFlag?.slice("--name=".length);
-    const full = argv.includes("--full");
-    const yes = argv.includes("--yes");
-    const nonInteractive = argv.includes("--no-interactive") || argv.includes("--non-interactive");
-    const answerValues = argv
-      .filter((arg) => arg.startsWith("--answer="))
-      .map((arg) => arg.slice("--answer=".length));
+    const rest = argv.slice(1);
+    let name: string | undefined;
+    const answerValues: string[] = [];
+    let full = false;
+    let yes = false;
+    let nonInteractive = false;
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i];
+      if (arg === undefined) continue;
+      if (arg === "--full") {
+        full = true;
+        continue;
+      }
+      if (arg === "--yes" || arg === "-y") {
+        yes = true;
+        continue;
+      }
+      if (arg === "--no-interactive" || arg === "--non-interactive") {
+        nonInteractive = true;
+        continue;
+      }
+      const nameMatch = parseStringFlag(rest, i, "name");
+      if (nameMatch !== undefined) {
+        name = nameMatch.value;
+        i += nameMatch.consumed - 1;
+        continue;
+      }
+      const answerMatch = parseStringFlag(rest, i, "answer");
+      if (answerMatch !== undefined) {
+        answerValues.push(answerMatch.value);
+        i += answerMatch.consumed - 1;
+      }
+    }
     const answers = parseAnswerFlags(answerValues);
     try {
       const result = await initApp({

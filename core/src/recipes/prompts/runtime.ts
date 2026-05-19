@@ -90,6 +90,15 @@ const resolveSelection = (prompt: RecipePrompt, raw: string): CoerceResult => {
     return { ok: false, issue: "select prompt requires choices" };
   }
   const trimmed = raw.trim();
+  // Try exact value/label match first so that numeric choice values
+  // (e.g. choices: [80, 443]) remain reachable. Fall back to 1-based
+  // index lookup when the input is digit-only and not a literal match.
+  for (const choice of choices) {
+    const value = choiceValue(choice);
+    if (String(value) === trimmed || choiceLabel(choice) === trimmed) {
+      return { ok: true, value };
+    }
+  }
   if (/^\d+$/.test(trimmed)) {
     const index = Number(trimmed) - 1;
     const picked = choices[index];
@@ -98,22 +107,32 @@ const resolveSelection = (prompt: RecipePrompt, raw: string): CoerceResult => {
     }
     return { ok: true, value: choiceValue(picked) };
   }
-  for (const choice of choices) {
-    const value = choiceValue(choice);
-    if (String(value) === trimmed || choiceLabel(choice) === trimmed) {
-      return { ok: true, value };
-    }
-  }
   return { ok: false, issue: `no choice matches "${trimmed}"` };
+};
+
+const enforceMultiSelectBounds = (
+  prompt: RecipePrompt,
+  count: number,
+): { readonly ok: true } | { readonly ok: false; readonly issue: string } => {
+  const { min, max } = prompt.validate ?? {};
+  if (min !== undefined && count < min) {
+    return { ok: false, issue: `select at least ${String(min)} item(s)` };
+  }
+  if (max !== undefined && count > max) {
+    return { ok: false, issue: `select at most ${String(max)} item(s)` };
+  }
+  return { ok: true };
 };
 
 const resolveMultiSelection = (prompt: RecipePrompt, raw: string): CoerceResult => {
   const trimmed = raw.trim();
-  if (trimmed === "") return { ok: true, value: [] };
-  const parts = trimmed
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry !== "");
+  const parts =
+    trimmed === ""
+      ? []
+      : trimmed
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter((entry) => entry !== "");
   const out: Array<string | number | boolean> = [];
   for (const part of parts) {
     const result = resolveSelection(prompt, part);
@@ -121,6 +140,8 @@ const resolveMultiSelection = (prompt: RecipePrompt, raw: string): CoerceResult 
     const scalar = result.value as string | number | boolean;
     if (!out.includes(scalar)) out.push(scalar);
   }
+  const bounds = enforceMultiSelectBounds(prompt, out.length);
+  if (!bounds.ok) return { ok: false, issue: bounds.issue };
   return { ok: true, value: out };
 };
 
@@ -209,15 +230,6 @@ const validationFail = (
     remediation,
   });
 
-const acceptScalarDefault = (
-  prompt: RecipePrompt,
-  yes: boolean,
-): { readonly accepted: true; readonly value: PromptAnswer } | { readonly accepted: false } => {
-  if (yes && prompt.type === "confirm") return { accepted: true, value: true };
-  if (prompt.type === "multiselect") return { accepted: true, value: [] };
-  return { accepted: false };
-};
-
 const resolveSupplied = async (
   prompt: RecipePrompt,
   supplied: string,
@@ -261,7 +273,12 @@ const runInteractivePrompt = async (
     const raw = await io.readLine(prompt.type === "secret" ? { secret: true } : undefined);
     const effective = raw === "" && def.hasDefault ? def.raw : raw;
     if (effective === "") {
-      if (prompt.type === "multiselect") return [];
+      if (prompt.type === "multiselect") {
+        const bounds = enforceMultiSelectBounds(prompt, 0);
+        if (bounds.ok) return [];
+        io.writeError(`Invalid value: ${bounds.issue}. Please try again.\n`);
+        continue;
+      }
       io.writeError("Value is required. Please try again.\n");
       continue;
     }
@@ -288,11 +305,6 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
     if (yes || !interactive) {
       if (def.hasDefault) {
         resolved[prompt.name] = await resolveDefault(prompt, def.raw, cwd);
-        continue;
-      }
-      const fallback = acceptScalarDefault(prompt, yes);
-      if (fallback.accepted) {
-        resolved[prompt.name] = fallback.value;
         continue;
       }
       throw missingAnswer(prompt);

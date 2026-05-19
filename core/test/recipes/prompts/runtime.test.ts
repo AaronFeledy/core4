@@ -55,6 +55,7 @@ describe("collectPrompts — text", () => {
       nonInteractive: true,
     });
     await expect(promise).rejects.toBeInstanceOf(RecipeMissingAnswerError);
+    await expect(promise).rejects.toMatchObject({ _tag: "RecipeMissingAnswerError", promptName: "name" });
   });
 
   test("non-interactive: --answer satisfies the prompt and is validated", async () => {
@@ -87,6 +88,11 @@ describe("collectPrompts — text", () => {
       nonInteractive: true,
     });
     await expect(promise).rejects.toBeInstanceOf(RecipePromptValidationError);
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipePromptValidationError",
+      promptName: "name",
+      promptType: "text",
+    });
   });
 });
 
@@ -311,6 +317,10 @@ describe("collectPrompts — secret", () => {
       nonInteractive: true,
     });
     await expect(promise).rejects.toBeInstanceOf(RecipeMissingAnswerError);
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipeMissingAnswerError",
+      promptName: "db_password",
+    });
   });
 });
 
@@ -365,9 +375,305 @@ describe("collectPrompts — path", () => {
   });
 });
 
+describe("collectPrompts — select with numeric choice values", () => {
+  test("interactive: literal numeric value match wins over index lookup", async () => {
+    const io = createBufferedPromptIO({ inputs: ["443"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "port",
+          type: "select",
+          message: "Pick a port",
+          choices: [80, 443, 8080],
+        }),
+      ],
+      io,
+    });
+    expect(answers.port).toBe(443);
+  });
+
+  test("interactive: index fallback still works when no literal match exists", async () => {
+    const io = createBufferedPromptIO({ inputs: ["2"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "port",
+          type: "select",
+          message: "Pick a port",
+          choices: [80, 443, 8080],
+        }),
+      ],
+      io,
+    });
+    expect(answers.port).toBe(443);
+  });
+});
+
+describe("collectPrompts — multiselect validate.min/max enforcement", () => {
+  test("non-interactive: empty answer rejected when validate.min: 1", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search"],
+          validate: { min: 1 },
+        }),
+      ],
+      answers: { addons: "" },
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toBeInstanceOf(RecipePromptValidationError);
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipePromptValidationError",
+      promptType: "multiselect",
+    });
+  });
+
+  test("non-interactive: validate.max rejects oversized selection", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["a", "b", "c"],
+          validate: { max: 2 },
+        }),
+      ],
+      answers: { addons: "a,b,c" },
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toBeInstanceOf(RecipePromptValidationError);
+  });
+
+  test("interactive: blank input re-prompts when validate.min: 1", async () => {
+    const io = createBufferedPromptIO({ inputs: ["", "redis"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search"],
+          validate: { min: 1 },
+        }),
+      ],
+      io,
+    });
+    expect(answers.addons).toEqual(["redis"]);
+    expect(io.stderr()).toContain("select at least 1 item(s)");
+  });
+});
+
+describe("collectPrompts — --yes and --no-interactive without recipe default", () => {
+  test("--yes with a defaultless confirm fails fast with RecipeMissingAnswerError", async () => {
+    const promise = collectPrompts({
+      prompts: [prompt({ name: "ssl", type: "confirm", message: "Enable SSL?" })],
+      yes: true,
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toBeInstanceOf(RecipeMissingAnswerError);
+    await expect(promise).rejects.toMatchObject({ _tag: "RecipeMissingAnswerError", promptName: "ssl" });
+  });
+
+  test("non-interactive defaultless multiselect fails fast with RecipeMissingAnswerError", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["a", "b"],
+        }),
+      ],
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toBeInstanceOf(RecipeMissingAnswerError);
+  });
+
+  test("--yes accepts an explicit recipe default for confirm (default: false honored, not coerced to true)", async () => {
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "ssl", type: "confirm", message: "Enable SSL?", default: false })],
+      yes: true,
+      nonInteractive: true,
+    });
+    expect(answers.ssl).toBe(false);
+  });
+});
+
 describe("parseAnswerFlags", () => {
   test("parses key=value entries; later wins; ignores malformed", () => {
     const parsed = parseAnswerFlags(["name=mvp", "port=80", "name=second", "noequals"]);
     expect(parsed).toEqual({ name: "second", port: "80" });
+  });
+});
+
+describe("collectPrompts — tagged error shape", () => {
+  test("RecipeMissingAnswerError carries the canonical _tag", async () => {
+    const promise = collectPrompts({
+      prompts: [prompt({ name: "name", type: "text", message: "App name" })],
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipeMissingAnswerError",
+      promptName: "name",
+    });
+  });
+
+  test("RecipePromptValidationError carries _tag and promptType", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "port",
+          type: "number",
+          message: "Port",
+          validate: { min: 1, max: 65535 },
+        }),
+      ],
+      answers: { port: "abc" },
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipePromptValidationError",
+      promptName: "port",
+      promptType: "number",
+    });
+  });
+});
+
+describe("collectPrompts — select with numeric choice values", () => {
+  test("literal numeric value wins over index lookup", async () => {
+    const io = createBufferedPromptIO({ inputs: ["443"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "port",
+          type: "select",
+          message: "Port",
+          choices: [80, 443, 8080],
+        }),
+      ],
+      io,
+    });
+    expect(answers.port).toBe(443);
+  });
+
+  test("digit-only input falls back to 1-based index when no literal value matches", async () => {
+    const io = createBufferedPromptIO({ inputs: ["2"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "db",
+          type: "select",
+          message: "Pick a database",
+          choices: ["mysql", "postgres"],
+        }),
+      ],
+      io,
+    });
+    expect(answers.db).toBe("postgres");
+  });
+});
+
+describe("collectPrompts — multiselect validate.min/max", () => {
+  test("non-interactive: too few selections raises RecipePromptValidationError", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search", "queue"],
+          validate: { min: 2 },
+        }),
+      ],
+      answers: { addons: "redis" },
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipePromptValidationError",
+      promptType: "multiselect",
+    });
+  });
+
+  test("non-interactive: too many selections raises RecipePromptValidationError", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search", "queue"],
+          validate: { max: 1 },
+        }),
+      ],
+      answers: { addons: "redis,search" },
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipePromptValidationError",
+      promptType: "multiselect",
+    });
+  });
+
+  test("interactive: blank input re-prompts when validate.min is set", async () => {
+    const io = createBufferedPromptIO({ inputs: ["", "redis"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search"],
+          validate: { min: 1 },
+        }),
+      ],
+      io,
+    });
+    expect(answers.addons).toEqual(["redis"]);
+    expect(io.stderr()).toContain("select at least 1 item(s)");
+  });
+});
+
+describe("collectPrompts — non-interactive default-less prompts fail fast (spec §8.8.1)", () => {
+  test("--yes on a default-less confirm raises RecipeMissingAnswerError (not synthesized true)", async () => {
+    const promise = collectPrompts({
+      prompts: [prompt({ name: "ssl", type: "confirm", message: "Enable SSL?" })],
+      yes: true,
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipeMissingAnswerError",
+      promptName: "ssl",
+    });
+  });
+
+  test("--no-interactive on a default-less multiselect raises RecipeMissingAnswerError (not synthesized [])", async () => {
+    const promise = collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search"],
+        }),
+      ],
+      nonInteractive: true,
+    });
+    await expect(promise).rejects.toMatchObject({
+      _tag: "RecipeMissingAnswerError",
+      promptName: "addons",
+    });
+  });
+
+  test("--yes on a confirm with default: false honors the recipe default (does not force true)", async () => {
+    const answers = await collectPrompts({
+      prompts: [prompt({ name: "ssl", type: "confirm", message: "Enable SSL?", default: false })],
+      yes: true,
+      nonInteractive: true,
+    });
+    expect(answers.ssl).toBe(false);
   });
 });
