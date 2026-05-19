@@ -3332,3 +3332,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan: branch-changed source/test comments scanned for spec paths/sections, phase labels, PRD/story IDs, and story/prose references; no remaining comment leakage found.
 - Behavior review: cleanup is comment-only; imports, public APIs, error handling, side effects, return values, and tests are unchanged.
 - Verification run and result: lsp diagnostics clean on `core/src/recipes/prompts/runtime.ts`; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (704 pass, 11 skip, 0 fail, 3145 expect() calls). One earlier full-test run failed in a compiled CLI build subtest while `bun run build` passed immediately afterward; rerunning `bun test` from the same cleanup state passed, so the transient failure was not attributable to the comment-only cleanup.
+
+## [2026-05-18] - Sync
+- Previous branch: us-026-recipe-prompt-types
+- Previous PR: #103 https://github.com/AaronFeledy/core4/pull/103
+- Action: caught up after prior merge (PR already MERGED, all CI checks SUCCESS/NEUTRAL)
+- Progress-log fast-path: stashed and committed uncommitted progress.txt before reconciliation
+- Local main updated: yes (pushed docs: update progress log commit to origin)
+- Branch after sync: main
+- Stash created: no
+---
