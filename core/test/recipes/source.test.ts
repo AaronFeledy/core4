@@ -4,7 +4,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import { NotImplementedError, RecipeManifestNotFoundError } from "@lando/sdk/errors";
+import {
+  NotImplementedError,
+  RecipeManifestNotFoundError,
+  RecipeManifestValidationError,
+} from "@lando/sdk/errors";
 
 import {
   nodePostgresRecipeSource,
@@ -98,6 +102,47 @@ version: 0.0.1
     });
   });
 
+  test("local recipe.yml with id mismatching directory basename fails with RecipeManifestValidationError (§8.8.3)", async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "expected-id");
+      await Bun.write(
+        join(recipeDir, "recipe.yml"),
+        `id: wrong-id
+title: Mismatch
+description: id does not match directory basename.
+version: 0.0.1
+`,
+      );
+
+      const exit = await runResolve("./expected-id", dir);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(RecipeManifestValidationError);
+      if (failure instanceof RecipeManifestValidationError) {
+        expect(failure.source).toBe(resolve(recipeDir, "recipe.yml"));
+        expect(failure.message).toContain('"wrong-id"');
+        expect(failure.message).toContain('"expected-id"');
+        expect(failure.issues.length).toBeGreaterThan(0);
+        expect(failure.issues[0]).toContain("directory basename");
+      }
+    });
+  });
+
+  test("quoted recipe id is unwrapped before the basename comparison", async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "quoted-id");
+      await Bun.write(
+        join(recipeDir, "recipe.yml"),
+        `id: "quoted-id"
+title: Quoted
+description: id wrapped in double quotes.
+version: 0.0.1
+`,
+      );
+      const exit = await runResolve("./quoted-id", dir);
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
+  });
+
   test("local path missing recipe.yml fails with RecipeManifestNotFoundError", async () => {
     await withTempCwd(async (dir) => {
       const recipeDir = join(dir, "empty");
@@ -127,6 +172,9 @@ describe("resolveRecipeRef — deferred remote sources (§8.8.4)", () => {
     { scheme: "npm", ref: "npm:@lando/recipe-wordpress@1.2.3" },
     { scheme: "registry", ref: "registry:wordpress" },
     { scheme: "registry", ref: "registry:wordpress@1.0.0" },
+    { scheme: "unknown", ref: "tarball:https://example.test/recipe.tgz" },
+    { scheme: "unknown", ref: "https://example.test/recipe.tgz" },
+    { scheme: "unknown", ref: "http://example.test/recipe.tar.gz" },
   ];
 
   for (const { scheme, ref } of REMOTE_REFS) {

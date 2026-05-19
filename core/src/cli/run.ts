@@ -9,6 +9,7 @@ import {
   InitTargetExistsError,
   NotImplementedError,
   RecipeManifestNotFoundError,
+  RecipeManifestValidationError,
   RecipeMissingAnswerError,
   RecipePromptValidationError,
 } from "@lando/sdk/errors";
@@ -911,9 +912,11 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
               ? `${error.message}\n${error.remediation}`
               : error instanceof RecipeManifestNotFoundError
                 ? error.message
-                : error instanceof Error
-                  ? error.message
-                  : String(error);
+                : error instanceof RecipeManifestValidationError
+                  ? `${error.message}${error.issues.length > 0 ? `\n  - ${error.issues.join("\n  - ")}` : ""}`
+                  : error instanceof Error
+                    ? error.message
+                    : String(error);
       console.error(message);
       process.exitCode = 1;
     }

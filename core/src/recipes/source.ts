@@ -15,13 +15,32 @@
  * are read from the in-binary `BUNDLED_RECIPES` table; local refs are read
  * from the host filesystem under the supplied `cwd`.
  */
-import { isAbsolute, resolve } from "node:path";
+import { basename, isAbsolute, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { NotImplementedError, RecipeManifestNotFoundError } from "@lando/sdk/errors";
+import {
+  NotImplementedError,
+  RecipeManifestNotFoundError,
+  RecipeManifestValidationError,
+} from "@lando/sdk/errors";
 
 import { BUNDLED_RECIPES } from "./bundled.ts";
+
+/**
+ * Spec §8.8.3 ("`id` MUST match the directory basename") is enforced at the
+ * directory-resolution boundary, before the schema parser runs, so the
+ * resolver needs the `id` value without invoking the manifest service. The
+ * `^` anchor restricts the match to top-level YAML scalars (column 0); nested
+ * `id:` keys (e.g. a prompt whose `name:` is `"id"`) are indented and skipped.
+ */
+const TOP_LEVEL_ID_RE = /^id:[ \t]+(?:"([^"]+)"|'([^']+)'|([^\s#]+))[ \t]*(?:#.*)?$/m;
+
+const extractTopLevelId = (manifestYaml: string): string | undefined => {
+  const match = TOP_LEVEL_ID_RE.exec(manifestYaml);
+  if (match === null) return undefined;
+  return match[1] ?? match[2] ?? match[3];
+};
 
 export interface ResolvedRecipe {
   readonly id: string;
@@ -82,7 +101,7 @@ const resolveBuiltin = (ref: string): Effect.Effect<ResolvedRecipe, RecipeManife
 const resolveLocal = (
   ref: string,
   options: ResolveRecipeOptions,
-): Effect.Effect<ResolvedRecipe, RecipeManifestNotFoundError> =>
+): Effect.Effect<ResolvedRecipe, RecipeManifestNotFoundError | RecipeManifestValidationError> =>
   Effect.gen(function* () {
     const expanded = ref.startsWith("~/")
       ? resolve(process.env.HOME ?? options.cwd, ref.slice(2))
@@ -91,7 +110,14 @@ const resolveLocal = (
         : resolve(options.cwd, ref);
     const manifestPath = resolve(expanded, "recipe.yml");
     const file = Bun.file(manifestPath);
-    const exists = yield* Effect.promise(() => file.exists());
+    const exists = yield* Effect.tryPromise({
+      try: () => file.exists(),
+      catch: (cause) =>
+        new RecipeManifestNotFoundError({
+          message: `Could not stat recipe.yml at ${manifestPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+          source: manifestPath,
+        }),
+    });
     if (!exists) {
       return yield* Effect.fail(
         new RecipeManifestNotFoundError({
@@ -100,7 +126,27 @@ const resolveLocal = (
         }),
       );
     }
-    const manifestYaml = yield* Effect.promise(() => file.text());
+    const manifestYaml = yield* Effect.tryPromise({
+      try: () => file.text(),
+      catch: (cause) =>
+        new RecipeManifestNotFoundError({
+          message: `Could not read recipe.yml at ${manifestPath}: ${cause instanceof Error ? cause.message : String(cause)}.`,
+          source: manifestPath,
+        }),
+    });
+    const dirBasename = basename(expanded);
+    const declaredId = extractTopLevelId(manifestYaml);
+    if (declaredId !== undefined && declaredId !== dirBasename) {
+      return yield* Effect.fail(
+        new RecipeManifestValidationError({
+          message:
+            `Recipe id "${declaredId}" must match the directory basename "${dirBasename}" ` +
+            `(recipe at ${manifestPath}).`,
+          source: manifestPath,
+          issues: [`id: "${declaredId}" must equal directory basename "${dirBasename}"`],
+        }),
+      );
+    }
     return {
       id: ref,
       source: manifestPath,
@@ -112,7 +158,10 @@ const resolveLocal = (
 export const resolveRecipeRef = (
   ref: string,
   options: ResolveRecipeOptions,
-): Effect.Effect<ResolvedRecipe, RecipeManifestNotFoundError | NotImplementedError> => {
+): Effect.Effect<
+  ResolvedRecipe,
+  RecipeManifestNotFoundError | RecipeManifestValidationError | NotImplementedError
+> => {
   if (ref.trim() === "") {
     return Effect.fail(notImplemented("unknown", ref));
   }

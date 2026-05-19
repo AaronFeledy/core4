@@ -11,6 +11,7 @@ import {
   InitTargetExistsError,
   NotImplementedError,
   RecipeManifestNotFoundError,
+  RecipeManifestValidationError,
   RecipeMissingAnswerError,
   RecipePromptValidationError,
 } from "@lando/sdk/errors";
@@ -92,6 +93,10 @@ export default class InitCommand extends LandoCommandBase {
       }
       if (error instanceof RecipeManifestNotFoundError) {
         throw new Error(error.message);
+      }
+      if (error instanceof RecipeManifestValidationError) {
+        const detail = error.issues.length > 0 ? `\n  - ${error.issues.join("\n  - ")}` : "";
+        throw new Error(`${error.message}${detail}`);
       }
       throw error;
     }
