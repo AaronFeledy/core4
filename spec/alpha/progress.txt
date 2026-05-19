@@ -3909,3 +3909,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## [2026-05-19] - Triage PR #111 / Bugbot
 - Decision: not-an-issue.
 - Reason: `bun`/`meta:bun`/`x`/`meta:x` are intentional renderer-passthrough commands; they do not use the renderer system, so skipping `resolveRendererMode` for them is by design.
+
+## [2026-05-19 18:57 CDT] - Babysit
+- PR: #111 https://github.com/AaronFeledy/core4/pull/111
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS on both commits)
+- Review feedback: Bugbot NEUTRAL (1 Low-Severity potential issue) → triaged as not-an-issue; `bun`/`meta:bun`/`x`/`meta:x` are renderer-passthrough by design (AGENTS.md); no code change needed
+- Triage rounds used: 1
+- Merge: merged (squash) — PR #111 squash-merged at 2026-05-19T23:57:13Z
+- Local main / branch refreshed: yes (reset --hard to origin/main, story branch deleted)
+- Remaining local state: on main @ 32fe149
+---
