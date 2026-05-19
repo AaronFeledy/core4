@@ -150,6 +150,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
         recipe: "node-ts",
         nonInteractive: true,
         answers: { name: "node-ts-app" },
+        postInitIO: { out: () => {}, err: () => {} },
       });
 
       expect(result.appName).toBe("node-ts-app");
@@ -166,6 +167,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
         recipe: "node-ts",
         nonInteractive: true,
         answers: { name: "discovered-ts-app" },
+        postInitIO: { out: () => {}, err: () => {} },
       });
 
       await withEnv({ LANDO_NODE_VERSION: undefined, NODE_ENV: undefined }, async () => {
@@ -187,6 +189,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
         recipe: "node-ts",
         nonInteractive: true,
         answers: { name: "env-driven-ts-app" },
+        postInitIO: { out: () => {}, err: () => {} },
       });
 
       await withEnv({ LANDO_NODE_VERSION: "22", NODE_ENV: "production" }, async () => {
@@ -206,6 +209,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
         recipe: "node-ts",
         nonInteractive: true,
         answers: { name: "plannable-ts-app" },
+        postInitIO: { out: () => {}, err: () => {} },
       });
 
       await withEnv({ LANDO_NODE_VERSION: undefined, NODE_ENV: undefined }, async () => {
@@ -233,6 +237,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
         recipe: "node-ts",
         nonInteractive: true,
         answers: { name: "byte-parity-app" },
+        postInitIO: { out: () => {}, err: () => {} },
       });
 
       const onDisk = await readFile(join(result.directory, ".lando.ts"), "utf8");
