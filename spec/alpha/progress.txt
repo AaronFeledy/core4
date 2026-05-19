@@ -3392,7 +3392,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior review: cleanup is comment-only. Imports, exports, public APIs, error handling, side effects, return values, and tests are unchanged. No test was weakened, skipped, deleted, or loosened.
 - Verification run and result: lsp diagnostics N/A (typescript-language-server not installed in sandbox; `tsc -b` is the canonical check); `bun run typecheck` passed (clean `tsc -b`); `bun run lint` passed (`biome check .` 353 files, no fixes); `bun test` passed (730 pass, 11 skip, 0 fail, 3300 expect() calls — bit-for-bit match with the post-review baseline from the same branch state, so no regressions introduced by the comment-only cleanup).
 
-## [2026-05-19] - Push
+## [2026-05-19-push2] - Push
 - Branch: us-027-cwd-recipe-source
 - Push: pushed
 - Commit(s): 1136e8e chore: remove AI slop, a9b394f fix(US-027 review): enforce id↔basename, tag local IO failures, cover tarball refs, 9139649 feat: Ship cwd-only recipe source
@@ -3517,3 +3517,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by slop removal: `AGENTS.md`, `core/src/cli/commands/app-cache-refresh.ts`, `core/src/cli/commands/exec.ts`, `core/src/cli/commands/shell.ts`, `core/src/landofile/service.ts`, `core/src/landofile/ts-loader.ts`, `sdk/src/errors/index.ts`, `sdk/src/schema/index.ts`, and `sdk/src/services/index.ts`.
 - Slop-remover result: removed planning-doc traceability from code comments, shortened verbose SDK export-index commentary, and preserved behavior/API surfaces. Follow-up scan found no branch-changed code comments still citing planning docs, phase labels, or story IDs; remaining planning references are runtime/test strings or planning docs.
 - Verification run and result: `lsp_diagnostics` clean on edited TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (772 pass, 11 skip, 0 fail, 3599 expect()). A first full test attempt failed in `core/test/cli/setup.test.ts` while overlapping with another build/test invocation; a clean final run passed.
+
+## [2026-05-19 10:30 CDT] - Push
+- Branch: us-014b-landofile-ts-loader
+- Push: pushed (new branch)
+- Commit(s): b983724 chore: remove AI slop, 40be0ba fix(US-014b review): close TS-form Beta-rejection/require()-regex/Effect-return gaps, 8500f91 feat: Extend LandofileService to load `landofile.ts`
+- PR: #106 https://github.com/AaronFeledy/core4/pull/106 (created)
+---
+## [2026-05-19 10:40 CDT] - PR #106 Triage Note
+- Real issue: `ts-loader.ts` now keeps scanning all `require()` calls before emitting the generic rejection, so a later forbidden builtin (for example `node:fs`) is no longer hidden behind an earlier harmless `require()`.
+- Not-an-issue: the reported Effect-return test failure did not reproduce locally; the current branch already resolves function-form `Effect.succeed(...)` exports, and the full Bun test suite passed after the loader fix.

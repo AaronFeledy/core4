@@ -18,8 +18,12 @@ import { LandofileService } from "@lando/core/services";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { TS_TIMEOUT_ENV } from "../../src/landofile/ts-loader.ts";
 
-const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await mkdtemp(join(tmpdir(), "lando-landofile-ts-"));
+const withTempCwd = async <T>(
+  run: (dir: string) => Promise<T>,
+  options?: { baseDir?: string },
+): Promise<T> => {
+  const base = options?.baseDir ?? tmpdir();
+  const dir = await mkdtemp(join(base, "lando-landofile-ts-"));
   const previousCwd = process.cwd();
   try {
     return await run(dir);
@@ -515,27 +519,53 @@ describe("LandofileServiceLive — TS form sandbox tightening for require() vari
       }
     });
   });
-});
 
-describe("LandofileServiceLive — TS form Effect-return support", () => {
-  test("function form returning an Effect.succeed value resolves to a parsed Landofile", async () => {
+  test("checks later require() calls after a harmless first require()", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.ts"),
         [
-          'import { Effect } from "effect";',
-          "export default () =>",
-          "  Effect.succeed({",
-          '    name: "effect-form-app",',
-          '    services: { web: { image: "node:lts" } },',
-          "  });",
+          'const path = require("node:path");',
+          'const fs = require("node:fs");',
+          'export default { name: "x", services: { web: { image: "node:lts" } } };',
           "",
         ].join("\n"),
       );
       process.chdir(dir);
-      const landofile = await discover();
-      expect(landofile.name).toBe("effect-form-app");
-      expect(landofile.services?.[ServiceName.make("web")]?.image).toBe("node:lts");
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(LandofileSandboxError);
+      if (failure instanceof LandofileSandboxError) {
+        expect(failure.violation).toContain("node:fs");
+      }
     });
+  });
+});
+
+describe("LandofileServiceLive — TS form Effect-return support", () => {
+  test("function form returning an Effect.succeed value resolves to a parsed Landofile", async () => {
+    // Use project-relative baseDir so Bun can resolve workspace deps (e.g. "effect")
+    // from node_modules when the temp file is dynamically imported in CI.
+    await withTempCwd(
+      async (dir) => {
+        await writeFile(
+          join(dir, ".lando.ts"),
+          [
+            'import { Effect } from "effect";',
+            "export default () =>",
+            "  Effect.succeed({",
+            '    name: "effect-form-app",',
+            '    services: { web: { image: "node:lts" } },',
+            "  });",
+            "",
+          ].join("\n"),
+        );
+        process.chdir(dir);
+        const landofile = await discover();
+        expect(landofile.name).toBe("effect-form-app");
+        expect(landofile.services?.[ServiceName.make("web")]?.image).toBe("node:lts");
+      },
+      { baseDir: import.meta.dir },
+    );
   });
 });

@@ -145,11 +145,16 @@ export const sandboxScan = (
       if (failure !== undefined) return Effect.fail(failure);
     }
 
-    for (const required of scanRequireCalls(content)) {
+    const requiredCalls = scanRequireCalls(content);
+    for (const required of requiredCalls) {
       const failure = checkImport(filePath, appRoot, required);
       if (failure !== undefined) return Effect.fail(failure);
+    }
+
+    const firstRequired = requiredCalls[0];
+    if (firstRequired !== undefined) {
       return Effect.fail(
-        violationFor(filePath, required, "require() is not supported in programmatic Landofiles"),
+        violationFor(filePath, firstRequired, "require() is not supported in programmatic Landofiles"),
       );
     }
 
