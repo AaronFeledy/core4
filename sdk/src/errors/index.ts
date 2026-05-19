@@ -12,14 +12,12 @@
  */
 import { Schema } from "effect";
 
-// -- Config ----------------------------------------------------------------
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
   path: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-// -- Landofile -------------------------------------------------------------
 export class LandofileNotFoundError extends Schema.TaggedError<LandofileNotFoundError>()(
   "LandofileNotFoundError",
   {
@@ -45,7 +43,6 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   },
 ) {}
 
-// -- Plugins ---------------------------------------------------------------
 export class PluginLoadError extends Schema.TaggedError<PluginLoadError>()("PluginLoadError", {
   message: Schema.String,
   pluginName: Schema.String,
@@ -58,7 +55,6 @@ export class PluginManifestError extends Schema.TaggedError<PluginManifestError>
   issues: Schema.Array(Schema.String),
 }) {}
 
-// -- Providers ------------------------------------------------------------
 const ProviderErrorBase = {
   providerId: Schema.String,
   operation: Schema.String,
@@ -121,7 +117,6 @@ export class NoProviderInstalledError extends Schema.TaggedError<NoProviderInsta
   },
 ) {}
 
-// -- Capabilities ----------------------------------------------------------
 export class CapabilityError extends Schema.TaggedError<CapabilityError>()("CapabilityError", {
   message: Schema.String,
   service: Schema.optional(Schema.String),
@@ -131,7 +126,6 @@ export class CapabilityError extends Schema.TaggedError<CapabilityError>()("Capa
   remediation: Schema.optional(Schema.String),
 }) {}
 
-// -- Recipes ---------------------------------------------------------------
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,
@@ -147,7 +141,34 @@ export class RecipeMissingPluginError extends Schema.TaggedError<RecipeMissingPl
   },
 ) {}
 
-// -- Init ------------------------------------------------------------------
+export class RecipeManifestNotFoundError extends Schema.TaggedError<RecipeManifestNotFoundError>()(
+  "RecipeManifestNotFoundError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+  },
+) {}
+
+export class RecipeManifestParseError extends Schema.TaggedError<RecipeManifestParseError>()(
+  "RecipeManifestParseError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    line: Schema.UndefinedOr(Schema.Number),
+    column: Schema.UndefinedOr(Schema.Number),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export class RecipeManifestValidationError extends Schema.TaggedError<RecipeManifestValidationError>()(
+  "RecipeManifestValidationError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    issues: Schema.Array(Schema.String),
+  },
+) {}
+
 export class InitTargetExistsError extends Schema.TaggedError<InitTargetExistsError>()(
   "InitTargetExistsError",
   {
@@ -157,7 +178,6 @@ export class InitTargetExistsError extends Schema.TaggedError<InitTargetExistsEr
   },
 ) {}
 
-// -- Service planning ------------------------------------------------------
 export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("ServiceTypeError", {
   message: Schema.String,
   serviceType: Schema.String,
@@ -170,7 +190,6 @@ export class ServiceFeatureError extends Schema.TaggedError<ServiceFeatureError>
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-// -- Tooling ---------------------------------------------------------------
 export class ToolingCompileError extends Schema.TaggedError<ToolingCompileError>()("ToolingCompileError", {
   message: Schema.String,
   tool: Schema.String,
@@ -199,7 +218,7 @@ export class ShellExecError extends Schema.TaggedError<ShellExecError>()("ShellE
  * resolves outside every permitted base directory. The host `ToolingEngine`
  * (and any other code that loads `.bun.sh` / shell-shaped scripts from
  * the filesystem) MUST refuse paths whose realpath escapes the app root
- * (or the user-config-root recipe cache) per the §8.5.9 containment rule.
+ * (or the user-config-root recipe cache).
  */
 export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptOutsideRootError>()(
   "ShellScriptOutsideRootError",
@@ -215,7 +234,7 @@ export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptO
 
 /**
  * BunShellScriptFrontMatterError — raised when a `.bun.sh` script-backed
- * tooling task (§8.5.9) has a missing or malformed YAML front-matter
+ * tooling task has a missing or malformed YAML front-matter
  * block. The front-matter MUST be the first contiguous comment block at
  * the top of the file wrapped in `# ---` markers and uniformly prefixed
  * with `# `; it MUST validate against the `BunShellScriptFrontMatter`
@@ -234,7 +253,7 @@ export class BunShellScriptFrontMatterError extends Schema.TaggedError<BunShellS
 
 /**
  * BunShellScriptEmptyError — raised when a `.bun.sh` script-backed
- * tooling task (§8.5.9) is an empty file. Empty scripts cannot be
+ * tooling task is an empty file. Empty scripts cannot be
  * compiled into a task.
  */
 export class BunShellScriptEmptyError extends Schema.TaggedError<BunShellScriptEmptyError>()(
@@ -261,7 +280,6 @@ export class ProcessTimeoutError extends Schema.TaggedError<ProcessTimeoutError>
   elapsedMs: Schema.Number,
 }) {}
 
-// -- Filesystem ------------------------------------------------------------
 export class FileNotFoundError extends Schema.TaggedError<FileNotFoundError>()("FileNotFoundError", {
   message: Schema.String,
   path: Schema.String,
@@ -280,14 +298,12 @@ export class FileIoError extends Schema.TaggedError<FileIoError>()("FileIoError"
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-// -- Lifecycle / events ----------------------------------------------------
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,
   event: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-// -- Cache -----------------------------------------------------------------
 export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
   message: Schema.String,
   key: Schema.optional(Schema.String),
@@ -296,7 +312,6 @@ export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-// -- Subsystems (proxy, certs, etc.) --------------------------------------
 export class ProxyError extends Schema.TaggedError<ProxyError>()("ProxyError", {
   message: Schema.String,
   proxyId: Schema.String,
@@ -309,7 +324,6 @@ export class CaError extends Schema.TaggedError<CaError>()("CaError", {
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-// -- Runtime / bootstrap --------------------------------------------------
 export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeBootstrapError>()(
   "LandoRuntimeBootstrapError",
   {
@@ -319,7 +333,6 @@ export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeB
   },
 ) {}
 
-// -- CLI commands ----------------------------------------------------------
 export class LandoCommandError extends Schema.TaggedError<LandoCommandError>()("LandoCommandError", {
   message: Schema.String,
   commandId: Schema.optional(Schema.String),

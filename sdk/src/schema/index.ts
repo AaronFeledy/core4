@@ -9,11 +9,9 @@
  * re-exported by `@lando/core/schema`. JSON Schema is generated at build
  * time from these.
  *
- * Status: MVP — expanded for Phase 2 (covers AppPlan/ServicePlan/MountPlan/
- * RoutePlan/EndpointPlan/HealthcheckPlan, BuildPlan, full ProviderCapabilities,
- * MVP-subset Landofile + ServiceConfig). Several spec keys are deferred (see
- * §7.4 for the full Landofile, §6.2 for the full ServiceConfig — gated behind
- * `// SPEC: §X.Y deferred for MVP` comments).
+ * Covers AppPlan/ServicePlan/MountPlan/RoutePlan/EndpointPlan/
+ * HealthcheckPlan, BuildPlan, ProviderCapabilities, and the authored
+ * Landofile/ServiceConfig subset accepted by the current planner.
  */
 import { JSONSchema, Schema } from "effect";
 
@@ -46,7 +44,6 @@ export const HostArchitecture = Schema.Literal("x64", "arm64");
 export type HostArchitecture = typeof HostArchitecture.Type;
 
 // Bootstrap level — declared by every command, ranked by depth.
-// SPEC: roadmap §"SDK contracts shipped"; spec/13-bootstrap-and-runtime.md
 
 export const BootstrapLevel = Schema.Literal(
   "none",
@@ -77,7 +74,6 @@ export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
 
 /**
  * Plan metadata — every plan node carries this for traceability.
- * SPEC: §5.5
  */
 export const PlanMetadata = Schema.Struct({
   /** Resolution timestamp (UTC). */
@@ -92,7 +88,6 @@ export type PlanMetadata = typeof PlanMetadata.Type;
 /**
  * Provider extension config — non-portable, opt-in provider-specific config
  * preserved through planning. Keys are provider ids; values are arbitrary.
- * SPEC: §5.6
  */
 export const ProviderExtensionConfig = Schema.Record({
   key: Schema.String,
@@ -102,14 +97,13 @@ export type ProviderExtensionConfig = typeof ProviderExtensionConfig.Type;
 
 /**
  * `command` / `entrypoint` accept either a single string or an argv array.
- * SPEC: §6.2
  */
 export const CommandSpec = Schema.Union(Schema.String, Schema.Array(Schema.String));
 export type CommandSpec = typeof CommandSpec.Type;
 
 /**
  * Reference to a pre-built artifact (image, template, etc.) the provider
- * should pull rather than build. SPEC: §6.3
+ * should pull rather than build.
  */
 export const ArtifactRef = Schema.Struct({
   kind: Schema.Literal("ref"),
@@ -122,7 +116,7 @@ export type ArtifactRef = typeof ArtifactRef.Type;
 
 /**
  * Build spec — the planner instructs the provider to build an artifact from
- * source. SPEC: §6.3 + §6.13
+ * source.
  */
 export const ArtifactBuildSpec = Schema.Struct({
   kind: Schema.Literal("build"),
@@ -134,18 +128,17 @@ export const ArtifactBuildSpec = Schema.Struct({
   args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   /** Target stage (multi-stage builds). */
   target: Schema.optional(Schema.String),
-  /** Content hash for buildKey computation (§6.13.5). */
+  /** Content hash for buildKey computation. */
   contentHash: Schema.optional(Schema.String),
 });
 export type ArtifactBuildSpec = typeof ArtifactBuildSpec.Type;
 
-/** Build script for `build.artifact:` and `build.app:` entries. SPEC: §6.13 */
+/** Build script for `build.artifact:` and `build.app:` entries. */
 export const BuildScript = Schema.Union(Schema.String, Schema.Array(Schema.String));
 export type BuildScript = typeof BuildScript.Type;
 
 /**
  * App mount — the special mount of the app source root into the service.
- * SPEC: §6.4
  */
 export const AppMountPlan = Schema.Struct({
   /** Absolute host path of the app root. */
@@ -160,7 +153,7 @@ export const AppMountPlan = Schema.Struct({
   includes: Schema.Array(Schema.String),
   /**
    * `passthrough` — provider-native bind mount.
-   * `accelerated` — routed through the active FileSyncEngine (§4.2, §10.6).
+   * `accelerated` — routed through the active FileSyncEngine.
    */
   realization: Schema.Literal("passthrough", "accelerated"),
 });
@@ -168,7 +161,6 @@ export type AppMountPlan = typeof AppMountPlan.Type;
 
 /**
  * Generic mount plan — any non-app, non-storage mount.
- * SPEC: §6.4
  */
 export const MountPlan = Schema.Struct({
   /** Mount type: `bind` (host path), `tmpfs`, or `volume` (named/anon). */
@@ -186,14 +178,12 @@ export type MountPlan = typeof MountPlan.Type;
 
 /**
  * Storage scope — drives auto-naming for named volumes.
- * SPEC: §6.5
  */
 export const StorageScope = Schema.Literal("service", "app", "global");
 export type StorageScope = typeof StorageScope.Type;
 
 /**
  * Data store — a named, persistent volume the provider must create.
- * SPEC: §6.5
  */
 export const DataStorePlan = Schema.Struct({
   /** Provider-visible volume name (already auto-scoped). */
@@ -207,7 +197,7 @@ export const DataStorePlan = Schema.Struct({
 export type DataStorePlan = typeof DataStorePlan.Type;
 
 /**
- * Mount of a `DataStorePlan` into a service. SPEC: §6.5
+ * Mount of a `DataStorePlan` into a service.
  */
 export const DataStoreMountPlan = Schema.Struct({
   /** Name of the DataStorePlan being mounted. */
@@ -220,7 +210,7 @@ export const DataStoreMountPlan = Schema.Struct({
 export type DataStoreMountPlan = typeof DataStoreMountPlan.Type;
 
 /**
- * Endpoint — a service listener. SPEC: §6.6
+ * Endpoint — a service listener.
  */
 export const EndpointPlan = Schema.Struct({
   /** Port number inside the container (or `null` for unix sockets). */
@@ -236,7 +226,6 @@ export type EndpointPlan = typeof EndpointPlan.Type;
 
 /**
  * Route reference attached to a service — points at AppPlan.routes by index.
- * SPEC: §6.6
  */
 export const RouteRef = Schema.Struct({
   index: Schema.Number,
@@ -245,7 +234,6 @@ export type RouteRef = typeof RouteRef.Type;
 
 /**
  * Route plan — host-facing HTTP/TLS mapping.
- * SPEC: §6.6
  */
 export const RoutePlan = Schema.Struct({
   /** Host header pattern (`*.lndo.site`, `app.example.test`, …). */
@@ -262,7 +250,7 @@ export const RoutePlan = Schema.Struct({
 export type RoutePlan = typeof RoutePlan.Type;
 
 /**
- * Healthcheck — provider-realized health probe. SPEC: §6.7
+ * Healthcheck — provider-realized health probe.
  */
 export const HealthcheckPlan = Schema.Struct({
   kind: Schema.Literal("command", "http", "tcp", "none"),
@@ -285,7 +273,6 @@ export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
 /**
  * Certificate plan — leaf certs the planner has reserved for this service.
- * SPEC: §6.8
  */
 export const CertificatePlan = Schema.Struct({
   /** Common name. */
@@ -299,7 +286,6 @@ export type CertificatePlan = typeof CertificatePlan.Type;
 
 /**
  * Host alias — extra `/etc/hosts` entry inside the service container.
- * SPEC: §6.6
  */
 export const HostAliasPlan = Schema.Struct({
   hostname: Schema.String,
@@ -308,7 +294,7 @@ export const HostAliasPlan = Schema.Struct({
 export type HostAliasPlan = typeof HostAliasPlan.Type;
 
 /**
- * Inter-service dependency. SPEC: §6.13.2
+ * Inter-service dependency.
  */
 export const DependencyPlan = Schema.Struct({
   /** The service this one depends on. */
@@ -319,7 +305,7 @@ export const DependencyPlan = Schema.Struct({
 export type DependencyPlan = typeof DependencyPlan.Type;
 
 /**
- * Network plan — provider-realized network. SPEC: §6.6
+ * Network plan — provider-realized network.
  */
 export const NetworkPlan = Schema.Struct({
   /** Network name. */
@@ -332,7 +318,6 @@ export const NetworkPlan = Schema.Struct({
 export type NetworkPlan = typeof NetworkPlan.Type;
 
 // Provider capabilities — the typed manifest of what a provider can do.
-// SPEC: §5.4
 
 export const ProviderCapabilities = Schema.Struct({
   artifactBuild: Schema.Boolean,
@@ -360,8 +345,8 @@ export const ProviderCapabilities = Schema.Struct({
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 
 // AppRef — shared identity field across App, Global, and Scratch event scopes.
-// SPEC: §11.2 (carries `kind` discriminator splitting the identifier namespace
-// across user, global, and scratch apps).
+// Carries `kind` discriminator splitting the identifier namespace across user,
+// global, and scratch apps.
 
 export const AppRef = Schema.Struct({
   /** Identity namespace this app belongs to. */
@@ -377,7 +362,7 @@ export const AppRef = Schema.Struct({
 export type AppRef = typeof AppRef.Type;
 
 // ServicePlan + AppPlan — the frozen, schema-validated, provider-neutral
-// description of what a provider must realize. SPEC: §5.5
+// Description of what a provider must realize.
 
 export const ServicePlan = Schema.Struct({
   name: ServiceName,
@@ -419,7 +404,7 @@ export const AppPlan = Schema.Struct({
 });
 export type AppPlan = typeof AppPlan.Type;
 
-// BuildPlan — DAG over BuildSteps, two phases (artifact + app). SPEC: §6.13
+// BuildPlan — DAG over BuildSteps for artifact and app work.
 
 export const BuildPhase = Schema.Literal("artifact", "app");
 export type BuildPhase = typeof BuildPhase.Type;
@@ -439,7 +424,7 @@ export const BuildStep = Schema.Struct({
   artifact: Schema.optional(Schema.Union(ArtifactRef, ArtifactBuildSpec)),
   /** Step ids this step depends on. */
   dependsOn: Schema.Array(Schema.String),
-  /** Content-hash key for the up-to-date check (§6.13.5). */
+  /** Content-hash key for the up-to-date check. */
   buildKey: Schema.String,
 });
 export type BuildStep = typeof BuildStep.Type;
@@ -456,7 +441,6 @@ export const BuildPlan = Schema.Struct({
 export type BuildPlan = typeof BuildPlan.Type;
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
-// MVP subset of §7.4 + §6.2 — full shape lands as features stabilize.
 
 /** Endpoint input as authored under `services.<name>.endpoints`. */
 export const EndpointInput = Schema.Struct({
@@ -526,9 +510,7 @@ export type BuildBlock = typeof BuildBlock.Type;
 
 /**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
- * MVP subset: covers everything Phase 6/7/10 need to plan + provider-realize a
- * minimal app. Full §6.2 schema (compose passthrough, secrets, labels,
- * profiles, deploy, packages, security.ca:, env_file:) is deferred.
+ * Covers the fields currently consumed by the planner and provider layers.
  */
 export const ServiceConfig = Schema.Struct({
   api: Schema.optional(Schema.Literal(4)),
@@ -544,7 +526,7 @@ export const ServiceConfig = Schema.Struct({
   database: Schema.optional(Schema.String),
   port: Schema.optional(Schema.Number),
   framework: Schema.optional(Schema.String),
-  // Accept number/boolean values from MVP YAML auto-typing and coerce to string.
+  // Accept number/boolean values from YAML auto-typing and coerce to string.
   environment: Schema.optional(
     Schema.Record({
       key: Schema.String,
@@ -592,14 +574,12 @@ export type ServiceConfig = typeof ServiceConfig.Type;
 
 /**
  * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
- * SPEC: §8.5.3 (Variables and environment).
  */
 export const ToolingVarLiteral = Schema.Union(Schema.String, Schema.Number, Schema.Boolean);
 export type ToolingVarLiteral = typeof ToolingVarLiteral.Type;
 
 /**
  * ToolingVarDefault — `vars.<name>: { default: <literal> }`.
- * SPEC: §8.5.3.
  */
 export const ToolingVarDefault = Schema.Struct({ default: ToolingVarLiteral });
 export type ToolingVarDefault = typeof ToolingVarDefault.Type;
@@ -607,7 +587,6 @@ export type ToolingVarDefault = typeof ToolingVarDefault.Type;
 /**
  * ToolingVarSh — `vars.<name>: { sh: <command> }`. Evaluated at task
  * invocation time via the task's selected engine.
- * SPEC: §8.5.3.
  */
 export const ToolingVarSh = Schema.Struct({ sh: Schema.String });
 export type ToolingVarSh = typeof ToolingVarSh.Type;
@@ -615,7 +594,6 @@ export type ToolingVarSh = typeof ToolingVarSh.Type;
 /**
  * ToolingVarPrompt — `vars.<name>: { prompt: <message> }`. Resolved at task
  * invocation time by prompting the user.
- * SPEC: §8.5.3.
  */
 export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
 export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
@@ -625,23 +603,21 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
  * as unsafe `{ raw: ... }` interpolation and remote-source vars are
  * rejected by `LandofileService` before schema decode with a tagged
  * `NotImplementedError`.
- * SPEC: §8.5.3.
  */
 export const ToolingVar = Schema.Union(ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt);
 export type ToolingVar = typeof ToolingVar.Type;
 
 /**
  * ToolingTaskShape — Alpha-supported Landofile `tooling.<name>` task entry.
- * SPEC: §8.5.1.
  *
  * Alpha-supported fields:
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
- * - `cmds:` — sequential command list (strings only in Alpha).
- * - `vars:` — Alpha-supported `ToolingVar` forms only.
+ * - `cmds:` — sequential command list (strings only in the current loader).
+ * - `vars:` — accepted `ToolingVar` forms only.
  *
- * Beta-deferred fields (rejected by `LandofileService` with remediation):
+ * Unsupported fields rejected by `LandofileService` with remediation:
  * `deps:`, step-objects in `cmds:` (`task:`, `command:`, `defer:`,
  * `for:`, `cmd:` step overrides), `engine:`, `bootstrap:`, `dotenv:`,
  * `env:`, `user:`, `dir:`, `appMount:`, `stdio:`, `interactive:`,
@@ -662,9 +638,8 @@ export const ToolingTaskShape = Schema.Struct({
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 
 /**
- * BunShellScriptFrontMatter — Alpha-supported YAML front-matter for
+ * BunShellScriptFrontMatter — accepted YAML front-matter for
  * `.lando/scripts/<name>.bun.sh` script-backed tooling tasks.
- * SPEC: §8.5.9.
  *
  * The front-matter is the first contiguous comment block at the top of a
  * `.bun.sh` file, wrapped in `# ---` markers and uniformly prefixed with
@@ -677,7 +652,7 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  *   Defaults to `:host` when omitted.
  * - `desc:` / `description:` / `summary:` — short help text. `desc` is
- *   accepted as a §8.5.1 alias for `description` per the §8.5.9 field
+ *   accepted as an alias for `description` by script-backed tooling.
  *   list.
  *
  * Beta-deferred fields (`aliases`, `topLevelAlias`, `bootstrap`,
@@ -686,7 +661,7 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  * `engine`) are detected pre-decode (including nested YAML list/object
  * forms like `sources:\n  - …`) and rejected with a tagged
  * `NotImplementedError` carrying `commandId: "landofile.parse"`, the
- * matching `specSection`, and a Beta-deferral remediation. Unknown keys
+ * matching `specSection`, and a deferral remediation. Unknown keys
  * outside that set fall through to the strict schema decode and surface
  * as `BunShellScriptFrontMatterError`.
  */
@@ -699,8 +674,7 @@ export const BunShellScriptFrontMatter = Schema.Struct({
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 
 /**
- * LandofileShape — the authored Landofile. MVP subset of §7.4, extended in
- * PRD-03 US-017 to cover the Alpha `tooling:` schema.
+ * LandofileShape — the authored Landofile accepted by the planner.
  * Deferred for later passes: toolingDefaults:, toolingIncludes:,
  * commandAliases:, events:, env_file:, keys:, includes:, volumes:, networks:,
  * configs:, secrets:, include:, x-* extensions, plugins:, pluginDirs:.
@@ -719,7 +693,6 @@ export const LandofileShape = Schema.Struct({
 export type LandofileShape = typeof LandofileShape.Type;
 
 // Global config — the host-level merged config.
-// SPEC: §7.5
 
 /**
  * Telemetry opt-in. `enabled` defaults to `false` so a partial decode is
@@ -731,8 +704,7 @@ export const TelemetryConfig = Schema.Struct({
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
 /**
- * GlobalConfig — MVP subset. Covers the four host-root fields the Phase 1
- * walking skeleton resolves at the `global` bootstrap level. Full §7.5
+ * GlobalConfig — host-root fields resolved at the `global` bootstrap level.
  * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
  * systemPluginRoot, providers, plugins, pluginDirs, disablePlugins,
  * bindAddress, routing, network, logger, renderer, toolingEngine,
@@ -748,7 +720,6 @@ export const GlobalConfig = Schema.Struct({
 export type GlobalConfig = typeof GlobalConfig.Type;
 
 // Plugin manifest — declared by every plugin's package.json + plugin.yaml.
-// SPEC: §10.2
 
 /** Contribution surface — keys the plugin contributes to. */
 export const PluginContribution = Schema.Struct({
@@ -789,7 +760,6 @@ export const PluginManifest = Schema.Struct({
 export type PluginManifest = typeof PluginManifest.Type;
 
 // ServiceInfo — provider-neutral runtime info returned by `lando info`.
-// SPEC: §6.10
 
 export const ServiceInfo = Schema.Struct({
   app: Schema.String,
@@ -806,20 +776,153 @@ export const ServiceInfo = Schema.Struct({
 });
 export type ServiceInfo = typeof ServiceInfo.Type;
 
-// Recipe manifest — interface only for MVP (recipe model is deferred).
-// SPEC: §8.8
+// Recipe manifest schema with prompt and post-init action shapes.
+// Unsupported fields (`runs:`, `fetchAllowlist:`, `choicesFrom:`,
+// `editor` prompt type, non-`install` `bun:` verbs) are intentionally absent
+// from the schema and are surfaced as `NotImplementedError` by the loader
+// before strict decode so users see a targeted remediation instead of a
+// generic excess-property error.
 
-export const RecipeManifest = Schema.Struct({
+const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+/** Recipe id — kebab-case identifier; matches directory basename. */
+export const RecipeId = Schema.String.pipe(
+  Schema.pattern(KEBAB_CASE_PATTERN, {
+    message: () => "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  }),
+);
+export type RecipeId = typeof RecipeId.Type;
+
+/** Recipe semver string. */
+export const RecipeVersion = Schema.String.pipe(
+  Schema.pattern(SEMVER_PATTERN, {
+    message: () => "Recipe version must be a semver string (e.g. 1.0.0).",
+  }),
+);
+export type RecipeVersion = typeof RecipeVersion.Type;
+
+/** Recipe-prompt type supported by the current loader (`editor` is rejected before decode). */
+export const RecipePromptType = Schema.Literal(
+  "text",
+  "select",
+  "multiselect",
+  "confirm",
+  "number",
+  "secret",
+  "path",
+);
+export type RecipePromptType = typeof RecipePromptType.Type;
+
+/** Recipe-prompt choice — bare value or labeled object. */
+export const RecipePromptChoice = Schema.Union(
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Struct({
+    value: Schema.Union(Schema.String, Schema.Number, Schema.Boolean),
+    label: Schema.optional(Schema.String),
+    description: Schema.optional(Schema.String),
+  }),
+);
+export type RecipePromptChoice = typeof RecipePromptChoice.Type;
+
+/** Recipe-prompt validation — per-type validator keys. */
+export const RecipePromptValidate = Schema.Struct({
+  pattern: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
+  min: Schema.optional(Schema.Number),
+  max: Schema.optional(Schema.Number),
+  exists: Schema.optional(Schema.Boolean),
+});
+export type RecipePromptValidate = typeof RecipePromptValidate.Type;
+
+/** Recipe prompt. */
+export const RecipePrompt = Schema.Struct({
   name: Schema.String,
-  description: Schema.optional(Schema.String),
-  /** Recipe-version semver. */
-  version: Schema.optional(Schema.String),
-  /** Plugins this recipe requires. */
-  requires: Schema.optional(Schema.Array(Schema.String)),
+  type: RecipePromptType,
+  message: Schema.String,
+  default: Schema.optional(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
+  when: Schema.optional(Schema.String),
+  validate: Schema.optional(RecipePromptValidate),
+  choices: Schema.optional(Schema.Array(RecipePromptChoice)),
+});
+export type RecipePrompt = typeof RecipePrompt.Type;
+
+/** Recipe file-manifest entry. */
+export const RecipeFile = Schema.Struct({
+  src: Schema.String,
+  dest: Schema.String,
+  when: Schema.optional(Schema.String),
+  mode: Schema.optional(Schema.String),
+  template: Schema.optional(Schema.Boolean),
+  engine: Schema.optional(Schema.String),
+});
+export type RecipeFile = typeof RecipeFile.Type;
+
+/** Recipe post-init `gitInit` action. */
+export const RecipePostInitGitInit = Schema.Struct({
+  type: Schema.Literal("gitInit"),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `message` action. */
+export const RecipePostInitMessage = Schema.Struct({
+  type: Schema.Literal("message"),
+  text: Schema.String,
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `command` action — canonical Lando id from the recipe allowlist. */
+export const RecipePostInitCommand = Schema.Struct({
+  type: Schema.Literal("command"),
+  cmd: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `bun` action — supported verbs only. */
+export const RecipePostInitBun = Schema.Struct({
+  type: Schema.Literal("bun"),
+  /** Other verbs are surfaced as NotImplementedError before decode. */
+  verb: Schema.Literal("install"),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init action — discriminated by `type`. */
+export const RecipePostInitAction = Schema.Union(
+  RecipePostInitGitInit,
+  RecipePostInitMessage,
+  RecipePostInitCommand,
+  RecipePostInitBun,
+);
+export type RecipePostInitAction = typeof RecipePostInitAction.Type;
+
+/** Recipe requires — supported pre-conditions (`runs:` / `fetchAllowlist:` are rejected before decode). */
+export const RecipeRequires = Schema.Struct({
+  lando: Schema.optional(Schema.String),
+  hostTools: Schema.optional(Schema.Array(Schema.String)),
+});
+export type RecipeRequires = typeof RecipeRequires.Type;
+
+/** Recipe manifest — the parsed `recipe.yml`. */
+export const RecipeManifest = Schema.Struct({
+  id: RecipeId,
+  title: Schema.String,
+  description: Schema.String,
+  version: RecipeVersion,
+  authors: Schema.optional(Schema.Array(Schema.String)),
+  tags: Schema.optional(Schema.Array(Schema.String)),
+  requires: Schema.optional(RecipeRequires),
+  prompts: Schema.optional(Schema.Array(RecipePrompt)),
+  files: Schema.optional(Schema.Array(RecipeFile)),
+  postInit: Schema.optional(Schema.Array(RecipePostInitAction)),
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
 
-// Template render context — passed to TemplateEngine.render. SPEC: §7.3.2
+// Template render context — passed to TemplateEngine.render.
 
 export const TemplateRenderContext = Schema.Struct({
   /** Bootstrap level the renderer is running at. */
@@ -839,8 +942,7 @@ export const TemplateRenderContext = Schema.Struct({
 });
 export type TemplateRenderContext = typeof TemplateRenderContext.Type;
 
-// JSON Schema accessors
-// SPEC: prd-mvp-01 US-009 package export surface
+// JSON Schema accessors.
 
 const JSON_SCHEMA_REGISTRY = {
   BootstrapLevel,

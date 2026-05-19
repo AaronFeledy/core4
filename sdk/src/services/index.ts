@@ -8,13 +8,9 @@
  *
  * Pattern: we use the modern Effect 3.x `Context.Tag` class-extending
  * pattern, i.e. `Context.Tag(id)<Self, Shape>()`.
- *
- * Status: stub interfaces — methods are typed but Live impls don't exist
- * yet.
  */
 import { Context, type Effect, type Schema, type Scope, type Stream } from "effect";
 
-// Re-export branded primitives so downstream tags can reference them.
 import type {
   AppId,
   AppPlan,
@@ -26,6 +22,7 @@ import type {
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  RecipeManifest,
   ServiceConfig,
   ServiceInfo,
   ServiceName,
@@ -53,6 +50,9 @@ import type {
   ProviderConfigError,
   ProviderInternalError,
   ProviderUnavailableError,
+  RecipeManifestNotFoundError,
+  RecipeManifestParseError,
+  RecipeManifestValidationError,
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
@@ -186,10 +186,6 @@ export interface ShellCommandOptions {
   readonly shell?: "bun";
 }
 
-// =============================================================================
-// Core services
-// =============================================================================
-
 /**
  * ConfigService — global config + env overrides.
  */
@@ -210,6 +206,29 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
     readonly discover: Effect.Effect<
       LandofileShape,
       LandofileNotFoundError | LandofileParseError | LandofileValidationError | NotImplementedError
+    >;
+  }
+>() {}
+
+/**
+ * RecipeManifestService — parse a `recipe.yml` against the published
+ * recipe manifest schema. Unsupported fields (`runs:`,
+ * `fetchAllowlist:`, `editor` prompt type, `choicesFrom:`, `bun` verbs
+ * other than `install`) are surfaced as `NotImplementedError` before
+ * strict decode runs.
+ */
+export class RecipeManifestService extends Context.Tag("@lando/core/RecipeManifestService")<
+  RecipeManifestService,
+  {
+    readonly parse: (
+      source: string,
+      content: string,
+    ) => Effect.Effect<
+      RecipeManifest,
+      | RecipeManifestNotFoundError
+      | RecipeManifestParseError
+      | RecipeManifestValidationError
+      | NotImplementedError
     >;
   }
 >() {}
@@ -404,10 +423,6 @@ export class CacheService extends Context.Tag("@lando/core/CacheService")<
   }
 >() {}
 
-// =============================================================================
-// Platform services
-// =============================================================================
-
 /**
  * FileSystem — Bun.file/Bun.write wrapper.
  *
@@ -501,10 +516,6 @@ export class PrivilegeService extends Context.Tag("@lando/core/PrivilegeService"
   }
 >() {}
 
-// =============================================================================
-// Logging + rendering
-// =============================================================================
-
 /**
  * Logger — structured logging through Effect.
  *
@@ -545,10 +556,6 @@ export class Renderer extends Context.Tag("@lando/core/Renderer")<
     readonly id: string;
   }
 >() {}
-
-// =============================================================================
-// Optional / pluggable abstractions
-// =============================================================================
 
 /**
  * Telemetry — optional usage stats. Off by default in CLI mode; off by
