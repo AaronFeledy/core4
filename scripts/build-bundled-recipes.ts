@@ -112,15 +112,15 @@ const main = async (): Promise<void> => {
   const content = renderModule(buildConfig.bundledRecipes);
   await Bun.write(OUTPUT, content);
 
-  const format = Bun.spawn({
-    cmd: [process.execPath, "x", "biome", "format", "--write", OUTPUT],
+  const check = Bun.spawn({
+    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT],
     cwd: REPO_ROOT,
     stdout: "ignore",
     stderr: "inherit",
   });
-  const exitCode = await format.exited;
+  const exitCode = await check.exited;
   if (exitCode !== 0) {
-    throw new Error(`biome format exited with code ${exitCode} for ${OUTPUT}`);
+    throw new Error(`biome check exited with code ${exitCode} for ${OUTPUT}`);
   }
 
   console.log(`[bundled-recipes] wrote ${OUTPUT} (${buildConfig.bundledRecipes.length} entries)`);

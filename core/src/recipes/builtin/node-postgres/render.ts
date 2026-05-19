@@ -1,4 +1,7 @@
-export const landofile = (name: string): string =>
+import type { RecipeRenderer } from "../registry.ts";
+import { NODE_POSTGRES_RECIPE_ID } from "./manifest.ts";
+
+const landofile = (name: string): string =>
   [
     `name: ${name}`,
     "runtime: 4",
@@ -19,7 +22,7 @@ export const landofile = (name: string): string =>
     "",
   ].join("\n");
 
-export const packageJson = (name: string): string =>
+const packageJson = (name: string): string =>
   `${JSON.stringify(
     {
       name,
@@ -31,7 +34,7 @@ export const packageJson = (name: string): string =>
     2,
   )}\n`;
 
-export const serverJs = `"use strict";
+const serverJs = `"use strict";
 const http = require("http");
 
 const server = http.createServer(function (_req, res) {
@@ -44,3 +47,13 @@ server.listen(port, function () {
   console.log("Listening on port " + port);
 });
 `;
+
+export const nodePostgresRenderer: RecipeRenderer = {
+  id: NODE_POSTGRES_RECIPE_ID,
+  render: ({ appName }) =>
+    new Map([
+      [".lando.yml", landofile(appName)],
+      ["package.json", packageJson(appName)],
+      ["server.js", serverJs],
+    ]),
+};
