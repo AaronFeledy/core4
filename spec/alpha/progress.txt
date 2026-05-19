@@ -3582,6 +3582,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - A "compatible with app planning" AC like US-029's is best demonstrated through both unit-level (`AppPlanner.plan(landofile, capabilities)` in a focused test) AND end-to-end CLI (`lando info` from inside the generated app, exiting at the provider-config step rather than the Landofile-parse step). The QA agent's `bun core/bin/lando.ts info` run is the canonical evidence that the planner accepts the `.lando.ts` Landofile end-to-end without requiring runtime providers.
 ---
 
+## [2026-05-19] - Push
+- Branch: us-029-programmatic-landofile
+- Push: pushed
+- Commit(s): 086e7ca chore: remove AI slop, 0261333 docs(US-029 review): clarify .lando.ts trust boundary in node-ts README, bc58acf feat: Support programmatic .lando.ts recipe output
+- PR: #107 https://github.com/AaronFeledy/core4/pull/107 (created)
+---
+
 ## [2026-05-19 10:47 CDT] - US-029 Slop Removal
 - Ran branch-wide slop-remover after review and before push using `Skill(remove-ai-slops)` with the planning-doc comment rules. Fan-out covered branch-changed recipe source, generated bundled recipe data, registry/build config, README docs, and init tests.
 - Files changed by slop removal: `core/src/recipes/builtin/node-ts/render.ts` and `core/test/cli/init.landofile-ts.test.ts`.
@@ -3810,4 +3817,23 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: a single recipe-layer matrix test that loops `BUNDLED_RECIPES` and runs parse → render → initApp → discover → plan is the cheapest, broadest defense against bundled-recipe regressions; per-recipe failure tagging via `expect(value, "[<id>] <dest> ...")` propagates the offending recipe id + file path straight to CI logs.
   - Gotchas encountered: `core/test/cli/aliases.test.ts`, `core/test/cli/version.test.ts`, and `core/test/cli/setup.test.ts` all spawn the compiled `core/dist/lando` binary and intermittently race each other (ETXTBSY / assertion drift) when the unit-test pool grows; this is pre-existing and unrelated to recipe work. Programmatic-Landofile recipes (currently only `node-ts`) read `LANDO_NODE_VERSION` / `NODE_ENV` at discovery time — matrix tests must scrub those env vars before running `AppPlanner.plan` to stay deterministic on CI runners.
   - Useful context: when adding a new bundled recipe in the future, both the matrix's sanity test (`CANONICAL_ANSWERS covers every BUNDLED_RECIPES entry`) AND the existing `init.canonical-recipes.test.ts` table must be updated; the matrix test will fail loudly if `CANONICAL_ANSWERS` is missing an entry.
+---
+
+## [2026-05-19 15:20 CDT] - US-032 Review
+- Ran `Skill(review-work, HEAD)` against build commit 4dca371. Both Oracle agents (goal verification + code quality) returned PASS with non-blocking findings only.
+- Files changed by review: `core/test/recipes/canonical-recipes.matrix.test.ts`.
+- `review-work` findings: fixed
+  - Goal-WARN diagnostics consistency — empty-content failure message now embeds the absolute generated path (`${file.dest} is empty at ${path}`), tightening AC3 coverage ("Failures identify recipe name and generated file path") for the empty-file branch too.
+  - Code-MINOR cleanup robustness — `withTempCwd` now nests `process.chdir(previousCwd)` inside an inner `try/finally` so a chdir failure cannot block temp-dir removal (`rm` always runs).
+  - Code-MINOR weak `landofile.recipe ?? recipeId` assertion — verified against `core/src/recipes/builtin/*/render.ts`: `node-postgres` and `node-ts` intentionally omit a top-level `recipe:` field in their generated Landofile, so the `?? recipeId` fallback is required, not weakness. Added an inline comment in the failure message documenting this so a future maintainer does not tighten it into a real regression.
+- `review-work` findings: rejected
+  - Goal-WARN "spurious pass risk on empty `appPlan.services`" — out of scope. AC for US-032 is parse/render/discover/plan execution, not service-catalog semantics; tightening to `Object.keys(appPlan.services).length > 0` would break the `empty` recipe by design (it ships with zero services).
+  - Goal-WARN "thrown errors do not embed file path" — accepted by reviewer as non-blocking. Bun surfaces the failing test name (which already includes `bundled recipe ${recipeId}`); embedding the path in thrown errors would require wrapping the in-process Effect calls in try/catch+rethrow boilerplate purely for diagnostics.
+  - Code-NITPICK rename `withTempCwd` → `withTempDir` — stylistic preference, no behavior change.
+  - Code-NITPICK renderer guard / TS narrowing pattern — the `expect().toBeDefined()` followed by `if (renderer === undefined) return;` is the established defensive-narrowing idiom in this repo; keeping it for consistency.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (2 pre-existing unrelated warnings in `core/test/cli/init.landofile-ts.test.ts:118,229`, identical to the build step); `bun test core/test/recipes/canonical-recipes.matrix.test.ts` -> 19 pass / 0 fail / 225 expect.
+- **Learnings for future iterations:**
+  - When a review flags a `?? fallback` as "weakening an assertion", always grep the corresponding generator before tightening — bundled recipes are heterogeneous, and `node-postgres` + `node-ts` deliberately ship Landofiles without a top-level `recipe:` field. The matrix test must accept that shape unless the recipe contract changes.
+  - For `process.chdir`-using test helpers, nest cwd restoration inside an inner `try/finally` so cleanup of created paths runs even if the chdir back fails (rare, but cheap to harden).
+  - `BUNDLED_RECIPES` is now the authoritative iteration surface for any future recipe-layer matrix; the existing `CANONICAL_ANSWERS covers every BUNDLED_RECIPES entry` sentinel test will loudly fail any drift, so new bundled recipes need a `CANONICAL_ANSWERS` entry plus a manifest-shaped `recipe:` decision (emit it like the 16 templated recipes or intentionally omit it like node-postgres/node-ts).
 ---

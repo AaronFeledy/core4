@@ -88,8 +88,12 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   try {
     return await run(dir);
   } finally {
-    process.chdir(previousCwd);
-    await rm(dir, { recursive: true, force: true });
+    // Restore cwd FIRST so a chdir failure cannot block temp-dir cleanup.
+    try {
+      process.chdir(previousCwd);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   }
 };
 
@@ -168,7 +172,7 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
         const content = rendered.get(file.dest);
         expect(
           typeof content === "string" && content.length > 0,
-          `[${recipeId}] renderer emitted empty content for ${file.dest}`,
+          `[${recipeId}] renderer emitted empty content for ${file.dest} (rendered map)`,
         ).toBe(true);
       }
 
@@ -189,13 +193,19 @@ describe("recipe layer — every bundled recipe parses, renders, discovers, and 
           const exists = await handle.exists();
           expect(exists, `[${recipeId}] expected generated file ${file.dest} at ${path}`).toBe(true);
           if (!exists) continue;
-          expect(handle.size, `[${recipeId}] generated file ${file.dest} is empty`).toBeGreaterThan(0);
+          expect(
+            handle.size,
+            `[${recipeId}] generated file ${file.dest} is empty at ${path}`,
+          ).toBeGreaterThan(0);
         }
 
         await withScrubbedRecipeEnv(async () => {
           const landofile = await discoverFrom(result.directory);
           expect(landofile.name, `[${recipeId}] discovered landofile.name`).toBe(answersEntry.name);
-          expect(landofile.recipe ?? recipeId, `[${recipeId}] discovered landofile.recipe`).toBe(recipeId);
+          expect(
+            landofile.recipe ?? recipeId,
+            `[${recipeId}] discovered landofile.recipe (node-postgres and node-ts intentionally omit the top-level recipe field)`,
+          ).toBe(recipeId);
 
           const appPlan = await planLandofile(landofile);
           expect(appPlan.name, `[${recipeId}] AppPlanner.plan returned wrong app name`).toBe(
