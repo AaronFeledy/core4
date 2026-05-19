@@ -403,3 +403,18 @@ export class NotImplementedError extends Schema.TaggedError<NotImplementedError>
   specSection: Schema.String,
   remediation: Schema.String,
 }) {}
+
+/**
+ * RendererSelectionError — raised before command execution when a
+ * renderer value is supplied that is not supported by the current CLI
+ * configuration.
+ */
+export class RendererSelectionError extends Schema.TaggedError<RendererSelectionError>()(
+  "RendererSelectionError",
+  {
+    message: Schema.String,
+    value: Schema.String,
+    source: Schema.Literal("flag", "env", "config"),
+    remediation: Schema.String,
+  },
+) {}

@@ -13,6 +13,7 @@ import {
   RecipeMissingAnswerError,
   RecipePostInitError,
   RecipePromptValidationError,
+  RendererSelectionError,
 } from "@lando/sdk/errors";
 
 import { parseAnswerFlags } from "../recipes/prompts/index.ts";
@@ -39,6 +40,7 @@ import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
+import { resolveRendererMode } from "./renderer-selection.ts";
 
 const version = "@lando/core/0.0.0";
 
@@ -110,6 +112,11 @@ const commandErrorMessage = (error: unknown): string => {
       details.push(`commandId: ${error.commandId}`);
     if (tag === "NotImplementedError" && "specSection" in error && typeof error.specSection === "string")
       details.push(`specSection: ${error.specSection}`);
+    if (tag === "RendererSelectionError") details.unshift(tag);
+    if (tag === "RendererSelectionError" && "value" in error && typeof error.value === "string")
+      details.push(`value: ${error.value}`);
+    if (tag === "RendererSelectionError" && "source" in error && typeof error.source === "string")
+      details.push(`source: ${error.source}`);
     if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
     if (tag === "LandofileNotFoundError")
       details.push("Run `lando init --full --name=<name>` to scaffold an app.");
@@ -819,7 +826,26 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
   process.exitCode = 1;
 };
 
-const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
+  const rawHead = rawArgv[0];
+  const isBunOrXPassthrough =
+    rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
+
+  let argv: ReadonlyArray<string> = rawArgv;
+  if (!isBunOrXPassthrough) {
+    try {
+      const resolution = resolveRendererMode({ argv: rawArgv, env: process.env });
+      argv = resolution.remainingArgv;
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        console.error(commandErrorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
+  }
+
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
 
@@ -1052,6 +1078,29 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
   if (entryPath.includes("$bunfs")) {
     await runCompiledCli(options.argv);
     return;
+  }
+
+  // Validate `--renderer` / `LANDO_RENDERER` BEFORE handing off to OCLIF.
+  // OCLIF's `--help` / `--version` short-circuit swallows errors thrown from
+  // init hooks and from runEffect (the command never runs), so an invalid
+  // renderer combined with `--help` would silently pass. Validating here
+  // matches the compiled `$bunfs` path which validates at the top of
+  // `runCompiledCli` and gives `--renderer=tui --help` the same exit-1
+  // tagged failure on both surfaces.
+  const rawHead = args[0];
+  const isBunOrXPassthrough =
+    rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
+  if (!isBunOrXPassthrough) {
+    try {
+      resolveRendererMode({ argv: args, env: process.env });
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        console.error(commandErrorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
   }
 
   await execute({
