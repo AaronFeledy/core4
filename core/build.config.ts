@@ -74,6 +74,7 @@ export const buildConfig: BuildConfig = {
     { id: "hugo" },
     { id: "eleventy" },
     { id: "empty" },
+    { id: "node-ts" },
   ],
   bundledPluginTemplates: [],
 };
