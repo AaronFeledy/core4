@@ -3314,6 +3314,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Deferral pattern observed: when a finding points at a real gap (e.g., `when:` evaluator, `path`→destination resolution, TTY shared-stdin for secrets) but the gap manifests only with downstream story surfaces (US-027 cwd recipes, US-028 canonical recipes with path/secret prompts, US-029 expression engine), it is correct to record the deferral with the specific landing story rather than ship a half-fix now. Two precedents already in this repo: the US-025 `__proto__` parser guard for the recipe source we already had, vs. the broader kebab-case/null-prototype hardening deferred to US-027 (cwd boundary); and the US-025 `deprecated:` field rejected pre-decode rather than implemented before §18 lands.
 ---
 
+## [2026-05-19 03:55 CDT] - Push
+- Branch pushed: us-026-recipe-prompt-types → origin (first push)
+- Commits: 3682486 chore: remove AI slop, 144c86e fix(US-026 review): spec-align prompt runtime + $bunfs flag parity, f3ad3f6 feat: Support built-in prompt types
+- PR: #103 https://github.com/AaronFeledy/core4/pull/103 (created)
+- CI outcome: pass (static-checks ✅, build-linux-x64 ✅, provider-integration-linux-x64 ✅, Cursor Bugbot skipping/neutral)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (main fast-forwarded, us-026-recipe-prompt-types deleted)
+- Remaining local state: clean on main
+---
+
 ## [2026-05-18 22:37 CDT] - US-026 Slop Removal
 - Ran branch-wide slop-remover after review and before push using `Skill(remove-ai-slops)` with the planning-doc comment rules. Per-file agents reviewed branch-changed source/test files; only one comment-only cleanup was applied.
 - Files changed by slop removal: `core/src/recipes/prompts/runtime.ts` (removed a development-phase label from the prompt runtime header comment) and `spec/alpha/progress.txt` (this entry).
