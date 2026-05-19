@@ -147,6 +147,37 @@ export class RecipeMissingPluginError extends Schema.TaggedError<RecipeMissingPl
   },
 ) {}
 
+/** Raised when a recipe.yml file cannot be found at the requested source. */
+export class RecipeManifestNotFoundError extends Schema.TaggedError<RecipeManifestNotFoundError>()(
+  "RecipeManifestNotFoundError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+  },
+) {}
+
+/** Raised when a recipe.yml file's YAML cannot be parsed. */
+export class RecipeManifestParseError extends Schema.TaggedError<RecipeManifestParseError>()(
+  "RecipeManifestParseError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    line: Schema.UndefinedOr(Schema.Number),
+    column: Schema.UndefinedOr(Schema.Number),
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+/** Raised when a recipe.yml fails schema validation. */
+export class RecipeManifestValidationError extends Schema.TaggedError<RecipeManifestValidationError>()(
+  "RecipeManifestValidationError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    issues: Schema.Array(Schema.String),
+  },
+) {}
+
 // -- Init ------------------------------------------------------------------
 export class InitTargetExistsError extends Schema.TaggedError<InitTargetExistsError>()(
   "InitTargetExistsError",

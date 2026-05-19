@@ -806,16 +806,150 @@ export const ServiceInfo = Schema.Struct({
 });
 export type ServiceInfo = typeof ServiceInfo.Type;
 
-// Recipe manifest — interface only for MVP (recipe model is deferred).
-// SPEC: §8.8
+// Recipe manifest — full Alpha §8.8.3 schema.
+// SPEC: §8.8.3 (with prompt types per §8.8.5 and post-init actions per §8.8.8).
+// Beta-deferred fields (`runs:`, `fetchAllowlist:`, `choicesFrom:`,
+// `editor` prompt type, non-`install` `bun:` verbs) are intentionally absent
+// from the schema and are surfaced as `NotImplementedError` by the loader
+// before strict decode so users see a phase-specific remediation instead
+// of a generic excess-property error.
 
-export const RecipeManifest = Schema.Struct({
+const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const SEMVER_PATTERN =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+/** Recipe id — kebab-case identifier; matches directory basename. */
+export const RecipeId = Schema.String.pipe(
+  Schema.pattern(KEBAB_CASE_PATTERN, {
+    message: () => "Recipe id must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  }),
+);
+export type RecipeId = typeof RecipeId.Type;
+
+/** Recipe semver string. */
+export const RecipeVersion = Schema.String.pipe(
+  Schema.pattern(SEMVER_PATTERN, {
+    message: () => "Recipe version must be a semver string (e.g. 1.0.0).",
+  }),
+);
+export type RecipeVersion = typeof RecipeVersion.Type;
+
+/** Recipe-prompt type — Alpha-supported subset of §8.8.5 (`editor` is Beta). */
+export const RecipePromptType = Schema.Literal(
+  "text",
+  "select",
+  "multiselect",
+  "confirm",
+  "number",
+  "secret",
+  "path",
+);
+export type RecipePromptType = typeof RecipePromptType.Type;
+
+/** Recipe-prompt choice — bare value or labeled object. */
+export const RecipePromptChoice = Schema.Union(
+  Schema.String,
+  Schema.Number,
+  Schema.Boolean,
+  Schema.Struct({
+    value: Schema.Union(Schema.String, Schema.Number, Schema.Boolean),
+    label: Schema.optional(Schema.String),
+    description: Schema.optional(Schema.String),
+  }),
+);
+export type RecipePromptChoice = typeof RecipePromptChoice.Type;
+
+/** Recipe-prompt validation — per-type validator keys. */
+export const RecipePromptValidate = Schema.Struct({
+  pattern: Schema.optional(Schema.String),
+  message: Schema.optional(Schema.String),
+  min: Schema.optional(Schema.Number),
+  max: Schema.optional(Schema.Number),
+  exists: Schema.optional(Schema.Boolean),
+});
+export type RecipePromptValidate = typeof RecipePromptValidate.Type;
+
+/** Recipe prompt. */
+export const RecipePrompt = Schema.Struct({
   name: Schema.String,
-  description: Schema.optional(Schema.String),
-  /** Recipe-version semver. */
-  version: Schema.optional(Schema.String),
-  /** Plugins this recipe requires. */
-  requires: Schema.optional(Schema.Array(Schema.String)),
+  type: RecipePromptType,
+  message: Schema.String,
+  default: Schema.optional(Schema.Union(Schema.String, Schema.Number, Schema.Boolean)),
+  when: Schema.optional(Schema.String),
+  validate: Schema.optional(RecipePromptValidate),
+  choices: Schema.optional(Schema.Array(RecipePromptChoice)),
+});
+export type RecipePrompt = typeof RecipePrompt.Type;
+
+/** Recipe file-manifest entry. */
+export const RecipeFile = Schema.Struct({
+  src: Schema.String,
+  dest: Schema.String,
+  when: Schema.optional(Schema.String),
+  mode: Schema.optional(Schema.String),
+  template: Schema.optional(Schema.Boolean),
+  engine: Schema.optional(Schema.String),
+});
+export type RecipeFile = typeof RecipeFile.Type;
+
+/** Recipe post-init `gitInit` action. */
+export const RecipePostInitGitInit = Schema.Struct({
+  type: Schema.Literal("gitInit"),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `message` action. */
+export const RecipePostInitMessage = Schema.Struct({
+  type: Schema.Literal("message"),
+  text: Schema.String,
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `command` action — canonical Lando id from the recipe allowlist. */
+export const RecipePostInitCommand = Schema.Struct({
+  type: Schema.Literal("command"),
+  cmd: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `bun` action — Alpha-supported verbs only (US-030 scope). */
+export const RecipePostInitBun = Schema.Struct({
+  type: Schema.Literal("bun"),
+  /** Alpha allowlist — see US-030; other verbs are surfaced as NotImplementedError. */
+  verb: Schema.Literal("install"),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init action — discriminated by `type`. */
+export const RecipePostInitAction = Schema.Union(
+  RecipePostInitGitInit,
+  RecipePostInitMessage,
+  RecipePostInitCommand,
+  RecipePostInitBun,
+);
+export type RecipePostInitAction = typeof RecipePostInitAction.Type;
+
+/** Recipe requires — Alpha pre-conditions (`runs:` / `fetchAllowlist:` are Beta). */
+export const RecipeRequires = Schema.Struct({
+  lando: Schema.optional(Schema.String),
+  hostTools: Schema.optional(Schema.Array(Schema.String)),
+});
+export type RecipeRequires = typeof RecipeRequires.Type;
+
+/** Recipe manifest — the parsed `recipe.yml`. */
+export const RecipeManifest = Schema.Struct({
+  id: RecipeId,
+  title: Schema.String,
+  description: Schema.String,
+  version: RecipeVersion,
+  authors: Schema.optional(Schema.Array(Schema.String)),
+  tags: Schema.optional(Schema.Array(Schema.String)),
+  requires: Schema.optional(RecipeRequires),
+  prompts: Schema.optional(Schema.Array(RecipePrompt)),
+  files: Schema.optional(Schema.Array(RecipeFile)),
+  postInit: Schema.optional(Schema.Array(RecipePostInitAction)),
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
 

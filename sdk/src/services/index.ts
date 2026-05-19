@@ -26,6 +26,7 @@ import type {
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  RecipeManifest,
   ServiceConfig,
   ServiceInfo,
   ServiceName,
@@ -53,6 +54,9 @@ import type {
   ProviderConfigError,
   ProviderInternalError,
   ProviderUnavailableError,
+  RecipeManifestNotFoundError,
+  RecipeManifestParseError,
+  RecipeManifestValidationError,
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
@@ -210,6 +214,29 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
     readonly discover: Effect.Effect<
       LandofileShape,
       LandofileNotFoundError | LandofileParseError | LandofileValidationError | NotImplementedError
+    >;
+  }
+>() {}
+
+/**
+ * RecipeManifestService — parse a `recipe.yml` against the published
+ * Alpha schema (§8.8.3). Beta-deferred sections (`runs:`,
+ * `fetchAllowlist:`, `editor` prompt type, `choicesFrom:`, `bun` verbs
+ * other than `install`) are surfaced as `NotImplementedError` with a
+ * phase-specific remediation before strict decode runs.
+ */
+export class RecipeManifestService extends Context.Tag("@lando/core/RecipeManifestService")<
+  RecipeManifestService,
+  {
+    readonly parse: (
+      source: string,
+      content: string,
+    ) => Effect.Effect<
+      RecipeManifest,
+      | RecipeManifestNotFoundError
+      | RecipeManifestParseError
+      | RecipeManifestValidationError
+      | NotImplementedError
     >;
   }
 >() {}
