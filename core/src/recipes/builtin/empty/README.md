@@ -6,8 +6,8 @@ non-canonical recipe later.
 
 ## Generated services
 
-- *(none)* — the Landofile ships `services: {}`. Add services manually before
-  running `lando start`.
+- *(none)* — the Landofile omits the `services:` key entirely. Add a
+  `services:` block manually before running `lando start`.
 
 ## Alpha limitations
 
