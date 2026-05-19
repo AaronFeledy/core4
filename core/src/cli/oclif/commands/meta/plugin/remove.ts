@@ -1,25 +1,51 @@
-/**
- * `lando meta:plugin:remove` — uninstall a plugin.
- */
 import { Args } from "@oclif/core";
 import { Effect } from "effect";
 
+import { NotImplementedError } from "@lando/sdk/errors";
+
+import {
+  type PluginRemoveResult,
+  pluginRemove,
+  renderPluginRemoveResult,
+} from "../../../../commands/plugin-remove.ts";
+
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-export const pluginRemoveSpec: LandoCommandSpec<never> = {
+const extractInput = (input: unknown): { name: string } => {
+  if (typeof input !== "object" || input === null) return { name: "" };
+  const args = (input as { args?: Record<string, unknown> }).args ?? {};
+  return { name: typeof args.name === "string" ? args.name : "" };
+};
+
+export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
   id: "meta:plugin:remove",
-  summary: "Remove a plugin.",
+  summary: "Remove an installed Lando plugin.",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "plugins",
-  run: () => Effect.die("not yet implemented: meta:plugin:remove"),
+  bootstrap: "minimal",
+  run: (input) =>
+    Effect.gen(function* () {
+      const { name } = extractInput(input);
+      if (name === "") {
+        return yield* Effect.fail(
+          new NotImplementedError({
+            message: "meta:plugin:remove requires a plugin name argument.",
+            commandId: "meta:plugin:remove",
+            specSection: "spec/10-plugins.md",
+            remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+          }),
+        );
+      }
+      return yield* pluginRemove({ name });
+    }),
+  render: (result) => renderPluginRemoveResult(result as PluginRemoveResult),
 };
 
 export default class PluginRemoveCommand extends LandoCommandBase {
-  static override description = "Remove an installed Lando plugin.";
+  static override description = pluginRemoveSpec.summary;
   static override aliases = [...resolveTopLevelAliases(pluginRemoveSpec)];
   static override args = {
-    name: Args.string({ description: "Plugin name.", required: true }),
+    name: Args.string({ description: "Plugin name.", required: false }),
   };
   static override landoSpec: LandoCommandSpec = pluginRemoveSpec;
   static override bootstrap = pluginRemoveSpec.bootstrap;

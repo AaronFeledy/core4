@@ -10,12 +10,18 @@ import { InitTargetExistsError, NotImplementedError } from "@lando/sdk/errors";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
+import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
+import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
 import { doctor, renderDoctorResult } from "./commands/doctor.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
+import { listServices, renderAppsListResult } from "./commands/list.ts";
 import { logsApp, renderLogsAppResult } from "./commands/logs.ts";
+import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
+import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
+import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
@@ -633,8 +639,182 @@ const runShell = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
+const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
+  let format: "json" | "table" = "table";
+  for (let i = 0; i < argv.length; i += 1) {
+    const m = parseStringFlag(argv, i, "format");
+    if (m !== undefined && (m.value === "json" || m.value === "table")) {
+      format = m.value;
+      i += m.consumed - 1;
+    }
+  }
+  const exit = await Effect.runPromiseExit(
+    listServices().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderAppsListResult(exit.value, format));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const keepGlobal = argv.includes("--keep-global");
+  const keepScratch = argv.includes("--keep-scratch");
+  const yes = argv.includes("--yes") || argv.includes("-y");
+  const exit = await Effect.runPromiseExit(
+    poweroff({ keepGlobal, keepScratch, yes }).pipe(
+      Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })),
+    ),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderPoweroffResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
+  let format: "json" | "yaml" | "table" = "table";
+  let path: string | undefined;
+  const positionals: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === undefined) continue;
+    const fmtMatch = parseStringFlag(argv, i, "format");
+    if (fmtMatch !== undefined) {
+      if (fmtMatch.value === "json" || fmtMatch.value === "yaml" || fmtMatch.value === "table") {
+        format = fmtMatch.value;
+      }
+      i += fmtMatch.consumed - 1;
+      continue;
+    }
+    const pathMatch = parseStringFlag(argv, i, "path");
+    if (pathMatch !== undefined) {
+      path = pathMatch.value;
+      i += pathMatch.consumed - 1;
+      continue;
+    }
+    if (!arg.startsWith("-")) positionals.push(arg);
+  }
+  const [subcommand, key] = positionals;
+  const exit = await Effect.runPromiseExit(
+    config({
+      ...(subcommand === "get" || subcommand === "view" ? { subcommand } : {}),
+      ...(key === undefined ? {} : { key }),
+      ...(path === undefined ? {} : { path }),
+      format,
+    } as Parameters<typeof config>[0]).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderConfigResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaBun = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const exit = await Effect.runPromiseExit(metaBun({ argv: argv.slice() }));
+  if (Exit.isSuccess(exit)) {
+    if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
+    const rendered = renderMetaBunResult(exit.value);
+    if (rendered !== undefined) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaX = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const [spec, ...rest] = argv;
+  if (spec === undefined) {
+    console.error("meta:x requires a package spec as the first positional argument.");
+    process.exitCode = 1;
+    return;
+  }
+  const exit = await Effect.runPromiseExit(metaX({ spec, argv: rest }));
+  if (Exit.isSuccess(exit)) {
+    if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
+    const rendered = renderMetaXResult(exit.value);
+    if (rendered !== undefined) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const trust = argv.includes("--trust") || argv.includes("--yes") || argv.includes("-y");
+  const spec = argv.find((arg) => !arg.startsWith("-"));
+  if (spec === undefined) {
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:add requires a plugin spec argument.",
+          commandId: "meta:plugin:add",
+          specSection: "spec/10-plugins.md",
+          remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const exit = await Effect.runPromiseExit(
+    pluginAdd({ spec, trust, nonInteractive: process.stdin.isTTY !== true }).pipe(
+      Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })),
+    ),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderPluginAddResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const name = argv.find((arg) => !arg.startsWith("-"));
+  if (name === undefined) {
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:remove requires a plugin name argument.",
+          commandId: "meta:plugin:remove",
+          specSection: "spec/10-plugins.md",
+          remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  const exit = await Effect.runPromiseExit(
+    pluginRemove({ name }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderPluginRemoveResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
-  if (argv.length === 0 || argv.includes("--help") || argv.includes("-h")) {
+  const head = argv[0];
+  const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
+
+  if (!isBunOrX && (argv.length === 0 || argv.includes("--help") || argv.includes("-h"))) {
     const commandArg = argv.find((arg) => !arg.startsWith("-"));
     if (commandArg === undefined) {
       printRootHelp();
@@ -650,7 +830,13 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
     return;
   }
 
-  if (argv.includes("--version") || argv.includes("-v")) {
+  if (
+    (argv.includes("--version") || argv.includes("-v")) &&
+    argv[0] !== "bun" &&
+    argv[0] !== "meta:bun" &&
+    argv[0] !== "x" &&
+    argv[0] !== "meta:x"
+  ) {
     console.log(`${version} ${process.platform}-${process.arch} node-${process.version}`);
     return;
   }
@@ -748,6 +934,41 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
     return;
   }
 
+  if (argv[0] === "list" || argv[0] === "apps:list") {
+    await runAppsList(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "poweroff" || argv[0] === "apps:poweroff") {
+    await runAppsPoweroff(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "config" || argv[0] === "meta:config") {
+    await runMetaConfig(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "bun" || argv[0] === "meta:bun") {
+    await runMetaBun(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "x" || argv[0] === "meta:x") {
+    await runMetaX(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "plugin:add" || argv[0] === "meta:plugin:add") {
+    await runMetaPluginAdd(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "plugin:remove" || argv[0] === "meta:plugin:remove") {
+    await runMetaPluginRemove(argv.slice(1));
+    return;
+  }
+
   const found = findCommand(argv[0] ?? "");
   if (found === undefined) {
     throw new Error(`Command ${argv[0] ?? ""} not found`);
@@ -758,9 +979,7 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 export interface RunCliOptions {
-  /** argv (without `process.argv[0..1]`). */
   readonly argv: ReadonlyArray<string>;
-  /** `import.meta.url` from the binary entry point. */
   readonly rootUrl: string;
 }
 

@@ -1,8 +1,4 @@
-/**
- * `LandoCommandBase` — the OCLIF Command subclass that adapts Effect into
- * OCLIF's `run()` lifecycle.
- *
- */
+/** LandoCommandBase adapts Effect programs into the OCLIF `run()` lifecycle. */
 import { Command } from "@oclif/core";
 
 import { Cause, Effect, Exit, type Layer } from "effect";
@@ -61,7 +57,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
-  readonly render?: (result: unknown) => string | undefined;
+  readonly render?: (result: unknown, input?: unknown) => string | undefined;
 }
 
 const MVP_COMMAND_IDS = new Set([
@@ -78,10 +74,17 @@ const MVP_COMMAND_IDS = new Set([
   "app:start",
   "app:stop",
   "apps:init",
+  "apps:list",
+  "apps:poweroff",
+  "meta:bun",
+  "meta:config",
   "meta:doctor",
+  "meta:plugin:add",
+  "meta:plugin:remove",
   "meta:setup",
   "meta:shellenv",
   "meta:version",
+  "meta:x",
 ]);
 
 const SPEC_SECTION_BY_PREFIX: ReadonlyArray<readonly [string, string]> = [
@@ -103,7 +106,7 @@ export const isMvpCommandId = (commandId: string): boolean => MVP_COMMAND_IDS.ha
 /**
  * True for canonical namespace-prefixed Lando command ids (i.e. `app:*`,
  * `apps:*`, `meta:*`). Test fixtures and ad-hoc commands with non-canonical
- * ids fall outside this set and are not subject to the MVP-only
+ * ids fall outside this set and are not subject to the implemented-command
  * `NotImplementedError` guard in `runEffect`.
  */
 export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
@@ -148,24 +151,13 @@ const commandErrorMessage = (error: unknown): string => {
   return String(error);
 };
 
-/**
- * Extract the `AbortSignal` passed by `runEffect` into `spec.run({ argv, signal })`.
- *
- * OCLIF specs whose underlying `*App` callable accepts a `signal` should use this
- * helper inside `run:` to keep the source-path SIGINT/SIGTERM abort wired up.
- * Mirrors the threading done by the compiled `$bunfs` handlers in `run.ts` so
- * source and compiled paths stay at parity.
- */
+/** Extract the `AbortSignal` passed by `runEffect` into `spec.run({ argv, signal })`. */
 export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>
   typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
     ? input.signal
     : undefined;
 
-/**
- * Resolve the OCLIF `aliases` array for a `LandoCommandSpec` from its
- * `topLevelAlias` rule. Returns the merged alias list,
- * including any explicit `aliases` already on the spec.
- */
+/** Resolve the OCLIF `aliases` array from `topLevelAlias` and any explicit aliases. */
 export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {
   const explicit = spec.aliases ?? [];
   const top = spec.topLevelAlias;
@@ -206,14 +198,13 @@ export abstract class LandoCommandBase extends Command {
    * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
-    // Guard deferred commands BEFORE OCLIF parses argv so flag-bearing invocations
-    // (e.g. `app:config:translate --detect`) emit structured NotImplementedError
-    // remediation instead of OCLIF "Nonexistent flag" parse errors.
+    // Guard deferred commands before OCLIF parses argv so they still emit structured
+    // NotImplementedError output instead of OCLIF flag parse errors.
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
     }
 
-    await this.parse(this.ctor);
+    const parsed = await this.parse(this.ctor);
 
     const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
@@ -227,11 +218,14 @@ export abstract class LandoCommandBase extends Command {
     const abort = () => controller.abort();
     process.once("SIGINT", abort);
     process.once("SIGTERM", abort);
+    const input = {
+      argv: this.argv,
+      signal: controller.signal,
+      flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
+      args: (parsed as { args?: Record<string, unknown> }).args ?? {},
+    };
     const exit = await Effect.runPromiseExit(
-      Effect.provide(
-        spec.run({ argv: this.argv, signal: controller.signal }),
-        runtime as Layer.Layer<R, LandoRuntimeBootstrapError>,
-      ),
+      Effect.provide(spec.run(input), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),
     ).finally(() => {
       process.off("SIGINT", abort);
       process.off("SIGTERM", abort);
@@ -244,7 +238,8 @@ export abstract class LandoCommandBase extends Command {
       );
     }
 
-    const rendered = spec.render?.(exit.value);
+    // Pass parsed input to render so format-aware renderers can inspect flags and args.
+    const rendered = spec.render?.(exit.value, input);
     if (rendered !== undefined && rendered.length > 0) this.log(rendered);
   }
 }
