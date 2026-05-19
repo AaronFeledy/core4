@@ -3415,3 +3415,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — `1e6f6d5 Implement cwd-only recipe source resolution (#104)`
 - Local main / branch refreshed: yes — on main at 1e6f6d5, local story branch deleted
 ---
+
+## 2026-05-19 - Sync
+- Previous branch: us-027-cwd-recipe-source
+- Previous PR: #104 https://github.com/AaronFeledy/core4/pull/104
+- Action: caught up after prior merge (PR #104 already MERGED)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
