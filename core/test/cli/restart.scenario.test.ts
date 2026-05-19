@@ -222,7 +222,7 @@ describe("lando restart", () => {
       const result = await runCli(["restart"], dir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("No .lando.yml found");
+      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
   });

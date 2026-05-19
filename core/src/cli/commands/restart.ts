@@ -11,6 +11,8 @@ import type {
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -42,6 +44,8 @@ type RestartAppError =
   | EventError
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError

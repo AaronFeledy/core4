@@ -10,6 +10,8 @@ import type {
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -47,6 +49,8 @@ export interface LogsAppResult {
 type LogsAppError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError

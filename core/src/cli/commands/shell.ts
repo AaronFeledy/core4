@@ -1,13 +1,10 @@
 /**
- * `lando shell` — host-mode shell scoped to the current app (spec §8.2.3).
+ * `lando shell` — host-mode shell scoped to the current app.
  *
- * Alpha behavior:
- *   - Default (no `--service`): spawn a host shell rooted at the app root,
- *     with `LANDO_APP_NAME` / `LANDO_APP_ROOT` injected into the child env.
- *     Stdio is inherited so the user gets a real TTY.
- *   - `--service <name>`: deferred to Beta — fails with
- *     `NotImplementedError`.
- *
+ * Default (no `--service`): spawn a host shell rooted at the app root with
+ * `LANDO_APP_NAME` / `LANDO_APP_ROOT` injected into the child env. Stdio is
+ * inherited so the user gets a real TTY.
+ * `--service <name>` is not implemented yet and fails with `NotImplementedError`.
  */
 import { spawn as nodeSpawn } from "node:child_process";
 import { Effect } from "effect";
@@ -16,6 +13,8 @@ import {
   type CapabilityError,
   type LandofileNotFoundError,
   type LandofileParseError,
+  type LandofileSandboxError,
+  type LandofileTimeoutError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   NotImplementedError,
@@ -27,7 +26,7 @@ import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sd
 
 export interface ShellAppOptions {
   /**
-   * When set, fails with `NotImplementedError` (service shell is Beta).
+   * When set, fails with `NotImplementedError`.
    */
   readonly service?: string;
   readonly shellPath?: string;
@@ -59,6 +58,8 @@ export type ShellAppError =
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

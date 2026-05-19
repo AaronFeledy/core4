@@ -1,13 +1,13 @@
 /**
- * `LandofileService` Live Layer.
+ * `LandofileService` live layer.
  *
- * Discovery (MVP scope per PRD-03 US-005):
- * - Walks upward from `process.cwd()`; first directory containing `.lando.yml`
- *   becomes the *app root*.
- * - Bounded by filesystem root (`dirname(current) === current`).
- * - Uses `Bun.file(...).exists()` directly; no caching at MVP.
+ * Discovery behavior:
+ * - Walk upward from `process.cwd()` until the first directory containing
+ *   `.lando.yml`.
+ * - Stop at the filesystem root (`dirname(current) === current`).
+ * - Use `Bun.file(...).exists()` directly; no caching.
  *
- * Deferred for later passes (NOT implemented here):
+ * Not implemented yet:
  * - `.lando.stop` sentinel
  * - configurable `discovery.maxDepth`
  * - `FileSystem.readdir` integration and per-CWD caching
@@ -19,6 +19,8 @@ import { Cause, type Context, Effect, Either, Layer, ParseResult, Schema } from 
 import {
   LandofileNotFoundError,
   LandofileParseError,
+  type LandofileSandboxError,
+  type LandofileTimeoutError,
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
@@ -26,10 +28,12 @@ import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { parseLandofile } from "./parser.ts";
+import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 
 const LANDOFILE_NAME = ".lando.yml";
+const LANDOFILE_TS_NAME = ".lando.ts";
 const REMEDIATION =
   "Remove unsupported keys or update the MVP Landofile subset in spec/07-landofile-and-config.md.";
 
@@ -186,16 +190,38 @@ const scanForConfigExpression = (
   return undefined;
 };
 
-const findLandofile = async (
-  cwd: string,
-): Promise<{ readonly filePath: string; readonly searched: ReadonlyArray<string> }> => {
+type LandofileForm = "yaml" | "typescript";
+
+interface DiscoveredLandofile {
+  readonly filePath: string;
+  readonly form: LandofileForm;
+  readonly searched: ReadonlyArray<string>;
+}
+
+const findLandofile = async (cwd: string): Promise<DiscoveredLandofile> => {
   const searched: string[] = [];
   let current = cwd;
 
   for (;;) {
-    const candidate = join(current, LANDOFILE_NAME);
-    searched.push(candidate);
-    if (await Bun.file(candidate).exists()) return { filePath: candidate, searched };
+    const yamlCandidate = join(current, LANDOFILE_NAME);
+    const tsCandidate = join(current, LANDOFILE_TS_NAME);
+    searched.push(yamlCandidate, tsCandidate);
+
+    const [yamlExists, tsExists] = await Promise.all([
+      Bun.file(yamlCandidate).exists(),
+      Bun.file(tsCandidate).exists(),
+    ]);
+
+    if (yamlExists && tsExists) {
+      throw new LandofileParseError({
+        message: `Both ${LANDOFILE_NAME} and ${LANDOFILE_TS_NAME} are present in ${current}. Pick one form per directory and remove the other.`,
+        filePath: tsCandidate,
+        line: undefined,
+        column: undefined,
+      });
+    }
+    if (yamlExists) return { filePath: yamlCandidate, form: "yaml", searched };
+    if (tsExists) return { filePath: tsCandidate, form: "typescript", searched };
 
     const parent = dirname(current);
     if (parent === current) break;
@@ -203,7 +229,7 @@ const findLandofile = async (
   }
 
   throw new LandofileNotFoundError({
-    message: `No ${LANDOFILE_NAME} found. Searched: ${searched.join(", ")}`,
+    message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched: ${searched.join(", ")}`,
     cwd,
   });
 };
@@ -287,55 +313,68 @@ const rejectBetaToolingFeatures = (
   );
 };
 
-const discoverLandofile = Effect.tryPromise({
+type LandofileLoadError =
+  | LandofileNotFoundError
+  | LandofileParseError
+  | LandofileValidationError
+  | LandofileSandboxError
+  | LandofileTimeoutError
+  | NotImplementedError;
+
+const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
+  Effect.tryPromise({
+    try: async () => await Bun.file(filePath).text(),
+    catch: (cause) =>
+      new LandofileParseError({
+        message: cause instanceof Error ? cause.message : `Failed to read ${filePath}`,
+        filePath,
+        line: undefined,
+        column: undefined,
+        cause,
+      }),
+  });
+
+const loadYamlLandofile = (
+  filePath: string,
+): Effect.Effect<unknown, LandofileParseError | NotImplementedError> =>
+  readFileContent(filePath).pipe(
+    Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
+    Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
+    Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+  );
+
+const loadTsLandofile = (
+  filePath: string,
+): Effect.Effect<
+  unknown,
+  LandofileParseError | LandofileSandboxError | LandofileTimeoutError | NotImplementedError
+> =>
+  readFileContent(filePath).pipe(
+    Effect.flatMap((content) => loadLandofileTs({ filePath, appRoot: dirname(filePath), content })),
+    Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+  );
+
+const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> = Effect.tryPromise({
   try: async () => await findLandofile(process.cwd()),
-  catch: (cause) =>
-    cause instanceof LandofileNotFoundError
-      ? cause
-      : new LandofileParseError({
-          message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
-          filePath: join(process.cwd(), LANDOFILE_NAME),
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
-}).pipe(
-  Effect.flatMap(({ filePath }) =>
-    Effect.tryPromise({
-      try: async () => await Bun.file(filePath).text(),
-      catch: (cause) =>
-        new LandofileParseError({
-          message: cause instanceof Error ? cause.message : `Failed to read ${filePath}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
-    }).pipe(
-      Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
-      Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-      Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
-      Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
-      Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
-    ),
-  ),
-  Effect.mapError((error) => {
-    if (
-      error instanceof LandofileNotFoundError ||
-      error instanceof LandofileParseError ||
-      error instanceof LandofileValidationError ||
-      error instanceof NotImplementedError
-    ) {
-      return error;
-    }
+  catch: (cause) => {
+    if (cause instanceof LandofileNotFoundError) return cause;
+    if (cause instanceof LandofileParseError) return cause;
     return new LandofileParseError({
-      message: "Failed to load Landofile.",
+      message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
       filePath: join(process.cwd(), LANDOFILE_NAME),
       line: undefined,
       column: undefined,
-      cause: error,
+      cause,
     });
-  }),
+  },
+}).pipe(
+  Effect.flatMap(({ filePath, form }) =>
+    (form === "typescript" ? loadTsLandofile(filePath) : loadYamlLandofile(filePath)).pipe(
+      Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
+    ),
+  ),
   Effect.catchAllCause((cause) => {
     const failure = extractFailure(cause);
     if (failure !== undefined) return Effect.fail(failure);

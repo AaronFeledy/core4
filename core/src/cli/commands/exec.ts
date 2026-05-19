@@ -4,6 +4,8 @@ import type {
   CapabilityError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -37,9 +39,9 @@ export interface ExecAppOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   /**
-   * Accepted for parity with `ssh` semantics. The Alpha
-   * `RuntimeProvider.exec` API does not allocate a TTY (`execStream` is
-   * deferred), so these are recorded but do not change exec behavior.
+   * Accepted for parity with `ssh` semantics. `RuntimeProvider.exec`
+   * does not allocate a TTY, so these are
+   * recorded but do not change exec behavior.
    */
   readonly interactive?: boolean;
   readonly tty?: boolean;
@@ -58,6 +60,8 @@ export type ExecAppError =
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError
@@ -135,9 +139,9 @@ export const execApp = (
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
 
-    // Resolve service before selecting provider so a bad --service surfaces
-    // ToolingExecError with the available list instead of being masked by a
-    // provider-selection failure (e.g. NoProviderInstalledError).
+    // Resolve service before selecting provider so an invalid --service
+    // returns ToolingExecError with the available list instead of a
+    // provider-selection failure.
     const service = yield* resolveService(options, plan);
     const provider = yield* registry.select(plan);
     const target: ExecTarget = {
@@ -173,6 +177,6 @@ export const execApp = (
 export const renderExecAppResult = (result: ExecAppResult): string | undefined => {
   if (result.exitCode !== 0) process.exitCode = result.exitCode;
   if (result.stdout.length === 0) return undefined;
-  // Strip one trailing newline so console.log / this.log callers don't add a second one.
+  // Strip one trailing newline so callers don't add a second one.
   return result.stdout.endsWith("\n") ? result.stdout.slice(0, -1) : result.stdout;
 };

@@ -1,14 +1,4 @@
-/**
- * Effect Service tags — the contract index.
- *
- * Catalogs the default Effect Service tags and pluggable abstractions. This
- * module declares only the **tags** (with their interface shapes) so plugin
- * authors can target them. Live Layers live in `@lando/core` (default) or
- * in plugin packages (replacements).
- *
- * Pattern: we use the modern Effect 3.x `Context.Tag` class-extending
- * pattern, i.e. `Context.Tag(id)<Self, Shape>()`.
- */
+/** Effect service tags for the SDK. */
 import { Context, type Effect, type Schema, type Scope, type Stream } from "effect";
 
 import type {
@@ -39,6 +29,8 @@ import type {
   FilePermissionError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -186,9 +178,6 @@ export interface ShellCommandOptions {
   readonly shell?: "bun";
 }
 
-/**
- * ConfigService — global config + env overrides.
- */
 export class ConfigService extends Context.Tag("@lando/core/ConfigService")<
   ConfigService,
   {
@@ -197,26 +186,21 @@ export class ConfigService extends Context.Tag("@lando/core/ConfigService")<
   }
 >() {}
 
-/**
- * LandofileService — Landofile discovery, parse, merge, validate.
- */
 export class LandofileService extends Context.Tag("@lando/core/LandofileService")<
   LandofileService,
   {
     readonly discover: Effect.Effect<
       LandofileShape,
-      LandofileNotFoundError | LandofileParseError | LandofileValidationError | NotImplementedError
+      | LandofileNotFoundError
+      | LandofileParseError
+      | LandofileValidationError
+      | LandofileSandboxError
+      | LandofileTimeoutError
+      | NotImplementedError
     >;
   }
 >() {}
 
-/**
- * RecipeManifestService — parse a `recipe.yml` against the published
- * recipe manifest schema. Unsupported fields (`runs:`,
- * `fetchAllowlist:`, `editor` prompt type, `choicesFrom:`, `bun` verbs
- * other than `install`) are surfaced as `NotImplementedError` before
- * strict decode runs.
- */
 export class RecipeManifestService extends Context.Tag("@lando/core/RecipeManifestService")<
   RecipeManifestService,
   {
@@ -233,9 +217,6 @@ export class RecipeManifestService extends Context.Tag("@lando/core/RecipeManife
   }
 >() {}
 
-/**
- * PluginRegistry — manifest loading, contribution graph.
- */
 export class PluginRegistry extends Context.Tag("@lando/core/PluginRegistry")<
   PluginRegistry,
   {
@@ -271,9 +252,6 @@ export interface ServiceTypeShape {
   readonly toServicePlan: (input: ServiceTypePlanInput) => ServicePlan;
 }
 
-/**
- * CommandRegistry — OCLIF + tooling command registration.
- */
 export interface RegisteredCommand {
   readonly id: string;
   readonly summary: string;
@@ -287,9 +265,6 @@ export class CommandRegistry extends Context.Tag("@lando/core/CommandRegistry")<
   }
 >() {}
 
-/**
- * RuntimeProviderRegistry — provider discovery + selection.
- */
 export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimeProviderRegistry")<
   RuntimeProviderRegistry,
   {
@@ -307,13 +282,6 @@ export class RuntimeProviderRegistry extends Context.Tag("@lando/core/RuntimePro
   }
 >() {}
 
-/**
- * RuntimeProvider.
- *
- * Only the surface is declared here; the heavy types (ApplyOptions,
- * ExecTarget, LogTarget, ServiceSelector, etc.) are stubs that will expand
- * into Effect Schemas in `../schema/index.ts`.
- */
 export interface RuntimeProviderShape {
   readonly id: string;
   readonly displayName: string;
@@ -360,9 +328,6 @@ export class RuntimeProvider extends Context.Tag("@lando/core/RuntimeProvider")<
   RuntimeProviderShape
 >() {}
 
-/**
- * AppPlanner — recipe expansion, service plan, route plan.
- */
 export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
   AppPlanner,
   {
@@ -373,9 +338,6 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
   }
 >() {}
 
-/**
- * BuildOrchestrator — sequential provider artifact builds for an AppPlan.
- */
 export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
   BuildOrchestrator,
   {
@@ -388,12 +350,6 @@ export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrato
   }
 >() {}
 
-/**
- * EventService — pub/sub over typed lifecycle events.
- *
- * Note: `LandoEvent` is a placeholder; the full discriminated union of
- * event payloads lives in `../events/index.ts` and grows as features land.
- */
 export interface LandoEvent {
   readonly _tag: string;
   readonly [key: string]: unknown;
@@ -411,9 +367,6 @@ export class EventService extends Context.Tag("@lando/core/EventService")<
   }
 >() {}
 
-/**
- * CacheService — atomic cache reads/writes, invalidation.
- */
 export class CacheService extends Context.Tag("@lando/core/CacheService")<
   CacheService,
   {
@@ -423,11 +376,6 @@ export class CacheService extends Context.Tag("@lando/core/CacheService")<
   }
 >() {}
 
-/**
- * FileSystem — Bun.file/Bun.write wrapper.
- *
- * Replaceable for sandboxing or remote-FS.
- */
 export class FileSystem extends Context.Tag("@lando/core/FileSystem")<
   FileSystem,
   {
@@ -448,11 +396,6 @@ export class FileSystem extends Context.Tag("@lando/core/FileSystem")<
   }
 >() {}
 
-/**
- * ProcessRunner — Bun.spawn wrapper.
- *
- * Replaceable for telemetry, sandbox, dry-run modes.
- */
 export interface ProcessSpawnOptions {
   readonly cmd: string;
   readonly args: ReadonlyArray<string>;
@@ -485,9 +428,6 @@ export class ProcessRunner extends Context.Tag("@lando/core/ProcessRunner")<
   }
 >() {}
 
-/**
- * ShellRunner — Bun.$ wrapper for shell-shaped host commands.
- */
 export class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
   ShellRunner,
   {
@@ -506,9 +446,6 @@ export class ShellRunner extends Context.Tag("@lando/core/ShellRunner")<
   }
 >() {}
 
-/**
- * PrivilegeService — sudo/UAC dispatch.
- */
 export class PrivilegeService extends Context.Tag("@lando/core/PrivilegeService")<
   PrivilegeService,
   {

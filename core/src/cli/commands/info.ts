@@ -13,6 +13,8 @@ import type {
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -55,6 +57,8 @@ export interface InfoAppResult {
 type InfoAppError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError
