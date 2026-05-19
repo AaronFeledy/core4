@@ -1,4 +1,3 @@
-/** LandoCommandBase adapts Effect programs into the OCLIF `run()` lifecycle. */
 import { Command } from "@oclif/core";
 
 import { Cause, Effect, Exit, type Layer } from "effect";
@@ -259,7 +258,6 @@ export abstract class LandoCommandBase extends Command {
       );
     }
 
-    // Pass parsed input to render so format-aware renderers can inspect flags and args.
     const rendered = spec.render?.(exit.value, input);
     if (rendered !== undefined && rendered.length > 0) this.log(rendered);
   }

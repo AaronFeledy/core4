@@ -191,10 +191,12 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       const env = isolationEnv();
       const source = await runCommand([process.execPath, sourceCliPath, "apps:list", "--renderer=tui"], env);
       const compiled = await runCommand([compiledBinaryPath, "apps:list", "--renderer=tui"], env);
+      const sourceError = normalizeRendererError(source.stderr);
+      const compiledError = normalizeRendererError(compiled.stderr);
 
       expect(compiled.exitCode).toBe(source.exitCode);
-      expect(normalizeRendererError(compiled.stderr)).toBe(normalizeRendererError(source.stderr));
-      expect(normalizeRendererError(compiled.stderr).length).toBeGreaterThan(0);
+      expect(compiledError).toBe(sourceError);
+      expect(compiledError.length).toBeGreaterThan(0);
     }, 180_000);
 
     test("compiled CLI accepts --renderer=json and runs the command normally", async () => {
