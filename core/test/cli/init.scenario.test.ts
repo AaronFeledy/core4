@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -59,6 +59,27 @@ const discoverFrom = async (cwd: string) => {
     process.chdir(previousCwd);
   }
 };
+
+describe("lando init --recipe (non-node-postgres)", () => {
+  test("rejects file rendering for a local recipe that is not node-postgres", async () => {
+    await withTempCwd(async (dir) => {
+      await Bun.write(
+        join(dir, "my-recipe", "recipe.yml"),
+        "id: my-recipe\ntitle: My Recipe\ndescription: A custom recipe.\nversion: 0.0.1\n",
+      );
+
+      const { initApp } = await import("../../src/cli/commands/init.ts");
+      let caught: unknown;
+      try {
+        await initApp({ cwd: dir, full: false, recipe: "./my-recipe", nonInteractive: true });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain("not implemented yet");
+    });
+  });
+});
 
 describe("lando init --full", () => {
   test("scaffolds a Node and Postgres app", async () => {
@@ -131,6 +152,35 @@ describe("lando init --full", () => {
           }
         }
       }
+    });
+  });
+});
+
+describe("lando init --recipe (non-node-postgres)", () => {
+  test("rejects file rendering for a local recipe that is not node-postgres", async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "my-recipe");
+      await mkdir(recipeDir, { recursive: true });
+      await writeFile(
+        join(recipeDir, "recipe.yml"),
+        "id: my-recipe\ntitle: My Recipe\ndescription: A test local recipe.\nversion: 0.1.0\n",
+      );
+
+      const { initApp } = await import("../../src/cli/commands/init.ts");
+      let caught: unknown;
+      try {
+        await initApp({
+          cwd: dir,
+          full: false,
+          recipe: "./my-recipe",
+          name: "test-app",
+          nonInteractive: true,
+        });
+      } catch (err) {
+        caught = err;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain("not implemented yet");
     });
   });
 });

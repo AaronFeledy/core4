@@ -8,6 +8,8 @@ import { Cause, Effect, Exit } from "effect";
 import {
   InitTargetExistsError,
   NotImplementedError,
+  RecipeManifestNotFoundError,
+  RecipeManifestValidationError,
   RecipeMissingAnswerError,
   RecipePromptValidationError,
 } from "@lando/sdk/errors";
@@ -850,6 +852,7 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (argv[0] === "init" || argv[0] === "apps:init") {
     const rest = argv.slice(1);
     let name: string | undefined;
+    let recipe: string | undefined;
     const answerValues: string[] = [];
     let full = false;
     let yes = false;
@@ -875,6 +878,12 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
         i += nameMatch.consumed - 1;
         continue;
       }
+      const recipeMatch = parseStringFlag(rest, i, "recipe");
+      if (recipeMatch !== undefined) {
+        recipe = recipeMatch.value;
+        i += recipeMatch.consumed - 1;
+        continue;
+      }
       const answerMatch = parseStringFlag(rest, i, "answer");
       if (answerMatch !== undefined) {
         answerValues.push(answerMatch.value);
@@ -887,6 +896,7 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
         cwd: process.cwd(),
         full,
         ...(name === undefined ? {} : { name }),
+        ...(recipe === undefined ? {} : { recipe }),
         answers,
         yes,
         nonInteractive,
@@ -898,9 +908,15 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
           ? `${error.message}\n${error.remediation}`
           : error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError
             ? `${error.message}\n${error.remediation}`
-            : error instanceof Error
-              ? error.message
-              : String(error);
+            : error instanceof NotImplementedError
+              ? `${error.message}\n${error.remediation}`
+              : error instanceof RecipeManifestNotFoundError
+                ? error.message
+                : error instanceof RecipeManifestValidationError
+                  ? `${error.message}${error.issues.length > 0 ? `\n  - ${error.issues.join("\n  - ")}` : ""}`
+                  : error instanceof Error
+                    ? error.message
+                    : String(error);
       console.error(message);
       process.exitCode = 1;
     }

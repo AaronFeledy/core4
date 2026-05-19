@@ -17,7 +17,7 @@ export interface BundledPluginEntry {
   readonly name: string;
   /** Workspace path relative to the repo root. */
   readonly path: string;
-  /** MVP contribution summary embedded in the bundled manifest. */
+  /** Contribution summary embedded in the bundled manifest. */
   readonly contributes?: {
     readonly providers?: ReadonlyArray<string>;
     readonly serviceTypes?: ReadonlyArray<string>;
@@ -56,6 +56,6 @@ export const buildConfig: BuildConfig = {
     },
     { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
   ],
-  bundledRecipes: [],
+  bundledRecipes: [{ id: "node-postgres" }],
   bundledPluginTemplates: [],
 };

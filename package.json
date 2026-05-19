@@ -28,6 +28,7 @@
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
+    "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "release": "bun run scripts/release.ts"
   }
 }

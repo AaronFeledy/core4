@@ -1,16 +1,13 @@
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { landofile, packageJson, serverJs } from "../../recipes/builtin/node-postgres/index.ts";
-import {
-  nodePostgresRecipeSource,
-  nodePostgresRecipeYaml,
-} from "../../recipes/builtin/node-postgres/manifest.ts";
+import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
 import {
   type PromptAnswers,
@@ -18,12 +15,14 @@ import {
   collectPrompts,
   createStdioPromptIO,
 } from "../../recipes/prompts/index.ts";
+import { resolveRecipeRef } from "../../recipes/source.ts";
 
 const APP_NAME_PROMPT = "name";
 
 export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
+  readonly recipe?: string;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
   readonly yes?: boolean;
@@ -43,12 +42,20 @@ const HARDCODED_FILE_RENDERERS: Record<string, (appName: string) => string> = {
   "server.js": () => serverJs,
 };
 
-const loadNodePostgresManifest = () =>
-  Effect.runPromise(
-    Effect.flatMap(RecipeManifestService, (svc) =>
-      svc.parse(nodePostgresRecipeSource, nodePostgresRecipeYaml),
-    ).pipe(Effect.provide(RecipeManifestServiceLive)),
+const loadRecipeManifest = async (recipeRef: string, cwd: string) => {
+  const exit = await Effect.runPromiseExit(
+    resolveRecipeRef(recipeRef, { cwd }).pipe(
+      Effect.flatMap((resolved) =>
+        Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
+      ),
+      Effect.provide(RecipeManifestServiceLive),
+    ),
   );
+  if (Exit.isSuccess(exit)) return exit.value;
+  const failure = Cause.failureOption(exit.cause);
+  if (failure._tag === "Some") throw failure.value;
+  throw new Error(Cause.pretty(exit.cause));
+};
 
 const composeAnswers = (options: InitAppOptions): Record<string, string> => {
   const out: Record<string, string> = { ...(options.answers ?? {}) };
@@ -66,7 +73,16 @@ const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
 
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
-  const manifest = await loadNodePostgresManifest();
+  const recipeRef = options.recipe ?? NODE_POSTGRES_RECIPE_ID;
+  const manifest = await loadRecipeManifest(recipeRef, cwd);
+
+  if (recipeRef !== NODE_POSTGRES_RECIPE_ID) {
+    throw new Error(
+      `Recipe file rendering for "${recipeRef}" is not implemented yet; ` +
+        `only the built-in "${NODE_POSTGRES_RECIPE_ID}" recipe is supported in Alpha.`,
+    );
+  }
+
   const prompts = manifest.prompts ?? [];
 
   const presetAnswers = composeAnswers(options);
@@ -84,13 +100,13 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
   const appNameValue = collected[APP_NAME_PROMPT];
   if (typeof appNameValue !== "string" || appNameValue === "") {
-    throw new Error("Built-in node-postgres recipe requires a text answer for prompt 'name'.");
+    throw new Error(`Recipe "${recipeRef}" requires a text answer for prompt 'name'.`);
   }
   const appName = appNameValue;
 
   const files = manifest.files ?? [];
   if (files.length === 0) {
-    throw new Error("Built-in node-postgres recipe is missing a files: manifest.");
+    throw new Error(`Recipe "${recipeRef}" is missing a files: manifest.`);
   }
 
   const directory = join(cwd, appName);
@@ -114,7 +130,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     const renderer = HARDCODED_FILE_RENDERERS[file.dest];
     if (renderer === undefined) {
       throw new Error(
-        `Built-in node-postgres recipe references an unknown destination "${file.dest}"; recipe rendering is not implemented yet.`,
+        `Recipe "${recipeRef}" references an unknown destination "${file.dest}"; recipe rendering is not implemented yet.`,
       );
     }
     await writeFile(join(directory, file.dest), renderer(appName));

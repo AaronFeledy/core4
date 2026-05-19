@@ -28,6 +28,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "bundled-recipes",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-recipes.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "oclif-manifest",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
     cwd: CORE_ROOT,
