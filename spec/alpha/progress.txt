@@ -3765,3 +3765,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - For synthetic prompt indirection (drive `collectPrompts` over a one-off prompt to make a pre-manifest decision), prefer a sentinel name that cannot clash with any recipe prompt (`__recipe__`) and consume the answer inside the indirection helper rather than threading it into the downstream `collectPrompts` call. Two separate `collectPrompts` invocations are cheaper than trying to fuse the synthetic prompt into the recipe's prompt list.
 ---
+
+
+## [2026-05-19 14:45 CDT] - US-031 Slop removal
+- Ran branch-wide slop cleanup after review and before push with the planning-doc comment rules.
+- Files changed by cleanup: `core/src/recipes/catalog.ts` and `core/test/cli/init.prompts.test.ts`.
+- Slop-remover result: removed planning-doc leakage / verbose traceability from catalog comments and removed a redundant prompt-flow comment from the init prompt test; no functional code, imports, public APIs, return values, side effects, or assertions changed. Planning files were inspected and left untouched.
+- Planning-doc comment scan: branch-changed source/test comments are clean. Remaining story IDs / phase-like values are test names or fixture values, not code comments.
+- Verification run and result: lsp diagnostics clean on changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed with the same two warnings; `bun run build` passed; focused compiled alias/build tests passed after isolated rebuild; full `bun test --max-concurrency=1` passed (802 pass, 11 skip, 0 fail, 3746 expect). Earlier default-concurrency full-test attempts hit compiled-binary build races while other build/test commands were active; the isolated focused and serial full runs passed from the cleanup state.

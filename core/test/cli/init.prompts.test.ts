@@ -84,8 +84,6 @@ describe("lando init — answers and prompting", () => {
 
   test("interactive: re-prompts on validation failure, then succeeds", async () => {
     await withTempCwd(async (dir) => {
-      // Empty first line accepts the recipe-selection default (node-postgres),
-      // then the recipe's name prompt re-prompts after a bad input.
       const scriptedStdin = "\nBad Name\ngood-name\n";
       const result = await runCli(["init"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
