@@ -75,6 +75,14 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const { cwd } = options;
   const recipeRef = options.recipe ?? NODE_POSTGRES_RECIPE_ID;
   const manifest = await loadRecipeManifest(recipeRef, cwd);
+
+  if (recipeRef !== NODE_POSTGRES_RECIPE_ID) {
+    throw new Error(
+      `Recipe file rendering for "${recipeRef}" is not implemented yet; ` +
+        `only the built-in "${NODE_POSTGRES_RECIPE_ID}" recipe is supported in Alpha.`,
+    );
+  }
+
   const prompts = manifest.prompts ?? [];
 
   const presetAnswers = composeAnswers(options);
