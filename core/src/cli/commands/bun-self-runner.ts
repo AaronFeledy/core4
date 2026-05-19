@@ -88,5 +88,3 @@ export const bunSelfRun = (
 
 export const bunSelfX = (options: BunSelfXOptions): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
   bunSelfRun({ ...options, argv: ["x", options.spec, ...options.argv] });
-
-export const renderBunSelfXBanner = (spec: string): string => `Running ${spec}…`;

@@ -139,6 +139,8 @@ export const listServices = (
       apps.push(...providerApps);
     }
 
-    apps.sort((a, b) => a.appName.localeCompare(b.appName));
-    return { apps };
+    const pathFilter = options.path;
+    const filtered = pathFilter === undefined ? apps : apps.filter((a) => a.appRoot.includes(pathFilter));
+    filtered.sort((a, b) => a.appName.localeCompare(b.appName));
+    return { apps: filtered };
   });

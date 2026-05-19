@@ -106,7 +106,7 @@ export const pluginRemove = (
         );
       }
     }
-    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginsRoot = options.pluginsRoot ?? join(userDataRoot, "plugins");
     const modulesRoot = resolve(pluginsRoot, "node_modules");
     const moduleDir = resolve(modulesRoot, options.name);
     const rel = relative(modulesRoot, moduleDir);
