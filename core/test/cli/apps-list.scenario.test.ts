@@ -18,7 +18,7 @@ const fakeConfigService = (dataRoot: string) =>
     getEffective: () => Effect.succeed({} as never),
   } as never);
 
-const planJson = (id: string, name: string, root: string, services: string[]) => ({
+const makePlan = (id: string, name: string, root: string, services: string[]) => ({
   version: 1,
   providerId: "lando",
   appId: id,
@@ -39,11 +39,11 @@ beforeAll(async () => {
   await mkdir(appsDir, { recursive: true });
   await writeFile(
     join(appsDir, "alpha.json"),
-    JSON.stringify(planJson("alpha", "alpha", "/srv/alpha", ["appserver"])),
+    JSON.stringify(makePlan("alpha", "alpha", "/srv/alpha", ["appserver"])),
   );
   await writeFile(
     join(appsDir, "bravo.json"),
-    JSON.stringify(planJson("bravo", "bravo", "/srv/bravo", ["db", "web"])),
+    JSON.stringify(makePlan("bravo", "bravo", "/srv/bravo", ["db", "web"])),
   );
 });
 

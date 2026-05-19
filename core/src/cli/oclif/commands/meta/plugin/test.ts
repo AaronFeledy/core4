@@ -1,7 +1,3 @@
-/**
- * `lando meta:plugin:test` — run the current plugin's test suite
- * (authoring command, deferred to Beta).
- */
 import { Effect } from "effect";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";

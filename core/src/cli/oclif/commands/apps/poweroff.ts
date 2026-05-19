@@ -1,24 +1,11 @@
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
-
 import { type PoweroffResult, poweroff, renderPoweroffResult } from "../../../commands/poweroff.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-interface PoweroffFlags {
-  readonly "keep-global"?: boolean;
-  readonly "keep-scratch"?: boolean;
-  readonly yes?: boolean;
-}
-
-const extractFlags = (input: unknown): PoweroffFlags => {
+const extractFlags = (input: unknown): Record<string, unknown> => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
-  return {
-    "keep-global": flags["keep-global"] === true,
-    "keep-scratch": flags["keep-scratch"] === true,
-    yes: flags.yes === true,
-  };
+  return (input as { flags?: Record<string, unknown> }).flags ?? {};
 };
 
 export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
@@ -27,15 +14,14 @@ export const poweroffSpec: LandoCommandSpec<PoweroffResult> = {
   namespace: "apps",
   topLevelAlias: true,
   bootstrap: "minimal",
-  run: (input) =>
-    Effect.gen(function* () {
-      const flags = extractFlags(input);
-      return yield* poweroff({
-        keepGlobal: flags["keep-global"] === true,
-        keepScratch: flags["keep-scratch"] === true,
-        yes: flags.yes === true,
-      });
-    }),
+  run: (input) => {
+    const flags = extractFlags(input);
+    return poweroff({
+      keepGlobal: flags["keep-global"] === true,
+      keepScratch: flags["keep-scratch"] === true,
+      yes: flags.yes === true,
+    });
+  },
   render: (result) => renderPoweroffResult(result as PoweroffResult),
 };
 

@@ -9,7 +9,7 @@ const fakeConfigService = (overrides: Partial<{ userDataRoot: string; userConfRo
   Layer.succeed(ConfigService, {
     get: <K extends string>(key: K) =>
       Effect.succeed((overrides as Record<string, unknown>)[key as string] as never),
-    getEffective: () => Effect.succeed({} as never),
+    load: Effect.succeed({} as never),
   } as never);
 
 describe("meta:config command", () => {

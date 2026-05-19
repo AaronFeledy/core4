@@ -1,9 +1,6 @@
-/**
- * `lando meta:plugin:new` — scaffold a new plugin (authoring command,
- * deferred to Beta).
- */
-import { Args } from "@oclif/core";
 import { Effect } from "effect";
+
+import { Args } from "@oclif/core";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 

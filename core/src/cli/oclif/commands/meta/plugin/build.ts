@@ -1,7 +1,3 @@
-/**
- * `lando meta:plugin:build` — build the current plugin source (authoring
- * command, deferred to Beta).
- */
 import { Effect } from "effect";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";

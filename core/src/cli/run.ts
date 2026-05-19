@@ -979,9 +979,7 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 export interface RunCliOptions {
-  /** argv (without `process.argv[0..1]`). */
   readonly argv: ReadonlyArray<string>;
-  /** `import.meta.url` from the binary entry point. */
   readonly rootUrl: string;
 }
 

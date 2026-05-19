@@ -24,6 +24,8 @@ export interface ConfigResult {
 const writeRemediation =
   "`lando config set/unset/edit/validate/translate` are deferred to Beta. Edit `<userConfRoot>/config.yml` directly in Alpha.";
 
+const unsupportedSubcommands = new Set(["set", "unset", "edit", "validate", "translate"]);
+
 const resolvePath = (root: unknown, path: string): unknown => {
   const parts = path.split(".");
   let cursor: unknown = root;
@@ -95,13 +97,7 @@ export const config = (
 ): Effect.Effect<ConfigResult, ConfigError | LandoCommandError | NotImplementedError, ConfigService> =>
   Effect.gen(function* () {
     const subcommand = options.subcommand ?? "view";
-    if (
-      subcommand === "set" ||
-      subcommand === "unset" ||
-      subcommand === "edit" ||
-      subcommand === "validate" ||
-      subcommand === "translate"
-    ) {
+    if (unsupportedSubcommands.has(subcommand)) {
       return yield* Effect.fail(
         new NotImplementedError({
           message: `meta:config ${subcommand} is deferred to Beta.`,

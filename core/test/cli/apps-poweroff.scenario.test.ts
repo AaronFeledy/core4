@@ -18,7 +18,7 @@ const fakeConfigService = (dataRoot: string) =>
     getEffective: () => Effect.succeed({} as never),
   } as never);
 
-const planJson = (id: string, name: string, services: string[]) => ({
+const makePlan = (id: string, name: string, services: string[]) => ({
   version: 1,
   providerId: "lando",
   appId: id,
@@ -37,9 +37,9 @@ beforeAll(async () => {
   userDataRoot = await mkdtemp(join(tmpdir(), "lando-apps-poweroff-"));
   const appsDir = join(userDataRoot, "providers", "provider-lando", "apps");
   await mkdir(appsDir, { recursive: true });
-  await writeFile(join(appsDir, "user.json"), JSON.stringify(planJson("user-app", "user-app", ["web"])));
-  await writeFile(join(appsDir, "global.json"), JSON.stringify(planJson("global", "global", ["proxy"])));
-  await writeFile(join(appsDir, "scratch.json"), JSON.stringify(planJson("scratch-1", "scratch-1", ["web"])));
+  await writeFile(join(appsDir, "user.json"), JSON.stringify(makePlan("user-app", "user-app", ["web"])));
+  await writeFile(join(appsDir, "global.json"), JSON.stringify(makePlan("global", "global", ["proxy"])));
+  await writeFile(join(appsDir, "scratch.json"), JSON.stringify(makePlan("scratch-1", "scratch-1", ["web"])));
 });
 
 afterAll(async () => {
@@ -57,8 +57,8 @@ describe("apps:poweroff command", () => {
         },
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
-    expect(stopped.sort()).toEqual(["global", "scratch-1", "user-app"]);
-    expect(result.appsPoweredOff.sort()).toEqual(["global", "scratch-1", "user-app"]);
+    expect([...stopped].sort()).toEqual(["global", "scratch-1", "user-app"]);
+    expect([...result.appsPoweredOff].sort()).toEqual(["global", "scratch-1", "user-app"]);
   });
 
   test("respects --keep-global and --keep-scratch", async () => {

@@ -54,13 +54,13 @@ describe("meta:plugin:add command", () => {
   test("installs a plugin via the BunSelfRunner and validates the manifest before recording trust", async () => {
     const calls: Array<{ spec: string; cwd: string }> = [];
     const spawner = {
-      install: async ({ spec, cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ spec, cwd }: { spec: string; cwd: string }) => {
         calls.push({ spec, cwd });
         await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-php"), {
           name: "@lando/plugin-php",
           version: "1.2.3",
         });
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-php") };
       },
     };
     const trustStore = new Set<string>();
@@ -83,14 +83,14 @@ describe("meta:plugin:add command", () => {
 
   test("fails closed when the manifest cannot be validated", async () => {
     const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
         const packageDir = join(cwd, "node_modules", "@lando/plugin-bad");
         await mkdir(packageDir, { recursive: true });
         await writeFile(
           join(packageDir, "package.json"),
           JSON.stringify({ name: "@lando/plugin-bad", version: "0.0.1", landoPlugin: { name: "bad" } }),
         );
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: packageDir };
       },
     };
     const exit = await Effect.runPromiseExit(
@@ -110,7 +110,7 @@ describe("meta:plugin:add command", () => {
 
   test("rejects manifests whose entry escapes the package directory", async () => {
     const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
         const packageDir = join(cwd, "node_modules", "@lando/plugin-escape");
         await mkdir(packageDir, { recursive: true });
         await writeFile(
@@ -126,7 +126,7 @@ describe("meta:plugin:add command", () => {
             },
           }),
         );
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: packageDir };
       },
     };
     const exit = await Effect.runPromiseExit(
@@ -147,12 +147,12 @@ describe("meta:plugin:add command", () => {
 
   test("non-interactive run without --trust returns structured remediation", async () => {
     const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
         await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-php"), {
           name: "@lando/plugin-php",
           version: "1.0.0",
         });
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-php") };
       },
     };
     const exit = await Effect.runPromiseExit(
@@ -174,12 +174,12 @@ describe("meta:plugin:add command", () => {
 
   test("prompt-confirmed trust persists to the in-memory store for the current install session", async () => {
     const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
         await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-prompt"), {
           name: "@lando/plugin-prompt",
           version: "0.1.0",
         });
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-prompt") };
       },
     };
     let promptCalls = 0;
@@ -216,12 +216,12 @@ describe("meta:plugin:add command", () => {
 
   test("declining the prompt returns structured remediation", async () => {
     const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
         await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-decline"), {
           name: "@lando/plugin-decline",
           version: "0.1.0",
         });
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-decline") };
       },
     };
     const prompter = { confirmTrust: async () => false };
@@ -240,14 +240,14 @@ describe("meta:plugin:add command", () => {
     }
   });
 
-  test("uses a fresh trust store per install — Alpha has no persistent trust", async () => {
+  test("uses a fresh trust store per install", async () => {
     const spawner = {
-      install: async ({ cwd }: { spec: string; cwd: string; env: Record<string, string> }) => {
+      install: async ({ cwd }: { spec: string; cwd: string }) => {
         await writePluginManifest(join(cwd, "node_modules", "@lando/plugin-isolation"), {
           name: "@lando/plugin-isolation",
           version: "0.0.1",
         });
-        return { exitCode: 0, stdout: "", stderr: "" };
+        return { exitCode: 0, stderr: "", packageRoot: join(cwd, "node_modules", "@lando/plugin-isolation") };
       },
     };
     let promptCalls = 0;

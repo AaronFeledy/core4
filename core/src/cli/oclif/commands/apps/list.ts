@@ -1,6 +1,4 @@
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
-
 import { type ListServicesResult, listServices, renderAppsListResult } from "../../../commands/list.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
@@ -8,15 +6,13 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 const extractFormat = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";
   const flags = (input as { flags?: { format?: unknown } }).flags;
-  if (flags === undefined) return "table";
-  return flags.format === "json" ? "json" : "table";
+  return flags?.format === "json" ? "json" : "table";
 };
 
 const extractPath = (input: unknown): string | undefined => {
   if (typeof input !== "object" || input === null) return undefined;
   const flags = (input as { flags?: { path?: unknown } }).flags;
-  const value = flags?.path;
-  return typeof value === "string" ? value : undefined;
+  return typeof flags?.path === "string" ? flags.path : undefined;
 };
 
 export const listSpec: LandoCommandSpec<ListServicesResult> = {
@@ -25,11 +21,10 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   namespace: "apps",
   topLevelAlias: true,
   bootstrap: "minimal",
-  run: (input) =>
-    Effect.gen(function* () {
-      const path = extractPath(input);
-      return yield* listServices({ ...(path === undefined ? {} : { path }) });
-    }),
+  run: (input) => {
+    const path = extractPath(input);
+    return listServices(path === undefined ? {} : { path });
+  },
   render: (result, input?: unknown) =>
     renderAppsListResult(result as ListServicesResult, extractFormat(input)),
 };

@@ -1,7 +1,3 @@
-/**
- * `lando meta:plugin:unlink` — remove a previously linked plugin
- * (authoring command, deferred to Beta).
- */
 import { Args } from "@oclif/core";
 import { Effect } from "effect";
 

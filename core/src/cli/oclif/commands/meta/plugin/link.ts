@@ -1,7 +1,3 @@
-/**
- * `lando meta:plugin:link` — symlink the current plugin into the
- * user-global plugin store (authoring command, deferred to Beta).
- */
 import { Effect } from "effect";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";

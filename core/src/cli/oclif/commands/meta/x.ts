@@ -51,8 +51,6 @@ export default class MetaXCommand extends LandoCommandBase {
   static override landoSpec: LandoCommandSpec = metaXSpec;
   static override bootstrap = metaXSpec.bootstrap;
 
-  // Skip OCLIF flag parsing so flags like `--version`/`--help` forward to the
-  // embedded Bun child (parity with the compiled `$bunfs` `isPassthrough` guard).
   override async run(): Promise<void> {
     const argv = this.argv.slice();
     const { spec, args } = splitSpecAndArgs(argv);

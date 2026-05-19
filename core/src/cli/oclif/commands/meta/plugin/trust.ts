@@ -1,11 +1,3 @@
-/**
- * `lando meta:plugin:trust` — manage in-memory plugin trust (Alpha) /
- * persistent trust store (Beta).
- *
- * Deferred surface: Alpha exposes the structured remediation via the
- * generic non-MVP guard so users see the planned Beta behavior without
- * the command silently exiting 0.
- */
 import { Args } from "@oclif/core";
 import { Effect } from "effect";
 

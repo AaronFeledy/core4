@@ -114,7 +114,7 @@ export const pluginRemove = (
       return yield* Effect.fail(
         new PluginManifestError({
           message: `Plugin name resolves outside ${modulesRoot}.`,
-          ...(options.name === "" ? {} : { pluginName: options.name }),
+          pluginName: options.name,
           issues: [`refusing to recursively remove ${moduleDir}`],
         }),
       );

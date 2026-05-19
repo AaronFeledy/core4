@@ -3150,3 +3150,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - `plugin-remove` (and any command that recursively deletes user-supplied paths) MUST validate the npm-name shape AND assert containment via `path.relative(root, resolved)` before any `existsSync`/`spawn`/`rm`. Naïve `join(root, name)` accepts `../`. Pattern: regex precheck → `resolve` → `relative` → reject `..` or absolute → only then touch disk.
   - `apps:poweroff` currently enumerates but does not execute provider stops. Wiring real stops is a follow-up story because it requires bootstrap-level change + AppPlan materialization from the persisted envelope. Marked here so the next push step knows the gap exists.
 ---
+
+## [2026-05-18 19:38 CDT] - US-024 Slop cleanup
+- Ran branch-wide slop-remover after the US-024 review step and before push, with planning-doc comment rules applied.
+- Cleanup changed AI-slop/comment-only or cosmetic surfaces in `core/src/cli/commands/config.ts`, `core/src/cli/commands/plugin-remove.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/apps/list.ts`, `core/src/cli/oclif/commands/apps/poweroff.ts`, deferred `core/src/cli/oclif/commands/meta/plugin/*` wrappers, `core/src/cli/oclif/commands/meta/x.ts`, `core/src/cli/run.ts`, and scenario tests for apps list/poweroff, meta config, and plugin add.
+- Behavior preserved: no public API, command contract, structured error, trust/manifest validation, path-containment, side effect, or assertion coverage was weakened.
+- Planning-doc comment scan result: no branch-changed source or test code comments still reference planning docs, development phases, PRDs, story IDs, or section markers.
+- Verification run and result: lsp diagnostics clean for changed files; `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test --concurrency=1` passed (635 pass, 11 skip, 0 fail) after a stale generated-binary failure was cleared by rebuilding. A full-suite rerun immediately after `bun run clean` reproduced the known compiled-build race (`version.test.ts`/`compile.test.ts`/`shellenv.test.ts` build exit 1), and the focused `bun test core/test/cli/shellenv.test.ts --concurrency=1` passed after `bun run build`.
+---
