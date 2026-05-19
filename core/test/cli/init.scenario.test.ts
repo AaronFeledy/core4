@@ -135,7 +135,7 @@ describe("lando init --full", () => {
         Effect.tryPromise({
           try: async () => {
             const { initApp } = await import("../../src/cli/commands/init.ts");
-            await initApp({ cwd: dir, full: true, name: "existing" });
+            await initApp({ cwd: dir, full: true, name: "existing", nonInteractive: true });
           },
           catch: (cause) => cause,
         }),
