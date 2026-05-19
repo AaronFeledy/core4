@@ -271,6 +271,38 @@ version: 0.0.1
     }
   });
 
+  test("top-level `deprecated:` is rejected with §18 remediation", async () => {
+    const yaml = `${baseHeader}deprecated:
+  since: 4.0.0
+  note: replaced by node-postgres-v2
+`;
+    const exit = await runParse("test://beta-deprecated", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(NotImplementedError);
+    if (error instanceof NotImplementedError) {
+      expect(error.specSection).toBe("§18");
+      expect(error.message).toContain("deprecated");
+    }
+  });
+
+  test("per-prompt `deprecated:` is rejected with §18 remediation", async () => {
+    const yaml = `${baseHeader}prompts:
+  - name: legacy
+    type: text
+    message: Legacy?
+    deprecated:
+      since: 4.0.0
+      note: removed in 5.0
+`;
+    const exit = await runParse("test://beta-prompt-deprecated", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(NotImplementedError);
+    if (error instanceof NotImplementedError) {
+      expect(error.specSection).toBe("§18");
+      expect(error.message).toContain("legacy");
+    }
+  });
+
   for (const verb of ["script", "add", "create", "run", "x"]) {
     test(`postInit bun verb \`${verb}\` is rejected with §8.8.8 remediation`, async () => {
       const yaml = `${baseHeader}postInit:
@@ -313,6 +345,82 @@ version: 0.0.1
     if (error instanceof RecipeManifestValidationError) {
       expect(error.issues.some((i) => i.includes("title"))).toBe(true);
     }
+  });
+
+  test("duplicate prompt names are rejected by semantic validation", async () => {
+    const yaml = `id: dup-prompts
+title: Dup
+description: dup names
+version: 0.0.1
+prompts:
+  - name: appName
+    type: text
+    message: Name?
+  - name: appName
+    type: text
+    message: Name again?
+`;
+    const exit = await runParse("test://dup-prompts", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((i) => i.includes("duplicate prompt name"))).toBe(true);
+      expect(error.issues.some((i) => i.includes("appName"))).toBe(true);
+    }
+  });
+
+  test("`select` prompt without `choices:` is rejected", async () => {
+    const yaml = `id: missing-choices
+title: Missing choices
+description: select missing choices
+version: 0.0.1
+prompts:
+  - name: framework
+    type: select
+    message: Framework?
+`;
+    const exit = await runParse("test://missing-choices", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((i) => i.includes("framework") && i.includes("choices"))).toBe(true);
+    }
+  });
+
+  test("`multiselect` prompt with empty `choices:` is rejected", async () => {
+    const yaml = `id: empty-choices
+title: Empty choices
+description: multiselect with empty choices
+version: 0.0.1
+prompts:
+  - name: features
+    type: multiselect
+    message: Features?
+    choices: []
+`;
+    const exit = await runParse("test://empty-choices", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((i) => i.includes("features") && i.includes("non-empty"))).toBe(true);
+    }
+  });
+
+  test("reserved `__proto__` key in recipe.yml is rejected at parse time", async () => {
+    const yaml = `id: proto-pollution
+title: Proto
+description: attempted prototype pollution
+version: 0.0.1
+__proto__:
+  polluted: true
+`;
+    const exit = await runParse("test://proto", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestParseError);
+    if (error instanceof RecipeManifestParseError) {
+      expect(error.message).toContain("__proto__");
+    }
+    expect((Object.prototype as Record<string, unknown>).polluted).toBeUndefined();
   });
 
   test("malformed YAML raises a tagged parse error with line info", async () => {

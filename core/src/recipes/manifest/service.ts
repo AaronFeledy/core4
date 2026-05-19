@@ -7,11 +7,18 @@
  * Beta-deferred sections rejected here:
  *   - top-level `runs:` (canonical command allowlist, §8.8.14)
  *   - top-level `fetchAllowlist:` (HTTP host allowlist, §8.8.14)
+ *   - recipe-wide and per-prompt `deprecated:` notices (§18 — the
+ *     `DeprecationNotice` schema is not shipped in Alpha)
  *   - any prompt with `type: editor` (§8.8.5; Alpha covers 7 prompt types)
  *   - any prompt with `choicesFrom:` (dynamic choices via canonical
  *     command, depends on `runs:`)
  *   - any `postInit.bun` entry whose `verb:` is not `install`
  *     (PRD-04 US-030 ships only `install`)
+ *
+ * Post-decode semantic validation (after strict schema decode) enforces:
+ *   - prompt `name` uniqueness within a recipe (§8.8.3)
+ *   - `choices:` required and non-empty for `select`/`multiselect`
+ *     prompts (§8.8.3, §8.8.5)
  */
 import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
@@ -51,6 +58,12 @@ const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefi
       specSection: "§8.8.14",
     };
   }
+  if (Object.hasOwn(obj, "deprecated")) {
+    return {
+      message: `Recipe-wide \`deprecated:\` notice is not supported in Alpha recipes at ${source}.`,
+      specSection: "§18",
+    };
+  }
   return undefined;
 };
 
@@ -74,6 +87,12 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
       return {
         message: `Dynamic prompt \`choicesFrom:\` in prompt "${name}" is not supported in Alpha recipes at ${source}.`,
         specSection: "§8.8.5",
+      };
+    }
+    if (Object.hasOwn(prompt, "deprecated")) {
+      return {
+        message: `Per-prompt \`deprecated:\` notice in prompt "${name}" is not supported in Alpha recipes at ${source}.`,
+        specSection: "§18",
       };
     }
   }
@@ -143,6 +162,50 @@ const validateManifest = (
   );
 };
 
+/**
+ * Cross-field invariants enforced after strict schema decode succeeds.
+ * Kept out of the Effect Schema so error messages remain a single
+ * `RecipeManifestValidationError.issues[]` shape regardless of source.
+ */
+const validateSemantics = (
+  source: string,
+  manifest: typeof RecipeManifest.Type,
+): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError> => {
+  const issues: string[] = [];
+
+  if (manifest.prompts !== undefined) {
+    // §8.8.3: prompt `name` values MUST be unique within a recipe.
+    const seen = new Set<string>();
+    for (const prompt of manifest.prompts) {
+      if (seen.has(prompt.name)) {
+        issues.push(`prompts: duplicate prompt name "${prompt.name}".`);
+      }
+      seen.add(prompt.name);
+    }
+
+    // §8.8.3 + §8.8.5: `choices:` is required and non-empty for
+    // `select`/`multiselect` (the dynamic `choicesFrom:` alternative
+    // is Beta and is rejected before this point).
+    for (const [index, prompt] of manifest.prompts.entries()) {
+      if (prompt.type !== "select" && prompt.type !== "multiselect") continue;
+      if (prompt.choices === undefined || prompt.choices.length === 0) {
+        issues.push(
+          `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list.`,
+        );
+      }
+    }
+  }
+
+  if (issues.length === 0) return Effect.succeed(manifest);
+  return Effect.fail(
+    new RecipeManifestValidationError({
+      message: `recipe.yml is invalid: ${issues.join(", ")}.`,
+      source,
+      issues,
+    }),
+  );
+};
+
 const parseRecipe = (
   source: string,
   content: string,
@@ -153,6 +216,7 @@ const parseRecipe = (
   parseRecipeYaml({ source, content }).pipe(
     Effect.flatMap((parsed) => rejectBetaSections(source, parsed)),
     Effect.flatMap((parsed) => validateManifest(source, parsed)),
+    Effect.flatMap((manifest) => validateSemantics(source, manifest)),
   );
 
 const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> = {

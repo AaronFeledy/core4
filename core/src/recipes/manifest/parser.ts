@@ -29,6 +29,12 @@ const parseError = (
 
 const stripComment = (line: string): string => line.replace(/\s+#.*$/, "");
 
+const guardKey = (source: string, key: string, line: number): void => {
+  if (key === "__proto__") {
+    throw parseError(source, `Reserved key \`__proto__\` is not allowed at line ${line}`, line);
+  }
+};
+
 const parseInlineArray = (value: string, source: string, line: number): ReadonlyArray<unknown> => {
   const inner = value.slice(1, -1).trim();
   if (inner === "") return [];
@@ -94,6 +100,7 @@ const parseMap = (
     }
 
     const [, key, rawValue] = match as [string, string, string];
+    guardKey(source, key, line.line);
 
     if (rawValue.trim() === "") {
       const next = lines[index + 1];
@@ -151,6 +158,7 @@ const parseList = (
     if (mapMatch !== null) {
       const [, firstKey, firstRawValueRaw] = mapMatch as [string, string, string?];
       const firstRawValue = firstRawValueRaw ?? "";
+      guardKey(source, firstKey, line.line);
       const [item, nextIndex] = parseListItemMap(
         lines,
         source,
@@ -220,6 +228,7 @@ const parseListItemMap = (
       throw parseError(source, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
     const [, key, rawValue] = match as [string, string, string];
+    guardKey(source, key, line.line);
     index += 1;
     consumeKey(key, rawValue, line.line, childIndent);
   }
