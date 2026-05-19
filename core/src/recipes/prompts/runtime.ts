@@ -1,5 +1,5 @@
 /**
- * Built-in recipe prompt runtime: drives the seven Alpha prompt
+ * Built-in recipe prompt runtime: drives the seven prompt
  * types (`text | select | multiselect | confirm | number | secret |
  * path`) through a `PromptIO`. Non-interactive mode (`nonInteractive:
  * true`, or `io === undefined`) requires every required prompt to be
