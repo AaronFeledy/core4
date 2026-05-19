@@ -3239,3 +3239,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (git pull --ff-only; local story branch deleted)
 - Remaining local state: on main, clean
 ---
+
+## [2026-05-18 21:15 CDT] - Sync
+- Previous branch: us-025-parse-alpha-recipe-yml
+- Previous PR: #102 https://github.com/AaronFeledy/core4/pull/102
+- Action: caught up after prior merge (Case C — PR already MERGED, remote branch deleted); fast-pathed stale progress.txt commit onto main before reconciling
+- Local main updated: yes (ff-only pull; pushed docs commit 0e083af)
+- Branch after sync: main
+- Stash created: yes (sync-progress-fastpath, immediately popped)
+---
