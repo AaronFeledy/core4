@@ -56,6 +56,6 @@ export const buildConfig: BuildConfig = {
     },
     { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
   ],
-  bundledRecipes: [],
+  bundledRecipes: [{ id: "node-postgres" }],
   bundledPluginTemplates: [],
 };

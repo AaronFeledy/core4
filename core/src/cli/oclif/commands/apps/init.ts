@@ -9,6 +9,8 @@ import { Effect } from "effect";
 
 import {
   InitTargetExistsError,
+  NotImplementedError,
+  RecipeManifestNotFoundError,
   RecipeMissingAnswerError,
   RecipePromptValidationError,
 } from "@lando/sdk/errors";
@@ -20,6 +22,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 interface InitFlags {
   readonly full: boolean;
   readonly name?: string;
+  readonly recipe?: string;
   readonly answer?: ReadonlyArray<string>;
   readonly "no-interactive"?: boolean;
   readonly yes?: boolean;
@@ -71,6 +74,7 @@ export default class InitCommand extends LandoCommandBase {
       yes: flags.yes === true,
       nonInteractive: flags["no-interactive"] === true,
       ...(flags.name === undefined ? {} : { name: flags.name }),
+      ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
     };
 
     let result: InitAppResult;
@@ -82,6 +86,12 @@ export default class InitCommand extends LandoCommandBase {
       }
       if (error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError) {
         throw new Error(`${error.message}\n${error.remediation}`);
+      }
+      if (error instanceof NotImplementedError) {
+        throw new Error(`${error.message}\n${error.remediation}`);
+      }
+      if (error instanceof RecipeManifestNotFoundError) {
+        throw new Error(error.message);
       }
       throw error;
     }
