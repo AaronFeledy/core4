@@ -5,8 +5,14 @@ import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
 import { Cause, Effect, Exit } from "effect";
 
-import { InitTargetExistsError, NotImplementedError } from "@lando/sdk/errors";
+import {
+  InitTargetExistsError,
+  NotImplementedError,
+  RecipeMissingAnswerError,
+  RecipePromptValidationError,
+} from "@lando/sdk/errors";
 
+import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
@@ -842,22 +848,59 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
 
   if (argv[0] === "init" || argv[0] === "apps:init") {
-    const nameFlag = argv.find((arg) => arg.startsWith("--name="));
-    const name = nameFlag?.slice("--name=".length);
-    const full = argv.includes("--full");
+    const rest = argv.slice(1);
+    let name: string | undefined;
+    const answerValues: string[] = [];
+    let full = false;
+    let yes = false;
+    let nonInteractive = false;
+    for (let i = 0; i < rest.length; i += 1) {
+      const arg = rest[i];
+      if (arg === undefined) continue;
+      if (arg === "--full") {
+        full = true;
+        continue;
+      }
+      if (arg === "--yes" || arg === "-y") {
+        yes = true;
+        continue;
+      }
+      if (arg === "--no-interactive" || arg === "--non-interactive") {
+        nonInteractive = true;
+        continue;
+      }
+      const nameMatch = parseStringFlag(rest, i, "name");
+      if (nameMatch !== undefined) {
+        name = nameMatch.value;
+        i += nameMatch.consumed - 1;
+        continue;
+      }
+      const answerMatch = parseStringFlag(rest, i, "answer");
+      if (answerMatch !== undefined) {
+        answerValues.push(answerMatch.value);
+        i += answerMatch.consumed - 1;
+      }
+    }
+    const answers = parseAnswerFlags(answerValues);
     try {
-      const result =
-        name === undefined
-          ? await initApp({ cwd: process.cwd(), full })
-          : await initApp({ cwd: process.cwd(), full, name });
+      const result = await initApp({
+        cwd: process.cwd(),
+        full,
+        ...(name === undefined ? {} : { name }),
+        answers,
+        yes,
+        nonInteractive,
+      });
       console.log(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
       const message =
         error instanceof InitTargetExistsError
           ? `${error.message}\n${error.remediation}`
-          : error instanceof Error
-            ? error.message
-            : String(error);
+          : error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError
+            ? `${error.message}\n${error.remediation}`
+            : error instanceof Error
+              ? error.message
+              : String(error);
       console.error(message);
       process.exitCode = 1;
     }

@@ -7,14 +7,22 @@
 import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
-import { InitTargetExistsError } from "@lando/sdk/errors";
+import {
+  InitTargetExistsError,
+  RecipeMissingAnswerError,
+  RecipePromptValidationError,
+} from "@lando/sdk/errors";
 
-import { type InitAppResult, initApp } from "../../../commands/init.ts";
+import { parseAnswerFlags } from "../../../../recipes/prompts/index.ts";
+import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 interface InitFlags {
   readonly full: boolean;
   readonly name?: string;
+  readonly answer?: ReadonlyArray<string>;
+  readonly "no-interactive"?: boolean;
+  readonly yes?: boolean;
 }
 
 export const initSpec: LandoCommandSpec<never> = {
@@ -35,7 +43,16 @@ export default class InitCommand extends LandoCommandBase {
     recipe: Flags.string({ description: "Recipe to apply." }),
     destination: Flags.string({ description: "Target directory." }),
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
-    yes: Flags.boolean({ description: "Skip confirmation prompts.", default: false }),
+    yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
+    "no-interactive": Flags.boolean({
+      description:
+        "Disable interactive prompting. Missing required answers fail with RecipeMissingAnswerError.",
+      default: false,
+    }),
+    answer: Flags.string({
+      description: "Recipe answer in key=value form (repeatable).",
+      multiple: true,
+    }),
     option: Flags.string({
       description: "Recipe option in key=value form (repeatable).",
       multiple: true,
@@ -46,14 +63,24 @@ export default class InitCommand extends LandoCommandBase {
 
   override async run(): Promise<void> {
     const { flags } = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
+    const answers = parseAnswerFlags(flags.answer ?? []);
+    const options: InitAppOptions = {
+      cwd: process.cwd(),
+      full: flags.full,
+      answers,
+      yes: flags.yes === true,
+      nonInteractive: flags["no-interactive"] === true,
+      ...(flags.name === undefined ? {} : { name: flags.name }),
+    };
+
     let result: InitAppResult;
     try {
-      result =
-        flags.name === undefined
-          ? await initApp({ cwd: process.cwd(), full: flags.full })
-          : await initApp({ cwd: process.cwd(), full: flags.full, name: flags.name });
+      result = await initApp(options);
     } catch (error) {
       if (error instanceof InitTargetExistsError) {
+        throw new Error(`${error.message}\n${error.remediation}`);
+      }
+      if (error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError) {
         throw new Error(`${error.message}\n${error.remediation}`);
       }
       throw error;

@@ -81,12 +81,13 @@ describe("lando init --full", () => {
     });
   });
 
-  test("requires --name without prompting", async () => {
+  test("fails non-interactively when --name is missing", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full"], dir);
+      const result = await runCli(["init", "--full", "--no-interactive"], dir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("Missing required flag --name");
+      expect(result.stderr).toContain('Missing required answer for prompt "name"');
+      expect(result.stderr).toContain("--answer name=<value>");
       expect(await Bun.file(join(dir, "mvp")).exists()).toBe(false);
     });
   });
