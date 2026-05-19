@@ -178,6 +178,26 @@ export class InitTargetExistsError extends Schema.TaggedError<InitTargetExistsEr
   },
 ) {}
 
+export class RecipeMissingAnswerError extends Schema.TaggedError<RecipeMissingAnswerError>()(
+  "RecipeMissingAnswerError",
+  {
+    message: Schema.String,
+    promptName: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export class RecipePromptValidationError extends Schema.TaggedError<RecipePromptValidationError>()(
+  "RecipePromptValidationError",
+  {
+    message: Schema.String,
+    promptName: Schema.String,
+    promptType: Schema.String,
+    issue: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("ServiceTypeError", {
   message: Schema.String,
   serviceType: Schema.String,

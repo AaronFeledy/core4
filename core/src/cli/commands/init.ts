@@ -12,16 +12,29 @@ import {
   nodePostgresRecipeYaml,
 } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
+import {
+  type PromptAnswers,
+  type PromptIO,
+  collectPrompts,
+  createStdioPromptIO,
+} from "../../recipes/prompts/index.ts";
+
+const APP_NAME_PROMPT = "name";
 
 export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
   readonly name?: string;
+  readonly answers?: Readonly<Record<string, string>>;
+  readonly yes?: boolean;
+  readonly nonInteractive?: boolean;
+  readonly io?: PromptIO;
 }
 
 export interface InitAppResult {
   readonly appName: string;
   readonly directory: string;
+  readonly answers: PromptAnswers;
 }
 
 const HARDCODED_FILE_RENDERERS: Record<string, (appName: string) => string> = {
@@ -37,21 +50,49 @@ const loadNodePostgresManifest = () =>
     ).pipe(Effect.provide(RecipeManifestServiceLive)),
   );
 
-export const initApp = async ({ cwd, full, name }: InitAppOptions): Promise<InitAppResult> => {
-  if (!full) {
-    throw new Error("Missing required flag --full for the MVP built-in recipe.");
+const composeAnswers = (options: InitAppOptions): Record<string, string> => {
+  const out: Record<string, string> = { ...(options.answers ?? {}) };
+  if (options.name !== undefined && options.name.trim() !== "") {
+    out[APP_NAME_PROMPT] = options.name.trim();
   }
-  if (name === undefined || name.trim() === "") {
-    throw new Error("Missing required flag --name.");
-  }
+  return out;
+};
 
+const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
+  if (options.nonInteractive === true) return undefined;
+  if (options.io !== undefined) return options.io;
+  return createStdioPromptIO();
+};
+
+export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
+  const { cwd } = options;
   const manifest = await loadNodePostgresManifest();
+  const prompts = manifest.prompts ?? [];
+
+  const presetAnswers = composeAnswers(options);
+  const io = resolveIO(options);
+  const useDefaults = options.yes === true;
+
+  const collected = await collectPrompts({
+    prompts,
+    answers: presetAnswers,
+    yes: useDefaults,
+    nonInteractive: options.nonInteractive === true || io === undefined,
+    cwd,
+    ...(io === undefined ? {} : { io }),
+  });
+
+  const appNameValue = collected[APP_NAME_PROMPT];
+  if (typeof appNameValue !== "string" || appNameValue === "") {
+    throw new Error("Built-in node-postgres recipe requires a text answer for prompt 'name'.");
+  }
+  const appName = appNameValue;
+
   const files = manifest.files ?? [];
   if (files.length === 0) {
     throw new Error("Built-in node-postgres recipe is missing a files: manifest.");
   }
 
-  const appName = name.trim();
   const directory = join(cwd, appName);
   const existing = await readdir(directory).catch((cause: unknown) => {
     if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
@@ -79,5 +120,5 @@ export const initApp = async ({ cwd, full, name }: InitAppOptions): Promise<Init
     await writeFile(join(directory, file.dest), renderer(appName));
   }
 
-  return { appName, directory };
+  return { appName, directory, answers: collected };
 };

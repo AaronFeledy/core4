@@ -5,8 +5,14 @@ import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
 import { Cause, Effect, Exit } from "effect";
 
-import { InitTargetExistsError, NotImplementedError } from "@lando/sdk/errors";
+import {
+  InitTargetExistsError,
+  NotImplementedError,
+  RecipeMissingAnswerError,
+  RecipePromptValidationError,
+} from "@lando/sdk/errors";
 
+import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
@@ -845,19 +851,31 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
     const nameFlag = argv.find((arg) => arg.startsWith("--name="));
     const name = nameFlag?.slice("--name=".length);
     const full = argv.includes("--full");
+    const yes = argv.includes("--yes");
+    const nonInteractive = argv.includes("--no-interactive") || argv.includes("--non-interactive");
+    const answerValues = argv
+      .filter((arg) => arg.startsWith("--answer="))
+      .map((arg) => arg.slice("--answer=".length));
+    const answers = parseAnswerFlags(answerValues);
     try {
-      const result =
-        name === undefined
-          ? await initApp({ cwd: process.cwd(), full })
-          : await initApp({ cwd: process.cwd(), full, name });
+      const result = await initApp({
+        cwd: process.cwd(),
+        full,
+        ...(name === undefined ? {} : { name }),
+        answers,
+        yes,
+        nonInteractive,
+      });
       console.log(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
       const message =
         error instanceof InitTargetExistsError
           ? `${error.message}\n${error.remediation}`
-          : error instanceof Error
-            ? error.message
-            : String(error);
+          : error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError
+            ? `${error.message}\n${error.remediation}`
+            : error instanceof Error
+              ? error.message
+              : String(error);
       console.error(message);
       process.exitCode = 1;
     }
