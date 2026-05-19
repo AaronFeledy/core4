@@ -50,7 +50,14 @@ export const defaultBunSelfSpawner: BunSelfSpawner = {
   },
 };
 
-const childEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
+/**
+ * Build the child-process env for `bun install` / self-reentry.
+ *
+ * Pass-through by design: registry auth and other parent env values must
+ * survive into the spawned Bun process; the inherited stdio path keeps Bun's
+ * own UX intact.
+ */
+export const childEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(parentEnv)) if (typeof v === "string") env[k] = v;
   env[BUN_BE_BUN_ENV] = "1";

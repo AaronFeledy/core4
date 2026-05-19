@@ -5,9 +5,8 @@ import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
 
 import {
-  BUN_BE_BUN_ENV,
-  BUN_SELF_REENTRY_ENV,
   type BunSelfSpawner,
+  childEnv as buildChildEnv,
   defaultBunSelfSpawner,
 } from "../../cli/commands/bun-self-runner.ts";
 
@@ -59,26 +58,6 @@ export const redactBunOutput = (text: string): string =>
   text
     .replace(SECRET_ENV_PATTERN, (_, name) => `${String(name)}=${REDACTED}`)
     .replace(REGISTRY_URL_PATTERN, `//$1:${REDACTED}@`);
-
-/**
- * Build the child-process env for `bun install`.
- *
- * Pass-through by design: `bun install` must inherit registry auth env
- * (`NPM_TOKEN`, `NPM_CONFIG_AUTH_TOKEN`, etc.) to talk to private registries.
- * Lando-constructed user-visible messages get redacted via {@link redactBunOutput};
- * child-process stdout/stderr is inherited so Bun's own UX (progress bars,
- * prompts) is preserved.
- */
-const buildChildEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
-  const env: Record<string, string> = {};
-  for (const [k, v] of Object.entries(parentEnv)) {
-    if (typeof v !== "string") continue;
-    env[k] = v;
-  }
-  env[BUN_BE_BUN_ENV] = "1";
-  env[BUN_SELF_REENTRY_ENV] = "1";
-  return env;
-};
 
 const realpathOrUndefined = async (path: string): Promise<string | undefined> => {
   try {
