@@ -1,11 +1,11 @@
 /**
- * Recipe source resolver (spec §8.8.4).
+ * Recipe source resolver.
  *
- * Alpha supports two recipe source forms:
+ * Supported recipe source forms:
  *   - bare `<id>` — bundled built-in recipe (no disk read at runtime)
  *   - `./path` or `/abs/path` — local directory containing `recipe.yml`
  *
- * Deferred to Beta and rejected here with a tagged `NotImplementedError`:
+ * Unsupported here and rejected with a tagged `NotImplementedError`:
  *   - `github:owner/repo[/path][@ref]`
  *   - `git+https://…`, `git+ssh://…`, `git@…`
  *   - `npm:@scope/pkg[/path][@version]`
@@ -28,11 +28,10 @@ import {
 import { BUNDLED_RECIPES } from "./bundled.ts";
 
 /**
- * Spec §8.8.3 ("`id` MUST match the directory basename") is enforced at the
- * directory-resolution boundary, before the schema parser runs, so the
- * resolver needs the `id` value without invoking the manifest service. The
- * `^` anchor restricts the match to top-level YAML scalars (column 0); nested
- * `id:` keys (e.g. a prompt whose `name:` is `"id"`) are indented and skipped.
+ * The directory-resolution boundary enforces that a local recipe id matches
+ * the directory basename before schema parsing. The `^` anchor restricts the
+ * match to top-level YAML scalars (column 0); nested `id:` keys (e.g. a
+ * prompt whose `name:` is `"id"`) are indented and skipped.
  */
 const TOP_LEVEL_ID_RE = /^id:[ \t]+(?:"([^"]+)"|'([^']+)'|([^\s#]+))[ \t]*(?:#.*)?$/m;
 

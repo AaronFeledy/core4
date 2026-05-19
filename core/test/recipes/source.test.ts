@@ -195,7 +195,6 @@ describe("resolveRecipeRef — deferred remote sources (§8.8.4)", () => {
 
 describe("resolveRecipeRef — determinism (no network access)", () => {
   test("resolution does not perform any network IO (no spawned curl/wget/git/etc.)", async () => {
-    // Sentinel: replace global fetch with one that throws if called.
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () => {
       throw new Error("network IO is not allowed during recipe source resolution");
