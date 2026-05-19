@@ -3588,3 +3588,49 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Follow-up scan found no branch-changed code comments still citing planning docs, phase labels, PRD/story IDs, or section references; remaining matches are runtime/test strings or planning docs.
 - Verification run and result: `lsp_diagnostics` clean on `core/src/recipes/builtin/node-ts/render.ts` and `core/test/cli/init.landofile-ts.test.ts`; `bun test core/test/cli/init.landofile-ts.test.ts` passed (exit 0); `bun run typecheck` passed; `bun run lint` passed (exit 0, two pre-existing warnings reported by Biome); `bun test` passed (exit 0).
 ---
+
+## [2026-05-19 10:40 CDT] - PR #106 Triage Note
+- Real issue: `ts-loader.ts` now keeps scanning all `require()` calls before emitting the generic rejection, so a later forbidden builtin (for example `node:fs`) is no longer hidden behind an earlier harmless `require()`.
+- Not-an-issue: the reported Effect-return test failure did not reproduce locally; the current branch already resolves function-form `Effect.succeed(...)` exports, and the full Bun test suite passed after the loader fix.
+
+## [2026-05-19 09:37–10:05 CDT] - Babysit
+- PR: #106 https://github.com/AaronFeledy/core4/pull/106
+- CI outcome (run 1): fail — static-checks: `LandofileServiceLive — TS form Effect-return support > function form returning an Effect.succeed value resolves to a parsed Landofile` (2.07ms); build/provider skipped
+- Review feedback: Bugbot NEUTRAL — 1 medium bug: `sandboxScan` for-loop returned generically on first iteration instead of continuing scan. Real issue fixed.
+- Triage rounds used: 1
+  - CI failure root cause: test wrote `.lando.ts` to system tmpdir; Bun can't resolve `effect` from `/tmp` in CI (no node_modules in path). Fix: add `baseDir` param to `withTempCwd` and use `import.meta.dir` for the Effect-import test.
+  - Bugbot bug real: original loop had `return Effect.fail(violationFor(...))` INSIDE the for-loop body, causing it to return on first iteration without checking remaining requires. Fix: extract `requiredCalls`, separate generic error to after-loop check.
+  - CI outcome (run 2): pass — static-checks ✅, build-linux-x64 ✅, provider-integration-linux-x64 ✅, Bugbot skipping (no new bugs)
+- Merge: merged (squash) PR #106 → main
+- Local main / branch refreshed: yes (main pulled, us-014b-landofile-ts-loader deleted)
+- Remaining local state: clean on main
+---
+
+## [2026-05-19 10:04 CDT] - Sync
+- Previous branch: us-014b-landofile-ts-loader
+- Previous PR: #106 https://github.com/AaronFeledy/core4/pull/106
+- Action: caught up after prior merge (PR already MERGED; fast-path committed stale progress.txt to local main)
+- Local main updated: yes (already at origin/main; 1 commit ahead due to fast-path progress.txt commit)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-19 17:30 CDT] - Babysit
+- PR: #107 https://github.com/AaronFeledy/core4/pull/107
+- CI outcome: pass — static-checks ✅ (1m15s), build-linux-x64 ✅ (36s), provider-integration-linux-x64 ✅ (1m30s), Cursor Bugbot ✅ (5m7s)
+- Review feedback: none (reviewDecision: "", latestReviews: [], comments: [])
+- Triage rounds used: 0
+- Merge: merged (squash) PR #107 → main (mergedAt: 2026-05-19T17:28:47Z, GitHub auto-merged during CI watch)
+- Local main / branch refreshed: yes (reset --hard origin/main at a58bbd2; us-029-programmatic-landofile deleted)
+- Remaining local state: clean on main
+---
+
+## [2026-05-19 12:30 CDT] - Babysit
+- PR: #107 https://github.com/AaronFeledy/core4/pull/107
+- CI outcome: pass — static-checks ✅, build-linux-x64 ✅, provider-integration-linux-x64 ✅, Cursor Bugbot ✅ (all SUCCESS, 0 failures)
+- Review feedback: none (reviewDecision: "", latestReviews: [], comments: [])
+- Triage rounds used: 0 (no actionable items; all checks clean, no review feedback, Bugbot SUCCESS)
+- Merge: merged (squash) PR #107 → main (already merged at 2026-05-19T17:28:47Z by gh pr merge)
+- Local main / branch refreshed: yes (reset --hard origin/main at a58bbd2; us-029-programmatic-landofile deleted)
+- Remaining local state: clean on main at a58bbd2
+---
