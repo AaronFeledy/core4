@@ -11,6 +11,7 @@ import {
   RecipeManifestNotFoundError,
   RecipeManifestValidationError,
   RecipeMissingAnswerError,
+  RecipePostInitError,
   RecipePromptValidationError,
 } from "@lando/sdk/errors";
 
@@ -908,15 +909,17 @@ const runCompiledCli = async (argv: ReadonlyArray<string>): Promise<void> => {
           ? `${error.message}\n${error.remediation}`
           : error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError
             ? `${error.message}\n${error.remediation}`
-            : error instanceof NotImplementedError
+            : error instanceof RecipePostInitError
               ? `${error.message}\n${error.remediation}`
-              : error instanceof RecipeManifestNotFoundError
-                ? error.message
-                : error instanceof RecipeManifestValidationError
-                  ? `${error.message}${error.issues.length > 0 ? `\n  - ${error.issues.join("\n  - ")}` : ""}`
-                  : error instanceof Error
-                    ? error.message
-                    : String(error);
+              : error instanceof NotImplementedError
+                ? `${error.message}\n${error.remediation}`
+                : error instanceof RecipeManifestNotFoundError
+                  ? error.message
+                  : error instanceof RecipeManifestValidationError
+                    ? `${error.message}${error.issues.length > 0 ? `\n  - ${error.issues.join("\n  - ")}` : ""}`
+                    : error instanceof Error
+                      ? error.message
+                      : String(error);
       console.error(message);
       process.exitCode = 1;
     }

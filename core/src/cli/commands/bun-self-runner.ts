@@ -35,7 +35,7 @@ const isReentryBlocked = (env: NodeJS.ProcessEnv): boolean => {
   return typeof value === "string" && value !== "" && value !== "0";
 };
 
-const defaultSpawner: BunSelfSpawner = {
+export const defaultBunSelfSpawner: BunSelfSpawner = {
   spawn: async ({ cmd, env, cwd }) => {
     const proc = Bun.spawn({
       cmd: [...cmd],
@@ -50,7 +50,14 @@ const defaultSpawner: BunSelfSpawner = {
   },
 };
 
-const childEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
+/**
+ * Build the child-process env for `bun install` / self-reentry.
+ *
+ * Pass-through by design: registry auth and other parent env values must
+ * survive into the spawned Bun process; the inherited stdio path keeps Bun's
+ * own UX intact.
+ */
+export const childEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> => {
   const env: Record<string, string> = {};
   for (const [k, v] of Object.entries(parentEnv)) if (typeof v === "string") env[k] = v;
   env[BUN_BE_BUN_ENV] = "1";
@@ -73,7 +80,7 @@ export const bunSelfRun = (
         }),
       );
     }
-    const spawner = options.spawner ?? defaultSpawner;
+    const spawner = options.spawner ?? defaultBunSelfSpawner;
     const execPath = options.execPath ?? process.execPath;
     const cwd = options.cwd ?? process.cwd();
     const { exitCode } = yield* Effect.promise(() =>

@@ -9,6 +9,7 @@ import { RecipeManifestService } from "@lando/sdk/services";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
+import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
 import {
   type PromptAnswers,
   type PromptIO,
@@ -16,6 +17,7 @@ import {
   createStdioPromptIO,
 } from "../../recipes/prompts/index.ts";
 import { resolveRecipeRef } from "../../recipes/source.ts";
+import type { BunSelfSpawner } from "./bun-self-runner.ts";
 
 const APP_NAME_PROMPT = "name";
 
@@ -28,12 +30,15 @@ export interface InitAppOptions {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly io?: PromptIO;
+  readonly postInitSpawner?: BunSelfSpawner;
+  readonly postInitIO?: PostInitIO;
 }
 
 export interface InitAppResult {
   readonly appName: string;
   readonly directory: string;
   readonly answers: PromptAnswers;
+  readonly postInit: PostInitOutcome;
 }
 
 const loadRecipe = async (recipeRef: string, cwd: string) => {
@@ -137,5 +142,16 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     await writeFile(destPath, content);
   }
 
-  return { appName, directory, answers: collected };
+  const postInitActions = manifest.postInit ?? [];
+  const postInit = await runPostInit({
+    actions: postInitActions,
+    destination: directory,
+    recipeId: manifest.id,
+    appName,
+    answers: collected,
+    ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
+    ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
+  });
+
+  return { appName, directory, answers: collected, postInit };
 };

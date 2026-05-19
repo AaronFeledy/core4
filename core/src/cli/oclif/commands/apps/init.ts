@@ -13,6 +13,7 @@ import {
   RecipeManifestNotFoundError,
   RecipeManifestValidationError,
   RecipeMissingAnswerError,
+  RecipePostInitError,
   RecipePromptValidationError,
 } from "@lando/sdk/errors";
 
@@ -86,6 +87,9 @@ export default class InitCommand extends LandoCommandBase {
         throw new Error(`${error.message}\n${error.remediation}`);
       }
       if (error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError) {
+        throw new Error(`${error.message}\n${error.remediation}`);
+      }
+      if (error instanceof RecipePostInitError) {
         throw new Error(`${error.message}\n${error.remediation}`);
       }
       if (error instanceof NotImplementedError) {

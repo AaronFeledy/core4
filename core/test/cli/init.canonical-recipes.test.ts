@@ -228,6 +228,7 @@ describe("lando init — canonical common-stack recipes", () => {
           recipe: canonical.recipe,
           nonInteractive: true,
           answers: canonical.answers,
+          postInitIO: { out: () => {}, err: () => {} },
         });
         expect(result.appName).toBe(canonical.answers.name as string);
         expect(await Bun.file(join(result.directory, ".lando.yml")).exists()).toBe(true);

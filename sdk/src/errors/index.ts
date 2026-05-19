@@ -217,6 +217,24 @@ export class RecipePromptValidationError extends Schema.TaggedError<RecipePrompt
   },
 ) {}
 
+export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>()("RecipePostInitError", {
+  message: Schema.String,
+  recipe: Schema.String,
+  actionIndex: Schema.Number,
+  actionType: Schema.String,
+  actionVerb: Schema.optional(Schema.String),
+  kind: Schema.Literal(
+    "outside-destination",
+    "missing-package-json",
+    "unsupported-action",
+    "exit",
+    "when-not-supported",
+  ),
+  remediation: Schema.String,
+  exitCode: Schema.optional(Schema.Number),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class ServiceTypeError extends Schema.TaggedError<ServiceTypeError>()("ServiceTypeError", {
   message: Schema.String,
   serviceType: Schema.String,
