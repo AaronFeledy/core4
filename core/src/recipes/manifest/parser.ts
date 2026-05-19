@@ -1,10 +1,3 @@
-/**
- * `recipe.yml` YAML parser — Alpha recipe.yml is a YAML subset covering
- * nested maps, lists, and lists-of-maps. The shape mirrors the Landofile
- * parser but does not reject `${...}` substrings, because recipe scalars
- * may carry `${VAR}` / `{{ expr }}` recipe expressions (§8.8.6) that
- * resolve at render time, not parse time.
- */
 import { Effect } from "effect";
 
 import { RecipeManifestParseError } from "@lando/sdk/errors";

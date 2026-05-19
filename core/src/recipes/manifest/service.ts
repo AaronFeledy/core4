@@ -1,24 +1,13 @@
 /**
- * `RecipeManifestService` Live Layer (PRD-04 US-025).
+ * `RecipeManifestService` live layer.
  *
- * Pipeline: pre-decode Beta rejection → strict Effect Schema decode →
+ * Pipeline: pre-decode rejection, strict Effect Schema decode, and
  * tagged error preservation. Mirrors `LandofileServiceLive`.
  *
- * Beta-deferred sections rejected here:
- *   - top-level `runs:` (canonical command allowlist, §8.8.14)
- *   - top-level `fetchAllowlist:` (HTTP host allowlist, §8.8.14)
- *   - recipe-wide and per-prompt `deprecated:` notices (§18 — the
- *     `DeprecationNotice` schema is not shipped in Alpha)
- *   - any prompt with `type: editor` (§8.8.5; Alpha covers 7 prompt types)
- *   - any prompt with `choicesFrom:` (dynamic choices via canonical
- *     command, depends on `runs:`)
- *   - any `postInit.bun` entry whose `verb:` is not `install`
- *     (PRD-04 US-030 ships only `install`)
- *
- * Post-decode semantic validation (after strict schema decode) enforces:
- *   - prompt `name` uniqueness within a recipe (§8.8.3)
+ * Post-decode semantic validation enforces:
+ *   - prompt `name` uniqueness within a recipe
  *   - `choices:` required and non-empty for `select`/`multiselect`
- *     prompts (§8.8.3, §8.8.5)
+ *     prompts
  */
 import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
@@ -174,7 +163,7 @@ const validateSemantics = (
   const issues: string[] = [];
 
   if (manifest.prompts !== undefined) {
-    // §8.8.3: prompt `name` values MUST be unique within a recipe.
+    // Prompt `name` values must be unique within a recipe.
     const seen = new Set<string>();
     for (const prompt of manifest.prompts) {
       if (seen.has(prompt.name)) {
@@ -183,9 +172,7 @@ const validateSemantics = (
       seen.add(prompt.name);
     }
 
-    // §8.8.3 + §8.8.5: `choices:` is required and non-empty for
-    // `select`/`multiselect` (the dynamic `choicesFrom:` alternative
-    // is Beta and is rejected before this point).
+    // `choices:` is required and non-empty for `select`/`multiselect`.
     for (const [index, prompt] of manifest.prompts.entries()) {
       if (prompt.type !== "select" && prompt.type !== "multiselect") continue;
       if (prompt.choices === undefined || prompt.choices.length === 0) {

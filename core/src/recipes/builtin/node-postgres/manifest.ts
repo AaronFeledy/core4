@@ -2,8 +2,7 @@
  * Bundled `recipe.yml` for the built-in `node-postgres` scaffold.
  *
  * Embedded as a string so the compiled `$bunfs` binary does not need a
- * runtime filesystem read. Future stories will replace this string-bundled
- * form with the full §17.2 bundled-recipes codegen pipeline.
+ * runtime filesystem read.
  */
 export const NODE_POSTGRES_RECIPE_ID = "node-postgres";
 
