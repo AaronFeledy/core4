@@ -3751,3 +3751,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - In-process `initApp` calls from `bun test` that don't pipe a `PromptIO` and don't set `nonInteractive: true` will hang on `process.stdin` because `createStdioPromptIO()` is the default; tests that exercise the post-prompt error paths (e.g. existing-directory guard) MUST pass `nonInteractive: true` to avoid this.
   - `Bun.spawn` defaults stdin to "ignore" in this repo, so subprocess CLI tests that don't script stdin will see EOF immediately and the recipe-selection prompt's default kicks in. Tests that DO script stdin need to script the recipe selection answer first (blank line accepts default), then the recipe's own prompts.
 ---
+
+## [2026-05-19 14:35 CDT] - US-031 Review
+- Reviewed commit 5e6628b ("feat: Make `apps:init` interactive full prompt flow") against PRD-04 US-031 acceptance criteria.
+- No review fixes required. Build-step diff is focused and single-story (interactive recipe selection only; renderer-mode coverage correctly deferred to US-039).
+- `review-work` findings: none surfaced for fix; targeted manual review of the diff confirmed:
+  - synthetic `__recipe__` prompt cannot collide with a recipe's own prompts (consumed in a separate `collectPrompts` invocation before manifest load),
+  - `--recipe=""` correctly falls through to interactive picker,
+  - `--yes` / `--no-interactive` short-circuit to `NODE_POSTGRES_RECIPE_ID` matching AC2,
+  - `getRecipeCatalog()` regex is top-level-only and safe for the bundled YAML corpus,
+  - module-level catalog cache is pure-data and concurrency-safe.
+- Verification: `bun run typecheck` exit 0; `bun run lint` exit 0 (2 pre-existing warnings in `init.landofile-ts.test.ts`, unrelated); `bun test` 802 pass / 11 skip / 0 fail.
+- **Learnings for future iterations:**
+  - For synthetic prompt indirection (drive `collectPrompts` over a one-off prompt to make a pre-manifest decision), prefer a sentinel name that cannot clash with any recipe prompt (`__recipe__`) and consume the answer inside the indirection helper rather than threading it into the downstream `collectPrompts` call. Two separate `collectPrompts` invocations are cheaper than trying to fuse the synthetic prompt into the recipe's prompt list.
+---
