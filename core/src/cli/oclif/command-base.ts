@@ -3,9 +3,10 @@ import { Command } from "@oclif/core";
 
 import { Cause, Effect, Exit, type Layer } from "effect";
 
-import { LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk/errors";
+import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
+import { resolveRendererMode } from "../renderer-selection.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
@@ -143,6 +144,11 @@ const commandErrorMessage = (error: unknown): string => {
       details.push(`commandId: ${error.commandId}`);
     if (tag === "NotImplementedError" && "specSection" in error && typeof error.specSection === "string")
       details.push(`specSection: ${error.specSection}`);
+    if (tag === "RendererSelectionError") details.unshift(tag);
+    if (tag === "RendererSelectionError" && "value" in error && typeof error.value === "string")
+      details.push(`value: ${error.value}`);
+    if (tag === "RendererSelectionError" && "source" in error && typeof error.source === "string")
+      details.push(`source: ${error.source}`);
     if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
     if (tag === "LandofileNotFoundError")
       details.push("Run `lando init --full --name=<name>` to scaffold an app.");
@@ -198,8 +204,22 @@ export abstract class LandoCommandBase extends Command {
    * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
-    // Guard deferred commands before OCLIF parses argv so they still emit structured
-    // NotImplementedError output instead of OCLIF flag parse errors.
+    let rendererMode: "lando" | "json" | "plain";
+    try {
+      const resolution = resolveRendererMode({
+        argv: this.argv,
+        env: process.env,
+      });
+      rendererMode = resolution.mode;
+      this.argv.length = 0;
+      this.argv.push(...resolution.remainingArgv);
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        throw new Error(commandErrorMessage(error));
+      }
+      throw error;
+    }
+
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
     }
@@ -223,6 +243,7 @@ export abstract class LandoCommandBase extends Command {
       signal: controller.signal,
       flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
       args: (parsed as { args?: Record<string, unknown> }).args ?? {},
+      rendererMode,
     };
     const exit = await Effect.runPromiseExit(
       Effect.provide(spec.run(input), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),

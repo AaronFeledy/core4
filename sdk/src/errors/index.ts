@@ -403,3 +403,19 @@ export class NotImplementedError extends Schema.TaggedError<NotImplementedError>
   specSection: Schema.String,
   remediation: Schema.String,
 }) {}
+
+/**
+ * RendererSelectionError — raised before command execution when an
+ * unsupported `--renderer=<value>` flag, `LANDO_RENDERER` environment
+ * variable, or global `renderer:` configuration value is supplied. The
+ * Alpha-supported set is `lando | json | plain` per §8.9.
+ */
+export class RendererSelectionError extends Schema.TaggedError<RendererSelectionError>()(
+  "RendererSelectionError",
+  {
+    message: Schema.String,
+    value: Schema.String,
+    source: Schema.Literal("flag", "env", "config"),
+    remediation: Schema.String,
+  },
+) {}
