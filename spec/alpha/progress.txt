@@ -3388,3 +3388,19 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan: post-cleanup `rg`/`grep` over branch-changed `*.ts` comments shows zero remaining mentions of `SPEC:`, `§`, `per spec`, `canonical spec`, `roadmap`, `deferred for MVP`, `xfail: PRD`, phase labels (mvp/alpha/beta/rc/Phase N), or PRD/story IDs (`prd-…`, `US-###`) in code comments. Remaining `§8.8.4` / `§8.8.3` occurrences are all in runtime string literals (`specSection: "§8.8.4"` default param shipped to users via `NotImplementedError`), `describe()`/`test()` string literals, or assertions verifying user-visible `specSection` output — all explicitly out of scope per the rule ("In code comments only").
 - Behavior review: cleanup is comment-only. Imports, exports, public APIs, error handling, side effects, return values, and tests are unchanged. No test was weakened, skipped, deleted, or loosened.
 - Verification run and result: lsp diagnostics N/A (typescript-language-server not installed in sandbox; `tsc -b` is the canonical check); `bun run typecheck` passed (clean `tsc -b`); `bun run lint` passed (`biome check .` 353 files, no fixes); `bun test` passed (730 pass, 11 skip, 0 fail, 3300 expect() calls — bit-for-bit match with the post-review baseline from the same branch state, so no regressions introduced by the comment-only cleanup).
+
+## [2026-05-19] - Push
+- Branch: us-027-cwd-recipe-source
+- Push: pushed
+- Commit(s): 1136e8e chore: remove AI slop, a9b394f fix(US-027 review): enforce id↔basename, tag local IO failures, cover tarball refs, 9139649 feat: Ship cwd-only recipe source
+- PR: #104 https://github.com/AaronFeledy/core4/pull/104 (created)
+---
+
+## [2026-05-19] - US-027 triage
+- Review: Bugbot comment about `listBuiltinRecipeIds` was a real issue; the export had no consumers and was dead API surface, so I removed the export from `core/src/recipes/source.ts` instead of leaving unused public code behind.
+- CI: no failures to fix on this PR; `gh pr checks 104` was already green, so I only addressed the review finding.
+- Verification pending: local typecheck/lint/test rerun after the code change.
+
+## [2026-05-19] - PR #104 verification
+- Final triage: Bugbot's unused-export comment was a real issue; removed `listBuiltinRecipeIds` from `core/src/recipes/source.ts` as dead public API.
+- Checks: `bun run typecheck`, `bun run lint`, and `bun test` all passed after the change.

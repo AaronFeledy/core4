@@ -179,5 +179,3 @@ export const resolveRecipeRef = (
       return Effect.fail(notImplemented("unknown", ref));
   }
 };
-
-export const listBuiltinRecipeIds = (): ReadonlyArray<string> => BUNDLED_RECIPES.map((recipe) => recipe.id);
