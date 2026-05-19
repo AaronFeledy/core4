@@ -3227,3 +3227,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Cleanup changed only comment/documentation surfaces in `core/src/recipes/builtin/node-postgres/manifest.ts`, `core/src/recipes/manifest/parser.ts`, `core/src/recipes/manifest/service.ts`, `sdk/src/errors/index.ts`, `sdk/src/schema/index.ts`, and `sdk/src/services/index.ts`; no runtime code, schemas, public APIs, imports, error fields, or test assertions were changed.
 - Slop-remover result: removed redundant decorative section comments and reworded planning-doc traceability comments in branch-changed source files into plain technical descriptions. A follow-up scan found no remaining planning-doc references in actual code comments; remaining `beta-*` matches are test string literals, not comments.
 - Verification run and result: lsp diagnostics clean on changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (659 pass, 11 skip, 0 fail, 3066 expect() calls).
+
+## [2026-05-18 21:14 CDT] - Push
+- Branch pushed: us-025-parse-alpha-recipe-yml → origin
+- Commits: 9d167e3 (HEAD, chore: remove AI slop), 32f2572 (fix US-025 review), 617e0df (feat: Parse full Alpha recipe.yml schema)
+- PR: #102 https://github.com/AaronFeledy/core4/pull/102 (created)
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (git pull --ff-only; local story branch deleted)
+- Remaining local state: on main, clean
+---
