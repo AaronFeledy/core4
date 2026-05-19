@@ -3527,3 +3527,16 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## [2026-05-19 10:40 CDT] - PR #106 Triage Note
 - Real issue: `ts-loader.ts` now keeps scanning all `require()` calls before emitting the generic rejection, so a later forbidden builtin (for example `node:fs`) is no longer hidden behind an earlier harmless `require()`.
 - Not-an-issue: the reported Effect-return test failure did not reproduce locally; the current branch already resolves function-form `Effect.succeed(...)` exports, and the full Bun test suite passed after the loader fix.
+
+## [2026-05-19 09:37–10:05 CDT] - Babysit
+- PR: #106 https://github.com/AaronFeledy/core4/pull/106
+- CI outcome (run 1): fail — static-checks: `LandofileServiceLive — TS form Effect-return support > function form returning an Effect.succeed value resolves to a parsed Landofile` (2.07ms); build/provider skipped
+- Review feedback: Bugbot NEUTRAL — 1 medium bug: `sandboxScan` for-loop returned generically on first iteration instead of continuing scan. Real issue fixed.
+- Triage rounds used: 1
+  - CI failure root cause: test wrote `.lando.ts` to system tmpdir; Bun can't resolve `effect` from `/tmp` in CI (no node_modules in path). Fix: add `baseDir` param to `withTempCwd` and use `import.meta.dir` for the Effect-import test.
+  - Bugbot bug real: original loop had `return Effect.fail(violationFor(...))` INSIDE the for-loop body, causing it to return on first iteration without checking remaining requires. Fix: extract `requiredCalls`, separate generic error to after-loop check.
+  - CI outcome (run 2): pass — static-checks ✅, build-linux-x64 ✅, provider-integration-linux-x64 ✅, Bugbot skipping (no new bugs)
+- Merge: merged (squash) PR #106 → main
+- Local main / branch refreshed: yes (main pulled, us-014b-landofile-ts-loader deleted)
+- Remaining local state: clean on main
+---
