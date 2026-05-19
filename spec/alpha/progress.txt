@@ -3704,3 +3704,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `review-work` agents disagree on AC scope when wording is ambiguous. AC#6 "redact env/registry token values in output" was read by 3 agents as covering child stdout/stderr and by 1 (security) as covering Lando-rendered output only. The narrower reading aligns with the rest of the codebase's `lando bun install` posture (inherited stdio) and keeps `bun install` UX intact; the broader reading needs a separate story to redesign the spawner contract. Record the AC reading explicitly in the story when wording is ambiguous.
 ---
 - Triage for PR #108: issue 1 (child env duplication) was real and fixed by reusing exported `childEnv`; issue 2 (duplicate push/review block) was real and fixed by removing the duplicate section; issue 3 (`SECRET_ENV_PATTERN` duplication) was not-an-issue for this story because it is maintenance-only duplication and a cross-package centralization refactor would be broader scope. No CI failures to address.
+
+## [2026-05-19 13:55 CDT] - Babysit
+- PR: #108 https://github.com/AaronFeledy/core4/pull/108
+- CI outcome: pass (all 3 required checks SUCCESS on final HEAD 37be27d); Cursor Bugbot NEUTRAL
+- Review feedback: Bugbot ran twice (2 rounds of triage)
+  - Round 1 (commit 6fa89cf): 2 issues found; both fixed and pushed by triage sub-agent
+    - buildChildEnv duplication → fixed: commit 6e85989 (import childEnv from bun-self-runner.ts)
+    - duplicate Push/Review block in progress.txt → fixed: commit 37be27d
+  - Round 2 (commit 37be27d): 1 new issue found; reviewed and rejected
+    - SECRET_ENV_PATTERN regex duplication vs plugins/provider-lando/src/redact.ts → NOT actionable: core cannot import from a plugin; factoring into @lando/sdk is out of US-030 scope; both copies correct and consistent; duplication known/accepted during review step
+- Triage rounds used: 2
+- Merge: merged (squash) PR #108 → main at 02801f4 (already merged during CI watch)
+- Local main / branch refreshed: yes (git pull --ff-only; us-030-post-init-bun-install deleted)
+- Remaining local state: clean on main at 02801f4
+---
+
+## [2026-05-19 13:55 CDT] - Babysit
+- PR: #108 https://github.com/AaronFeledy/core4/pull/108
+- CI outcome: pass — static-checks ✅ (1m47s), build-linux-x64 ✅ (34s), provider-integration-linux-x64 ✅ (1m34s), Cursor Bugbot NEUTRAL (advisory only)
+- Review feedback: Bugbot found 3 issues across 2 rounds
+  - Round 1 (commit 6fa89cf): `buildChildEnv` duplication → fixed (6e85989, reuse imported `childEnv`); duplicate push/review log → fixed (37be27d, remove duplicate section)
+  - Round 2 (commit 37be27d): `SECRET_ENV_PATTERN` duplication between `core` and `plugins/provider-lando` → rejected: core cannot import from a plugin (dependency direction violation); clean fix requires `@lando/sdk` changes out of scope for this babysit; both copies correct and consistent; duplication knowingly accepted during review step
+- Triage rounds used: 2
+- Merge: merged (squash) PR #108 → main (02801f4) — PR was already merged by the time the babysit step ran
+- Local main / branch refreshed: yes (pulled ff-only to 02801f4; us-030-post-init-bun-install deleted)
+- Remaining local state: clean on main at 02801f4
+---
