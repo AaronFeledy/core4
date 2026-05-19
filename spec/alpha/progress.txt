@@ -3437,6 +3437,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: `static:nginx` and `static:caddy` are real service-type ids; static-site recipes (jekyll/hugo/eleventy) pair a Node/Ruby `builder` service with a `web: static:nginx` mount over `/app`. MongoDB and dedicated `astro`/`sveltekit`/`nextjs` service types are deferred — each affected recipe documents the substitution in its README.
 ---
 
+## [2026-05-19 CDT] - Push
+- Branch: us-028-canonical-recipes
+- Push: pushed
+- Commit(s): 8badcaf docs(US-028 review): match empty recipe README to emitted Landofile; 9a22cb9 feat: Ship canonical common-stack recipes
+- PR: #105 https://github.com/AaronFeledy/core4/pull/105 (created)
+---
+
 ## [2026-05-19 CDT] - US-028 Review
 - Reviewed the US-028 build commit (HEAD `9a22cb9 feat: Ship canonical common-stack recipes`) against PRD-04 US-028 acceptance criteria and spec §8.8.10. Verified all 16 §8.8.10 canonical recipe ids (wordpress, laravel, symfony, lamp, lemp, node-api, astro, sveltekit, nextjs, django, fastapi, rails, jekyll, hugo, eleventy, empty) ship in `core/build.config.ts#bundledRecipes`, are statically imported by `core/src/recipes/builtin/registry.ts#BUILTIN_RECIPE_RENDERERS`, and are exercised by the parametrized scenario test `core/test/cli/init.canonical-recipes.test.ts` (init → parse via `LandofileService.discover` → assert service ids/types + tooling ids). The legacy `node-postgres` MVP scaffold is retained alongside, not removed. Spot-checked every renderer (`render.ts`) and confirmed each emits a parseable, services-keyed Landofile and that the renderer dispatch (`initApp` → `manifest.id` → `lookupRecipeRenderer`) only fires for bundled refs (`resolved.root === undefined`), so a local recipe id collision cannot poach a bundled renderer.
 - Files changed by review: `core/src/recipes/builtin/empty/README.md` (1-line doc correction).
