@@ -3456,3 +3456,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - The renderer-dispatch guard `resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined` (in `initApp`) is the right pattern for keeping local-recipe renderer support (a future story) cleanly separated from bundled-recipe dispatch: a local recipe whose `manifest.id` happens to match a bundled id cannot smuggle in the bundled renderer.
   - A parametrized scenario-style test (one `test()` per case, single `for…of` loop) is the right shape for "ship N variants" stories; it reads as a table of expected service ids/types/tooling ids and the failure mode is "which row failed?" instead of "which assertion in the giant test failed?".
 ---
+
+## 2026-05-19 07:36 CDT - Babysit
+- PR: #105 https://github.com/AaronFeledy/core4/pull/105
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash), remote branch deleted
+- Local main / branch refreshed: yes (fast-forward pull, local us-028-canonical-recipes deleted)
+- Remaining local state: on main, clean
+---
