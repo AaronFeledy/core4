@@ -3773,3 +3773,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Slop-remover result: removed planning-doc leakage / verbose traceability from catalog comments and removed a redundant prompt-flow comment from the init prompt test; no functional code, imports, public APIs, return values, side effects, or assertions changed. Planning files were inspected and left untouched.
 - Planning-doc comment scan: branch-changed source/test comments are clean. Remaining story IDs / phase-like values are test names or fixture values, not code comments.
 - Verification run and result: lsp diagnostics clean on changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed with the same two warnings; `bun run build` passed; focused compiled alias/build tests passed after isolated rebuild; full `bun test --max-concurrency=1` passed (802 pass, 11 skip, 0 fail, 3746 expect). Earlier default-concurrency full-test attempts hit compiled-binary build races while other build/test commands were active; the isolated focused and serial full runs passed from the cleanup state.
+
+## 2026-05-19 - Push
+- Branch: us-031-init-interactive-prompts
+- Push: pushed
+- Commit(s): 5e6628b feat: Make `apps:init` interactive full prompt flow, 0cdda0b docs: record US-031 review, 108a8c6 chore: remove AI slop
+- PR: #109 https://github.com/AaronFeledy/core4/pull/109 (created)
+---
+
+## [2026-05-19 19:54 UTC] - Sync
+- Previous branch: us-031-init-interactive-prompts
+- Previous PR: #109 https://github.com/AaronFeledy/core4/pull/109
+- Action: caught up after prior merge (Case C — PR already MERGED)
+- Fast-path note: progress.txt had uncommitted changes; stashed, pulled, popped, committed locally to main
+- Local main updated: yes (already at origin/main + 1 local progress-log commit)
+- Branch after sync: main
+- Stash created: no (transient fast-path stash was popped and committed)
+---
+
+## [2026-05-19 14:51 CDT] - Babysit
+- PR: #109 https://github.com/AaronFeledy/core4/pull/109
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — PR was already merged by gh cli
+- Local main / branch refreshed: yes (reset to origin/main, story branch deleted)
+- Remaining local state: none
+---
