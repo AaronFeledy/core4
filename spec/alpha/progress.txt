@@ -3674,6 +3674,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Useful context: env-token redaction for failure remediation reuses the same `password|secret|token|credential|bearer|apikey` env-name pattern that `plugins/provider-lando/src/redact.ts` uses, plus a `//user:pass@registry` URL form, so credentials embedded in registry URLs in the failing command line/env do not leak into renderer transcripts.
 ---
 
+## [2026-05-19] - Push
+- Branch: us-030-post-init-bun-install
+- Push: pushed
+- Commit(s): e38a2dc feat: Implement Alpha postInit bun install action | 3ab1472 fix(post-init): wire default Bun spawner so postInit bun install runs in production
+- PR: #108 https://github.com/AaronFeledy/core4/pull/108 (created)
+---
+
 ## [2026-05-19 13:22 CDT] - US-030 Review
 - Reviewed `e38a2dc` (US-030 build step) via 5-agent `review-work`: goal-verification, security, code-quality (all oracle), context-mining, hands-on QA. 4/5 returned FAIL with a convergent root cause: production CLI never wired a `BunSelfSpawner` into `initApp`, so any recipe declaring `postInit: bun install` would fail with `RecipePostInitError(kind:"exit", "no Bun spawner is wired in this build")` — making the story title ("Implement Alpha `postInit` bun install action") unsatisfied end-to-end even though unit-level ACs were green.
 - Fix: exported `defaultBunSelfSpawner` from `core/src/cli/commands/bun-self-runner.ts` (renamed from the previously private `defaultSpawner`) and used it as the implicit default in `runPostInit` when `options.spawner` is omitted. This removes the unreachable "no spawner wired" error branch (which conflated wiring failure with child-exit semantics) and lets the existing `run.ts` / `apps/init.ts` callers stay unchanged. Production now re-execs the running Lando binary with `BUN_BE_BUN=1` + `LANDO_DISALLOW_BUN_BE_BUN_REENTRY=1`, mirroring the established `bunSelfRun` self-exec pattern; test injection of a fake spawner still wins via the `??` fallback so all post-init unit tests pass unmodified.
@@ -3695,6 +3702,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: when a runtime accepts an injected dependency (`options.spawner?: BunSelfSpawner`), the production path MUST either (a) pass a real one through all call sites, or (b) provide an exported default via `??`. Pattern (b) keeps the seam test-injectable without forcing every caller to know about the wiring, and avoids dead "no X is wired" error branches that conflate misconfiguration with runtime failure. We now export `defaultBunSelfSpawner` from `bun-self-runner.ts` for both `bunSelfRun` and `runPostInit`; future spawner-shaped seams should follow the same default-export pattern.
   - Gotchas encountered: when a helper is named `filtered*` but does NOT filter, the next reviewer/agent will assume secrets are scrubbed and chase false leads. If a function intentionally passes everything through, name it for what it DOES (`buildChildEnv`, `childEnvWithBunFlags`) and document WHY in a docstring; reviewers explicitly flagged the prior misname as "redaction theater".
   - Useful context: `review-work` agents disagree on AC scope when wording is ambiguous. AC#6 "redact env/registry token values in output" was read by 3 agents as covering child stdout/stderr and by 1 (security) as covering Lando-rendered output only. The narrower reading aligns with the rest of the codebase's `lando bun install` posture (inherited stdio) and keeps `bun install` UX intact; the broader reading needs a separate story to redesign the spawner contract. Record the AC reading explicitly in the story when wording is ambiguous.
+---
+
+## [2026-05-19] - Push
+- Branch: us-030-post-init-bun-install
+- Push: pushed
+- Commit(s): e38a2dc feat: Implement Alpha postInit bun install action | 3ab1472 fix(post-init): wire default Bun spawner so postInit bun install runs in production
+- PR: #108 https://github.com/AaronFeledy/core4/pull/108 (created)
 ---
 
 ## [2026-05-19 13:22 CDT] - US-030 Review
