@@ -3740,3 +3740,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-19 14:24 CDT] - US-031
+- Implemented interactive recipe selection for `lando init`. When `--recipe` is omitted in interactive mode (not `--no-interactive`, not `--yes`), the init flow now drives a synthetic `select` prompt listing every bundled recipe with title + description, defaulting to `node-postgres`. `--no-interactive` / `--yes` without `--recipe` keep the existing `node-postgres` default. Non-interactive CI scenarios honor `--recipe=<id>` + repeatable `--answer key=value` to scaffold without any prompt. Both source OCLIF and compiled `$bunfs` paths reuse the change (compiled `runCompiledCli` already delegates to `initApp`).
+- Files changed: core/src/recipes/catalog.ts (new), core/src/cli/commands/init.ts, core/test/cli/init.recipe-selection.test.ts (new), core/test/cli/init.prompts.test.ts, core/test/cli/init.scenario.test.ts, spec/alpha/prd.json, spec/alpha/progress.txt.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (2 pre-existing warnings, unrelated to this change); `bun test` passed (802 pass, 11 skip, 0 fail, 3746 expect()); `bun run build` passed; manual CLI QA on host covered: (1) interactive default pick via blank stdin → node-postgres scaffold, (2) interactive pick by id (`empty`) → empty recipe scaffold, (3) interactive pick by index (`17`) → empty scaffold, (4) invalid choice (`bogus`) re-prompts then accepts a valid index, (5) `--no-interactive --recipe=empty --answer=name=ci-app` skips the recipe prompt entirely, (6) compiled `core/dist/lando` reproduces both the no-recipe default and the interactive recipe pick.
+- **Learnings for future iterations:**
+  - Bundled recipe catalog metadata (title + description) can be extracted lazily via regex over the static `manifestYaml` strings in `BUNDLED_RECIPES` (see `core/src/recipes/catalog.ts`). No full YAML parse is needed for picker rendering and no runtime FS access is required in the compiled `$bunfs` binary.
+  - The recipe-selection prompt reuses `collectPrompts` with a synthetic `select`-type `RecipePrompt`, which means `--yes` short-circuits to the recipe default and the standard re-prompt-on-invalid behavior is inherited for free.
+  - In-process `initApp` calls from `bun test` that don't pipe a `PromptIO` and don't set `nonInteractive: true` will hang on `process.stdin` because `createStdioPromptIO()` is the default; tests that exercise the post-prompt error paths (e.g. existing-directory guard) MUST pass `nonInteractive: true` to avoid this.
+  - `Bun.spawn` defaults stdin to "ignore" in this repo, so subprocess CLI tests that don't script stdin will see EOF immediately and the recipe-selection prompt's default kicks in. Tests that DO script stdin need to script the recipe selection answer first (blank line accepts default), then the recipe's own prompts.
+---

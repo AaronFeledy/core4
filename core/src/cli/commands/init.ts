@@ -4,10 +4,12 @@ import { dirname, join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import { InitTargetExistsError } from "@lando/sdk/errors";
+import type { RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
+import { getRecipeCatalog } from "../../recipes/catalog.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
 import {
@@ -20,6 +22,42 @@ import { resolveRecipeRef } from "../../recipes/source.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
 
 const APP_NAME_PROMPT = "name";
+const RECIPE_SELECT_PROMPT = "__recipe__";
+
+const buildRecipeSelectPrompt = (): RecipePrompt => {
+  const catalog = getRecipeCatalog();
+  const choices: ReadonlyArray<RecipePromptChoice> = catalog.map((entry) => ({
+    value: entry.id,
+    label: entry.description === "" ? entry.title : `${entry.title} — ${entry.description}`,
+  }));
+  return {
+    name: RECIPE_SELECT_PROMPT,
+    type: "select",
+    message: "Pick a recipe",
+    default: NODE_POSTGRES_RECIPE_ID,
+    choices,
+  };
+};
+
+const resolveRecipeSelection = async (
+  options: InitAppOptions,
+  io: PromptIO | undefined,
+  cwd: string,
+): Promise<string> => {
+  if (options.recipe !== undefined && options.recipe !== "") return options.recipe;
+  const interactive = options.nonInteractive !== true && io !== undefined && options.yes !== true;
+  if (!interactive) return NODE_POSTGRES_RECIPE_ID;
+  const collected = await collectPrompts({
+    prompts: [buildRecipeSelectPrompt()],
+    answers: {},
+    yes: false,
+    nonInteractive: false,
+    cwd,
+    io: io as PromptIO,
+  });
+  const picked = collected[RECIPE_SELECT_PROMPT];
+  return typeof picked === "string" ? picked : NODE_POSTGRES_RECIPE_ID;
+};
 
 export interface InitAppOptions {
   readonly cwd: string;
@@ -75,7 +113,8 @@ const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
 
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
-  const recipeRef = options.recipe ?? NODE_POSTGRES_RECIPE_ID;
+  const io = resolveIO(options);
+  const recipeRef = await resolveRecipeSelection(options, io, cwd);
   const { resolved, manifest } = await loadRecipe(recipeRef, cwd);
 
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
@@ -88,7 +127,6 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const prompts = manifest.prompts ?? [];
 
   const presetAnswers = composeAnswers(options);
-  const io = resolveIO(options);
   const useDefaults = options.yes === true;
 
   const collected = await collectPrompts({
