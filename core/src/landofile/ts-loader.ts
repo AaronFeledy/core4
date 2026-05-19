@@ -39,7 +39,10 @@ const FORBIDDEN_NODE_MODULES: ReadonlySet<string> = new Set([
   "inspector",
 ]);
 
-const FORBIDDEN_REQUIRE_REGEX = /\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
+// Matches bare `require("x")`, `(require)("x")`, and template-literal forms
+// like ``require(`x`)`` with double/single/back-tick string args.
+const FORBIDDEN_REQUIRE_REGEX =
+  /(?:\brequire\b|\(\s*require\s*\))\s*\(\s*(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)\s*\)/g;
 
 interface ImportLike {
   readonly path: string;
@@ -105,9 +108,10 @@ const scanImports = (content: string): ReadonlyArray<ImportLike> => {
 
 const scanRequireCalls = (content: string): ReadonlyArray<string> => {
   const found: string[] = [];
+  FORBIDDEN_REQUIRE_REGEX.lastIndex = 0;
   let match: RegExpExecArray | null = FORBIDDEN_REQUIRE_REGEX.exec(content);
   while (match !== null) {
-    const captured = match[1];
+    const captured = match[1] ?? match[2] ?? match[3];
     if (captured !== undefined) found.push(captured);
     match = FORBIDDEN_REQUIRE_REGEX.exec(content);
   }
@@ -203,16 +207,20 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
   if (typeof exported === "function") {
     const ctx = buildContext(filePath);
     const result = (exported as (ctx: LandofileContext) => unknown)(ctx);
-    if (
-      result !== null &&
-      typeof result === "object" &&
-      typeof (result as { then?: unknown }).then === "function"
-    ) {
-      return await (result as Promise<unknown>);
-    }
-    return result;
+    return await resolveLandofileResult(result);
   }
-  return exported;
+  return await resolveLandofileResult(exported);
+};
+
+const resolveLandofileResult = async (result: unknown): Promise<unknown> => {
+  if (result === null || typeof result !== "object") return result;
+  if (Effect.isEffect(result)) {
+    return await Effect.runPromise(result as Effect.Effect<unknown, unknown>);
+  }
+  if (typeof (result as { then?: unknown }).then === "function") {
+    return await resolveLandofileResult(await (result as Promise<unknown>));
+  }
+  return result;
 };
 
 const evaluateImport = (filePath: string): Effect.Effect<unknown, LandofileParseError> =>

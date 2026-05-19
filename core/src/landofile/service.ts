@@ -352,6 +352,8 @@ const loadTsLandofile = (
 > =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) => loadLandofileTs({ filePath, appRoot: dirname(filePath), content })),
+    Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
   );
 
 const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> = Effect.tryPromise({

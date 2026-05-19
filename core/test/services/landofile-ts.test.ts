@@ -10,6 +10,7 @@ import {
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+  NotImplementedError,
 } from "@lando/core/errors";
 import { ServiceName, defineLandofile } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
@@ -420,5 +421,121 @@ describe("defineLandofile identity helper", () => {
     const input = { name: "x", services: { web: { image: "node:lts" } } } as const;
     const result = defineLandofile(input);
     expect(result).toBe(input);
+  });
+});
+
+describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
+  test("TS export with top-level `includes:` surfaces NotImplementedError matching the YAML path", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          "export default {",
+          '  name: "x",',
+          '  services: { web: { image: "node:lts" } },',
+          '  includes: ["foo"],',
+          "};",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(NotImplementedError);
+      if (failure instanceof NotImplementedError) {
+        expect(failure.specSection).toBe("§7.7");
+        expect(failure.commandId).toBe("landofile.parse");
+        expect(failure.remediation).toContain("Beta");
+      }
+    });
+  });
+
+  test("TS export with Beta tooling field surfaces NotImplementedError matching the YAML path", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          "export default {",
+          '  name: "x",',
+          '  services: { web: { image: "node:lts" } },',
+          '  tooling: { test: { deps: ["foo"] } },',
+          "};",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(NotImplementedError);
+      if (failure instanceof NotImplementedError) {
+        expect(failure.commandId).toBe("landofile.parse");
+        expect(failure.message).toContain('"deps"');
+      }
+    });
+  });
+});
+
+describe("LandofileServiceLive — TS form sandbox tightening for require() variants", () => {
+  test("rejects template-literal `require(`node:fs`)` with LandofileSandboxError", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          "const fs = require(`node:fs`);",
+          'export default { name: "x", services: { web: { image: "node:lts" } } };',
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(LandofileSandboxError);
+      if (failure instanceof LandofileSandboxError) {
+        expect(failure.violation).toContain("node:fs");
+      }
+    });
+  });
+
+  test('rejects parenthesized `(require)("node:fs")` with LandofileSandboxError', async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          'const fs = (require)("node:fs");',
+          'export default { name: "x", services: { web: { image: "node:lts" } } };',
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(LandofileSandboxError);
+      if (failure instanceof LandofileSandboxError) {
+        expect(failure.violation).toContain("node:fs");
+      }
+    });
+  });
+});
+
+describe("LandofileServiceLive — TS form Effect-return support", () => {
+  test("function form returning an Effect.succeed value resolves to a parsed Landofile", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          'import { Effect } from "effect";',
+          "export default () =>",
+          "  Effect.succeed({",
+          '    name: "effect-form-app",',
+          '    services: { web: { image: "node:lts" } },',
+          "  });",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const landofile = await discover();
+      expect(landofile.name).toBe("effect-form-app");
+      expect(landofile.services?.[ServiceName.make("web")]?.image).toBe("node:lts");
+    });
   });
 });
