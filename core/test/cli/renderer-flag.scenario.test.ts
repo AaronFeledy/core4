@@ -156,6 +156,29 @@ describe("--renderer flag (source CLI)", () => {
     expect(normalized).toContain("RendererSelectionError");
     expect(normalized).not.toContain("NotImplementedError");
   }, 30_000);
+
+  test("rejects --renderer=tui when --help is also present (parity with compiled path)", async () => {
+    const result = await runCommand(
+      [process.execPath, sourceCliPath, "apps:list", "--renderer=tui", "--help"],
+      isolationEnv(),
+    );
+    expect(result.exitCode).not.toBe(0);
+    const normalized = stripAnsi(result.stderr);
+    expect(normalized).toContain("RendererSelectionError");
+    expect(normalized).toContain("source: flag");
+    expect(normalized).toContain("tui");
+  }, 30_000);
+
+  test("rejects LANDO_RENDERER=tui when --help is also present", async () => {
+    const result = await runCommand([process.execPath, sourceCliPath, "apps:list", "--help"], {
+      ...isolationEnv(),
+      LANDO_RENDERER: "tui",
+    });
+    expect(result.exitCode).not.toBe(0);
+    const normalized = stripAnsi(result.stderr);
+    expect(normalized).toContain("RendererSelectionError");
+    expect(normalized).toContain("source: env");
+  }, 30_000);
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(

@@ -32,9 +32,23 @@ const RENDERER_EQ_PREFIX = `${RENDERER_LONG_FLAG}=`;
 export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendererFlagResult => {
   let mode: RendererMode | undefined;
   const remaining: string[] = [];
+  let afterDoubleDash = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === undefined) continue;
+    // Honor the POSIX argument terminator: tokens after `--` are forwarded
+    // verbatim to embedded commands (e.g. `app:exec -- bash -c '... --renderer=foo'`).
+    // Stripping a `--renderer=...` from that tail would silently corrupt user
+    // arguments to the child command.
+    if (afterDoubleDash) {
+      remaining.push(arg);
+      continue;
+    }
+    if (arg === "--") {
+      afterDoubleDash = true;
+      remaining.push(arg);
+      continue;
+    }
     if (arg === RENDERER_LONG_FLAG) {
       const next = argv[index + 1];
       if (next === undefined || next.startsWith("-")) {

@@ -1080,6 +1080,29 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     return;
   }
 
+  // Validate `--renderer` / `LANDO_RENDERER` BEFORE handing off to OCLIF.
+  // OCLIF's `--help` / `--version` short-circuit swallows errors thrown from
+  // init hooks and from runEffect (the command never runs), so an invalid
+  // renderer combined with `--help` would silently pass. Validating here
+  // matches the compiled `$bunfs` path which validates at the top of
+  // `runCompiledCli` and gives `--renderer=tui --help` the same exit-1
+  // tagged failure on both surfaces.
+  const rawHead = args[0];
+  const isBunOrXPassthrough =
+    rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
+  if (!isBunOrXPassthrough) {
+    try {
+      resolveRendererMode({ argv: args, env: process.env });
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        console.error(commandErrorMessage(error));
+        process.exitCode = 1;
+        return;
+      }
+      throw error;
+    }
+  }
+
   await execute({
     dir: options.rootUrl,
     args,

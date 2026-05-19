@@ -99,6 +99,39 @@ describe("extractRendererFlag", () => {
     expect(result.mode).toBe("plain");
     expect(result.remainingArgv).toEqual([]);
   });
+
+  test("preserves --renderer tokens that appear after the `--` argument terminator", () => {
+    const result = extractRendererFlag([
+      "app:exec",
+      "--",
+      "bash",
+      "-c",
+      "echo --renderer=json",
+      "--renderer=plain",
+    ]);
+    expect(result.mode).toBeUndefined();
+    expect(result.remainingArgv).toEqual([
+      "app:exec",
+      "--",
+      "bash",
+      "-c",
+      "echo --renderer=json",
+      "--renderer=plain",
+    ]);
+  });
+
+  test("strips --renderer before `--`, preserves --renderer after `--`", () => {
+    const result = extractRendererFlag([
+      "app:exec",
+      "--renderer=json",
+      "--",
+      "bash",
+      "-c",
+      "echo --renderer=plain",
+    ]);
+    expect(result.mode).toBe("json");
+    expect(result.remainingArgv).toEqual(["app:exec", "--", "bash", "-c", "echo --renderer=plain"]);
+  });
 });
 
 describe("resolveRendererMode", () => {
