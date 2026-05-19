@@ -115,11 +115,11 @@ describe("node-ts recipe renderer", () => {
     const rendered = nodeTsRenderer.render({ appName: "demo-app", answers: {} });
     const tsSource = rendered.get(".lando.ts");
     expect(tsSource).toBeDefined();
-    if (tsSource === undefined) return;
+    const source = tsSource!;
 
     const importPattern = /\b(?:import|require)\s*(?:\(\s*)?["'`]([^"'`]+)["'`]/g;
     const matchedSpecifiers: string[] = [];
-    for (const match of tsSource.matchAll(importPattern)) {
+    for (const match of source.matchAll(importPattern)) {
       matchedSpecifiers.push(match[1] as string);
     }
     expect(matchedSpecifiers).toEqual([]);
@@ -222,8 +222,7 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
     const rendered = nodeTsRenderer.render({ appName: trickyName, answers: {} });
     const tsSource = rendered.get(".lando.ts");
     expect(tsSource).toBeDefined();
-    if (tsSource === undefined) return;
-    expect(tsSource).toContain(`name: ${JSON.stringify(trickyName)},`);
+    expect(tsSource!).toContain(`name: ${JSON.stringify(trickyName)},`);
   });
 
   test("rendered .lando.ts file on disk matches the renderer output byte-for-byte", async () => {

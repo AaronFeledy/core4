@@ -3580,3 +3580,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Goal-verifier oracles occasionally report a "file is missing X" finding that contradicts a `head -N` of the file in the same workspace. Always direct-verify a BLOCKING finding by reading the file and running the focused test before treating it as truth; reject as a false positive with the verification evidence inline in the progress log.
   - A "compatible with app planning" AC like US-029's is best demonstrated through both unit-level (`AppPlanner.plan(landofile, capabilities)` in a focused test) AND end-to-end CLI (`lando info` from inside the generated app, exiting at the provider-config step rather than the Landofile-parse step). The QA agent's `bun core/bin/lando.ts info` run is the canonical evidence that the planner accepts the `.lando.ts` Landofile end-to-end without requiring runtime providers.
 ---
+
+## [2026-05-19 10:47 CDT] - US-029 Slop Removal
+- Ran branch-wide slop-remover after review and before push using `Skill(remove-ai-slops)` with the planning-doc comment rules. Fan-out covered branch-changed recipe source, generated bundled recipe data, registry/build config, README docs, and init tests.
+- Files changed by slop removal: `core/src/recipes/builtin/node-ts/render.ts` and `core/test/cli/init.landofile-ts.test.ts`.
+- Slop-remover result: removed planning-doc traceability from the generated `.lando.ts` comments and replaced redundant test early returns with direct assertions after `toBeDefined()`. Cleanup preserved renderer output intent, test coverage, imports, public APIs, error behavior, and return values.
+- Follow-up scan found no branch-changed code comments still citing planning docs, phase labels, PRD/story IDs, or section references; remaining matches are runtime/test strings or planning docs.
+- Verification run and result: `lsp_diagnostics` clean on `core/src/recipes/builtin/node-ts/render.ts` and `core/test/cli/init.landofile-ts.test.ts`; `bun test core/test/cli/init.landofile-ts.test.ts` passed (exit 0); `bun run typecheck` passed; `bun run lint` passed (exit 0, two pre-existing warnings reported by Biome); `bun test` passed (exit 0).
+---

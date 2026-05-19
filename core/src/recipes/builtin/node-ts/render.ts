@@ -4,8 +4,8 @@ import { NODE_TS_RECIPE_ID } from "./manifest.ts";
 const landofileTs = (appName: string): string => {
   const safeName = JSON.stringify(appName);
   return [
-    "// Programmatic Landofile. See spec/07-landofile-and-config.md for the TS-form contract.",
-    "// Only documented LandofileContext inputs (ctx.env) are read.",
+    "// Programmatic Landofile loaded by Lando at app discovery time.",
+    "// This template only reads environment values from the provided context.",
     "// No forbidden node builtins, URL imports, or relative imports outside the app root.",
     "",
     "export default (ctx: { env: Record<string, string | undefined> }) => ({",
