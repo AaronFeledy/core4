@@ -238,7 +238,7 @@ describe("lando destroy", () => {
       const result = await runCli(["destroy", "--volumes"], dir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("No .lando.yml found");
+      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
   });
@@ -248,7 +248,7 @@ describe("lando destroy", () => {
       const result = await runCli(["destroy"], dir);
 
       expect(result.exitCode).toBe(1);
-      expect(result.stderr).toContain("No .lando.yml found");
+      expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
   });

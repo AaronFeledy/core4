@@ -16,6 +16,8 @@ import {
   type CapabilityError,
   type LandofileNotFoundError,
   type LandofileParseError,
+  type LandofileSandboxError,
+  type LandofileTimeoutError,
   type LandofileValidationError,
   type NoProviderInstalledError,
   NotImplementedError,
@@ -59,6 +61,8 @@ export type ShellAppError =
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

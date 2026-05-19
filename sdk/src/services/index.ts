@@ -39,6 +39,8 @@ import type {
   FilePermissionError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -205,7 +207,12 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
   {
     readonly discover: Effect.Effect<
       LandofileShape,
-      LandofileNotFoundError | LandofileParseError | LandofileValidationError | NotImplementedError
+      | LandofileNotFoundError
+      | LandofileParseError
+      | LandofileValidationError
+      | LandofileSandboxError
+      | LandofileTimeoutError
+      | NotImplementedError
     >;
   }
 >() {}

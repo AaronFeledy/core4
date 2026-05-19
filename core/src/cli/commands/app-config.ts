@@ -3,6 +3,8 @@ import { Effect } from "effect";
 import type {
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
@@ -23,6 +25,8 @@ export interface AppConfigResult {
 type AppConfigError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NotImplementedError;
 

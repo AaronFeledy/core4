@@ -12,6 +12,8 @@ import type {
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -45,6 +47,8 @@ export interface AppCacheRefreshResult {
 type AppCacheRefreshError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError

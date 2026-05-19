@@ -43,6 +43,36 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   },
 ) {}
 
+/**
+ * Programmatic `.lando.ts` Landofile violated the loader's sandbox policy
+ * (forbidden module import, host shell-out, network fetch, or filesystem
+ * access outside the app root).
+ */
+export class LandofileSandboxError extends Schema.TaggedError<LandofileSandboxError>()(
+  "LandofileSandboxError",
+  {
+    message: Schema.String,
+    filePath: Schema.String,
+    violation: Schema.String,
+    remediation: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+/**
+ * Programmatic `.lando.ts` Landofile did not produce a value within the
+ * configured execution timeout.
+ */
+export class LandofileTimeoutError extends Schema.TaggedError<LandofileTimeoutError>()(
+  "LandofileTimeoutError",
+  {
+    message: Schema.String,
+    filePath: Schema.String,
+    timeoutMs: Schema.Number,
+    remediation: Schema.String,
+  },
+) {}
+
 export class PluginLoadError extends Schema.TaggedError<PluginLoadError>()("PluginLoadError", {
   message: Schema.String,
   pluginName: Schema.String,

@@ -4,6 +4,8 @@ import type {
   CapabilityError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   ProviderConfigError,
@@ -54,6 +56,8 @@ type RunToolingError =
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError

@@ -692,6 +692,8 @@ export const LandofileShape = Schema.Struct({
 });
 export type LandofileShape = typeof LandofileShape.Type;
 
+export const defineLandofile = <T extends LandofileShape>(value: T): T => value;
+
 // Global config — the host-level merged config.
 
 /**

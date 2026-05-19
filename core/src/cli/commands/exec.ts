@@ -4,6 +4,8 @@ import type {
   CapabilityError,
   LandofileNotFoundError,
   LandofileParseError,
+  LandofileSandboxError,
+  LandofileTimeoutError,
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -58,6 +60,8 @@ export type ExecAppError =
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | LandofileValidationError
   | NoProviderInstalledError
   | NotImplementedError
