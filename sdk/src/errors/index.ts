@@ -1,15 +1,4 @@
-/**
- * Tagged-error catalog.
- *
- * Tagged errors only — no thrown exceptions in core. `Schema.TaggedError`
- * plugs into Effect's error channel. Provider errors carry required fields
- * (providerId, operation, message, details, remediation, cause).
- *
- * Every public failure surface is a discriminated `Schema.TaggedError`
- * subclass with a stable `_tag` and a human-readable `message`. Plugins
- * extend this catalog with their own tagged errors; core only defines the
- * ones it raises itself.
- */
+/** Tagged error exports for the SDK. */
 import { Schema } from "effect";
 
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {

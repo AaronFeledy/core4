@@ -1,21 +1,5 @@
-/**
- * Public Effect Schemas — the canonical contract for every Lando data shape
- * that crosses a trust boundary (Landofile, plugin manifest, service config,
- * tooling config, route config, healthcheck config, event payloads, plan
- * shapes, etc.).
- *
- * Every external contract is an Effect Schema; Effect Schema is the only
- * schema library in core. Schemas are published from `@lando/sdk` and
- * re-exported by `@lando/core/schema`. JSON Schema is generated at build
- * time from these.
- *
- * Covers AppPlan/ServicePlan/MountPlan/RoutePlan/EndpointPlan/
- * HealthcheckPlan, BuildPlan, ProviderCapabilities, and the authored
- * Landofile/ServiceConfig subset accepted by the current planner.
- */
+/** Public Effect schemas for SDK contracts. */
 import { JSONSchema, Schema } from "effect";
-
-// Branded primitives
 
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
@@ -35,15 +19,11 @@ export type AbsolutePath = typeof AbsolutePath.Type;
 export const PortablePath = Schema.String.pipe(Schema.brand("PortablePath"));
 export type PortablePath = typeof PortablePath.Type;
 
-// Host platform
-
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
 
 export const HostArchitecture = Schema.Literal("x64", "arm64");
 export type HostArchitecture = typeof HostArchitecture.Type;
-
-// Bootstrap level — declared by every command, ranked by depth.
 
 export const BootstrapLevel = Schema.Literal(
   "none",
@@ -69,8 +49,6 @@ export const BOOTSTRAP_RANK: Record<BootstrapLevel, number> = {
   scratch: 7,
   app: 8,
 };
-
-// Plan building blocks (referenced by ServicePlan/AppPlan)
 
 /**
  * Plan metadata — every plan node carries this for traceability.

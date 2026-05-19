@@ -1,10 +1,9 @@
 /**
  * `.lando.ts` programmatic Landofile loader.
  *
- * Loads a TypeScript Landofile via Bun's TS loader after enforcing an Alpha
- * sandbox policy that rejects forbidden module imports (host shell-out,
- * network fetch, host filesystem access outside the app root) and bounds
- * module evaluation with a configurable timeout. Spec §7.1.1.
+ * Loads a TypeScript Landofile through Bun's TS loader, rejects forbidden
+ * imports (host shell-out, network fetch, host filesystem access outside the
+ * app root), and bounds module evaluation with a configurable timeout.
  */
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 
@@ -40,7 +39,7 @@ const FORBIDDEN_NODE_MODULES: ReadonlySet<string> = new Set([
 ]);
 
 // Matches bare `require("x")`, `(require)("x")`, and template-literal forms
-// like ``require(`x`)`` with double/single/back-tick string args.
+// like ``require(`x`)``.
 const FORBIDDEN_REQUIRE_REGEX =
   /(?:\brequire\b|\(\s*require\s*\))\s*\(\s*(?:"([^"]*)"|'([^']*)'|`([^`$]*)`)\s*\)/g;
 

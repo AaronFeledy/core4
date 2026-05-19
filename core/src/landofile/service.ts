@@ -1,13 +1,13 @@
 /**
- * `LandofileService` Live Layer.
+ * `LandofileService` live layer.
  *
- * Discovery (MVP scope per PRD-03 US-005):
- * - Walks upward from `process.cwd()`; first directory containing `.lando.yml`
- *   becomes the *app root*.
- * - Bounded by filesystem root (`dirname(current) === current`).
- * - Uses `Bun.file(...).exists()` directly; no caching at MVP.
+ * Discovery behavior:
+ * - Walk upward from `process.cwd()` until the first directory containing
+ *   `.lando.yml`.
+ * - Stop at the filesystem root (`dirname(current) === current`).
+ * - Use `Bun.file(...).exists()` directly; no caching.
  *
- * Deferred for later passes (NOT implemented here):
+ * Not implemented yet:
  * - `.lando.stop` sentinel
  * - configurable `discovery.maxDepth`
  * - `FileSystem.readdir` integration and per-CWD caching
