@@ -114,8 +114,8 @@ describe("node-ts recipe renderer", () => {
   test("rendered .lando.ts contains no forbidden node builtin or URL-scheme import", () => {
     const rendered = nodeTsRenderer.render({ appName: "demo-app", answers: {} });
     const tsSource = rendered.get(".lando.ts");
-    expect(tsSource).toBeDefined();
-    const source = tsSource!;
+    if (tsSource === undefined) throw new Error("expected .lando.ts to be rendered");
+    const source = tsSource;
 
     const importPattern = /\b(?:import|require)\s*(?:\(\s*)?["'`]([^"'`]+)["'`]/g;
     const matchedSpecifiers: string[] = [];
@@ -225,8 +225,8 @@ describe("lando init — programmatic Landofile (node-ts)", () => {
     const trickyName = `quote\\and"backslash`;
     const rendered = nodeTsRenderer.render({ appName: trickyName, answers: {} });
     const tsSource = rendered.get(".lando.ts");
-    expect(tsSource).toBeDefined();
-    expect(tsSource!).toContain(`name: ${JSON.stringify(trickyName)},`);
+    if (tsSource === undefined) throw new Error("expected .lando.ts to be rendered");
+    expect(tsSource).toContain(`name: ${JSON.stringify(trickyName)},`);
   });
 
   test("rendered .lando.ts file on disk matches the renderer output byte-for-byte", async () => {
