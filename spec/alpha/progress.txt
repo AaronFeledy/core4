@@ -3731,3 +3731,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (pulled ff-only to 02801f4; us-030-post-init-bun-install deleted)
 - Remaining local state: clean on main at 02801f4
 ---
+
+## [2026-05-19 14:09 CDT] - Sync
+- Previous branch: us-030-post-init-bun-install
+- Previous PR: #108 https://github.com/AaronFeledy/core4/pull/108
+- Action: caught up after prior merge (PR #108 already MERGED, all CI checks SUCCESS/NEUTRAL)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
