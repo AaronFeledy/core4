@@ -1,6 +1,8 @@
 import { Args, Flags } from "@oclif/core";
 import { Effect } from "effect";
 
+import { NotImplementedError } from "@lando/sdk/errors";
+
 import { type PluginAddResult, pluginAdd, renderPluginAddResult } from "../../../../commands/plugin-add.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
@@ -19,6 +21,14 @@ const extractInput = (input: unknown): { spec: string; trust: boolean; force: bo
   };
 };
 
+const missingSpecError = (): NotImplementedError =>
+  new NotImplementedError({
+    message: "meta:plugin:add requires a plugin spec argument.",
+    commandId: "meta:plugin:add",
+    specSection: "spec/10-plugins.md",
+    remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
+  });
+
 export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
   id: "meta:plugin:add",
   summary: "Install a plugin (npm source) with manifest validation and trust prompt.",
@@ -29,11 +39,12 @@ export const pluginAddSpec: LandoCommandSpec<PluginAddResult> = {
     Effect.gen(function* () {
       const parsed = extractInput(input);
       if (parsed.spec === "") {
-        return yield* Effect.fail(new Error("meta:plugin:add requires a plugin spec argument."));
+        return yield* Effect.fail(missingSpecError());
       }
       return yield* pluginAdd({
         spec: parsed.spec,
         trust: parsed.trust || parsed.yes,
+        nonInteractive: process.stdin.isTTY !== true,
       });
     }),
   render: (result) => renderPluginAddResult(result as PluginAddResult),
@@ -45,7 +56,7 @@ export default class PluginAddCommand extends LandoCommandBase {
   static override args = {
     spec: Args.string({
       description: "Plugin spec (npm package name with optional @version).",
-      required: true,
+      required: false,
     }),
   };
   static override flags = {

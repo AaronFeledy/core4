@@ -61,7 +61,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly flags?: Readonly<Record<string, unknown>>;
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
-  readonly render?: (result: unknown) => string | undefined;
+  readonly render?: (result: unknown, input?: unknown) => string | undefined;
 }
 
 const MVP_COMMAND_IDS = new Set([
@@ -234,16 +234,14 @@ export abstract class LandoCommandBase extends Command {
     const abort = () => controller.abort();
     process.once("SIGINT", abort);
     process.once("SIGTERM", abort);
+    const input = {
+      argv: this.argv,
+      signal: controller.signal,
+      flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
+      args: (parsed as { args?: Record<string, unknown> }).args ?? {},
+    };
     const exit = await Effect.runPromiseExit(
-      Effect.provide(
-        spec.run({
-          argv: this.argv,
-          signal: controller.signal,
-          flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
-          args: (parsed as { args?: Record<string, unknown> }).args ?? {},
-        }),
-        runtime as Layer.Layer<R, LandoRuntimeBootstrapError>,
-      ),
+      Effect.provide(spec.run(input), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),
     ).finally(() => {
       process.off("SIGINT", abort);
       process.off("SIGTERM", abort);
@@ -256,7 +254,10 @@ export abstract class LandoCommandBase extends Command {
       );
     }
 
-    const rendered = spec.render?.(exit.value);
+    // Pass input to render so format/path-aware renderers (e.g. apps:list --format=json)
+    // see parsed flags from OCLIF on the source path, matching what compiled handlers
+    // get from their hand-rolled argv parsers.
+    const rendered = spec.render?.(exit.value, input);
     if (rendered !== undefined && rendered.length > 0) this.log(rendered);
   }
 }

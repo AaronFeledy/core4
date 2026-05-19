@@ -35,6 +35,50 @@ describe("meta:plugin:remove command", () => {
     expect(renderPluginRemoveResult(result)).toContain("not-installed");
   });
 
+  test("rejects path-traversal names before touching disk", async () => {
+    const sentinel = join(userDataRoot, "DO_NOT_DELETE.txt");
+    await writeFile(sentinel, "sentinel");
+
+    let removeCalled = false;
+    const spawner = {
+      uninstall: async () => {
+        removeCalled = true;
+        return { exitCode: 0, stderr: "" };
+      },
+    };
+    const result = await Effect.runPromiseExit(
+      pluginRemove({
+        name: "../../../../etc",
+        spawner,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(result._tag).toBe("Failure");
+    expect(removeCalled).toBe(false);
+    expect(await Bun.file(sentinel).text()).toBe("sentinel");
+  });
+
+  test("rejects path-traversal names before invoking `bun remove` or `fs.rm`", async () => {
+    let spawnerCalled = false;
+    const spawner = {
+      uninstall: async () => {
+        spawnerCalled = true;
+        return { exitCode: 0, stderr: "" };
+      },
+    };
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({ name: "../../escape", spawner }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(exit._tag).toBe("Failure");
+    expect(spawnerCalled).toBe(false);
+  });
+
+  test("rejects npm-illegal characters (semicolons, slashes) in plugin names", async () => {
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({ name: "@evil/../escape" }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(exit._tag).toBe("Failure");
+  });
+
   test("removes an installed plugin and clears it from the trust store", async () => {
     const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
     await mkdir(pluginDir, { recursive: true });

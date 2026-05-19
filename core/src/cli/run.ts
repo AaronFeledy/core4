@@ -755,7 +755,16 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
   const trust = argv.includes("--trust") || argv.includes("--yes") || argv.includes("-y");
   const spec = argv.find((arg) => !arg.startsWith("-"));
   if (spec === undefined) {
-    console.error("meta:plugin:add requires a plugin spec argument.");
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:add requires a plugin spec argument.",
+          commandId: "meta:plugin:add",
+          specSection: "spec/10-plugins.md",
+          remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
+        }),
+      ),
+    );
     process.exitCode = 1;
     return;
   }
@@ -776,7 +785,16 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
 const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv.find((arg) => !arg.startsWith("-"));
   if (name === undefined) {
-    console.error("meta:plugin:remove requires a plugin name argument.");
+    console.error(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:remove requires a plugin name argument.",
+          commandId: "meta:plugin:remove",
+          specSection: "spec/10-plugins.md",
+          remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+        }),
+      ),
+    );
     process.exitCode = 1;
     return;
   }

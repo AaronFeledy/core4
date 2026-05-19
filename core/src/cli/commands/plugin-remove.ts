@@ -1,11 +1,18 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { join, relative, resolve } from "node:path";
 
 import { Effect } from "effect";
 
-import { type ConfigError, type LandoCommandError, NotImplementedError } from "@lando/sdk/errors";
+import {
+  type ConfigError,
+  type LandoCommandError,
+  NotImplementedError,
+  PluginManifestError,
+} from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
+
+const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 
 export interface PluginRemoveSpawner {
   readonly uninstall: (request: {
@@ -57,7 +64,11 @@ const defaultSpawner: PluginRemoveSpawner = {
 
 export const pluginRemove = (
   options: PluginRemoveOptions,
-): Effect.Effect<PluginRemoveResult, ConfigError | LandoCommandError | NotImplementedError, ConfigService> =>
+): Effect.Effect<
+  PluginRemoveResult,
+  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError,
+  ConfigService
+> =>
   Effect.gen(function* () {
     if (options.name === "") {
       return yield* Effect.fail(
@@ -66,6 +77,16 @@ export const pluginRemove = (
           commandId: "meta:plugin:remove",
           specSection: "spec/10-plugins.md",
           remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+        }),
+      );
+    }
+    if (!REGISTRY_NAME_RE.test(options.name)) {
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Invalid plugin name: ${options.name}`,
+          issues: [
+            "Plugin name must match the npm package-name grammar (`@scope/name` or `name`); path segments and version specifiers are rejected.",
+          ],
         }),
       );
     }
@@ -86,7 +107,18 @@ export const pluginRemove = (
       }
     }
     const pluginsRoot = join(userDataRoot, "plugins");
-    const moduleDir = join(pluginsRoot, "node_modules", options.name);
+    const modulesRoot = resolve(pluginsRoot, "node_modules");
+    const moduleDir = resolve(modulesRoot, options.name);
+    const rel = relative(modulesRoot, moduleDir);
+    if (rel === "" || rel.startsWith("..") || resolve(modulesRoot, rel) !== moduleDir) {
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Plugin name resolves outside ${modulesRoot}.`,
+          ...(options.name === "" ? {} : { pluginName: options.name }),
+          issues: [`refusing to recursively remove ${moduleDir}`],
+        }),
+      );
+    }
     if (!existsSync(moduleDir)) {
       return { pluginName: options.name, removed: false };
     }

@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { type MetaBunResult, metaBun, renderMetaBunResult } from "../../../commands/bun.ts";
 
@@ -34,6 +34,16 @@ export default class MetaBunCommand extends LandoCommandBase {
   static override bootstrap = metaBunSpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(metaBunSpec);
+    const argv = this.argv.slice();
+    const exit = await Effect.runPromiseExit(metaBun({ argv }));
+    if (Exit.isSuccess(exit)) {
+      if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
+      const rendered = renderMetaBunResult(exit.value);
+      if (rendered !== undefined && rendered.length > 0) this.log(rendered);
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    if (failure._tag === "Some") throw failure.value as Error;
+    throw new Error(Cause.pretty(exit.cause));
   }
 }

@@ -1,5 +1,5 @@
 import { Args } from "@oclif/core";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { type MetaXResult, metaX, renderMetaXResult } from "../../../commands/bun.ts";
 
@@ -51,7 +51,23 @@ export default class MetaXCommand extends LandoCommandBase {
   static override landoSpec: LandoCommandSpec = metaXSpec;
   static override bootstrap = metaXSpec.bootstrap;
 
+  // Skip OCLIF flag parsing so flags like `--version`/`--help` forward to the
+  // embedded Bun child (parity with the compiled `$bunfs` `isPassthrough` guard).
   override async run(): Promise<void> {
-    await this.runEffect(metaXSpec);
+    const argv = this.argv.slice();
+    const { spec, args } = splitSpecAndArgs(argv);
+    if (spec === undefined) {
+      throw new Error("meta:x requires a package spec as the first positional argument.");
+    }
+    const exit = await Effect.runPromiseExit(metaX({ spec, argv: args }));
+    if (Exit.isSuccess(exit)) {
+      if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
+      const rendered = renderMetaXResult(exit.value);
+      if (rendered !== undefined && rendered.length > 0) this.log(rendered);
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    if (failure._tag === "Some") throw failure.value as Error;
+    throw new Error(Cause.pretty(exit.cause));
   }
 }

@@ -1,6 +1,8 @@
 import { Args } from "@oclif/core";
 import { Effect } from "effect";
 
+import { NotImplementedError } from "@lando/sdk/errors";
+
 import {
   type PluginRemoveResult,
   pluginRemove,
@@ -25,7 +27,14 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
     Effect.gen(function* () {
       const { name } = extractInput(input);
       if (name === "") {
-        return yield* Effect.fail(new Error("meta:plugin:remove requires a plugin name argument."));
+        return yield* Effect.fail(
+          new NotImplementedError({
+            message: "meta:plugin:remove requires a plugin name argument.",
+            commandId: "meta:plugin:remove",
+            specSection: "spec/10-plugins.md",
+            remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
+          }),
+        );
       }
       return yield* pluginRemove({ name });
     }),
@@ -36,7 +45,7 @@ export default class PluginRemoveCommand extends LandoCommandBase {
   static override description = pluginRemoveSpec.summary;
   static override aliases = [...resolveTopLevelAliases(pluginRemoveSpec)];
   static override args = {
-    name: Args.string({ description: "Plugin name.", required: true }),
+    name: Args.string({ description: "Plugin name.", required: false }),
   };
   static override landoSpec: LandoCommandSpec = pluginRemoveSpec;
   static override bootstrap = pluginRemoveSpec.bootstrap;
