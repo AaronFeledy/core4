@@ -3903,5 +3903,9 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Verification run and result: `lsp_diagnostics` clean for changed TS files; `bun run typecheck` passed; `bun run lint` passed with the same 2 pre-existing warnings; `bun test` passed (859 pass / 11 skip / 0 fail / 4066 expect calls across 125 files).
 
 ## [2026-05-19] - PR #111 triage
-- Bugbot comment "Passthrough skips env check" rejected as not-an-issue: `bun` / `meta:bun` / `x` / `meta:x` are passthrough entrypoints that do not invoke Lando rendering, so skipping renderer env validation there is intentional and documented.
-- No code changes were needed; kept the renderer validation gate scoped to Lando command entrypoints only.
+- Bugbot inline comment about `LANDO_RENDERER` on passthrough commands marked not-an-issue: `bun` / `meta:bun` / `x` / `meta:x` bypass renderer selection by design and do not consume Lando rendering.
+- No code changes were needed; renderer validation stays scoped to commands that actually use it.
+
+## [2026-05-19] - Triage PR #111 / Bugbot
+- Decision: not-an-issue.
+- Reason: `bun`/`meta:bun`/`x`/`meta:x` are intentional renderer-passthrough commands; they do not use the renderer system, so skipping `resolveRendererMode` for them is by design.
