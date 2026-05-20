@@ -13,7 +13,10 @@ const isTaskTreeEvent = (event: LandoEvent): boolean =>
 const isMessageEvent = (event: LandoEvent): boolean =>
   event._tag === "message.info" || event._tag === "message.warn" || event._tag === "message.error";
 
-const isRenderableEvent = (event: LandoEvent): boolean => isTaskTreeEvent(event) || isMessageEvent(event);
+const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
+
+const isRenderableEvent = (event: LandoEvent): boolean =>
+  isTaskTreeEvent(event) || isMessageEvent(event) || isPaintBannerEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
@@ -80,6 +83,9 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
       const label = summary ?? "complete";
       return `▶ ${label} (${succeeded} ✓ · ${failed} ✗)${formatDurationSuffix(asNumber(event.durationMs))}`;
     }
+    case "paint.banner": {
+      return null;
+    }
     default:
       return null;
   }
@@ -100,6 +106,7 @@ const orderedKeys: ReadonlyArray<string> = [
   "stream",
   "line",
   "body",
+  "banner",
   "summary",
   "succeeded",
   "failed",
@@ -128,3 +135,4 @@ export const renderJsonLine = (event: LandoEvent): string | null => {
 
 export const isRenderableTaskTreeEvent = isTaskTreeEvent;
 export const isRenderableMessageEvent = isMessageEvent;
+export const isRenderablePaintBannerEvent = isPaintBannerEvent;

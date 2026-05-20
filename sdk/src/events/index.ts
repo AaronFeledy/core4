@@ -325,6 +325,19 @@ export const MessageErrorEvent = Schema.TaggedStruct("message.error", {
 });
 export type MessageErrorEvent = typeof MessageErrorEvent.Type;
 
+/**
+ * Synthetic first-paint hand-off event. Published by the imperative shell
+ * once the Renderer Layer is constructed so the renderer's internal state
+ * machine knows what the pre-bootstrap fast path already wrote to stdout
+ * (spec §8.9.1). Plain/lando renderers MUST NOT re-emit the banner; the
+ * json renderer emits the event as one NDJSON line on stderr.
+ */
+export const PaintBannerEvent = Schema.TaggedStruct("paint.banner", {
+  banner: Schema.String,
+  timestamp: Timestamp,
+});
+export type PaintBannerEvent = typeof PaintBannerEvent.Type;
+
 export const LandoEvent = Schema.Union(
   PreBootstrapEvent,
   PostBootstrapEvent,
@@ -366,6 +379,7 @@ export const LandoEvent = Schema.Union(
   MessageInfoEvent,
   MessageWarnEvent,
   MessageErrorEvent,
+  PaintBannerEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
 

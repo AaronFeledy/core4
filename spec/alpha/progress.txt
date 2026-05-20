@@ -4031,3 +4031,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no (progress.txt fast-path: stash/pop/commit only)
 ---
+
+## 2026-05-19 - US-036
+- Implemented the Alpha sliver of spec §8.9.1's first-paint contract: a tiny `core/src/cli/oclif/pre-renderer.ts` that writes a single-line banner directly to stdout, the new `PaintBannerEvent` schema in `@lando/sdk/events`, and renderer hand-off so plain/lando renderers swallow the synthetic event (banner already on stdout) while the json renderer emits one NDJSON line on stderr. Full first-paint contract (spinner threshold, expand/collapse, completion-line latency) stays RC/deferred per acceptance criterion 2 and US-040.
+- Files changed: `core/src/cli/oclif/pre-renderer.ts`, `sdk/src/events/index.ts`, `core/src/cli/renderer/format.ts`, `core/test/cli/paint-banner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean on all changed TypeScript files; `bun test core/test/cli/paint-banner.test.ts` passed (17 pass, 32 expect); `bun test core/test/cli/renderer-messages.test.ts core/test/cli/renderer-task-tree.test.ts core/test/cli/fast-path.test.ts` passed (37 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (904 pass, 11 skip); `bun run build` produced `core/dist/lando`; manual QA confirmed `./core/dist/lando --version`, `./core/dist/lando shellenv`, and `bun core/bin/lando.ts --version` all match prior behavior (no banner regression — banner emission is opt-in until the RC contract lands).
+- **Learnings for future iterations:**
+  - Patterns discovered: Effect-free pre-renderer modules must avoid `@lando/sdk` static imports too — pulling the SDK drags `effect` transitively and would break the `fast-path-canary-preload` test for any future fast-path callsite. The new paint-banner test asserts this with a static source scan that walks `from "..."`, `import("...")`, `require("...")`, and bare `import "..."` grammars.
+  - Gotchas encountered: adding a new `LandoEvent` discriminant requires three lock-step edits (TaggedStruct + LandoEvent union in `sdk/src/events/index.ts`, plus `isRenderableEvent` / `formatPlainEvent` / `orderedKeys` in `core/src/cli/renderer/format.ts`); only the union one is caught by `tsc -b`, so the renderer must be touched in the same change or the new event silently no-ops.
+  - Useful context: the pre-renderer's banner glyph (`▲`) is unicode, not ANSI, so "non-TTY output avoids control sequences" is satisfied by formatting alone — no TTY/non-TTY branching needed for the Alpha sliver. The `isTTY` option is reserved on `FormatBannerOptions` for the future RC-deferred styling branch.
+---
