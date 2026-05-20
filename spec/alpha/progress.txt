@@ -4341,3 +4341,20 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: When a sub-layer (here `makeProviderRuntimeLive`) is later updated to merge in a previously top-level dependency (`EventServiceLive`), audit every caller's `Layer.mergeAll` for now-redundant explicit mentions. Effect dedupes by tag at runtime, but the duplicate is misleading and suggests a separate bus where there isn't one.
   - Gotchas encountered: `Effect.die(...)` typechecks where `Stream.Stream<...>` is expected because `Effect<never, never, never>` is bottom-typed for structural assignability — silent test-double mismatch that lint and tsc do not catch. Use `Stream.die` for stream-returning stubs to keep the test double semantically honest.
 ---
+
+## 2026-05-20 - Push
+- Branch: us-039-task-tree-progress
+- Push: pushed
+- Commit(s): 9b7ed0b fix: US-039 review cleanups (dedupe layer, Stream.die stub, progress log), ea12401 feat: Render provider and recipe progress through task tree
+- PR: #118 https://github.com/AaronFeledy/core4/pull/118 (created)
+---
+
+## [2026-05-20] - Babysit
+- PR: #118 https://github.com/AaronFeledy/core4/pull/118
+- CI outcome: pass (static-checks ✅, build-linux-x64 ✅, provider-integration-linux-x64 ✅, Cursor Bugbot ✅)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — PR was already merged by the time Phase 4 ran; confirmed via `gh pr view`
+- Local main / branch refreshed: yes — `git switch main && git pull --ff-only`; `us-039-task-tree-progress` deleted locally
+- Remaining local state: none
+---
