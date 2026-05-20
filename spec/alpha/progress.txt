@@ -4144,3 +4144,20 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are runtime fields, structured errors, test strings/fixtures, durable repo context, or planning/progress docs.
 - Verification run and result: `lsp_diagnostics` clean for `core/src/cli/deferred-commands.ts`; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
 
+
+## 2026-05-19 - Push
+- Branch: us-037-unsupported-command-remediation
+- Push: pushed (new branch)
+- Commit(s): 5ba9df2 chore: remove AI slop, 6b0a997 fix(us-037): cover meta:plugin:trust-authoring-root in deferred surface, df39d26 feat: Keep unsupported command remediation precise
+- PR: #115 https://github.com/AaronFeledy/core4/pull/115 (created)
+---
+
+## [2026-05-19 22:17 CDT] - Babysit
+- PR: #115 https://github.com/AaronFeledy/core4/pull/115
+- CI outcome: pass (static-checks ✓, build-linux-x64 ✓, provider-integration-linux-x64 ✓, Cursor Bugbot ✓)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — PR was already merged by the time gh pr merge ran; main fast-forwarded cleanly
+- Local main / branch refreshed: yes (branch us-037-unsupported-command-remediation deleted, on main at 93bb0ff)
+- Remaining local state: none
+---
