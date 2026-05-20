@@ -7,9 +7,11 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
+import { writeCwdAppMapEntry } from "../../src/cache/cwd-app-map.ts";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
 
 let userDataRoot: string;
+let userCacheRoot: string;
 
 const fakeConfigService = (dataRoot: string) =>
   Layer.succeed(ConfigService, {
@@ -35,15 +37,30 @@ const makePlan = (id: string, name: string, services: string[]) => ({
 
 beforeAll(async () => {
   userDataRoot = await mkdtemp(join(tmpdir(), "lando-apps-poweroff-"));
+  userCacheRoot = await mkdtemp(join(tmpdir(), "lando-apps-poweroff-cache-"));
   const appsDir = join(userDataRoot, "providers", "provider-lando", "apps");
   await mkdir(appsDir, { recursive: true });
   await writeFile(join(appsDir, "user.json"), JSON.stringify(makePlan("user-app", "user-app", ["web"])));
   await writeFile(join(appsDir, "global.json"), JSON.stringify(makePlan("global", "global", ["proxy"])));
   await writeFile(join(appsDir, "scratch.json"), JSON.stringify(makePlan("scratch-1", "scratch-1", ["web"])));
+  await Effect.runPromise(
+    writeCwdAppMapEntry({
+      cacheRoot: userCacheRoot,
+      entry: {
+        cwd: "/srv/cached-only/web",
+        appRoot: "/srv/cached-only",
+        primaryLandofilePath: "/srv/cached-only/.lando.yml",
+        mtimeNs: 1,
+        sizeBytes: 2,
+        lastUsedAt: 3,
+      },
+    }),
+  );
 });
 
 afterAll(async () => {
   if (userDataRoot !== undefined) await rm(userDataRoot, { recursive: true, force: true });
+  if (userCacheRoot !== undefined) await rm(userCacheRoot, { recursive: true, force: true });
 });
 
 describe("apps:poweroff command", () => {
@@ -52,6 +69,7 @@ describe("apps:poweroff command", () => {
     const result = await Effect.runPromise(
       poweroff({
         userDataRoot,
+        userCacheRoot,
         stopApp: async (entry) => {
           stopped.push(entry.appId);
         },
@@ -59,6 +77,23 @@ describe("apps:poweroff command", () => {
     );
     expect([...stopped].sort()).toEqual(["global", "scratch-1", "user-app"]);
     expect([...result.appsPoweredOff].sort()).toEqual(["global", "scratch-1", "user-app"]);
+    expect(stopped).not.toContain("cached-only");
+    expect(result.appsPoweredOff).not.toContain("cached-only");
+  });
+
+  test("does not power off cache-only cwd-map entries", async () => {
+    const stopped: string[] = [];
+    const result = await Effect.runPromise(
+      poweroff({
+        userDataRoot,
+        userCacheRoot,
+        stopApp: async (entry) => {
+          stopped.push(entry.appId);
+        },
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(stopped).not.toContain("cached-only");
+    expect(result.appsPoweredOff).not.toContain("cached-only");
   });
 
   test("respects --keep-global and --keep-scratch", async () => {
@@ -66,6 +101,7 @@ describe("apps:poweroff command", () => {
     const result = await Effect.runPromise(
       poweroff({
         userDataRoot,
+        userCacheRoot,
         keepGlobal: true,
         keepScratch: true,
         stopApp: async (entry) => {

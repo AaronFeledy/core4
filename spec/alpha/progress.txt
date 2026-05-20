@@ -4480,3 +4480,34 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/cache/cwd-app-map.ts` (shortened the cwd dedupe rationale while preserving the first-wins upsert explanation) and `core/test/cli/apps-list.scenario.test.ts` (shortened the lint-suppression rationale for deleting the environment variable).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec strings are in progress/planning files or runtime/test data, not code-comment traceability.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/cache.test.ts core/test/cli/apps-list.scenario.test.ts` passed (13 pass / 0 fail). Full `bun test` was rerun and reached 1013 pass / 11 skip / 1 fail on `core/test/build/compile.test.ts` after the compiled binary briefly had non-executable mode during concurrent build/test artifact handling; the final `core/dist/lando` artifact is executable (`755`); an isolated rerun of `bun test core/test/cli/setup.test.ts core/test/build/compile.test.ts` passed (4 pass / 0 fail), confirming the full-suite failure is unrelated to these comment-only cleanup edits.
+
+## 2026-05-20 - Push
+- Branch: us-041-persistent-cwd-app-map-cache
+- Push: pushed
+- Commit(s): 9a82d4b feat: Implement persistent cwd-app-map cache, 270ad11 fix(US-041 review): honor default cache root, fix upsert, version invalidation, 5285686 chore: remove AI slop
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120 (created)
+---
+
+## [2026-05-20 04:27 CDT] - Babysit
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- CI outcome: pass (`static-checks`, `build-linux-x64`, and `provider-integration-linux-x64` passed; `Cursor Bugbot` completed NEUTRAL/skipping)
+- Review feedback: fixed? no — deferred because Cursor Bugbot reported one actionable Medium issue (`Poweroff includes cache-only apps`) and the delegated team triage did not return a pushed fix during this babysit step
+- Triage rounds used: 1
+- Merge: deferred (Bugbot feedback unresolved; merge conditions require no new Bugbot bugs)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-041-persistent-cwd-app-map-cache`; `spec/alpha/progress.txt` contains local babysit/progress notes pending commit/push by a follow-up triage/sync step
+---
+
+## [2026-05-20 08:08 CDT] - Babysit
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- CI outcome: pass (`static-checks`, `build-linux-x64`, and `provider-integration-linux-x64` passed; `Cursor Bugbot` completed NEUTRAL/skipping)
+- Review feedback: fixed? no — deferred because Cursor Bugbot still reports one actionable Medium issue (`Poweroff includes cache-only apps`); triage was delegated via team mode but no fix was pushed during this babysit pass
+- Triage rounds used: 1
+- Merge: deferred (Bugbot feedback unresolved; merge conditions require no new Bugbot bugs)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-041-persistent-cwd-app-map-cache`; `spec/alpha/progress.txt` contains local babysit/progress notes pending commit/push by a follow-up triage/sync step
+---
+
+## PR #120 Bugbot triage (us-041)
+- Bugbot finding "Poweroff includes cache-only apps" (medium): REAL. Fixed by filtering providerId === "cache" entries in core/src/cli/commands/poweroff.ts before stopApp/targets. Added regression coverage that seeds a cwd-map cache entry not in provider state and asserts it is NOT reported as powered off. apps:list behavior for cache-only rows is unchanged (intentional).
+---

@@ -10,6 +10,7 @@ export interface PoweroffOptions {
   readonly keepScratch?: boolean;
   readonly yes?: boolean;
   readonly userDataRoot?: string;
+  readonly userCacheRoot?: string;
   readonly stopApp?: (entry: AppsListEntry) => Promise<void>;
 }
 
@@ -41,9 +42,10 @@ export const poweroff = (
   options: PoweroffOptions = {},
 ): Effect.Effect<PoweroffResult, ConfigError | LandoCommandError, ConfigService> =>
   Effect.gen(function* () {
-    const list = yield* listServices(
-      options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot },
-    );
+    const list = yield* listServices({
+      ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+      ...(options.userCacheRoot === undefined ? {} : { userCacheRoot: options.userCacheRoot }),
+    });
 
     const stopApp =
       options.stopApp ??
@@ -54,6 +56,7 @@ export const poweroff = (
     const targets: string[] = [];
     let keptScratch = 0;
     for (const app of list.apps) {
+      if (app.providerId === "cache") continue;
       if (options.keepGlobal === true && app.appId === GLOBAL_APP_ID) continue;
       if (options.keepScratch === true && app.appId.startsWith(SCRATCH_PREFIX)) {
         keptScratch += 1;
