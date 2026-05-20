@@ -53,6 +53,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `EventService` exposes two subscriber surfaces. `subscribe(name)` returns a `Stream` that subscribes to the underlying `PubSub` lazily (on first pull) and is fine for late-attached consumers. `subscribeQueue` (no args) is the cold-start, no-replay surface: it returns a scoped Effect that resolves to a `Queue.Dequeue<LandoEvent>` once the `PubSub.subscribe` handshake has completed, so any `publish` issued after the Effect succeeds is guaranteed to enqueue. Renderers and any other "must not miss the first event" consumers should call `subscribeQueue` inside `Layer.scopedDiscard` and fork a `Queue.take` consumer; add a finalizer that drains `Queue.takeAll` before interrupting the fiber so trailing events published in the same tick as scope close are still rendered (this is what `core/src/cli/renderer/runtime.ts#makeRendererLive` does for the plain/json renderers). Extending `EventService` always breaks every mock — sweep `Layer.succeed(EventService, { … })` literals across `core/test/cli/*.scenario.test.ts` and `sdk/test/services/tags.test.ts` in the same change or `tsc -b` will fail.
 - Renderer-side line formatting is pure and lives in `core/src/cli/renderer/format.ts` (`renderPlainLine` / `renderJsonLine` return `string | null`; `null` means "not a task tree event, skip"). The Layer in `runtime.ts` only does plumbing: it calls the formatter and writes to `RendererIO.writeStdout` / `writeStderr` based on the renderer (`plain` → stdout, `json` → stderr; `lando` aliases plain until rich-TTY behavior lands). Tests inject `createBufferedRendererIO()` and assert on `stdout()` / `stderr()` / `stdoutLines()` — no `Bun.spawn` round trip needed for renderer unit coverage. The named snapshot fixture lives at `core/test/cli/fixtures/renderer.task-tree.concurrent.ndjson` and is loaded raw (one JSON object per line) so the renderer is exercised against a deterministic event ordering across runs.
 
+- `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state.
+
 ## Iteration Log
 
 (Loop appends one entry per iteration below.)
@@ -4446,4 +4448,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes (e77c1d0, rebased onto 5e00f46)
 - Branch after sync: main
 - Stash created: yes (sync-progress-fastpath, dropped after resolution)
+---
+
+## [2026-05-20 03:42 CDT] - US-041
+- Implemented a persistent binary `cwd-app-map` cache with version/hash header encoding, read/write/delete/list helpers, corrupt-cache remediation, and bounded LRU ordering.
+- Files changed: `core/src/cache/cwd-app-map.ts`, `core/src/cli/commands/list.ts`, `core/test/services/cache.test.ts`, `core/test/cli/apps-list.scenario.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` on modified TS files clean; `bun test core/test/services/cache.test.ts core/test/cli/apps-list.scenario.test.ts` passed (10 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1011 pass, 11 skip); `bun run build` passed; manual CLI QA with isolated roots ran `./core/dist/lando apps:list` and printed the cache-only app row.
+- **Learnings for future iterations:**
+  - Patterns discovered: cache-specific binary helpers can live under `core/src/cache/` and keep the public `CacheService` tag stable while later stories fill in broader cache surfaces.
+  - Gotchas encountered: `Bun.serialize` is not available in the pinned Bun runtime; use `node:v8` serialization for private binary caches unless a cache requires Effect Schema binary encoding.
+  - Useful context: `.local/bin/lando4-dev --check` cannot run in shells without `wsl.exe`; when command QA is read-only, isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` to avoid host config interference.
 ---
