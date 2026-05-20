@@ -4595,6 +4595,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Effect.serviceOption widens R only at evaluation, never at type-level. That makes the wiring bug invisible to `tsc -b` — only an integration test or end-to-end driver catches it. Worth adding to test plans for any future optional-service pattern.
 ---
 
+## [2026-05-20] - Push
+- Branch: us-042-persistent-app-plan-cache
+- Push: pushed
+- Commit(s): 259de7f chore: remove AI slop / 9274d15 fix(US-042): close cross-project plan cache collision / 0109eda feat: Implement persistent app plan cache
+- PR: #121 https://github.com/AaronFeledy/core4/pull/121 (created)
+---
+
 ## [2026-05-20 09:41 CDT] - US-042 Slop Cleanup
 - Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving comment/redundancy hygiene edits only.
 - Files changed by cleanup: `core/src/cache/app-plan.ts` (shortened cache-key comment wording), `core/src/services/planner.ts` (removed planning-section citation from a host-facts fallback comment), and `core/test/services/cache.test.ts` (removed redundant `mkdir` after `mkdtemp` plus the unused import).
