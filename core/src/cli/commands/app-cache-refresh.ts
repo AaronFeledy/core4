@@ -106,6 +106,6 @@ export const refreshAppCache = (
       app: plan.name,
       commandsCompiled: entries.length,
       ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
-      ...(pluginCachePath === undefined ? {} : { pluginCommandCachePath: pluginCachePath }),
+      pluginCommandCachePath: pluginCachePath,
     };
   });

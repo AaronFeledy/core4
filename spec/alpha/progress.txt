@@ -60,6 +60,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## Iteration Log
 
 (Loop appends one entry per iteration below.)
+## [2026-05-20] - PR #123 triage
+- Bugbot comment was real: `writePluginCommandCacheStrict` always yields a string, so the `pluginCommandCachePath` conditional was dead; simplified the return object to always include it.
+- Verification: `bun run typecheck`, `bun run lint`, and `bun test core/test/cli/app-cache.scenario.test.ts` passed.
+
 
 ## [2026-05-16 20:36 CDT] - Sync
 - Previous branch: us-001-provider-lando-linux-setup
