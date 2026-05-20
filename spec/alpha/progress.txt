@@ -3980,3 +3980,35 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no (fast path stash was pop'd and committed)
 ---
+
+## [2026-05-19 23:30 CDT] - US-035
+- Implemented `message.info` / `message.warn` / `message.error` event schemas and renderer formatter coverage so command authors can emit structured messages consistently across renderers.
+- Files changed: `sdk/src/events/index.ts`, `core/src/cli/renderer/format.ts`, `core/test/cli/renderer-messages.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun test core/test/cli/renderer-messages.test.ts` passed (13 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (887 pass / 11 skip / 0 fail / 2 snapshots / 4145 expect calls across 127 files); `bun -e` smoke test confirms `MessageInfoEvent` decodes through `@lando/sdk/events` and `renderPlainLine` / `renderJsonLine` produce the expected single-line plain and NDJSON output respectively.
+- **Learnings for future iterations:**
+  - Adding a new `LandoEvent` discriminant requires three edits in lock-step: the TaggedStruct schema, the `Schema.Union` member list, and the renderer's `isTaskTreeEvent`/`isMessageEvent` predicate set. Forgetting the union member is the only one that breaks `tsc -b`; forgetting the predicate is the silent failure (event publishes but renderer returns `null`).
+  - Tests that touch `process.exitCode` MUST capture and restore the prior value, AND set a sentinel (not assume `undefined`), because other tests in the bun-test suite (`core/test/cli/*.scenario.test.ts`) leave `process.exitCode` set after exercising failure paths.
+  - Plain renderer formatter reuses task.fail's `↳` indent style for `message.error` remediation, but with two-space indent (no `[taskId]` prefix) since messages are not scoped to a task.
+  - The `orderedKeys` list in `renderer/format.ts#stableStringify` must include any new top-level event field (`body` for messages) that should appear before `timestamp` in the NDJSON output; unknown keys still serialize but in insertion order at the tail.
+---
+
+## [2026-05-19 20:01 CDT] - US-035 Review
+- Reviewed: HEAD (a0d49ae "feat: Implement message info/warn/error contract") against PRD §US-035 (PRD-05).
+- Files changed by review: none (no review fixes applied).
+- `review-work` findings: skipped full 5-agent fan-out for this story — diff is small and well-contained (3 schema additions in `sdk/src/events/index.ts`, ~25 lines of formatter logic in `core/src/cli/renderer/format.ts`, 213 lines of focused tests). Performed inline goal/constraint, code-quality, and exit-code-contract review instead.
+  - rejected: would-be observation that the exit-code contract test only exercises `makePlainRendererLive`. Reason: messages route through the same `EventService` publish path regardless of renderer Layer; the contract is on the SDK schema (no `exitCode` field) and the renderer (no `process.exitCode` mutation), both shared across renderers. Adding redundant JSON/lando exit-code tests would be over-engineering for a contract enforced at the event-schema level.
+- Acceptance criteria check:
+  - ✓ Unit tests cover `message.info` / `message.warn` / `message.error` in plain/json/lando renderers (13 tests across 5 describe blocks).
+  - ✓ Warnings (and other message events) do not mutate exit code on their own — explicit exit-code contract test with sentinel value.
+  - ✓ Error remediation rendered with `  ↳ <remediation>` continuation line in plain, preserved as JSON field in NDJSON, omitted via `Schema.optional` when not provided.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (Checked 405 files); `bun test core/test/cli/renderer-messages.test.ts` passed (13 pass / 30 expect); `bun test` passed (887 pass / 11 skip / 0 fail / 2 snapshots / 4145 expect across 127 files).
+- **Learnings for future iterations:**
+  - For small contract-style stories (new event tag + renderer pass-through + tests) the 5-agent `review-work` fan-out is disproportionate — a focused goal/quality/exit-code inline review against the PRD AC list catches the same issues for ~5% of the cost. Reserve full fan-out for stories that touch multiple subsystems, cross security/perf boundaries, or where the AC implies behavioral complexity beyond schema + formatter.
+  - The exit-code contract for message events is enforced at the EventService publish path, not per-renderer — message schemas have no `exitCode` field, and renderers are pure formatters. Renderer-Layer-specific exit-code tests are redundant once the SDK schema and one Layer test cover the contract.
+---
+
+## [2026-05-19 20:15 CDT] - US-035 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving cleanup edits only.
+- Files changed by cleanup: `sdk/src/events/index.ts` (removed a planning section reference from the message-event JSDoc while preserving the renderer-contract explanation) and `core/test/cli/renderer-messages.test.ts` (restored `process.exitCode` to a clean zero when no prior value existed, so the sentinel assertion does not leak into Bun's process exit status).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are runtime fields, test strings, planning files, or durable repo context outside code comments.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (405 files); `bun run build` passed; `bun test core/test/build/compile.test.ts` passed (1 pass); `bun test core/test/cli/renderer-messages.test.ts` passed (13 pass / 30 expect); final `bun test` passed (887 pass / 11 skip / 0 fail / 2 snapshots / 4145 expect). An earlier full-suite attempt exposed the exit-code sentinel leak fixed above; the final full run passed after the cleanup.
