@@ -4358,3 +4358,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes — `git switch main && git pull --ff-only`; `us-039-task-tree-progress` deleted locally
 - Remaining local state: none
 ---
+
+## [2026-05-20] - Sync
+- Previous branch: us-039-task-tree-progress
+- Previous PR: #118 https://github.com/AaronFeledy/core4/pull/118
+- Action: caught up after prior merge (babysit step had already merged, refreshed main, and deleted the local branch; sync verified clean state — Case C no-op)
+- Local main updated: yes (already at 67dd987)
+- Branch after sync: main
+- Stash created: no
+---
