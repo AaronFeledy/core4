@@ -22,7 +22,11 @@ import {
 
 const EXPECTED_TAGS = [
   { tag: Logger, key: "@lando/core/Logger", methods: ["debug", "info", "warn", "error"] },
-  { tag: EventService, key: "@lando/core/EventService", methods: ["publish", "subscribe", "waitFor"] },
+  {
+    tag: EventService,
+    key: "@lando/core/EventService",
+    methods: ["publish", "subscribe", "subscribeQueue", "waitFor"],
+  },
   {
     tag: RuntimeProvider,
     key: "@lando/core/RuntimeProvider",
@@ -98,9 +102,9 @@ describe("Effect service tags", () => {
   });
 
   test("freezes each documented service method name", () => {
-    expect(EXPECTED_TAGS.map(({ methods }) => methods)).toEqual([
+    const expectedMethods: string[][] = [
       ["debug", "info", "warn", "error"],
-      ["publish", "subscribe", "waitFor"],
+      ["publish", "subscribe", "subscribeQueue", "waitFor"],
       [
         "isAvailable",
         "setup",
@@ -143,7 +147,10 @@ describe("Effect service tags", () => {
       ],
       ["run", "stream"],
       ["exec", "run", "runScript"],
-    ]);
+    ];
+
+    const actualMethods: string[][] = EXPECTED_TAGS.map(({ methods }) => [...methods]);
+    expect(actualMethods).toEqual(expectedMethods);
   });
 
   test("service methods return Effect or Stream values", () => {
@@ -157,7 +164,7 @@ describe("Effect service tags", () => {
     const eventService: Context.Tag.Service<typeof EventService> = {
       publish: (_event: { readonly _tag: string }) => Effect.void,
       subscribe: (_name: string) => Stream.empty,
-      subscribeQueue: Effect.never as unknown as Context.Tag.Service<typeof EventService>["subscribeQueue"],
+      subscribeQueue: Effect.never as Context.Tag.Service<typeof EventService>["subscribeQueue"],
       waitFor: (_name: string) => Effect.succeed({ _tag: "test-event" }),
     };
 

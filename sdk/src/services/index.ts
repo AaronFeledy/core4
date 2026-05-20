@@ -361,15 +361,9 @@ export class EventService extends Context.Tag("@lando/core/EventService")<
     readonly publish: (event: LandoEvent) => Effect.Effect<void, EventError>;
     readonly subscribe: (name: string) => Stream.Stream<LandoEvent, EventError>;
     /**
-     * Acquire a `PubSub` subscription queue inside the caller's `Scope`.
-     *
-     * Subscriptions are established eagerly when this Effect succeeds, so
-     * any `publish` call from another fiber after the Effect completes is
-     * guaranteed to reach the queue. Renderers and other consumers that
-     * must not miss the first event of a run MUST use this method instead
-     * of `subscribe`, which lazily subscribes on stream consumption.
-     *
-     * The queue receives every published event; callers filter as needed.
+     * Eagerly acquires a `PubSub` subscription queue in the caller's `Scope`
+     * so consumers that need the first event must use it instead of the lazy
+     * `subscribe` stream.
      */
     readonly subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>;
     readonly waitFor: (

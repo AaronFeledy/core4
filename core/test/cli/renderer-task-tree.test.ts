@@ -142,7 +142,9 @@ describe("json renderer", () => {
       const line = lines[index];
       if (line === undefined) throw new Error("missing rendered line");
       const parsed = JSON.parse(line) as LandoEvent;
-      expect(parsed._tag).toBe(fixtureEvents[index]?._tag);
+      const expectedEvent = fixtureEvents[index];
+      if (expectedEvent === undefined) throw new Error("missing fixture event");
+      expect(parsed._tag).toBe(expectedEvent._tag);
     }
   });
 
@@ -177,7 +179,9 @@ describe("snapshot: renderer.task-tree.concurrent.ndjson", () => {
     const io = createBufferedRendererIO();
     renderJson(io, events);
     const lines = io.stderrLines();
-    const tags = lines.map((line) => (JSON.parse(line) as LandoEvent)._tag);
+    const tags: ReadonlyArray<LandoEvent["_tag"]> = lines.map(
+      (line) => (JSON.parse(line) as LandoEvent)._tag,
+    );
 
     expect(tags[0]).toBe("task.tree.start");
     expect(tags[tags.length - 1]).toBe("task.tree.complete");
@@ -185,8 +189,9 @@ describe("snapshot: renderer.task-tree.concurrent.ndjson", () => {
     const firstTaskStart = tags.indexOf("task.start");
     const lastTaskStart = tags.lastIndexOf("task.start");
     const firstTaskDetail = tags.indexOf("task.detail");
+    const terminalTags: ReadonlyArray<LandoEvent["_tag"]> = ["task.complete", "task.fail"];
     const firstTerminal = Math.min(
-      ...(["task.complete", "task.fail"]
+      ...(terminalTags
         .map((tag) => tags.indexOf(tag))
         .filter((index) => index >= 0) as ReadonlyArray<number>),
     );

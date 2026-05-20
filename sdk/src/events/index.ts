@@ -3,13 +3,6 @@
  *
  * Event scopes: Lando, App, Provider, Tooling, CLI. The `EventService`
  * publishes payloads in priority bands, with a standard cold-start sequence.
- *
- * Each event payload is a `Schema.TaggedStruct` so the discriminator
- * `_tag` is part of the schema. The full discriminated union over every
- * known event payload is exported as `LandoEvent`.
- *
- * Status: stub. Only a representative subset of events is declared here.
- * The complete catalog is built out as the runtime lands.
  */
 import { Schema } from "effect";
 
@@ -18,10 +11,6 @@ import { AppPlan, AppRef, ProviderId, ServiceName } from "../schema/index.ts";
 export type { AppRef };
 
 const Timestamp = Schema.DateTimeUtc;
-
-// =============================================================================
-// Lando-scope events
-// =============================================================================
 
 export const PreBootstrapEvent = Schema.TaggedStruct("pre-bootstrap", {
   level: Schema.Literal("minimal", "plugins", "commands", "provider", "app", "tooling"),
@@ -45,10 +34,6 @@ export const BeforeExitEvent = Schema.TaggedStruct("before-exit", {
   timestamp: Timestamp,
 });
 export type BeforeExitEvent = typeof BeforeExitEvent.Type;
-
-// =============================================================================
-// App-scope events
-// =============================================================================
 
 export const PreInitEvent = Schema.TaggedStruct("pre-init", {
   app: AppRef,
@@ -199,10 +184,6 @@ export const PostBuildEvent = Schema.TaggedStruct("post-build", {
 });
 export type PostBuildEvent = typeof PostBuildEvent.Type;
 
-// =============================================================================
-// Provider-scope events
-// =============================================================================
-
 export const PreProviderApplyEvent = Schema.TaggedStruct("pre-provider-apply", {
   app: AppRef,
   providerId: Schema.String,
@@ -232,10 +213,6 @@ export const PostProviderExecEvent = Schema.TaggedStruct("post-provider-exec", {
 });
 export type PostProviderExecEvent = typeof PostProviderExecEvent.Type;
 
-// =============================================================================
-// CLI-scope events
-// =============================================================================
-
 export const CliCommandInitEvent = Schema.TaggedStruct("cli-command-init", {
   commandId: Schema.String,
   timestamp: Timestamp,
@@ -255,14 +232,9 @@ export const CliCommandErrorEvent = Schema.TaggedStruct("cli-command-error", {
 });
 export type CliCommandErrorEvent = typeof CliCommandErrorEvent.Type;
 
-// =============================================================================
-// Renderer (task tree) events
-// =============================================================================
-
 /**
- * Open a parent container around N concurrent sibling tasks. The
- * `BuildOrchestrator` emits one per build phase; arbitrary callers MAY
- * emit their own trees as long as they publish a matching
+ * Open a parent container around N concurrent sibling tasks. Callers MAY
+ * emit task trees as long as they publish a matching
  * {@link TaskTreeCompleteEvent} when the children finish.
  */
 export const TaskTreeStartEvent = Schema.TaggedStruct("task.tree.start", {
@@ -322,19 +294,6 @@ export const TaskTreeCompleteEvent = Schema.TaggedStruct("task.tree.complete", {
 });
 export type TaskTreeCompleteEvent = typeof TaskTreeCompleteEvent.Type;
 
-// =============================================================================
-// Discriminated union
-// =============================================================================
-
-/**
- * `LandoEvent` is the discriminated union over every known event payload.
- * `EventService.publish` is type-narrowed against this union, so publishing
- * an unknown event is a compile error.
- *
- * Note: this union is intentionally open-ended via the `_tag` discriminator;
- * tooling events (`pre-<tool>`, `post-<tool>`) are user-derived names that
- * extend the union at runtime via Schema.TaggedStruct templating elsewhere.
- */
 export const LandoEvent = Schema.Union(
   PreBootstrapEvent,
   PostBootstrapEvent,
@@ -375,10 +334,6 @@ export const LandoEvent = Schema.Union(
   TaskTreeCompleteEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
-
-// =============================================================================
-// Subscriber priority bands
-// =============================================================================
 
 export const SubscriberPriority = {
   critical: { min: 0, max: 9 },

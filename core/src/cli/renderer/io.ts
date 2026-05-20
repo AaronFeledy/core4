@@ -7,12 +7,8 @@ export const createStdioRendererIO = (
   stdout: NodeJS.WriteStream = process.stdout,
   stderr: NodeJS.WriteStream = process.stderr,
 ): RendererIO => ({
-  writeStdout: (chunk) => {
-    stdout.write(chunk);
-  },
-  writeStderr: (chunk) => {
-    stderr.write(chunk);
-  },
+  writeStdout: (chunk) => stdout.write(chunk),
+  writeStderr: (chunk) => stderr.write(chunk),
 });
 
 export interface BufferedRendererIO extends RendererIO {
@@ -22,10 +18,10 @@ export interface BufferedRendererIO extends RendererIO {
   readonly stderrLines: () => ReadonlyArray<string>;
 }
 
-const splitLines = (text: string): ReadonlyArray<string> =>
-  text.length === 0
-    ? []
-    : text.split("\n").filter((line, index, all) => !(index === all.length - 1 && line === ""));
+const splitLines = (text: string): ReadonlyArray<string> => {
+  const lines = text.split("\n");
+  return lines[lines.length - 1] === "" ? lines.slice(0, -1) : lines;
+};
 
 export const createBufferedRendererIO = (): BufferedRendererIO => {
   let stdoutBuffer = "";
