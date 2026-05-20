@@ -6,7 +6,7 @@ export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 
 export const PLUGIN_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x50, 0x43]);
 
-const HEADER_SIZE = 12;
+export const COMMAND_INDEX_HEADER_BYTES = 12;
 const VERSION_OFFSET = 4;
 
 export interface CommandIndexEntry {
@@ -36,7 +36,7 @@ export interface PluginCommandIndexPayload {
 }
 
 const writeHeader = (magic: Uint8Array): Uint8Array => {
-  const header = new Uint8Array(HEADER_SIZE);
+  const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);
   header.set(magic, 0);
   new DataView(header.buffer).setBigUint64(VERSION_OFFSET, COMMAND_INDEX_SCHEMA_VERSION, true);
   return header;
@@ -55,7 +55,7 @@ const encodePayload = (magic: Uint8Array, payload: unknown): Uint8Array => {
 };
 
 const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {
-  if (bytes.byteLength <= HEADER_SIZE) return false;
+  if (bytes.byteLength <= COMMAND_INDEX_HEADER_BYTES) return false;
   for (let i = 0; i < magic.length; i++) {
     if (bytes[i] !== magic[i]) return false;
   }
@@ -66,7 +66,15 @@ const headerMatches = (bytes: Uint8Array, magic: Uint8Array): boolean => {
 const decodePayload = <T>(bytes: Uint8Array, magic: Uint8Array): T | null => {
   if (!headerMatches(bytes, magic)) return null;
   try {
-    return deserialize(bytes.subarray(HEADER_SIZE)) as T;
+    const payload = deserialize(bytes.subarray(COMMAND_INDEX_HEADER_BYTES)) as T;
+    if (
+      payload === null ||
+      typeof payload !== "object" ||
+      (payload as { schemaVersion?: unknown }).schemaVersion !== Number(COMMAND_INDEX_SCHEMA_VERSION)
+    ) {
+      return null;
+    }
+    return payload;
   } catch {
     return null;
   }

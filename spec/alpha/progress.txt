@@ -54,6 +54,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Renderer-side line formatting is pure and lives in `core/src/cli/renderer/format.ts` (`renderPlainLine` / `renderJsonLine` return `string | null`; `null` means "not a task tree event, skip"). The Layer in `runtime.ts` only does plumbing: it calls the formatter and writes to `RendererIO.writeStdout` / `writeStderr` based on the renderer (`plain` → stdout, `json` → stderr; `lando` aliases plain until rich-TTY behavior lands). Tests inject `createBufferedRendererIO()` and assert on `stdout()` / `stderr()` / `stdoutLines()` — no `Bun.spawn` round trip needed for renderer unit coverage. The named snapshot fixture lives at `core/test/cli/fixtures/renderer.task-tree.concurrent.ndjson` and is loaded raw (one JSON object per line) so the renderer is exercised against a deterministic event ordering across runs.
 
 - `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
+- Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
 
 ## Iteration Log
 
@@ -4607,3 +4608,30 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/cache/app-plan.ts` (shortened cache-key comment wording), `core/src/services/planner.ts` (removed planning-section citation from a host-facts fallback comment), and `core/test/services/cache.test.ts` (removed redundant `mkdir` after `mkdtemp` plus the unused import).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining spec/phase strings are runtime fields, user-visible error text, or test assertions rather than code-comment traceability.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/cache.test.ts core/test/services/app-planner.test.ts` passed (32 pass / 0 fail); full `bun test` passed once (1020 pass / 11 skip / 0 fail). A later full-suite retry hit the known compiled-binary ENOENT transient in `core/test/cli/deferred-commands.test.ts`; `bun run build` passed and focused `bun test core/test/cli/deferred-commands.test.ts` passed (38 pass / 0 fail).
+
+## [2026-05-20 14:00 CDT] - US-044
+- Implemented shared binary cache encoding coverage for app-command, plugin-command, app-plan, and cwd-app-map caches, including committed binary fixtures, header/schema-version assertions, checksum assertions where applicable, and unknown-version cache-miss behavior.
+- Files changed: `core/src/cache/command-index.ts`, `core/src/cache/app-plan.ts`, `core/src/cache/cwd-app-map.ts`, `core/test/cache/binary-encoding.test.ts`, `core/test/cache/fixtures/binary-cache/*.bin`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bunx biome check --write core/src/cache/app-plan.ts core/src/cache/command-index.ts core/src/cache/cwd-app-map.ts core/test/cache/binary-encoding.test.ts` passed; focused `bun test core/test/cache/binary-encoding.test.ts core/test/cache/command-index.test.ts core/test/services/cache.test.ts` passed (32 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed; full `bun test --max-concurrency=1` passed (1032 pass / 11 skip / 0 fail); default-concurrency retry hit the known compiled-binary build contention, and `bun run build` plus focused `bun test core/test/cli/renderer-flag.scenario.test.ts core/test/cli/deferred-commands.test.ts` passed (50 pass / 0 fail); manual QA decoded committed app-command and plugin-command fixtures and observed `LCAC`/`LCPC` headers with one decoded entry each.
+- **Learnings for future iterations:**
+  - Binary cache tests should assert both the outer fixed header and the inner payload `schemaVersion`; command-index previously accepted payloads with a stale inner schema if the header matched.
+  - `cwd-app-map` now follows the documented cache-version policy: unknown header schema versions silently invalidate, while corrupt/truncated/magic-mismatched files still surface a tagged `CacheError` with remediation.
+  - Keep fixture payloads deterministic by pinning all timestamps, app names, paths, and app-plan metadata; cacheRoot/temp paths must not leak into serialized payloads.
+---
+
+## [2026-05-20 14:26 CDT] - Babysit
+- PR: none found for branch `us-044-binary-cache-encoding-rules` (`gh pr view --json number,url,state,title` returned no pull requests found).
+- CI outcome: not watched; no PR exists for the current branch.
+- Review feedback: none checked; no PR exists.
+- Triage rounds used: 0
+- Merge: deferred (push step did not create/refresh a PR for the current branch).
+- Local main / branch refreshed: no
+- Remaining local state, if any: current branch `us-044-binary-cache-encoding-rules`; working tree clean; `.local/looper/.last-branch` also points to `us-044-binary-cache-encoding-rules`.
+---
+
+## [2026-05-20 17:18 CDT] - Push
+- Branch: us-044-binary-cache-encoding-rules
+- Push: pushed
+- Commit(s): 4d6cf5f feat: Make binary cache encoding rules testable
+- PR: #122 https://github.com/AaronFeledy/core4/pull/122 (created)
+---
