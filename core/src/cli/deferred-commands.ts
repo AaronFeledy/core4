@@ -1,21 +1,13 @@
 /**
  * Per-command deferral plans for canonical Lando command ids that are not
- * implemented in Phase 2 Alpha.
+ * implemented yet.
  *
- * Each plan names the roadmap phase that owns the command (`Phase 3 Beta`
- * or `Phase 4 RC`), the spec section that defines its contract, a short
- * "why deferred" summary, and a single-paragraph remediation safe to print
- * to a user's stderr.
- *
- * Phase names mirror `spec/ROADMAP.md` Phase 2..Phase 5 headings. Open
- * decisions referenced in remediation use the labels in `spec/ROADMAP.md`
- * §14.2 "Open decisions" (e.g. "Plugin trust UX").
- *
- * The single `notImplementedErrorForCommand()` function below is the
- * source of truth consumed by both the source OCLIF MVP guard
- * (`LandoCommandBase.runEffect`) and the compiled `$bunfs` dispatcher
- * (`runCompiledCli`) so the two paths produce identical remediation text
- * for the same command id.
+ * Each plan names the release bucket that owns the command, the user-facing
+ * contract reference, a short "why deferred" summary, and remediation safe
+ * to print to stderr. The single `notImplementedErrorForCommand()` function
+ * below is consumed by both the source OCLIF guard and the compiled `$bunfs`
+ * dispatcher so the two paths produce identical remediation text for the
+ * same command id.
  */
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -127,12 +119,9 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   string,
   DeferredCommandPlan
 >([
-  // app:includes:*
   ["app:includes:update", APP_INCLUDES_PLAN],
   ["app:includes:verify", APP_INCLUDES_PLAN],
-  // app:config:translate
   ["app:config:translate", APP_CONFIG_TRANSLATE_PLAN],
-  // apps:scratch:*
   ["apps:scratch:destroy", APPS_SCRATCH_PLAN],
   ["apps:scratch:gc", APPS_SCRATCH_PLAN],
   ["apps:scratch:info", APPS_SCRATCH_PLAN],
@@ -140,7 +129,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["apps:scratch:logs", APPS_SCRATCH_PLAN],
   ["apps:scratch:start", APPS_SCRATCH_PLAN],
   ["apps:scratch:stop", APPS_SCRATCH_PLAN],
-  // meta:global:*
   ["meta:global:config", META_GLOBAL_PLAN],
   ["meta:global:destroy", META_GLOBAL_PLAN],
   ["meta:global:info", META_GLOBAL_PLAN],
@@ -152,20 +140,16 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:start", META_GLOBAL_PLAN],
   ["meta:global:stop", META_GLOBAL_PLAN],
   ["meta:global:uninstall", META_GLOBAL_PLAN],
-  // meta:plugin:trust*
   ["meta:plugin:trust", META_PLUGIN_TRUST_PLAN],
   ["meta:plugin:trust-authoring-root", META_PLUGIN_TRUST_PLAN],
-  // meta:plugin:{new,test,build,link,unlink,publish}
   ["meta:plugin:new", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:test", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:build", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:link", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:unlink", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:publish", META_PLUGIN_AUTHORING_PLAN],
-  // meta:plugin:login / logout (paired with publish)
   ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],
   ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
-  // Other non-MVP surfaces
   ["meta:recipes:list", META_RECIPES_LIST_PLAN],
   ["meta:events:follow", META_EVENTS_FOLLOW_PLAN],
   ["meta:uninstall", META_UNINSTALL_PLAN],
@@ -179,10 +163,7 @@ export const allDeferredCommandIds = (): ReadonlyArray<string> =>
   Array.from(DEFERRED_COMMAND_PLANS.keys()).sort((left, right) => left.localeCompare(right));
 
 /**
- * Tagged `NotImplementedError` for a deferred command. Surfaces consistent
- * phase-tagged remediation text across the source OCLIF MVP guard and the
- * compiled `$bunfs` dispatcher. Falls back to a generic Phase 2 Alpha
- * message for any command id not yet listed in `DEFERRED_COMMAND_PLANS`.
+ * Build the deferred-command `NotImplementedError` for a command id.
  */
 export const notImplementedErrorForCommand = (commandId: string): NotImplementedError => {
   const plan = DEFERRED_COMMAND_PLANS.get(commandId);
@@ -194,7 +175,7 @@ export const notImplementedErrorForCommand = (commandId: string): NotImplemented
       remediation: plan.remediation,
     });
   }
-  // Fallback for any future canonical command id not yet assigned to a phase.
+  // Fallback for unknown canonical command ids.
   const specSection = "spec/08-cli-and-tooling.md";
   return new NotImplementedError({
     message: `Command ${commandId} is not implemented in Phase 2 Alpha.`,
