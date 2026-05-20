@@ -7,6 +7,7 @@ import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
 import { listCwdAppMapEntries } from "../../cache/cwd-app-map.ts";
+import { resolveUserCacheRoot } from "../../cache/paths.ts";
 
 export interface AppsListEntry {
   readonly appId: string;
@@ -150,15 +151,13 @@ export const listServices = (
       apps.push(...providerApps);
     }
 
-    const userCacheRoot = options.userCacheRoot ?? process.env.LANDO_USER_CACHE_ROOT;
-    if (userCacheRoot !== undefined) {
-      const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(
-        Effect.catchAll(() => Effect.succeed([])),
-      );
-      for (const cached of cachedApps) {
-        if (!apps.some((app) => app.appRoot === cached.appRoot)) {
-          apps.push(cacheEntryToApp(cached));
-        }
+    const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
+    const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(
+      Effect.catchAll(() => Effect.succeed([])),
+    );
+    for (const cached of cachedApps) {
+      if (!apps.some((app) => app.appRoot === cached.appRoot)) {
+        apps.push(cacheEntryToApp(cached));
       }
     }
 

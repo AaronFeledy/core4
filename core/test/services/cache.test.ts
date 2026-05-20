@@ -135,6 +135,76 @@ describe("CacheServiceLive", () => {
     expect(afterDelete).toBeNull();
   });
 
+  test("upserts a cwd entry so the newest metadata wins over a stale duplicate", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-cwd-app-map-upsert-"));
+    const cwd = "/workspace/dup";
+    await Effect.runPromise(
+      writeCwdAppMapEntry({
+        cacheRoot,
+        entry: {
+          cwd,
+          appRoot: "/workspace/stale",
+          primaryLandofilePath: "/workspace/stale/.lando.yml",
+          mtimeNs: 1,
+          sizeBytes: 1,
+          lastUsedAt: 10,
+        },
+      }),
+    );
+    await Effect.runPromise(
+      writeCwdAppMapEntry({
+        cacheRoot,
+        entry: {
+          cwd,
+          appRoot: "/workspace/fresh",
+          primaryLandofilePath: "/workspace/fresh/.lando.yml",
+          mtimeNs: 2,
+          sizeBytes: 2,
+          lastUsedAt: 20,
+        },
+      }),
+    );
+
+    const read = await Effect.runPromise(readCwdAppMapEntry({ cacheRoot, cwd }));
+    const listed = await Effect.runPromise(listCwdAppMapEntries(cacheRoot));
+
+    expect(read?.appRoot).toBe("/workspace/fresh");
+    expect(read?.lastUsedAt).toBe(20);
+    expect(listed.length).toBe(1);
+  });
+
+  test("silently invalidates a cwd-app-map cache whose landoVersion does not match", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-cwd-app-map-version-"));
+    await Effect.runPromise(
+      writeCwdAppMapEntry({
+        cacheRoot,
+        entry: {
+          cwd: "/v1/cwd",
+          appRoot: "/v1/app",
+          primaryLandofilePath: "/v1/app/.lando.yml",
+          mtimeNs: 1,
+          sizeBytes: 1,
+          lastUsedAt: 1,
+        },
+      }),
+    );
+    const cacheFile = join(cacheRoot, CWD_APP_MAP_CACHE_FILE);
+    const original = Buffer.from(await Bun.file(cacheFile).arrayBuffer());
+    const header = original.subarray(0, 44);
+    const payload = original.subarray(44);
+    const decoded = (await import("node:v8")).deserialize(payload) as {
+      landoVersion: string;
+      entries: unknown[];
+    };
+    const rewritten = (await import("node:v8")).serialize({ ...decoded, landoVersion: "0.0.0-bogus" });
+    const newHeader = Buffer.from(header);
+    (await import("node:crypto")).createHash("sha256").update(rewritten).digest().copy(newHeader, 12);
+    await writeFile(cacheFile, Buffer.concat([newHeader, rewritten]));
+
+    const listed = await Effect.runPromise(listCwdAppMapEntries(cacheRoot));
+    expect(listed).toEqual([]);
+  });
+
   test("fails corrupt cwd-app-map reads with a remediation message", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-cwd-app-map-corrupt-"));
     await mkdir(cacheRoot, { recursive: true });

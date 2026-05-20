@@ -79,10 +79,20 @@ const decode = (path: string, bytes: Uint8Array): Effect.Effect<CwdAppMapCache, 
 const normalizeEntries = (
   entries: ReadonlyArray<CwdAppMapEntry>,
   maxEntries: number,
-): ReadonlyArray<CwdAppMapEntry> =>
-  [...new Map(entries.map((entry) => [entry.cwd, entry])).values()]
-    .sort((a, b) => b.lastUsedAt - a.lastUsedAt)
-    .slice(0, maxEntries);
+): ReadonlyArray<CwdAppMapEntry> => {
+  // Dedup by cwd keeping the FIRST occurrence so callers can prepend an
+  // upserted entry and have it win over a stale duplicate from the existing
+  // cache. `new Map(...)` would do the opposite (last write wins) and drop
+  // the new metadata on every refresh.
+  const seen = new Set<string>();
+  const deduped: CwdAppMapEntry[] = [];
+  for (const entry of entries) {
+    if (seen.has(entry.cwd)) continue;
+    seen.add(entry.cwd);
+    deduped.push(entry);
+  }
+  return deduped.sort((a, b) => b.lastUsedAt - a.lastUsedAt).slice(0, maxEntries);
+};
 
 export const readCwdAppMap = (cacheRoot: string): Effect.Effect<CwdAppMapCache | null, CacheError> =>
   Effect.gen(function* () {
@@ -100,7 +110,9 @@ export const readCwdAppMap = (cacheRoot: string): Effect.Effect<CwdAppMapCache |
       ),
     );
     if (bytes === null) return null;
-    return yield* decode(path, bytes);
+    const cache = yield* decode(path, bytes);
+    if (cache.landoVersion !== CORE_VERSION) return null;
+    return cache;
   });
 
 export const listCwdAppMapEntries = (
