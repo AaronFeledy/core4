@@ -4439,3 +4439,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ---
 
 
+## [2026-05-20 08:26 UTC] - Sync
+- Previous branch: us-040-renderer-limitations-docs
+- Previous PR: #119 https://github.com/AaronFeledy/core4/pull/119 (state: OPEN → MERGED)
+- Action: merged — Case A; all checks SUCCESS/NEUTRAL, mergeable CLEAN, no CHANGES_REQUESTED; squash-merged and deleted remote branch; rebased 2 local progress-log commits onto post-merge main and pushed.
+- Local main updated: yes (e77c1d0, rebased onto 5e00f46)
+- Branch after sync: main
+- Stash created: yes (sync-progress-fastpath, dropped after resolution)
+---
