@@ -4418,3 +4418,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/cli/oclif/command-base.ts` (trimmed verbose command-base doc comments) and `core/src/cli/renderer-deferred.ts` (rewrote planning-heavy renderer-deferred comments into plain technical descriptions).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining spec/phase strings are runtime remediation fields or test assertions, not code-comment traceability.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1008 pass / 11 skip / 0 fail).
+
+## [2026-05-20] - Push
+- Branch: us-040-renderer-limitations-docs
+- Push: pushed
+- Commit(s): 976ef80 chore: remove AI slop, dfe1788 fix: preserve logs tail flag in renderer guard, 4261d54 feat: Document renderer limitations for Alpha
+- PR: #119 https://github.com/AaronFeledy/core4/pull/119 (created)
+---
