@@ -2,11 +2,7 @@ import { Command } from "@oclif/core";
 
 import { Cause, Effect, Exit, type Layer } from "effect";
 
-import {
-  LandoRuntimeBootstrapError,
-  type NotImplementedError,
-  RendererSelectionError,
-} from "@lando/sdk/errors";
+import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
@@ -96,10 +92,8 @@ const MVP_COMMAND_IDS = new Set([
 export const isMvpCommandId = (commandId: string): boolean => MVP_COMMAND_IDS.has(commandId);
 
 /**
- * True for canonical namespace-prefixed Lando command ids (i.e. `app:*`,
- * `apps:*`, `meta:*`). Test fixtures and ad-hoc commands with non-canonical
- * ids fall outside this set and are not subject to the implemented-command
- * `NotImplementedError` guard in `runEffect`.
+ * True for canonical namespace-prefixed Lando command ids (`app:*`,
+ * `apps:*`, `meta:*`).
  */
 export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
 
@@ -122,7 +116,7 @@ const formatRendererSelectionError = (error: unknown): string =>
     rendererMode: "plain",
   });
 
-/** Extract the `AbortSignal` passed by `runEffect` into `spec.run({ argv, signal })`. */
+/** Extract the `AbortSignal` passed into the command Effect. */
 export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>
   typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
     ? input.signal
@@ -164,7 +158,8 @@ export abstract class LandoCommandBase extends Command {
   static bootstrap: BootstrapLevel | undefined = undefined;
 
   /**
-   * Run the underlying Effect program. Subclasses' `run()` should call this.
+   * Run the underlying Effect program for this command. Subclasses' `run()`
+   * should call this.
    * The init hook owns runtime selection, and the base provides that runtime
    * to the command Effect.
    */
@@ -179,7 +174,7 @@ export abstract class LandoCommandBase extends Command {
       this.argv.length = 0;
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
-      if (error instanceof RendererSelectionError) {
+      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         throw new Error(formatRendererSelectionError(error));
       }
       throw error;

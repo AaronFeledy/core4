@@ -4367,3 +4367,61 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-20 07:23 UTC] - Sync
+- Previous branch: us-039-task-tree-progress
+- Previous PR: #118 https://github.com/AaronFeledy/core4/pull/118 (state: MERGED)
+- Action: caught up after prior merge — Case C; local main already at origin/main, local branch already absent; no-op
+- Local main updated: yes (already current — 0b76763)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-20 02:50 CDT] - US-040
+- Documented Alpha renderer limitations (`task.detail` streaming tail, expand/collapse, full first-paint contract) in `spec/alpha/prd-alpha-05-renderer-errors-and-diagnostics.md` US-040 and in a new source-side `core/src/cli/renderer-deferred.ts` module. Added explicit RC/Beta `NotImplementedError` guards for `--renderer=verbose` (Phase 3 Beta) and `--expand` / `--no-expand` / `--collapse` / `--no-collapse` / `--tail` / `--no-tail` (Phase 4 RC) at the top-level pre-parse so source OCLIF and compiled `$bunfs` both reject them with the same phase-aware remediation instead of falling through to `RendererSelectionError` ("Unsupported renderer value") or OCLIF's generic "unknown flag" path. Widened the four catch sites that handle `RendererSelectionError` (`LandoCommandBase.runEffect`, `runCli`, `runCompiledCli`, `apps/init.ts`) to also catch `NotImplementedError` so the same bug-report formatter handles both.
+- Files changed: `core/src/cli/renderer-deferred.ts` (new), `core/src/cli/renderer-selection.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/apps/init.ts`, `core/src/cli/run.ts`, `core/test/cli/renderer-deferred.test.ts` (new), `spec/alpha/prd-alpha-05-renderer-errors-and-diagnostics.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`, `AGENTS.md`.
+- Verification run and result: lsp diagnostics clean for changed TypeScript files; `bun test core/test/cli/renderer-deferred.test.ts` passed (21 pass, 99 expect()); `bun test core/test/cli/renderer-selection.test.ts core/test/cli/renderer-flag.scenario.test.ts` passed (38 pass) confirming existing renderer behaviour preserved; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1006 pass, 11 skip; a duplicate later run reported 2 compiled-binary contention failures that pass when re-run in isolation per the documented `core/dist/lando` contention gotcha); `bun run build` passed; manual CLI QA on host (non-privileged) showed source and compiled binaries produce bit-identical output for `--renderer=verbose` (NotImplementedError, Phase 3 Beta remediation, `commandId: cli:renderer-selection`, `specSection: spec/08-cli-and-tooling.md`), for `--no-expand` (NotImplementedError, Phase 4 RC remediation), and preserved the existing `RendererSelectionError` path for `--renderer=tui`.
+- **Learnings for future iterations:**
+  - Patterns discovered: when a tagged error needs to surface from a CLI pre-parse path (here renderer selection), widen the `instanceof` check at every catch site rather than introducing a new error type or formatter — `formatBugReport`'s generic `extractExtraTagFields` already handles `specSection` for any tagged error.
+  - Gotchas encountered: type-only imports (`import { type NotImplementedError }`) need to become value imports before `instanceof` works at the catch site; tsc flags this immediately on the changed file but the diagnostic message is subtle (`only refers to a type`).
+  - Useful context: existing renderer scenario tests deliberately use `--renderer=tui` as the "unknown value" probe; adding new deferred mode names (which the spec already lists, e.g. `verbose`) does not affect those tests as long as the deferred set and the test fixture stay disjoint.
+---
+
+## [2026-05-20 02:42 CDT] - US-040
+- Implemented the renderer-deferred-surface guard for Phase 2 Alpha: added `core/src/cli/renderer-deferred.ts` as the single source of truth for renderer modes / flags that touch §8.9.1 first-paint or §8.9.2 task-tree-tail / expand-collapse features deferred past Alpha, wired `core/src/cli/renderer-selection.ts` to consult both tables before falling through to `RendererSelectionError`, and broadened the four catch sites (`LandoCommandBase.runEffect`, `runCli`, `runCompiledCli`, `apps:init` OCLIF pre-parse) to handle the new `NotImplementedError` arm so source and compiled CLI paths stay byte-identical. Documented the deferred surfaces under PRD-05 US-040 with a phase-aligned table whose remediation strings are kept word-for-word in lock-step with the source guard.
+- Files changed: `core/src/cli/renderer-deferred.ts` (new), `core/src/cli/renderer-selection.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/run.ts`, `core/src/cli/oclif/commands/apps/init.ts`, `core/test/cli/renderer-deferred.test.ts` (new), `spec/alpha/prd-alpha-05-renderer-errors-and-diagnostics.md`, `spec/alpha/prd.json`, `AGENTS.md`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` clean across all changed TypeScript files and the `core/src/cli` tree; focused `bun test core/test/cli/renderer-deferred.test.ts core/test/cli/renderer-selection.test.ts core/test/cli/renderer-flag.scenario.test.ts` passed (59 pass, 0 fail); `bun run typecheck` passed; `bun run lint` passed (after `biome format --write` on the new files); `bun run build` produced `core/dist/lando`; full `bun test` passed 1006 pass / 11 skip / 0 fail in isolation (the compile+version test pair re-runs cleanly alone — the previously documented concurrent-`core/dist/lando` contention surfaced once before isolating). Manual CLI QA on the host distro (no privileged operations, plain stderr+exit-code check only) ran source `bun core/bin/lando.ts apps:list --renderer=verbose|--no-expand` and compiled `./core/dist/lando apps:list --renderer=verbose|--no-expand`; both paths returned exit 1 with byte-identical `NotImplementedError` blocks carrying `commandId: cli:renderer-selection`, `specSection: spec/08-cli-and-tooling.md`, Phase 3 Beta / Phase 4 RC remediation, and `spec/ROADMAP.md` links. Also confirmed `--renderer=tui` (a value NOT in the deferred set) still surfaces `RendererSelectionError` so existing parity tests are preserved.
+- **Learnings for future iterations:**
+  - Patterns discovered: when a story has "tests assert deferred flags/options fail with RC/Beta remediation instead of no-op behavior" but no obvious existing no-op surface, the right answer is to pick spec-named values that currently fall through to a generic error path (here `verbose` from §8.9 was rejected by `validate` as a generic "Unsupported value") and upgrade them to phase-aware `NotImplementedError`. Speculating on flag names that aren't spec-grounded (e.g. `--no-spinner` for the first-paint contract) is risky — the cleanest minimum set was `--expand` / `--no-expand` / `--collapse` / `--no-collapse` / `--tail` / `--no-tail` because they map directly to §8.9.2 verbiage.
+  - Gotchas encountered: `core/src/cli/oclif/command-base.ts` had `NotImplementedError` imported as a `type` only; widening its catch to `instanceof NotImplementedError` required converting the import to a value import. Mismatch caught only at runtime if `tsc -b` happens to elide the `type` annotation correctly. The four-catch-site duplication (source OCLIF, source `runCli`, compiled `runCompiledCli`, `apps:init` OCLIF pre-parse) is fragile — adding a fifth renderer-selection entry point would silently leak the new tag unless its catch is broadened too.
+  - Useful context: existing renderer-flag scenario tests deliberately use `tui` as the "unsupported value" sentinel; reusing `tui` as a deferred-flag name would have broken those tests. Tests that exercise renderer flag rejection cross subprocess paths (`Bun.spawn`) need `PATH=$(dirname process.execPath):$PATH` so the child shell can find `bun`.
+---
+
+## [2026-05-20 03:05 CDT] - US-040 Review
+- Reviewed commit `4261d54` with the review-work specialist set (goal/constraint, QA execution, code quality, security, and context mining). Verdict before fixes: FAIL due one real in-scope command regression; security review passed with no findings.
+- Fixed `--tail` collision: the renderer-deferred guard now treats bare `--tail` as the deferred `task.detail` tail surface but leaves valued `--tail <N>` / `--tail=N` alone so the existing `app:logs --tail <N>` Alpha command-specific flag keeps working. Added regression coverage in `core/test/cli/renderer-deferred.test.ts` for `logs --tail 25` and `app:logs --tail=25` preserving renderer selection.
+- Files changed: `core/src/cli/renderer-deferred.ts`, `core/test/cli/renderer-deferred.test.ts`, `spec/alpha/progress.txt`.
+- `review-work` findings:
+  - fixed: [MAJOR] Goal/Code Quality/Context — global deferred `--tail` interception blocked existing `app:logs --tail <N>` behavior.
+  - rejected: [MINOR] Docs/test exact wording — tests assert phase/spec/remediation invariants rather than byte-for-byte PRD prose; rejected as out-of-scope drift-test expansion for this review fix.
+  - rejected: [QA] One full-suite run saw `core/dist/lando` ENOENT during concurrent build/test contention; rejected as non-US-040 after `bun run build` and a clean full `bun test` passed.
+- Verification run and result: `lsp_diagnostics` clean for `core/src/cli/renderer-deferred.ts` and `core/test/cli/renderer-deferred.test.ts`; `bun test core/test/cli/renderer-deferred.test.ts core/test/cli/renderer-selection.test.ts core/test/cli/logs.scenario.test.ts` passed (56 pass, 0 fail); `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; full `bun test` passed after the review fix (1008 pass / 11 skip / 0 fail).
+- **Learnings for future iterations:**
+  - Patterns discovered: global pre-parse renderer guards must account for command-specific flags before OCLIF gets a chance to parse them; `--tail` is already owned by `app:logs` when it carries a value.
+  - Gotchas encountered: a boolean-looking renderer flag can share a name with an existing valued command flag. Preserve the valued form (`--tail <N>` / `--tail=N`) instead of globally claiming the whole flag name.
+  - Useful context: `app:logs --tail` is the Alpha finite-log snapshot path while `app:logs --follow` / `--since` are the deferred log surfaces.
+---
+
+
+## [2026-05-20] - US-040 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving comment hygiene edits only.
+- Files changed by cleanup: `core/src/cli/oclif/command-base.ts` (trimmed verbose command-base doc comments) and `core/src/cli/renderer-deferred.ts` (rewrote planning-heavy renderer-deferred comments into plain technical descriptions).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining spec/phase strings are runtime remediation fields or test assertions, not code-comment traceability.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1008 pass / 11 skip / 0 fail).
+
+## [2026-05-20] - Push
+- Branch: us-040-renderer-limitations-docs
+- Push: pushed
+- Commit(s): 976ef80 chore: remove AI slop, dfe1788 fix: preserve logs tail flag in renderer guard, 4261d54 feat: Document renderer limitations for Alpha
+- PR: #119 https://github.com/AaronFeledy/core4/pull/119 (created)
+---

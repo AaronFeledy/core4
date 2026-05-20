@@ -7,7 +7,7 @@
 import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
-import { RendererSelectionError } from "@lando/sdk/errors";
+import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { parseAnswerFlags } from "../../../../recipes/prompts/index.ts";
 import { formatBugReport } from "../../../bug-report.ts";
@@ -70,7 +70,7 @@ export default class InitCommand extends LandoCommandBase {
       this.argv.length = 0;
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
-      if (error instanceof RendererSelectionError) {
+      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         const text = formatBugReport({
           error,
           context: { commandId: "cli:renderer-selection" },

@@ -873,7 +873,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       argv = resolution.remainingArgv;
       setActiveRendererMode(resolution.mode);
     } catch (error) {
-      if (error instanceof RendererSelectionError) {
+      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         setActiveCommandId("cli:renderer-selection");
         console.error(commandErrorMessage(error));
         process.exitCode = 1;
@@ -1111,7 +1111,7 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
       const resolution = resolveRendererMode({ argv: args, env: process.env });
       setActiveRendererMode(resolution.mode);
     } catch (error) {
-      if (error instanceof RendererSelectionError) {
+      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         setActiveCommandId("cli:renderer-selection");
         console.error(commandErrorMessage(error));
         process.exitCode = 1;
