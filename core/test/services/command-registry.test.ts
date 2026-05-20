@@ -116,7 +116,7 @@ describe("CommandRegistryLive", () => {
     });
   });
 
-  test("returns an empty list when Landofile parse fails (Beta-deferred surface, no rejection at registry layer)", async () => {
+  test("returns an empty list when Landofile parse fails", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -281,7 +281,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     process.chdir(previousCwd);
   });
 
-  test("writes the §12.1 app-command cache after a successful Landofile discovery", async () => {
+  test("writes the app-command cache after a successful Landofile discovery", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         await writeFile(
@@ -324,7 +324,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("writes the §12.1 plugin-command cache regardless of Landofile presence", async () => {
+  test("writes the plugin-command cache regardless of Landofile presence", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         process.chdir(dir);
@@ -435,7 +435,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("writes auto-discovered .bun.sh script-backed entries into the §12.1 app-command cache", async () => {
+  test("writes auto-discovered .bun.sh script-backed entries into the app-command cache", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         await writeFile(

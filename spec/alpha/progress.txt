@@ -4656,3 +4656,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Explicit cache refresh commands should use strict cache writers; keep best-effort swallowing only on router/registry cold paths where cache writes must not affect command listing.
   - `review-work` hot-path cache-read recommendations should be checked against recorded Alpha deferrals before treating them as in-scope blockers.
 ---
+
+
+## [2026-05-20] - US-043 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. Branch-wide cleanup made behavior-preserving planning-reference hygiene edits only.
+- Files changed by cleanup: `core/src/cli/commands/app-cache-refresh.ts` (removed redundant bootstrap-level traceability from the command docblock) and `core/test/services/command-registry.test.ts` (reworded test names to remove phase/section references while preserving assertions and behavior).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning-like text found by broad scan is ordinary test prose, not code-comment traceability.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/command-registry.test.ts core/test/cli/app-cache.scenario.test.ts` passed; focused `bun test core/test/cli/shellenv.test.ts` passed; `bun run build` passed. Full `bun test` reached 1024 pass / 11 skip / 1 fail on `core/test/cli/shellenv.test.ts` because an in-suite nested `bun run build` returned 1 during compiled-binary build contention; standalone build and focused shellenv rerun passed afterward, matching the known compiled-build transient noted for this branch.
