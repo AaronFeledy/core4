@@ -16,7 +16,10 @@ import {
   ServicePlan,
   type StorageScope,
 } from "@lando/sdk/schema";
-import { AppPlanner, PluginRegistry, type ServiceTypeHostFacts } from "@lando/sdk/services";
+import { AppPlanner, CacheService, PluginRegistry, type ServiceTypeHostFacts } from "@lando/sdk/services";
+
+import { deriveAppPlanCacheKey, readCachedAppPlan, writeCachedAppPlan } from "../cache/app-plan.ts";
+import { resolveUserCacheRoot } from "../cache/paths.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -265,15 +268,16 @@ const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
     };
   } catch {
     // os.userInfo() can throw on some Windows configurations when the user has no
-    // home directory entry. The §6.9 helper already supports omitting LANDO_HOST_*
-    // when host facts are unavailable, so degrade gracefully rather than crashing
-    // the planner.
+    // home directory entry. The service-type helper already supports omitting
+    // LANDO_HOST_* when host facts are unavailable, so degrade gracefully rather
+    // than crashing the planner.
     return undefined;
   }
 };
 
 const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
+  cacheService: Context.Tag.Service<typeof CacheService> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError> => {
@@ -308,6 +312,19 @@ const planApp = (
           }),
       ),
     );
+    const cacheRoot = resolveUserCacheRoot();
+    const cacheKey = deriveAppPlanCacheKey({
+      appRoot,
+      landofile,
+      providerCapabilities,
+      pluginManifests: manifests,
+    });
+    if (cacheService !== undefined) {
+      const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
+        Effect.catchAll(() => Effect.succeed(null)),
+      );
+      if (cached !== null) return cached;
+    }
     const registeredServiceTypeIds = manifests.flatMap(
       (manifest) => manifest.contributes?.serviceTypes ?? [],
     );
@@ -428,7 +445,7 @@ const planApp = (
             },
           ];
 
-    return yield* decodeAppPlan(appRoot, {
+    const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
       slug: appName,
@@ -441,15 +458,29 @@ const planApp = (
       metadata,
       extensions: {},
     });
+    if (cacheService !== undefined) {
+      yield* writeCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey, plan }).pipe(
+        Effect.provideService(CacheService, cacheService),
+        Effect.catchAll(() => Effect.void),
+      );
+    }
+    return plan;
   });
 };
 
 export const AppPlannerLive = Layer.effect(
   AppPlanner,
-  Effect.map(
-    PluginRegistry,
-    (pluginRegistry): Context.Tag.Service<typeof AppPlanner> => ({
-      plan: (landofile, providerCapabilities) => planApp(pluginRegistry, landofile, providerCapabilities),
-    }),
-  ),
+  Effect.gen(function* () {
+    const pluginRegistry = yield* PluginRegistry;
+    const cacheService = yield* Effect.serviceOption(CacheService);
+    return {
+      plan: (landofile, providerCapabilities) =>
+        planApp(
+          pluginRegistry,
+          cacheService._tag === "Some" ? cacheService.value : undefined,
+          landofile,
+          providerCapabilities,
+        ),
+    } satisfies Context.Tag.Service<typeof AppPlanner>;
+  }),
 );

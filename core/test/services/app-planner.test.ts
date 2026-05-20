@@ -14,6 +14,8 @@ import {
   AbsolutePath,
   AppPlan,
   type LandofileShape,
+  PluginManifest,
+  PluginName,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -26,6 +28,7 @@ import {
   type ServiceTypePlanInput,
   type ServiceTypeShape,
 } from "@lando/core/services";
+import { CacheServiceLive } from "../../src/cache/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
@@ -216,6 +219,105 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("AppPlannerLive", () => {
+  test("reuses the persisted app plan cache until planning inputs change", async () => {
+    await withTempCwd(async () => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-app-plan-cache-root-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      let servicePlanCalls = 0;
+      const cachedType: ServiceTypeShape = {
+        id: "cached-type",
+        toServicePlan: ({
+          name,
+          appRoot,
+          provider = ProviderId.make("lando"),
+          primary = false,
+          metadata,
+        }) => {
+          servicePlanCalls += 1;
+          return Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(name),
+            type: "cached-type",
+            provider,
+            primary,
+            artifact: { kind: "ref", ref: "cached-type:latest" },
+            environment: {},
+            workingDirectory: PortablePath.make("/app"),
+            appMount: {
+              source: AbsolutePath.make(appRoot),
+              target: PortablePath.make("/app"),
+              readOnly: false,
+              excludes: [],
+              includes: [],
+              realization: "passthrough",
+            },
+            mounts: [],
+            storage: [],
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata,
+            extensions: {},
+          });
+        },
+      };
+      const layer = AppPlannerLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            CacheServiceLive,
+            Layer.succeed(PluginRegistry, {
+              list: Effect.succeed([
+                Schema.decodeUnknownSync(PluginManifest)({
+                  name: PluginName.make("@lando/cached"),
+                  version: "1.0.0",
+                  api: 4 as const,
+                  contributes: { serviceTypes: ["cached-type"] },
+                }),
+              ]),
+              load: () => Effect.die("not needed"),
+              loadServiceType: () => Effect.succeed(cachedType),
+            }),
+          ),
+        ),
+      );
+      const cachedLandofile: LandofileShape = {
+        name: "cached-app",
+        services: { [ServiceName.make("web")]: { type: "cached-type" } },
+      };
+
+      try {
+        const runPlan = (landofile: LandofileShape) =>
+          Effect.runPromise(
+            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+              Effect.provide(layer),
+            ),
+          );
+
+        const first = await runPlan(cachedLandofile);
+        const second = await runPlan(cachedLandofile);
+        const changed = await runPlan({
+          ...cachedLandofile,
+          services: {
+            [ServiceName.make("web")]: {
+              type: "cached-type",
+              environment: { CACHE_BUSTER: "1" },
+            },
+          },
+        });
+
+        expect(first.name).toBe("cached-app");
+        expect(second.metadata.resolvedAt).toEqual(first.metadata.resolvedAt);
+        expect(changed.name).toBe("cached-app");
+        expect(servicePlanCalls).toBe(2);
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
   test("plans a Node and Postgres Landofile into a schema-valid AppPlan", async () => {
     await withTempCwd(async (appRoot) => {
       const appPlan = await plan(landofileFixture);

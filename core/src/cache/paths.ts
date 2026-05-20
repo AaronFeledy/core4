@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 const DEFAULT_CACHE_HOME = `${process.env.HOME ?? "."}/.cache`;
@@ -23,3 +24,13 @@ export const pluginCommandCachePath = (cacheRoot: string): string =>
 
 export const appCommandCachePath = (cacheRoot: string, appName: string): string =>
   `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}/commands.bin`;
+
+// Short, stable fingerprint of an absolute app root path. Two apps that
+// share `name:` but live in different directories must not overwrite each
+// other's plan cache; 12 hex chars (48 bits) is enough to avoid collisions
+// across one user's filesystem while keeping the dir name grep-friendly.
+const appRootFingerprint = (appRoot: string): string =>
+  createHash("sha256").update(appRoot).digest("hex").slice(0, 12);
+
+export const appPlanCachePath = (cacheRoot: string, appName: string, appRoot: string): string =>
+  `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}/plan.bin`;

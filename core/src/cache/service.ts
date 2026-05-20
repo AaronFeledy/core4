@@ -3,6 +3,8 @@ import { Clock, type Context, Effect, Layer, Ref, Schema } from "effect";
 import { CacheError } from "@lando/sdk/errors";
 import { CacheService } from "@lando/sdk/services";
 
+import { writeAtomicCacheFile } from "./atomic.ts";
+
 interface CacheEntry {
   readonly value: unknown;
   readonly expiresAtMs?: number;
@@ -63,6 +65,7 @@ const makeCacheService = (
         }),
       );
     }),
+  writeAtomic: (path, content) => writeAtomicCacheFile(path, content),
   invalidate: (key) => Ref.update(entries, (current) => removeKey(current, key)),
 });
 

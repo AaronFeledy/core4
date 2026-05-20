@@ -4521,3 +4521,89 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none; on `main`, local story branch deleted, babysit report committed and pushed
 ---
+
+## [2026-05-20 13:36 UTC] - Sync
+- Previous branch: us-041-persistent-cwd-app-map-cache
+- Previous PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- Action: caught up after prior merge (PR #120 was already MERGED; local main was already at origin/main; no local story branch existed)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-20 09:05 CDT] - US-042
+- Implemented persistent app-plan cache keying, binary read/write helpers, and `AppPlannerLive` cache reuse with invalidation on Landofile/provider/plugin input changes.
+- Files changed: `core/src/cache/app-plan.ts`, `core/src/cache/atomic.ts`, `core/src/cache/paths.ts`, `core/src/cache/service.ts`, `core/src/services/planner.ts`, `core/src/runtime/layer.ts`, `sdk/src/services/index.ts`, `core/test/services/cache.test.ts`, `core/test/services/app-planner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean on modified TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test core/test/services/app-planner.test.ts core/test/services/cache.test.ts` passed (31 pass); `bun test core/test/build/compile.test.ts` passed; `bun test core/test/cli/version.test.ts core/test/cli/renderer-flag.scenario.test.ts core/test/cli/init.scenario.test.ts core/test/cli/deferred-commands.test.ts` passed (56 pass); `bun test --max-concurrency=1` passed (1019 pass, 11 skip); manual cache QA wrote an app-plan cache, confirmed the file path/size, read a matching-key hit (`manual-cache`), and confirmed stale-key invalidation.
+- **Learnings for future iterations:**
+  - App-plan cache writes should go through `CacheService.writeAtomic`, whose live implementation uses a temp file plus `node:fs/promises.rename` outside the `FileSystem` abstraction.
+  - `AppPlannerLive` can treat app-plan cache read/write failures as best-effort misses while still using plugin manifests, provider capabilities, and the Landofile shape for invalidation.
+  - Full `bun test` has concurrency-sensitive compiled CLI cases; focused retries for the reported files can pass when the initial full run reports transient `core/dist/lando` or OCLIF source-map warning failures.
+---
+
+## [2026-05-20 09:28 CDT] - US-042 Review
+- Reviewed commit 0109eda "feat: Implement persistent app plan cache" against PRD-06 US-042 acceptance criteria. Launched 5-agent `review-work` (goal, code quality, security, hands-on QA, context mining).
+- `review-work` findings: fixed
+  - **MAJOR cross-project plan cache collision (goal + code-quality + context-mining)**: `deriveAppPlanCacheKey` omitted `appRoot` and `appPlanCachePath` was namespaced only by sanitized app name, so two directories with the same `name:` could read each other's cached plan and inherit the wrong absolute root/bind sources. Added `appRoot` to `AppPlanCacheKeyInput` (hashed into the key) AND to `appPlanCachePath` as a 12-hex `sha256(appRoot)` suffix (`apps/<name>-<fp>/plan.bin`); threaded `appRoot` through `readCachedAppPlan` / `writeCachedAppPlan` / planner caller. Added a `namespaces app-plan caches per app root` regression test in `core/test/services/cache.test.ts` that writes two `shared-name` plans under different roots, asserts distinct paths, and verifies cross-root reads return null.
+  - **BLOCKING runtime wiring (goal verifier)**: `makeAppRuntimeLive` provided only `PluginRegistryLive` into `AppPlannerLive`, so `Effect.serviceOption(CacheService)` resolved to `None` against the sub-layer context and the cache branches were silently skipped in real CLI runs (test passed only because the test layer explicitly merged `CacheServiceLive` into the planner's provided context). Changed `core/src/runtime/layer.ts` to `AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive)))`. Verified end-to-end via a throwaway `/tmp/us042-runtime-driver.ts` that uses real `makeLandoRuntime({bootstrap:"app"})` against a temp `LANDO_USER_CACHE_ROOT` and confirms `apps/runtime-cache-probe-<fp>/plan.bin` is written.
+  - **MINOR plugin manifest array-order key flap (code quality)**: `deriveAppPlanCacheKey` now sorts normalized manifests by `name → version → api` before hashing so registry list-order changes never invalidate a semantically identical manifest set. Added an in-test reversal assertion that two manifest arrays in swapped order produce the same key.
+  - **NITPICK redundant `Effect.as(path)` in `writeCachedAppPlan`**: removed the outer `.pipe(Effect.as(path))`; the inner one already returns the path.
+  - **Documentation drift**: Updated `AGENTS.md` cache gotcha so the `writeAtomic copy-based` note distinguishes `FileSystem.writeAtomic` (still copy) from `CacheService.writeAtomic` (now crash-atomic rename); added an app-plan cache cross-project + runtime-wiring gotcha entry.
+- `review-work` findings: rejected
+  - **§12.2 "Effect Schema binary encoding" (context-mining BLOCKING claim)**: rejected as a spec interpretation that contradicts the existing codebase convention. `core/src/cache/cwd-app-map.ts` (shipped under US-040/041) already uses `node:v8.serialize` for the on-disk binary transport while `Schema.decodeUnknownSync` / `Schema.encodeSync` gate the contract on read/write; the US-042 implementation follows the same pattern (Schema.encodeSync(AppPlan) → v8.serialize on write, v8.deserialize → Schema.decodeUnknownSync(AppPlan) on read). §12.2 permits two options and §12.2 option (1) explicitly names "V8 structured-clone format" via `Bun.serialize`; `node:v8` is the same wire format. A real codec swap to Effect Schema's own binary encoding would be a cross-cache refactor that should be its own US-044-adjacent story, not an in-scope US-042 review fix.
+  - **`LandoRuntimeOptions.cacheRoot` not wired through `makeLandoRuntime` (context-mining)**: rejected as out of scope for US-042 — `cacheRoot` is an embedding-API surface (PRD-09), not a regression introduced by this story. The planner correctly honors `LANDO_USER_CACHE_ROOT` (used by tests and the runtime probe above); programmatic `cacheRoot` override is a separate story.
+  - **Config / serviceInputs key derivation not wired in the planner caller (goal verifier PARTIAL)**: rejected as out of scope — the helper signature supports both fields; the planner caller will pass them when the downstream config-layer and explicit `serviceInputs` machinery land. Adding placeholder calls now would either lock the schema prematurely or hash an empty `null` that gives the same effective key as today.
+  - **Cache file mode 0600 (security MEDIUM)**: rejected as a defense-in-depth follow-up — the cache root lives under `~/.cache/lando` (user-scoped) and the threat model treats same-user attackers as out of scope; explicit chmod can land alongside the secret-redaction work in §11.
+- Files changed: `core/src/cache/app-plan.ts`, `core/src/cache/paths.ts`, `core/src/services/planner.ts`, `core/src/runtime/layer.ts`, `core/test/services/cache.test.ts`, `AGENTS.md`, `spec/alpha/progress.txt`.
+- Verification: `bun run typecheck` passed; `bun run lint` passed (444 files); `bun test core/test/services/cache.test.ts core/test/services/app-planner.test.ts` 32 pass / 142 expect(); `bun test --max-concurrency=1` ran 1031 tests — one focused retry needed for two transient compiled-CLI cases (`compile.test.ts`, `setup.test.ts`) that pass cleanly on rerun, consistent with the AGENTS.md "concurrency-sensitive compiled CLI cases" note. End-to-end runtime probe (`/tmp/us042-runtime-driver.ts`) confirmed `makeLandoRuntime({bootstrap:"app"})` now writes `apps/<name>-<fp>/plan.bin` under `LANDO_USER_CACHE_ROOT` (the driver was deleted after use).
+- **Learnings for future iterations:**
+  - `Effect.serviceOption(T)` looks at the layer's own provided context, NOT sibling outputs in `Layer.mergeAll`. Any `Layer.effect` that depends on an optional sibling service must receive it via `Layer.provide(Layer.mergeAll(...))`, or the cache/optional path silently no-ops in production while passing in tests that explicitly merge the dep.
+  - Cache files keyed only by user-controllable identifiers (`name:`) need a path-level fingerprint of the calling context (here, `appRoot`) so two projects don't trample each other; a key check at read time degrades to constant cache-misses, which masks the issue without surfacing data corruption.
+  - When normalizing a list of records (plugin manifests) into a cache key, sort by stable identity (`name`, `version`, `api`) before hashing — registry ordering is allowed to change without invalidating the cached plan.
+---
+
+## [2026-05-20 09:28 CDT] - US-042 Review
+- Reviewed commit 0109eda "feat: Implement persistent app plan cache" against PRD-06 §US-042 and §12.2 cache spec.
+- `review-work` findings (Goal verifier / Code quality / Context miner / QA / Security):
+  - FIXED: `AppPlannerLive` in `makeAppRuntimeLive` was provided only `PluginRegistryLive`, so production runtime resolved `Effect.serviceOption(CacheService)` to `None` → cache read/write branches silently skipped. Re-wired sub-layer to `Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive))` (`core/src/runtime/layer.ts:255`). Verified end-to-end via a throwaway `bun` driver that ran `makeLandoRuntime({bootstrap:"app"})`, called `AppPlanner.plan`, and confirmed `plan.bin` landed under `LANDO_USER_CACHE_ROOT/apps/<name>-<rootfp>/`.
+  - FIXED: App-plan cache key omitted `appRoot` and the path was keyed only by `appName`, so two projects sharing `name:` in different directories could read each other's cached plan (which contains absolute `root`/bind mount paths from the first project). Added `appRoot` to `AppPlanCacheKeyInput`, added a 12-hex-char `sha256(appRoot)` fingerprint suffix to `appPlanCachePath` (`core/src/cache/paths.ts`, `core/src/cache/app-plan.ts`), threaded `appRoot` through `readCachedAppPlan` / `writeCachedAppPlan` and `planner.ts` callers. Added regression tests covering both: (a) `deriveAppPlanCacheKey` differs when `appRoot` differs; (b) cross-project write under the same `appName` yields distinct paths and reads do not bleed across roots (`core/test/services/cache.test.ts`).
+  - FIXED: Plugin manifest list order could flap the cache key (registry order is deterministic today but not guaranteed long-term). `deriveAppPlanCacheKey` now sorts normalized manifests by `name`, `version`, `api` before hashing.
+  - FIXED: Removed redundant outer `Effect.as(path)` from `writeCachedAppPlan` (`core/src/cache/app-plan.ts`).
+  - FIXED: AGENTS.md `writeAtomic` note replaced with the post-US-042 reality (CacheService.writeAtomic is now rename-atomic; FileSystem.writeAtomic is still copy-based) plus a new "App-plan cache cross-project safety" entry that documents the appRoot path/key invariant and the `AppPlannerLive` sub-layer wiring requirement.
+- `review-work` findings rejected (with reason):
+  - Context-miner §12.2 "must use Effect Schema binary encoding, not node:v8": rejected as out-of-scope spec interpretation. Spec §12.2 permits two binary options; existing `cwd-app-map.ts` uses the same `node:v8.serialize/deserialize` pattern, and the app-plan implementation already gates the contract via `Schema.encodeSync(AppPlan)` before V8 framing. Switching codecs is a separate refactor and not introduced by US-042.
+  - Context-miner "embedding `cacheRoot` option not wired through runtime": rejected as out-of-scope. `LandoRuntimeOptions.cacheRoot` wiring belongs to the embedding API (§9) and is independent of US-042's AC scope.
+  - Goal-verifier "config / serviceInputs key fields not covered in planner caller": rejected as out-of-scope. The helper signature supports them; the planner caller will wire them when downstream config layering lands. AC #1 is exercised by the new derivation tests (landofile/services/provider/plugin/appRoot) which is what the story scopes.
+  - Security "MEDIUM: app-plan cache files inherit umask, recommend 0600": rejected as defense-in-depth, not introduced by this story; can be addressed alongside a broader cache permissions pass.
+  - QA "manifest array-order flap is FYI not blocking": addressed defensively anyway by sorting manifests before hashing.
+- Files changed by review:
+  - `core/src/cache/paths.ts` (add `appRootFingerprint`; `appPlanCachePath` now takes `appRoot`)
+  - `core/src/cache/app-plan.ts` (add `appRoot` to `AppPlanCacheKeyInput`; sort manifests; thread `appRoot` to read/write; drop redundant outer `Effect.as`)
+  - `core/src/services/planner.ts` (pass `appRoot` to derive/read/write helpers)
+  - `core/src/runtime/layer.ts` (provide `CacheServiceLive` into `AppPlannerLive` sub-layer)
+  - `core/test/services/cache.test.ts` (extend tests for `appRoot` key/path coverage + cross-project collision regression)
+  - `AGENTS.md` (replace writeAtomic line; add App-plan cache cross-project safety entry)
+- Verification run and result:
+  - `bun run typecheck`: PASS (`tsc -b` clean).
+  - `bun run lint`: PASS (biome check, 444 files, no fixes applied).
+  - `bun test core/test/services/cache.test.ts core/test/services/app-planner.test.ts`: 32 pass / 0 fail / 142 expect().
+  - `bun test --max-concurrency=1`: 1020 pass / 11 skip / 0 fail across 1031 tests (one transient compile/setup retry per the AGENTS.md "Full bun test has concurrency-sensitive compiled CLI cases" note; focused re-run of `core/test/cli/setup.test.ts` and `core/test/build/compile.test.ts` passed 4/0).
+  - Manual end-to-end driver: `bun /tmp/us042-runtime-driver.ts` (since cleaned up) ran `makeLandoRuntime({bootstrap:"app"})` → `AppPlanner.plan(...)` and confirmed `<LANDO_USER_CACHE_ROOT>/apps/runtime-cache-probe-<fp>/plan.bin` was written — proves the runtime wiring fix.
+- **Learnings for future iterations:**
+  - `Layer.mergeAll(A, B)` does NOT auto-wire A's outputs into B's inputs; sub-layers using `Effect.serviceOption(X)` only see X if X is in the sub-layer's own provided context. When adding optional service deps to a Layer, explicitly include them in the `Layer.provide(Layer.mergeAll(...))` upstream of that Layer.effect, otherwise the optional branch silently no-ops in production.
+  - Caches keyed by `appName` alone collide across projects. The `cwd-app-map` cache avoids this by being a global LRU; per-app binary caches (app-plan, app-command) must include an `appRoot` fingerprint in their on-disk path AND in their content key to be safe.
+  - Effect.serviceOption widens R only at evaluation, never at type-level. That makes the wiring bug invisible to `tsc -b` — only an integration test or end-to-end driver catches it. Worth adding to test plans for any future optional-service pattern.
+---
+
+## [2026-05-20] - Push
+- Branch: us-042-persistent-app-plan-cache
+- Push: pushed
+- Commit(s): 259de7f chore: remove AI slop / 9274d15 fix(US-042): close cross-project plan cache collision / 0109eda feat: Implement persistent app plan cache
+- PR: #121 https://github.com/AaronFeledy/core4/pull/121 (created)
+---
+
+## [2026-05-20 09:41 CDT] - US-042 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving comment/redundancy hygiene edits only.
+- Files changed by cleanup: `core/src/cache/app-plan.ts` (shortened cache-key comment wording), `core/src/services/planner.ts` (removed planning-section citation from a host-facts fallback comment), and `core/test/services/cache.test.ts` (removed redundant `mkdir` after `mkdtemp` plus the unused import).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining spec/phase strings are runtime fields, user-visible error text, or test assertions rather than code-comment traceability.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/cache.test.ts core/test/services/app-planner.test.ts` passed (32 pass / 0 fail); full `bun test` passed once (1020 pass / 11 skip / 0 fail). A later full-suite retry hit the known compiled-binary ENOENT transient in `core/test/cli/deferred-commands.test.ts`; `bun run build` passed and focused `bun test core/test/cli/deferred-commands.test.ts` passed (38 pass / 0 fail).
