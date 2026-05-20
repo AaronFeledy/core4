@@ -53,6 +53,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `EventService` exposes two subscriber surfaces. `subscribe(name)` returns a `Stream` that subscribes to the underlying `PubSub` lazily (on first pull) and is fine for late-attached consumers. `subscribeQueue` (no args) is the cold-start, no-replay surface: it returns a scoped Effect that resolves to a `Queue.Dequeue<LandoEvent>` once the `PubSub.subscribe` handshake has completed, so any `publish` issued after the Effect succeeds is guaranteed to enqueue. Renderers and any other "must not miss the first event" consumers should call `subscribeQueue` inside `Layer.scopedDiscard` and fork a `Queue.take` consumer; add a finalizer that drains `Queue.takeAll` before interrupting the fiber so trailing events published in the same tick as scope close are still rendered (this is what `core/src/cli/renderer/runtime.ts#makeRendererLive` does for the plain/json renderers). Extending `EventService` always breaks every mock — sweep `Layer.succeed(EventService, { … })` literals across `core/test/cli/*.scenario.test.ts` and `sdk/test/services/tags.test.ts` in the same change or `tsc -b` will fail.
 - Renderer-side line formatting is pure and lives in `core/src/cli/renderer/format.ts` (`renderPlainLine` / `renderJsonLine` return `string | null`; `null` means "not a task tree event, skip"). The Layer in `runtime.ts` only does plumbing: it calls the formatter and writes to `RendererIO.writeStdout` / `writeStderr` based on the renderer (`plain` → stdout, `json` → stderr; `lando` aliases plain until rich-TTY behavior lands). Tests inject `createBufferedRendererIO()` and assert on `stdout()` / `stderr()` / `stdoutLines()` — no `Bun.spawn` round trip needed for renderer unit coverage. The named snapshot fixture lives at `core/test/cli/fixtures/renderer.task-tree.concurrent.ndjson` and is loaded raw (one JSON object per line) so the renderer is exercised against a deterministic event ordering across runs.
 
+- `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
+
 ## Iteration Log
 
 (Loop appends one entry per iteration below.)
@@ -4446,4 +4448,66 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes (e77c1d0, rebased onto 5e00f46)
 - Branch after sync: main
 - Stash created: yes (sync-progress-fastpath, dropped after resolution)
+---
+
+## [2026-05-20 03:42 CDT] - US-041
+- Implemented a persistent binary `cwd-app-map` cache with version/hash header encoding, read/write/delete/list helpers, corrupt-cache remediation, and bounded LRU ordering.
+- Files changed: `core/src/cache/cwd-app-map.ts`, `core/src/cli/commands/list.ts`, `core/test/services/cache.test.ts`, `core/test/cli/apps-list.scenario.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` on modified TS files clean; `bun test core/test/services/cache.test.ts core/test/cli/apps-list.scenario.test.ts` passed (10 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1011 pass, 11 skip); `bun run build` passed; manual CLI QA with isolated roots ran `./core/dist/lando apps:list` and printed the cache-only app row.
+- **Learnings for future iterations:**
+  - Patterns discovered: cache-specific binary helpers can live under `core/src/cache/` and keep the public `CacheService` tag stable while later stories fill in broader cache surfaces.
+  - Gotchas encountered: `Bun.serialize` is not available in the pinned Bun runtime; use `node:v8` serialization for private binary caches unless a cache requires Effect Schema binary encoding.
+  - Useful context: `.local/bin/lando4-dev --check` cannot run in shells without `wsl.exe`; when command QA is read-only, isolate `LANDO_USER_CONF_ROOT`, `LANDO_USER_DATA_ROOT`, and `LANDO_USER_CACHE_ROOT` to avoid host config interference.
+---
+
+## [2026-05-20 04:30 CDT] - US-041 Review
+- Reviewed the build-step commit (9a82d4b) against PRD-06 §US-041 and spec/12-caches-and-persistence.md.
+- `review-work` findings: fixed (3) / rejected (none).
+  - fixed (MAJOR): `apps:list` only consulted the persistent cache when an explicit `userCacheRoot` option or `LANDO_USER_CACHE_ROOT` env var was set; the OCLIF `apps:list` / `runCli` / `poweroff` paths all called `listServices()` without it. Now defaults to `resolveUserCacheRoot()` so the default `<userCacheRoot>/cwd-app-map.bin` is read on every invocation.
+  - fixed (MAJOR): `normalizeEntries` used `new Map(entries.map(e => [e.cwd, e]))` which is "last write wins"; the call site prepends the new entry, so an existing duplicate would overwrite it and the upsert would silently drop new metadata / `lastUsedAt`. Replaced with a first-wins dedup loop and added a regression test that overwrites a stale entry and asserts the fresh `appRoot` + `lastUsedAt` survive.
+  - fixed (MAJOR): `landoVersion` was stored but never compared against `CORE_VERSION` on read, so §12.1 whole-cache invalidation on Lando version change was not honored. `readCwdAppMap` now treats version-mismatched payloads as a clean cache miss (silent invalidation per §12.2). Added a regression test that rewrites the persisted `landoVersion` to `0.0.0-bogus` (with a fresh sha256 header) and asserts the cache surfaces as empty.
+- Security review: PASS (no CRITICAL/HIGH findings). Sha256 over `node:v8`-deserialized payload protects accidental corruption but is not an authenticity boundary; same-user write trust is acceptable for US-041 scope. Atomic-rename writes remain US-042's responsibility.
+- Files changed: `core/src/cache/cwd-app-map.ts`, `core/src/cli/commands/list.ts`, `core/test/services/cache.test.ts`, `core/test/cli/apps-list.scenario.test.ts`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1014 pass / 11 skip / 0 fail) on the steady-state re-run; one transient `core/test/cli/setup.test.ts` "compiled setup install dir" failure observed once when `bun run build` was already running in another shell, then green on the next run — confirmed flaky and unrelated to the diff (no path touched by US-041 is in that test).
+- **Learnings for future iterations:**
+  - Patterns discovered: when a helper accepts an env-var override like `LANDO_USER_CACHE_ROOT`, prefer threading the resolver (`resolveUserCacheRoot()`) into the option default rather than letting callers opt in — callers of `listServices()` quietly defeated the default-cache rule.
+  - Gotchas encountered: `new Map(arrayOfTuples)` is "last write wins". Any upsert pattern that prepends the new entry before existing ones is silently a stale-write. Spec-touching schemas with a `version` field MUST verify the field on read; storing it without checking creates an invisible §12.1 invalidation gap.
+  - Useful context: `delete process.env.X` in tests must carry the `biome-ignore lint/performance/noDelete` comment because Bun's `process.env.X = undefined` writes the literal string `"undefined"` instead of unsetting; existing convention is in `core/test/services/command-registry.test.ts`.
+---
+
+## [2026-05-20] - US-041 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. Branch-wide cleanup made behavior-preserving comment hygiene edits only.
+- Files changed by cleanup: `core/src/cache/cwd-app-map.ts` (shortened the cwd dedupe rationale while preserving the first-wins upsert explanation) and `core/test/cli/apps-list.scenario.test.ts` (shortened the lint-suppression rationale for deleting the environment variable).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec strings are in progress/planning files or runtime/test data, not code-comment traceability.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/cache.test.ts core/test/cli/apps-list.scenario.test.ts` passed (13 pass / 0 fail). Full `bun test` was rerun and reached 1013 pass / 11 skip / 1 fail on `core/test/build/compile.test.ts` after the compiled binary briefly had non-executable mode during concurrent build/test artifact handling; the final `core/dist/lando` artifact is executable (`755`); an isolated rerun of `bun test core/test/cli/setup.test.ts core/test/build/compile.test.ts` passed (4 pass / 0 fail), confirming the full-suite failure is unrelated to these comment-only cleanup edits.
+
+## 2026-05-20 - Push
+- Branch: us-041-persistent-cwd-app-map-cache
+- Push: pushed
+- Commit(s): 9a82d4b feat: Implement persistent cwd-app-map cache, 270ad11 fix(US-041 review): honor default cache root, fix upsert, version invalidation, 5285686 chore: remove AI slop
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120 (created)
+---
+
+## [2026-05-20 04:27 CDT] - Babysit
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- CI outcome: pass (`static-checks`, `build-linux-x64`, and `provider-integration-linux-x64` passed; `Cursor Bugbot` completed NEUTRAL/skipping)
+- Review feedback: fixed? no — deferred because Cursor Bugbot reported one actionable Medium issue (`Poweroff includes cache-only apps`) and the delegated team triage did not return a pushed fix during this babysit step
+- Triage rounds used: 1
+- Merge: deferred (Bugbot feedback unresolved; merge conditions require no new Bugbot bugs)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-041-persistent-cwd-app-map-cache`; `spec/alpha/progress.txt` contains local babysit/progress notes pending commit/push by a follow-up triage/sync step
+---
+
+## [2026-05-20 08:08 CDT] - Babysit
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- CI outcome: pass (`static-checks`, `build-linux-x64`, and `provider-integration-linux-x64` passed; `Cursor Bugbot` completed NEUTRAL/skipping)
+- Review feedback: fixed? no — deferred because Cursor Bugbot still reports one actionable Medium issue (`Poweroff includes cache-only apps`); triage was delegated via team mode but no fix was pushed during this babysit pass
+- Triage rounds used: 1
+- Merge: deferred (Bugbot feedback unresolved; merge conditions require no new Bugbot bugs)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-041-persistent-cwd-app-map-cache`; `spec/alpha/progress.txt` contains local babysit/progress notes pending commit/push by a follow-up triage/sync step
+---
+
+## PR #120 Bugbot triage (us-041)
+- Bugbot finding "Poweroff includes cache-only apps" (medium): REAL. Fixed by filtering providerId === "cache" entries in core/src/cli/commands/poweroff.ts before stopApp/targets. Added regression coverage that seeds a cwd-map cache entry not in provider state and asserts it is NOT reported as powered off. apps:list behavior for cache-only rows is unchanged (intentional).
 ---

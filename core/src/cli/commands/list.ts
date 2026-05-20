@@ -1,10 +1,13 @@
 import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { Effect } from "effect";
 
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
+
+import { listCwdAppMapEntries } from "../../cache/cwd-app-map.ts";
+import { resolveUserCacheRoot } from "../../cache/paths.ts";
 
 export interface AppsListEntry {
   readonly appId: string;
@@ -18,6 +21,7 @@ export interface ListServicesOptions {
   readonly path?: string;
   readonly format?: "json" | "table";
   readonly userDataRoot?: string;
+  readonly userCacheRoot?: string;
 }
 
 export interface ListServicesResult {
@@ -98,6 +102,14 @@ const readAppsFromProvider = async (
   return apps;
 };
 
+const cacheEntryToApp = (entry: { readonly appRoot: string }): AppsListEntry => ({
+  appId: basename(entry.appRoot) || entry.appRoot,
+  appName: basename(entry.appRoot) || entry.appRoot,
+  providerId: "cache",
+  appRoot: entry.appRoot,
+  services: [],
+});
+
 export const renderAppsListResult = (
   result: ListServicesResult,
   format: "json" | "table" = "table",
@@ -137,6 +149,16 @@ export const listServices = (
         readAppsFromProvider(providerDir, providerName.replace(/^provider-/, "")),
       );
       apps.push(...providerApps);
+    }
+
+    const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
+    const cachedApps = yield* listCwdAppMapEntries(userCacheRoot).pipe(
+      Effect.catchAll(() => Effect.succeed([])),
+    );
+    for (const cached of cachedApps) {
+      if (!apps.some((app) => app.appRoot === cached.appRoot)) {
+        apps.push(cacheEntryToApp(cached));
+      }
     }
 
     const pathFilter = options.path;
