@@ -4377,6 +4377,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+
 ## [2026-05-20 02:50 CDT] - US-040
 - Documented Alpha renderer limitations (`task.detail` streaming tail, expand/collapse, full first-paint contract) in `spec/alpha/prd-alpha-05-renderer-errors-and-diagnostics.md` US-040 and in a new source-side `core/src/cli/renderer-deferred.ts` module. Added explicit RC/Beta `NotImplementedError` guards for `--renderer=verbose` (Phase 3 Beta) and `--expand` / `--no-expand` / `--collapse` / `--no-collapse` / `--tail` / `--no-tail` (Phase 4 RC) at the top-level pre-parse so source OCLIF and compiled `$bunfs` both reject them with the same phase-aware remediation instead of falling through to `RendererSelectionError` ("Unsupported renderer value") or OCLIF's generic "unknown flag" path. Widened the four catch sites that handle `RendererSelectionError` (`LandoCommandBase.runEffect`, `runCli`, `runCompiledCli`, `apps/init.ts`) to also catch `NotImplementedError` so the same bug-report formatter handles both.
 - Files changed: `core/src/cli/renderer-deferred.ts` (new), `core/src/cli/renderer-selection.ts`, `core/src/cli/oclif/command-base.ts`, `core/src/cli/oclif/commands/apps/init.ts`, `core/src/cli/run.ts`, `core/test/cli/renderer-deferred.test.ts` (new), `spec/alpha/prd-alpha-05-renderer-errors-and-diagnostics.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`, `AGENTS.md`.
@@ -4425,3 +4426,4 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): 976ef80 chore: remove AI slop, dfe1788 fix: preserve logs tail flag in renderer guard, 4261d54 feat: Document renderer limitations for Alpha
 - PR: #119 https://github.com/AaronFeledy/core4/pull/119 (created)
 ---
+
