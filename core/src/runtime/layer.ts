@@ -247,7 +247,6 @@ const makeToolingRuntimeLive = (loggerMode: LoggerMode) =>
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
-    EventServiceLive,
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
     AppPlannerLive.pipe(Layer.provide(PluginRegistryLive)),

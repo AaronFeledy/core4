@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Stream } from "effect";
 
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -35,7 +35,7 @@ const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes)
 const makeEventServiceLayer = (sink: EventSink) =>
   Layer.succeed(EventService, {
     publish: sink.publish,
-    subscribe: () => Effect.die("not used in setup scenario test"),
+    subscribe: () => Stream.die("not used in setup scenario test"),
     subscribeQueue: Effect.die("not used in setup scenario test"),
     waitFor: () => Effect.die("not used in setup scenario test"),
   });
