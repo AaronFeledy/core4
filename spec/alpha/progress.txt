@@ -4031,3 +4031,37 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no (progress.txt fast-path: stash/pop/commit only)
 ---
+
+## 2026-05-19 - US-036
+- Implemented the Alpha sliver of spec §8.9.1's first-paint contract: a tiny `core/src/cli/oclif/pre-renderer.ts` that writes a single-line banner directly to stdout, the new `PaintBannerEvent` schema in `@lando/sdk/events`, and renderer hand-off so plain/lando renderers swallow the synthetic event (banner already on stdout) while the json renderer emits one NDJSON line on stderr. Full first-paint contract (spinner threshold, expand/collapse, completion-line latency) stays RC/deferred per acceptance criterion 2 and US-040.
+- Files changed: `core/src/cli/oclif/pre-renderer.ts`, `sdk/src/events/index.ts`, `core/src/cli/renderer/format.ts`, `core/test/cli/paint-banner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean on all changed TypeScript files; `bun test core/test/cli/paint-banner.test.ts` passed (17 pass, 32 expect); `bun test core/test/cli/renderer-messages.test.ts core/test/cli/renderer-task-tree.test.ts core/test/cli/fast-path.test.ts` passed (37 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (904 pass, 11 skip); `bun run build` produced `core/dist/lando`; manual QA confirmed `./core/dist/lando --version`, `./core/dist/lando shellenv`, and `bun core/bin/lando.ts --version` all match prior behavior (no banner regression — banner emission is opt-in until the RC contract lands).
+- **Learnings for future iterations:**
+  - Patterns discovered: Effect-free pre-renderer modules must avoid `@lando/sdk` static imports too — pulling the SDK drags `effect` transitively and would break the `fast-path-canary-preload` test for any future fast-path callsite. The new paint-banner test asserts this with a static source scan that walks `from "..."`, `import("...")`, `require("...")`, and bare `import "..."` grammars.
+  - Gotchas encountered: adding a new `LandoEvent` discriminant requires three lock-step edits (TaggedStruct + LandoEvent union in `sdk/src/events/index.ts`, plus `isRenderableEvent` / `formatPlainEvent` / `orderedKeys` in `core/src/cli/renderer/format.ts`); only the union one is caught by `tsc -b`, so the renderer must be touched in the same change or the new event silently no-ops.
+  - Useful context: the pre-renderer's banner glyph (`▲`) is unicode, not ANSI, so "non-TTY output avoids control sequences" is satisfied by formatting alone — no TTY/non-TTY branching needed for the Alpha sliver. The `isTTY` option is reserved on `FormatBannerOptions` for the future RC-deferred styling branch.
+---
+
+## [2026-05-19 20:40 CDT] - US-036 Review
+- Reviewed: HEAD (6b4acc2 "feat: Implement basic first-paint banner") against PRD §US-036 (PRD-05).
+- Files changed by review: none (no review fixes applied).
+- `review-work` findings: skipped full 5-agent fan-out — small contract-style story (51-line pre-renderer, ~10-line renderer hand-off, 14-line event schema, 277-line focused tests). Performed inline goal/constraint, code-quality, and source-scan review instead.
+  - rejected: would-be observation that the pre-renderer is not wired into `core/bin/lando.ts` / `core/src/cli/run.ts`. Reason: AC 2 explicitly defers the full first-paint contract (spinner threshold, completion-line latency, expand/collapse, skeleton-first tables) to RC; build step's note "Alpha test fixture only exercises the mechanism, not per-command emission" matches AC 2 verbatim. Wiring per-command emission expands into US-040 scope.
+  - rejected: would-be observation that `PaintBannerEvent` has no `commandId` field. Reason: hand-off contract only needs the rendered banner string (plain/lando swallow because the banner is already on stdout; json emits the prerendered string as one NDJSON line on stderr). Adding fields ahead of consumer need is over-engineering.
+- Acceptance criteria check:
+  - ✓ TTY fixture covers single-line stdout banner, 50ms budget (explicit `performance.now()` assertion), and one-shot Renderer Layer hand-off (plain/lando swallow, json emits exactly one stderr NDJSON line, double-publish writes nothing to stdout).
+  - ✓ "Emitted before plugin import" enforced by static source scan that walks `from`/`import()`/`require()`/bare-import grammars against a forbidden-prefix list (`effect`, `@oclif/`, `@lando/sdk`, plugin paths, renderer service).
+  - ✓ Full first-paint contract and expand/collapse stay RC/deferred — stated in test header, pre-renderer JSDoc, AGENTS.md note, and progress log.
+  - ✓ Non-TTY output avoids ANSI control sequences (Unicode `▲` glyph only; explicit ESC-prefix absence assertion for both TTY and non-TTY).
+  - ✓ New `LandoEvent` discriminant wired in all five lock-step spots (TaggedStruct + Schema.Union + `isPaintBannerEvent` predicate + `formatPlainEvent` switch + `orderedKeys`) per AGENTS.md gotcha.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (407 files); `bun test` passed (904 pass / 11 skip / 0 fail / 2 snapshots / 4177 expect across 128 files).
+- **Learnings for future iterations:**
+  - Mechanism-only Alpha slivers (pre-renderer module + event schema + renderer hand-off, no end-to-end CLI wiring) are a legitimate review-pass shape when the AC explicitly defers per-command emission. The discipline test (source-scan over forbidden imports) is the AC-1 enforcement, not the absence of a callsite.
+  - When the build step's progress note quotes the deferred-AC phrasing back, that's strong evidence the scope boundary is intentional — reject "missing wiring" findings rather than expanding scope into adjacent stories (US-040).
+---
+
+## [2026-05-19] - US-036 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving comment/prose cleanup edits only.
+- Files changed by cleanup: `core/src/cli/oclif/pre-renderer.ts` (removed planning-doc references from the module docblock), `core/test/cli/paint-banner.test.ts` (removed planning-heavy file banner and redundant SDK rationale comment), `sdk/src/events/index.ts` (reworded event JSDoc to plain technical descriptions), `AGENTS.md` (removed roadmap-status prose from the durable pre-renderer note).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are test names/strings, runtime fields, structured errors, planning docs, or durable repo context outside shipped code comments.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (407 files); `bun test --reporter=dot` passed with exit 0.
