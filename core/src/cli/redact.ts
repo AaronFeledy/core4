@@ -1,14 +1,5 @@
 /**
- * Bug-report redaction helpers used by the CLI failure formatter.
- *
- * Matches the shape of `plugins/provider-lando/src/redact.ts`: redacts
- * value-side substrings of `NAME=value` env-style assignments where the
- * name looks like a credential, and replaces values under
- * credential-looking object keys with `[REDACTED]`. This is the same
- * policy `EventService` and `ShellRunner`/`BunSelfRunner` apply to event
- * payloads per §3.4 and §11.2, so failure output cannot leak
- * secrets/prompt answers that the runtime itself has redacted from its
- * lifecycle events.
+ * Redaction helpers used by the CLI failure formatter.
  */
 
 const REDACTED = "[REDACTED]" as const;

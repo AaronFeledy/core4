@@ -177,7 +177,11 @@ const runSetup = async (): Promise<void> => {
   }
   const failure = Cause.failureOption(exit.cause);
   const message = failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause);
-  console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
+  if (activeRendererMode === "json") {
+    console.error(message);
+  } else {
+    console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
+  }
   process.exitCode = 1;
 };
 
@@ -846,6 +850,10 @@ const CANONICAL_COMMAND_ID_BY_TOKEN: Readonly<Record<string, string>> = {
   "meta:plugin:add": "meta:plugin:add",
   "plugin:remove": "meta:plugin:remove",
   "meta:plugin:remove": "meta:plugin:remove",
+  shellenv: "meta:shellenv",
+  "meta:shellenv": "meta:shellenv",
+  version: "meta:version",
+  "meta:version": "meta:version",
 };
 
 const resolveCanonicalCommandId = (token: string | undefined): string => {
@@ -1095,13 +1103,6 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     return;
   }
 
-  // Validate `--renderer` / `LANDO_RENDERER` BEFORE handing off to OCLIF.
-  // OCLIF's `--help` / `--version` short-circuit swallows errors thrown from
-  // init hooks and from runEffect (the command never runs), so an invalid
-  // renderer combined with `--help` would silently pass. Validating here
-  // matches the compiled `$bunfs` path which validates at the top of
-  // `runCompiledCli` and gives `--renderer=tui --help` the same exit-1
-  // tagged failure on both surfaces.
   const rawHead = args[0];
   const isBunOrXPassthrough =
     rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";

@@ -102,7 +102,7 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
       }
     });
     expect(candidate, `expected one NDJSON message.error line in stderr; got:\n${stderr}`).toBeDefined();
-    if (candidate === undefined) return;
+    if (candidate === undefined) throw new Error("expected NDJSON message.error line");
     const parsed = JSON.parse(candidate) as Record<string, unknown>;
     expect(parsed.code).toBe("NotImplementedError");
     expect(parsed.commandId).toBe("meta:plugin:trust");
@@ -138,9 +138,6 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
       );
       const result = await runCommand([process.execPath, sourceCliPath, "app:config"], {
         ...isolationEnv(),
-        LANDO_USER_DATA_ROOT: stateDir,
-        LANDO_USER_CONF_ROOT: confDir,
-        LANDO_USER_CACHE_ROOT: cacheDir,
         PWD: tokenDir,
       });
       const stderr = stripAnsi(result.stderr);
@@ -185,7 +182,7 @@ describe.skipIf(!existsSync(compiledBinaryPath))(
           }
         });
       expect(candidate).toBeDefined();
-      if (candidate === undefined) return;
+      if (candidate === undefined) throw new Error("expected NDJSON message.error line");
       const parsed = JSON.parse(candidate) as Record<string, unknown>;
       expect(parsed.code).toBe("NotImplementedError");
       expect(parsed.commandId).toBe("meta:plugin:trust");

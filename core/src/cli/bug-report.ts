@@ -1,13 +1,11 @@
 /**
  * Standardized failure-output formatter for CLI commands.
  *
- * Per spec §10.9 "Logs and diagnostics" + the Alpha PRD §US-038 contract,
- * every command failure surfaces a bug-report block: machine-readable
- * error code (the tagged-error `_tag`), the running command id, the app
- * id when known, the provider id when known, and pointers to the user
- * cache/logs roots. Sensitive env-style values (`*_TOKEN=`, `*_PASSWORD=`,
- * etc.) and credential-named object fields on `error.details` are
- * redacted before any output reaches stderr.
+ * Every command failure becomes a bug-report block with a machine-readable
+ * error code, the running command id, optional app/provider ids, and
+ * pointers to the user cache and logs directories. Sensitive env-style
+ * values (`*_TOKEN=`, `*_PASSWORD=`, etc.) and credential-named object
+ * fields on `error.details` are redacted before anything reaches stderr.
  *
  * Two output modes are supported and selected by the renderer flag:
  *   - `plain` / `lando`: multi-line block; `body` first, then optional
