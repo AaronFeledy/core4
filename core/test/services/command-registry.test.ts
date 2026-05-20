@@ -307,7 +307,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id).sort()).toEqual(["app:composer", "app:test"]);
 
-        const cachePath = appCommandCachePath(cacheRoot, "cache-app");
+        const cachePath = appCommandCachePath(cacheRoot, "cache-app", dir);
         const bytes = new Uint8Array(await readFile(cachePath));
         const decoded = decodeAppCommandIndex(bytes);
         expect(decoded).not.toBeNull();
@@ -460,7 +460,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id).sort()).toEqual(["app:composer", "app:db:wait"]);
 
-        const cachePath = appCommandCachePath(cacheRoot, "scripted-app");
+        const cachePath = appCommandCachePath(cacheRoot, "scripted-app", dir);
         const bytes = new Uint8Array(await readFile(cachePath));
         const decoded = decodeAppCommandIndex(bytes);
         expect(decoded).not.toBeNull();
@@ -486,7 +486,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id)).toEqual(["app:build"]);
 
-        const cachePath = appCommandCachePath(cacheRoot, "unnamed");
+        const cachePath = appCommandCachePath(cacheRoot, "unnamed", dir);
         const bytes = new Uint8Array(await readFile(cachePath));
         const decoded = decodeAppCommandIndex(bytes);
         expect(decoded?.appName).toBe("unnamed");

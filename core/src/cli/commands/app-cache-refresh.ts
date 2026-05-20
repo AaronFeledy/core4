@@ -29,7 +29,10 @@ import {
 } from "@lando/sdk/services";
 
 import { compileAppCommands } from "../../cache/command-compiler.ts";
-import { writeAppCommandCache, writePluginCommandCacheStrict } from "../../cache/command-index-writer.ts";
+import {
+  writeAppCommandCacheStrict,
+  writePluginCommandCacheStrict,
+} from "../../cache/command-index-writer.ts";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
 
@@ -90,7 +93,7 @@ export const refreshAppCache = (
     const scripts = yield* discoverScripts(cwd);
     const entries = compileAppCommands(landofile, scripts);
 
-    const appCachePath = yield* writeAppCommandCache({
+    const appCachePath = yield* writeAppCommandCacheStrict({
       landofile,
       entries,
       cwd,

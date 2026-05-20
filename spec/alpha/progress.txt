@@ -4646,4 +4646,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): 4d6cf5f feat: Make binary cache encoding rules testable
 - PR: #122 https://github.com/AaronFeledy/core4/pull/122 (created)
 
+## [2026-05-20 17:56 CDT] - US-043 Review
+- Reviewed build commit `79f9336` for US-043 plugin command index cache and applied scoped review repairs for app-command cache safety.
+- Files changed: `core/src/cache/paths.ts`, `core/src/cache/command-index-writer.ts`, `core/src/cli/commands/app-cache-refresh.ts`, `core/test/cache/paths.test.ts`, `core/test/services/command-registry.test.ts`, `core/test/cli/app-cache.scenario.test.ts`, `spec/alpha/progress.txt`.
+- `review-work` findings: fixed app-command cache path collision for same-name apps by namespacing command caches with the app-root fingerprint; fixed `app:cache:refresh` so app-command cache write failures surface tagged `CacheError` instead of being swallowed; rejected hot-path registry cache reads as out-of-scope because `CommandRegistryLive` explicitly documents hot-path cache reads as deferred past Alpha and US-043's accepted repo pattern is cold-path/best-effort writes plus explicit refresh; rejected `.bun.sh` script freshness as non-blocking future-reader risk because current app-command cache read helper is not used by router hot paths.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `PATH=/home/aaron/.bun/bin:$PATH bun test core/test/cache/paths.test.ts core/test/services/command-registry.test.ts core/test/cli/app-cache.scenario.test.ts` passed (26 pass / 0 fail); `PATH=/home/aaron/.bun/bin:$PATH bun run typecheck` passed; `PATH=/home/aaron/.bun/bin:$PATH bun run lint` passed; `PATH=/home/aaron/.bun/bin:$PATH bun run build` passed; focused `bun test core/test/cli/setup.test.ts` and `bun test core/test/cli/aliases.test.ts core/test/build/biome.test.ts` passed on rerun. Full `bun test` and `bun test --max-concurrency=1` both hit the known compiled-binary build contention in `core/test/cli/setup.test.ts` (`bun run build` exit 1 inside the full suite), matching the build-step note; standalone build and focused setup test passed afterward.
+- **Learnings for future iterations:**
+  - App-command cache paths need the same app-root fingerprint safety as app-plan cache paths so same-name apps in different directories do not thrash each other's command cache.
+  - Explicit cache refresh commands should use strict cache writers; keep best-effort swallowing only on router/registry cold paths where cache writes must not affect command listing.
+  - `review-work` hot-path cache-read recommendations should be checked against recorded Alpha deferrals before treating them as in-scope blockers.
 ---

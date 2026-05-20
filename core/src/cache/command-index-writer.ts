@@ -1,4 +1,5 @@
 import { readFile, stat } from "node:fs/promises";
+import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
@@ -44,7 +45,8 @@ const writeAppCommandCacheTask = async (
   const stats = await stat(filePath);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const appName = options.landofile.name ?? "unnamed";
-  const cachePath = appCommandCachePath(cacheRoot, appName);
+  const appRoot = dirname(filePath);
+  const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
 
   const cached = await readAppCommandCacheTask({ ...options, cacheRoot, toolingFingerprint });
@@ -69,10 +71,7 @@ const writeAppCommandCacheTask = async (
 export const writeAppCommandCache = (
   options: WriteAppCommandCacheOptions,
 ): Effect.Effect<string | undefined, never> =>
-  Effect.tryPromise({
-    try: () => writeAppCommandCacheTask(options),
-    catch: (cause) => cause,
-  }).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+  writeAppCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
 export interface WritePluginCommandCacheOptions {
   readonly manifests?: ReadonlyArray<PluginManifest>;
@@ -135,7 +134,8 @@ const readAppCommandCacheTask = async (
   const stats = await stat(filePath);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const appName = options.landofile.name ?? "unnamed";
-  const cachePath = appCommandCachePath(cacheRoot, appName);
+  const appRoot = dirname(filePath);
+  const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
 
   try {
     const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
@@ -195,6 +195,21 @@ export const readAppCommandCache = (
         key: "app-command",
         cause,
       }),
+  });
+
+export const writeAppCommandCacheStrict = (
+  options: WriteAppCommandCacheOptions,
+): Effect.Effect<string | undefined, CacheError> =>
+  Effect.tryPromise({
+    try: () => writeAppCommandCacheTask(options),
+    catch: (cause) =>
+      cause instanceof CacheError
+        ? cause
+        : new CacheError({
+            message: "Failed to write app-command cache.",
+            key: "app-command",
+            cause,
+          }),
   });
 
 export const readPluginCommandCache = (
