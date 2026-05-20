@@ -121,8 +121,11 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeStartLayer = (options: { readonly signalSeen?: boolean[] } = {}) => {
+const makeStartLayer = (
+  options: { readonly signalSeen?: boolean[]; readonly applyFailure?: ProviderUnavailableError } = {},
+) => {
   const events: string[] = [];
+  const taskEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const applyPlans: AppPlan[] = [];
   const provider: RuntimeProviderShape = {
     id: "lando",
@@ -155,7 +158,13 @@ const makeStartLayer = (options: { readonly signalSeen?: boolean[] } = {}) => {
       Effect.sync(() => {
         applyPlans.push(appPlan);
         options.signalSeen?.push(applyOptions.signal?.aborted ?? false);
-      }).pipe(Effect.as({ changed: true })),
+      }).pipe(
+        Effect.flatMap(() =>
+          options.applyFailure === undefined
+            ? Effect.succeed({ changed: true })
+            : Effect.fail(options.applyFailure),
+        ),
+      ),
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
@@ -185,14 +194,18 @@ const makeStartLayer = (options: { readonly signalSeen?: boolean[] } = {}) => {
       select: () => Effect.succeed(provider),
     }),
     Layer.succeed(EventService, {
-      publish: (event) => Effect.sync(() => events.push(event._tag)),
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event._tag);
+          taskEvents.push(event);
+        }),
       subscribe: () => Effect.die("not used"),
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
     }),
   );
 
-  return { layer, events, applyPlans };
+  return { layer, events, applyPlans, taskEvents };
 };
 
 describe("lando start", () => {
@@ -200,7 +213,16 @@ describe("lando start", () => {
     const harness = makeStartLayer();
     const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
 
-    expect(harness.events).toEqual(["pre-app-start", "post-app-start"]);
+    expect(harness.events).toEqual([
+      "pre-app-start",
+      "task.tree.start",
+      "task.start",
+      "task.start",
+      "task.complete",
+      "task.complete",
+      "task.tree.complete",
+      "post-app-start",
+    ]);
     expect(harness.applyPlans).toEqual([plan]);
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
       ["web", "running"],
@@ -209,6 +231,44 @@ describe("lando start", () => {
     expect(renderStartAppResult(result)).toContain("ready: test-start");
     expect(renderStartAppResult(result)).toContain("web (running) http://localhost:3000");
     expect(renderStartAppResult(result)).toContain("database (running) tcp://localhost:5432");
+  });
+
+  test("publishes a task tree around provider.apply with one task per planned service", async () => {
+    const harness = makeStartLayer();
+    await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    const treeStart = harness.taskEvents.find((event) => event._tag === "task.tree.start");
+    expect(treeStart).toBeDefined();
+    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual(["web", "database"]);
+
+    const taskStarts = harness.taskEvents.filter((event) => event._tag === "task.start");
+    expect(taskStarts.map((event) => event.taskId as string).sort()).toEqual(["database", "web"]);
+
+    const taskCompletes = harness.taskEvents.filter((event) => event._tag === "task.complete");
+    expect(taskCompletes.map((event) => event.taskId as string).sort()).toEqual(["database", "web"]);
+
+    const treeComplete = harness.taskEvents.find((event) => event._tag === "task.tree.complete");
+    expect(treeComplete?.succeeded).toBe(2);
+    expect(treeComplete?.failed).toBe(0);
+  });
+
+  test("publishes task.fail per service and task.tree.complete with failed counts when apply rejects", async () => {
+    const harness = makeStartLayer({
+      applyFailure: new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "apply",
+        message: "podman unreachable",
+      }),
+    });
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+    expect(exit._tag).toBe("Failure");
+
+    const taskFails = harness.taskEvents.filter((event) => event._tag === "task.fail");
+    expect(taskFails.map((event) => event.taskId as string).sort()).toEqual(["database", "web"]);
+
+    const treeComplete = harness.taskEvents.find((event) => event._tag === "task.tree.complete");
+    expect(treeComplete?.failed).toBe(2);
+    expect(treeComplete?.succeeded).toBe(0);
   });
 
   test("renders starting: prefix when any service is not in a ready state per inspect", () => {

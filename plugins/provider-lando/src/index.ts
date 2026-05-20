@@ -1,7 +1,5 @@
 /**
  * `@lando/provider-lando` — Lando-managed RuntimeProvider.
- *
- * Status: MVP capability surface; lifecycle methods land in later provider stories.
  */
 import { Effect, Layer, Schema, Stream } from "effect";
 
@@ -168,6 +166,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { runtimeBundleDownloader: options.runtimeBundleDownloader }),
             ...(stateDir === undefined ? {} : { stateDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
+            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(
             Effect.tap((result) =>
               Effect.sync(() => {

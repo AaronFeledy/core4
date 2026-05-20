@@ -1,0 +1,31 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`renderer.init-progress fixture plain renderer snapshot is stable 1`] = `
+"▼ Initialize mvp (2 services)
+[render] start: Render recipe files (4)
+[render] ✓ complete: Rendered 4 files (85ms)
+[postinit] start: Run post-init actions (2)
+[postinit] ✓ complete: Ran 2 actions (420ms)
+▶ Initialized mvp (2 ✓ · 0 ✗) (525ms)
+"
+`;
+
+exports[`renderer.init-progress fixture json renderer snapshot is stable on stderr 1`] = `
+"{"_tag":"task.tree.start","parentId":"init:node-postgres","label":"Initialize mvp","children":["render","postinit"],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}
+{"_tag":"task.start","parentId":"init:node-postgres","taskId":"render","label":"Render recipe files (4)","timestamp":"2026-05-19T12:00:00.010Z"}
+{"_tag":"task.complete","taskId":"render","summary":"Rendered 4 files","durationMs":85,"timestamp":"2026-05-19T12:00:00.095Z"}
+{"_tag":"task.start","parentId":"init:node-postgres","taskId":"postinit","label":"Run post-init actions (2)","timestamp":"2026-05-19T12:00:00.100Z"}
+{"_tag":"task.complete","taskId":"postinit","summary":"Ran 2 actions","durationMs":420,"timestamp":"2026-05-19T12:00:00.520Z"}
+{"_tag":"task.tree.complete","parentId":"init:node-postgres","summary":"Initialized mvp","succeeded":2,"failed":0,"durationMs":525,"timestamp":"2026-05-19T12:00:00.525Z"}
+"
+`;
+
+exports[`renderer.init-progress fixture lando renderer snapshot matches plain renderer (alpha alias) 1`] = `
+"▼ Initialize mvp (2 services)
+[render] start: Render recipe files (4)
+[render] ✓ complete: Rendered 4 files (85ms)
+[postinit] start: Run post-init actions (2)
+[postinit] ✓ complete: Ran 2 actions (420ms)
+▶ Initialized mvp (2 ✓ · 0 ✗) (525ms)
+"
+`;

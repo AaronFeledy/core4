@@ -237,4 +237,94 @@ describe("provider-lando setup", () => {
     },
     120_000,
   );
+
+  test("publishes a task tree with one child task per setup phase on the happy path", async () => {
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+    const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-setup-events-"));
+
+    try {
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          runtimeBundleDownloader: {
+            download: Effect.succeed({
+              version: "0.0.0-test",
+              bytes: bundleBytes,
+              sha256: sha256(bundleBytes),
+            }),
+          },
+          stateDir,
+          eventService: {
+            publish: (event) =>
+              Effect.sync(() => {
+                captured.push(event);
+              }),
+          },
+        }),
+      );
+
+      const tags = captured.map((event) => event._tag);
+      expect(tags[0]).toBe("task.tree.start");
+      expect(tags[tags.length - 1]).toBe("task.tree.complete");
+
+      const treeStart = captured[0];
+      expect((treeStart?.children ?? []) as ReadonlyArray<string>).toEqual([
+        "bundle",
+        "podman",
+        "socket",
+        "state",
+      ]);
+
+      const completedIds = captured
+        .filter((event) => event._tag === "task.complete")
+        .map((event) => event.taskId as string);
+      expect(completedIds).toEqual(["bundle", "podman", "socket", "state"]);
+
+      const treeComplete = captured[captured.length - 1];
+      expect(treeComplete?.succeeded).toBe(4);
+      expect(treeComplete?.failed).toBe(0);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("publishes task.fail and task.tree.complete when the Podman socket is unreachable", async () => {
+    const previousSocket = process.env.LANDO_TEST_PODMAN_SOCKET;
+    // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
+    delete process.env.LANDO_TEST_PODMAN_SOCKET;
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          eventService: {
+            publish: (event) =>
+              Effect.sync(() => {
+                captured.push(event);
+              }),
+          },
+        }),
+      );
+      expect(Exit.isFailure(exit)).toBe(true);
+
+      const taskFail = captured.find((event) => event._tag === "task.fail");
+      expect(taskFail).toBeDefined();
+      expect(taskFail?.taskId).toBe("socket");
+
+      const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
+      expect(treeComplete).toBeDefined();
+      expect(treeComplete?.failed).toBeGreaterThanOrEqual(1);
+    } finally {
+      if (previousSocket === undefined) {
+        // biome-ignore lint/performance/noDelete: process.env coerces undefined to the string "undefined"; delete is required to truly unset an env var
+        delete process.env.LANDO_TEST_PODMAN_SOCKET;
+      } else {
+        process.env.LANDO_TEST_PODMAN_SOCKET = previousSocket;
+      }
+    }
+  });
 });

@@ -19,6 +19,14 @@ import {
   createStdioPromptIO,
 } from "../../recipes/prompts/index.ts";
 import { resolveRecipeRef } from "../../recipes/source.ts";
+import {
+  type ProgressEmitter,
+  publishTaskCompleteAsync,
+  publishTaskFailAsync,
+  publishTaskStartAsync,
+  publishTreeCompleteAsync,
+  publishTreeStartAsync,
+} from "../progress.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
 
 const APP_NAME_PROMPT = "name";
@@ -70,6 +78,7 @@ export interface InitAppOptions {
   readonly io?: PromptIO;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
+  readonly events?: ProgressEmitter;
 }
 
 export interface InitAppResult {
@@ -149,46 +158,143 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     throw new Error(`Recipe "${recipeRef}" is missing a files: manifest.`);
   }
 
-  const rendered = renderer.render({ appName, answers: collected });
+  const events = options.events;
+  const postInitActions = manifest.postInit ?? [];
+  const initParentId = `init:${manifest.id}`;
+  const treeStartedAt = performance.now();
+  const childIds: string[] = ["render"];
+  if (postInitActions.length > 0) childIds.push("postinit");
 
-  const directory = join(cwd, appName);
-  const existing = await readdir(directory).catch((cause: unknown) => {
-    if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
-      return undefined;
-    throw cause;
+  await publishTreeStartAsync(events, {
+    parentId: initParentId,
+    label: `Initialize ${appName}`,
+    children: childIds,
+    mode: "list",
   });
 
-  if (existing !== undefined && existing.length > 0) {
-    throw new InitTargetExistsError({
-      message: `Init target already exists and is not empty: ${directory}`,
-      path: directory,
-      remediation: "Choose an empty directory or wait for Alpha --force support.",
+  const renderStartedAt = performance.now();
+  await publishTaskStartAsync(events, {
+    taskId: "render",
+    parentId: initParentId,
+    label: `Render recipe files (${files.length})`,
+  });
+
+  const directory = join(cwd, appName);
+
+  try {
+    const existing = await readdir(directory).catch((cause: unknown) => {
+      if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
+        return undefined;
+      throw cause;
+    });
+
+    if (existing !== undefined && existing.length > 0) {
+      await publishTaskFailAsync(events, {
+        taskId: "render",
+        summary: `Init target already exists: ${directory}`,
+        durationMs: Math.round(performance.now() - renderStartedAt),
+      });
+      await publishTreeCompleteAsync(events, {
+        parentId: initParentId,
+        summary: "Initialization aborted",
+        succeeded: 0,
+        failed: 1,
+        durationMs: Math.round(performance.now() - treeStartedAt),
+      });
+      throw new InitTargetExistsError({
+        message: `Init target already exists and is not empty: ${directory}`,
+        path: directory,
+        remediation: "Choose an empty directory or wait for Alpha --force support.",
+      });
+    }
+
+    const rendered = renderer.render({ appName, answers: collected });
+
+    await mkdir(directory, { recursive: true });
+
+    for (const file of files) {
+      const content = rendered.get(file.dest);
+      if (content === undefined) {
+        throw new Error(
+          `Recipe "${recipeRef}" lists file dest "${file.dest}" in its manifest but its renderer did not produce content for it.`,
+        );
+      }
+      const destPath = join(directory, file.dest);
+      await mkdir(dirname(destPath), { recursive: true });
+      await writeFile(destPath, content);
+    }
+  } catch (cause) {
+    if (cause instanceof InitTargetExistsError) throw cause;
+
+    await publishTaskFailAsync(events, {
+      taskId: "render",
+      summary: "Render failed",
+      durationMs: Math.round(performance.now() - renderStartedAt),
+    });
+    await publishTreeCompleteAsync(events, {
+      parentId: initParentId,
+      summary: "Initialization failed",
+      succeeded: 0,
+      failed: 1,
+      durationMs: Math.round(performance.now() - treeStartedAt),
+    });
+    throw cause;
+  }
+
+  await publishTaskCompleteAsync(events, {
+    taskId: "render",
+    summary: `Rendered ${files.length} files`,
+    durationMs: Math.round(performance.now() - renderStartedAt),
+  });
+
+  let postInit: PostInitOutcome = { executed: [] };
+  if (postInitActions.length > 0) {
+    const postInitStartedAt = performance.now();
+    await publishTaskStartAsync(events, {
+      taskId: "postinit",
+      parentId: initParentId,
+      label: `Run post-init actions (${postInitActions.length})`,
+    });
+
+    try {
+      postInit = await runPostInit({
+        actions: postInitActions,
+        destination: directory,
+        recipeId: manifest.id,
+        appName,
+        answers: collected,
+        ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
+        ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
+      });
+    } catch (cause) {
+      await publishTaskFailAsync(events, {
+        taskId: "postinit",
+        summary: "Post-init failed",
+        durationMs: Math.round(performance.now() - postInitStartedAt),
+      });
+      await publishTreeCompleteAsync(events, {
+        parentId: initParentId,
+        summary: "Initialization failed",
+        succeeded: 1,
+        failed: 1,
+        durationMs: Math.round(performance.now() - treeStartedAt),
+      });
+      throw cause;
+    }
+
+    await publishTaskCompleteAsync(events, {
+      taskId: "postinit",
+      summary: `Ran ${postInit.executed.length} actions`,
+      durationMs: Math.round(performance.now() - postInitStartedAt),
     });
   }
 
-  await mkdir(directory, { recursive: true });
-
-  for (const file of files) {
-    const content = rendered.get(file.dest);
-    if (content === undefined) {
-      throw new Error(
-        `Recipe "${recipeRef}" lists file dest "${file.dest}" in its manifest but its renderer did not produce content for it.`,
-      );
-    }
-    const destPath = join(directory, file.dest);
-    await mkdir(dirname(destPath), { recursive: true });
-    await writeFile(destPath, content);
-  }
-
-  const postInitActions = manifest.postInit ?? [];
-  const postInit = await runPostInit({
-    actions: postInitActions,
-    destination: directory,
-    recipeId: manifest.id,
-    appName,
-    answers: collected,
-    ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
-    ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
+  await publishTreeCompleteAsync(events, {
+    parentId: initParentId,
+    summary: `Initialized ${appName}`,
+    succeeded: childIds.length,
+    failed: 0,
+    durationMs: Math.round(performance.now() - treeStartedAt),
   });
 
   return { appName, directory, answers: collected, postInit };
