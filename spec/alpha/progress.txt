@@ -4511,3 +4511,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 ## PR #120 Bugbot triage (us-041)
 - Bugbot finding "Poweroff includes cache-only apps" (medium): REAL. Fixed by filtering providerId === "cache" entries in core/src/cli/commands/poweroff.ts before stopApp/targets. Added regression coverage that seeds a cwd-map cache entry not in provider state and asserts it is NOT reported as powered off. apps:list behavior for cache-only rows is unchanged (intentional).
 ---
+
+## [2026-05-20 08:31 CDT] - Babysit
+- PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- CI outcome: pass (`static-checks`, `build-linux-x64`, `provider-integration-linux-x64`, and `Cursor Bugbot` passed on fix commit 20e476e)
+- Review feedback: fixed (Bugbot `Poweroff includes cache-only apps` fixed by excluding `providerId: cache` rows from `apps:poweroff` targets and adding regression coverage)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main`; local story branch deleted; only this babysit report pending commit at time of writing
+---
