@@ -226,11 +226,12 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
 const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
   const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
-    Layer.provide(Layer.mergeAll(minimalRuntimeLive, PluginRegistryLive)),
+    Layer.provide(Layer.mergeAll(minimalRuntimeLive, PluginRegistryLive, EventServiceLive)),
   );
 
   return Layer.mergeAll(
     minimalRuntimeLive,
+    EventServiceLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     providerRegistryLive,
   );

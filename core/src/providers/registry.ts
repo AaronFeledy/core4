@@ -17,11 +17,14 @@ import {
 import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
+  EventService,
   PluginRegistry,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+
+type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
 const landoCapabilities: ProviderCapabilities = {
   artifactBuild: false,
@@ -139,6 +142,7 @@ const toProviderUnavailableFromCapability = (
 const makeRuntimeProviderRegistry = (
   configService: Context.Tag.Service<typeof ConfigService>,
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
+  eventService: EventPublisher | undefined,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
@@ -172,6 +176,7 @@ const makeRuntimeProviderRegistry = (
         providerIdText === "lando"
           ? yield* makeLandoRuntimeProvider({
               ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+              ...(eventService === undefined ? {} : { eventService }),
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
           : providers[providerIdText];
 
@@ -199,9 +204,16 @@ export { RuntimeProviderRegistry };
 
 export const RuntimeProviderRegistryLive = Layer.effect(
   RuntimeProviderRegistry,
-  Effect.map(Effect.all([ConfigService, PluginRegistry]), ([configService, pluginRegistry]) =>
-    makeRuntimeProviderRegistry(configService, pluginRegistry),
-  ),
+  Effect.gen(function* () {
+    const configService = yield* ConfigService;
+    const pluginRegistry = yield* PluginRegistry;
+    const eventService = yield* Effect.serviceOption(EventService);
+    return makeRuntimeProviderRegistry(
+      configService,
+      pluginRegistry,
+      eventService._tag === "Some" ? eventService.value : undefined,
+    );
+  }),
 );
 
 export const LandoRuntimeProviderLive = Layer.effect(
