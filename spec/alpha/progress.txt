@@ -4253,3 +4253,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Review decision: Cursor Bugbot comment was a real issue; `initApp` now wraps `readdir` and `renderer.render` in the same failure-guarded block so any unexpected error emits `task.fail` and `task.tree.complete` before rethrowing.
 - Extra coverage: added a regression test that forces `readdir` to throw via an unreadable target directory and asserts the task tree closes.
 - Verification: `bun run typecheck`, `bun run lint`, and `bun test` all passed locally.
+
+## [2026-05-20 06:10 CDT] - Babysit
+- PR: #117 https://github.com/AaronFeledy/core4/pull/117
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Bugbot initially NEUTRAL then pass after fix)
+- Review feedback: Bugbot Medium-severity bug — "Init progress tree left dangling" at core/src/cli/commands/init.ts#L175-210: readdir non-ENOENT rethrow and renderer.render() were outside the try/catch that publishes task.fail+task.tree.complete. Fix already existed as uncommitted working-tree change (with regression test). Committed and pushed as fix commit (992a214 → merged in squash).
+- Triage rounds used: 1
+- Merge: merged (squash) PR #117 → main db7be2e
+- Local main / branch refreshed: yes; us-039-task-tree-progress deleted
+- Remaining local state: clean, on main
+---
