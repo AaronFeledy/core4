@@ -18,10 +18,28 @@ import StopCommand from "./commands/app/stop.ts";
 import InitCommand from "./commands/apps/init.ts";
 import ListCommand from "./commands/apps/list.ts";
 import PoweroffCommand from "./commands/apps/poweroff.ts";
+import AppsScratchDestroyCommand from "./commands/apps/scratch/destroy.ts";
+import AppsScratchGcCommand from "./commands/apps/scratch/gc.ts";
+import AppsScratchInfoCommand from "./commands/apps/scratch/info.ts";
+import AppsScratchListCommand from "./commands/apps/scratch/list.ts";
+import AppsScratchLogsCommand from "./commands/apps/scratch/logs.ts";
+import AppsScratchStartCommand from "./commands/apps/scratch/start.ts";
+import AppsScratchStopCommand from "./commands/apps/scratch/stop.ts";
 import BunCommand from "./commands/meta/bun.ts";
 import MetaConfigCommand from "./commands/meta/config.ts";
 import DoctorCommand from "./commands/meta/doctor.ts";
 import EventsFollowCommand from "./commands/meta/events/follow.ts";
+import MetaGlobalConfigCommand from "./commands/meta/global/config.ts";
+import MetaGlobalDestroyCommand from "./commands/meta/global/destroy.ts";
+import MetaGlobalInfoCommand from "./commands/meta/global/info.ts";
+import MetaGlobalInstallCommand from "./commands/meta/global/install.ts";
+import MetaGlobalListCommand from "./commands/meta/global/list.ts";
+import MetaGlobalLogsCommand from "./commands/meta/global/logs.ts";
+import MetaGlobalRebuildCommand from "./commands/meta/global/rebuild.ts";
+import MetaGlobalRestartCommand from "./commands/meta/global/restart.ts";
+import MetaGlobalStartCommand from "./commands/meta/global/start.ts";
+import MetaGlobalStopCommand from "./commands/meta/global/stop.ts";
+import MetaGlobalUninstallCommand from "./commands/meta/global/uninstall.ts";
 import PluginAddCommand from "./commands/meta/plugin/add.ts";
 import PluginBuildCommand from "./commands/meta/plugin/build.ts";
 import PluginLinkCommand from "./commands/meta/plugin/link.ts";
@@ -60,10 +78,28 @@ export default {
   "apps:init": InitCommand,
   "apps:list": ListCommand,
   "apps:poweroff": PoweroffCommand,
+  "apps:scratch:destroy": AppsScratchDestroyCommand,
+  "apps:scratch:gc": AppsScratchGcCommand,
+  "apps:scratch:info": AppsScratchInfoCommand,
+  "apps:scratch:list": AppsScratchListCommand,
+  "apps:scratch:logs": AppsScratchLogsCommand,
+  "apps:scratch:start": AppsScratchStartCommand,
+  "apps:scratch:stop": AppsScratchStopCommand,
   "meta:bun": BunCommand,
   "meta:config": MetaConfigCommand,
   "meta:doctor": DoctorCommand,
   "meta:events:follow": EventsFollowCommand,
+  "meta:global:config": MetaGlobalConfigCommand,
+  "meta:global:destroy": MetaGlobalDestroyCommand,
+  "meta:global:info": MetaGlobalInfoCommand,
+  "meta:global:install": MetaGlobalInstallCommand,
+  "meta:global:list": MetaGlobalListCommand,
+  "meta:global:logs": MetaGlobalLogsCommand,
+  "meta:global:rebuild": MetaGlobalRebuildCommand,
+  "meta:global:restart": MetaGlobalRestartCommand,
+  "meta:global:start": MetaGlobalStartCommand,
+  "meta:global:stop": MetaGlobalStopCommand,
+  "meta:global:uninstall": MetaGlobalUninstallCommand,
   "meta:plugin:add": PluginAddCommand,
   "meta:plugin:build": PluginBuildCommand,
   "meta:plugin:link": PluginLinkCommand,
