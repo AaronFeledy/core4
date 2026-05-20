@@ -268,9 +268,9 @@ const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
     };
   } catch {
     // os.userInfo() can throw on some Windows configurations when the user has no
-    // home directory entry. The §6.9 helper already supports omitting LANDO_HOST_*
-    // when host facts are unavailable, so degrade gracefully rather than crashing
-    // the planner.
+    // home directory entry. The service-type helper already supports omitting
+    // LANDO_HOST_* when host facts are unavailable, so degrade gracefully rather
+    // than crashing the planner.
     return undefined;
   }
 };

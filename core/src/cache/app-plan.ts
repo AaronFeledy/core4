@@ -65,8 +65,7 @@ const normalizeManifest = (manifest: PluginManifest) => ({
 });
 
 export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
-  // Sort plugin manifests by name+version+api so registry list-order changes
-  // do not flap the cache key for a semantically identical manifest set.
+  // Keep registry list order out of the cache key for equivalent manifests.
   const sortedManifests = input.pluginManifests
     .map(normalizeManifest)
     .sort((a, b) =>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -261,7 +261,6 @@ describe("CacheServiceLive", () => {
 
   test("fails corrupt cwd-app-map reads with a remediation message", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-cwd-app-map-corrupt-"));
-    await mkdir(cacheRoot, { recursive: true });
     await writeFile(join(cacheRoot, CWD_APP_MAP_CACHE_FILE), "not a valid binary cache");
 
     const exit = await Effect.runPromiseExit(listCwdAppMapEntries(cacheRoot));
