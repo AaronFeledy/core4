@@ -1,7 +1,5 @@
 /**
  * `@lando/provider-lando` — Lando-managed RuntimeProvider.
- *
- * Status: MVP capability surface; lifecycle methods land in later provider stories.
  */
 import { Effect, Layer, Schema, Stream } from "effect";
 

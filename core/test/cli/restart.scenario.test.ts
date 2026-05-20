@@ -212,7 +212,7 @@ describe("lando restart", () => {
       "post-app-start",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);
-    expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
+    expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
     expect(harness.applyCalls).toEqual([{ reconcile: false }]);
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
       ["web", "running"],
