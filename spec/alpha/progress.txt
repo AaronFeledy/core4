@@ -4519,5 +4519,5 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Triage rounds used: 1
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
-- Remaining local state, if any: on `main`; local story branch deleted; only this babysit report pending commit at time of writing
+- Remaining local state, if any: none; on `main`, local story branch deleted, babysit report committed and pushed
 ---
