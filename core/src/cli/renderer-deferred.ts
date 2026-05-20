@@ -16,7 +16,10 @@
  *     and dimmed indented panel under each running task line. The
  *     `task.detail` event itself is emitted and rendered in Alpha
  *     (`core/src/cli/renderer/format.ts`); only the ring-buffer / tail
- *     UX is deferred.
+ *     UX is deferred. Bare `--tail` is guarded as the deferred renderer
+ *     surface, but valued `--tail <N>` / `--tail=N` forms are left alone
+ *     because `app:logs --tail <N>` is an existing Alpha command-specific
+ *     flag.
  *
  *   - Expand / collapse — TTY input handling that lets the user focus a
  *     task and drop into the alt-screen full-tail view, with the
@@ -81,9 +84,9 @@ export const DEFERRED_RENDERER_MODES: ReadonlyMap<string, DeferredRendererSurfac
 /**
  * Deferred renderer-related top-level flags. These are surfaces a user
  * might reach for to control the §8.9.2 task-tree expand/collapse UX or
- * the `task.detail` streaming tail. Alpha intercepts each of them at the
- * top-level pre-parse so the user sees the deferred remediation instead
- * of OCLIF's generic "unknown flag" message or a silent pass-through.
+ * the bare `task.detail` streaming-tail toggle. Alpha intercepts each of
+ * them at the top-level pre-parse so the user sees the deferred remediation
+ * instead of OCLIF's generic "unknown flag" message or a silent pass-through.
  */
 export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurface> = new Map(
   (
@@ -150,7 +153,7 @@ export const deferredRendererModeError = (
 
 /**
  * Build a tagged `NotImplementedError` for a deferred renderer-related
- * top-level flag (e.g. `--no-expand`, `--collapse`, `--tail`).
+ * top-level flag (e.g. `--no-expand`, `--collapse`, bare `--tail`).
  */
 export const deferredRendererFlagError = (flag: string): NotImplementedError => {
   const surface = DEFERRED_RENDERER_FLAGS.get(flag);
@@ -175,20 +178,29 @@ export const deferredRendererFlagError = (flag: string): NotImplementedError => 
  *
  * The check matches both bare (`--no-expand`) and `--flag=value` forms
  * so users typing `--no-expand=true` still get the deferred remediation.
+ * `--tail` is special: `app:logs` already owns `--tail <N>` / `--tail=N`
+ * for finite log snapshots, so only bare boolean `--tail` is treated as the
+ * deferred renderer task-detail tail surface.
  */
 export const findDeferredRendererFlag = (argv: ReadonlyArray<string>): string | undefined => {
   let afterDoubleDash = false;
-  for (const arg of argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
     if (arg === undefined) continue;
     if (afterDoubleDash) continue;
     if (arg === "--") {
       afterDoubleDash = true;
       continue;
     }
+    if (arg === "--tail") {
+      const next = argv[index + 1];
+      if (next !== undefined && !next.startsWith("-")) continue;
+    }
     if (DEFERRED_RENDERER_FLAGS.has(arg)) return arg;
     const eqIndex = arg.indexOf("=");
     if (eqIndex > 0) {
       const head = arg.slice(0, eqIndex);
+      if (head === "--tail") continue;
       if (DEFERRED_RENDERER_FLAGS.has(head)) return head;
     }
   }

@@ -108,7 +108,7 @@ describe("findDeferredRendererFlag", () => {
   test("returns the first deferred flag before any POSIX `--` terminator", () => {
     expect(findDeferredRendererFlag(["apps:list", "--no-expand"])).toBe("--no-expand");
     expect(findDeferredRendererFlag(["apps:list", "--collapse", "extra"])).toBe("--collapse");
-    expect(findDeferredRendererFlag(["--tail"])).toBe("--tail");
+    expect(findDeferredRendererFlag(["apps:list", "--tail"])).toBe("--tail");
   });
 
   test("matches --flag=value forms (returns the bare flag name)", () => {
@@ -122,6 +122,11 @@ describe("findDeferredRendererFlag", () => {
 
   test("does not intercept deferred flag names after the POSIX `--` terminator", () => {
     expect(findDeferredRendererFlag(["app:exec", "--", "bash", "-c", "echo --no-expand"])).toBeUndefined();
+  });
+
+  test("does not intercept app:logs --tail because it is a command-specific Alpha flag", () => {
+    expect(findDeferredRendererFlag(["logs", "--tail", "25"])).toBeUndefined();
+    expect(findDeferredRendererFlag(["app:logs", "--tail=25"])).toBeUndefined();
   });
 });
 
@@ -193,7 +198,25 @@ describe("renderer-selection integration with deferred surfaces", () => {
   });
 
   test("deferred flag rejection happens before --renderer parsing (so order does not matter)", () => {
+    expect(() => resolveRendererMode({ argv: ["--renderer=json", "--collapse"] })).toThrow(
+      NotImplementedError,
+    );
+    expect(() => resolveRendererMode({ argv: ["--collapse", "--renderer=json"] })).toThrow(
+      NotImplementedError,
+    );
     expect(() => resolveRendererMode({ argv: ["--renderer=json", "--tail"] })).toThrow(NotImplementedError);
-    expect(() => resolveRendererMode({ argv: ["--tail", "--renderer=json"] })).toThrow(NotImplementedError);
+  });
+
+  test("logs --tail remains available for the app logs command", () => {
+    expect(resolveRendererMode({ argv: ["logs", "--tail", "25"] })).toEqual({
+      mode: "lando",
+      remainingArgv: ["logs", "--tail", "25"],
+      source: "default",
+    });
+    expect(resolveRendererMode({ argv: ["app:logs", "--tail=25"] })).toEqual({
+      mode: "lando",
+      remainingArgv: ["app:logs", "--tail=25"],
+      source: "default",
+    });
   });
 });
