@@ -76,6 +76,12 @@
       },
       "meta:recipes": {
         "description": "Inspect canonical recipes shipped with Lando."
+      },
+      "apps:scratch": {
+        "description": "Short-lived scratch apps (Phase 3 Beta deliverable)."
+      },
+      "meta:global": {
+        "description": "Manage the host-level global Lando app (Phase 3 Beta deliverable)."
       }
     },
     "hooks": {

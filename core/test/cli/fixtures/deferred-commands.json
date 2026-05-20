@@ -1,0 +1,46 @@
+{
+  "_doc": "Per US-037: every Phase-2-Alpha-deferred canonical command surface. The deferred-commands snapshot test asserts each entry returns NotImplementedError with phase-tagged remediation in both source OCLIF and compiled $bunfs paths.",
+  "commands": [
+    {
+      "id": "app:config:translate",
+      "phase": "Phase 3 Beta",
+      "specSection": "spec/07-landofile-and-config.md"
+    },
+    {
+      "id": "app:includes:update",
+      "phase": "Phase 3 Beta",
+      "specSection": "spec/07-landofile-and-config.md"
+    },
+    {
+      "id": "app:includes:verify",
+      "phase": "Phase 3 Beta",
+      "specSection": "spec/07-landofile-and-config.md"
+    },
+    { "id": "apps:scratch:destroy", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "apps:scratch:gc", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "apps:scratch:info", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "apps:scratch:list", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "apps:scratch:logs", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "apps:scratch:start", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "apps:scratch:stop", "phase": "Phase 3 Beta", "specSection": "spec/19-scratch-apps.md" },
+    { "id": "meta:global:config", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:destroy", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:info", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:install", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:list", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:logs", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:rebuild", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:restart", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:start", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:stop", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:global:uninstall", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
+    { "id": "meta:plugin:build", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:link", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:new", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:publish", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:test", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:trust", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:trust-authoring-root", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" },
+    { "id": "meta:plugin:unlink", "phase": "Phase 4 RC", "specSection": "spec/10-plugins.md" }
+  ]
+}
