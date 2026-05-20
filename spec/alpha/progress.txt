@@ -4065,3 +4065,20 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/cli/oclif/pre-renderer.ts` (removed planning-doc references from the module docblock), `core/test/cli/paint-banner.test.ts` (removed planning-heavy file banner and redundant SDK rationale comment), `sdk/src/events/index.ts` (reworded event JSDoc to plain technical descriptions), `AGENTS.md` (removed roadmap-status prose from the durable pre-renderer note).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are test names/strings, runtime fields, structured errors, planning docs, or durable repo context outside shipped code comments.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (407 files); `bun test --reporter=dot` passed with exit 0.
+
+## 2026-05-19 - Push
+- Branch: us-036-first-paint-banner
+- Push: pushed
+- Commit(s): 813c92d docs: record first-paint slop cleanup, 21a27ca chore: remove first-paint comment slop, 390173b docs: record review for us-036, 6b4acc2 feat: Implement basic first-paint banner
+- PR: #114 https://github.com/AaronFeledy/core4/pull/114 (created)
+---
+
+## 2026-05-19 20:56 CDT - Babysit
+- PR: #114 https://github.com/AaronFeledy/core4/pull/114
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (us-036-first-paint-banner deleted)
+- Remaining local state: none
+---
