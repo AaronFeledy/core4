@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -147,6 +147,38 @@ describe("lando init: task tree progress", () => {
         expect(treeComplete.failed).toBe(1);
         expect(treeComplete.succeeded).toBe(0);
       }
+    });
+  });
+
+  test("publishes task.fail and task.tree.complete when readdir throws unexpectedly", async () => {
+    await withTempCwd(async (dir) => {
+      const blocked = join(dir, "blocked");
+      await mkdir(blocked, { recursive: true });
+      await chmod(blocked, 0);
+
+      const sink = collector();
+      let caught: unknown;
+      try {
+        await initApp({
+          cwd: dir,
+          full: true,
+          name: "blocked",
+          nonInteractive: true,
+          events: { publish: sink.publish },
+        });
+      } catch (err) {
+        caught = err;
+      } finally {
+        await chmod(blocked, 0o755);
+      }
+
+      expect(caught).toBeDefined();
+      const tags = sink.events.map((event) => event._tag);
+      expect(tags[0]).toBe("task.tree.start");
+      expect(tags).toContain("task.fail");
+      expect(tags[tags.length - 1]).toBe("task.tree.complete");
+      const renderFail = sink.events.find((event) => event._tag === "task.fail" && event.taskId === "render");
+      expect(renderFail).toBeDefined();
     });
   });
 });

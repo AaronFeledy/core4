@@ -180,35 +180,36 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   });
 
   const directory = join(cwd, appName);
-  const existing = await readdir(directory).catch((cause: unknown) => {
-    if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
-      return undefined;
-    throw cause;
-  });
-
-  if (existing !== undefined && existing.length > 0) {
-    await publishTaskFailAsync(events, {
-      taskId: "render",
-      summary: `Init target already exists: ${directory}`,
-      durationMs: Math.round(performance.now() - renderStartedAt),
-    });
-    await publishTreeCompleteAsync(events, {
-      parentId: initParentId,
-      summary: "Initialization aborted",
-      succeeded: 0,
-      failed: 1,
-      durationMs: Math.round(performance.now() - treeStartedAt),
-    });
-    throw new InitTargetExistsError({
-      message: `Init target already exists and is not empty: ${directory}`,
-      path: directory,
-      remediation: "Choose an empty directory or wait for Alpha --force support.",
-    });
-  }
-
-  const rendered = renderer.render({ appName, answers: collected });
 
   try {
+    const existing = await readdir(directory).catch((cause: unknown) => {
+      if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT")
+        return undefined;
+      throw cause;
+    });
+
+    if (existing !== undefined && existing.length > 0) {
+      await publishTaskFailAsync(events, {
+        taskId: "render",
+        summary: `Init target already exists: ${directory}`,
+        durationMs: Math.round(performance.now() - renderStartedAt),
+      });
+      await publishTreeCompleteAsync(events, {
+        parentId: initParentId,
+        summary: "Initialization aborted",
+        succeeded: 0,
+        failed: 1,
+        durationMs: Math.round(performance.now() - treeStartedAt),
+      });
+      throw new InitTargetExistsError({
+        message: `Init target already exists and is not empty: ${directory}`,
+        path: directory,
+        remediation: "Choose an empty directory or wait for Alpha --force support.",
+      });
+    }
+
+    const rendered = renderer.render({ appName, answers: collected });
+
     await mkdir(directory, { recursive: true });
 
     for (const file of files) {
@@ -223,6 +224,8 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
       await writeFile(destPath, content);
     }
   } catch (cause) {
+    if (cause instanceof InitTargetExistsError) throw cause;
+
     await publishTaskFailAsync(events, {
       taskId: "render",
       summary: "Render failed",
