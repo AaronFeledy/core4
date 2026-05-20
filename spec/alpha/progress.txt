@@ -3961,3 +3961,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `sdk/src/events/index.ts` (removed stale/generated comment blocks and reworded task-tree doc prose), `sdk/src/services/index.ts` (shortened verbose `subscribeQueue` docs), `core/src/cli/renderer/io.ts` (simplified trivial write wrappers and line splitting), `core/test/cli/renderer-task-tree.test.ts` (tightened fixture event/tag typing without weakening assertions), `sdk/test/services/tags.test.ts` (aligned EventService method list and reduced mock cast noise).
 - Planning-doc leakage scan over branch-changed source/test comments passed after cleanup; remaining planning references are test names/strings or durable planning/progress docs, not shipped code comments.
 - Verification run and result: `lsp_diagnostics` clean for changed TS files; `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun test` passed (874 pass / 11 skip / 0 fail / 2 snapshots / 4115 expect calls across 126 files) after rebuilding `core/dist/lando` for compiled-CLI scenario tests.
+
+## [2026-05-19 19:50 CDT] - Babysit
+- PR: #112 https://github.com/AaronFeledy/core4/pull/112
+- CI outcome: Initial run failed (build-linux-x64) due to transient GitHub artifact storage error ("The server is busy") — not a code defect. Re-ran failed jobs; all checks passed on retry.
+- Review feedback: none (no reviews, no comments, reviewDecision empty)
+- Triage rounds used: 0 (no code fixes needed)
+- Merge: merged (squash) — all checks SUCCESS/SKIPPED, Bugbot pass, no CHANGES_REQUESTED
+- Local main / branch refreshed: yes — fast-forwarded main to 8ac183b, deleted local story branch
+- Remaining local state: on main, clean
+---
