@@ -3980,3 +3980,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no (fast path stash was pop'd and committed)
 ---
+
+## [2026-05-19 23:30 CDT] - US-035
+- Implemented `message.info` / `message.warn` / `message.error` event schemas and renderer formatter coverage so command authors can emit structured messages consistently across renderers.
+- Files changed: `sdk/src/events/index.ts`, `core/src/cli/renderer/format.ts`, `core/test/cli/renderer-messages.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun test core/test/cli/renderer-messages.test.ts` passed (13 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (887 pass / 11 skip / 0 fail / 2 snapshots / 4145 expect calls across 127 files); `bun -e` smoke test confirms `MessageInfoEvent` decodes through `@lando/sdk/events` and `renderPlainLine` / `renderJsonLine` produce the expected single-line plain and NDJSON output respectively.
+- **Learnings for future iterations:**
+  - Adding a new `LandoEvent` discriminant requires three edits in lock-step: the TaggedStruct schema, the `Schema.Union` member list, and the renderer's `isTaskTreeEvent`/`isMessageEvent` predicate set. Forgetting the union member is the only one that breaks `tsc -b`; forgetting the predicate is the silent failure (event publishes but renderer returns `null`).
+  - Tests that touch `process.exitCode` MUST capture and restore the prior value, AND set a sentinel (not assume `undefined`), because other tests in the bun-test suite (`core/test/cli/*.scenario.test.ts`) leave `process.exitCode` set after exercising failure paths.
+  - Plain renderer formatter reuses task.fail's `↳` indent style for `message.error` remediation, but with two-space indent (no `[taskId]` prefix) since messages are not scoped to a task.
+  - The `orderedKeys` list in `renderer/format.ts#stableStringify` must include any new top-level event field (`body` for messages) that should appear before `timestamp` in the NDJSON output; unknown keys still serialize but in insertion order at the tail.
+---

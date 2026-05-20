@@ -294,6 +294,37 @@ export const TaskTreeCompleteEvent = Schema.TaggedStruct("task.tree.complete", {
 });
 export type TaskTreeCompleteEvent = typeof TaskTreeCompleteEvent.Type;
 
+/**
+ * Typed app-output records published after lifecycle steps. The renderer
+ * decides how to present them (§8.9). `message.info` / `message.warn` are
+ * informational and MUST NOT change a command's exit code on their own —
+ * exit codes are owned by the command-effect failure channel. `message.error`
+ * is non-fatal by itself for the same reason; commands that need a non-zero
+ * exit MUST fail the surrounding Effect with a tagged error (which is what
+ * carries the canonical remediation rendered alongside the message).
+ *
+ * Publishers redact body text before publishing; renderers treat the body
+ * (and optional remediation) as already-redacted strings.
+ */
+export const MessageInfoEvent = Schema.TaggedStruct("message.info", {
+  body: Schema.String,
+  timestamp: Timestamp,
+});
+export type MessageInfoEvent = typeof MessageInfoEvent.Type;
+
+export const MessageWarnEvent = Schema.TaggedStruct("message.warn", {
+  body: Schema.String,
+  timestamp: Timestamp,
+});
+export type MessageWarnEvent = typeof MessageWarnEvent.Type;
+
+export const MessageErrorEvent = Schema.TaggedStruct("message.error", {
+  body: Schema.String,
+  remediation: Schema.optional(Schema.String),
+  timestamp: Timestamp,
+});
+export type MessageErrorEvent = typeof MessageErrorEvent.Type;
+
 export const LandoEvent = Schema.Union(
   PreBootstrapEvent,
   PostBootstrapEvent,
@@ -332,6 +363,9 @@ export const LandoEvent = Schema.Union(
   TaskCompleteEvent,
   TaskFailEvent,
   TaskTreeCompleteEvent,
+  MessageInfoEvent,
+  MessageWarnEvent,
+  MessageErrorEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
 

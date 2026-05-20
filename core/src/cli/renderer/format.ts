@@ -1,6 +1,6 @@
 import type { LandoEvent } from "@lando/sdk/services";
 
-type TaskTreeEvent = LandoEvent & { readonly _tag: string };
+type RenderableEvent = LandoEvent & { readonly _tag: string };
 
 const isTaskTreeEvent = (event: LandoEvent): boolean =>
   event._tag === "task.tree.start" ||
@@ -9,6 +9,11 @@ const isTaskTreeEvent = (event: LandoEvent): boolean =>
   event._tag === "task.complete" ||
   event._tag === "task.fail" ||
   event._tag === "task.detail";
+
+const isMessageEvent = (event: LandoEvent): boolean =>
+  event._tag === "message.info" || event._tag === "message.warn" || event._tag === "message.error";
+
+const isRenderableEvent = (event: LandoEvent): boolean => isTaskTreeEvent(event) || isMessageEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
@@ -19,8 +24,22 @@ const formatDurationSuffix = (durationMs: number | undefined): string => {
   return ` (${(durationMs / 1000).toFixed(1)}s)`;
 };
 
-export const formatPlainEvent = (event: TaskTreeEvent): string | null => {
+export const formatPlainEvent = (event: RenderableEvent): string | null => {
   switch (event._tag) {
+    case "message.info": {
+      const body = asString(event.body) ?? "";
+      return `ℹ ${body}`;
+    }
+    case "message.warn": {
+      const body = asString(event.body) ?? "";
+      return `⚠ ${body}`;
+    }
+    case "message.error": {
+      const body = asString(event.body) ?? "";
+      const remediation = asString(event.remediation);
+      const main = `✗ ${body}`;
+      return remediation === undefined ? main : `${main}\n  ↳ ${remediation}`;
+    }
     case "task.tree.start": {
       const label = asString(event.label) ?? "tasks";
       const children = Array.isArray(event.children) ? event.children : [];
@@ -67,7 +86,7 @@ export const formatPlainEvent = (event: TaskTreeEvent): string | null => {
 };
 
 export const renderPlainLine = (event: LandoEvent): string | null => {
-  if (!isTaskTreeEvent(event)) return null;
+  if (!isRenderableEvent(event)) return null;
   return formatPlainEvent(event);
 };
 
@@ -80,6 +99,7 @@ const orderedKeys: ReadonlyArray<string> = [
   "mode",
   "stream",
   "line",
+  "body",
   "summary",
   "succeeded",
   "failed",
@@ -102,8 +122,9 @@ const stableStringify = (event: LandoEvent): string => {
 };
 
 export const renderJsonLine = (event: LandoEvent): string | null => {
-  if (!isTaskTreeEvent(event)) return null;
+  if (!isRenderableEvent(event)) return null;
   return stableStringify(event);
 };
 
 export const isRenderableTaskTreeEvent = isTaskTreeEvent;
+export const isRenderableMessageEvent = isMessageEvent;
