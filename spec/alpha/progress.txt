@@ -4188,3 +4188,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/cli/bug-report.ts` (removed planning-doc traceability from the formatter header), `core/src/cli/redact.ts` (trimmed provenance-heavy redaction header), `core/src/cli/run.ts` (removed redundant renderer-validation traceability block), `core/src/cli/oclif/commands/apps/init.ts` (kept the renderer-stripping rationale concise), and `core/test/cli/bug-report.scenario.test.ts` (replaced redundant early returns with explicit assertion failures and removed duplicate env overrides).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are runtime fields, structured errors, test names/strings, planning docs, or durable repo context outside code comments.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/cli/bug-report.test.ts core/test/cli/bug-report.scenario.test.ts` passed; final `bun test` passed (966 pass / 11 skip / 0 fail). Earlier full-suite attempts hit the known compiled-binary race on `core/dist/lando` (`ETXTBSY`/`ENOENT`); isolated reruns of `core/test/cli/aliases.test.ts` and `core/test/build/compile.test.ts` passed before the final full-suite pass.
+
+## [2026-05-20 04:29 UTC] - Babysit
+- PR: #116 https://github.com/AaronFeledy/core4/pull/116
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (reset --hard origin/main; story branch deleted)
+- Remaining local state: none
+---
