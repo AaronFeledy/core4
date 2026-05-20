@@ -4059,3 +4059,9 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Mechanism-only Alpha slivers (pre-renderer module + event schema + renderer hand-off, no end-to-end CLI wiring) are a legitimate review-pass shape when the AC explicitly defers per-command emission. The discipline test (source-scan over forbidden imports) is the AC-1 enforcement, not the absence of a callsite.
   - When the build step's progress note quotes the deferred-AC phrasing back, that's strong evidence the scope boundary is intentional — reject "missing wiring" findings rather than expanding scope into adjacent stories (US-040).
 ---
+
+## [2026-05-19] - US-036 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving comment/prose cleanup edits only.
+- Files changed by cleanup: `core/src/cli/oclif/pre-renderer.ts` (removed planning-doc references from the module docblock), `core/test/cli/paint-banner.test.ts` (removed planning-heavy file banner and redundant SDK rationale comment), `sdk/src/events/index.ts` (reworded event JSDoc to plain technical descriptions), `AGENTS.md` (removed roadmap-status prose from the durable pre-renderer note).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are test names/strings, runtime fields, structured errors, planning docs, or durable repo context outside shipped code comments.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (407 files); `bun test --reporter=dot` passed with exit 0.
