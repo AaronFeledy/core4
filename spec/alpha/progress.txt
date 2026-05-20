@@ -4670,3 +4670,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): 79f9336 feat: Implement plugin command index cache; fd1d717 fix: Harden app command cache refresh safety; 1cc208b chore: remove AI slop
 - PR: #123 https://github.com/AaronFeledy/core4/pull/123 (created)
 ---
+
+## [2026-05-20] - PR #123 Bugbot Triage
+- CI triage: Cursor Bugbot check was neutral/skipping; no failing CI job to fix.
+- Review triage: accepted Bugbot finding that app-command cache freshness ignored the current discovered command entries, so a refresh could reuse a cache after .bun.sh script-backed command additions/removals/front-matter changes that affect the discovered entries.
+- Fix: app-command cache payloads now include an entries fingerprint and stale-check against the entries being written/read, with a regression test for discovered entry changes.

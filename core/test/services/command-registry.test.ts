@@ -12,6 +12,7 @@ import {
   readAppCommandCache,
   readPluginCommandCache,
   writeAppCommandCache,
+  writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
 import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache/command-index.ts";
@@ -413,6 +414,46 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           }),
         );
         expect(stale).toBeNull();
+      });
+    });
+  });
+
+  test("invalidates app-command cache when discovered command entries change", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "script-cache", tooling: { composer: { cmd: "composer" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: script-cache", "tooling:", "  composer:", "    cmd: composer", ""].join("\n"),
+        );
+
+        const firstPath = await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:composer", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [
+              { id: "app:composer", summary: "", hidden: false },
+              { id: "app:db:wait", summary: "Wait for the DB", hidden: false, service: ":host" },
+            ],
+            cwd: dir,
+            cacheRoot,
+            now: () => 200,
+          }),
+        );
+
+        if (firstPath === undefined) return;
+        const refreshed = decodeAppCommandIndex(new Uint8Array(await readFile(firstPath)));
+        expect(refreshed?.generatedAtMs).toBe(200);
+        expect(refreshed?.entries.map((entry) => entry.id).sort()).toEqual(["app:composer", "app:db:wait"]);
       });
     });
   });

@@ -17,6 +17,7 @@ import {
   type PluginCommandIndexPayload,
   decodeAppCommandIndex,
   decodePluginCommandIndex,
+  deriveAppCommandEntriesFingerprint,
   deriveAppCommandToolingFingerprint,
   derivePluginCommandManifestFingerprint,
   encodeAppCommandIndex,
@@ -48,8 +49,14 @@ const writeAppCommandCacheTask = async (
   const appRoot = dirname(filePath);
   const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
+  const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
 
-  const cached = await readAppCommandCacheTask({ ...options, cacheRoot, toolingFingerprint });
+  const cached = await readAppCommandCacheTask({
+    ...options,
+    cacheRoot,
+    toolingFingerprint,
+    entriesFingerprint,
+  });
   if (cached !== null) return cachePath;
 
   const payload: AppCommandIndexPayload = {
@@ -60,6 +67,7 @@ const writeAppCommandCacheTask = async (
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     toolingFingerprint,
+    entriesFingerprint,
     generatedAtMs: (options.now ?? Date.now)(),
     entries: options.entries,
   };
@@ -122,6 +130,7 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
 
 interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
   readonly toolingFingerprint?: string;
+  readonly entriesFingerprint?: string;
 }
 
 const readAppCommandCacheTask = async (
@@ -146,6 +155,12 @@ const readAppCommandCacheTask = async (
     if (
       payload.toolingFingerprint !==
       (options.toolingFingerprint ?? deriveAppCommandToolingFingerprint(options.landofile))
+    ) {
+      return null;
+    }
+    if (
+      (payload.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(payload.entries)) !==
+      (options.entriesFingerprint ?? deriveAppCommandEntriesFingerprint(options.entries))
     ) {
       return null;
     }

@@ -27,6 +27,7 @@ export interface AppCommandIndexPayload {
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
   readonly toolingFingerprint?: string;
+  readonly entriesFingerprint?: string;
   readonly generatedAtMs: number;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
@@ -75,6 +76,9 @@ export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
   stableFingerprint({ tooling: landofile.tooling ?? null });
+
+export const deriveAppCommandEntriesFingerprint = (entries: ReadonlyArray<CommandIndexEntry>): string =>
+  stableFingerprint(entries);
 
 const writeHeader = (magic: Uint8Array): Uint8Array => {
   const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);
