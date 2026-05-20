@@ -4663,3 +4663,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `core/src/cli/commands/app-cache-refresh.ts` (removed redundant bootstrap-level traceability from the command docblock) and `core/test/services/command-registry.test.ts` (reworded test names to remove phase/section references while preserving assertions and behavior).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning-like text found by broad scan is ordinary test prose, not code-comment traceability.
 - Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/command-registry.test.ts core/test/cli/app-cache.scenario.test.ts` passed; focused `bun test core/test/cli/shellenv.test.ts` passed; `bun run build` passed. Full `bun test` reached 1024 pass / 11 skip / 1 fail on `core/test/cli/shellenv.test.ts` because an in-suite nested `bun run build` returned 1 during compiled-binary build contention; standalone build and focused shellenv rerun passed afterward, matching the known compiled-build transient noted for this branch.
+
+## [2026-05-20 18:10 CDT] - Push
+- Branch: us-043-plugin-command-index-cache
+- Push: pushed
+- Commit(s): 79f9336 feat: Implement plugin command index cache; fd1d717 fix: Harden app command cache refresh safety; 1cc208b chore: remove AI slop
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123 (created)
+---
+
+## [2026-05-20 18:10 CDT] - Push
+- Branch: us-043-plugin-command-index-cache
+- Push: pushed
+- Commit(s): 79f9336 feat: Implement plugin command index cache; fd1d717 fix: Harden app command cache refresh safety; 1cc208b chore: remove AI slop
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123 (created)
+---
