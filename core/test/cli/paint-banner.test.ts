@@ -1,19 +1,3 @@
-/**
- * First-paint banner contract for the Alpha sliver of spec §8.9.1.
- *
- * The full first-paint contract (spinner threshold, completion-line latency,
- * skeleton-first tables, alt-screen expand/collapse) stays RC/deferred per
- * PRD-05 US-036 acceptance criterion 2 and US-040. This file only exercises
- * the slivers explicitly named in US-036:
- *
- *   - pre-bootstrap banner is a single line on stdout
- *   - written via a tiny pre-renderer module that does NOT import Effect,
- *     the Renderer service, @oclif/core, or any plugin code
- *   - within the §2.1 50 ms cold first-byte budget
- *   - handed off once to the Renderer Layer (no double-emit on plain;
- *     emitted as one NDJSON line on stderr by the json renderer)
- *   - non-TTY output avoids ANSI control sequences
- */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -163,7 +147,7 @@ describe("pre-renderer module discipline (spec §8.9.1)", () => {
       "../../../runtime/",
       "@lando/core/plugins",
       "../../plugins/",
-      "@lando/sdk", // pre-renderer must not pull SDK either (Schema/Effect transitives).
+      "@lando/sdk",
     ];
     for (const specifier of specifiers) {
       for (const prefix of forbiddenPrefixes) {

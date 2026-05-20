@@ -1,12 +1,8 @@
 /**
- * Tiny pre-renderer used by the CLI fast path for the first-paint banner
- * defined in spec §8.9.1.
+ * Tiny pre-renderer for the CLI fast path.
  *
- * Loaded BEFORE the Renderer Layer is forced and BEFORE any plugin module is
- * imported. To preserve the §2.1 cold first-byte budget and the "no Effect on
- * the fast path" canary, this module MUST NOT import Effect, the Renderer
- * service, @oclif/core, the Lando SDK, or any plugin code. Node builtins are
- * the only permitted dependencies.
+ * This module must stay dependency-free apart from Node builtins so the first
+ * paint happens before the renderer layer and any plugin code load.
  *
  * The function returns the banner string so the caller can later publish a
  * synthetic `paint.banner` event to the Renderer Layer; that hand-off lets

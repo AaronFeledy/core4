@@ -1,8 +1,6 @@
 /**
- * Lifecycle event payload schemas.
- *
- * Event scopes: Lando, App, Provider, Tooling, CLI. The `EventService`
- * publishes payloads in priority bands, with a standard cold-start sequence.
+ * Lifecycle event payload schemas for bootstrap, app, task,
+ * message, and renderer events.
  */
 import { Schema } from "effect";
 
@@ -233,9 +231,8 @@ export const CliCommandErrorEvent = Schema.TaggedStruct("cli-command-error", {
 export type CliCommandErrorEvent = typeof CliCommandErrorEvent.Type;
 
 /**
- * Open a parent container around N concurrent sibling tasks. Callers MAY
- * emit task trees as long as they publish a matching
- * {@link TaskTreeCompleteEvent} when the children finish.
+ * Start event for a grouped task tree with concurrent
+ * sibling tasks.
  */
 export const TaskTreeStartEvent = Schema.TaggedStruct("task.tree.start", {
   parentId: Schema.String,
@@ -255,8 +252,8 @@ export const TaskStartEvent = Schema.TaggedStruct("task.start", {
 export type TaskStartEvent = typeof TaskStartEvent.Type;
 
 /**
- * Streaming tail of a single task's output. The renderer MUST treat the
- * `line` as already-redacted by the publisher.
+ * Streaming output for a single task. `line` is already
+ * redacted by the publisher.
  */
 export const TaskDetailEvent = Schema.TaggedStruct("task.detail", {
   taskId: Schema.String,
@@ -295,16 +292,9 @@ export const TaskTreeCompleteEvent = Schema.TaggedStruct("task.tree.complete", {
 export type TaskTreeCompleteEvent = typeof TaskTreeCompleteEvent.Type;
 
 /**
- * Typed app-output records published after lifecycle steps. The renderer
- * decides how to present them. `message.info` / `message.warn` are
- * informational and MUST NOT change a command's exit code on their own —
- * exit codes are owned by the command-effect failure channel. `message.error`
- * is non-fatal by itself for the same reason; commands that need a non-zero
- * exit MUST fail the surrounding Effect with a tagged error (which is what
- * carries the canonical remediation rendered alongside the message).
- *
- * Publishers redact body text before publishing; renderers treat the body
- * (and optional remediation) as already-redacted strings.
+ * App-output records published after lifecycle steps.
+ * Renderers choose how to present them, and `body` plus
+ * optional `remediation` are already-redacted strings.
  */
 export const MessageInfoEvent = Schema.TaggedStruct("message.info", {
   body: Schema.String,
@@ -326,11 +316,9 @@ export const MessageErrorEvent = Schema.TaggedStruct("message.error", {
 export type MessageErrorEvent = typeof MessageErrorEvent.Type;
 
 /**
- * Synthetic first-paint hand-off event. Published by the imperative shell
- * once the Renderer Layer is constructed so the renderer's internal state
- * machine knows what the pre-bootstrap fast path already wrote to stdout
- * (spec §8.9.1). Plain/lando renderers MUST NOT re-emit the banner; the
- * json renderer emits the event as one NDJSON line on stderr.
+ * First-paint handoff event emitted after the renderer is
+ * initialized. Plain and lando renderers skip it; JSON
+ * renderers emit it as one NDJSON line on stderr.
  */
 export const PaintBannerEvent = Schema.TaggedStruct("paint.banner", {
   banner: Schema.String,
