@@ -2,11 +2,7 @@ import { Command } from "@oclif/core";
 
 import { Cause, Effect, Exit, type Layer } from "effect";
 
-import {
-  LandoRuntimeBootstrapError,
-  type NotImplementedError,
-  RendererSelectionError,
-} from "@lando/sdk/errors";
+import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
@@ -179,7 +175,7 @@ export abstract class LandoCommandBase extends Command {
       this.argv.length = 0;
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
-      if (error instanceof RendererSelectionError) {
+      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         throw new Error(formatRendererSelectionError(error));
       }
       throw error;

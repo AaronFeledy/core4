@@ -1,5 +1,12 @@
 import { RendererSelectionError } from "@lando/sdk/errors";
 
+import {
+  deferredRendererFlagError,
+  deferredRendererModeError,
+  findDeferredRendererFlag,
+  isDeferredRendererMode,
+} from "./renderer-deferred.ts";
+
 export const RENDERER_MODES = ["lando", "json", "plain"] as const;
 export type RendererMode = (typeof RENDERER_MODES)[number];
 export const DEFAULT_RENDERER_MODE: RendererMode = "lando";
@@ -12,6 +19,9 @@ export const isRendererMode = (value: string): value is RendererMode =>
   (RENDERER_MODES as ReadonlyArray<string>).includes(value);
 
 const validate = (value: string, source: "flag" | "env" | "config"): RendererMode => {
+  if (isDeferredRendererMode(value)) {
+    throw deferredRendererModeError(value, source);
+  }
   if (isRendererMode(value)) return value;
   throw new RendererSelectionError({
     message: `Unsupported renderer value "${value}" from ${source}. Allowed: ${ALLOWED_VALUES_DISPLAY}.`,
@@ -30,6 +40,10 @@ const RENDERER_LONG_FLAG = "--renderer";
 const RENDERER_EQ_PREFIX = `${RENDERER_LONG_FLAG}=`;
 
 export const extractRendererFlag = (argv: ReadonlyArray<string>): ExtractRendererFlagResult => {
+  const deferred = findDeferredRendererFlag(argv);
+  if (deferred !== undefined) {
+    throw deferredRendererFlagError(deferred);
+  }
   let mode: RendererMode | undefined;
   const remaining: string[] = [];
   let afterDoubleDash = false;

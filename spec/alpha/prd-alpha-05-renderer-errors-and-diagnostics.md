@@ -121,6 +121,43 @@ Depends on: **PRD-03, PRD-04**.
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+#### Renderer features deferred from Phase 2 Alpha
+
+Source of truth: `core/src/cli/renderer-deferred.ts`. The same remediation
+text surfaces from `NotImplementedError` thrown by `validate()` /
+`extractRendererFlag` in `core/src/cli/renderer-selection.ts` when a user
+reaches one of these surfaces.
+
+| Deferred feature | Target phase | User-facing surfaces guarded in Alpha |
+|---|---|---|
+| `task.detail` streaming tail — per-task in-memory ring buffer with a dimmed indented panel under the running task line (`spec/08-cli-and-tooling.md` §8.9.2). The `task.detail` event itself is emitted and rendered today; only the ring-buffer/panel UX is deferred. | Phase 4 RC | `--tail`, `--no-tail` |
+| Expand / collapse — `↑`/`↓`/`Tab` focus, `Enter` alt-screen full-tail view, `Esc` return, plus the `task.detail.expand` / `task.detail.collapse` events emitted by the renderer (`spec/08-cli-and-tooling.md` §8.9.2). | Phase 4 RC | `--expand`, `--no-expand`, `--collapse`, `--no-collapse` |
+| Full first-paint contract — spinner threshold (100 ms `task.start` → spinner), completion-line latency (50 ms after last terminal event), skeleton-first table headers, post-completion expand, and the rest of the §8.9.1 perceived-performance budget. Alpha ships only the pre-bootstrap banner (US-036) plus the JSON-on-stderr handoff. | Phase 4 RC | (no Alpha user flag; documented limitation in `core/src/cli/renderer-deferred.ts`) |
+| Renderer mode `verbose` — full debug output inline with task progress (`spec/08-cli-and-tooling.md` §8.9, listed as a built-in plugin renderer). Alpha ships `lando`, `json`, and `plain` only. | Phase 3 Beta | `--renderer=verbose`, `LANDO_RENDERER=verbose`, global config `renderer: verbose` |
+
+Each guarded surface raises a tagged `NotImplementedError` with
+`commandId: cli:renderer-selection`, `specSection:
+spec/08-cli-and-tooling.md`, and remediation that names the target phase
+verbatim (`Phase 3 Beta` or `Phase 4 RC`) and links `spec/ROADMAP.md` so
+the user can find the planned release. The guard runs before OCLIF flag
+parsing in both the source CLI (`LandoCommandBase.runEffect`) and the
+compiled `$bunfs` dispatcher (`runCompiledCli`), so the user never sees a
+generic "unsupported value" error or an OCLIF "unknown flag" message for
+these specific deferred surfaces.
+
+**Deferred renderer surfaces (Alpha)**
+
+The following parts of the spec §8.9 renderer contract are intentionally deferred. The single source of truth for the deferred-surface table lives in [`core/src/cli/renderer-deferred.ts`](../../core/src/cli/renderer-deferred.ts); the remediation strings on the `NotImplementedError` instances thrown by `core/src/cli/renderer-selection.ts` MUST keep word-for-word agreement with the entries below.
+
+| Feature | Spec | Target phase | User-facing surface that fails with `NotImplementedError` |
+|---|---|---|---|
+| `task.detail` streaming tail (per-task ring buffer + dimmed indented panel under the running task line) | §8.9.2 | Phase 4 RC | `--tail`, `--no-tail` |
+| Expand / collapse (TTY input → alt-screen full-tail view; `task.detail.expand` / `task.detail.collapse` events) | §8.9.2 | Phase 4 RC | `--expand`, `--no-expand`, `--collapse`, `--no-collapse` |
+| Full first-paint contract (spinner threshold, completion-line latency, skeleton-first tables, post-completion expand) | §8.9.1 | Phase 4 RC | _no Alpha-shippable flag_ — Alpha only ships the pre-bootstrap banner (US-036) and the JSON-on-stderr handoff |
+| `verbose` renderer mode (full debug output inline with task progress) | §8.9 | Phase 3 Beta | `--renderer=verbose`, `LANDO_RENDERER=verbose`, global `renderer: verbose` |
+
+`--renderer=lando`, `--renderer=json`, `--renderer=plain` are the only Alpha renderer modes; any other value reaches the deferred-mode table first and falls through to the generic `RendererSelectionError` ("Unsupported renderer value") path only when the value is neither implemented nor explicitly deferred (e.g. `--renderer=tui`).
+
 ## Functional Requirements
 
 - Implement only the Phase 2 Alpha surface assigned to this PRD.
