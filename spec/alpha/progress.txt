@@ -4618,3 +4618,20 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - `cwd-app-map` now follows the documented cache-version policy: unknown header schema versions silently invalidate, while corrupt/truncated/magic-mismatched files still surface a tagged `CacheError` with remediation.
   - Keep fixture payloads deterministic by pinning all timestamps, app names, paths, and app-plan metadata; cacheRoot/temp paths must not leak into serialized payloads.
 ---
+
+## [2026-05-20 14:26 CDT] - Babysit
+- PR: none found for branch `us-044-binary-cache-encoding-rules` (`gh pr view --json number,url,state,title` returned no pull requests found).
+- CI outcome: not watched; no PR exists for the current branch.
+- Review feedback: none checked; no PR exists.
+- Triage rounds used: 0
+- Merge: deferred (push step did not create/refresh a PR for the current branch).
+- Local main / branch refreshed: no
+- Remaining local state, if any: current branch `us-044-binary-cache-encoding-rules`; working tree clean; `.local/looper/.last-branch` also points to `us-044-binary-cache-encoding-rules`.
+---
+
+## [2026-05-20 17:18 CDT] - Push
+- Branch: us-044-binary-cache-encoding-rules
+- Push: pushed
+- Commit(s): 4d6cf5f feat: Make binary cache encoding rules testable
+- PR: #122 https://github.com/AaronFeledy/core4/pull/122 (created)
+---
