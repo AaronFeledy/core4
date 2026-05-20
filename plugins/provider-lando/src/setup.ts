@@ -1,12 +1,24 @@
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 
-import { Effect } from "effect";
+import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import {
+  TaskCompleteEvent,
+  TaskFailEvent,
+  TaskStartEvent,
+  TaskTreeCompleteEvent,
+  TaskTreeStartEvent,
+} from "@lando/sdk/events";
 import type { HostPlatform } from "@lando/sdk/schema";
+import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
+
+type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
+
+const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
 const PROVIDER_ID = "lando";
 const MINIMUM_PODMAN_VERSION = "4.9.0";
@@ -94,6 +106,7 @@ export interface SetupOptions {
   readonly socketPath?: string;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly stateDir?: string;
+  readonly eventService?: EventPublisher;
 }
 
 export interface SetupResult {
@@ -315,6 +328,86 @@ const persistSetupState = (
       }),
   });
 
+const SETUP_PARENT_ID = "provider-setup";
+
+const publishEvent = (
+  eventService: EventPublisher | undefined,
+  event: Parameters<EventPublisher["publish"]>[0],
+): Effect.Effect<void> =>
+  eventService === undefined ? Effect.void : eventService.publish(event).pipe(Effect.ignore);
+
+interface SetupStep {
+  readonly taskId: string;
+  readonly label: string;
+}
+
+const buildSetupSteps = (
+  platform: HostPlatform,
+  hasBundle: boolean,
+  hasStateDir: boolean,
+): ReadonlyArray<SetupStep> => {
+  const steps: SetupStep[] = [];
+  if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
+  steps.push({ taskId: "podman", label: "Detect Podman" });
+  if (platform === "darwin") steps.push({ taskId: "machine", label: "Ensure Podman machine" });
+  steps.push({ taskId: "socket", label: "Probe Podman API" });
+  if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
+  return steps;
+};
+
+interface StepCounter {
+  succeeded: number;
+}
+
+const withStep = <A, E>(
+  eventService: EventPublisher | undefined,
+  step: SetupStep,
+  counter: StepCounter,
+  body: Effect.Effect<A, E>,
+): Effect.Effect<A, E> =>
+  Effect.gen(function* () {
+    const start = performance.now();
+    yield* publishEvent(
+      eventService,
+      TaskStartEvent.make({
+        _tag: "task.start",
+        taskId: step.taskId,
+        parentId: SETUP_PARENT_ID,
+        label: step.label,
+        timestamp: nowUtc(),
+      }),
+    );
+    const result = yield* body.pipe(
+      Effect.tapError((cause) =>
+        publishEvent(
+          eventService,
+          TaskFailEvent.make({
+            _tag: "task.fail",
+            taskId: step.taskId,
+            summary: step.label,
+            ...(cause instanceof ProviderUnavailableError && cause.remediation !== undefined
+              ? { remediation: cause.remediation }
+              : {}),
+            durationMs: Math.round(performance.now() - start),
+            timestamp: nowUtc(),
+          }),
+        ),
+      ),
+    );
+    yield* publishEvent(
+      eventService,
+      TaskCompleteEvent.make({
+        _tag: "task.complete",
+        taskId: step.taskId,
+        summary: step.label,
+        durationMs: Math.round(performance.now() - start),
+        timestamp: nowUtc(),
+      }),
+    );
+    counter.succeeded += 1;
+    return result;
+  });
+
 export const setupProviderLando = (
   options: SetupOptions = {},
 ): Effect.Effect<SetupResult, ProviderUnavailableError> =>
@@ -322,39 +415,127 @@ export const setupProviderLando = (
     const platform =
       options.platform ??
       (process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32");
-    const bundle =
-      options.runtimeBundleDownloader === undefined
-        ? undefined
-        : yield* options.runtimeBundleDownloader.download.pipe(Effect.flatMap(verifyRuntimeBundle));
-    const podmanVersionOutput = yield* (options.podmanCommand ?? makeSystemPodmanCommandRunner()).version;
-    if (platform === "darwin") {
-      yield* ensureMacOSPodmanMachine(options.podmanMachine ?? makeSystemPodmanMachineRunner());
+    const hasBundle = options.runtimeBundleDownloader !== undefined;
+    const hasStateDir = options.stateDir !== undefined;
+    const steps = buildSetupSteps(platform, hasBundle, hasStateDir);
+    const treeStart = performance.now();
+
+    yield* publishEvent(
+      options.eventService,
+      TaskTreeStartEvent.make({
+        _tag: "task.tree.start",
+        parentId: SETUP_PARENT_ID,
+        label: "Setting up Lando runtime",
+        children: steps.map((step) => step.taskId),
+        mode: "list",
+        timestamp: nowUtc(),
+      }),
+    );
+
+    const bundleStep = steps.find((step) => step.taskId === "bundle");
+    const podmanStep = steps.find((step) => step.taskId === "podman");
+    const machineStep = steps.find((step) => step.taskId === "machine");
+    const socketStep = steps.find((step) => step.taskId === "socket");
+    const stateStep = steps.find((step) => step.taskId === "state");
+
+    if (podmanStep === undefined || socketStep === undefined) {
+      return yield* Effect.die("internal: missing required setup steps");
     }
-    const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
-    const api = options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 
-    if (api === undefined) {
-      return yield* Effect.fail(new PodmanSocketUnreachableError({ socketPath }));
-    }
+    const counter: StepCounter = { succeeded: 0 };
 
-    // Provider setup validates the API socket after any pinned runtime bundle has been verified.
-    const info = yield* api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause)));
-    const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
-    const statePath =
-      options.stateDir === undefined
-        ? undefined
-        : yield* persistSetupState(options.stateDir, {
-            podmanVersion,
-            ...(bundle === undefined
-              ? {}
-              : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
-          });
+    const result = yield* Effect.gen(function* () {
+      const bundle =
+        bundleStep === undefined || options.runtimeBundleDownloader === undefined
+          ? undefined
+          : yield* withStep(
+              options.eventService,
+              bundleStep,
+              counter,
+              options.runtimeBundleDownloader.download.pipe(Effect.flatMap(verifyRuntimeBundle)),
+            );
 
-    return {
-      podmanVersion,
-      ...(bundle === undefined ? {} : { runtimeBundleVersion: bundle.version }),
-      ...(statePath === undefined ? {} : { statePath }),
-    };
+      const podmanVersionOutput = yield* withStep(
+        options.eventService,
+        podmanStep,
+        counter,
+        (options.podmanCommand ?? makeSystemPodmanCommandRunner()).version,
+      );
+
+      if (platform === "darwin" && machineStep !== undefined) {
+        yield* withStep(
+          options.eventService,
+          machineStep,
+          counter,
+          ensureMacOSPodmanMachine(options.podmanMachine ?? makeSystemPodmanMachineRunner()),
+        );
+      }
+
+      const socketPath = options.socketPath ?? process.env.LANDO_TEST_PODMAN_SOCKET;
+      const api =
+        options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
+
+      const info = yield* withStep(
+        options.eventService,
+        socketStep,
+        counter,
+        api === undefined
+          ? Effect.fail(new PodmanSocketUnreachableError({ socketPath }))
+          : api.info.pipe(Effect.mapError((cause) => new PodmanSocketUnreachableError(cause))),
+      );
+
+      const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
+      const statePath =
+        stateStep === undefined || options.stateDir === undefined
+          ? undefined
+          : yield* withStep(
+              options.eventService,
+              stateStep,
+              counter,
+              persistSetupState(options.stateDir, {
+                podmanVersion,
+                ...(bundle === undefined
+                  ? {}
+                  : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
+              }),
+            );
+
+      return {
+        podmanVersion,
+        ...(bundle === undefined ? {} : { runtimeBundleVersion: bundle.version }),
+        ...(statePath === undefined ? {} : { statePath }),
+      } satisfies SetupResult;
+    }).pipe(
+      Effect.tapError(() =>
+        publishEvent(
+          options.eventService,
+          TaskTreeCompleteEvent.make({
+            _tag: "task.tree.complete",
+            parentId: SETUP_PARENT_ID,
+            summary: "Lando runtime setup failed",
+            succeeded: counter.succeeded,
+            failed: 1,
+            durationMs: Math.round(performance.now() - treeStart),
+            timestamp: nowUtc(),
+          }),
+        ),
+      ),
+    );
+
+    yield* publishEvent(
+      options.eventService,
+      TaskTreeCompleteEvent.make({
+        _tag: "task.tree.complete",
+        parentId: SETUP_PARENT_ID,
+        summary: "Lando runtime ready",
+        succeeded: steps.length,
+        failed: 0,
+        durationMs: Math.round(performance.now() - treeStart),
+        timestamp: nowUtc(),
+      }),
+    );
+
+    return result;
   });
 
 export { MINIMUM_PODMAN_VERSION };

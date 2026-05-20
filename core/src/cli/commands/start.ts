@@ -32,6 +32,14 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import {
+  publishTaskComplete,
+  publishTaskFail,
+  publishTaskStart,
+  publishTreeComplete,
+  publishTreeStart,
+} from "../progress.ts";
+
 export interface StartAppOptions {
   readonly reconcile?: boolean;
   readonly signal?: AbortSignal;
@@ -114,6 +122,10 @@ export const startApp = (
     const plan = yield* planner.plan(landofile, capabilities);
     const provider = yield* registry.select(plan);
     const ref = appRef(plan);
+    const serviceList = Object.values(plan.services);
+    const serviceIds = serviceList.map((service) => String(service.name));
+    const applyParentId = `apply-${plan.id}`;
+    const applyStart = performance.now();
 
     yield* events.publish(
       PreAppStartEvent.make({
@@ -124,22 +136,75 @@ export const startApp = (
       }),
     );
 
-    yield* Effect.scoped(
-      provider.apply(plan, {
-        reconcile: options.reconcile ?? false,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      }),
-    );
+    yield* publishTreeStart(events, {
+      parentId: applyParentId,
+      label: `Apply ${plan.name}`,
+      children: serviceIds,
+      mode: "list",
+    });
 
-    const servicesStarted = yield* Effect.forEach(Object.values(plan.services), (service) =>
-      provider.inspect({ app: plan.id, service: service.name }).pipe(
-        Effect.map((runtime) => ({
-          name: String(service.name),
-          state: runtime.state ?? runtime.status,
-          endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
-        })),
+    for (const service of serviceList) {
+      yield* publishTaskStart(events, {
+        taskId: String(service.name),
+        parentId: applyParentId,
+        label: `Apply service ${String(service.name)}`,
+      });
+    }
+
+    const applyAndInspect = Effect.gen(function* () {
+      yield* Effect.scoped(
+        provider.apply(plan, {
+          reconcile: options.reconcile ?? false,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        }),
+      );
+      return yield* Effect.forEach(serviceList, (service) =>
+        provider.inspect({ app: plan.id, service: service.name }).pipe(
+          Effect.map((runtime) => ({
+            name: String(service.name),
+            state: runtime.state ?? runtime.status,
+            endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+          })),
+        ),
+      );
+    });
+
+    const servicesStarted = yield* applyAndInspect.pipe(
+      Effect.tapError(() =>
+        Effect.gen(function* () {
+          for (const service of serviceList) {
+            yield* publishTaskFail(events, {
+              taskId: String(service.name),
+              summary: `Apply service ${String(service.name)}`,
+              durationMs: Math.round(performance.now() - applyStart),
+            });
+          }
+          yield* publishTreeComplete(events, {
+            parentId: applyParentId,
+            summary: `${plan.name} apply failed`,
+            succeeded: 0,
+            failed: serviceList.length,
+            durationMs: Math.round(performance.now() - applyStart),
+          });
+        }),
       ),
     );
+
+    for (const service of servicesStarted) {
+      yield* publishTaskComplete(events, {
+        taskId: service.name,
+        summary: `${service.name} (${service.state})`,
+        durationMs: Math.round(performance.now() - applyStart),
+      });
+    }
+
+    yield* publishTreeComplete(events, {
+      parentId: applyParentId,
+      summary: `${plan.name} ready`,
+      succeeded: serviceList.length,
+      failed: 0,
+      durationMs: Math.round(performance.now() - applyStart),
+    });
 
     yield* events.publish(
       PostAppStartEvent.make({

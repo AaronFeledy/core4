@@ -205,6 +205,10 @@ describe("lando restart", () => {
       "post-service-stop",
       "post-app-stop",
       "pre-app-start",
+      "task.tree.start",
+      "task.start",
+      "task.complete",
+      "task.tree.complete",
       "post-app-start",
     ]);
     expect(harness.destroyCalls).toHaveLength(1);

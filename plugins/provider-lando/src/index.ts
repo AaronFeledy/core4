@@ -168,6 +168,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : { runtimeBundleDownloader: options.runtimeBundleDownloader }),
             ...(stateDir === undefined ? {} : { stateDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
+            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(
             Effect.tap((result) =>
               Effect.sync(() => {
