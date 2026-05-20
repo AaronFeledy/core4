@@ -4312,3 +4312,32 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+
+## [2026-05-20 02:30 CDT] - US-039 Review
+- Reviewed commit ea12401 (US-039 follow-up: registry threads EventService into provider-lando) via `review-work` (Oracle goal+code-quality). Verdict: PASS, no blocking issues. Three LOW-severity in-scope cleanups flagged and applied.
+- Files changed: core/src/runtime/layer.ts (-1: removed redundant `EventServiceLive` in `makeAppRuntimeLive` since `makeProviderRuntimeLive` now exports it), core/test/cli/setup.scenario.test.ts (+1 import / -1+1 stub: `subscribe()` now returns `Stream.die` instead of `Effect.die` so the EventService test double semantically matches the Stream return type), spec/alpha/progress.txt (deduped one of two identical 2026-05-20 01:55 CDT US-039 entries left by the build step).
+- `review-work` findings:
+  - fixed: [LOW] Code Quality — EventServiceLive duplicated in `makeAppRuntimeLive` after `makeProviderRuntimeLive` started providing it (removed).
+  - fixed: [LOW] Test Mock Shape — `EventService.subscribe` stub used `Effect.die` where `Stream` is expected; only typechecks via bottom-type structural assignability (changed to `Stream.die`).
+  - fixed: [LOW] Bookkeeping — duplicate US-039 progress entry at same timestamp (kept the more detailed second entry).
+  - rejected: [LOW] Test Coverage — Oracle noted the new setup scenario does not directly exercise `RuntimeProviderRegistryLive`'s `serviceOption`→optional pattern (it constructs the provider manually and registers a fake registry). Rejected as out-of-scope: this commit is the follow-up wiring, and the existing core/test/services/runtime-provider-registry.test.ts already covers the Live Layer; adding another Live-Layer regression test here would expand the diff without a concrete next gap.
+- Verification: `bun run typecheck` clean; `bun run lint` clean; `bun test core/test/cli/setup.scenario.test.ts core/test/cli/setup.test.ts core/test/cli/start.scenario.test.ts core/test/cli/init-progress.scenario.test.ts core/test/cli/renderer-init-progress.test.ts core/test/cli/renderer-task-tree.test.ts core/test/cli/renderer-setup.test.ts core/test/services/runtime-provider-registry.test.ts core/test/runtime/` → 53 pass / 1 skip / 0 fail (snapshots unchanged).
+- **Learnings for future iterations:**
+  - Patterns discovered: When a sub-layer (here `makeProviderRuntimeLive`) is later updated to merge in a previously top-level dependency (`EventServiceLive`), audit every caller's `Layer.mergeAll` for now-redundant explicit mentions. Effect dedupes by tag at runtime, but the duplicate is misleading and suggests a separate bus where there isn't one.
+  - Gotchas encountered: `Effect.die(...)` typechecks where `Stream.Stream<...>` is expected because `Effect<never, never, never>` is bottom-typed for structural assignability — silent test-double mismatch that lint and tsc do not catch. Use `Stream.die` for stream-returning stubs to keep the test double semantically honest.
+---
+
+## [2026-05-20 02:30 CDT] - US-039 Review
+- Reviewed commit ea12401 (US-039 follow-up: registry threads EventService into provider-lando) via `review-work` (Oracle goal+code-quality). Verdict: PASS, no blocking issues. Three LOW-severity in-scope cleanups flagged and applied.
+- Files changed: core/src/runtime/layer.ts (-1: removed redundant `EventServiceLive` in `makeAppRuntimeLive` since `makeProviderRuntimeLive` now exports it), core/test/cli/setup.scenario.test.ts (+1 import / -1+1 stub: `subscribe()` now returns `Stream.die` instead of `Effect.die` so the EventService test double semantically matches the Stream return type), spec/alpha/progress.txt (deduped one of two identical 2026-05-20 01:55 CDT US-039 entries left by the build step).
+- `review-work` findings:
+  - fixed: [LOW] Code Quality — EventServiceLive duplicated in `makeAppRuntimeLive` after `makeProviderRuntimeLive` started providing it (removed).
+  - fixed: [LOW] Test Mock Shape — `EventService.subscribe` stub used `Effect.die` where `Stream` is expected; only typechecks via bottom-type structural assignability (changed to `Stream.die`).
+  - fixed: [LOW] Bookkeeping — duplicate US-039 progress entry at same timestamp (kept the more detailed second entry).
+  - rejected: [LOW] Test Coverage — Oracle noted the new setup scenario does not directly exercise `RuntimeProviderRegistryLive`'s `serviceOption`→optional pattern (it constructs the provider manually and registers a fake registry). Rejected as out-of-scope: this commit is the follow-up wiring, and the existing core/test/services/runtime-provider-registry.test.ts already covers the Live Layer; adding another Live-Layer regression test here would expand the diff without a concrete next gap.
+- Verification: `bun run typecheck` clean; `bun run lint` clean; `bun test core/test/cli/setup.scenario.test.ts core/test/cli/setup.test.ts core/test/cli/start.scenario.test.ts core/test/cli/init-progress.scenario.test.ts core/test/cli/renderer-init-progress.test.ts core/test/cli/renderer-task-tree.test.ts core/test/cli/renderer-setup.test.ts core/test/services/runtime-provider-registry.test.ts core/test/runtime/` → 53 pass / 1 skip / 0 fail (snapshots unchanged).
+- **Learnings for future iterations:**
+  - Patterns discovered: When a sub-layer (here `makeProviderRuntimeLive`) is later updated to merge in a previously top-level dependency (`EventServiceLive`), audit every caller's `Layer.mergeAll` for now-redundant explicit mentions. Effect dedupes by tag at runtime, but the duplicate is misleading and suggests a separate bus where there isn't one.
+  - Gotchas encountered: `Effect.die(...)` typechecks where `Stream.Stream<...>` is expected because `Effect<never, never, never>` is bottom-typed for structural assignability — silent test-double mismatch that lint and tsc do not catch. Use `Stream.die` for stream-returning stubs to keep the test double semantically honest.
+---

@@ -1,0 +1,43 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`renderer.setup fixture plain renderer snapshot is stable 1`] = `
+"▼ Setting up Lando runtime (4 services)
+[bundle] start: Verify runtime bundle
+[bundle] ✓ complete: Verify runtime bundle (42ms)
+[podman] start: Detect Podman
+[podman] ✓ complete: Detect Podman (18ms)
+[socket] start: Probe Podman API
+[socket] ✓ complete: Probe Podman API (35ms)
+[state] start: Persist setup state
+[state] ✓ complete: Persist setup state (12ms)
+▶ Lando runtime ready (4 ✓ · 0 ✗) (122ms)
+"
+`;
+
+exports[`renderer.setup fixture json renderer snapshot is stable on stderr 1`] = `
+"{"_tag":"task.tree.start","parentId":"provider-setup","label":"Setting up Lando runtime","children":["bundle","podman","socket","state"],"mode":"list","timestamp":"2026-05-20T12:00:00.000Z"}
+{"_tag":"task.start","parentId":"provider-setup","taskId":"bundle","label":"Verify runtime bundle","timestamp":"2026-05-20T12:00:00.005Z"}
+{"_tag":"task.complete","taskId":"bundle","summary":"Verify runtime bundle","durationMs":42,"timestamp":"2026-05-20T12:00:00.047Z"}
+{"_tag":"task.start","parentId":"provider-setup","taskId":"podman","label":"Detect Podman","timestamp":"2026-05-20T12:00:00.050Z"}
+{"_tag":"task.complete","taskId":"podman","summary":"Detect Podman","durationMs":18,"timestamp":"2026-05-20T12:00:00.068Z"}
+{"_tag":"task.start","parentId":"provider-setup","taskId":"socket","label":"Probe Podman API","timestamp":"2026-05-20T12:00:00.070Z"}
+{"_tag":"task.complete","taskId":"socket","summary":"Probe Podman API","durationMs":35,"timestamp":"2026-05-20T12:00:00.105Z"}
+{"_tag":"task.start","parentId":"provider-setup","taskId":"state","label":"Persist setup state","timestamp":"2026-05-20T12:00:00.107Z"}
+{"_tag":"task.complete","taskId":"state","summary":"Persist setup state","durationMs":12,"timestamp":"2026-05-20T12:00:00.119Z"}
+{"_tag":"task.tree.complete","parentId":"provider-setup","summary":"Lando runtime ready","succeeded":4,"failed":0,"durationMs":122,"timestamp":"2026-05-20T12:00:00.122Z"}
+"
+`;
+
+exports[`renderer.setup fixture lando renderer snapshot matches plain renderer (alpha alias) 1`] = `
+"▼ Setting up Lando runtime (4 services)
+[bundle] start: Verify runtime bundle
+[bundle] ✓ complete: Verify runtime bundle (42ms)
+[podman] start: Detect Podman
+[podman] ✓ complete: Detect Podman (18ms)
+[socket] start: Probe Podman API
+[socket] ✓ complete: Probe Podman API (35ms)
+[state] start: Persist setup state
+[state] ✓ complete: Persist setup state (12ms)
+▶ Lando runtime ready (4 ✓ · 0 ✗) (122ms)
+"
+`;
