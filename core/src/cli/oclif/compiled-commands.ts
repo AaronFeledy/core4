@@ -49,6 +49,7 @@ import PluginNewCommand from "./commands/meta/plugin/new.ts";
 import PluginPublishCommand from "./commands/meta/plugin/publish.ts";
 import PluginRemoveCommand from "./commands/meta/plugin/remove.ts";
 import PluginTestCommand from "./commands/meta/plugin/test.ts";
+import PluginTrustAuthoringRootCommand from "./commands/meta/plugin/trust-authoring-root.ts";
 import PluginTrustCommand from "./commands/meta/plugin/trust.ts";
 import PluginUnlinkCommand from "./commands/meta/plugin/unlink.ts";
 import RecipesListCommand from "./commands/meta/recipes/list.ts";
@@ -110,6 +111,7 @@ export default {
   "meta:plugin:remove": PluginRemoveCommand,
   "meta:plugin:test": PluginTestCommand,
   "meta:plugin:trust": PluginTrustCommand,
+  "meta:plugin:trust-authoring-root": PluginTrustAuthoringRootCommand,
   "meta:plugin:unlink": PluginUnlinkCommand,
   "meta:recipes:list": RecipesListCommand,
   "meta:setup": SetupCommand,

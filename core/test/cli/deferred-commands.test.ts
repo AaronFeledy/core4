@@ -104,7 +104,7 @@ const expectPhaseTaggedRemediation = (stderr: string, entry: FixtureEntry): void
 describe("deferred command remediation contract (US-037)", () => {
   test("fixture covers every command surface in the AC list", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
-    const requiredPrefixes = ["apps:scratch:", "meta:global:", "app:includes:", "meta:plugin:trust"];
+    const requiredPrefixes = ["apps:scratch:", "meta:global:", "app:includes:"];
     const requiredExactIds = [
       "app:config:translate",
       "meta:plugin:new",
@@ -113,6 +113,8 @@ describe("deferred command remediation contract (US-037)", () => {
       "meta:plugin:link",
       "meta:plugin:unlink",
       "meta:plugin:publish",
+      "meta:plugin:trust",
+      "meta:plugin:trust-authoring-root",
     ];
     for (const prefix of requiredPrefixes) {
       const matches = [...ids].filter((id) => id.startsWith(prefix));

@@ -154,6 +154,7 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:uninstall", META_GLOBAL_PLAN],
   // meta:plugin:trust*
   ["meta:plugin:trust", META_PLUGIN_TRUST_PLAN],
+  ["meta:plugin:trust-authoring-root", META_PLUGIN_TRUST_PLAN],
   // meta:plugin:{new,test,build,link,unlink,publish}
   ["meta:plugin:new", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:test", META_PLUGIN_AUTHORING_PLAN],
