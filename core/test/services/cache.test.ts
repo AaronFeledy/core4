@@ -1,12 +1,23 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Effect, Exit, Option, Schema, TestClock, TestContext } from "effect";
+import { Cause, DateTime, Effect, Exit, Option, Schema, TestClock, TestContext } from "effect";
 
 import { CacheError } from "@lando/core/errors";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  PluginName,
+  type ProviderCapabilities,
+  ProviderId,
+  ServiceName,
+} from "@lando/core/schema";
 import { CacheService } from "@lando/core/services";
+import { deriveAppPlanCacheKey, readCachedAppPlan, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
+import { writeFileAtomicViaRename } from "../../src/cache/atomic.ts";
 import {
   CWD_APP_MAP_CACHE_FILE,
   deleteCwdAppMapEntry,
@@ -14,6 +25,7 @@ import {
   readCwdAppMapEntry,
   writeCwdAppMapEntry,
 } from "../../src/cache/cwd-app-map.ts";
+import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 
 const CachedValue = Schema.Struct({
@@ -23,6 +35,48 @@ const CachedValue = Schema.Struct({
 
 const runWithCache = <A>(effect: Effect.Effect<A, CacheError, CacheService>) =>
   Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
+
+const appPlanFixture: AppPlan = {
+  id: AppId.make("cache-plan"),
+  name: "cache-plan",
+  slug: "cache-plan",
+  root: AbsolutePath.make("/workspace/cache-plan"),
+  provider: ProviderId.make("lando"),
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
+    source: "/workspace/cache-plan/.lando.yml",
+    runtime: 4,
+  },
+  extensions: {},
+};
+
+const providerCapabilities: ProviderCapabilities = {
+  artifactBuild: true,
+  artifactPull: true,
+  buildSecrets: true,
+  buildSsh: true,
+  multiServiceApply: true,
+  serviceExec: true,
+  serviceLogs: true,
+  serviceHealth: "native",
+  hostReachability: "native",
+  sharedCrossAppNetwork: true,
+  persistentStorage: true,
+  bindMounts: true,
+  bindMountPerformance: "native",
+  copyMounts: true,
+  hostPortPublish: "native",
+  routeProvider: true,
+  tlsCertificates: "lando",
+  rootless: true,
+  privilegedServices: false,
+  composeSpec: "native",
+  providerExtensions: ["compose"],
+};
 
 describe("CacheServiceLive", () => {
   test("round-trips cached values through schema decode", async () => {
@@ -221,5 +275,87 @@ describe("CacheServiceLive", () => {
         expect(failure.value.message).toContain("run `lando app:cache:refresh`");
       }
     }
+  });
+
+  test("derives app-plan cache keys from Landofile, plugin, and provider inputs", () => {
+    const base = {
+      landofile: { name: "cache-plan", services: { [ServiceName.make("web")]: { type: "node" } } },
+      providerCapabilities,
+      pluginManifests: [
+        {
+          name: PluginName.make("@lando/node"),
+          version: "1.0.0",
+          api: 4 as const,
+          contributes: { serviceTypes: ["node"] },
+        },
+      ],
+    };
+
+    const key = deriveAppPlanCacheKey(base);
+
+    expect(deriveAppPlanCacheKey(base)).toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
+        landofile: {
+          name: "cache-plan",
+          services: { [ServiceName.make("web")]: { type: "node", environment: { NODE_ENV: "test" } } },
+        },
+      }),
+    ).not.toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
+        pluginManifests: [
+          {
+            name: PluginName.make("@lando/node"),
+            version: "1.0.1",
+            api: 4 as const,
+            contributes: { serviceTypes: ["node"] },
+          },
+        ],
+      }),
+    ).not.toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
+        providerCapabilities: { ...providerCapabilities, bindMounts: false },
+      }),
+    ).not.toBe(key);
+  });
+
+  test("writes and reads app-plan caches through CacheService.writeAtomic", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cache-"));
+    const key = "app-plan-key";
+
+    const cachePath = await runWithCache(
+      writeCachedAppPlan({ cacheRoot, appName: "cache-plan", key, plan: appPlanFixture, now: () => 1 }),
+    );
+    const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName: "cache-plan", key }));
+    const stale = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", key: "different" }),
+    );
+
+    expect(cachePath).toBe(appPlanCachePath(cacheRoot, "cache-plan"));
+    expect((await stat(cachePath)).size).toBeGreaterThan(44);
+    expect(read?.name).toBe("cache-plan");
+    expect(stale).toBeNull();
+  });
+
+  test("writeFileAtomicViaRename renames the temp file into place", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-atomic-rename-"));
+    const target = join(cacheRoot, "apps", "atomic", "plan.bin");
+    const renames: Array<{ from: string; to: string }> = [];
+
+    await writeFileAtomicViaRename(target, new Uint8Array([1, 2, 3]), {
+      randomId: () => "fixed",
+      renameFile: async (from, to) => {
+        renames.push({ from, to });
+        await (await import("node:fs/promises")).rename(from, to);
+      },
+    });
+
+    expect(renames).toEqual([{ from: `${target}.tmp-fixed`, to: target }]);
+    expect(Array.from(await readFile(target))).toEqual([1, 2, 3]);
   });
 });

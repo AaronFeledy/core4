@@ -4521,3 +4521,22 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none; on `main`, local story branch deleted, babysit report committed and pushed
 ---
+
+## [2026-05-20 13:36 UTC] - Sync
+- Previous branch: us-041-persistent-cwd-app-map-cache
+- Previous PR: #120 https://github.com/AaronFeledy/core4/pull/120
+- Action: caught up after prior merge (PR #120 was already MERGED; local main was already at origin/main; no local story branch existed)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-20 09:05 CDT] - US-042
+- Implemented persistent app-plan cache keying, binary read/write helpers, and `AppPlannerLive` cache reuse with invalidation on Landofile/provider/plugin input changes.
+- Files changed: `core/src/cache/app-plan.ts`, `core/src/cache/atomic.ts`, `core/src/cache/paths.ts`, `core/src/cache/service.ts`, `core/src/services/planner.ts`, `core/src/runtime/layer.ts`, `sdk/src/services/index.ts`, `core/test/services/cache.test.ts`, `core/test/services/app-planner.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp diagnostics clean on modified TypeScript files; `bun run typecheck` passed; `bun run lint` passed; `bun test core/test/services/app-planner.test.ts core/test/services/cache.test.ts` passed (31 pass); `bun test core/test/build/compile.test.ts` passed; `bun test core/test/cli/version.test.ts core/test/cli/renderer-flag.scenario.test.ts core/test/cli/init.scenario.test.ts core/test/cli/deferred-commands.test.ts` passed (56 pass); `bun test --max-concurrency=1` passed (1019 pass, 11 skip); manual cache QA wrote an app-plan cache, confirmed the file path/size, read a matching-key hit (`manual-cache`), and confirmed stale-key invalidation.
+- **Learnings for future iterations:**
+  - App-plan cache writes should go through `CacheService.writeAtomic`, whose live implementation uses a temp file plus `node:fs/promises.rename` outside the `FileSystem` abstraction.
+  - `AppPlannerLive` can treat app-plan cache read/write failures as best-effort misses while still using plugin manifests, provider capabilities, and the Landofile shape for invalidation.
+  - Full `bun test` has concurrency-sensitive compiled CLI cases; focused retries for the reported files can pass when the initial full run reports transient `core/dist/lando` or OCLIF source-map warning failures.
+---

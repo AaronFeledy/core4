@@ -22,6 +22,7 @@ import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  type CacheService,
   type CommandRegistry,
   type ConfigService,
   type EventService,
@@ -33,6 +34,7 @@ import {
   type ToolingEngine,
 } from "@lando/sdk/services";
 
+import { CacheServiceLive } from "../cache/service.ts";
 import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
@@ -130,7 +132,7 @@ export const LandoRuntimeOptions = Schema.Struct({
 });
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
-type MinimalRuntimeServices = Logger | ConfigService | FileSystem;
+type MinimalRuntimeServices = Logger | ConfigService | FileSystem | CacheService;
 type ToolingRuntimeServices = MinimalRuntimeServices | LandofileService | CommandRegistry;
 type ProviderRuntimeServices = MinimalRuntimeServices | RuntimeProvider | RuntimeProviderRegistry;
 export type AppRuntimeServices =
@@ -220,6 +222,7 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     LoggerLive({ mode: loggerMode }),
     ConfigServiceLive,
+    CacheServiceLive,
     Layer.succeed(FileSystem, fileSystemService),
   );
 

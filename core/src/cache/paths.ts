@@ -23,3 +23,6 @@ export const pluginCommandCachePath = (cacheRoot: string): string =>
 
 export const appCommandCachePath = (cacheRoot: string, appName: string): string =>
   `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}/commands.bin`;
+
+export const appPlanCachePath = (cacheRoot: string, appName: string): string =>
+  `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}/plan.bin`;
