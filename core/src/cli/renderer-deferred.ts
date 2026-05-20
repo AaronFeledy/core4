@@ -1,51 +1,19 @@
 /**
- * Renderer limitations for Phase 2 Alpha.
+ * Deferred renderer surfaces.
  *
- * Alpha intentionally defers parts of the spec §8.9 renderer contract so the
- * Phase 2 Alpha milestone (`spec/ROADMAP.md` Phase 2 "happy path coverage")
- * ships a stable, minimal renderer surface. This module is the single source
- * of truth for the user-facing flags / mode values that touch those deferred
- * features. Every guard MUST raise a tagged `NotImplementedError` with the
- * target-phase remediation, not a silent no-op or a generic
- * `RendererSelectionError`.
+ * This module is the single source of truth for renderer flags and mode
+ * values that are not yet shipped. Guards raise tagged
+ * `NotImplementedError` objects so callers see the deferred remediation
+ * instead of a silent no-op or a generic `RendererSelectionError`.
  *
- * Deferred features (per §8.9.1 first-paint contract and §8.9.2 concurrent
- * task tree contract):
- *
- *   - `task.detail` streaming tail — the per-task in-memory ring buffer
- *     and dimmed indented panel under each running task line. The
- *     `task.detail` event itself is emitted and rendered in Alpha
- *     (`core/src/cli/renderer/format.ts`); only the ring-buffer / tail
- *     UX is deferred. Bare `--tail` is guarded as the deferred renderer
- *     surface, but valued `--tail <N>` / `--tail=N` forms are left alone
- *     because `app:logs --tail <N>` is an existing Alpha command-specific
- *     flag.
- *
- *   - Expand / collapse — TTY input handling that lets the user focus a
- *     task and drop into the alt-screen full-tail view, with the
- *     accompanying `task.detail.expand` / `task.detail.collapse` events
- *     emitted by the renderer.
- *
- *   - Full first-paint contract — spinner threshold, completion-line
- *     latency, skeleton-first tables, and the rest of the §8.9.1
- *     perceived-performance budget. Alpha ships the pre-bootstrap
- *     banner and the renderer Layers; the timing-budget guarantees
- *     land with the §13.1 perf-budget suite in a later phase.
- *
- * The `verbose` renderer mode listed in spec §8.9 is also not shipped in
- * Alpha; that mode rolls in with the broader renderer plugin work, so it
- * is mapped to Phase 3 Beta.
+ * Deferred surfaces include the `task.detail` streaming tail, expand and
+ * collapse controls for the task tree, and the `verbose` renderer mode.
  *
  * Wiring:
  *   - `core/src/cli/renderer-selection.ts` consults this module from
- *     both `extractRendererFlag` (for argv-borne deferred flags) and
- *     `validate` (for deferred mode values from --renderer / env /
- *     global config).
- *   - The thrown `NotImplementedError` propagates through the same
- *     catch blocks in `core/src/cli/run.ts`, `core/src/cli/oclif/
- *     command-base.ts`, and `core/src/cli/oclif/commands/apps/init.ts`
- *     that handle `RendererSelectionError`, so source OCLIF and the
- *     compiled `$bunfs` path stay bit-identical.
+ *     both `extractRendererFlag` and `validate`.
+ *   - The thrown `NotImplementedError` follows the same catch blocks in
+ *     the CLI entry points that handle `RendererSelectionError`.
  */
 
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -83,10 +51,10 @@ export const DEFERRED_RENDERER_MODES: ReadonlyMap<string, DeferredRendererSurfac
 
 /**
  * Deferred renderer-related top-level flags. These are surfaces a user
- * might reach for to control the §8.9.2 task-tree expand/collapse UX or
- * the bare `task.detail` streaming-tail toggle. Alpha intercepts each of
- * them at the top-level pre-parse so the user sees the deferred remediation
- * instead of OCLIF's generic "unknown flag" message or a silent pass-through.
+ * might reach for to control task-tree expand/collapse behavior or the
+ * bare `task.detail` streaming-tail toggle. Each is intercepted at the
+ * top level so the user sees the deferred remediation instead of OCLIF's
+ * generic "unknown flag" message or a silent pass-through.
  */
 export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurface> = new Map(
   (
@@ -173,11 +141,10 @@ export const deferredRendererFlagError = (flag: string): NotImplementedError => 
  * Scan `argv` for a deferred renderer-related flag. Returns the first
  * deferred flag found before the POSIX `--` argument terminator, or
  * `undefined` if none is present. Tokens after `--` are forwarded
- * verbatim to embedded commands and MUST NOT be intercepted (mirroring
- * `extractRendererFlag`'s `--` handling).
+ * verbatim to embedded commands and must not be intercepted.
  *
- * The check matches both bare (`--no-expand`) and `--flag=value` forms
- * so users typing `--no-expand=true` still get the deferred remediation.
+ * The check matches both bare (`--no-expand`) and `--flag=value` forms so
+ * users typing `--no-expand=true` still get the deferred remediation.
  * `--tail` is special: `app:logs` already owns `--tail <N>` / `--tail=N`
  * for finite log snapshots, so only bare boolean `--tail` is treated as the
  * deferred renderer task-detail tail surface.
