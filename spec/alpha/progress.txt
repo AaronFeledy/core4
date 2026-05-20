@@ -4041,3 +4041,21 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: adding a new `LandoEvent` discriminant requires three lock-step edits (TaggedStruct + LandoEvent union in `sdk/src/events/index.ts`, plus `isRenderableEvent` / `formatPlainEvent` / `orderedKeys` in `core/src/cli/renderer/format.ts`); only the union one is caught by `tsc -b`, so the renderer must be touched in the same change or the new event silently no-ops.
   - Useful context: the pre-renderer's banner glyph (`▲`) is unicode, not ANSI, so "non-TTY output avoids control sequences" is satisfied by formatting alone — no TTY/non-TTY branching needed for the Alpha sliver. The `isTTY` option is reserved on `FormatBannerOptions` for the future RC-deferred styling branch.
 ---
+
+## [2026-05-19 20:40 CDT] - US-036 Review
+- Reviewed: HEAD (6b4acc2 "feat: Implement basic first-paint banner") against PRD §US-036 (PRD-05).
+- Files changed by review: none (no review fixes applied).
+- `review-work` findings: skipped full 5-agent fan-out — small contract-style story (51-line pre-renderer, ~10-line renderer hand-off, 14-line event schema, 277-line focused tests). Performed inline goal/constraint, code-quality, and source-scan review instead.
+  - rejected: would-be observation that the pre-renderer is not wired into `core/bin/lando.ts` / `core/src/cli/run.ts`. Reason: AC 2 explicitly defers the full first-paint contract (spinner threshold, completion-line latency, expand/collapse, skeleton-first tables) to RC; build step's note "Alpha test fixture only exercises the mechanism, not per-command emission" matches AC 2 verbatim. Wiring per-command emission expands into US-040 scope.
+  - rejected: would-be observation that `PaintBannerEvent` has no `commandId` field. Reason: hand-off contract only needs the rendered banner string (plain/lando swallow because the banner is already on stdout; json emits the prerendered string as one NDJSON line on stderr). Adding fields ahead of consumer need is over-engineering.
+- Acceptance criteria check:
+  - ✓ TTY fixture covers single-line stdout banner, 50ms budget (explicit `performance.now()` assertion), and one-shot Renderer Layer hand-off (plain/lando swallow, json emits exactly one stderr NDJSON line, double-publish writes nothing to stdout).
+  - ✓ "Emitted before plugin import" enforced by static source scan that walks `from`/`import()`/`require()`/bare-import grammars against a forbidden-prefix list (`effect`, `@oclif/`, `@lando/sdk`, plugin paths, renderer service).
+  - ✓ Full first-paint contract and expand/collapse stay RC/deferred — stated in test header, pre-renderer JSDoc, AGENTS.md note, and progress log.
+  - ✓ Non-TTY output avoids ANSI control sequences (Unicode `▲` glyph only; explicit ESC-prefix absence assertion for both TTY and non-TTY).
+  - ✓ New `LandoEvent` discriminant wired in all five lock-step spots (TaggedStruct + Schema.Union + `isPaintBannerEvent` predicate + `formatPlainEvent` switch + `orderedKeys`) per AGENTS.md gotcha.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (407 files); `bun test` passed (904 pass / 11 skip / 0 fail / 2 snapshots / 4177 expect across 128 files).
+- **Learnings for future iterations:**
+  - Mechanism-only Alpha slivers (pre-renderer module + event schema + renderer hand-off, no end-to-end CLI wiring) are a legitimate review-pass shape when the AC explicitly defers per-command emission. The discipline test (source-scan over forbidden imports) is the AC-1 enforcement, not the absence of a callsite.
+  - When the build step's progress note quotes the deferred-AC phrasing back, that's strong evidence the scope boundary is intentional — reject "missing wiring" findings rather than expanding scope into adjacent stories (US-040).
+---
