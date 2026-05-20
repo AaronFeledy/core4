@@ -16,9 +16,9 @@ import { CacheService } from "@lando/sdk/services";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 
-const MAGIC = Buffer.from("LCAP");
-const HEADER_BYTES = 44;
-const CACHE_VERSION = 1n;
+export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
+export const APP_PLAN_CACHE_HEADER_BYTES = 44;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 1n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -78,7 +78,7 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
   return sha256(
     stableStringify({
       cache: "app-plan",
-      schemaVersion: Number(CACHE_VERSION),
+      schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
       landoVersion: CORE_VERSION,
       appRoot: input.appRoot,
       landofile: input.landofile,
@@ -92,9 +92,9 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
 
 const encode = (payload: AppPlanCachePayload): Uint8Array => {
   const body = serialize(payload);
-  const header = Buffer.alloc(HEADER_BYTES);
-  MAGIC.copy(header, 0);
-  header.writeBigUInt64BE(CACHE_VERSION, 4);
+  const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
+  APP_PLAN_CACHE_MAGIC.copy(header, 0);
+  header.writeBigUInt64BE(APP_PLAN_CACHE_SCHEMA_VERSION, 4);
   sha256(body).copy(header, 12);
   return Buffer.concat([header, body]);
 };
@@ -102,13 +102,13 @@ const encode = (payload: AppPlanCachePayload): Uint8Array => {
 const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   try {
     const buffer = Buffer.from(bytes);
-    if (buffer.length <= HEADER_BYTES) return null;
-    if (!buffer.subarray(0, 4).equals(MAGIC)) return null;
-    if (buffer.readBigUInt64BE(4) !== CACHE_VERSION) return null;
-    const body = buffer.subarray(HEADER_BYTES);
-    if (!sha256(body).equals(buffer.subarray(12, HEADER_BYTES))) return null;
+    if (buffer.length <= APP_PLAN_CACHE_HEADER_BYTES) return null;
+    if (!buffer.subarray(0, 4).equals(APP_PLAN_CACHE_MAGIC)) return null;
+    if (buffer.readBigUInt64BE(4) !== APP_PLAN_CACHE_SCHEMA_VERSION) return null;
+    const body = buffer.subarray(APP_PLAN_CACHE_HEADER_BYTES);
+    if (!sha256(body).equals(buffer.subarray(12, APP_PLAN_CACHE_HEADER_BYTES))) return null;
     const payload = deserialize(body) as AppPlanCachePayload;
-    if (payload.schemaVersion !== Number(CACHE_VERSION)) return null;
+    if (payload.schemaVersion !== Number(APP_PLAN_CACHE_SCHEMA_VERSION)) return null;
     return payload;
   } catch {
     return null;
@@ -171,7 +171,7 @@ export const writeCachedAppPlan = (input: {
       .writeAtomic(
         path,
         encode({
-          schemaVersion: Number(CACHE_VERSION),
+          schemaVersion: Number(APP_PLAN_CACHE_SCHEMA_VERSION),
           landoVersion: CORE_VERSION,
           key: input.key,
           generatedAtMs: (input.now ?? Date.now)(),

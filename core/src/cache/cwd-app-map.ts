@@ -9,9 +9,9 @@ import { CacheError } from "@lando/sdk/errors";
 
 import { CORE_VERSION } from "../version.ts";
 
-const MAGIC = Buffer.from("LCWM");
-const HEADER_BYTES = 44;
-const CACHE_VERSION = 1n;
+export const CWD_APP_MAP_CACHE_MAGIC = Buffer.from("LCWM");
+export const CWD_APP_MAP_CACHE_HEADER_BYTES = 44;
+export const CWD_APP_MAP_CACHE_SCHEMA_VERSION = 1n;
 const DEFAULT_MAX_ENTRIES = 256;
 
 export const CWD_APP_MAP_CACHE_FILE = "cwd-app-map.bin";
@@ -46,28 +46,28 @@ const sha256 = (payload: Uint8Array): Buffer => createHash("sha256").update(payl
 
 const encode = (cache: CwdAppMapCache): Uint8Array => {
   const payload = serialize(cache);
-  const header = Buffer.alloc(HEADER_BYTES);
-  MAGIC.copy(header, 0);
-  header.writeBigUInt64BE(CACHE_VERSION, 4);
+  const header = Buffer.alloc(CWD_APP_MAP_CACHE_HEADER_BYTES);
+  CWD_APP_MAP_CACHE_MAGIC.copy(header, 0);
+  header.writeBigUInt64BE(CWD_APP_MAP_CACHE_SCHEMA_VERSION, 4);
   sha256(payload).copy(header, 12);
   return Buffer.concat([header, payload]);
 };
 
-const decode = (path: string, bytes: Uint8Array): Effect.Effect<CwdAppMapCache, CacheError> =>
+const decode = (path: string, bytes: Uint8Array): Effect.Effect<CwdAppMapCache | null, CacheError> =>
   Effect.try({
     try: () => {
       const buffer = Buffer.from(bytes);
-      if (buffer.length <= HEADER_BYTES) {
+      if (buffer.length <= CWD_APP_MAP_CACHE_HEADER_BYTES) {
         throw new Error("cache file is shorter than the required binary header");
       }
-      if (!buffer.subarray(0, 4).equals(MAGIC)) {
+      if (!buffer.subarray(0, 4).equals(CWD_APP_MAP_CACHE_MAGIC)) {
         throw new Error("cache magic header does not match cwd-app-map");
       }
-      if (buffer.readBigUInt64BE(4) !== CACHE_VERSION) {
-        throw new Error("cache schema version is not supported");
+      if (buffer.readBigUInt64BE(4) !== CWD_APP_MAP_CACHE_SCHEMA_VERSION) {
+        return null;
       }
-      const expectedHash = buffer.subarray(12, HEADER_BYTES);
-      const payload = buffer.subarray(HEADER_BYTES);
+      const expectedHash = buffer.subarray(12, CWD_APP_MAP_CACHE_HEADER_BYTES);
+      const payload = buffer.subarray(CWD_APP_MAP_CACHE_HEADER_BYTES);
       if (!sha256(payload).equals(expectedHash)) {
         throw new Error("cache payload hash does not match header");
       }
@@ -108,6 +108,7 @@ export const readCwdAppMap = (cacheRoot: string): Effect.Effect<CwdAppMapCache |
     );
     if (bytes === null) return null;
     const cache = yield* decode(path, bytes);
+    if (cache === null) return null;
     if (cache.landoVersion !== CORE_VERSION) return null;
     return cache;
   });
