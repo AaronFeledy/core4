@@ -313,9 +313,14 @@ const planApp = (
       ),
     );
     const cacheRoot = resolveUserCacheRoot();
-    const cacheKey = deriveAppPlanCacheKey({ landofile, providerCapabilities, pluginManifests: manifests });
+    const cacheKey = deriveAppPlanCacheKey({
+      appRoot,
+      landofile,
+      providerCapabilities,
+      pluginManifests: manifests,
+    });
     if (cacheService !== undefined) {
-      const cached = yield* readCachedAppPlan({ cacheRoot, appName, key: cacheKey }).pipe(
+      const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
         Effect.catchAll(() => Effect.succeed(null)),
       );
       if (cached !== null) return cached;
@@ -454,7 +459,7 @@ const planApp = (
       extensions: {},
     });
     if (cacheService !== undefined) {
-      yield* writeCachedAppPlan({ cacheRoot, appName, key: cacheKey, plan }).pipe(
+      yield* writeCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey, plan }).pipe(
         Effect.provideService(CacheService, cacheService),
         Effect.catchAll(() => Effect.void),
       );

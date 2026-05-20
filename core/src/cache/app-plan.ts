@@ -29,6 +29,7 @@ interface AppPlanCachePayload {
 }
 
 export interface AppPlanCacheKeyInput {
+  readonly appRoot: string;
   readonly landofile: LandofileShape;
   readonly providerCapabilities: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
@@ -63,19 +64,32 @@ const normalizeManifest = (manifest: PluginManifest) => ({
   contributes: manifest.contributes ?? {},
 });
 
-export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string =>
-  sha256(
+export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
+  // Sort plugin manifests by name+version+api so registry list-order changes
+  // do not flap the cache key for a semantically identical manifest set.
+  const sortedManifests = input.pluginManifests
+    .map(normalizeManifest)
+    .sort((a, b) =>
+      a.name === b.name
+        ? a.version === b.version
+          ? a.api - b.api
+          : a.version.localeCompare(b.version)
+        : a.name.localeCompare(b.name),
+    );
+  return sha256(
     stableStringify({
       cache: "app-plan",
       schemaVersion: Number(CACHE_VERSION),
       landoVersion: CORE_VERSION,
+      appRoot: input.appRoot,
       landofile: input.landofile,
       providerCapabilities: input.providerCapabilities,
-      pluginManifests: input.pluginManifests.map(normalizeManifest),
+      pluginManifests: sortedManifests,
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},
     }),
   ).toString("hex");
+};
 
 const encode = (payload: AppPlanCachePayload): Uint8Array => {
   const body = serialize(payload);
@@ -105,10 +119,11 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
 export const readCachedAppPlan = (input: {
   readonly cacheRoot: string;
   readonly appName: string;
+  readonly appRoot: string;
   readonly key: string;
 }): Effect.Effect<AppPlan | null, CacheError> =>
   Effect.gen(function* () {
-    const path = appPlanCachePath(input.cacheRoot, input.appName);
+    const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
     const bytes = yield* Effect.tryPromise({
       try: () => readFile(path),
       catch: (cause) =>
@@ -146,11 +161,12 @@ export const readCachedAppPlan = (input: {
 export const writeCachedAppPlan = (input: {
   readonly cacheRoot: string;
   readonly appName: string;
+  readonly appRoot: string;
   readonly key: string;
   readonly plan: AppPlan;
   readonly now?: () => number;
 }): Effect.Effect<string, CacheError, CacheService> => {
-  const path = appPlanCachePath(input.cacheRoot, input.appName);
+  const path = appPlanCachePath(input.cacheRoot, input.appName, input.appRoot);
   return Effect.flatMap(CacheService, (cache) =>
     cache
       .writeAtomic(
@@ -164,5 +180,5 @@ export const writeCachedAppPlan = (input: {
         }),
       )
       .pipe(Effect.as(path)),
-  ).pipe(Effect.as(path));
+  );
 };

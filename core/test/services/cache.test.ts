@@ -279,6 +279,7 @@ describe("CacheServiceLive", () => {
 
   test("derives app-plan cache keys from Landofile, plugin, and provider inputs", () => {
     const base = {
+      appRoot: "/workspace/cache-plan",
       landofile: { name: "cache-plan", services: { [ServiceName.make("web")]: { type: "node" } } },
       providerCapabilities,
       pluginManifests: [
@@ -322,24 +323,80 @@ describe("CacheServiceLive", () => {
         providerCapabilities: { ...providerCapabilities, bindMounts: false },
       }),
     ).not.toBe(key);
+    expect(deriveAppPlanCacheKey({ ...base, appRoot: "/workspace/other-root" })).not.toBe(key);
   });
 
   test("writes and reads app-plan caches through CacheService.writeAtomic", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cache-"));
+    const appRoot = "/workspace/cache-plan";
     const key = "app-plan-key";
 
     const cachePath = await runWithCache(
-      writeCachedAppPlan({ cacheRoot, appName: "cache-plan", key, plan: appPlanFixture, now: () => 1 }),
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "cache-plan",
+        appRoot,
+        key,
+        plan: appPlanFixture,
+        now: () => 1,
+      }),
     );
-    const read = await Effect.runPromise(readCachedAppPlan({ cacheRoot, appName: "cache-plan", key }));
+    const read = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", appRoot, key }),
+    );
     const stale = await Effect.runPromise(
-      readCachedAppPlan({ cacheRoot, appName: "cache-plan", key: "different" }),
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", appRoot, key: "different" }),
     );
 
-    expect(cachePath).toBe(appPlanCachePath(cacheRoot, "cache-plan"));
+    expect(cachePath).toBe(appPlanCachePath(cacheRoot, "cache-plan", appRoot));
     expect((await stat(cachePath)).size).toBeGreaterThan(44);
     expect(read?.name).toBe("cache-plan");
     expect(stale).toBeNull();
+  });
+
+  test("namespaces app-plan caches per app root to prevent cross-project collisions", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cross-"));
+    const rootA = "/workspace/proj-a";
+    const rootB = "/workspace/proj-b";
+
+    const pathA = await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "shared-name",
+        appRoot: rootA,
+        key: "key-a",
+        plan: appPlanFixture,
+        now: () => 1,
+      }),
+    );
+    const pathB = await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "shared-name",
+        appRoot: rootB,
+        key: "key-b",
+        plan: appPlanFixture,
+        now: () => 2,
+      }),
+    );
+
+    expect(pathA).not.toBe(pathB);
+    expect((await stat(pathA)).size).toBeGreaterThan(44);
+    expect((await stat(pathB)).size).toBeGreaterThan(44);
+
+    const readA = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "shared-name", appRoot: rootA, key: "key-a" }),
+    );
+    const readB = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "shared-name", appRoot: rootB, key: "key-b" }),
+    );
+    const crossAtoB = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "shared-name", appRoot: rootA, key: "key-b" }),
+    );
+
+    expect(readA?.name).toBe("cache-plan");
+    expect(readB?.name).toBe("cache-plan");
+    expect(crossAtoB).toBeNull();
   });
 
   test("writeFileAtomicViaRename renames the temp file into place", async () => {

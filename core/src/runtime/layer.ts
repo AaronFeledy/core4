@@ -252,7 +252,7 @@ const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
     makeProviderRuntimeLive(loggerMode),
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
-    AppPlannerLive.pipe(Layer.provide(PluginRegistryLive)),
+    AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive))),
     ProviderExecToolingEngineLive,
   );
 
