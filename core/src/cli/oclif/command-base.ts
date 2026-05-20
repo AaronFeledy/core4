@@ -9,6 +9,7 @@ import {
 } from "@lando/sdk/errors";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
+import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import { resolveRendererMode } from "../renderer-selection.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
@@ -105,36 +106,21 @@ export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|
 export const notImplementedErrorForCommand = (commandId: string): NotImplementedError =>
   deferredErrorForCommand(commandId);
 
-const commandErrorMessage = (error: unknown): string => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    const details: string[] = [error.message];
-    const tag = "_tag" in error && typeof error._tag === "string" ? error._tag : undefined;
-    if (tag === "LandofileParseError" && "filePath" in error && typeof error.filePath === "string")
-      details.push(`filePath: ${error.filePath}`);
-    if (tag === "LandofileParseError" && "line" in error && typeof error.line === "number")
-      details.push(`line: ${error.line}`);
-    if (tag === "NotImplementedError") details.unshift(tag);
-    if (tag === "NotImplementedError" && "commandId" in error && typeof error.commandId === "string")
-      details.push(`commandId: ${error.commandId}`);
-    if (tag === "NotImplementedError" && "specSection" in error && typeof error.specSection === "string")
-      details.push(`specSection: ${error.specSection}`);
-    if (tag === "RendererSelectionError") details.unshift(tag);
-    if (tag === "RendererSelectionError" && "value" in error && typeof error.value === "string")
-      details.push(`value: ${error.value}`);
-    if (tag === "RendererSelectionError" && "source" in error && typeof error.source === "string")
-      details.push(`source: ${error.source}`);
-    if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
-    if (tag === "LandofileNotFoundError")
-      details.push("Run `lando init --full --name=<name>` to scaffold an app.");
-    return details.join("\n");
-  }
-  return String(error);
+const formatCommandError = (input: {
+  readonly error: unknown;
+  readonly commandId: string;
+  readonly rendererMode: RendererMode;
+}): string => {
+  const context: BugReportContext = { commandId: input.commandId };
+  return formatBugReport({ error: input.error, context, rendererMode: input.rendererMode });
 };
+
+const formatRendererSelectionError = (error: unknown): string =>
+  formatBugReport({
+    error,
+    context: { commandId: "cli:renderer-selection" },
+    rendererMode: "plain",
+  });
 
 /** Extract the `AbortSignal` passed by `runEffect` into `spec.run({ argv, signal })`. */
 export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>
@@ -194,13 +180,23 @@ export abstract class LandoCommandBase extends Command {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError) {
-        throw new Error(commandErrorMessage(error));
+        throw new Error(formatRendererSelectionError(error));
       }
       throw error;
     }
 
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
-      throw new Error(commandErrorMessage(notImplementedErrorForCommand(spec.id)));
+      const text = formatCommandError({
+        error: notImplementedErrorForCommand(spec.id),
+        commandId: spec.id,
+        rendererMode,
+      });
+      if (rendererMode === "json") {
+        process.stderr.write(`${text}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      throw new Error(text);
     }
 
     const parsed = await this.parse(this.ctor);
@@ -233,9 +229,20 @@ export abstract class LandoCommandBase extends Command {
 
     if (Exit.isFailure(exit)) {
       const failure = Cause.failureOption(exit.cause);
-      throw new Error(
-        failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause),
-      );
+      if (failure._tag === "Some") {
+        const text = formatCommandError({
+          error: failure.value,
+          commandId: spec.id,
+          rendererMode,
+        });
+        if (rendererMode === "json") {
+          process.stderr.write(`${text}\n`);
+          process.exitCode = 1;
+          return;
+        }
+        throw new Error(text);
+      }
+      throw new Error(Cause.pretty(exit.cause));
     }
 
     const rendered = spec.render?.(exit.value, input);

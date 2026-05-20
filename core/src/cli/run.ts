@@ -5,19 +5,11 @@ import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
 import { Cause, Effect, Exit } from "effect";
 
-import {
-  InitTargetExistsError,
-  NotImplementedError,
-  RecipeManifestNotFoundError,
-  RecipeManifestValidationError,
-  RecipeMissingAnswerError,
-  RecipePostInitError,
-  RecipePromptValidationError,
-  RendererSelectionError,
-} from "@lando/sdk/errors";
+import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
+import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
@@ -94,35 +86,20 @@ ALIASES
   ${[id, ...(command.aliases ?? [])].join(", ")}`);
 };
 
-const commandErrorMessage = (error: unknown): string => {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "message" in error &&
-    typeof error.message === "string"
-  ) {
-    const details: string[] = [error.message];
-    const tag = "_tag" in error && typeof error._tag === "string" ? error._tag : undefined;
-    if (tag === "LandofileParseError" && "filePath" in error && typeof error.filePath === "string")
-      details.push(`filePath: ${error.filePath}`);
-    if (tag === "LandofileParseError" && "line" in error && typeof error.line === "number")
-      details.push(`line: ${error.line}`);
-    if (tag === "NotImplementedError") details.unshift(tag);
-    if (tag === "NotImplementedError" && "commandId" in error && typeof error.commandId === "string")
-      details.push(`commandId: ${error.commandId}`);
-    if (tag === "NotImplementedError" && "specSection" in error && typeof error.specSection === "string")
-      details.push(`specSection: ${error.specSection}`);
-    if (tag === "RendererSelectionError") details.unshift(tag);
-    if (tag === "RendererSelectionError" && "value" in error && typeof error.value === "string")
-      details.push(`value: ${error.value}`);
-    if (tag === "RendererSelectionError" && "source" in error && typeof error.source === "string")
-      details.push(`source: ${error.source}`);
-    if ("remediation" in error && typeof error.remediation === "string") details.push(error.remediation);
-    if (tag === "LandofileNotFoundError")
-      details.push("Run `lando init --full --name=<name>` to scaffold an app.");
-    return details.join("\n");
-  }
-  return String(error);
+let activeRendererMode: RendererMode = "lando";
+let activeCommandId = "cli:unknown";
+
+const setActiveRendererMode = (mode: RendererMode): void => {
+  activeRendererMode = mode;
+};
+
+const setActiveCommandId = (commandId: string): void => {
+  activeCommandId = commandId;
+};
+
+const commandErrorMessage = (error: unknown, commandId: string = activeCommandId): string => {
+  const context: BugReportContext = { commandId };
+  return formatBugReport({ error, context, rendererMode: activeRendererMode });
 };
 
 const runStart = async (): Promise<void> => {
@@ -200,7 +177,11 @@ const runSetup = async (): Promise<void> => {
   }
   const failure = Cause.failureOption(exit.cause);
   const message = failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause);
-  console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
+  if (activeRendererMode === "json") {
+    console.error(message);
+  } else {
+    console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
+  }
   process.exitCode = 1;
 };
 
@@ -826,6 +807,60 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
   process.exitCode = 1;
 };
 
+const CANONICAL_COMMAND_ID_BY_TOKEN: Readonly<Record<string, string>> = {
+  init: "apps:init",
+  "apps:init": "apps:init",
+  start: "app:start",
+  "app:start": "app:start",
+  stop: "app:stop",
+  "app:stop": "app:stop",
+  info: "app:info",
+  "app:info": "app:info",
+  destroy: "app:destroy",
+  "app:destroy": "app:destroy",
+  restart: "app:restart",
+  "app:restart": "app:restart",
+  rebuild: "app:rebuild",
+  "app:rebuild": "app:rebuild",
+  logs: "app:logs",
+  "app:logs": "app:logs",
+  "app:config": "app:config",
+  "app:cache:refresh": "app:cache:refresh",
+  setup: "meta:setup",
+  "meta:setup": "meta:setup",
+  doctor: "meta:doctor",
+  "meta:doctor": "meta:doctor",
+  exec: "app:exec",
+  "app:exec": "app:exec",
+  ssh: "app:ssh",
+  "app:ssh": "app:ssh",
+  shell: "app:shell",
+  "app:shell": "app:shell",
+  list: "apps:list",
+  "apps:list": "apps:list",
+  poweroff: "apps:poweroff",
+  "apps:poweroff": "apps:poweroff",
+  config: "meta:config",
+  "meta:config": "meta:config",
+  bun: "meta:bun",
+  "meta:bun": "meta:bun",
+  x: "meta:x",
+  "meta:x": "meta:x",
+  "plugin:add": "meta:plugin:add",
+  "meta:plugin:add": "meta:plugin:add",
+  "plugin:remove": "meta:plugin:remove",
+  "meta:plugin:remove": "meta:plugin:remove",
+  shellenv: "meta:shellenv",
+  "meta:shellenv": "meta:shellenv",
+  version: "meta:version",
+  "meta:version": "meta:version",
+};
+
+const resolveCanonicalCommandId = (token: string | undefined): string => {
+  if (token === undefined) return "cli:unknown";
+  return CANONICAL_COMMAND_ID_BY_TOKEN[token] ?? token;
+};
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   const rawHead = rawArgv[0];
   const isBunOrXPassthrough =
@@ -836,8 +871,10 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     try {
       const resolution = resolveRendererMode({ argv: rawArgv, env: process.env });
       argv = resolution.remainingArgv;
+      setActiveRendererMode(resolution.mode);
     } catch (error) {
       if (error instanceof RendererSelectionError) {
+        setActiveCommandId("cli:renderer-selection");
         console.error(commandErrorMessage(error));
         process.exitCode = 1;
         return;
@@ -845,6 +882,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       throw error;
     }
   }
+
+  setActiveCommandId(resolveCanonicalCommandId(argv[0]));
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
@@ -930,23 +969,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       });
       console.log(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
-      const message =
-        error instanceof InitTargetExistsError
-          ? `${error.message}\n${error.remediation}`
-          : error instanceof RecipeMissingAnswerError || error instanceof RecipePromptValidationError
-            ? `${error.message}\n${error.remediation}`
-            : error instanceof RecipePostInitError
-              ? `${error.message}\n${error.remediation}`
-              : error instanceof NotImplementedError
-                ? `${error.message}\n${error.remediation}`
-                : error instanceof RecipeManifestNotFoundError
-                  ? error.message
-                  : error instanceof RecipeManifestValidationError
-                    ? `${error.message}${error.issues.length > 0 ? `\n  - ${error.issues.join("\n  - ")}` : ""}`
-                    : error instanceof Error
-                      ? error.message
-                      : String(error);
-      console.error(message);
+      console.error(commandErrorMessage(error, "apps:init"));
       process.exitCode = 1;
     }
     return;
@@ -1080,21 +1103,16 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     return;
   }
 
-  // Validate `--renderer` / `LANDO_RENDERER` BEFORE handing off to OCLIF.
-  // OCLIF's `--help` / `--version` short-circuit swallows errors thrown from
-  // init hooks and from runEffect (the command never runs), so an invalid
-  // renderer combined with `--help` would silently pass. Validating here
-  // matches the compiled `$bunfs` path which validates at the top of
-  // `runCompiledCli` and gives `--renderer=tui --help` the same exit-1
-  // tagged failure on both surfaces.
   const rawHead = args[0];
   const isBunOrXPassthrough =
     rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
   if (!isBunOrXPassthrough) {
     try {
-      resolveRendererMode({ argv: args, env: process.env });
+      const resolution = resolveRendererMode({ argv: args, env: process.env });
+      setActiveRendererMode(resolution.mode);
     } catch (error) {
       if (error instanceof RendererSelectionError) {
+        setActiveCommandId("cli:renderer-selection");
         console.error(commandErrorMessage(error));
         process.exitCode = 1;
         return;

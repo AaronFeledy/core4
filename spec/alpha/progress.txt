@@ -4144,3 +4144,47 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are runtime fields, structured errors, test strings/fixtures, durable repo context, or planning/progress docs.
 - Verification run and result: `lsp_diagnostics` clean for `core/src/cli/deferred-commands.ts`; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed.
 
+
+## 2026-05-19 - Push
+- Branch: us-037-unsupported-command-remediation
+- Push: pushed (new branch)
+- Commit(s): 5ba9df2 chore: remove AI slop, 6b0a997 fix(us-037): cover meta:plugin:trust-authoring-root in deferred surface, df39d26 feat: Keep unsupported command remediation precise
+- PR: #115 https://github.com/AaronFeledy/core4/pull/115 (created)
+---
+
+## [2026-05-19 22:17 CDT] - Babysit
+- PR: #115 https://github.com/AaronFeledy/core4/pull/115
+- CI outcome: pass (static-checks ✓, build-linux-x64 ✓, provider-integration-linux-x64 ✓, Cursor Bugbot ✓)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — PR was already merged by the time gh pr merge ran; main fast-forwarded cleanly
+- Local main / branch refreshed: yes (branch us-037-unsupported-command-remediation deleted, on main at 93bb0ff)
+- Remaining local state: none
+---
+
+## 2026-05-19 - Sync
+- Previous branch: us-037-unsupported-command-remediation
+- Previous PR: #115 https://github.com/AaronFeledy/core4/pull/115
+- Action: caught up after prior merge (PR #115 already MERGED with all CI green)
+- Local main updated: yes (already up to date; progress-log commit from fast-path is 1 ahead of origin/main — not pushed per fast-path rule)
+- Branch after sync: main
+- Stash created: no (fast-path for progress.txt only)
+---
+
+## [2026-05-19 22:46 CDT] - US-038
+- Standardized alpha bug-report diagnostics in CLI failure output. Every command failure now emits the running `commandId`, machine-readable `code` (tagged-error `_tag`), `appId`/`providerId` when known, redacted `body`+`remediation`, and `logsDir`/`cacheDir` pointers. Source OCLIF (`LandoCommandBase.runEffect`) and compiled `$bunfs` (`core/src/cli/run.ts#runCompiledCli`) share `core/src/cli/bug-report.ts#formatBugReport`. JSON renderer mode emits a single NDJSON `message.error` line on stderr (bypassing OCLIF chrome via direct `process.stderr.write` + `process.exitCode = 1` + return); plain/lando renderer modes emit a multi-line block.
+- Files changed: core/src/cli/bug-report.ts (new), core/src/cli/redact.ts (new), core/src/cli/oclif/command-base.ts, core/src/cli/run.ts, core/test/cli/bug-report.test.ts (new), core/test/cli/bug-report.scenario.test.ts (new), spec/alpha/prd.json, spec/alpha/progress.txt.
+- Verification run and result: `bun run typecheck` (clean); `bun run lint` (clean); `bun test` (966 pass, 11 skip, 0 fail across 131 files); `bun run build` (compiled `core/dist/lando`). Manual QA on the compiled binary AND source CLI: `lando meta:plugin:trust` (NotImplementedError) and `lando app:start` in an empty dir (LandofileNotFoundError) — verified plain stderr block contains `commandId`/`code`/remediation/`logsDir`/`cacheDir` and `--renderer=json` emits a single NDJSON line with the same fields plus `_tag: message.error` and ISO `timestamp`. Both source and compiled exit 1 on failure across both renderer modes.
+- **Learnings for future iterations:**
+  - Bypassing OCLIF error chrome for JSON renderer mode: write the NDJSON line directly to `process.stderr.write(`${text}\n`)`, set `process.exitCode = 1`, and `return` from `runEffect` (do NOT throw). Throwing wraps the JSON in OCLIF's `Error:` 80-col chrome and breaks NDJSON consumers. The same trick applies for the `isCanonicalLandoCommandId && !isMvpCommandId` deferred-stub branch.
+  - For the compiled `$bunfs` dispatcher to surface accurate `commandId` per error without plumbing it through every `runX(...)` helper, a module-scoped `activeCommandId` (set by `setActiveCommandId(resolveCanonicalCommandId(argv[0]))` after the renderer is resolved at the top of `runCompiledCli`) is the lowest-friction wiring. `commandErrorMessage` defaults its `commandId` param to that variable, so each runner's `console.error(commandErrorMessage(failure.value))` call site stays one-line.
+  - Diagnostic field order in the plain renderer matters for the deferred-commands snapshot test (`extractErrorBlock` starts collecting on the first line containing the literal tag). With the new format the tag now appears as `code: NotImplementedError` instead of the bare `NotImplementedError` first-line. The test still passes because the helper matches `line.includes("NotImplementedError")` — any line containing the substring counts — but if you ever change the field label to something other than the tag name verbatim, that test will silently miss the start anchor.
+  - `core/src/cli/bug-report.ts#extractExtraTagFields` is the seam to add new tagged-error-specific diagnostic lines (currently: `specSection`, `filePath`+`line`, `value`+`source`, `promptName`, `service`, `recipe`+`exitCode`, `issues`, `operation`). Add new entries here; both plain and JSON renderers pick them up automatically. `issues` (multi-line) is intentionally skipped from the JSON shape to keep NDJSON one-line.
+  - The redaction shape in `core/src/cli/redact.ts` is a deliberate copy of `plugins/provider-lando/src/redact.ts` rather than a shared SDK helper — promoting to `@lando/sdk` would have widened the SDK API surface and added a dependency edge from core's CLI to the plugin's redact contract just to share one regex pair. The copies are bit-identical; if the policy ever diverges, unify them via a new `@lando/sdk/redact` submodule, not by importing across the core ↔ plugin boundary.
+---
+
+## [2026-05-19] - US-038 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. The branch-wide cleanup pass made behavior-preserving comment and test hygiene edits only.
+- Files changed by cleanup: `core/src/cli/bug-report.ts` (removed planning-doc traceability from the formatter header), `core/src/cli/redact.ts` (trimmed provenance-heavy redaction header), `core/src/cli/run.ts` (removed redundant renderer-validation traceability block), `core/src/cli/oclif/commands/apps/init.ts` (kept the renderer-stripping rationale concise), and `core/test/cli/bug-report.scenario.test.ts` (replaced redundant early returns with explicit assertion failures and removed duplicate env overrides).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are runtime fields, structured errors, test names/strings, planning docs, or durable repo context outside code comments.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/cli/bug-report.test.ts core/test/cli/bug-report.scenario.test.ts` passed; final `bun test` passed (966 pass / 11 skip / 0 fail). Earlier full-suite attempts hit the known compiled-binary race on `core/dist/lando` (`ETXTBSY`/`ENOENT`); isolated reruns of `core/test/cli/aliases.test.ts` and `core/test/build/compile.test.ts` passed before the final full-suite pass.
