@@ -4012,3 +4012,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `sdk/src/events/index.ts` (removed a planning section reference from the message-event JSDoc while preserving the renderer-contract explanation) and `core/test/cli/renderer-messages.test.ts` (restored `process.exitCode` to a clean zero when no prior value existed, so the sentinel assertion does not leak into Bun's process exit status).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec references are runtime fields, test strings, planning files, or durable repo context outside code comments.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed (405 files); `bun run build` passed; `bun test core/test/build/compile.test.ts` passed (1 pass); `bun test core/test/cli/renderer-messages.test.ts` passed (13 pass / 30 expect); final `bun test` passed (887 pass / 11 skip / 0 fail / 2 snapshots / 4145 expect). An earlier full-suite attempt exposed the exit-code sentinel leak fixed above; the final full run passed after the cleanup.
+
+## [2026-05-19 20:21 CDT] - Babysit
+- PR: #113 https://github.com/AaronFeledy/core4/pull/113
+- CI outcome: pass (static-checks, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — PR was already merged by the time gh pr merge ran
+- Local main / branch refreshed: yes (on main, us-035-message-info-warn-error branch deleted)
+- Remaining local state: none
+---
