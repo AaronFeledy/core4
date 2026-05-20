@@ -3943,3 +3943,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: extending an SDK service Tag (here, adding `subscribeQueue` to `EventService`) breaks every in-tree mock; sweep `Layer.succeed(EventService, { … })` literals across `core/test/cli/*.scenario.test.ts` and `sdk/test/services/tags.test.ts` in the same change or `tsc -b` will fail. Biome `lint/suspicious/noControlCharactersInRegex` rejects `\u001b` literals in regex; build the escape via `String.fromCharCode(27)` and use `String.prototype.includes` instead.
   - Useful context: `renderer.task-tree.concurrent.ndjson` is read raw (one JSON object per line) and per-event `Schema.decodeUnknownSync` is used for the snapshot path so excess-property drift in the fixture surfaces as a decode error rather than silently leaking unknown fields through the renderer.
 ---
+
+## [2026-05-19] - US-034 Review
+- Reviewed: HEAD (ff39242 "feat: Implement concurrent task tree events") against PRD §US-034 (PRD-05) and §8.9.2 spec.
+- Files changed: none (no review fixes applied).
+- `review-work` findings:
+  - rejected: `task.tree.complete` summary format diverges from §8.9.2's illustrative example (`(3 ✓ · 1 ✗ · 12.4s)` vs current `(2 ✓ · 1 ✗) (13.1s)`). Reason: §8.9.2's MUST clause is on emitting a single header/summary line (satisfied); the bracketed format is illustrative. The US-034 AC reference to §8.9.2 is scoped to event ORDER, not summary string layout. Reformatting now would force snapshot churn that US-039 will redo when `lando` differentiates from non-TTY `plain` per AGENTS.md.
+  - rejected: cold-start JSON regression test creates a `Deferred<void>`, immediately succeeds it, then awaits — a no-op gate. Stylistic; not a bug. Out of scope per smallest-correct-change.
+- Verification run and result: working tree clean post-build-commit; `bun run typecheck` passed; `bun test core/test/cli/renderer-task-tree.test.ts` 15 pass / 2 snapshots / 51 expect() calls. Build step's full suite (`bun test` 859 pass / 11 skip, `bun run lint` clean, `bun run build` compiled) trustworthy — no source changes since the commit.
+- **Learnings for future iterations:**
+  - When the AC cites a spec section "per §X" with a scoped predicate (e.g., "asserting … order per §8.9.2"), only the cited predicate is binding. Other illustrative formatting in the same section is non-normative for that story. Recording deviations as observations (not fixes) keeps story diffs focused.
+  - The current `makePlainRendererLive` implements the "Default Lando renderer (non-TTY)" surface from §8.9.2 (full task tree + detail tail + summary), not the spec's `--renderer=plain` (which is "one line per task.complete/task.fail" only). `makeLandoRendererLive = makePlainRendererLive` cements the AGENTS.md note that `lando` aliases plain until rich-TTY behavior lands. US-039 / future renderer story owns the eventual split between `lando` (rich TTY) and `plain` (terse summary-only), at which point both AGENTS.md and the summary format can re-align with the §8.9.2 illustrative form in one focused diff.
+---
