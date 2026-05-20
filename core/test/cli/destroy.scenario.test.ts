@@ -202,6 +202,7 @@ const makeDestroyLayer = () => {
     Layer.succeed(EventService, {
       publish: (event) => Effect.sync(() => events.push(event._tag)),
       subscribe: () => Effect.die("not used"),
+      subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
     }),
   );

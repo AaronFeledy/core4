@@ -157,6 +157,7 @@ describe("Effect service tags", () => {
     const eventService: Context.Tag.Service<typeof EventService> = {
       publish: (_event: { readonly _tag: string }) => Effect.void,
       subscribe: (_name: string) => Stream.empty,
+      subscribeQueue: Effect.never as unknown as Context.Tag.Service<typeof EventService>["subscribeQueue"],
       waitFor: (_name: string) => Effect.succeed({ _tag: "test-event" }),
     };
 

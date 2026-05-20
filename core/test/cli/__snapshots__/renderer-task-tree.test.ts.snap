@@ -1,0 +1,36 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`snapshot: renderer.task-tree.concurrent.ndjson plain renderer preserves event arrival order (snapshot) 1`] = `
+"▼ Building app dependencies (3 services)
+[appserver] start: composer install
+[node] start: npm ci
+[queue] start: queue:warmup
+[appserver] Loading composer repositories with package information
+[node] added 142 packages in 8.2s
+[queue] warming queue cache
+[node] ! npm warn deprecated foo@1.0.0
+[appserver] Updating dependencies
+[queue] ✓ complete: queue:warmup (420ms)
+[appserver] ✓ complete: composer install (12.4s)
+[node] ✗ fail: npm ci (exit 1) (13.1s)
+[node]   ↳ see lando logs node --build
+▶ Built app dependencies (2 ✓ · 1 ✗) (13.1s)
+"
+`;
+
+exports[`snapshot: renderer.task-tree.concurrent.ndjson json renderer preserves event arrival order and tags (snapshot) 1`] = `
+"{"_tag":"task.tree.start","parentId":"build-app","label":"Building app dependencies","children":["appserver","node","queue"],"mode":"list","timestamp":"2026-05-19T12:00:00.000Z"}
+{"_tag":"task.start","parentId":"build-app","taskId":"appserver","label":"composer install","timestamp":"2026-05-19T12:00:00.010Z"}
+{"_tag":"task.start","parentId":"build-app","taskId":"node","label":"npm ci","timestamp":"2026-05-19T12:00:00.011Z"}
+{"_tag":"task.start","parentId":"build-app","taskId":"queue","label":"queue:warmup","timestamp":"2026-05-19T12:00:00.012Z"}
+{"_tag":"task.detail","taskId":"appserver","stream":"stdout","line":"Loading composer repositories with package information","timestamp":"2026-05-19T12:00:00.120Z"}
+{"_tag":"task.detail","taskId":"node","stream":"stdout","line":"added 142 packages in 8.2s","timestamp":"2026-05-19T12:00:00.130Z"}
+{"_tag":"task.detail","taskId":"queue","stream":"stdout","line":"warming queue cache","timestamp":"2026-05-19T12:00:00.140Z"}
+{"_tag":"task.detail","taskId":"node","stream":"stderr","line":"npm warn deprecated foo@1.0.0","timestamp":"2026-05-19T12:00:00.180Z"}
+{"_tag":"task.detail","taskId":"appserver","stream":"stdout","line":"Updating dependencies","timestamp":"2026-05-19T12:00:00.220Z"}
+{"_tag":"task.complete","taskId":"queue","summary":"queue:warmup","durationMs":420,"timestamp":"2026-05-19T12:00:00.432Z"}
+{"_tag":"task.complete","taskId":"appserver","summary":"composer install","durationMs":12400,"timestamp":"2026-05-19T12:00:12.410Z"}
+{"_tag":"task.fail","taskId":"node","summary":"npm ci","exitCode":1,"remediation":"see lando logs node --build","durationMs":13100,"timestamp":"2026-05-19T12:00:13.111Z"}
+{"_tag":"task.tree.complete","parentId":"build-app","summary":"Built app dependencies","succeeded":2,"failed":1,"durationMs":13120,"timestamp":"2026-05-19T12:00:13.132Z"}
+"
+`;
