@@ -121,7 +121,7 @@ describe("apps:list command", () => {
       const cached = result.apps.find((app) => app.appRoot === "/srv/default-cache");
       expect(cached?.providerId).toBe("cache");
     } finally {
-      // biome-ignore lint/performance/noDelete: process.env delete is required so consumers do not see the literal string "undefined"
+      // biome-ignore lint/performance/noDelete: delete is required to avoid exposing the string "undefined"
       if (previous === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
       else process.env.LANDO_USER_CACHE_ROOT = previous;
       await rm(cacheRoot, { recursive: true, force: true });

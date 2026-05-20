@@ -80,10 +80,7 @@ const normalizeEntries = (
   entries: ReadonlyArray<CwdAppMapEntry>,
   maxEntries: number,
 ): ReadonlyArray<CwdAppMapEntry> => {
-  // Dedup by cwd keeping the FIRST occurrence so callers can prepend an
-  // upserted entry and have it win over a stale duplicate from the existing
-  // cache. `new Map(...)` would do the opposite (last write wins) and drop
-  // the new metadata on every refresh.
+  // Keep the first entry for each cwd so a prepended upsert wins over stale duplicates.
   const seen = new Set<string>();
   const deduped: CwdAppMapEntry[] = [];
   for (const entry of entries) {
