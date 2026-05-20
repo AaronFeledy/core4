@@ -296,7 +296,7 @@ export type TaskTreeCompleteEvent = typeof TaskTreeCompleteEvent.Type;
 
 /**
  * Typed app-output records published after lifecycle steps. The renderer
- * decides how to present them (§8.9). `message.info` / `message.warn` are
+ * decides how to present them. `message.info` / `message.warn` are
  * informational and MUST NOT change a command's exit code on their own —
  * exit codes are owned by the command-effect failure channel. `message.error`
  * is non-fatal by itself for the same reason; commands that need a non-zero

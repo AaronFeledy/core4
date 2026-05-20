@@ -207,7 +207,7 @@ describe("exit-code contract: message events do not mutate process.exitCode", ()
       expect(result).toBe(0);
       expect(process.exitCode).toBe(sentinel);
     } finally {
-      process.exitCode = previousExitCode;
+      process.exitCode = previousExitCode ?? 0;
     }
   });
 });
