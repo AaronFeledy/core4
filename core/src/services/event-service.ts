@@ -21,6 +21,7 @@ const makeEventService = (pubsub: PubSub.PubSub<LandoEvent>): Context.Tag.Servic
       ),
     subscribe: (name) =>
       Stream.fromPubSub(pubsub).pipe(Stream.filter((event) => name === "*" || event._tag === name)),
+    subscribeQueue: PubSub.subscribe(pubsub),
     waitFor: (name, filter) =>
       service.subscribe(name).pipe(
         Stream.filter((event) => filter?.(event) ?? true),

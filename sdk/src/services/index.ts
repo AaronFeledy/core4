@@ -1,5 +1,5 @@
 /** Effect service tags for the SDK. */
-import { Context, type Effect, type Schema, type Scope, type Stream } from "effect";
+import { Context, type Effect, type Queue, type Schema, type Scope, type Stream } from "effect";
 
 import type {
   AppId,
@@ -360,6 +360,12 @@ export class EventService extends Context.Tag("@lando/core/EventService")<
   {
     readonly publish: (event: LandoEvent) => Effect.Effect<void, EventError>;
     readonly subscribe: (name: string) => Stream.Stream<LandoEvent, EventError>;
+    /**
+     * Eagerly acquires a `PubSub` subscription queue in the caller's `Scope`
+     * so consumers that need the first event must use it instead of the lazy
+     * `subscribe` stream.
+     */
+    readonly subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>;
     readonly waitFor: (
       name: string,
       filter?: (event: LandoEvent) => boolean,

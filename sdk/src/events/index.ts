@@ -3,13 +3,6 @@
  *
  * Event scopes: Lando, App, Provider, Tooling, CLI. The `EventService`
  * publishes payloads in priority bands, with a standard cold-start sequence.
- *
- * Each event payload is a `Schema.TaggedStruct` so the discriminator
- * `_tag` is part of the schema. The full discriminated union over every
- * known event payload is exported as `LandoEvent`.
- *
- * Status: stub. Only a representative subset of events is declared here.
- * The complete catalog is built out as the runtime lands.
  */
 import { Schema } from "effect";
 
@@ -18,10 +11,6 @@ import { AppPlan, AppRef, ProviderId, ServiceName } from "../schema/index.ts";
 export type { AppRef };
 
 const Timestamp = Schema.DateTimeUtc;
-
-// =============================================================================
-// Lando-scope events
-// =============================================================================
 
 export const PreBootstrapEvent = Schema.TaggedStruct("pre-bootstrap", {
   level: Schema.Literal("minimal", "plugins", "commands", "provider", "app", "tooling"),
@@ -45,10 +34,6 @@ export const BeforeExitEvent = Schema.TaggedStruct("before-exit", {
   timestamp: Timestamp,
 });
 export type BeforeExitEvent = typeof BeforeExitEvent.Type;
-
-// =============================================================================
-// App-scope events
-// =============================================================================
 
 export const PreInitEvent = Schema.TaggedStruct("pre-init", {
   app: AppRef,
@@ -199,10 +184,6 @@ export const PostBuildEvent = Schema.TaggedStruct("post-build", {
 });
 export type PostBuildEvent = typeof PostBuildEvent.Type;
 
-// =============================================================================
-// Provider-scope events
-// =============================================================================
-
 export const PreProviderApplyEvent = Schema.TaggedStruct("pre-provider-apply", {
   app: AppRef,
   providerId: Schema.String,
@@ -232,10 +213,6 @@ export const PostProviderExecEvent = Schema.TaggedStruct("post-provider-exec", {
 });
 export type PostProviderExecEvent = typeof PostProviderExecEvent.Type;
 
-// =============================================================================
-// CLI-scope events
-// =============================================================================
-
 export const CliCommandInitEvent = Schema.TaggedStruct("cli-command-init", {
   commandId: Schema.String,
   timestamp: Timestamp,
@@ -255,19 +232,68 @@ export const CliCommandErrorEvent = Schema.TaggedStruct("cli-command-error", {
 });
 export type CliCommandErrorEvent = typeof CliCommandErrorEvent.Type;
 
-// =============================================================================
-// Discriminated union
-// =============================================================================
+/**
+ * Open a parent container around N concurrent sibling tasks. Callers MAY
+ * emit task trees as long as they publish a matching
+ * {@link TaskTreeCompleteEvent} when the children finish.
+ */
+export const TaskTreeStartEvent = Schema.TaggedStruct("task.tree.start", {
+  parentId: Schema.String,
+  label: Schema.String,
+  children: Schema.Array(Schema.String),
+  mode: Schema.optional(Schema.Literal("list", "grid")),
+  timestamp: Timestamp,
+});
+export type TaskTreeStartEvent = typeof TaskTreeStartEvent.Type;
+
+export const TaskStartEvent = Schema.TaggedStruct("task.start", {
+  taskId: Schema.String,
+  parentId: Schema.optional(Schema.String),
+  label: Schema.String,
+  timestamp: Timestamp,
+});
+export type TaskStartEvent = typeof TaskStartEvent.Type;
 
 /**
- * `LandoEvent` is the discriminated union over every known event payload.
- * `EventService.publish` is type-narrowed against this union, so publishing
- * an unknown event is a compile error.
- *
- * Note: this union is intentionally open-ended via the `_tag` discriminator;
- * tooling events (`pre-<tool>`, `post-<tool>`) are user-derived names that
- * extend the union at runtime via Schema.TaggedStruct templating elsewhere.
+ * Streaming tail of a single task's output. The renderer MUST treat the
+ * `line` as already-redacted by the publisher.
  */
+export const TaskDetailEvent = Schema.TaggedStruct("task.detail", {
+  taskId: Schema.String,
+  stream: Schema.Literal("stdout", "stderr"),
+  line: Schema.String,
+  timestamp: Timestamp,
+});
+export type TaskDetailEvent = typeof TaskDetailEvent.Type;
+
+export const TaskCompleteEvent = Schema.TaggedStruct("task.complete", {
+  taskId: Schema.String,
+  summary: Schema.optional(Schema.String),
+  durationMs: Schema.optional(Schema.Number),
+  timestamp: Timestamp,
+});
+export type TaskCompleteEvent = typeof TaskCompleteEvent.Type;
+
+export const TaskFailEvent = Schema.TaggedStruct("task.fail", {
+  taskId: Schema.String,
+  summary: Schema.optional(Schema.String),
+  exitCode: Schema.optional(Schema.Number),
+  remediation: Schema.optional(Schema.String),
+  durationMs: Schema.optional(Schema.Number),
+  timestamp: Timestamp,
+});
+export type TaskFailEvent = typeof TaskFailEvent.Type;
+
+export const TaskTreeCompleteEvent = Schema.TaggedStruct("task.tree.complete", {
+  parentId: Schema.String,
+  summary: Schema.optional(Schema.String),
+  succeeded: Schema.Number,
+  failed: Schema.Number,
+  durationMs: Schema.optional(Schema.Number),
+  timestamp: Timestamp,
+});
+export type TaskTreeCompleteEvent = typeof TaskTreeCompleteEvent.Type;
+
 export const LandoEvent = Schema.Union(
   PreBootstrapEvent,
   PostBootstrapEvent,
@@ -300,12 +326,14 @@ export const LandoEvent = Schema.Union(
   CliCommandInitEvent,
   CliCommandRunEvent,
   CliCommandErrorEvent,
+  TaskTreeStartEvent,
+  TaskStartEvent,
+  TaskDetailEvent,
+  TaskCompleteEvent,
+  TaskFailEvent,
+  TaskTreeCompleteEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
-
-// =============================================================================
-// Subscriber priority bands
-// =============================================================================
 
 export const SubscriberPriority = {
   critical: { min: 0, max: 9 },

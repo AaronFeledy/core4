@@ -189,6 +189,7 @@ const makeLogsLayer = () => {
     Layer.succeed(EventService, {
       publish: () => Effect.void,
       subscribe: () => Effect.die("not used"),
+      subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
     }),
   );
