@@ -4241,3 +4241,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Files changed by cleanup: `plugins/provider-lando/src/index.ts` (removed a roadmap/status line from the provider header) and `core/test/cli/restart.scenario.test.ts` (replaced defensive optional-index assertion with a direct object-match assertion after the single-call length check).
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning/spec strings are test data/renderer fixture text or planning/progress docs, not code-comment traceability.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/cli/restart.scenario.test.ts plugins/provider-lando/test/setup.integration.test.ts` passed (14 pass / 1 skip / 0 fail). Full `bun test` was rerun twice and hit the pre-existing compiled-binary concurrency race on `core/dist/lando` (`ETXTBSY` / build exit 1 in compiled alias/renderer tests); isolated rerun of `core/test/cli/aliases.test.ts` passed.
+
+## 2026-05-20 - Push
+- Branch: us-039-task-tree-progress
+- Push: pushed
+- Commit(s): 731263b chore: remove AI slop, d5c5c34 feat(us-039): render provider and recipe progress through task tree
+- PR: #117 https://github.com/AaronFeledy/core4/pull/117 (created)
+---
+
+## 2026-05-20 - PR #117 Triage
+- Review decision: Cursor Bugbot comment was a real issue; `initApp` now wraps `readdir` and `renderer.render` in the same failure-guarded block so any unexpected error emits `task.fail` and `task.tree.complete` before rethrowing.
+- Extra coverage: added a regression test that forces `readdir` to throw via an unreadable target directory and asserts the task tree closes.
+- Verification: `bun run typecheck`, `bun run lint`, and `bun test` all passed locally.
