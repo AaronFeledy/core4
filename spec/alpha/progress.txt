@@ -5223,3 +5223,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+## [2026-05-21 17:34 UTC] - US-053
+- Implemented stricter CI workflow codegen coverage that asserts every `oven-sh/setup-bun@v2` step in generated CI and release workflows uses `bun-version-file: .bun-version`, and that changing `package.json#engines.bun` leaves both generated workflows unchanged.
+- Files changed: `core/test/scripts/codegen-ci.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun test core/test/scripts/codegen-ci.test.ts` passed; `bun run codegen` plus `git diff --exit-code -- .github/workflows/ci.yml .github/workflows/release.yml` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1061 pass, 11 skip, 0 fail). `lsp_diagnostics` could not run because `typescript-language-server` is not installed in the environment.
+- **Learnings for future iterations:**
+  - CI workflow version-source assertions should cover both generated workflow files and both workflow generator scripts, not only `.github/workflows/ci.yml`.
+  - Mutating `package.json#engines.bun` in the codegen test is an effective regression check that generated workflows ignore package engine ranges.
+  - No AGENTS.md update was needed; the existing CI codegen note already says Bun comes from `.bun-version`.
+---
