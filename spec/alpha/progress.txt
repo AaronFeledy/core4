@@ -5083,3 +5083,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - PR: #128 https://github.com/AaronFeledy/core4/pull/128 (created)
 - CI: green; squash-merged to main as 8e856be
 ---
+## [2026-05-21 09:58 CDT] - US-050
+- Implemented separate generated CI jobs for Alpha library API tests and the recipe test layer, and made the Linux x64 build depend on both gates.
+- Files changed: `.github/workflows/ci.yml`, `scripts/build-ci-workflow.ts`, `core/test/scripts/codegen-ci.test.ts`, `core/test/build/ci-workflow.test.ts`, `core/test/build/branch-protection.test.ts`, `docs/ci-runbook.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test core/test/scripts/codegen-ci.test.ts core/test/build/ci-workflow.test.ts core/test/build/branch-protection.test.ts` passed; `bun test core/test/library sdk/test/library` passed; `bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts` passed; `bun test` passed (1055 pass, 11 skip); manual QA regenerated/inspected `.github/workflows/ci.yml` and confirmed `library-api-tests`, `recipe-tests`, and the updated `build-linux-x64` dependencies.
+- **Learnings for future iterations:**
+  - Patterns discovered: branch-protectable CI layers should be generated as top-level jobs in `scripts/build-ci-workflow.ts` and mirrored in workflow, codegen, branch-protection, and runbook tests/docs.
+  - Gotchas encountered: tests that mutate `package.json` must preserve Biome's existing formatting, or concurrent lint-gate tests can observe the temporary mutation.
+  - Useful context: env-gated provider integration remains isolated in `provider-integration-linux-x64`; adding non-provider test layers should not add secrets or host runtime assumptions.
+---

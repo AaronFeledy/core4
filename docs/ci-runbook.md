@@ -22,6 +22,15 @@ bun run codegen
 
 For focused local checks, CI runs `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, and `bun run codegen:bundled-recipes`, then verifies the outputs with `git diff --exit-code`.
 
+## Library API and recipe test layers
+
+CI runs the Alpha library API and recipe layers as separate branch-protectable jobs:
+
+```bash
+bun test core/test/library sdk/test/library
+bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
+```
+
 ## Linux x64 binary build
 
 ```bash
@@ -57,7 +66,7 @@ If the provider integration job fails, download diagnostics from `Actions > ci >
 
 ## Branch protection
 
-Protect `main` in GitHub with required status checks enabled. The required checks are `static-checks`, `schema-snapshot`, `bundled-codegen`, `build-linux-x64`, and `provider-integration-linux-x64`; all five must pass before a pull request can merge to `main`.
+Protect `main` in GitHub with required status checks enabled. The required checks are `static-checks`, `schema-snapshot`, `bundled-codegen`, `library-api-tests`, `recipe-tests`, `build-linux-x64`, and `provider-integration-linux-x64`; all seven must pass before a pull request can merge to `main`.
 
 ## Bun upgrade smoke checks
 

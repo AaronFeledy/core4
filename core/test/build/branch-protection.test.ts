@@ -9,6 +9,8 @@ const requiredChecks = [
   "static-checks",
   "schema-snapshot",
   "bundled-codegen",
+  "library-api-tests",
+  "recipe-tests",
   "build-linux-x64",
   "provider-integration-linux-x64",
 ] as const;
