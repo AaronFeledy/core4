@@ -4787,3 +4787,36 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan over branch-changed source/test comments passed; no code comment still cites planning docs, phases, PRDs, or story IDs.
 - Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/import-boundary.test.ts core/test/library/make-runtime-app.test.ts core/test/runtime/make-runtime.test.ts` passed (13 pass / 0 fail / 42 expects). Full `bun test` was not completed in this shell because the documented `lando4-dev` sandbox wrapper cannot enter WSL here (`wsl.exe is not available from this shell`); an attempted host full run was stopped after it spawned `core/bin/lando.ts meta:plugin:new`, per host-safety rules.
 ---
+
+## [2026-05-20 22:25 CDT] - Push
+- Branch: us-045-app-bootstrap-runtime
+- Push: pushed
+- Commit(s): 732be59 feat: Make `makeLandoRuntime` work for `bootstrap: "app"`; 8b9cd1f fix(runtime): reject non-Layer plugins.layers entries with LandoRuntimeBootstrapError; 9de4ecc chore: remove AI slop
+- PR: #124 https://github.com/AaronFeledy/core4/pull/124 (created)
+---
+
+## [2026-05-20 22:25 CDT] - Push
+- Branch: us-045-app-bootstrap-runtime
+- Push: pushed
+- Commit(s): 732be59 feat: Make `makeLandoRuntime` work for `bootstrap: "app"`; 8b9cd1f fix(runtime): reject non-Layer plugins.layers entries with LandoRuntimeBootstrapError; 9de4ecc chore: remove AI slop
+- PR: #124 https://github.com/AaronFeledy/core4/pull/124 (created)
+---
+
+## [2026-05-20 22:34 CDT] - Babysit
+- PR: #124 https://github.com/AaronFeledy/core4/pull/124
+- CI outcome: pass (Cursor Bugbot, static-checks, build-linux-x64, provider-integration-linux-x64)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main`; `spec/alpha/progress.txt` has this uncommitted babysit report plus restored pre-merge push notes; backup branch `backup/main-before-pr124-refresh-98bd9ce` preserves prior local-only main progress commits
+---
+
+## [2026-05-21 03:36 UTC] - Sync
+- Previous branch: us-045-app-bootstrap-runtime
+- Previous PR: #124 https://github.com/AaronFeledy/core4/pull/124
+- Action: caught up after prior merge (PR #124 already merged; remote branch pruned)
+- Local main updated: yes (fast-path progress.txt commit applied; 1 commit ahead of origin/main — Build will carry it forward)
+- Branch after sync: main
+- Stash created: no
+---
