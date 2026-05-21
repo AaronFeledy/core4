@@ -5050,3 +5050,20 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior review: cleanup changes only runbook prose. Commands, required check names, CI behavior, imports, public APIs, error handling, side effects, return values, fixtures, and assertions are unchanged.
 - Verification run and result: `lsp_diagnostics docs/ci-runbook.md` clean; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-runbook.test.ts` passed (2 pass / 0 fail / 14 expects); full serial `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed (1053 pass / 11 skip / 0 fail / 5529 expects). Earlier concurrent full-suite runs hit the known unrelated compiled-build/lint-fixture race and mutated `package.json` / schema snapshot fixtures; those test side effects were restored before final verification.
 ---
+
+## [2026-05-21 09:21 CDT] - Push
+- Branch: us-049-ci-schema-codegen-gates
+- Push: skipped (remote rejected push because the authenticated OAuth app lacks the workflow scope required to create or update .github/workflows/ci.yml)
+- Commit(s): ff74600 chore: remove AI slop; 61ee5fb docs: record US-049 review entry; ed9f672 feat: Add schema and bundled-codegen snapshot gates to CI
+- PR: none (push failed before branch publication)
+---
+
+## [2026-05-21 09:24 CDT] - Babysit
+- PR: none (no pull request found for branch `us-049-ci-schema-codegen-gates`; `gh pr view --json number,url,state,title` failed with "no pull requests found for branch")
+- CI outcome: not run (no PR/check suite to watch)
+- Review feedback: none (no PR available)
+- Triage rounds used: 0
+- Merge: deferred (push step did not create/refresh a PR; prior push was rejected for missing workflow scope)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-049-ci-schema-codegen-gates`; `spec/alpha/progress.txt` has this babysit note appended
+---
