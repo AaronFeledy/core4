@@ -5137,3 +5137,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Repo-local test subprocesses that call `bun run ...` need `dirname(process.execPath)` prepended to `PATH` on hosts where `bun` is not globally on PATH.
   - The Alpha dev prerelease intentionally publishes only the binary plus `SHA256SUMS`; signing, SBOM/provenance, installers, and self-update manifests remain later release-pipeline scope.
 ---
+
+## [2026-05-21 11:06 CDT] - US-051 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: accepted comment-only cleanup in `scripts/codegen.ts` and `core/test/scripts/codegen-ci.test.ts`; generated workflow, release-workflow generator, and `core/test/build/ci-workflow.test.ts` needed no safe cleanup.
+- Planning-doc leakage scan over branch-changed source/test comments passed; the `scripts/codegen.ts` stage-style docblock was reduced to behavior-only wording, and no comments cite planning docs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup changes only comments. Workflow generation, release promotion behavior, imports, public APIs, error handling, side effects, return values, fixtures, and assertions are unchanged.
+- Verification run and result: `lsp_diagnostics` for changed TS files could not run because `typescript-language-server` is not installed; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; `PATH="$HOME/.bun/bin:$PATH" bun run build` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/scripts/codegen-ci.test.ts core/test/build/ci-workflow.test.ts` passed (12 pass / 0 fail); isolated compiled CLI tests `core/test/cli/version.test.ts`, `core/test/build/compile.test.ts`, and `core/test/cli/setup.test.ts` passed. Full final `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed (1057 pass / 11 skip / 0 fail / 5579 expects); earlier full-suite retries exposed the existing compiled-build interaction, but the same suite passed after restoring the cleanup and rerunning from a clean process state.

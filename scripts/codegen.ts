@@ -1,14 +1,5 @@
 #!/usr/bin/env bun
-/**
- * Codegen orchestrator — Stage 1 of the build pipeline.
- *
- * Runs every generator in the catalog. Order matters because some
- * outputs feed others (e.g. the bundled-plugins index informs the bootstrap
- * layers; the OCLIF manifest reads the static command tree).
- *
- * Each generator below is gated by a `bun run build:check` drift check:
- * after running, `git diff --exit-code` MUST be clean.
- */
+/** Runs generators in catalog order because some outputs feed later steps. */
 import { resolve } from "node:path";
 
 const SCRIPT_DIR = import.meta.dirname;

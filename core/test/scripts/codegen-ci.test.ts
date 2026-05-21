@@ -81,12 +81,10 @@ describe("ci workflow codegen", () => {
 
     const workflow = await readFile(workflowPath, "utf8");
 
-    // All generated jobs must reference the .bun-version file, not a hardcoded version string
     const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
     expect(versionFileMatches).toBe(7);
     expect(workflow).not.toContain("bun-version: ");
 
-    // Mutating package.json engines.bun must NOT change the generated workflow
     const originalPackageJson = await readFile(packageJsonPath, "utf8");
     const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.3.14"', '"bun": ">=9.8.7"');
     expect(mutatedPackageJson).not.toBe(originalPackageJson);
