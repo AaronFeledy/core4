@@ -4936,3 +4936,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior review: cleanup changes are documentation/comment-only. Imports, public APIs, error handling, side effects, return values, and test assertions are unchanged.
 - Verification run and result: `lsp_diagnostics core/src/cli/operations.ts` could not run because `typescript-language-server` is not installed; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/library/cli-operations-export.test.ts` passed (`FOCUSED_EXIT=0`). Full `bun test` was not completed: the host run spawned `core/bin/lando.ts apps:scratch:info` and was stopped per `.local/DEV-ENV.md`; `.local/bin/lando4-dev --check` failed with `wsl.exe is not available from this shell; run from the host distro`, so the sandbox could not be entered from this environment.
 ---
+
+## [2026-05-21 06:56 CDT] - Push
+- Branch: us-047-cli-operations-api
+- Push: pushed
+- Commit(s): a8597ae chore: remove AI slop; acb6092 fix(cli/operations): preserve defect/interrupt info in invokeOperation; a2b997b feat: Expose `@lando/core/cli/operations` command invocation API
+- PR: #126 https://github.com/AaronFeledy/core4/pull/126 (created)
+---
