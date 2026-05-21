@@ -96,6 +96,15 @@ const makeUnavailable = (operation: string) =>
     message: `provider-lando does not implement ${operation} yet.`,
   });
 
+const makeNoPlanError = (appId: AppId, operation: string) =>
+  new ProviderUnavailableError({
+    providerId: "lando",
+    operation,
+    message: `No applied plan found for app "${appId}". The provider does implement ${operation}, but the app must be started first.`,
+    remediation:
+      "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
+  });
+
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
@@ -207,7 +216,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         exec: (target, command) =>
           Effect.gen(function* () {
             const plan = yield* resolvePlan(target);
-            if (plan === undefined) return yield* Effect.fail(makeUnavailable("exec"));
+            if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "exec"));
             return yield* exec(plan, target, command, {
               ...(podmanApi === undefined ? {} : { podmanApi }),
             });
@@ -217,7 +226,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             resolvePlan(target).pipe(
               Effect.map((plan) =>
                 plan === undefined
-                  ? Stream.fail(makeUnavailable("execStream"))
+                  ? Stream.fail(makeNoPlanError(target.app, "execStream"))
                   : execStream(plan, target, command, {
                       ...(podmanApi === undefined ? {} : { podmanApi }),
                     }),
@@ -230,7 +239,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             resolvePlan(target).pipe(
               Effect.map((plan) =>
                 plan === undefined
-                  ? Stream.fail(makeUnavailable("logs"))
+                  ? Stream.fail(makeNoPlanError(target.app, "logs"))
                   : logs(plan, target, logOptions, {
                       ...(podmanApi === undefined ? {} : { podmanApi }),
                     }),
@@ -240,7 +249,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         inspect: (target) =>
           Effect.gen(function* () {
             const plan = yield* resolvePlan(target);
-            if (plan === undefined) return yield* Effect.fail(makeUnavailable("inspect"));
+            if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "inspect"));
             return yield* inspect(plan, target, {
               ...(podmanApi === undefined ? {} : { podmanApi }),
             });
