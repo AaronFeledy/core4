@@ -5259,3 +5259,40 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes
 - Remaining local state, if any: on `main` at `c4e3f4c`; remote story branch deleted by merge; local story branch deleted if present; this babysit note appended to `spec/alpha/progress.txt`
 ---
+
+## [2026-05-21 17:55 UTC] - Sync
+- Previous branch: us-053-pin-bun-version-file
+- Previous PR: #132 https://github.com/AaronFeledy/core4/pull/132
+- Action: caught up after prior merge (PR #132 was already MERGED; remote branch deleted)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-21 18:12 UTC] - US-054
+- Implemented Alpha install and bug-report documentation covering Linux x64 dev prerelease downloads, `SHA256SUMS` verification, npm `dev` installs, `lando doctor`, and required report artifacts.
+- Files changed: `README.md`, `docs/alpha-install-and-bug-reports.md`, `core/test/build/alpha-install-docs.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics unavailable because `typescript-language-server` is not installed; `bun test core/test/build/alpha-install-docs.test.ts core/test/build/ci-runbook.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1063 pass, 11 skip); manual docs QA read the new guide and verified it includes the supported install paths, checksum command, diagnostic command, and bug-report artifact fields.
+- **Learnings for future iterations:**
+  - Patterns discovered: documentation-only acceptance criteria can be locked with small build tests that assert required wording and README links.
+  - Gotchas encountered: this shell does not include Bun on `PATH`; use `$HOME/.bun/bin` when running repo checks.
+  - Useful context: run `bun run build` before the full suite if `core/dist/lando` has stale permissions from an interrupted compiled CLI test.
+---
+## [2026-05-21 18:30 UTC] - US-054 Review
+- Reviewed build commit `7ae7a6f` (docs-only: `docs/alpha-install-and-bug-reports.md`, README link, build test, `prd.json` flip, progress entry).
+- Files changed by review: none (no fixes needed); only this `progress.txt` entry.
+- `review-work` findings:
+  - Goal verifier (oracle): PASS, all 11 AC sub-requirements mapped to specific doc lines; no blocking issues.
+  - Code-quality reviewer (oracle): PASS, `toContain` AC-lock tests match sibling `ci-runbook.test.ts` style; only nitpicks.
+  - Context miner (unspecified-high): PASS, verified `lando doctor` is implemented (not deferred), bug-report formatter actually emits `logsDir`/`cacheDir`, release-workflow ships exactly `lando` + `SHA256SUMS` assets, npm dev publish wiring matches doc wording, Windows/macOS deferral language matches PRD-07 + ROADMAP.
+  - Rejected (out-of-scope polish): adding a direct GitHub Releases URL, asserting the README link's visible text, and mentioning extra bug-report fields (`code`, `commandId`, `appId`, `providerId`). All three would expand the doc beyond US-054's verbatim AC and the build step's wording lock; deferring to a future docs-polish story keeps this iteration story-sized.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (biome checked 457 files); `bun test core/test/build/alpha-install-docs.test.ts` passed (2 pass, 14 expect()); full `bun test` from the build step still authoritative (1063 pass, 11 skip) — nothing else changed since.
+- **Learnings for future iterations:**
+  - Patterns discovered: 5-agent `review-work` over a docs-only commit collapses to 3 useful agents (goal, code-quality, context-mining); QA and security agents have no surface and can be skipped explicitly.
+  - Gotchas encountered: `background_output` by raw `bg_*` id returns "Task not found" once the system-reminder completion notification fires — resume the agent via its `task_id` session id with `task(task_id="ses_*", run_in_background=false, prompt="Return your final review output verbatim.")` instead.
+  - Useful context: docs-AC PRs benefit from a context-mining pass that grounds wording in the actual shipping scripts (`scripts/build-release-workflow.ts`, `scripts/prepare-npm-dev-packages.ts`) and bug-report formatter, not just the spec.
+## [2026-05-21 18:26 UTC] - Push
+- Branch: us-054-alpha-install-bug-report-docs
+- Push: pushed
+- Commit(s): 7ae7a6f feat: Document alpha install and bug-report path; b5ed4cc docs: record US-054 review verdict and rejections
+- PR: #133 https://github.com/AaronFeledy/core4/pull/133 (created)
+---
