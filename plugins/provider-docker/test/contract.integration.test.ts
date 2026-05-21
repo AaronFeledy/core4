@@ -260,7 +260,9 @@ describe("provider-docker RuntimeProvider contract", () => {
   test("declares the Linux Docker Engine capability matrix", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: { info: Effect.succeed({}) } })),
+        Effect.provide(
+          makeProviderLayer({ platform: "linux", env: {}, dockerApi: { info: Effect.succeed({}) } }),
+        ),
       ),
     );
 

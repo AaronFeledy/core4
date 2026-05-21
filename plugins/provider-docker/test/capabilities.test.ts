@@ -37,12 +37,16 @@ describe("provider-docker capabilities", () => {
   test("introspects platform-specific Docker capabilities after API discovery", async () => {
     const linuxProvider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: { info: Effect.succeed({}) } })),
+        Effect.provide(
+          makeProviderLayer({ platform: "linux", env: {}, dockerApi: { info: Effect.succeed({}) } }),
+        ),
       ),
     );
     const macosProvider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ platform: "darwin", dockerApi: { info: Effect.succeed({}) } })),
+        Effect.provide(
+          makeProviderLayer({ platform: "darwin", env: {}, dockerApi: { info: Effect.succeed({}) } }),
+        ),
       ),
     );
 
