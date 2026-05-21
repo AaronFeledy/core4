@@ -18,7 +18,6 @@ const runCommand = async (cmd: Array<string>, cwd = coreRoot): Promise<RunResult
     cwd,
     env: {
       ...process.env,
-      LANDO_DEBUG_THROW_ON_RUNTIME: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
