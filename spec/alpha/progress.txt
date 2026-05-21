@@ -5343,3 +5343,22 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): eca21e8 feat: Assert branch protection for Alpha CI jobs; ddbf9a4 docs: record US-055 review entry
 - PR: #134 https://github.com/AaronFeledy/core4/pull/134 (created)
 ---
+
+## [2026-05-21 14:11 CDT] - Babysit
+- PR: #134 https://github.com/AaronFeledy/core4/pull/134
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none (no reviews, PR comments, or Bugbot bugs)
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main` at `39e3261`; remote story branch deleted by merge and pruned; no local story branch present; this babysit note appended to `spec/alpha/progress.txt`
+---
+
+## [2026-05-21 19:14 UTC] - Sync
+- Previous branch: us-055-alpha-ci-required-checks
+- Previous PR: #134 https://github.com/AaronFeledy/core4/pull/134
+- Action: caught up after prior merge (Case C — PR was already MERGED); fast-path committed progress.txt update to local main before reconciliation
+- Local main updated: yes (already at origin/main; local progress.txt commit ahead by 1 pending push from Build)
+- Branch after sync: main
+- Stash created: no (fast-path used stash transiently; no residual stash)
+---
