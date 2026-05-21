@@ -1004,49 +1004,45 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,
         apply: (plan) =>
-          dockerApi === undefined
-            ? Effect.fail(missingApi("apply"))
-            : bringUp(plan, dockerApi).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan)))),
+          bringUp(plan, dockerApi).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan)))),
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
         destroy: (target) => {
           const plan = plans.get(target.app);
-          return plan === undefined || dockerApi === undefined
+          return plan === undefined
             ? Effect.void
             : bringDown(plan, dockerApi).pipe(Effect.tap(() => Effect.sync(() => plans.delete(target.app))));
         },
         exec: (target, command) => {
           const plan = plans.get(target.app);
-          return plan === undefined || dockerApi === undefined
+          return plan === undefined
             ? Effect.fail(makeUnavailable("exec"))
             : exec(plan, target, command, dockerApi);
         },
         execStream: (target, command) => {
           const plan = plans.get(target.app);
-          return plan === undefined || dockerApi === undefined
+          return plan === undefined
             ? Stream.fail(makeUnavailable("execStream"))
             : execStream(plan, target, command, dockerApi);
         },
         run: () => Effect.fail(makeUnavailable("run")),
         logs: (target, logOptions) => {
           const plan = plans.get(target.app);
-          return plan === undefined || dockerApi === undefined
+          return plan === undefined
             ? Stream.fail(makeUnavailable("logs"))
             : logs(plan, target, logOptions, dockerApi);
         },
         inspect: (target) => {
           const plan = plans.get(target.app);
-          return plan === undefined || dockerApi === undefined
+          return plan === undefined
             ? Effect.fail(makeUnavailable("inspect"))
             : inspectService(plan, target, dockerApi);
         },
         list: (filter) =>
           Effect.forEach(Array.from(plans.values()), (plan) =>
             Effect.forEach(Object.values(plan.services), (service) =>
-              dockerApi === undefined
-                ? Effect.fail(missingApi("list"))
-                : inspectService(plan, { app: plan.id, service: service.name }, dockerApi),
+              inspectService(plan, { app: plan.id, service: service.name }, dockerApi),
             ),
           ).pipe(
             Effect.map((snapshots) => snapshots.flat()),
