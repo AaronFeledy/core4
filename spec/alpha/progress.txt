@@ -5199,9 +5199,3 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): 1e8f0e0 feat: Publish @lando/core alpha package to npm dev tag; 67e8695 docs: record US-052 review entry
 - PR: #131 https://github.com/AaronFeledy/core4/pull/131 (created)
 ---
-## [2026-05-21 16:55 UTC] - Push
-- Branch: us-052-publish-core-npm-dev-tag
-- Push: pushed
-- Commit(s): 1e8f0e0 feat: Publish @lando/core alpha package to npm dev tag; 67e8695 docs: record US-052 review entry
-- PR: #131 https://github.com/AaronFeledy/core4/pull/131 (created)
----
