@@ -635,7 +635,10 @@ describe("AppPlannerLive", () => {
       });
 
       const storeNames = appPlan.stores.map((s) => s.name).sort();
-      expect(storeNames).toEqual(["shadowapp-web-app-node-modules", "shadowapp-web-app-vendor"]);
+      expect(storeNames).toEqual([
+        "shadowapp-web-app-node-modules-ad806e3f",
+        "shadowapp-web-app-vendor-64784057",
+      ]);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
 
       const web = appPlan.services[ServiceName.make("web")];
@@ -648,6 +651,67 @@ describe("AppPlannerLive", () => {
         PortablePath.make("node_modules"),
         PortablePath.make("vendor"),
       ]);
+    });
+  });
+
+  test("shadow store names for /app/node_modules and /app/node-modules are distinct (no collision)", async () => {
+    await withTempCwd(async () => {
+      const makeApp = (exclude: string) =>
+        planWithCustomRegistry({
+          name: "shadowapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              type: "appmount-only",
+              appMount: { target: "/app", excludes: [exclude] },
+            },
+          },
+        });
+
+      const planUnderscored = await makeApp("node_modules");
+      const planHyphenated = await makeApp("node-modules");
+
+      const nameFor = (p: typeof planUnderscored) => p.stores[0]?.name ?? "";
+      expect(nameFor(planUnderscored)).not.toEqual(nameFor(planHyphenated));
+      expect(nameFor(planUnderscored)).toBe("shadowapp-web-app-node-modules-ad806e3f");
+      expect(nameFor(planHyphenated)).toBe("shadowapp-web-app-node-modules-6a42fc95");
+    });
+  });
+
+  test("image: postgres and postgres:16 classify as the postgres service type", async () => {
+    await withTempCwd(async () => {
+      const bareApp = await plan({
+        name: "myapp",
+        runtime: 4,
+        services: { [ServiceName.make("db")]: { image: "postgres" } },
+      });
+      expect(bareApp.services[ServiceName.make("db")]?.type).toBe("postgres");
+
+      const taggedApp = await plan({
+        name: "myapp",
+        runtime: 4,
+        services: { [ServiceName.make("db")]: { image: "postgres:16" } },
+      });
+      expect(taggedApp.services[ServiceName.make("db")]?.type).toBe("postgres");
+    });
+  });
+
+  test("image: postgrest:latest and postgresml:latest do NOT classify as postgres", async () => {
+    await withTempCwd(async () => {
+      for (const image of ["postgrest:latest", "postgresml:latest"]) {
+        const exit = await planExit({
+          name: "myapp",
+          runtime: 4,
+          services: { [ServiceName.make("db")]: { image } },
+        });
+
+        const failure = expectSomeFailure(exit);
+        expect(failure).toBeInstanceOf(LandofileValidationError);
+        if (failure instanceof LandofileValidationError) {
+          expect(failure.message).toContain("db");
+          expect(failure.message).not.toContain("type postgres");
+        }
+      }
     });
   });
 

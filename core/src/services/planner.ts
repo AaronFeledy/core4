@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import * as os from "node:os";
 
 import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
@@ -35,20 +36,24 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   return [cause instanceof Error ? cause.message : "Invalid app plan."];
 };
 
+const imageIs = (image: string | undefined, name: string): boolean =>
+  image === name || image?.startsWith(`${name}:`) === true;
+
 const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (service.type !== undefined) return service.type;
-  if (service.image?.startsWith("node:22")) return "node:22";
-  if (service.image?.startsWith("node:")) return "node:lts";
-  if (service.image?.startsWith("postgres")) return "postgres";
-  if (service.image?.startsWith("mysql")) return "mysql";
-  if (service.image?.startsWith("mariadb")) return "mariadb";
-  if (service.image?.startsWith("redis")) return "redis";
-  if (service.image?.startsWith("nginx")) return "nginx";
-  if (service.image?.startsWith("httpd")) return "apache";
-  if (service.image?.startsWith("php:8.2")) return "php:8.2";
-  if (service.image?.startsWith("php:8.3")) return "php:8.3";
-  if (service.image?.startsWith("python:3.12")) return "python:3.12";
-  if (service.image?.startsWith("ruby:3.3")) return "ruby:3.3";
+  const image = service.image;
+  if (image?.startsWith("node:22")) return "node:22";
+  if (image?.startsWith("node:")) return "node:lts";
+  if (imageIs(image, "postgres")) return "postgres";
+  if (imageIs(image, "mysql")) return "mysql";
+  if (imageIs(image, "mariadb")) return "mariadb";
+  if (imageIs(image, "redis")) return "redis";
+  if (imageIs(image, "nginx")) return "nginx";
+  if (imageIs(image, "httpd")) return "apache";
+  if (image?.startsWith("php:8.2")) return "php:8.2";
+  if (image?.startsWith("php:8.3")) return "php:8.3";
+  if (image?.startsWith("python:3.12")) return "python:3.12";
+  if (image?.startsWith("ruby:3.3")) return "ruby:3.3";
   return name;
 };
 
@@ -103,6 +108,8 @@ const kebab = (raw: string): string => {
     .replace(/^-+|-+$/g, "");
   return ascii.length === 0 ? "shadow" : ascii;
 };
+
+const shortHash = (input: string): string => createHash("sha256").update(input).digest("hex").slice(0, 8);
 
 const appNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
@@ -181,7 +188,7 @@ const expandExcludesToShadows = (
 
   for (const excludePath of effectiveExcludes) {
     const destination = joinPathSegments(appMount.target, excludePath);
-    const storeName = `${appName}-${serviceName}-${kebab(destination)}`;
+    const storeName = `${appName}-${serviceName}-${kebab(destination)}-${shortHash(destination)}`;
     if (!shadowStores.some((entry) => entry.name === storeName)) {
       shadowStores.push({ name: storeName, scope: "service" });
     }
