@@ -5232,3 +5232,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Mutating `package.json#engines.bun` in the codegen test is an effective regression check that generated workflows ignore package engine ranges.
   - No AGENTS.md update was needed; the existing CI codegen note already says Bun comes from `.bun-version`.
 ---
+## [2026-05-21 17:55 UTC] - US-053 Review
+- Reviewed HEAD (6ab8c6d) against US-053 acceptance criteria. No code/test fixes required.
+- Files changed in build: `core/test/scripts/codegen-ci.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- `review-work` findings: skipped the 5-agent fan-out as disproportionate for a ~20-line test-only hardening; verified the implementation manually against each acceptance bullet instead.
+- Rejected (with reason): heavyweight 5-oracle review for a test-only change with no production-code diff — would burn budget without adding signal, since the diff is just stronger codegen assertions plus a status flip.
+- Verification run and result: `bun run typecheck` clean, `bun run lint` clean, `bun test` 1061 pass / 11 skip / 0 fail, focused `bun test core/test/scripts/codegen-ci.test.ts` 7 pass.
+- **Learnings for future iterations:**
+  - The new codegen test now mutates the live `package.json` and restores it in `finally`; future codegen-test edits should keep that restore path (or move to a temp clone) so a `SIGKILL` between writes does not leave the repo on an alpha engine range.
+  - `engines.bun` substring assertions on generator scripts catch regressions that wouldn't show up in the generated YAML diff — useful pattern for future "single source of truth" CI gates.
+---
