@@ -3,14 +3,13 @@
  *
  * Public API surface for the `LandoRuntime` factory.
  *
- * **Stability:** the symbols re-exported here are semver-stable within a
- * major version. New exports require a library-API contract test under
- * `test/library/`.
+ * **Stability:** this library surface is unstable and published only on
+ * dev/next channels until GA. New exports require a library-API
+ * contract test.
  *
  * **Boundary rule:** importing this entry point MUST NOT pull `@oclif/core`
  * into the import graph. An embedding host that never invokes the CLI must
- * not pay for OCLIF in its bundle. Enforced by the import-boundary test
- * under `test/library/`.
+ * not pay for OCLIF in its bundle. Enforced by the library import-boundary test.
  */
 
 // Runtime factory.

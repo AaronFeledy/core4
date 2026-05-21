@@ -80,4 +80,25 @@ describe("makeLandoRuntime", () => {
       }
     }
   });
+
+  test("non-Layer entries in plugins.layers fail with LandoRuntimeBootstrapError", async () => {
+    const options: unknown = {
+      bootstrap: "app",
+      plugins: { layers: ["not-a-layer"] },
+    };
+    const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(makeLandoRuntime(options))));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(LandoRuntimeBootstrapError);
+        if (failure.value instanceof LandoRuntimeBootstrapError) {
+          expect(failure.value.message).toContain("plugins.layers[0]");
+          expect(failure.value.message).toContain("Effect Layer");
+        }
+      }
+    }
+  });
 });

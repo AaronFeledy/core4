@@ -56,6 +56,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Command-index cache helpers live in `core/src/cache/command-index.ts` and `core/src/cache/command-index-writer.ts`; app-command freshness includes Landofile stat metadata plus a `toolingFingerprint`, plugin-command freshness includes a manifest fingerprint, and callers that must surface cache build failures should use `writePluginCommandCacheStrict` instead of the best-effort `writePluginCommandCache`.
 - `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
 - Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
+- `makeLandoRuntime` embedding tests can pass host-provided service overrides through `plugins.layers`; the runtime merges those Layers after the base bootstrap Layer, so duplicate service tags (for example `RuntimeProvider` / `RuntimeProviderRegistry`) are resolved in favor of the host layer.
 
 ## Iteration Log
 
@@ -4716,4 +4717,73 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Push: pushed (force-with-lease refresh; local branch was rebased/synced ahead of diverged origin)
 - Commit(s): 7cfb8f0 feat: Implement plugin command index cache; d5705ab fix: Harden app command cache refresh safety; b0c7575 chore: remove AI slop; ed97f1c fix: invalidate app command cache on entry changes; fe2d9dc fix: remove dead plugin cache conditional; f2e843f fix: dedupe Landofile discovery in app command cache writer; 391b774 docs: record PR #123 Bugbot triage follow-up
 - PR: #123 https://github.com/AaronFeledy/core4/pull/123 (existing)
+---
+
+## [2026-05-20 21:40 CDT] - Babysit
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- CI outcome: pass (Cursor Bugbot, static-checks, build-linux-x64, provider-integration-linux-x64)
+- Review feedback: none blocking (all Bugbot review threads are resolved; no human change requests)
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (local `main` reset to `origin/main` at 8600dc5 after preserving prior local-only main commit 20e1cff on `backup/main-before-pr123-refresh-20e1cff`)
+- Remaining local state, if any: on `main`; story branch deleted locally and pruned from `origin`; `spec/alpha/progress.txt` has this uncommitted babysit report; backup branch `backup/main-before-pr123-refresh-20e1cff` preserves the previous local-only PR #122 babysit progress commit
+---
+
+## 2026-05-20 - Sync
+- Previous branch: us-043-plugin-command-index-cache
+- Previous PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- Action: caught up after prior merge (PR #123 already MERGED); fast-path committed stale progress.txt changes to local main first
+- Local main updated: yes (already at origin/main after ff-only; 1 commit ahead due to progress-log fast-path)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-20 21:55 CDT] - US-045
+- Implemented library app-bootstrap coverage for `makeLandoRuntime({ bootstrap: "app" })`, including host-provided Layer overrides that let embedding tests run app planning and provider operations with `TestRuntimeProvider`.
+- Files changed: `core/src/runtime/layer.ts`, `core/src/index.ts`, `core/test/library/make-runtime-app.test.ts`, `core/test/library/import-boundary.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/make-runtime-app.test.ts core/test/library/import-boundary.test.ts core/test/runtime/make-runtime.test.ts` passed; manual library API QA script printed `{ "provider":"test", "apply":{"changed":false}, "exec":{"exitCode":0,"stdout":"echo ok","stderr":""} }`; full `bun test` passed (1040 pass, 11 skip) after refreshing the compiled binary with `bun run build`; an earlier full run failed in compiled-CLI tests when `core/dist/lando` had been cleaned/stale, and focused setup passed after rebuild.
+- **Learnings for future iterations:**
+  - `makeLandoRuntime`'s existing `plugins.layers` option is the lightest embedding seam for host/test service overrides; merge host layers after the base runtime so duplicate service tags are overridden by the host layer.
+  - Library API tests should import through `@lando/core` and `@lando/core/testing` rather than internal source paths when asserting embedding-host behavior.
+  - If full `bun test` fails in the compiled setup install-dir case, run `bun run build` once to refresh `core/dist/lando` permissions before rerunning the focused setup test.
+---
+
+## [2026-05-20 22:30 CDT] - US-045 Review
+- Reviewed commit 732be59 against US-045 acceptance criteria. Goal-verification oracle: PASS. Code-quality oracle: FAIL — flagged silent filtering of non-`Layer` entries in `plugins.layers` as MAJOR (host configuration mistakes get masked instead of surfaced).
+- `review-work` findings fixed: replaced `embeddingPluginLayers` (silent filter via `filter(Layer.isLayer)` + double `as unknown as` cast) with `collectEmbeddingPluginLayers` that returns `Either.Either<ReadonlyArray<Layer>, LandoRuntimeBootstrapError>` and short-circuits on the first non-Layer entry; `makeLandoRuntime` returns `Layer.fail(bootstrapError(...))` carrying the offending index so embedding hosts see a tagged failure naming `plugins.layers[N]`. Removed the redundant double cast as a side effect.
+- `review-work` findings rejected:
+  - MINOR "final `as RuntimeLayer` cast on `Layer.mergeAll(...)` is unsound" — out of scope; the broader RuntimeLayer union widening is a structural concern across `runtimeLayerFor` that predates this story and isn't blocked by AC.
+  - MINOR "`plugins.manifests` is not implemented" — out of scope; US-045's AC narrowly require `plugins.layers` to work, and `manifests` ships as a deliberately-deferred schema surface per the existing JSDoc on `EmbeddingPluginPolicy`.
+  - NITPICK "rename `embeddingPluginLayers` → `validatedHostPluginLayers`" — addressed implicitly by renaming to `collectEmbeddingPluginLayers`; no further bikeshed.
+- Files changed: `core/src/runtime/layer.ts` (rewrote helper as `Either`-returning + dropped double cast), `core/test/runtime/make-runtime.test.ts` (added `non-Layer entries in plugins.layers fail with LandoRuntimeBootstrapError` test asserting the structured error and `plugins.layers[0]` index in the message).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (after one biome format pass on the new helper); focused `bun test core/test/library/make-runtime-app.test.ts core/test/library/import-boundary.test.ts core/test/runtime/make-runtime.test.ts` passed (13 pass / 0 fail / 42 expect calls); full `bun test` initially showed the known compiled-setup install-dir flake (`core/dist/lando` stale after typecheck artifacts touched dist/), passed cleanly on rerun after `bun run build` (1041 pass / 11 skip / 0 fail).
+- **Learnings for future iterations:**
+  - Host-provided embedding seams should fail loudly on shape mismatches, not silently filter — embedding hosts already see a `LandoRuntimeBootstrapError` for invalid schema input, so non-Layer entries inside a schema-valid array deserve the same treatment.
+  - `Layer.isLayer` is a real type guard returning `u is Layer<unknown, unknown, unknown>`, so `array.filter(Layer.isLayer)` infers the right element type without `as unknown as ...` casts; reach for the double cast only when widening across a `Schema.Array(Schema.Unknown)` boundary, and even then prefer a typed local `Layer.Layer<unknown, unknown, unknown>[]` accumulator.
+  - When adding tests that follow the `Cause.failureOption` + `instanceof LandoRuntimeBootstrapError` pattern in `core/test/runtime/make-runtime.test.ts`, assert on `.message` substrings (e.g. `plugins.layers[0]`) rather than struct fields to keep the contract tied to the user-visible diagnostic.
+---
+
+## [2026-05-20 22:30 CDT] - US-045 Review
+- Reviewed commit 732be59 against spec/alpha/prd-alpha-06-persistent-caches-and-library-api.md §US-045 with `review-work` (Oracle goal-verification + Oracle code-quality agents).
+- `review-work` findings: fixed — silent filtering of non-Layer entries in `plugins.layers` (MAJOR, code-quality oracle): `embeddingPluginLayers` previously dropped invalid entries silently, masking host integration mistakes; replaced with `collectEmbeddingPluginLayers` returning `Either<readonly Layer[], LandoRuntimeBootstrapError>` and fail-fast `Layer.fail(...)` from `makeLandoRuntime` identifying the offending index. Rejected — `plugins.manifests` not implemented (MINOR; explicitly out of US-045's AC; scope creep); `as RuntimeLayer` cast looseness (MINOR; pragmatic boundary cast; host layers are the merged-in superset, type widening here is documented and contained); double-cast smell (MINOR; removed by the validation refactor as a side effect — `Layer.isLayer` narrowing makes the cast unnecessary, no separate fix needed).
+- Files changed: `core/src/runtime/layer.ts` (Either-based validation helper + fail-fast call site), `core/test/runtime/make-runtime.test.ts` (regression test asserts `LandoRuntimeBootstrapError` for `plugins.layers: ["not-a-layer"]`, message contains `plugins.layers[0]`).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (after biome formatter ran the multi-line bootstrapError call); focused `bun test core/test/library/make-runtime-app.test.ts core/test/library/import-boundary.test.ts core/test/runtime/make-runtime.test.ts` passed (13 pass / 0 fail / 42 expects); full `bun test` ran 1041 pass / 11 skip / 0 fail after a `bun run build` refresh (first attempt had the known compiled-setup install-dir flake documented in AGENTS.md — fixed by rebuild).
+- **Learnings for future iterations:**
+  - Host-provided embedding seams should fail-fast on shape errors, not silently filter — the error path is the only signal a host has that its options were wrong, and silent drops produce confusing "runtime ignored my override" downstream symptoms.
+  - When a helper returns `Either<T, E>` for input validation, surfacing the failed index in the error message (`plugins.layers[2]` not just "invalid plugins.layers") is the smallest correct UX fix.
+  - The `embeddingPluginLayers` → `collectEmbeddingPluginLayers` rename also dissolves the double `as unknown as ReadonlyArray<Layer<...>>` cast from the original PR — `Layer.isLayer` is a type guard so the narrowed array doesn't need a cast at all when collected via push instead of filter.
+---
+
+## [2026-05-20] - US-045 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. Branch-wide cleanup made behavior-preserving comment hygiene edits only.
+- Files changed by cleanup: `core/src/index.ts` (neutralized library stability/boundary wording), `core/src/runtime/layer.ts` (trimmed verbose runtime/plugin-policy doc comments), and `core/test/library/import-boundary.test.ts` (removed stale/restating/TODO comments while preserving assertions).
+- Planning-doc leakage scan over branch-changed source/test comments passed; no remaining code comments cite specs, phases, PRDs, story IDs, or section markers. Broad grep hits for words like `scope`/`source` were false positives in ordinary technical comments.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; focused `bun test core/test/library/import-boundary.test.ts core/test/library/make-runtime-app.test.ts core/test/runtime/make-runtime.test.ts` passed (13 pass / 0 fail / 42 expect calls). Full `bun test` was not completed: the host run spawned `core/bin/lando.ts meta:plugin:new` and was stopped per `.local/DEV-ENV.md` host-safety rules, while `.local/bin/lando4-dev --check` failed with `wsl.exe is not available from this shell; run from the host distro`, so the sandbox could not be entered from this environment.
+---
+
+## [2026-05-20] - US-045 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. Branch-wide cleanup made comment-only, behavior-preserving edits.
+- Files changed by cleanup: `core/src/index.ts` (neutralized public API stability/boundary comments), `core/src/runtime/layer.ts` (trimmed runtime factory/plugin policy doc comments), and `core/test/library/import-boundary.test.ts` (removed stale header/restatement/TODO comments without changing assertions).
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comment still cites planning docs, phases, PRDs, or story IDs.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/import-boundary.test.ts core/test/library/make-runtime-app.test.ts core/test/runtime/make-runtime.test.ts` passed (13 pass / 0 fail / 42 expects). Full `bun test` was not completed in this shell because the documented `lando4-dev` sandbox wrapper cannot enter WSL here (`wsl.exe is not available from this shell`); an attempted host full run was stopped after it spawned `core/bin/lando.ts meta:plugin:new`, per host-safety rules.
 ---
