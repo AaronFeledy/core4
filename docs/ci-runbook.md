@@ -41,6 +41,22 @@ bun run build
 
 If the build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
 
+## npm dev package publishing
+
+The release workflow publishes `@lando/core@4.0.0-alpha.N` to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+
+The package job builds workspace artifacts first:
+
+```bash
+bun run --filter='@lando/sdk' build
+bun run --filter='@lando/core' typecheck
+bun run --filter='@lando/core' build:manifest
+```
+
+Packaging plan: `@lando/sdk` remains a separate workspace package and is published to the npm `dev` tag at the same `4.0.0-alpha.N` version as an implementation dependency of `@lando/core`; end users still install the named Alpha distribution as `npm install @lando/core@dev`. The workflow rewrites `@lando/core`'s temporary checkout dependency from `workspace:*` to that exact alpha version before the dry-run and real publish.
+
+Before publishing, CI runs dry-runs for both packages with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the alpha version and its `latest` dist-tag is unchanged.
+
 ## Provider integration
 
 Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
