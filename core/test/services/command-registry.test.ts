@@ -4,8 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
 
-import { CommandRegistry } from "@lando/core/services";
+import { CommandRegistry, type RegisteredCommand } from "@lando/core/services";
+import { CacheError } from "@lando/sdk/errors";
+import type { PluginManifest } from "@lando/sdk/schema";
 
+import {
+  readAppCommandCache,
+  readPluginCommandCache,
+  writeAppCommandCache,
+  writeAppCommandCacheStrict,
+  writePluginCommandCacheStrict,
+} from "../../src/cache/command-index-writer.ts";
 import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache/command-index.ts";
 import { appCommandCachePath, pluginCommandCachePath } from "../../src/cache/paths.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -53,9 +62,16 @@ const listFromLive = () =>
 const listFromBootstrap = () =>
   Effect.runPromise(
     Effect.flatMap(CommandRegistry, (registry) => registry.list).pipe(
-      Effect.provide(makeLandoRuntime({ bootstrap: "tooling" })),
-    ),
+      Effect.provide(makeLandoRuntime({ bootstrap: "tooling" }) as Layer.Layer<CommandRegistry>),
+    ) as Effect.Effect<ReadonlyArray<RegisteredCommand>, never, never>,
   );
+
+const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
+  name: name as PluginManifest["name"],
+  version,
+  api: 4,
+  contributes: { commands },
+});
 
 describe("CommandRegistryLive", () => {
   test("lists parsed tooling tasks as RegisteredCommand entries under the app: namespace", async () => {
@@ -101,7 +117,7 @@ describe("CommandRegistryLive", () => {
     });
   });
 
-  test("returns an empty list when Landofile parse fails (Beta-deferred surface, no rejection at registry layer)", async () => {
+  test("returns an empty list when Landofile parse fails", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -266,7 +282,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     process.chdir(previousCwd);
   });
 
-  test("writes the §12.1 app-command cache after a successful Landofile discovery", async () => {
+  test("writes the app-command cache after a successful Landofile discovery", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         await writeFile(
@@ -292,7 +308,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id).sort()).toEqual(["app:composer", "app:test"]);
 
-        const cachePath = appCommandCachePath(cacheRoot, "cache-app");
+        const cachePath = appCommandCachePath(cacheRoot, "cache-app", dir);
         const bytes = new Uint8Array(await readFile(cachePath));
         const decoded = decodeAppCommandIndex(bytes);
         expect(decoded).not.toBeNull();
@@ -309,7 +325,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("writes the §12.1 plugin-command cache regardless of Landofile presence", async () => {
+  test("writes the plugin-command cache regardless of Landofile presence", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         process.chdir(dir);
@@ -329,7 +345,138 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("writes auto-discovered .bun.sh script-backed entries into the §12.1 app-command cache", async () => {
+  test("reuses a fresh plugin-command cache and invalidates it when plugin manifests change", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      const firstManifests = [manifest("@lando/a", ["a:one"])] as const;
+      const secondManifests = [manifest("@lando/a", ["a:two"])] as const;
+
+      const firstPath = await Effect.runPromise(
+        writePluginCommandCacheStrict({ manifests: firstManifests, cacheRoot, now: () => 100 }),
+      );
+      const first = await Effect.runPromise(readPluginCommandCache({ manifests: firstManifests, cacheRoot }));
+      expect(first?.entries.map((entry) => entry.id)).toEqual(["a:one"]);
+
+      await Effect.runPromise(
+        writePluginCommandCacheStrict({ manifests: firstManifests, cacheRoot, now: () => 200 }),
+      );
+      const reused = decodePluginCommandIndex(new Uint8Array(await readFile(firstPath)));
+      expect(reused?.generatedAtMs).toBe(100);
+
+      const stale = await Effect.runPromise(
+        readPluginCommandCache({ manifests: secondManifests, cacheRoot }),
+      );
+      expect(stale).toBeNull();
+
+      await Effect.runPromise(
+        writePluginCommandCacheStrict({ manifests: secondManifests, cacheRoot, now: () => 300 }),
+      );
+      const refreshed = decodePluginCommandIndex(new Uint8Array(await readFile(firstPath)));
+      expect(refreshed?.generatedAtMs).toBe(300);
+      expect(refreshed?.entries.map((entry) => entry.id)).toEqual(["a:two"]);
+    });
+  });
+
+  test("invalidates app-command cache when Landofile tooling changes", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "tooling-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: tooling-cache", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+
+        await Effect.runPromise(
+          writeAppCommandCache({
+            landofile,
+            entries: [{ id: "app:build", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        const fresh = await Effect.runPromise(
+          readAppCommandCache({
+            landofile,
+            entries: [{ id: "app:build", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+          }),
+        );
+        expect(fresh?.entries.map((entry) => entry.id)).toEqual(["app:build"]);
+
+        const stale = await Effect.runPromise(
+          readAppCommandCache({
+            landofile: { name: "tooling-cache", tooling: { test: { cmd: "bun test" } } },
+            entries: [{ id: "app:test", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+          }),
+        );
+        expect(stale).toBeNull();
+      });
+    });
+  });
+
+  test("invalidates app-command cache when discovered command entries change", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "script-cache", tooling: { composer: { cmd: "composer" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: script-cache", "tooling:", "  composer:", "    cmd: composer", ""].join("\n"),
+        );
+
+        const firstPath = await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:composer", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [
+              { id: "app:composer", summary: "", hidden: false },
+              { id: "app:db:wait", summary: "Wait for the DB", hidden: false, service: ":host" },
+            ],
+            cwd: dir,
+            cacheRoot,
+            now: () => 200,
+          }),
+        );
+
+        if (firstPath === undefined) return;
+        const refreshed = decodeAppCommandIndex(new Uint8Array(await readFile(firstPath)));
+        expect(refreshed?.generatedAtMs).toBe(200);
+        expect(refreshed?.entries.map((entry) => entry.id).sort()).toEqual(["app:composer", "app:db:wait"]);
+      });
+    });
+  });
+
+  test("reports a tagged error when required bundled plugin manifests are missing", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      const exit = await Effect.runPromiseExit(
+        writePluginCommandCacheStrict({
+          manifests: [manifest("@lando/present", ["present:cmd"])],
+          pluginNames: ["@lando/present", "@lando/missing"],
+          cacheRoot,
+        }),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag !== "Failure") return;
+      const failure = exit.cause._tag === "Fail" ? exit.cause.error : undefined;
+      expect(failure).toBeInstanceOf(CacheError);
+      expect(failure?.message).toContain("@lando/missing");
+    });
+  });
+
+  test("writes auto-discovered .bun.sh script-backed entries into the app-command cache", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
         await writeFile(
@@ -354,7 +501,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id).sort()).toEqual(["app:composer", "app:db:wait"]);
 
-        const cachePath = appCommandCachePath(cacheRoot, "scripted-app");
+        const cachePath = appCommandCachePath(cacheRoot, "scripted-app", dir);
         const bytes = new Uint8Array(await readFile(cachePath));
         const decoded = decodeAppCommandIndex(bytes);
         expect(decoded).not.toBeNull();
@@ -380,7 +527,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const commands = await listFromLive();
         expect(commands.map((c) => c.id)).toEqual(["app:build"]);
 
-        const cachePath = appCommandCachePath(cacheRoot, "unnamed");
+        const cachePath = appCommandCachePath(cacheRoot, "unnamed", dir);
         const bytes = new Uint8Array(await readFile(cachePath));
         const decoded = decodeAppCommandIndex(bytes);
         expect(decoded?.appName).toBe("unnamed");

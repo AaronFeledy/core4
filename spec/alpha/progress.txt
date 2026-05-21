@@ -53,12 +53,17 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `EventService` exposes two subscriber surfaces. `subscribe(name)` returns a `Stream` that subscribes to the underlying `PubSub` lazily (on first pull) and is fine for late-attached consumers. `subscribeQueue` (no args) is the cold-start, no-replay surface: it returns a scoped Effect that resolves to a `Queue.Dequeue<LandoEvent>` once the `PubSub.subscribe` handshake has completed, so any `publish` issued after the Effect succeeds is guaranteed to enqueue. Renderers and any other "must not miss the first event" consumers should call `subscribeQueue` inside `Layer.scopedDiscard` and fork a `Queue.take` consumer; add a finalizer that drains `Queue.takeAll` before interrupting the fiber so trailing events published in the same tick as scope close are still rendered (this is what `core/src/cli/renderer/runtime.ts#makeRendererLive` does for the plain/json renderers). Extending `EventService` always breaks every mock — sweep `Layer.succeed(EventService, { … })` literals across `core/test/cli/*.scenario.test.ts` and `sdk/test/services/tags.test.ts` in the same change or `tsc -b` will fail.
 - Renderer-side line formatting is pure and lives in `core/src/cli/renderer/format.ts` (`renderPlainLine` / `renderJsonLine` return `string | null`; `null` means "not a task tree event, skip"). The Layer in `runtime.ts` only does plumbing: it calls the formatter and writes to `RendererIO.writeStdout` / `writeStderr` based on the renderer (`plain` → stdout, `json` → stderr; `lando` aliases plain until rich-TTY behavior lands). Tests inject `createBufferedRendererIO()` and assert on `stdout()` / `stderr()` / `stdoutLines()` — no `Bun.spawn` round trip needed for renderer unit coverage. The named snapshot fixture lives at `core/test/cli/fixtures/renderer.task-tree.concurrent.ndjson` and is loaded raw (one JSON object per line) so the renderer is exercised against a deterministic event ordering across runs.
 
+- Command-index cache helpers live in `core/src/cache/command-index.ts` and `core/src/cache/command-index-writer.ts`; app-command freshness includes Landofile stat metadata plus a `toolingFingerprint`, plugin-command freshness includes a manifest fingerprint, and callers that must surface cache build failures should use `writePluginCommandCacheStrict` instead of the best-effort `writePluginCommandCache`.
 - `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
 - Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
 
 ## Iteration Log
 
 (Loop appends one entry per iteration below.)
+## [2026-05-20] - PR #123 triage
+- Bugbot comment was real: `writePluginCommandCacheStrict` always yields a string, so the `pluginCommandCachePath` conditional was dead; simplified the return object to always include it.
+- Verification: `bun run typecheck`, `bun run lint`, and `bun test core/test/cli/app-cache.scenario.test.ts` passed.
+
 
 ## [2026-05-16 20:36 CDT] - Sync
 - Previous branch: us-001-provider-lando-linux-setup
@@ -4609,6 +4614,16 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan over branch-changed source/test comments passed; remaining spec/phase strings are runtime fields, user-visible error text, or test assertions rather than code-comment traceability.
 - Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/cache.test.ts core/test/services/app-planner.test.ts` passed (32 pass / 0 fail); full `bun test` passed once (1020 pass / 11 skip / 0 fail). A later full-suite retry hit the known compiled-binary ENOENT transient in `core/test/cli/deferred-commands.test.ts`; `bun run build` passed and focused `bun test core/test/cli/deferred-commands.test.ts` passed (38 pass / 0 fail).
 
+## [2026-05-20 12:53 CDT] - US-043
+- Implemented plugin-command and app-command cache freshness checks with stable fingerprints, cache read helpers, reuse-on-fresh behavior, and strict tagged `CacheError` reporting for missing required bundled plugin manifests.
+- Files changed: `core/src/cache/command-index.ts`, `core/src/cache/command-index-writer.ts`, `core/src/cli/commands/app-cache-refresh.ts`, `core/test/services/command-registry.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` clean for changed TypeScript files; `bunx biome check --write core/src/cache/command-index.ts core/src/cache/command-index-writer.ts core/src/cli/commands/app-cache-refresh.ts core/test/services/command-registry.test.ts` passed; focused `bun test core/test/cache/command-index.test.ts core/test/services/command-registry.test.ts core/test/cli/app-cache.scenario.test.ts` passed (27 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed; manual CLI QA ran `app:cache:refresh` against a temp app with isolated cache/config roots and observed exit 0, `refreshed: qa-cache (1 command)`, plus `apps/qa-cache/commands.bin`, app-plan, and `plugin-command-cache.bin` written. Full `bun test` was retried multiple times; default concurrency hit intermittent compiled-binary build contention around nested `bun run build` / executable-bit checks, then `bun test --max-concurrency=1` completed with 1023 pass / 11 skip / 0 fail. Focused compiled alias test and standalone `bun run build` / `bun run build:compile` passed afterward.
+- **Learnings for future iterations:**
+  - Command-index writes are best-effort for registry cold paths; use strict writer variants only for commands like `app:cache:refresh` that should report cache failures.
+  - Fresh app-command caches must compare both Landofile stat metadata and tooling fingerprint because mtimes alone can be too coarse in fast tests or filesystems.
+  - Full-suite compiled-binary tests can race each other when multiple tests spawn `bun run build`; rerun focused compiled tests or `bun run build:compile` to distinguish implementation regressions from build-output contention.
+---
+
 ## [2026-05-20 14:00 CDT] - US-044
 - Implemented shared binary cache encoding coverage for app-command, plugin-command, app-plan, and cwd-app-map caches, including committed binary fixtures, header/schema-version assertions, checksum assertions where applicable, and unknown-version cache-miss behavior.
 - Files changed: `core/src/cache/command-index.ts`, `core/src/cache/app-plan.ts`, `core/src/cache/cwd-app-map.ts`, `core/test/cache/binary-encoding.test.ts`, `core/test/cache/fixtures/binary-cache/*.bin`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
@@ -4634,4 +4649,71 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Push: pushed
 - Commit(s): 4d6cf5f feat: Make binary cache encoding rules testable
 - PR: #122 https://github.com/AaronFeledy/core4/pull/122 (created)
+
+## [2026-05-20 17:56 CDT] - US-043 Review
+- Reviewed build commit `79f9336` for US-043 plugin command index cache and applied scoped review repairs for app-command cache safety.
+- Files changed: `core/src/cache/paths.ts`, `core/src/cache/command-index-writer.ts`, `core/src/cli/commands/app-cache-refresh.ts`, `core/test/cache/paths.test.ts`, `core/test/services/command-registry.test.ts`, `core/test/cli/app-cache.scenario.test.ts`, `spec/alpha/progress.txt`.
+- `review-work` findings: fixed app-command cache path collision for same-name apps by namespacing command caches with the app-root fingerprint; fixed `app:cache:refresh` so app-command cache write failures surface tagged `CacheError` instead of being swallowed; rejected hot-path registry cache reads as out-of-scope because `CommandRegistryLive` explicitly documents hot-path cache reads as deferred past Alpha and US-043's accepted repo pattern is cold-path/best-effort writes plus explicit refresh; rejected `.bun.sh` script freshness as non-blocking future-reader risk because current app-command cache read helper is not used by router hot paths.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `PATH=/home/aaron/.bun/bin:$PATH bun test core/test/cache/paths.test.ts core/test/services/command-registry.test.ts core/test/cli/app-cache.scenario.test.ts` passed (26 pass / 0 fail); `PATH=/home/aaron/.bun/bin:$PATH bun run typecheck` passed; `PATH=/home/aaron/.bun/bin:$PATH bun run lint` passed; `PATH=/home/aaron/.bun/bin:$PATH bun run build` passed; focused `bun test core/test/cli/setup.test.ts` and `bun test core/test/cli/aliases.test.ts core/test/build/biome.test.ts` passed on rerun. Full `bun test` and `bun test --max-concurrency=1` both hit the known compiled-binary build contention in `core/test/cli/setup.test.ts` (`bun run build` exit 1 inside the full suite), matching the build-step note; standalone build and focused setup test passed afterward.
+- **Learnings for future iterations:**
+  - App-command cache paths need the same app-root fingerprint safety as app-plan cache paths so same-name apps in different directories do not thrash each other's command cache.
+  - Explicit cache refresh commands should use strict cache writers; keep best-effort swallowing only on router/registry cold paths where cache writes must not affect command listing.
+  - `review-work` hot-path cache-read recommendations should be checked against recorded Alpha deferrals before treating them as in-scope blockers.
+---
+
+
+## [2026-05-20] - US-043 Slop Cleanup
+- Ran `Skill(remove-ai-slops, <planning-doc comment rules>)` after review and before push. Branch-wide cleanup made behavior-preserving planning-reference hygiene edits only.
+- Files changed by cleanup: `core/src/cli/commands/app-cache-refresh.ts` (removed redundant bootstrap-level traceability from the command docblock) and `core/test/services/command-registry.test.ts` (reworded test names to remove phase/section references while preserving assertions and behavior).
+- Planning-doc leakage scan over branch-changed source/test comments passed; remaining planning-like text found by broad scan is ordinary test prose, not code-comment traceability.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/services/command-registry.test.ts core/test/cli/app-cache.scenario.test.ts` passed; focused `bun test core/test/cli/shellenv.test.ts` passed; `bun run build` passed. Full `bun test` reached 1024 pass / 11 skip / 1 fail on `core/test/cli/shellenv.test.ts` because an in-suite nested `bun run build` returned 1 during compiled-binary build contention; standalone build and focused shellenv rerun passed afterward, matching the known compiled-build transient noted for this branch.
+
+## [2026-05-20 18:10 CDT] - Push
+- Branch: us-043-plugin-command-index-cache
+- Push: pushed
+- Commit(s): 79f9336 feat: Implement plugin command index cache; fd1d717 fix: Harden app command cache refresh safety; 1cc208b chore: remove AI slop
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123 (created)
+---
+
+## [2026-05-20] - PR #123 Bugbot Triage
+- CI triage: Cursor Bugbot check was neutral/skipping; no failing CI job to fix.
+- Review triage: accepted Bugbot finding that app-command cache freshness ignored the current discovered command entries, so a refresh could reuse a cache after .bun.sh script-backed command additions/removals/front-matter changes that affect the discovered entries.
+- Fix: app-command cache payloads now include an entries fingerprint and stale-check against the entries being written/read, with a regression test for discovered entry changes.
+
+## [2026-05-20 18:48 CDT] - Babysit
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- CI outcome: fail (Cursor Bugbot still pending on latest head f667dd7; previous Bugbot runs reported issues that were fixed in dd08bf9 and f667dd7)
+- Review feedback: fixed (accepted Bugbot cache freshness issue and dead plugin cache conditional; both delegated fixes were committed and pushed)
+- Triage rounds used: 2
+- Merge: deferred (latest Cursor Bugbot check has not completed; do not merge while pending)
+- Local main / branch refreshed: no
+- Remaining local state, if any: local branch tracks origin/us-043-plugin-command-index-cache at f667dd7; this babysit report is appended locally in spec/alpha/progress.txt and not pushed to avoid restarting pending Bugbot
+---
+
+## [2026-05-20] - PR #123 Bugbot Triage Follow-up
+- CI triage: Cursor Bugbot check is neutral/skipping; no failing CI job to fix.
+- Review triage: accepted unresolved Bugbot finding that the app-command cache write path redundantly rediscovered and statted the same Landofile before checking the existing cache.
+- Fix: app-command cache source metadata is now resolved once per write and passed into the read freshness check, while public reads still resolve their own source metadata.
+- Not changed: previously resolved Bugbot findings for entries freshness and plugin cache path conditional were already addressed by prior commits.
+
+## [2026-05-20 19:02 CDT] - Babysit
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- CI outcome: fail (Cursor Bugbot completed neutral/skipping, but latest Bugbot review reported one unresolved potential bug: redundant Landofile discovery/stat in command-index-writer; PR mergeability remains CONFLICTING/DIRTY)
+- Review feedback: fixed earlier findings; deferred latest Bugbot finding because delegated Sisyphus-Junior team triage left uncommitted local changes and did not complete checks/commit/push during this babysit turn
+- Triage rounds used: 3
+- Merge: deferred (unresolved Bugbot feedback remains, no clean pushed HEAD after triage, and PR is not mergeable)
+- Local main / branch refreshed: no
+- Remaining local state, if any: branch remains us-043-plugin-command-index-cache at f667dd7; local uncommitted changes in core/src/cache/command-index-writer.ts and spec/alpha/progress.txt; team run e1282eb4-97c0-4923-929b-388f4aaad95f task 1 remains in_progress for triage-agent
+---
+
+## [2026-05-20 19:05 CDT] - Babysit Update
+- Host-safety cleanup: stopped a stray host `bun test` / `core/bin/lando.ts` run left by delegated triage; sandbox should be used for any host-altering Lando execution.
+- Result: no new commit was pushed; local triage edits remain uncommitted and unverified, so PR #123 remains deferred.
+---
+
+## [2026-05-20 21:31 CDT] - Push
+- Branch: us-043-plugin-command-index-cache
+- Push: pushed (force-with-lease refresh; local branch was rebased/synced ahead of diverged origin)
+- Commit(s): 7cfb8f0 feat: Implement plugin command index cache; d5705ab fix: Harden app command cache refresh safety; b0c7575 chore: remove AI slop; ed97f1c fix: invalidate app command cache on entry changes; fe2d9dc fix: remove dead plugin cache conditional; f2e843f fix: dedupe Landofile discovery in app command cache writer; 391b774 docs: record PR #123 Bugbot triage follow-up
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123 (existing)
 ---

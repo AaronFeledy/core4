@@ -1,4 +1,7 @@
+import { createHash } from "node:crypto";
 import { deserialize, serialize } from "node:v8";
+
+import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
 export const COMMAND_INDEX_SCHEMA_VERSION = 1n;
 
@@ -23,6 +26,8 @@ export interface AppCommandIndexPayload {
   readonly sourceFile: string;
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
+  readonly toolingFingerprint?: string;
+  readonly entriesFingerprint?: string;
   readonly generatedAtMs: number;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
@@ -31,9 +36,49 @@ export interface PluginCommandIndexPayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
   readonly pluginNames: ReadonlyArray<string>;
+  readonly manifestFingerprint?: string;
   readonly generatedAtMs: number;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
 }
+
+const stable = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, child]) => [key, stable(child)]),
+    );
+  }
+  return value;
+};
+
+const stableFingerprint = (value: unknown): string =>
+  createHash("sha256")
+    .update(JSON.stringify(stable(value)))
+    .digest("hex");
+
+const normalizeManifest = (manifest: PluginManifest) => ({
+  name: manifest.name,
+  version: manifest.version,
+  api: manifest.api,
+  enabled: manifest.enabled ?? true,
+  bundled: manifest.bundled ?? false,
+  contributes: manifest.contributes ?? {},
+});
+
+export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<PluginManifest>): string =>
+  stableFingerprint(
+    manifests
+      .map(normalizeManifest)
+      .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api),
+  );
+
+export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
+  stableFingerprint({ tooling: landofile.tooling ?? null });
+
+export const deriveAppCommandEntriesFingerprint = (entries: ReadonlyArray<CommandIndexEntry>): string =>
+  stableFingerprint(entries);
 
 const writeHeader = (magic: Uint8Array): Uint8Array => {
   const header = new Uint8Array(COMMAND_INDEX_HEADER_BYTES);

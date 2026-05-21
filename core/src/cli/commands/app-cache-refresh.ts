@@ -3,11 +3,11 @@
  *
  * This command performs full app bootstrap and rebuilds the app plan cache
  * and command index without contacting the provider.
- * Bootstrap level: `app`.
  */
 import { Effect } from "effect";
 
 import type {
+  CacheError,
   CapabilityError,
   LandoCommandError,
   LandofileNotFoundError,
@@ -28,7 +28,10 @@ import {
 } from "@lando/sdk/services";
 
 import { compileAppCommands } from "../../cache/command-compiler.ts";
-import { writeAppCommandCache, writePluginCommandCache } from "../../cache/command-index-writer.ts";
+import {
+  writeAppCommandCacheStrict,
+  writePluginCommandCacheStrict,
+} from "../../cache/command-index-writer.ts";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
 
@@ -52,6 +55,7 @@ type AppCacheRefreshError =
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError
+  | CacheError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -88,13 +92,13 @@ export const refreshAppCache = (
     const scripts = yield* discoverScripts(cwd);
     const entries = compileAppCommands(landofile, scripts);
 
-    const appCachePath = yield* writeAppCommandCache({
+    const appCachePath = yield* writeAppCommandCacheStrict({
       landofile,
       entries,
       cwd,
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
-    const pluginCachePath = yield* writePluginCommandCache({
+    const pluginCachePath = yield* writePluginCommandCacheStrict({
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
 
@@ -102,6 +106,6 @@ export const refreshAppCache = (
       app: plan.name,
       commandsCompiled: entries.length,
       ...(appCachePath === undefined ? {} : { appCommandCachePath: appCachePath }),
-      ...(pluginCachePath === undefined ? {} : { pluginCommandCachePath: pluginCachePath }),
+      pluginCommandCachePath: pluginCachePath,
     };
   });
