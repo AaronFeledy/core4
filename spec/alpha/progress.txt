@@ -5322,3 +5322,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Branch protection is documented policy, not config-as-code: `docs/ci-runbook.md` is the no-network source of truth, and `core/test/build/branch-protection.test.ts` should keep it aligned with generated CI job ids.
   - Workflow job names are the branch-protectable check names; keep docs, `.github/workflows/ci.yml`, and `scripts/build-ci-workflow.ts` in lock-step through `bun run codegen` when jobs change.
 ---
+## [2026-05-21 19:05 UTC] - US-055 Review
+- Reviewed build commit `eca21e8` (1 test file, 1 doc edit, `prd.json` flip, progress entry).
+- Files changed by review: none (no fixes needed); only this `progress.txt` entry.
+- `review-work` findings:
+  - Goal verification (focused): PASS — all 6 AC layers (static checks, schema gate, build-linux-x64, provider integration, library API, recipe layers) covered by `requiredChecks`; `bundled-codegen` additionally included for completeness.
+  - Code quality (focused): PASS — triple-anchor design (test constant ↔ `docs/ci-runbook.md` bullet list ↔ `.github/workflows/ci.yml` job ids) catches drift in any direction; `extractWorkflowJobIds` regex correctly bounded to 2-space indent.
+  - Context mining (focused): PASS — `docs/ci-runbook.md` is the no-network source of truth and `scripts/build-ci-workflow.ts` generates `.github/workflows/ci.yml`; the new test cross-links them.
+  - Skipped: QA executor and security auditor have no surface for a docs+test-only diff with no behavioral change.
+  - Rejected (would expand scope beyond US-055): collapsing the small `toEqual` redundancy between the two tests (each test is self-contained and the duplication costs nothing); deriving `requiredChecks` from the docs file at runtime (would break the triple-anchor drift gate that catches edits to the docs list itself).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (biome checked 457 files); `bun test` passed (1064 pass, 11 skip, 8 snapshots, 5647 expect() calls in 144 files).
+- **Learnings for future iterations:**
+  - Patterns discovered: branch-protection tests benefit from a triple-anchor (hard-coded constant ↔ docs ↔ generated workflow) so drift in any single source surfaces as a test failure rather than silently passing.
+  - Gotchas encountered: YAML job-id extraction must constrain to exactly 2-space indent because nested keys (`runs-on:`, `steps:`) are 4+ spaces and would otherwise leak into the job-id set.
+  - Useful context: docs+test-only iterations don't need the full 5-agent review; goal/code-quality/context-mining are sufficient and QA/security can be explicitly skipped with rationale.
+---
