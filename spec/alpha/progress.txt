@@ -5259,3 +5259,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes
 - Remaining local state, if any: on `main` at `c4e3f4c`; remote story branch deleted by merge; local story branch deleted if present; this babysit note appended to `spec/alpha/progress.txt`
 ---
+
+## [2026-05-21 17:55 UTC] - Sync
+- Previous branch: us-053-pin-bun-version-file
+- Previous PR: #132 https://github.com/AaronFeledy/core4/pull/132
+- Action: caught up after prior merge (PR #132 was already MERGED; remote branch deleted)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
