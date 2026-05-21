@@ -65,16 +65,16 @@ describe("ci workflow codegen", () => {
 
     // All generated jobs must reference the .bun-version file, not a hardcoded version string
     const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-    expect(versionFileMatches).toBe(5);
+    expect(versionFileMatches).toBe(7);
     expect(workflow).not.toContain("bun-version: ");
 
     // Mutating package.json engines.bun must NOT change the generated workflow
     const originalPackageJson = await readFile(packageJsonPath, "utf8");
-    const packageJson = JSON.parse(originalPackageJson) as { engines: { bun: string } };
-    packageJson.engines.bun = ">=9.8.7";
+    const mutatedPackageJson = originalPackageJson.replace('"bun": ">=1.3.14"', '"bun": ">=9.8.7"');
+    expect(mutatedPackageJson).not.toBe(originalPackageJson);
 
     try {
-      await writeFile(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
+      await writeFile(packageJsonPath, mutatedPackageJson);
       await runCodegen();
 
       const updatedWorkflow = await readFile(workflowPath, "utf8");
@@ -103,6 +103,27 @@ describe("ci workflow codegen", () => {
     expect(workflow).toContain(
       "run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts",
     );
-    expect(workflow).toContain("needs: [static-checks, schema-snapshot, bundled-codegen]");
+    expect(workflow).toContain(
+      "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
+  });
+
+  test("generates named library API and recipe test layers", async () => {
+    await runCodegen();
+
+    const workflow = await readFile(workflowPath, "utf8");
+
+    expect(workflow).toContain("library-api-tests:");
+    expect(workflow).toContain("- name: Run library API tests");
+    expect(workflow).toContain("run: bun test core/test/library sdk/test/library");
+
+    expect(workflow).toContain("recipe-tests:");
+    expect(workflow).toContain("- name: Run recipe test layer");
+    expect(workflow).toContain(
+      "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
+    );
+    expect(workflow).toContain(
+      "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
   });
 });

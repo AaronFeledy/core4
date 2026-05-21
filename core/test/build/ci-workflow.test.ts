@@ -75,7 +75,9 @@ describe("ci workflow", () => {
     const jobs = findIndentedBlock(workflow, "jobs");
     const buildLinux = findIndentedBlock(jobs, "build-linux-x64", 2);
 
-    expect(buildLinux).toContain("    needs: [static-checks, schema-snapshot, bundled-codegen]");
+    expect(buildLinux).toContain(
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
     expect(buildLinux).toContain("    runs-on: ubuntu-22.04");
     expect(buildLinux).toContain("        run: bun run build");
     expect(buildLinux).toContain("          test -f dist/lando");
@@ -90,6 +92,23 @@ describe("ci workflow", () => {
 
     expect(buildLinux.indexOf("./dist/lando --help")).toBeLessThan(
       buildLinux.indexOf("uses: actions/upload-artifact@v4"),
+    );
+  });
+
+  test("runs library API and recipe test layers as branch-protectable jobs", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const libraryApiTests = findIndentedBlock(jobs, "library-api-tests", 2);
+    const recipeTests = findIndentedBlock(jobs, "recipe-tests", 2);
+
+    expect(libraryApiTests).toContain("    runs-on: ubuntu-22.04");
+    expect(libraryApiTests).toContain("      - name: Run library API tests");
+    expect(libraryApiTests).toContain("        run: bun test core/test/library sdk/test/library");
+
+    expect(recipeTests).toContain("    runs-on: ubuntu-22.04");
+    expect(recipeTests).toContain("      - name: Run recipe test layer");
+    expect(recipeTests).toContain(
+      "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
     );
   });
 

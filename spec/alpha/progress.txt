@@ -5083,3 +5083,27 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - PR: #128 https://github.com/AaronFeledy/core4/pull/128 (created)
 - CI: green; squash-merged to main as 8e856be
 ---
+## [2026-05-21 09:58 CDT] - US-050
+- Implemented separate generated CI jobs for Alpha library API tests and the recipe test layer, and made the Linux x64 build depend on both gates.
+- Files changed: `.github/workflows/ci.yml`, `scripts/build-ci-workflow.ts`, `core/test/scripts/codegen-ci.test.ts`, `core/test/build/ci-workflow.test.ts`, `core/test/build/branch-protection.test.ts`, `docs/ci-runbook.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test core/test/scripts/codegen-ci.test.ts core/test/build/ci-workflow.test.ts core/test/build/branch-protection.test.ts` passed; `bun test core/test/library sdk/test/library` passed; `bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts` passed; `bun test` passed (1055 pass, 11 skip); manual QA regenerated/inspected `.github/workflows/ci.yml` and confirmed `library-api-tests`, `recipe-tests`, and the updated `build-linux-x64` dependencies.
+- **Learnings for future iterations:**
+  - Patterns discovered: branch-protectable CI layers should be generated as top-level jobs in `scripts/build-ci-workflow.ts` and mirrored in workflow, codegen, branch-protection, and runbook tests/docs.
+  - Gotchas encountered: tests that mutate `package.json` must preserve Biome's existing formatting, or concurrent lint-gate tests can observe the temporary mutation.
+  - Useful context: env-gated provider integration remains isolated in `provider-integration-linux-x64`; adding non-provider test layers should not add secrets or host runtime assumptions.
+---
+
+## [2026-05-21 10:14 CDT] - US-050 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: accepted docs-only wording cleanup in `docs/ci-runbook.md`; generated workflow, CI generator/tests, `spec/alpha/prd.json`, and existing `spec/alpha/progress.txt` needed no safe cleanup.
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comment cites planning docs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup changes only runbook prose. Commands, required check names, CI job behavior, imports, public APIs, error handling, side effects, return values, fixtures, and assertions are unchanged.
+- Verification run and result: `lsp_diagnostics docs/ci-runbook.md` clean; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-runbook.test.ts` passed; full serial `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed (1055 pass / 11 skip / 0 fail). An earlier concurrent full-suite run failed before the final wording adjustment due the runbook assertion and unrelated compiled-build races; the final serial run passed cleanly.
+---
+
+## [2026-05-21 10:16 CDT] - Push
+- Branch: us-050-library-api-recipe-ci
+- Push: pushed
+- Commit(s): b765899 chore: remove AI slop; 1b58f3b feat: Add library API and recipe test layers to CI
+- PR: #129 https://github.com/AaronFeledy/core4/pull/129 (created)
+---
