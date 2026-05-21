@@ -5042,3 +5042,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: JSON snapshot fixtures must be piped through `biome check --write` inside the generator, not just `JSON.stringify`; the existing AGENTS note about TS codegen formatting was extended to cover JSON fixtures in this iteration.
   - Useful context: branch-protection runbook + `branch-protection.test.ts` must be updated in lock-step whenever a new required-check job is added to the generated workflow; the test is the only thing that enforces parity between the YAML jobs list and the runbook prose.
 ---
+
+## [2026-05-21 09:16 CDT] - US-049 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: accepted docs-only wording cleanup in `docs/ci-runbook.md`; rejected generated-workflow header cleanup because `.github/workflows/ci.yml` is generated and should remain generator-owned. Other branch-changed files needed no safe cleanup.
+- Planning-doc leakage scan over branch-changed source/test comments found only existing durable `AGENTS.md` notes/runtime remediation references; no shipped code comment cleanup was needed.
+- Behavior review: cleanup changes only runbook prose. Commands, required check names, CI behavior, imports, public APIs, error handling, side effects, return values, fixtures, and assertions are unchanged.
+- Verification run and result: `lsp_diagnostics docs/ci-runbook.md` clean; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-runbook.test.ts` passed (2 pass / 0 fail / 14 expects); full serial `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed (1053 pass / 11 skip / 0 fail / 5529 expects). Earlier concurrent full-suite runs hit the known unrelated compiled-build/lint-fixture race and mutated `package.json` / schema snapshot fixtures; those test side effects were restored before final verification.
+---
