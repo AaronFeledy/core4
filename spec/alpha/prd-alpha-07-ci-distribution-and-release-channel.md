@@ -132,6 +132,9 @@ Depends on: **PRD-01 through PRD-06**.
 ## Non-Goals
 
 - Do not implement features listed in the Alpha index cross-cutting non-goals.
+- Broad multi-platform CI/release matrix work remains deferred to Beta, including Windows and linux-arm64 release targets beyond the Linux x64 dev prerelease.
+- Nightly cron and weekly provider matrix jobs remain deferred to Beta.
+- macOS provider-lando validation is manual QA or an explicit opt-in job for Alpha, not a required default CI or branch-protection check.
 - Do not stabilize non-SDK library APIs beyond the `unstable`/dev-channel promise.
 - Do not add new external dependencies unless the relevant spec part already requires them or a separate architecture decision approves them.
 

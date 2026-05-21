@@ -5362,3 +5362,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no (fast-path used stash transiently; no residual stash)
 ---
+## [2026-05-21 19:26 UTC] - US-056
+- Implemented Alpha CI platform-scope guardrails: workflow/codegen tests now assert no broad Windows, linux-arm64, macOS, or matrix targets are generated while preserving Linux x64 jobs, and docs/PRD non-goals mirror the roadmap deferrals.
+- Files changed: `core/test/build/ci-workflow.test.ts`, `core/test/scripts/codegen-ci.test.ts`, `core/test/build/alpha-platform-deferrals.test.ts`, `docs/ci-runbook.md`, `spec/alpha/prd-alpha-07-ci-distribution-and-release-channel.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: focused `bun test core/test/build/ci-workflow.test.ts core/test/scripts/codegen-ci.test.ts core/test/build/alpha-platform-deferrals.test.ts` passed (16 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed on rerun after `bun run build` (1078 tests, 1067 pass, 11 skip, 0 fail); manual workflow QA confirmed Linux x64 targets present and deferred Windows/linux-arm64/macOS targets absent from generated workflow files. LSP diagnostics could not run because `typescript-language-server` is not installed in the environment.
+- **Learnings for future iterations:**
+  - Workflow scope guardrails belong in both the generated-workflow content tests and the higher-level build tests so accidental matrix additions are caught before branch-protection docs drift.
+  - `core/test/scripts/codegen-ci.test.ts` runs `bun run codegen`, which can leave generated fixtures dirty during local verification; check `git status` and restore unrelated generated drift after running it.
+  - Full `bun test` can race compiled binary build-dependent tests if `core/dist/lando` is stale; running `bun run build` first produced a clean all-test rerun.
+---

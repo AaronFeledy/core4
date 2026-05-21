@@ -174,4 +174,22 @@ describe("ci workflow", () => {
       providerIntegration.indexOf("Collect provider diagnostics"),
     );
   });
+
+  test("keeps broad multi-platform and default macOS provider validation out of Alpha CI", async () => {
+    const workflow = await readWorkflow();
+
+    expect(workflow).toContain("build-linux-x64:");
+    expect(workflow).toContain("provider-integration-linux-x64:");
+
+    expect(workflow).not.toContain("strategy:");
+    expect(workflow).not.toContain("matrix:");
+    expect(workflow).not.toContain("windows-");
+    expect(workflow).not.toContain("windows-latest");
+    expect(workflow).not.toContain("windows-2022");
+    expect(workflow).not.toContain("linux-arm64");
+    expect(workflow).not.toContain("ubuntu-latest-arm64");
+    expect(workflow).not.toContain("macos-");
+    expect(workflow).not.toContain("darwin-");
+    expect(workflow).not.toContain("LANDO_TEST_PROVIDER_LANDO_MACOS");
+  });
 });
