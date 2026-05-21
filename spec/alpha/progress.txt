@@ -5378,3 +5378,9 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): dd3be62 feat: Keep multi-platform matrix deferred to Beta except explicit Alpha macOS provider checks; 914ae4c docs: update progress log
 - PR: #135 https://github.com/AaronFeledy/core4/pull/135 (created)
 ---
+
+
+## [2026-05-21 20:10 UTC] - PR #135 Bugbot triage
+- Bugbot feedback: REAL ISSUE - workflow guard tests globally rejected `macos-` and `LANDO_TEST_PROVIDER_LANDO_MACOS`, which would block the US-056-approved explicit opt-in macOS provider-lando validation path.
+- Fix: narrowed the guards to keep broad matrices, Windows/linux-arm64 targets, and darwin release targets deferred while allowing future opt-in macOS CI validation guarded by `LANDO_TEST_PROVIDER_LANDO_MACOS`.
+---

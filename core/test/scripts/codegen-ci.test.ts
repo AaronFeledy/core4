@@ -216,9 +216,11 @@ describe("ci workflow codegen", () => {
     expect(generatedWorkflows).not.toContain("windows-2022");
     expect(generatedWorkflows).not.toContain("linux-arm64");
     expect(generatedWorkflows).not.toContain("ubuntu-latest-arm64");
-    expect(generatedWorkflows).not.toContain("macos-");
     expect(generatedWorkflows).not.toContain("darwin-");
-    expect(generatedWorkflows).not.toContain("LANDO_TEST_PROVIDER_LANDO_MACOS");
+
+    if (generatedWorkflows.includes("runs-on: macos-")) {
+      expect(generatedWorkflows).toContain("LANDO_TEST_PROVIDER_LANDO_MACOS");
+    }
   });
 
   test("generates npm dev package publishing with dry-run coverage", async () => {

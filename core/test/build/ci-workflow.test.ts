@@ -188,8 +188,10 @@ describe("ci workflow", () => {
     expect(workflow).not.toContain("windows-2022");
     expect(workflow).not.toContain("linux-arm64");
     expect(workflow).not.toContain("ubuntu-latest-arm64");
-    expect(workflow).not.toContain("macos-");
     expect(workflow).not.toContain("darwin-");
-    expect(workflow).not.toContain("LANDO_TEST_PROVIDER_LANDO_MACOS");
+
+    if (workflow.includes("runs-on: macos-")) {
+      expect(workflow).toContain("LANDO_TEST_PROVIDER_LANDO_MACOS");
+    }
   });
 });
