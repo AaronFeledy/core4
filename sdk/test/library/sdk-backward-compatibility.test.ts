@@ -14,7 +14,6 @@ type FrozenSdkSurface = {
 const repoRoot = new URL("../../..", import.meta.url).pathname;
 const fixturePath = join(repoRoot, "sdk/test/fixtures/sdk-mvp-surface.json");
 const compatibilityDocPath = join(repoRoot, "sdk/API_COMPATIBILITY.md");
-const schemaSourcePath = join(repoRoot, "sdk/src/schema/index.ts");
 const servicesSourcePath = join(repoRoot, "sdk/src/services/index.ts");
 
 const frozenSurface = JSON.parse(readFileSync(fixturePath, "utf8")) as FrozenSdkSurface;
@@ -88,32 +87,6 @@ const currentServiceTagSignatures = (): Record<string, ReadonlyArray<string>> =>
   return tags;
 };
 
-const currentSchemaNames = (): ReadonlyArray<string> => {
-  const schemaSourceFile = ts.createSourceFile(
-    schemaSourcePath,
-    readFileSync(schemaSourcePath, "utf8"),
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TS,
-  );
-  const schemaNames = new Set<string>();
-
-  for (const statement of schemaSourceFile.statements) {
-    if (!ts.isVariableStatement(statement)) continue;
-    if (!statement.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword)) continue;
-
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.initializer === undefined) continue;
-      const initializer = declaration.initializer.getText(schemaSourceFile);
-      if (initializer.startsWith("Schema.") || initializer.includes(".pipe(Schema.")) {
-        schemaNames.add(declaration.name.text);
-      }
-    }
-  }
-
-  return [...schemaNames].sort();
-};
-
 const documentedNames = (heading: string): ReadonlyArray<string> => {
   const [, section = ""] = compatibilityDoc.split(`## ${heading}`);
   const [body = ""] = section.split("\n## ");
@@ -142,7 +115,9 @@ describe("SDK backward-compatibility surface", () => {
 
   test("documents every additive Alpha schema export and service tag", () => {
     const mvpSchemaNames = new Set(frozenSurface.schemaNames);
-    const alphaSchemaNames = currentSchemaNames().filter((schemaName) => !mvpSchemaNames.has(schemaName));
+    const alphaSchemaNames = Object.keys(sdkSchema)
+      .filter((schemaName) => !mvpSchemaNames.has(schemaName))
+      .sort();
 
     const mvpServiceTagNames = new Set(Object.keys(frozenSurface.serviceTags));
     const alphaServiceTagNames = Object.keys(currentServiceTagSignatures())

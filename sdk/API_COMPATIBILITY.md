@@ -17,6 +17,7 @@
 - `CertificatePlan`
 - `CommandSpec`
 - `DataStoreMountPlan`
+- `defineLandofile`
 - `DataStorePlan`
 - `DependencyPlan`
 - `EndpointInput`

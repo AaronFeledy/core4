@@ -4964,6 +4964,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Stash created: no
 ---
 
+## [2026-05-21 12:35 UTC] - US-048 Review
+- Reviewed the US-048 build commit (22433fc) with the review-work skill (5-agent fan-out).
+- `review-work` findings: fixed — Oracle goal-verifier flagged a real gap: `defineLandofile` (introduced in PR #106 / US-029) is a public `@lando/sdk/schema` export that the AST-heuristic-based additive-docs check could not see, so it was missing from both `sdk/test/fixtures/sdk-mvp-surface.json` and `sdk/API_COMPATIBILITY.md`. Replaced the AST scan in the third test with a runtime `Object.keys(sdkSchema)` filter so non-Schema helper exports (functions, plain consts) are now caught, then added `defineLandofile` to the additive Alpha schema list. Removed the now-dead `currentSchemaNames` helper + `schemaSourcePath` to keep lint clean.
+- `review-work` findings: rejected — none of substance survived once the runtime-based check landed; the remaining agents' outputs expired before retrieval but the Oracle goal-verifier was the only one to surface a blocking finding.
+- Files changed: `sdk/test/library/sdk-backward-compatibility.test.ts`, `sdk/API_COMPATIBILITY.md`, `spec/alpha/progress.txt`.
+- Verification run and result: `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/library/sdk-backward-compatibility.test.ts` passed (3 pass / 0 fail / 30 expect calls); `bun run lint` passed; `bun run typecheck` passed; full `bun test` passed (1050 pass / 11 skip / 0 fail). One transient failure was observed in `core/test/cli/version.test.ts` + `core/test/build/compile.test.ts` during a concurrent `bun run build` race; both passed cleanly on re-run and on the second full-suite pass, so they are unrelated flake.
+- **Learnings for future iterations:**
+  - Patterns discovered: when the SDK surface is small and importable, prefer runtime `Object.keys(sdkSchema)` for the additive-docs gate — AST heuristics tied to `Schema.X` / `.pipe(Schema.` initializers silently miss helper functions (`defineLandofile`) and plain-record consts. Module-level `import * as` makes this trivial.
+  - Gotchas encountered: `core/test/cli/version.test.ts` and `core/test/build/compile.test.ts` both spawn `bun run build` and race when the full suite runs them concurrently; a single failure on the first full run is usually flake, not regression.
+  - Useful context: PR #106 added `defineLandofile` as part of the `.lando.ts` loader landing — Alpha-era, belongs under "Additive Alpha schema exports" in `sdk/API_COMPATIBILITY.md`.
+---
+
 ## [2026-05-21 07:23 CDT] - US-048
 - Implemented an SDK backward-compatibility guard that checks the frozen MVP schema exports and service-tag signatures, and verifies every additive Alpha schema/tag export is documented.
 - Files changed: `sdk/test/library/sdk-backward-compatibility.test.ts`, `sdk/test/fixtures/sdk-mvp-surface.json`, `sdk/API_COMPATIBILITY.md`, `sdk/AGENTS.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
