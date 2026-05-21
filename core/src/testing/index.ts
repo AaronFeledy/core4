@@ -223,4 +223,20 @@ export const provideTestRuntime = (options: TestRuntimeOptions = {}) => makeTest
 export const withService = <I, S>(tag: Context.Tag<I, S>, service: S): Layer.Layer<I> =>
   Layer.succeed(tag, service);
 
-export const TestRuntime = provideTestRuntime({ bootstrap: "provider" });
+/**
+ * A pre-built Effect `Layer` providing all test service doubles with `bootstrap: "provider"`.
+ *
+ * **⚠ WARNING — shared mutable state:** This export is a module-level singleton. The `calls`
+ * object and `files` map created inside the single `makeTestRuntime()` call that backs this
+ * layer are shared across every test that uses it. Spy arrays and in-memory file entries
+ * accumulate across test cases and are **never reset between tests**, which can lead to
+ * order-dependent failures and false positives.
+ *
+ * **Prefer `makeTestRuntime()`** to get a fresh, isolated runtime (with its own `calls` and
+ * `files`) for each test. Only use `TestRuntimeLayer` when you explicitly want a shared layer
+ * and understand that its internal state is not isolated.
+ *
+ * @see makeTestRuntime
+ * @see provideTestRuntime
+ */
+export const TestRuntimeLayer = provideTestRuntime({ bootstrap: "provider" });
