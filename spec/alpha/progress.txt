@@ -5384,3 +5384,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Bugbot feedback: REAL ISSUE - workflow guard tests globally rejected `macos-` and `LANDO_TEST_PROVIDER_LANDO_MACOS`, which would block the US-056-approved explicit opt-in macOS provider-lando validation path.
 - Fix: narrowed the guards to keep broad matrices, Windows/linux-arm64 targets, and darwin release targets deferred while allowing future opt-in macOS CI validation guarded by `LANDO_TEST_PROVIDER_LANDO_MACOS`.
 ---
+
+## [2026-05-21 20:07 UTC] - Babysit
+- PR: #135 https://github.com/AaronFeledy/core4/pull/135
+- CI outcome: pass (build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks, Cursor Bugbot all SUCCESS after triage push)
+- Review feedback: fixed (Bugbot macOS opt-in guard feedback addressed by 6f2c4d7)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: none
+---
