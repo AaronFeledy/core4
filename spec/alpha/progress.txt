@@ -4943,3 +4943,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): a8597ae chore: remove AI slop; acb6092 fix(cli/operations): preserve defect/interrupt info in invokeOperation; a2b997b feat: Expose `@lando/core/cli/operations` command invocation API
 - PR: #126 https://github.com/AaronFeledy/core4/pull/126 (created)
 ---
+
+## [2026-05-21 07:03 CDT] - Babysit
+- PR: #126 https://github.com/AaronFeledy/core4/pull/126
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 368dfd8 on main
+- Local main / branch refreshed: yes
+- Remaining local state, if any: still on `main`; local branch `us-047-cli-operations-api` deleted; this babysit report is uncommitted in `spec/alpha/progress.txt`
+---
