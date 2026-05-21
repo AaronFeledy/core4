@@ -71,7 +71,7 @@ describe("lando init --recipe (non-node-postgres)", () => {
       const { initApp } = await import("../../src/cli/commands/init.ts");
       let caught: unknown;
       try {
-        await initApp({ cwd: dir, full: false, recipe: "./my-recipe", nonInteractive: true });
+        await initApp({ cwd: dir, recipe: "./my-recipe", nonInteractive: true });
       } catch (err) {
         caught = err;
       }
@@ -81,10 +81,10 @@ describe("lando init --recipe (non-node-postgres)", () => {
   });
 });
 
-describe("lando init --full", () => {
+describe("lando init (node-postgres default recipe)", () => {
   test("scaffolds a Node and Postgres app", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--name=mvp"], dir);
+      const result = await runCli(["init", "--name=mvp"], dir);
 
       expect(result.exitCode).toBe(0);
       expect(result.stderr).not.toContain("Error");
@@ -104,7 +104,7 @@ describe("lando init --full", () => {
 
   test("fails non-interactively when --name is missing", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive"], dir);
+      const result = await runCli(["init", "--no-interactive"], dir);
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain('Missing required answer for prompt "name"');
@@ -121,7 +121,7 @@ describe("lando init --full", () => {
 
       const exit = await Effect.runPromiseExit(
         Effect.tryPromise({
-          try: () => runCli(["init", "--full", "--name=existing"], dir),
+          try: () => runCli(["init", "--name=existing"], dir),
           catch: (cause) => cause,
         }),
       );
@@ -135,7 +135,7 @@ describe("lando init --full", () => {
         Effect.tryPromise({
           try: async () => {
             const { initApp } = await import("../../src/cli/commands/init.ts");
-            await initApp({ cwd: dir, full: true, name: "existing", nonInteractive: true });
+            await initApp({ cwd: dir, name: "existing", nonInteractive: true });
           },
           catch: (cause) => cause,
         }),
@@ -171,7 +171,6 @@ describe("lando init --recipe (non-node-postgres)", () => {
       try {
         await initApp({
           cwd: dir,
-          full: false,
           recipe: "./my-recipe",
           name: "test-app",
           nonInteractive: true,

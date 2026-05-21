@@ -16,7 +16,6 @@ import { resolveRendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 interface InitFlags {
-  readonly full: boolean;
   readonly name?: string;
   readonly recipe?: string;
   readonly answer?: ReadonlyArray<string>;
@@ -41,7 +40,6 @@ export default class InitCommand extends LandoCommandBase {
     source: Flags.string({ description: "Init source id (cwd, git, tarball, template)." }),
     recipe: Flags.string({ description: "Recipe to apply." }),
     destination: Flags.string({ description: "Target directory." }),
-    full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
     yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
     "no-interactive": Flags.boolean({
       description:
@@ -85,7 +83,6 @@ export default class InitCommand extends LandoCommandBase {
     const answers = parseAnswerFlags(flags.answer ?? []);
     const options: InitAppOptions = {
       cwd: process.cwd(),
-      full: flags.full,
       answers,
       yes: flags.yes === true,
       nonInteractive: flags["no-interactive"] === true,

@@ -55,7 +55,7 @@ const flatten = (text: string): string => text.replace(/\s+/g, " ").trim();
 describe("lando init — answers and prompting", () => {
   test("--answer name=<value> scaffolds without prompting (non-interactive)", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive", "--answer=name=via-answer"], dir);
+      const result = await runCli(["init", "--no-interactive", "--answer=name=via-answer"], dir);
       expect(result.exitCode).toBe(0);
       expect(await Bun.file(join(dir, "via-answer", ".lando.yml")).exists()).toBe(true);
       expect(result.stdout).toContain("Created via-answer at");
@@ -64,7 +64,7 @@ describe("lando init — answers and prompting", () => {
 
   test("--no-interactive without --answer raises RecipeMissingAnswerError", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive"], dir);
+      const result = await runCli(["init", "--no-interactive"], dir);
       expect(result.exitCode).toBe(1);
       const stderr = flatten(result.stderr);
       expect(stderr).toContain('Missing required answer for prompt "name"');
@@ -74,7 +74,7 @@ describe("lando init — answers and prompting", () => {
 
   test("--no-interactive with an invalid --answer raises RecipePromptValidationError", async () => {
     await withTempCwd(async (dir) => {
-      const result = await runCli(["init", "--full", "--no-interactive", "--answer=name=Bad Name"], dir);
+      const result = await runCli(["init", "--no-interactive", "--answer=name=Bad Name"], dir);
       expect(result.exitCode).toBe(1);
       const stderr = flatten(result.stderr);
       expect(stderr).toContain('Invalid value for prompt "name"');

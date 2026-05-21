@@ -125,16 +125,25 @@ const runStart = async (): Promise<void> => {
 };
 
 const runStop = async (): Promise<void> => {
-  const exit = await Effect.runPromiseExit(
-    stopApp().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
-  );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderStopAppResult(exit.value));
-    return;
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    const exit = await Effect.runPromiseExit(
+      stopApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    );
+    if (Exit.isSuccess(exit)) {
+      console.log(renderStopAppResult(exit.value));
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+    process.exitCode = 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
   }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const runInfo = async (): Promise<void> => {
@@ -638,15 +647,24 @@ const runShell = async (argv: ReadonlyArray<string>): Promise<void> => {
 
 const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
   let format: "json" | "table" = "table";
+  let path: string | undefined;
   for (let i = 0; i < argv.length; i += 1) {
-    const m = parseStringFlag(argv, i, "format");
-    if (m !== undefined && (m.value === "json" || m.value === "table")) {
-      format = m.value;
-      i += m.consumed - 1;
+    const fmtMatch = parseStringFlag(argv, i, "format");
+    if (fmtMatch !== undefined && (fmtMatch.value === "json" || fmtMatch.value === "table")) {
+      format = fmtMatch.value;
+      i += fmtMatch.consumed - 1;
+      continue;
+    }
+    const pathMatch = parseStringFlag(argv, i, "path");
+    if (pathMatch !== undefined) {
+      path = pathMatch.value;
+      i += pathMatch.consumed - 1;
     }
   }
   const exit = await Effect.runPromiseExit(
-    listServices().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+    listServices(path === undefined ? {} : { path }).pipe(
+      Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })),
+    ),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderAppsListResult(exit.value, format));
@@ -1077,6 +1095,18 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "plugin:remove" || argv[0] === "meta:plugin:remove") {
     await runMetaPluginRemove(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "version" || argv[0] === "meta:version") {
+    console.log(`${version} ${process.platform}-${process.arch} node-${process.version}`);
+    return;
+  }
+
+  if (argv[0] === "shellenv" || argv[0] === "meta:shellenv") {
+    const installDir = dirname(process.execPath);
+    console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
+    console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
     return;
   }
 

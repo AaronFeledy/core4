@@ -69,7 +69,7 @@ const resolveRecipeSelection = async (
 
 export interface InitAppOptions {
   readonly cwd: string;
-  readonly full: boolean;
+  readonly full?: boolean;
   readonly recipe?: string;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
