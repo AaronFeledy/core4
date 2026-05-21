@@ -82,7 +82,15 @@ If the provider integration job fails, download diagnostics from `Actions > ci >
 
 ## Branch protection
 
-Protect `main` in GitHub with required status checks enabled. The required checks are `static-checks`, `schema-snapshot`, `bundled-codegen`, `library-api-tests`, `recipe-tests`, `build-linux-x64`, and `provider-integration-linux-x64`; all seven must pass before a pull request can merge to `main`.
+Protect `main` in GitHub with required status checks enabled. All seven required status checks must pass before a pull request can merge to `main`:
+
+- `static-checks`
+- `schema-snapshot`
+- `bundled-codegen`
+- `library-api-tests`
+- `recipe-tests`
+- `build-linux-x64`
+- `provider-integration-linux-x64`
 
 ## Bun upgrade smoke checks
 
