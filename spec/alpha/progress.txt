@@ -4860,10 +4860,26 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - PR: #125 https://github.com/AaronFeledy/core4/pull/125 (created)
 ---
 
+## [2026-05-20 23:27 CDT] - Babysit
+- PR: #125 https://github.com/AaronFeledy/core4/pull/125
+- CI outcome: fail (`static-checks` failed in `core/test/library/core-testing-export.test.ts`; `build-linux-x64` and `provider-integration-linux-x64` skipped behind it; Cursor Bugbot passed)
+- Review feedback: none
+- Triage rounds used: 1 (delegated via team-mode to `triage-fixer`; no fix was pushed before deferral)
+- Merge: deferred (required `static-checks` is failing)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-046-core-testing-provider`; no product-code changes made by babysit; `spec/alpha/progress.txt` has this uncommitted babysit report
+---
 
 ## [2026-05-20 23:45 CDT] - PR #125 triage
 - CI failure categorized real: the packed `@lando/core/testing` consumer fixture linked `@lando/core` and `@lando/sdk` but not external runtime dependency `effect`, so CI could fail the subprocess import even though `core/package.json` already declares the dependency correctly.
 - Review comments categorized not-applicable: PR view reported no latest reviews and no comments; Cursor Bugbot remained pending in the supplied check rollup.
 - Fix: model the packed consumer with its declared external dependency and make subprocess failures print stdout/stderr before assertion failure.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck`, `PATH="$HOME/.bun/bin:$PATH" bun run lint`, and `PATH="$HOME/.bun/bin:$PATH" bun test` passed locally.
+---
+
+## [2026-05-20 23:30 CDT] - Loop sync assessment
+- Outcome: not landed as standalone PR.
+- Rationale: the test fix is entangled with US-046 / PR #125 story-branch work; it patches the packed consumer test added for that branch rather than a general-purpose improvement off main.
+- Recovery: stashed for later re-application to the story branch.
+- Stash: loop-sync-story-branch-fix-20260520-233051
 ---

@@ -83,12 +83,18 @@ describe("@lando/core/testing package export", () => {
       await symlink(join(extractDir, "package"), join(scopedDir, "core"), "dir");
       await symlink(sdkRoot, join(scopedDir, "sdk"), "dir");
 
+      const extractNodeModules = join(extractDir, "package", "node_modules");
+      const extractScopedDir = join(extractNodeModules, "@lando");
+      await mkdir(extractScopedDir, { recursive: true });
+      await symlink(sdkRoot, join(extractScopedDir, "sdk"), "dir");
+
       for (const dependency of packedConsumerDependencies) {
         await symlink(
           join(externalDependencyRoot, dependency),
           join(consumerDir, "node_modules", dependency),
           "dir",
         );
+        await symlink(join(externalDependencyRoot, dependency), join(extractNodeModules, dependency), "dir");
       }
 
       const resolved = await runCommand(
