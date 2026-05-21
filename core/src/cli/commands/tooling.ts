@@ -165,11 +165,6 @@ const runBunShellScript = (
         ),
       ),
     );
-    if (result.stderr.length > 0) {
-      yield* Effect.sync(() => {
-        process.stderr.write(result.stderr);
-      });
-    }
     return {
       tool: script.id,
       service: HOST_SERVICE,
@@ -230,12 +225,6 @@ export const runTooling = (
     });
 
     const result = yield* engine.run(invocation, plan, provider);
-
-    if (result.stderr.length > 0) {
-      yield* Effect.sync(() => {
-        process.stderr.write(result.stderr);
-      });
-    }
 
     return {
       tool: result.tool,

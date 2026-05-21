@@ -286,7 +286,7 @@ describe("runTooling — CLI rendering", () => {
     expect(calls).toHaveLength(0);
   });
 
-  test("writes captured stderr to process.stderr so CLI users see it verbatim", async () => {
+  test("does NOT write stderr to process.stderr directly — result.stderr is returned for the CLI boundary to render", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider } = makeProvider([{ exitCode: 1, stdout: "", stderr: "boom\n" }]);
     const landofile: LandofileShape = {
@@ -308,7 +308,7 @@ describe("runTooling — CLI rendering", () => {
       const result = await Effect.runPromise(runTooling({ name: "composer" }).pipe(runtimeFor(layer)));
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toBe("boom\n");
-      expect(writes.join("")).toContain("boom\n");
+      expect(writes).toHaveLength(0);
     } finally {
       (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
     }
