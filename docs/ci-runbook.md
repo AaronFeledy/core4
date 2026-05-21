@@ -80,6 +80,10 @@ bun test plugins/provider-docker/test --filter=integration
 
 If the provider integration job fails, download diagnostics from `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics`.
 
+## Alpha platform scope
+
+Default Alpha CI is Linux x64 only. No Windows or linux-arm64 release matrix is generated in Alpha; the broad multi-platform matrix, nightly cron, and weekly provider matrix are deferred to Beta. macOS provider-lando validation is manual QA or an explicit opt-in job only, not a required default CI or branch-protection check.
+
 ## Branch protection
 
 Protect `main` in GitHub with required status checks enabled. All seven required status checks must pass before a pull request can merge to `main`:

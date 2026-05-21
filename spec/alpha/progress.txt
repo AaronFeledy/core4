@@ -5343,3 +5343,44 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): eca21e8 feat: Assert branch protection for Alpha CI jobs; ddbf9a4 docs: record US-055 review entry
 - PR: #134 https://github.com/AaronFeledy/core4/pull/134 (created)
 ---
+
+## [2026-05-21 14:11 CDT] - Babysit
+- PR: #134 https://github.com/AaronFeledy/core4/pull/134
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none (no reviews, PR comments, or Bugbot bugs)
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main` at `39e3261`; remote story branch deleted by merge and pruned; no local story branch present; this babysit note appended to `spec/alpha/progress.txt`
+---
+
+## [2026-05-21 19:14 UTC] - Sync
+- Previous branch: us-055-alpha-ci-required-checks
+- Previous PR: #134 https://github.com/AaronFeledy/core4/pull/134
+- Action: caught up after prior merge (Case C — PR was already MERGED); fast-path committed progress.txt update to local main before reconciliation
+- Local main updated: yes (already at origin/main; local progress.txt commit ahead by 1 pending push from Build)
+- Branch after sync: main
+- Stash created: no (fast-path used stash transiently; no residual stash)
+---
+## [2026-05-21 19:26 UTC] - US-056
+- Implemented Alpha CI platform-scope guardrails: workflow/codegen tests now assert no broad Windows, linux-arm64, macOS, or matrix targets are generated while preserving Linux x64 jobs, and docs/PRD non-goals mirror the roadmap deferrals.
+- Files changed: `core/test/build/ci-workflow.test.ts`, `core/test/scripts/codegen-ci.test.ts`, `core/test/build/alpha-platform-deferrals.test.ts`, `docs/ci-runbook.md`, `spec/alpha/prd-alpha-07-ci-distribution-and-release-channel.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: focused `bun test core/test/build/ci-workflow.test.ts core/test/scripts/codegen-ci.test.ts core/test/build/alpha-platform-deferrals.test.ts` passed (16 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed on rerun after `bun run build` (1078 tests, 1067 pass, 11 skip, 0 fail); manual workflow QA confirmed Linux x64 targets present and deferred Windows/linux-arm64/macOS targets absent from generated workflow files. LSP diagnostics could not run because `typescript-language-server` is not installed in the environment.
+- **Learnings for future iterations:**
+  - Workflow scope guardrails belong in both the generated-workflow content tests and the higher-level build tests so accidental matrix additions are caught before branch-protection docs drift.
+  - `core/test/scripts/codegen-ci.test.ts` runs `bun run codegen`, which can leave generated fixtures dirty during local verification; check `git status` and restore unrelated generated drift after running it.
+  - Full `bun test` can race compiled binary build-dependent tests if `core/dist/lando` is stale; running `bun run build` first produced a clean all-test rerun.
+---
+
+## [2026-05-21 19:40 UTC] - Push
+- Branch: us-056-defer-multiplatform-matrix
+- Push: pushed
+- Commit(s): dd3be62 feat: Keep multi-platform matrix deferred to Beta except explicit Alpha macOS provider checks; 914ae4c docs: update progress log
+- PR: #135 https://github.com/AaronFeledy/core4/pull/135 (created)
+---
+
+
+## [2026-05-21 20:10 UTC] - PR #135 Bugbot triage
+- Bugbot feedback: REAL ISSUE - workflow guard tests globally rejected `macos-` and `LANDO_TEST_PROVIDER_LANDO_MACOS`, which would block the US-056-approved explicit opt-in macOS provider-lando validation path.
+- Fix: narrowed the guards to keep broad matrices, Windows/linux-arm64 targets, and darwin release targets deferred while allowing future opt-in macOS CI validation guarded by `LANDO_TEST_PROVIDER_LANDO_MACOS`.
+---

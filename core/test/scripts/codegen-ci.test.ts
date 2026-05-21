@@ -199,6 +199,30 @@ describe("ci workflow codegen", () => {
     expect(workflow).not.toContain("update-manifest");
   });
 
+  test("keeps broad multi-platform release targets deferred from generated workflows", async () => {
+    await runCodegen();
+
+    const ciWorkflow = await readFile(workflowPath, "utf8");
+    const releaseWorkflow = await readFile(releaseWorkflowPath, "utf8");
+    const generatedWorkflows = `${ciWorkflow}\n${releaseWorkflow}`;
+
+    expect(generatedWorkflows).toContain("build-linux-x64:");
+    expect(generatedWorkflows).toContain("dev-prerelease-linux-x64:");
+
+    expect(generatedWorkflows).not.toContain("strategy:");
+    expect(generatedWorkflows).not.toContain("matrix:");
+    expect(generatedWorkflows).not.toContain("windows-");
+    expect(generatedWorkflows).not.toContain("windows-latest");
+    expect(generatedWorkflows).not.toContain("windows-2022");
+    expect(generatedWorkflows).not.toContain("linux-arm64");
+    expect(generatedWorkflows).not.toContain("ubuntu-latest-arm64");
+    expect(generatedWorkflows).not.toContain("darwin-");
+
+    if (generatedWorkflows.includes("runs-on: macos-")) {
+      expect(generatedWorkflows).toContain("LANDO_TEST_PROVIDER_LANDO_MACOS");
+    }
+  });
+
   test("generates npm dev package publishing with dry-run coverage", async () => {
     await runCodegen();
 
