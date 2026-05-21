@@ -4928,3 +4928,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - `Cause.failureOption` returns `Some(E)` even when the same Cause contains defects or interrupts. Any host-side wrapper that converts `Exit.Failure` to a typed-error result MUST additionally check `Cause.dieOption` and `Cause.isInterrupted` before classifying as a clean typed failure, otherwise defect/interrupt information is silently dropped.
   - The `core/test/build/biome.test.ts` fixture mutates `package.json` in place; interrupting the test run leaves the working tree dirty. After any aborted `bun test`, `git diff package.json` is a quick sanity check.
 ---
+
+## [2026-05-21 06:58 CDT] - US-047 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: comment/docs-only cleanup. `core/src/cli/operations.ts` had release-planning wording in the module header rephrased as plain API-stability text; `AGENTS.md` had two adjacent duplicate deferred-renderer notes merged without dropping technical details. `core/test/library/cli-operations-export.test.ts`, `spec/alpha/prd.json`, and current branch `spec/alpha/progress.txt` needed no safe cleanup.
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comment still cites specs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup changes are documentation/comment-only. Imports, public APIs, error handling, side effects, return values, and test assertions are unchanged.
+- Verification run and result: `lsp_diagnostics core/src/cli/operations.ts` could not run because `typescript-language-server` is not installed; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/library/cli-operations-export.test.ts` passed (`FOCUSED_EXIT=0`). Full `bun test` was not completed: the host run spawned `core/bin/lando.ts apps:scratch:info` and was stopped per `.local/DEV-ENV.md`; `.local/bin/lando4-dev --check` failed with `wsl.exe is not available from this shell; run from the host distro`, so the sandbox could not be entered from this environment.
+---

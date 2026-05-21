@@ -3,8 +3,7 @@
  *
  * This subpath is for embedding hosts that want to call the same operations
  * backing supported CLI commands without spawning `lando` or loading OCLIF.
- * It is published only as a dev/alpha surface and is not semver-stable until
- * the later library API stabilization phase.
+ * It is intentionally unstable and not yet covered by semver guarantees.
  */
 import { Cause, Effect, Exit } from "effect";
 
