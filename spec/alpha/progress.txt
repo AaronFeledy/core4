@@ -4831,3 +4831,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Full test runs that spawn `bun` by name require `~/.bun/bin` on `PATH`; invoking `~/.bun/bin/bun test` alone is not enough for child-process build/codegen tests.
   - Several compiled-binary tests rebuild the same `core/dist/lando`; running the full suite after `bun run build` avoids missing-binary ordering failures, and the default concurrent full suite can occasionally hit `ETXTBSY` on that shared binary.
 ---
+
+
+## [2026-05-20 23:03 CDT] - US-046 Review
+- Reviewed build-step commit f22fe85 against PRD-06 US-046 AC; no review fixes required.
+- Files changed in this iteration: `core/test/library/core-testing-export.test.ts`, `core/test/testing/test-runtime.test.ts`, `spec/09-embedding.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- `review-work` findings: skipped full 5-agent fan-out — story is test/docs coverage with no production-source changes. Targeted review confirmed: (a) AC1 covered by both workspace `Bun.resolveSync` and packed-package extract+symlink resolution; (b) AC2 covered by `runProviderContract(TestRuntimeProvider)`; (c) AC3 spec example rewritten to use APIs that actually exist, and the in-repo injection test was strengthened from a no-op `Option.isSome` check to verifying an injected `id: "injected-test"` round-trips through the Layer.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (447 files, 0 fixes); focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6/6).
+- **Learnings for future iterations:**
+  - When a build step's only delta to existing tests is the AC strengthening itself (e.g. swapping `Option.isSome` for a tagged-id round-trip), confirm the prior assertion would have passed under a broken implementation before rubber-stamping — that's where the actual review value lives.
+  - Source-mode `@lando/core/testing` resolution works without a `bun run build` step because the package's `exports` map points directly at `./src/testing/index.ts` and `files` ships `./src`; "built package" coverage in this repo is satisfied by `bun pm pack` + tarball extract, not by a compile step.
+---
