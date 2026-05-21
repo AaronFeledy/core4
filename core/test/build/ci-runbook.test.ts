@@ -44,6 +44,14 @@ describe("ci runbook", () => {
     expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario");
     expect(runbook).toContain("podman system service --time=0 unix:///tmp/podman.sock");
     expect(runbook).toContain("Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64");
+    expect(runbook).toContain("npm dev package publishing");
+    expect(runbook).toContain("npm trusted publishing through GitHub OIDC (`id-token: write`)");
+    expect(runbook).toContain("does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path");
+    expect(runbook).toContain("bun run --filter='@lando/sdk' build");
+    expect(runbook).toContain("bun run --filter='@lando/core' build:manifest");
+    expect(runbook).toContain("`@lando/sdk` remains a separate workspace package");
+    expect(runbook).toContain("npm install @lando/core@dev");
+    expect(runbook).toContain("`latest` dist-tag is unchanged");
     expect(runbook).toContain(
       "Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics",
     );

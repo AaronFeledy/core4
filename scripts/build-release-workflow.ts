@@ -18,6 +18,7 @@ on:
 permissions:
   contents: write
   actions: read
+  id-token: write
 
 jobs:
   dev-prerelease-linux-x64:
@@ -68,6 +69,52 @@ jobs:
         run: |
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$RELEASE_TAG" dist/lando dist/SHA256SUMS --prerelease --target "\${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev \${{ github.run_number }}" --notes "Generated Linux x64 dev prerelease from successful ci workflow run \${{ github.event.workflow_run.id }}."
+
+  npm-dev-packages:
+    if: github.event.workflow_run.conclusion == 'success'
+    needs: [dev-prerelease-linux-x64]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Setup Node for npm trusted publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build package artifacts
+        run: |
+          bun run --filter='@lando/sdk' build
+          bun run --filter='@lando/core' typecheck
+          bun run --filter='@lando/core' build:manifest
+
+      - name: Prepare alpha package metadata
+        env:
+          LANDO_NPM_VERSION: 4.0.0-alpha.\${{ github.run_number }}
+        run: bun run scripts/prepare-npm-dev-packages.ts
+
+      - name: Dry-run npm dev publishes
+        run: |
+          npm publish --workspace @lando/sdk --dry-run --access public --tag dev
+          npm publish --workspace @lando/core --dry-run --access public --tag dev
+
+      - name: Publish npm dev packages
+        run: |
+          before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
+          npm publish --workspace @lando/sdk --access public --tag dev --provenance
+          npm publish --workspace @lando/core --access public --tag dev --provenance
+          after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
+          test "$before_latest" = "$after_latest"
+          npm view @lando/core dist-tags.dev --json | grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'
 `;
 
 const main = async (): Promise<void> => {

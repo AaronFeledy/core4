@@ -176,4 +176,30 @@ describe("ci workflow codegen", () => {
     expect(workflow).not.toContain("installer");
     expect(workflow).not.toContain("update-manifest");
   });
+
+  test("generates npm dev package publishing with dry-run coverage", async () => {
+    await runCodegen();
+
+    const workflow = await readFile(releaseWorkflowPath, "utf8");
+
+    expect(workflow).toContain("id-token: write");
+    expect(workflow).toContain("npm-dev-packages:");
+    expect(workflow).toContain("needs: [dev-prerelease-linux-x64]");
+    expect(workflow).toContain("Setup Node for npm trusted publishing");
+    expect(workflow).toContain("registry-url: https://registry.npmjs.org");
+    expect(workflow).toContain("bun run --filter='@lando/sdk' build");
+    expect(workflow).toContain("bun run --filter='@lando/core' typecheck");
+    expect(workflow).toContain("bun run --filter='@lando/core' build:manifest");
+    expect(workflow).toContain("LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}");
+    expect(workflow).toContain("run: bun run scripts/prepare-npm-dev-packages.ts");
+    expect(workflow).toContain("npm publish --workspace @lando/sdk --dry-run --access public --tag dev");
+    expect(workflow).toContain("npm publish --workspace @lando/core --dry-run --access public --tag dev");
+    expect(workflow).toContain("npm publish --workspace @lando/sdk --access public --tag dev --provenance");
+    expect(workflow).toContain("npm publish --workspace @lando/core --access public --tag dev --provenance");
+    expect(workflow).toContain('test "$before_latest" = "$after_latest"');
+    expect(workflow).toContain("npm view @lando/core dist-tags.dev --json");
+    expect(workflow).toContain(`grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'`);
+    expect(workflow).not.toContain("NPM_TOKEN");
+    expect(workflow).not.toContain("NODE_AUTH_TOKEN");
+  });
 });
