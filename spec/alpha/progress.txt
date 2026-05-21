@@ -5305,3 +5305,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes
 - Remaining local state, if any: on `main` at `f5f8832`; remote story branch deleted by merge and pruned; no local story branch present; this babysit note appended to `spec/alpha/progress.txt`
 ---
+
+## [2026-05-21 18:36 UTC] - Sync
+- Previous branch: us-054-alpha-install-bug-report-docs
+- Previous PR: #133 https://github.com/AaronFeledy/core4/pull/133
+- Action: caught up after prior merge (PR was already MERGED)
+- Local main updated: yes (already at origin/main tip)
+- Branch after sync: main
+- Stash created: no
+---
