@@ -4851,3 +4851,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior review: cleanup is documentation-only. Imports, public APIs, error handling, side effects, return values, and test assertions are unchanged.
 - Verification run and result: `lsp_diagnostics spec/09-embedding.md` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6 pass / 0 fail / 26 expects); full serial `bun test --concurrency=1` passed (1044 pass / 11 skip / 0 fail / 5466 expects).
 ---
+
+
+## [2026-05-20 23:16 CDT] - Push
+- Branch: us-046-core-testing-provider
+- Push: pushed
+- Commit(s): fbab30d chore: remove AI slop; b7a4c4a docs: log US-046 review pass; f22fe85 feat: Publish `@lando/core/testing` with TestRuntimeProvider
+- PR: #125 https://github.com/AaronFeledy/core4/pull/125 (created)
+---
