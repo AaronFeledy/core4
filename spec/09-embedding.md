@@ -3,7 +3,7 @@
 > **Part 9 of 18** · [Index](./README.md)
 > **Read next:** [10 Plugins](./10-plugins.md)
 
-This part defines what it means to consume Lando v4 as a library from another Bun program. The CLI (§8) is one imperative shell over the runtime; an embedding host is another (§3.6). Both build the same `LandoRuntimeLive` Layer, run Effect programs against it, and tear down through `Scope`. There is no separate "library mode" of core — embedding is a peer use case to the CLI.
+This part defines embedding Lando v4 as a library from another Bun program. The CLI (§8) is one imperative shell over the runtime; an embedding host is another (§3.6). Both build the same `LandoRuntimeLive` Layer, run Effect programs against it, and tear down through `Scope`.
 
 Covered here: what counts as an embedding host and which use cases are first-class, the `@lando/core` package surface and entry-point boundaries, the Effect-native public API (no Promise facade), the `LandoRuntime` factory and its options, plugin behavior in library mode (host-controlled by default; opt-in to standard discovery), bootstrap-level and lifecycle semantics for embedding hosts, resource ownership and `Scope` discipline, programmatic invocation of CLI command logic, the testing API surface, version compatibility, and the explicit non-goals.
 
@@ -37,7 +37,7 @@ Non-use-cases (see §16.10):
 
 ### 16.2 Public API surface
 
-The public API is **Effect-native only**. There is no Promise/async facade, no synchronous wrapper, and no parallel set of methods that hide Effect. Hosts compose Effect programs with `Effect.gen`, run them with `Effect.runPromise` / `Effect.runFork` at the host's outer boundary, and propagate `Cause`/`Exit` through the host's preferred error story.
+The public API is **Effect-native only**. There is no Promise/async facade, synchronous wrapper, or parallel Effect-hiding surface. Hosts compose Effect programs with `Effect.gen`, run them with `Effect.runPromise` / `Effect.runFork` at the host's outer boundary, and propagate `Cause`/`Exit` through the host's preferred error story.
 
 Public API surfaces (all exported from `@lando/core` per §2.7):
 
@@ -356,22 +356,27 @@ Provided test fixtures (illustrative):
 ```ts
 import { test, expect } from "bun:test";
 import { Effect } from "effect";
-import { TestRuntime, withLandofile, expectEvent } from "@lando/core/testing";
-import { appStart } from "@lando/core/cli";
+import { RuntimeProvider } from "@lando/core/services";
+import { TestRuntimeProvider, provideTestRuntime } from "@lando/core/testing";
 
-test("starting an app emits post-start", async () => {
+test("injecting the test provider", async () => {
   const program = Effect.gen(function* () {
-    yield* appStart({ reconcile: false });
-    yield* expectEvent("post-start", (e) => e.app.name === "demo");
+    const provider = yield* RuntimeProvider;
+    return provider.id;
   });
 
-  await Effect.runPromise(
+  const providerId = await Effect.runPromise(
     program.pipe(
-      Effect.provide(withLandofile({ name: "demo", services: { app: { type: "lando" } } })),
-      Effect.provide(TestRuntime),
-      Effect.scoped,
+      Effect.provide(
+        provideTestRuntime({
+          bootstrap: "provider",
+          with: { RuntimeProvider: TestRuntimeProvider },
+        }),
+      ),
     ),
   );
+
+  expect(providerId).toBe("test");
 });
 ```
 

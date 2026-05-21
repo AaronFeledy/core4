@@ -4787,3 +4787,99 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan over branch-changed source/test comments passed; no code comment still cites planning docs, phases, PRDs, or story IDs.
 - Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `git diff --check` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/import-boundary.test.ts core/test/library/make-runtime-app.test.ts core/test/runtime/make-runtime.test.ts` passed (13 pass / 0 fail / 42 expects). Full `bun test` was not completed in this shell because the documented `lando4-dev` sandbox wrapper cannot enter WSL here (`wsl.exe is not available from this shell`); an attempted host full run was stopped after it spawned `core/bin/lando.ts meta:plugin:new`, per host-safety rules.
 ---
+
+## [2026-05-20 22:25 CDT] - Push
+- Branch: us-045-app-bootstrap-runtime
+- Push: pushed
+- Commit(s): 732be59 feat: Make `makeLandoRuntime` work for `bootstrap: "app"`; 8b9cd1f fix(runtime): reject non-Layer plugins.layers entries with LandoRuntimeBootstrapError; 9de4ecc chore: remove AI slop
+- PR: #124 https://github.com/AaronFeledy/core4/pull/124 (created)
+---
+
+## [2026-05-20 22:25 CDT] - Push
+- Branch: us-045-app-bootstrap-runtime
+- Push: pushed
+- Commit(s): 732be59 feat: Make `makeLandoRuntime` work for `bootstrap: "app"`; 8b9cd1f fix(runtime): reject non-Layer plugins.layers entries with LandoRuntimeBootstrapError; 9de4ecc chore: remove AI slop
+- PR: #124 https://github.com/AaronFeledy/core4/pull/124 (created)
+---
+
+## [2026-05-20 22:34 CDT] - Babysit
+- PR: #124 https://github.com/AaronFeledy/core4/pull/124
+- CI outcome: pass (Cursor Bugbot, static-checks, build-linux-x64, provider-integration-linux-x64)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main`; `spec/alpha/progress.txt` has this uncommitted babysit report plus restored pre-merge push notes; backup branch `backup/main-before-pr124-refresh-98bd9ce` preserves prior local-only main progress commits
+---
+
+## [2026-05-21 03:36 UTC] - Sync
+- Previous branch: us-045-app-bootstrap-runtime
+- Previous PR: #124 https://github.com/AaronFeledy/core4/pull/124
+- Action: caught up after prior merge (PR #124 already merged; remote branch pruned)
+- Local main updated: yes (fast-path progress.txt commit applied; 1 commit ahead of origin/main — Build will carry it forward)
+- Branch after sync: main
+- Stash created: no
+---
+
+
+## [2026-05-20 22:56 CDT] - US-046
+- Published and verified the `@lando/core/testing` surface for embedding tests, including workspace package-name resolution, packed-package resolution, provider injection, and provider-contract coverage for the re-exported `TestRuntimeProvider`.
+- Files changed: `core/test/library/core-testing-export.test.ts`, `core/test/testing/test-runtime.test.ts`, `spec/09-embedding.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6 pass); `PATH="$HOME/.bun/bin:$PATH" bun run build` passed; full `PATH="$HOME/.bun/bin:$PATH" bun test` passed (1044 pass, 11 skip, 0 fail). Manual QA: `bun -e 'const m = await import("@lando/core/testing"); ...'` printed `provider=test` and resolved to `core/src/testing/index.ts`.
+- **Learnings for future iterations:**
+  - Package export tests can exercise both workspace resolution (`Bun.resolveSync("@lando/core/testing", repoRoot)`) and a packed-package layout by `bun pm pack --ignore-scripts`, extracting to a temp `node_modules/@lando/core`, and symlinking local `@lando/sdk`.
+  - Full test runs that spawn `bun` by name require `~/.bun/bin` on `PATH`; invoking `~/.bun/bin/bun test` alone is not enough for child-process build/codegen tests.
+  - Several compiled-binary tests rebuild the same `core/dist/lando`; running the full suite after `bun run build` avoids missing-binary ordering failures, and the default concurrent full suite can occasionally hit `ETXTBSY` on that shared binary.
+---
+
+
+## [2026-05-20 23:03 CDT] - US-046 Review
+- Reviewed build-step commit f22fe85 against PRD-06 US-046 AC; no review fixes required.
+- Files changed in this iteration: `core/test/library/core-testing-export.test.ts`, `core/test/testing/test-runtime.test.ts`, `spec/09-embedding.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- `review-work` findings: skipped full 5-agent fan-out — story is test/docs coverage with no production-source changes. Targeted review confirmed: (a) AC1 covered by both workspace `Bun.resolveSync` and packed-package extract+symlink resolution; (b) AC2 covered by `runProviderContract(TestRuntimeProvider)`; (c) AC3 spec example rewritten to use APIs that actually exist, and the in-repo injection test was strengthened from a no-op `Option.isSome` check to verifying an injected `id: "injected-test"` round-trips through the Layer.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (447 files, 0 fixes); focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6/6).
+- **Learnings for future iterations:**
+  - When a build step's only delta to existing tests is the AC strengthening itself (e.g. swapping `Option.isSome` for a tagged-id round-trip), confirm the prior assertion would have passed under a broken implementation before rubber-stamping — that's where the actual review value lives.
+  - Source-mode `@lando/core/testing` resolution works without a `bun run build` step because the package's `exports` map points directly at `./src/testing/index.ts` and `files` ships `./src`; "built package" coverage in this repo is satisfied by `bun pm pack` + tarball extract, not by a compile step.
+---
+
+
+## [2026-05-20 23:18 CDT] - US-046 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: no safe cleanup was available in the changed TypeScript tests; `spec/09-embedding.md` received two wording-only prose trims in the embedding intro and public-API overview.
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comments cite planning docs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup is documentation-only. Imports, public APIs, error handling, side effects, return values, and test assertions are unchanged.
+- Verification run and result: `lsp_diagnostics spec/09-embedding.md` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6 pass / 0 fail / 26 expects); full serial `bun test --concurrency=1` passed (1044 pass / 11 skip / 0 fail / 5466 expects).
+---
+
+
+## [2026-05-20 23:16 CDT] - Push
+- Branch: us-046-core-testing-provider
+- Push: pushed
+- Commit(s): fbab30d chore: remove AI slop; b7a4c4a docs: log US-046 review pass; f22fe85 feat: Publish `@lando/core/testing` with TestRuntimeProvider
+- PR: #125 https://github.com/AaronFeledy/core4/pull/125 (created)
+---
+
+## [2026-05-20 23:27 CDT] - Babysit
+- PR: #125 https://github.com/AaronFeledy/core4/pull/125
+- CI outcome: fail (`static-checks` failed in `core/test/library/core-testing-export.test.ts`; `build-linux-x64` and `provider-integration-linux-x64` skipped behind it; Cursor Bugbot passed)
+- Review feedback: none
+- Triage rounds used: 1 (delegated via team-mode to `triage-fixer`; no fix was pushed before deferral)
+- Merge: deferred (required `static-checks` is failing)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-046-core-testing-provider`; no product-code changes made by babysit; `spec/alpha/progress.txt` has this uncommitted babysit report
+---
+
+## [2026-05-20 23:45 CDT] - PR #125 triage
+- CI failure categorized real: the packed `@lando/core/testing` consumer fixture linked `@lando/core` and `@lando/sdk` but not external runtime dependency `effect`, so CI could fail the subprocess import even though `core/package.json` already declares the dependency correctly.
+- Review comments categorized not-applicable: PR view reported no latest reviews and no comments; Cursor Bugbot remained pending in the supplied check rollup.
+- Fix: model the packed consumer with its declared external dependency and make subprocess failures print stdout/stderr before assertion failure.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck`, `PATH="$HOME/.bun/bin:$PATH" bun run lint`, and `PATH="$HOME/.bun/bin:$PATH" bun test` passed locally.
+---
+
+## [2026-05-20 23:30 CDT] - Loop sync assessment
+- Outcome: not landed as standalone PR.
+- Rationale: the test fix is entangled with US-046 / PR #125 story-branch work; it patches the packed consumer test added for that branch rather than a general-purpose improvement off main.
+- Recovery: stashed for later re-application to the story branch.
+- Stash: loop-sync-story-branch-fix-20260520-233051
+---
