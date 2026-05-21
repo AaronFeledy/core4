@@ -32,14 +32,14 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
-  test("keeps ci.yml as the only active workflow", async () => {
+  test("keeps generated ci and release workflows as the only active workflows", async () => {
     const entries = await readdir(workflowsDir, { withFileTypes: true });
     const activeWorkflowFiles = entries
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
       .sort();
 
-    expect(activeWorkflowFiles).toEqual(["ci.yml"]);
+    expect(activeWorkflowFiles).toEqual(["ci.yml", "release.yml"]);
   });
 
   test("runs static checks for pushes and pull requests to main", async () => {
