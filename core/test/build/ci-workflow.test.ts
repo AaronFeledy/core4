@@ -70,12 +70,12 @@ describe("ci workflow", () => {
     expect(workflow).not.toContain("contents: write");
   });
 
-  test("builds and uploads the Linux x64 binary after static checks", async () => {
+  test("builds and uploads the Linux x64 binary after static and codegen checks", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const buildLinux = findIndentedBlock(jobs, "build-linux-x64", 2);
 
-    expect(buildLinux).toContain("    needs: [static-checks]");
+    expect(buildLinux).toContain("    needs: [static-checks, schema-snapshot, bundled-codegen]");
     expect(buildLinux).toContain("    runs-on: ubuntu-22.04");
     expect(buildLinux).toContain("        run: bun run build");
     expect(buildLinux).toContain("          test -f dist/lando");

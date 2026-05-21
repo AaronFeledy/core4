@@ -29,6 +29,7 @@
     "codegen": "bun run scripts/codegen.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
+    "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",
     "release": "bun run scripts/release.ts"
   }
 }

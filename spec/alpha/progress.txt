@@ -56,6 +56,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Command-index cache helpers live in `core/src/cache/command-index.ts` and `core/src/cache/command-index-writer.ts`; app-command freshness includes Landofile stat metadata plus a `toolingFingerprint`, plugin-command freshness includes a manifest fingerprint, and callers that must surface cache build failures should use `writePluginCommandCacheStrict` instead of the best-effort `writePluginCommandCache`.
 - `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
 - Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
+- Generated CI drift gates live in `scripts/build-ci-workflow.ts` and should run focused `bun run codegen:*` commands followed by `git diff --exit-code -- <generated files>`; generated JSON fixtures (for example the schema snapshot) should be Biome-clean from the generator, not fixed by hand.
 - `makeLandoRuntime` embedding tests can pass host-provided service overrides through `plugins.layers`; the runtime merges those Layers after the base bootstrap Layer, so duplicate service tags (for example `RuntimeProvider` / `RuntimeProviderRegistry`) are resolved in favor of the host layer.
 - `@lando/core/cli/operations` is the unstable Effect-bearing command API for embedding hosts; use `invokeOperation(operation, { render, renderError })` when a host needs result/error/output as data instead of throwing or writing to stdio. Keep it out of `core/src/cli/index.ts` so the CLI fast path does not statically import Effect/OCLIF.
 - SDK public-surface changes must update the compatibility guard in `sdk/test/library/sdk-backward-compatibility.test.ts`: MVP schema/tag signature changes go through `sdk/test/fixtures/sdk-mvp-surface.json`, while additive Alpha schema/tag exports must be listed in `sdk/API_COMPATIBILITY.md`.
@@ -5009,4 +5010,23 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 549aa1a on main
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none; stayed on `main`; local branch `us-048-sdk-backward-compatible` deleted
+---
+
+## [2026-05-21 08:23] - Sync
+- Previous branch: us-048-sdk-backward-compatible
+- Previous PR: #127 https://github.com/AaronFeledy/core4/pull/127
+- Action: caught up after prior merge — PR #127 was already MERGED, local branch was already absent
+- Local main updated: yes (already at origin/main HEAD 603304a)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-21 08:50 CDT] - US-049
+- Implemented generated CI gates for schema snapshots and bundled plugin/recipe codegen drift, plus the schema snapshot fixture and generator.
+- Files changed: `.github/workflows/ci.yml`, `scripts/build-ci-workflow.ts`, `scripts/build-schema-snapshot.ts`, `scripts/codegen.ts`, `package.json`, `sdk/test/fixtures/schema-snapshot.json`, CI/build tests, `docs/ci-runbook.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics scripts/build-schema-snapshot.ts` could not run because `typescript-language-server` is not installed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1053 pass, 11 skip); manual QA ran `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and verified the generated workflow contains the `schema-snapshot` / `bundled-codegen` diff commands.
+- **Learnings for future iterations:**
+  - Patterns discovered: generated CI drift gates should be emitted from `scripts/build-ci-workflow.ts`, exercised by workflow generator tests, and documented in `docs/ci-runbook.md`.
+  - Gotchas encountered: JSON schema snapshot fixtures must be Biome-formatted by the generator, not just `JSON.stringify`-formatted, otherwise `bun run lint` fails.
+  - Useful context: the schema snapshot intentionally reads `BUNDLED_PLUGINS` only, so app/user/system plugin manifests remain outside the Alpha gate.
 ---

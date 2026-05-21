@@ -1,0 +1,1876 @@
+{
+  "bundledPluginManifests": [
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
+          "loggers": ["pretty"]
+        },
+        "description": "Pretty-printed Logger plugin.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/logger-pretty",
+        "version": "0.0.0"
+      },
+      "name": "@lando/logger-pretty"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
+          "providers": ["docker"]
+        },
+        "description": "Reference Docker RuntimeProvider implementation.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/provider-docker",
+        "version": "0.0.0"
+      },
+      "name": "@lando/provider-docker"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
+          "providers": ["lando"]
+        },
+        "description": "Reference Lando-managed RuntimeProvider implementation.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/provider-lando",
+        "version": "0.0.0"
+      },
+      "name": "@lando/provider-lando"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
+          "serviceTypes": [
+            "apache",
+            "compose",
+            "mariadb",
+            "mysql",
+            "nginx",
+            "node:lts",
+            "node:22",
+            "postgres",
+            "php:8.2",
+            "php:8.3",
+            "python:3.12",
+            "redis",
+            "ruby:3.3",
+            "static",
+            "static:nginx",
+            "static:caddy"
+          ]
+        },
+        "description": "The opinionated `lando` service base.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/service-lando",
+        "version": "0.0.0"
+      },
+      "name": "@lando/service-lando"
+    }
+  ],
+  "generatedBy": "scripts/build-schema-snapshot.ts",
+  "scope": {
+    "bundledPluginManifests": [
+      "@lando/logger-pretty",
+      "@lando/provider-docker",
+      "@lando/provider-lando",
+      "@lando/service-lando"
+    ],
+    "sdkSchemas": [
+      "BootstrapLevel",
+      "AppRef",
+      "AppPlan",
+      "ServicePlan",
+      "ProviderCapabilities",
+      "LandofileShape",
+      "GlobalConfig",
+      "AppId",
+      "ServiceName",
+      "ProviderId",
+      "HostPlatform",
+      "ServiceInfo",
+      "PluginManifest"
+    ]
+  },
+  "sdkSchemas": {
+    "AppId": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "string"
+    },
+    "AppPlan": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "properties": {
+            "resolvedAt": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "runtime": {
+              "enum": [4],
+              "type": "number"
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": ["resolvedAt", "source", "runtime"],
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "networks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "driver": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "shared": {
+                "type": "boolean"
+              }
+            },
+            "required": ["name", "shared"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "routes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoint": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "pathPrefix": {
+                "type": "string"
+              },
+              "scheme": {
+                "enum": ["http", "https", "both"],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": ["hostname", "scheme", "service"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "services": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "appMount": {
+                "additionalProperties": false,
+                "properties": {
+                  "excludes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "includes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "realization": {
+                    "enum": ["passthrough", "accelerated"],
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": ["source", "target", "readOnly", "excludes", "includes", "realization"],
+                "type": "object"
+              },
+              "artifact": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "digest": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": ["ref"],
+                        "type": "string"
+                      },
+                      "ref": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "ref"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "context": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": ["build"],
+                        "type": "string"
+                      },
+                      "spec": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["kind", "context"],
+                    "type": "object"
+                  }
+                ]
+              },
+              "certs": {
+                "additionalProperties": false,
+                "properties": {
+                  "caId": {
+                    "type": "string"
+                  },
+                  "cn": {
+                    "type": "string"
+                  },
+                  "sans": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": ["cn", "sans", "caId"],
+                "type": "object"
+              },
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "dependsOn": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "condition": {
+                      "enum": ["started", "healthy"],
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["service", "condition"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "endpoints": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": "number"
+                    },
+                    "protocol": {
+                      "enum": ["http", "https", "tcp", "udp", "unix"],
+                      "type": "string"
+                    },
+                    "socketPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["protocol"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "entrypoint": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "environment": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "extensions": {
+                "additionalProperties": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "healthcheck": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "intervalSeconds": {
+                    "type": "number"
+                  },
+                  "kind": {
+                    "enum": ["command", "http", "tcp", "none"],
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "number"
+                  },
+                  "retries": {
+                    "type": "number"
+                  },
+                  "startPeriodSeconds": {
+                    "type": "number"
+                  },
+                  "timeoutSeconds": {
+                    "type": "number"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "intervalSeconds", "timeoutSeconds", "retries"],
+                "type": "object"
+              },
+              "hostAliases": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "hostname": {
+                      "type": "string"
+                    },
+                    "ip": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["hostname", "ip"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "metadata": {
+                "additionalProperties": false,
+                "properties": {
+                  "resolvedAt": {
+                    "$ref": "#/$defs/DateTimeUtc"
+                  },
+                  "runtime": {
+                    "enum": [4],
+                    "type": "number"
+                  },
+                  "source": {
+                    "type": "string"
+                  }
+                },
+                "required": ["resolvedAt", "source", "runtime"],
+                "type": "object"
+              },
+              "mounts": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "readOnly": {
+                      "type": "boolean"
+                    },
+                    "realization": {
+                      "enum": ["passthrough", "accelerated"],
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": ["bind", "tmpfs", "volume"],
+                      "type": "string"
+                    }
+                  },
+                  "required": ["type", "target", "readOnly", "realization"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "name": {
+                "type": "string"
+              },
+              "primary": {
+                "type": "boolean"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "routes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "index": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["index"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "storage": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "readOnly": {
+                      "type": "boolean"
+                    },
+                    "store": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["store", "target", "readOnly"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "type": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "workingDirectory": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "type",
+              "provider",
+              "primary",
+              "environment",
+              "mounts",
+              "storage",
+              "endpoints",
+              "routes",
+              "dependsOn",
+              "hostAliases",
+              "metadata",
+              "extensions"
+            ],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "slug": {
+          "type": "string"
+        },
+        "stores": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "driver": {
+                "type": "string"
+              },
+              "driverOpts": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "name": {
+                "type": "string"
+              },
+              "scope": {
+                "enum": ["service", "app", "global"],
+                "type": "string"
+              }
+            },
+            "required": ["name", "scope"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "slug",
+        "root",
+        "provider",
+        "services",
+        "routes",
+        "networks",
+        "stores",
+        "metadata",
+        "extensions"
+      ],
+      "type": "object"
+    },
+    "AppRef": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": ["user", "global", "scratch"],
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": ["kind", "id", "root"],
+      "type": "object"
+    },
+    "BootstrapLevel": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["none", "minimal", "plugins", "commands", "tooling", "provider", "global", "scratch", "app"],
+      "type": "string"
+    },
+    "GlobalConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "defaultProviderId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "telemetry": {
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "userConfRoot": {
+          "type": "string"
+        },
+        "userDataRoot": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "HostPlatform": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "enum": ["darwin", "linux", "win32", "wsl"],
+      "type": "string"
+    },
+    "LandofileShape": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "providers": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "proxy": {
+          "additionalProperties": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "endpoint": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
+                },
+                "hostname": {
+                  "type": "string"
+                },
+                "pathPrefix": {
+                  "type": "string"
+                },
+                "scheme": {
+                  "enum": ["http", "https", "both"],
+                  "type": "string"
+                }
+              },
+              "required": ["hostname"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "recipe": {
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [4],
+          "type": "number"
+        },
+        "services": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "api": {
+                "enum": [4],
+                "type": "number"
+              },
+              "appMount": {
+                "additionalProperties": false,
+                "properties": {
+                  "excludes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "includes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": ["target"],
+                "type": "object"
+              },
+              "build": {
+                "additionalProperties": false,
+                "properties": {
+                  "app": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "artifact": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "command": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "composeBuild": {
+                "additionalProperties": false,
+                "properties": {
+                  "args": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "context": {
+                    "type": "string"
+                  },
+                  "dockerfile": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": ["context"],
+                "type": "object"
+              },
+              "database": {
+                "type": "string"
+              },
+              "dependsOn": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "endpoints": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "name": {
+                      "type": "string"
+                    },
+                    "port": {
+                      "type": "number"
+                    },
+                    "protocol": {
+                      "enum": ["http", "https", "tcp", "udp", "unix"],
+                      "type": "string"
+                    },
+                    "socketPath": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["protocol"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "entrypoint": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "environment": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "framework": {
+                "type": "string"
+              },
+              "healthcheck": {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  },
+                  "intervalSeconds": {
+                    "type": "number"
+                  },
+                  "kind": {
+                    "enum": ["command", "http", "tcp", "none"],
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "number"
+                  },
+                  "retries": {
+                    "type": "number"
+                  },
+                  "startPeriodSeconds": {
+                    "type": "number"
+                  },
+                  "timeoutSeconds": {
+                    "type": "number"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "hostnames": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "image": {
+                "type": "string"
+              },
+              "mounts": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "excludes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "includes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "source": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        },
+                        "type": {
+                          "enum": ["bind", "tmpfs", "volume"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["target"],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "port": {
+                "type": "number"
+              },
+              "ports": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "primary": {
+                "type": "boolean"
+              },
+              "providers": {
+                "additionalProperties": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "routes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "endpoint": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    "hostname": {
+                      "type": "string"
+                    },
+                    "pathPrefix": {
+                      "type": "string"
+                    },
+                    "scheme": {
+                      "enum": ["http", "https", "both"],
+                      "type": "string"
+                    }
+                  },
+                  "required": ["hostname"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "storage": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "readOnly": {
+                          "type": "boolean"
+                        },
+                        "scope": {
+                          "enum": ["service", "app", "global"],
+                          "type": "string"
+                        },
+                        "store": {
+                          "type": "string"
+                        },
+                        "target": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["store", "target"],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "type": {
+                "type": "string"
+              },
+              "user": {
+                "type": "string"
+              },
+              "volumes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "workingDirectory": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "tooling": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "cmd": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "cmds": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "description": {
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              },
+              "vars": {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "default": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ]
+                        }
+                      },
+                      "required": ["default"],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "sh": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["sh"],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "prompt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["prompt"],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "toolingEngine": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "PluginManifest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "api": {
+          "enum": [4],
+          "type": "number"
+        },
+        "bundled": {
+          "type": "boolean"
+        },
+        "contributes": {
+          "additionalProperties": false,
+          "properties": {
+            "cas": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "commands": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "fileSyncEngines": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "loggers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "providers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "proxies": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "renderers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "serviceFeatures": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "serviceTypes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "templateEngines": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": ["name", "version", "api"],
+      "type": "object"
+    },
+    "ProviderCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "artifactBuild": {
+          "type": "boolean"
+        },
+        "artifactPull": {
+          "type": "boolean"
+        },
+        "bindMountPerformance": {
+          "enum": ["native", "slow", "none"],
+          "type": "string"
+        },
+        "bindMounts": {
+          "type": "boolean"
+        },
+        "buildSecrets": {
+          "type": "boolean"
+        },
+        "buildSsh": {
+          "type": "boolean"
+        },
+        "composeSpec": {
+          "enum": ["none", "portable", "native"],
+          "type": "string"
+        },
+        "copyMounts": {
+          "type": "boolean"
+        },
+        "hostPortPublish": {
+          "enum": ["native", "proxy", "manual", "none"],
+          "type": "string"
+        },
+        "hostReachability": {
+          "enum": ["native", "emulated", "none"],
+          "type": "string"
+        },
+        "multiServiceApply": {
+          "type": "boolean"
+        },
+        "persistentStorage": {
+          "type": "boolean"
+        },
+        "privilegedServices": {
+          "type": "boolean"
+        },
+        "providerExtensions": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rootless": {
+          "type": "boolean"
+        },
+        "routeProvider": {
+          "type": "boolean"
+        },
+        "serviceExec": {
+          "type": "boolean"
+        },
+        "serviceHealth": {
+          "enum": ["native", "lando", "none"],
+          "type": "string"
+        },
+        "serviceLogs": {
+          "type": "boolean"
+        },
+        "sharedCrossAppNetwork": {
+          "type": "boolean"
+        },
+        "tlsCertificates": {
+          "enum": ["native", "lando", "none"],
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifactBuild",
+        "artifactPull",
+        "buildSecrets",
+        "buildSsh",
+        "multiServiceApply",
+        "serviceExec",
+        "serviceLogs",
+        "serviceHealth",
+        "hostReachability",
+        "sharedCrossAppNetwork",
+        "persistentStorage",
+        "bindMounts",
+        "bindMountPerformance",
+        "copyMounts",
+        "hostPortPublish",
+        "routeProvider",
+        "tlsCertificates",
+        "rootless",
+        "privilegedServices",
+        "composeSpec",
+        "providerExtensions"
+      ],
+      "type": "object"
+    },
+    "ProviderId": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "string"
+    },
+    "ServiceInfo": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "api": {
+          "enum": [4],
+          "type": "number"
+        },
+        "app": {
+          "type": "string"
+        },
+        "endpoints": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              },
+              "protocol": {
+                "enum": ["http", "https", "tcp", "udp", "unix"],
+                "type": "string"
+              },
+              "socketPath": {
+                "type": "string"
+              }
+            },
+            "required": ["protocol"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "routes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoint": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "pathPrefix": {
+                "type": "string"
+              },
+              "scheme": {
+                "enum": ["http", "https", "both"],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": ["hostname", "scheme", "service"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "service": {
+          "type": "string"
+        },
+        "status": {
+          "enum": ["unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"],
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": ["app", "service", "api", "type", "provider", "primary", "status"],
+      "type": "object"
+    },
+    "ServiceName": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "type": "string"
+    },
+    "ServicePlan": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "appMount": {
+          "additionalProperties": false,
+          "properties": {
+            "excludes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "includes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "readOnly": {
+              "type": "boolean"
+            },
+            "realization": {
+              "enum": ["passthrough", "accelerated"],
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            }
+          },
+          "required": ["source", "target", "readOnly", "excludes", "includes", "realization"],
+          "type": "object"
+        },
+        "artifact": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "digest": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["ref"],
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "ref"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "args": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "contentHash": {
+                  "type": "string"
+                },
+                "context": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["build"],
+                  "type": "string"
+                },
+                "spec": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "context"],
+              "type": "object"
+            }
+          ]
+        },
+        "certs": {
+          "additionalProperties": false,
+          "properties": {
+            "caId": {
+              "type": "string"
+            },
+            "cn": {
+              "type": "string"
+            },
+            "sans": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["cn", "sans", "caId"],
+          "type": "object"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "dependsOn": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "condition": {
+                "enum": ["started", "healthy"],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": ["service", "condition"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "endpoints": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "port": {
+                "type": "number"
+              },
+              "protocol": {
+                "enum": ["http", "https", "tcp", "udp", "unix"],
+                "type": "string"
+              },
+              "socketPath": {
+                "type": "string"
+              }
+            },
+            "required": ["protocol"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "environment": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "extensions": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "healthcheck": {
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "intervalSeconds": {
+              "type": "number"
+            },
+            "kind": {
+              "enum": ["command", "http", "tcp", "none"],
+              "type": "string"
+            },
+            "port": {
+              "type": "number"
+            },
+            "retries": {
+              "type": "number"
+            },
+            "startPeriodSeconds": {
+              "type": "number"
+            },
+            "timeoutSeconds": {
+              "type": "number"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["kind", "intervalSeconds", "timeoutSeconds", "retries"],
+          "type": "object"
+        },
+        "hostAliases": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "type": "string"
+              },
+              "ip": {
+                "type": "string"
+              }
+            },
+            "required": ["hostname", "ip"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": false,
+          "properties": {
+            "resolvedAt": {
+              "$ref": "#/$defs/DateTimeUtc"
+            },
+            "runtime": {
+              "enum": [4],
+              "type": "number"
+            },
+            "source": {
+              "type": "string"
+            }
+          },
+          "required": ["resolvedAt", "source", "runtime"],
+          "type": "object"
+        },
+        "mounts": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "readOnly": {
+                "type": "boolean"
+              },
+              "realization": {
+                "enum": ["passthrough", "accelerated"],
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "type": {
+                "enum": ["bind", "tmpfs", "volume"],
+                "type": "string"
+              }
+            },
+            "required": ["type", "target", "readOnly", "realization"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "name": {
+          "type": "string"
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "routes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "index": {
+                "type": "number"
+              }
+            },
+            "required": ["index"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "storage": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "readOnly": {
+                "type": "boolean"
+              },
+              "store": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              }
+            },
+            "required": ["store", "target", "readOnly"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "type": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "workingDirectory": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "provider",
+        "primary",
+        "environment",
+        "mounts",
+        "storage",
+        "endpoints",
+        "routes",
+        "dependsOn",
+        "hostAliases",
+        "metadata",
+        "extensions"
+      ],
+      "type": "object"
+    }
+  }
+}

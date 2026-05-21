@@ -12,6 +12,16 @@ bun run lint
 bun run test:unit
 ```
 
+## Generated schema and bundled-codegen gates
+
+CI fails if generated schema snapshots or bundled plugin/recipe tables drift. Update all generated outputs with the single repo command:
+
+```bash
+bun run codegen
+```
+
+For focused local checks, the generated CI jobs run `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, and `bun run codegen:bundled-recipes`, then verify the generated files with `git diff --exit-code`.
+
 ## Linux x64 binary build
 
 ```bash
@@ -47,7 +57,7 @@ On a failed provider integration run, download diagnostics from `Actions > ci > 
 
 ## Branch protection
 
-The `main` branch must be protected in GitHub with required status checks enabled. The required status checks are `static-checks`, `build-linux-x64`, and `provider-integration-linux-x64`; all three must pass before a pull request can merge to `main`.
+The `main` branch must be protected in GitHub with required status checks enabled. The required status checks are `static-checks`, `schema-snapshot`, `bundled-codegen`, `build-linux-x64`, and `provider-integration-linux-x64`; all five must pass before a pull request can merge to `main`.
 
 ## Bun upgrade smoke checks
 
