@@ -167,6 +167,35 @@ describe("GlobalConfig (MVP)", () => {
   });
 });
 
+describe("ServiceConfig — ports numeric coercion (bugbot PR#28 finding 2)", () => {
+  test('decodes ports: [8080] (bare integer) as ["8080"]', () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { image: "node:20", ports: [8080] } },
+    });
+    const web = decoded.services?.[ServiceName.make("web")];
+    expect(web?.ports).toEqual(["8080"]);
+  });
+
+  test('decodes ports: ["8080:80"] (string mapping) unchanged', () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { image: "node:20", ports: ["8080:80"] } },
+    });
+    const web = decoded.services?.[ServiceName.make("web")];
+    expect(web?.ports).toEqual(["8080:80"]);
+  });
+
+  test('decodes ports: [8080, "9000:90"] (mixed numeric + string) as ["8080", "9000:90"]', () => {
+    const decoded = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { image: "node:20", ports: [8080, "9000:90"] } },
+    });
+    const web = decoded.services?.[ServiceName.make("web")];
+    expect(web?.ports).toEqual(["8080", "9000:90"]);
+  });
+});
+
 describe("LandofileShape — tooling: Alpha schema", () => {
   test("decodes tooling tasks with cmd, cmds, service, description, and summary", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({

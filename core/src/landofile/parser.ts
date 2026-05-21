@@ -49,7 +49,21 @@ interface ParsedLine {
 const parseError = (filePath: string, message: string, line?: number, column?: number): LandofileParseError =>
   new LandofileParseErrorClass({ message, filePath, line, column });
 
-const stripComment = (line: string): string => line.replace(/\s+#.*$/, "");
+const stripComment = (line: string): string => {
+  let inSingle = false;
+  let inDouble = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+    } else if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+    } else if (ch === "#" && !inSingle && !inDouble && i > 0 && /\s/.test(line.charAt(i - 1))) {
+      return line.slice(0, i).trimEnd();
+    }
+  }
+  return line;
+};
 
 const parseInlineArray = (value: string, filePath: string, line: number): ReadonlyArray<unknown> => {
   const inner = value.slice(1, -1).trim();

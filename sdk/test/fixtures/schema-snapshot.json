@@ -1004,7 +1004,14 @@
               },
               "ports": {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    }
+                  ]
                 },
                 "type": "array"
               },
