@@ -5203,3 +5203,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Bugbot finding fd2daf18-fb1f-4675-befd-9e5e5fedc606 was real: the npm dev-tag grep regex in `scripts/build-release-workflow.ts` used single `\.` escapes inside a TypeScript template literal, so generated `release.yml` matched wildcard dots.
 - Fix: escaped the generator backslashes, regenerated `.github/workflows/release.yml`, and added codegen test coverage asserting the rendered grep keeps literal-dot escapes.
 ---
+
+## [2026-05-21 12:20 CDT] - Babysit
+- PR: #131 https://github.com/AaronFeledy/core4/pull/131
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot regex-escape finding addressed by triage commits, then Bugbot passed on the new HEAD)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main` at `5b364fc`; remote story branch deleted; local story branch deleted if present; `spec/alpha/progress.txt` has this babysit note appended
+---
