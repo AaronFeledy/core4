@@ -43,7 +43,7 @@ If the build job fails after producing the binary, inspect it from GitHub Action
 
 ## Provider integration
 
-Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Keep `--parallel` and `--isolate` for focused experiments until shared fixtures and plugin class identity are isolated per test.
+Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Use `--parallel` and `--isolate` only for focused local experiments.
 
 Use the same Podman socket pattern as CI:
 
