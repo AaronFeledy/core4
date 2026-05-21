@@ -1,3 +1,4 @@
+import { homedir } from "node:os";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 
 import { Schema } from "effect";
@@ -31,7 +32,14 @@ const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
   }
   const isPathLike = rawSource.startsWith(".") || rawSource.startsWith("/") || rawSource.startsWith("~");
   if (isPathLike) {
-    const source = isAbsolute(rawSource) ? rawSource : resolvePath(appRoot, rawSource);
+    // Docker Compose expands `~` to the user's home directory at runtime.
+    // Node's `path.resolve` does NOT expand `~`, so we must do it ourselves
+    // before resolving — otherwise `~/data` becomes `<appRoot>/~/data`.
+    // We only handle `~` alone and `~/...`; `~user/...` is unsupported by
+    // Docker Compose itself and is out of scope.
+    const expanded =
+      rawSource === "~" ? homedir() : rawSource.startsWith("~/") ? homedir() + rawSource.slice(1) : rawSource;
+    const source = isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
     return { type: "bind", source, target: rawTarget, readOnly };
   }
   return { type: "volume", source: rawSource, target: rawTarget, readOnly };
