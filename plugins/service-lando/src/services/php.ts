@@ -63,7 +63,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => (
     const appName = appNameFor(input);
     const serviceType = `php:${resolvedVersion}`;
     const webroot = frameworkWebrootPath(framework);
-    const workingDirectory = service.workingDirectory ?? PortablePath.make(frameworkWebrootPath(framework));
+    const workingDirectory = service.workingDirectory ?? PortablePath.make(webroot);
     const environment = buildLandoEnv({
       serviceName: name,
       serviceType,
