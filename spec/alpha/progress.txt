@@ -5144,3 +5144,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Planning-doc leakage scan over branch-changed source/test comments passed; the `scripts/codegen.ts` stage-style docblock was reduced to behavior-only wording, and no comments cite planning docs, phases, PRDs, story IDs, or section markers.
 - Behavior review: cleanup changes only comments. Workflow generation, release promotion behavior, imports, public APIs, error handling, side effects, return values, fixtures, and assertions are unchanged.
 - Verification run and result: `lsp_diagnostics` for changed TS files could not run because `typescript-language-server` is not installed; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; `PATH="$HOME/.bun/bin:$PATH" bun run build` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/scripts/codegen-ci.test.ts core/test/build/ci-workflow.test.ts` passed (12 pass / 0 fail); isolated compiled CLI tests `core/test/cli/version.test.ts`, `core/test/build/compile.test.ts`, and `core/test/cli/setup.test.ts` passed. Full final `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed (1057 pass / 11 skip / 0 fail / 5579 expects); earlier full-suite retries exposed the existing compiled-build interaction, but the same suite passed after restoring the cleanup and rerunning from a clean process state.
+
+## [2026-05-21 11:11 CDT] - Push
+- Branch: us-051-dev-prerelease-linux-artifact
+- Push: pushed
+- Commit(s): 760afde chore: remove AI slop; 7606b4b feat: Promote Linux x64 workflow artifact to dev prerelease
+- PR: #130 https://github.com/AaronFeledy/core4/pull/130 (created)
+---
