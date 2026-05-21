@@ -4993,3 +4993,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior review: cleanup changes only documentation prose, test display names, and local variable names. Imports, public APIs, error handling, side effects, return values, and assertions are unchanged.
 - Verification run and result: `lsp_diagnostics sdk/test/library/sdk-backward-compatibility.test.ts` could not run because `typescript-language-server` is not installed; `lsp_diagnostics sdk/API_COMPATIBILITY.md` clean; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/library/sdk-backward-compatibility.test.ts` passed (3 pass / 0 fail / 30 expects); `PATH="$HOME/.bun/bin:$PATH" bun run build` passed; full serial `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed once (1050 pass / 11 skip / 0 fail / 5508 expects), while subsequent full-suite reruns hit the known unrelated compiled-build race in `core/test/cli/{aliases,shellenv}.test.ts` / build-gate tests. Direct `bun run --filter='@lando/core' build:compile` passed after the flake.
 ---
+
+## [2026-05-21 08:08 CDT] - Push
+- Branch: us-048-sdk-backward-compatible
+- Push: pushed
+- Commit(s): 90f56c0 chore: remove AI slop; a7c8718 fix(sdk): catch helper exports like defineLandofile in compat guard; 22433fc feat: Keep SDK additions backward-compatible
+- PR: #127 https://github.com/AaronFeledy/core4/pull/127 (created)
+---
