@@ -119,9 +119,5 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
     //   stop     180 s
     //   ──────────────
     //   total    900 s  →  add 100 s cleanup margin  =  1000 s
-    //
-    // 600_000 ms (10 min) covers the three guaranteed-long commands
-    // (build + start + stop = 540 s) plus init/info defaults and a margin.
-    // Raise this value if additional long-running steps are added.
-  }, 600_000);
+  }, 1_000_000);
 });
