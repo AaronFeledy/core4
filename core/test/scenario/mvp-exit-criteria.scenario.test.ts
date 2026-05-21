@@ -110,5 +110,18 @@ describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
         expect(stopResult.stdout).toContain("stopped: mvp-exit");
       }
     });
-  }, 300_000);
+    // Worst-case sequential per-command budget when shouldBuildBinary is true:
+    //   codegen  120 s (default runCommand timeout)
+    //   build    180 s
+    //   init     120 s (default)
+    //   start    180 s
+    //   info     120 s (default)
+    //   stop     180 s
+    //   ──────────────
+    //   total    900 s  →  add 100 s cleanup margin  =  1000 s
+    //
+    // 600_000 ms (10 min) covers the three guaranteed-long commands
+    // (build + start + stop = 540 s) plus init/info defaults and a margin.
+    // Raise this value if additional long-running steps are added.
+  }, 600_000);
 });
