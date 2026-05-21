@@ -5314,3 +5314,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+## [2026-05-21 18:43 UTC] - US-055
+- Implemented branch-protection assertions that parse the documented required-check list and verify every required Alpha CI check maps to a generated CI workflow job id.
+- Files changed: `core/test/build/branch-protection.test.ts`, `docs/ci-runbook.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun test core/test/build/branch-protection.test.ts core/test/build/ci-runbook.test.ts core/test/build/ci-workflow.test.ts` passed (10 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1064 pass, 11 skip).
+- **Learnings for future iterations:**
+  - Branch protection is documented policy, not config-as-code: `docs/ci-runbook.md` is the no-network source of truth, and `core/test/build/branch-protection.test.ts` should keep it aligned with generated CI job ids.
+  - Workflow job names are the branch-protectable check names; keep docs, `.github/workflows/ci.yml`, and `scripts/build-ci-workflow.ts` in lock-step through `bun run codegen` when jobs change.
+---
