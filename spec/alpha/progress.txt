@@ -4710,3 +4710,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Host-safety cleanup: stopped a stray host `bun test` / `core/bin/lando.ts` run left by delegated triage; sandbox should be used for any host-altering Lando execution.
 - Result: no new commit was pushed; local triage edits remain uncommitted and unverified, so PR #123 remains deferred.
 ---
+
+## [2026-05-20 21:31 CDT] - Push
+- Branch: us-043-plugin-command-index-cache
+- Push: pushed (force-with-lease refresh; local branch was rebased/synced ahead of diverged origin)
+- Commit(s): 7cfb8f0 feat: Implement plugin command index cache; d5705ab fix: Harden app command cache refresh safety; b0c7575 chore: remove AI slop; ed97f1c fix: invalidate app command cache on entry changes; fe2d9dc fix: remove dead plugin cache conditional; f2e843f fix: dedupe Landofile discovery in app command cache writer; 391b774 docs: record PR #123 Bugbot triage follow-up
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123 (existing)
+---
