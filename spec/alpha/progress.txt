@@ -5067,3 +5067,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: no
 - Remaining local state, if any: still on `us-049-ci-schema-codegen-gates`; `spec/alpha/progress.txt` has this babysit note appended
 ---
+
+## [2026-05-21 09:38 CDT] - Sync
+- Previous branch: us-049-ci-schema-codegen-gates
+- Previous PR: #128 https://github.com/AaronFeledy/core4/pull/128
+- Action: dispatched leftover push (branch had 3 unpushed commits, no PR). Remote was HTTPS-only which lacked workflow scope; switched remote to SSH (git@github.com:AaronFeledy/core4.git) as git plumbing fix. Push succeeded via SSH. PR #128 already existed (auto-created by GitHub). CI watched to completion — all 6 checks passed (static-checks, schema-snapshot, bundled-codegen, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot all SUCCESS). Squash-merged with --delete-branch. Rebased local progress-log commit onto merged main. Fast-path progress.txt update (sync-progress-fastpath stash) also committed to main.
+- Local main updated: yes (origin/main = 0eb58a0)
+- Branch after sync: main
+- Stash created: yes (sync-progress-fastpath, popped and committed)
+---
