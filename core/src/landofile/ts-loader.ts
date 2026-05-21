@@ -91,7 +91,7 @@ const checkImport = (
   if (isRelative(importPath)) {
     const resolved = resolve(dirname(filePath), importPath);
     const rel = relative(appRoot, resolved);
-    if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+    if (rel.startsWith("..") || isAbsolute(rel)) {
       return violationFor(filePath, importPath, "relative import resolves outside the app root");
     }
   }

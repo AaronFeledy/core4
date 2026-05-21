@@ -428,6 +428,87 @@ describe("defineLandofile identity helper", () => {
   });
 });
 
+describe("LandofileServiceLive — TS form appRoot boundary (PR #106 regression)", () => {
+  test('`.lando.ts` at appRoot importing "." is allowed (resolves exactly to appRoot)', async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, "index.ts"), "export const x = 1;\n");
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          'import "."',
+          'export default { name: "dot-import-app", services: { web: { image: "node:lts" } } };',
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).not.toBeInstanceOf(LandofileSandboxError);
+    });
+  });
+
+  test('`.lando.ts` at appRoot importing "./" is allowed (normalises to appRoot)', async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, "index.ts"), "export const x = 1;\n");
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          'import "./"',
+          'export default { name: "dotslash-import-app", services: { web: { image: "node:lts" } } };',
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).not.toBeInstanceOf(LandofileSandboxError);
+    });
+  });
+
+  test('relative import escaping appRoot via ".." is still rejected', async () => {
+    await withTempCwd(async (dir) => {
+      const appDir = join(dir, "app");
+      await mkdir(appDir, { recursive: true });
+      await writeFile(join(dir, "secret.ts"), "export const secret = 42;\n");
+      await writeFile(
+        join(appDir, ".lando.ts"),
+        [
+          'import "../secret.ts";',
+          'export default { name: "escape-app", services: { web: { image: "node:lts" } } };',
+          "",
+        ].join("\n"),
+      );
+      process.chdir(appDir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(LandofileSandboxError);
+      if (failure instanceof LandofileSandboxError) {
+        expect(failure.violation).toContain("../secret.ts");
+      }
+    });
+  });
+
+  test('".." import from appRoot (escapes to parent dir) is still rejected', async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          'import "..";',
+          'export default { name: "dotdot-app", services: { web: { image: "node:lts" } } };',
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+      const exit = await discoverExit();
+      const failure = failureFromExit(exit);
+      expect(failure).toBeInstanceOf(LandofileSandboxError);
+      if (failure instanceof LandofileSandboxError) {
+        expect(failure.violation).toBe("..");
+      }
+    });
+  });
+});
+
 describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
   test("TS export with top-level `includes:` surfaces NotImplementedError matching the YAML path", async () => {
     await withTempCwd(async (dir) => {
