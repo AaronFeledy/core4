@@ -1,6 +1,6 @@
 # SDK compatibility guard
 
-`@lando/sdk` is the stable plugin-author surface. Compatibility tests freeze the MVP schema names and service tag signatures, then require every Alpha addition to remain additive and listed here.
+`@lando/sdk` is the stable plugin-author surface. Compatibility tests freeze the MVP schema names and service tag signatures; Alpha additions must remain additive and be listed here.
 
 ## Additive Alpha schema exports
 

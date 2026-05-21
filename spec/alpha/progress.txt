@@ -4985,3 +4985,11 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Gotchas encountered: `sdk/test/` is not covered by `tsc -b`; compatibility tests need Bun execution plus lint to catch test-file issues.
   - Useful context: new additive SDK schemas/tags must be listed in `sdk/API_COMPATIBILITY.md` and, for MVP-surface changes, intentionally update `sdk/test/fixtures/sdk-mvp-surface.json`.
 ---
+
+## [2026-05-21 08:05 CDT] - US-048 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: wording-only cleanup in `sdk/API_COMPATIBILITY.md` and `sdk/test/library/sdk-backward-compatibility.test.ts`; `sdk/AGENTS.md`, `sdk/test/fixtures/sdk-mvp-surface.json`, `spec/alpha/prd.json`, and existing `spec/alpha/progress.txt` needed no safe cleanup.
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comments cite planning docs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup changes only documentation prose, test display names, and local variable names. Imports, public APIs, error handling, side effects, return values, and assertions are unchanged.
+- Verification run and result: `lsp_diagnostics sdk/test/library/sdk-backward-compatibility.test.ts` could not run because `typescript-language-server` is not installed; `lsp_diagnostics sdk/API_COMPATIBILITY.md` clean; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/library/sdk-backward-compatibility.test.ts` passed (3 pass / 0 fail / 30 expects); `PATH="$HOME/.bun/bin:$PATH" bun run build` passed; full serial `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed once (1050 pass / 11 skip / 0 fail / 5508 expects), while subsequent full-suite reruns hit the known unrelated compiled-build race in `core/test/cli/{aliases,shellenv}.test.ts` / build-gate tests. Direct `bun run --filter='@lando/core' build:compile` passed after the flake.
+---

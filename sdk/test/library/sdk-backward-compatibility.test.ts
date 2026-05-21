@@ -97,7 +97,7 @@ const documentedNames = (heading: string): ReadonlyArray<string> => {
 };
 
 describe("SDK backward-compatibility surface", () => {
-  test("keeps MVP schema exports available while allowing additive Alpha exports", () => {
+  test("keeps frozen schema exports available while allowing documented additions", () => {
     const exportedSchemaNames = Object.keys(sdkSchema).sort();
 
     for (const schemaName of frozenSurface.schemaNames) {
@@ -105,7 +105,7 @@ describe("SDK backward-compatibility surface", () => {
     }
   });
 
-  test("keeps MVP service tag method signatures stable", () => {
+  test("keeps frozen service tag method signatures stable", () => {
     const serviceTags = currentServiceTagSignatures();
 
     for (const [tagName, expectedSignatures] of Object.entries(frozenSurface.serviceTags)) {
@@ -113,18 +113,18 @@ describe("SDK backward-compatibility surface", () => {
     }
   });
 
-  test("documents every additive Alpha schema export and service tag", () => {
-    const mvpSchemaNames = new Set(frozenSurface.schemaNames);
-    const alphaSchemaNames = Object.keys(sdkSchema)
-      .filter((schemaName) => !mvpSchemaNames.has(schemaName))
+  test("documents every additive schema export and service tag", () => {
+    const frozenSchemaNames = new Set(frozenSurface.schemaNames);
+    const additiveSchemaNames = Object.keys(sdkSchema)
+      .filter((schemaName) => !frozenSchemaNames.has(schemaName))
       .sort();
 
-    const mvpServiceTagNames = new Set(Object.keys(frozenSurface.serviceTags));
-    const alphaServiceTagNames = Object.keys(currentServiceTagSignatures())
-      .filter((tagName) => !mvpServiceTagNames.has(tagName))
+    const frozenServiceTagNames = new Set(Object.keys(frozenSurface.serviceTags));
+    const additiveServiceTagNames = Object.keys(currentServiceTagSignatures())
+      .filter((tagName) => !frozenServiceTagNames.has(tagName))
       .sort();
 
-    expect(alphaSchemaNames).toEqual(documentedNames("Additive Alpha schema exports"));
-    expect(alphaServiceTagNames).toEqual(documentedNames("Additive Alpha service tags"));
+    expect(additiveSchemaNames).toEqual(documentedNames("Additive Alpha schema exports"));
+    expect(additiveServiceTagNames).toEqual(documentedNames("Additive Alpha service tags"));
   });
 });
