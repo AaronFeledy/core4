@@ -4679,3 +4679,34 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - CI triage: Cursor Bugbot check was neutral/skipping; no failing CI job to fix.
 - Review triage: accepted Bugbot finding that app-command cache freshness ignored the current discovered command entries, so a refresh could reuse a cache after .bun.sh script-backed command additions/removals/front-matter changes that affect the discovered entries.
 - Fix: app-command cache payloads now include an entries fingerprint and stale-check against the entries being written/read, with a regression test for discovered entry changes.
+
+## [2026-05-20 18:48 CDT] - Babysit
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- CI outcome: fail (Cursor Bugbot still pending on latest head f667dd7; previous Bugbot runs reported issues that were fixed in dd08bf9 and f667dd7)
+- Review feedback: fixed (accepted Bugbot cache freshness issue and dead plugin cache conditional; both delegated fixes were committed and pushed)
+- Triage rounds used: 2
+- Merge: deferred (latest Cursor Bugbot check has not completed; do not merge while pending)
+- Local main / branch refreshed: no
+- Remaining local state, if any: local branch tracks origin/us-043-plugin-command-index-cache at f667dd7; this babysit report is appended locally in spec/alpha/progress.txt and not pushed to avoid restarting pending Bugbot
+---
+
+## [2026-05-20] - PR #123 Bugbot Triage Follow-up
+- CI triage: Cursor Bugbot check is neutral/skipping; no failing CI job to fix.
+- Review triage: accepted unresolved Bugbot finding that the app-command cache write path redundantly rediscovered and statted the same Landofile before checking the existing cache.
+- Fix: app-command cache source metadata is now resolved once per write and passed into the read freshness check, while public reads still resolve their own source metadata.
+- Not changed: previously resolved Bugbot findings for entries freshness and plugin cache path conditional were already addressed by prior commits.
+
+## [2026-05-20 19:02 CDT] - Babysit
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- CI outcome: fail (Cursor Bugbot completed neutral/skipping, but latest Bugbot review reported one unresolved potential bug: redundant Landofile discovery/stat in command-index-writer; PR mergeability remains CONFLICTING/DIRTY)
+- Review feedback: fixed earlier findings; deferred latest Bugbot finding because delegated Sisyphus-Junior team triage left uncommitted local changes and did not complete checks/commit/push during this babysit turn
+- Triage rounds used: 3
+- Merge: deferred (unresolved Bugbot feedback remains, no clean pushed HEAD after triage, and PR is not mergeable)
+- Local main / branch refreshed: no
+- Remaining local state, if any: branch remains us-043-plugin-command-index-cache at f667dd7; local uncommitted changes in core/src/cache/command-index-writer.ts and spec/alpha/progress.txt; team run e1282eb4-97c0-4923-929b-388f4aaad95f task 1 remains in_progress for triage-agent
+---
+
+## [2026-05-20 19:05 CDT] - Babysit Update
+- Host-safety cleanup: stopped a stray host `bun test` / `core/bin/lando.ts` run left by delegated triage; sandbox should be used for any host-altering Lando execution.
+- Result: no new commit was pushed; local triage edits remain uncommitted and unverified, so PR #123 remains deferred.
+---
