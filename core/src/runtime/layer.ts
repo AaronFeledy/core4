@@ -1,20 +1,19 @@
 /**
- * `LandoRuntimeLive` composition + `makeLandoRuntime` factory.
+ * Runtime composition and `makeLandoRuntime` factory.
  *
- * The composed `LandoRuntimeLive` Layer is built once at the imperative
- * shell — the OCLIF command's `run()` method (CLI) or the embedding host's
- * `Effect.provide(runtime)` call (library) — and provided to the program.
- * Intermediate layer composition is forbidden in core except for testing.
+ * The composed `LandoRuntimeLive` layer is built once at the host boundary
+ * and then provided to the program. Intermediate layer composition stays out
+ * of core except in tests.
  *
- * **Factory contract**:
- * - Returns a single `Layer` that satisfies every default service tag.
- * - Validates options with Effect Schema; failure channel includes
+ * Factory behavior:
+ * - Returns one `Layer` that satisfies the default service tags.
+ * - Validates options with Effect Schema and can fail with
  *   `LandoRuntimeBootstrapError`.
- * - Safe to call multiple times in one process; each call yields an
- *   independent runtime with its own caches, plugin registry, event bus.
+ * - Is safe to call multiple times in one process; each call gets isolated
+ *   caches, plugin registry, and event bus state.
  * - Does not mutate process-global state unless `installSignalHandlers: true`.
- * - Runs the same bootstrap sequence up to the requested level.
- * - Layer's outer scope owns all resource handles.
+ * - Runs the requested bootstrap sequence.
+ * - Keeps resource ownership in the layer's outer scope.
  */
 import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
 
@@ -54,9 +53,7 @@ import { BootstrapLevel } from "./bootstrap.ts";
 // - signal handlers: not installed (CLI: installed)
 // - bootstrap: required option (CLI: declared per command)
 
-/**
- * Plugin discovery toggles for embedding hosts.
- */
+/** Plugin discovery toggles for embedding hosts. */
 export const EmbeddingDiscoveryPolicy = Schema.Struct({
   bundled: Schema.optional(Schema.Boolean),
   system: Schema.optional(Schema.Boolean),
@@ -67,30 +64,17 @@ export const EmbeddingDiscoveryPolicy = Schema.Struct({
 /**
  * Plugin policy for embedding hosts.
  *
- * The runtime treats `layers`, `manifests`, and discovery-found plugins as
- * a single contribution graph subject to selection precedence and conflict
- * rules (`conflicts:`).
+ * The runtime treats `layers`, `manifests`, and discovered plugins as one
+ * contribution graph subject to selection precedence and conflict rules.
  */
 export const EmbeddingPluginPolicy = Schema.Struct({
-  /**
-   * Direct Effect Layers. Most lightweight option. Each must be a
-   * `Layer<unknown, unknown, never>` that satisfies one or more pluggable
-   * abstractions.
-   */
+  /** Direct Effect Layers. Each must satisfy one or more pluggable abstractions. */
   layers: Schema.optional(Schema.Array(Schema.Unknown)),
-  /**
-   * Pre-resolved plugin manifests + entry modules. Goes through the full
-   * `PluginRegistry` pipeline (validation, contribution graph, subscribers).
-   */
+  /** Pre-resolved plugin manifests and entry modules. */
   manifests: Schema.optional(Schema.Array(Schema.Unknown)),
-  /**
-   * Opt-in to the standard discovery chain. Defaults: all `false` in library
-   * mode, all `true` in CLI mode.
-   */
+  /** Opt into the standard discovery chain. Defaults are `false` in library mode and `true` in CLI mode. */
   discovery: Schema.optional(EmbeddingDiscoveryPolicy),
-  /**
-   * Force-disable plugins by name regardless of source.
-   */
+  /** Force-disable plugins by name regardless of source. */
   disable: Schema.optional(Schema.Array(Schema.String)),
 });
 
@@ -105,9 +89,7 @@ const GlobalConfigOverrides = Schema.Struct({
   ),
 });
 
-/**
- * `LandoRuntimeOptions` — options bag.
- */
+/** Runtime options bag. */
 export const LandoRuntimeOptions = Schema.Struct({
   /** Bootstrap depth. Default `"app"` for embedding. */
   bootstrap: Schema.optional(BootstrapLevel),
@@ -124,10 +106,7 @@ export const LandoRuntimeOptions = Schema.Struct({
   telemetry: Schema.optional(Schema.Boolean),
   /** Cache root override. Defaults to `<userCacheRoot>/lando`. */
   cacheRoot: Schema.optional(Schema.String),
-  /**
-   * Signal handling: the host owns SIGINT/SIGTERM by default. Set true to
-   * install the same handler the CLI uses.
-   */
+  /** Signal handling: the host owns SIGINT/SIGTERM by default. Set true to install the same handler the CLI uses. */
   installSignalHandlers: Schema.optional(Schema.Boolean),
 });
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
@@ -305,10 +284,8 @@ const bootstrapError = (message: string, cause: unknown): LandoRuntimeBootstrapE
 /**
  * `makeLandoRuntime`.
  *
- * Builds the runtime Layer for the requested bootstrap depth. Service
- * implementations are intentionally skeletal until the later foundation and
- * provider stories fill in their behavior; this factory owns only composition
- * and option validation.
+ * Builds the runtime layer for the requested bootstrap depth. This factory
+ * owns composition and option validation only.
  */
 export function makeLandoRuntime(options: { readonly bootstrap: "minimal" }): Layer.Layer<
   MinimalRuntimeServices,
