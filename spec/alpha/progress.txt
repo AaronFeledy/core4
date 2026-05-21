@@ -4912,3 +4912,19 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - `makeLandoRuntime({ config: ... })` validates the option shape but does not currently override `ConfigServiceLive`; tests that need isolated config roots should use the `LANDO_USER_CONF_ROOT` / `LANDO_USER_DATA_ROOT` env overlay and restore it afterward.
   - Keep Effect-bearing command operation exports in `@lando/core/cli/operations`, not `@lando/core/cli`, to preserve the fast-path static import boundary.
 ---
+
+## [2026-05-21 07:35 CDT] - US-047 Review
+- Reviewed commit `a2b997b` against PRD-Alpha-06 §US-047. Ran 3-agent review-work (goal verifier Oracle, code-quality Oracle, context miner) in parallel.
+- `review-work` findings — fixed:
+  - Code quality (Oracle): `invokeOperation` silently dropped defects on mixed Causes (`Sequential(Fail(E), Die(d))` returned `{ok:false}` and lost the defect). Restricted the typed-failure branch to *pure* failures (`Cause.failureOption` Some AND no defects AND not interrupted); mixed/defect/interrupt causes now escape as defects via the existing `throw new Error(Cause.pretty(...))` path. Added a defect+interrupt+mixed-cause unit test.
+- `review-work` findings — rejected:
+  - Code quality (Oracle): "Prefer `Effect.matchCauseEffect` over `Effect.exit + Effect.map + throw`." Rejected as a stylistic preference; the current shape matches existing operation wrappers in the repo (e.g. `core/src/cli/commands/init.ts`) and the explicit pure-failure guard is now self-documenting. The `never` error channel remains type-sound because defects propagate out-of-band.
+  - Context mining (general): "Operations subpath omits `doctor`/`pluginAdd`/`pluginRemove`/`bun`/`x` exports vs spec §16.7." Rejected as out of scope. The re-export list is identical to HEAD~1 — the gap is pre-existing (introduced when commit `023a4aa` moved Effect-bearing exports out of `cli/index.ts`). US-047 only added the `invokeOperation` helper; the PRD AC requires "*a* supported command" (singular), which the test demonstrates. Expanding the export surface is a separate story.
+  - Context mining (general): "`spec/09-embedding.md` still documents `@lando/core/cli` subpath with `appStart`/`appInfo` naming." Rejected as out of scope. Spec/implementation divergence is pre-existing and tracked across the chapter; not a US-047 regression.
+- Files changed: `core/src/cli/operations.ts` (3 explicit Cause-shape checks + 4-line necessary comment), `core/test/library/cli-operations-export.test.ts` (added defect/interrupt/mixed-cause test).
+- Side effect during review: an earlier interrupted test run left `package.json` mutated (the `core/test/build/biome.test.ts` lint-violation fixture); restored via `git checkout package.json`.
+- Verification run: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passes; `bun run lint` passes; `bun test` 1047 pass / 11 skip / 0 fail.
+- **Learnings for future iterations:**
+  - `Cause.failureOption` returns `Some(E)` even when the same Cause contains defects or interrupts. Any host-side wrapper that converts `Exit.Failure` to a typed-error result MUST additionally check `Cause.dieOption` and `Cause.isInterrupted` before classifying as a clean typed failure, otherwise defect/interrupt information is silently dropped.
+  - The `core/test/build/biome.test.ts` fixture mutates `package.json` in place; interrupting the test run leaves the working tree dirty. After any aborted `bun test`, `git diff package.json` is a quick sanity check.
+---

@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
 import { makeLandoRuntime } from "@lando/core";
 import {
@@ -80,5 +80,27 @@ describe("@lando/core/cli/operations package export", () => {
       await rm(userCacheRoot, { recursive: true, force: true });
       await rm(userConfRoot, { recursive: true, force: true });
     }
+  });
+
+  test("propagates defects and interrupts instead of classifying them as typed failures", async () => {
+    const defect = new Error("boom");
+    const defectExit = await Effect.runPromiseExit(invokeOperation(Effect.die(defect)));
+    expect(Exit.isFailure(defectExit)).toBe(true);
+    if (Exit.isFailure(defectExit)) {
+      expect(Cause.dieOption(defectExit.cause)._tag).toBe("Some");
+    }
+
+    const interruptExit = await Effect.runPromiseExit(invokeOperation(Effect.interrupt));
+    expect(Exit.isFailure(interruptExit)).toBe(true);
+    if (Exit.isFailure(interruptExit)) {
+      expect(Cause.failureOption(interruptExit.cause)._tag).toBe("None");
+    }
+
+    const mixedExit = await Effect.runPromiseExit(
+      invokeOperation(
+        Effect.failCause(Cause.parallel(Cause.fail("typed-error"), Cause.die(new Error("inner-defect")))),
+      ),
+    );
+    expect(Exit.isFailure(mixedExit)).toBe(true);
   });
 });

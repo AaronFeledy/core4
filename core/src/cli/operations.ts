@@ -39,8 +39,14 @@ export const invokeOperation = <A, E, R>(
       };
     }
 
+    // Only treat the exit as a host-consumable typed failure when the Cause
+    // is *exclusively* a typed failure. Mixed causes (typed failure + defect
+    // or interrupt) are propagated as defects so callers never silently lose
+    // defect / interrupt information.
     const failure = Cause.failureOption(exit.cause);
-    if (failure._tag === "Some") {
+    const hasDefect = Cause.dieOption(exit.cause)._tag === "Some";
+    const hasInterrupt = Cause.isInterrupted(exit.cause);
+    if (failure._tag === "Some" && !hasDefect && !hasInterrupt) {
       const output = options.renderError?.(failure.value);
       return {
         ok: false,
