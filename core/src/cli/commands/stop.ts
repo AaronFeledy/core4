@@ -34,8 +34,9 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-// biome-ignore lint/suspicious/noEmptyInterface: fields land with implementation
-export interface StopAppOptions {}
+export interface StopAppOptions {
+  readonly signal?: AbortSignal;
+}
 
 export interface StopAppResult {
   readonly app: string;
@@ -69,7 +70,7 @@ export const renderStopAppResult = (result: StopAppResult): string => {
 };
 
 export const stopApp = (
-  _options: StopAppOptions = {},
+  options: StopAppOptions = {},
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -105,7 +106,14 @@ export const stopApp = (
       );
     }
 
-    yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
+    yield* provider.destroy(
+      { app: plan.id, plan },
+      {
+        volumes: false,
+        removeState: false,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+    );
 
     for (const service of services) {
       yield* events.publish(

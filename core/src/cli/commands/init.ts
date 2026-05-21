@@ -69,7 +69,7 @@ const resolveRecipeSelection = async (
 
 export interface InitAppOptions {
   readonly cwd: string;
-  readonly full: boolean;
+  readonly full?: boolean;
   readonly recipe?: string;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
@@ -156,6 +156,27 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const files = manifest.files ?? [];
   if (files.length === 0) {
     throw new Error(`Recipe "${recipeRef}" is missing a files: manifest.`);
+  }
+
+  if (options.full === true && io !== undefined && io.isTTY && options.yes !== true) {
+    const gate = await collectPrompts({
+      prompts: [
+        {
+          name: "_confirm",
+          type: "confirm" as const,
+          message: `Ready to initialize "${appName}". Proceed?`,
+          default: true,
+        },
+      ],
+      answers: {},
+      yes: false,
+      nonInteractive: false,
+      cwd,
+      io,
+    });
+    if (gate._confirm !== true) {
+      throw new Error(`Initialization of "${appName}" cancelled.`);
+    }
   }
 
   const events = options.events;
