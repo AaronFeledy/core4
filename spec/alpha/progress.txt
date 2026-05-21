@@ -4842,3 +4842,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - When a build step's only delta to existing tests is the AC strengthening itself (e.g. swapping `Option.isSome` for a tagged-id round-trip), confirm the prior assertion would have passed under a broken implementation before rubber-stamping — that's where the actual review value lives.
   - Source-mode `@lando/core/testing` resolution works without a `bun run build` step because the package's `exports` map points directly at `./src/testing/index.ts` and `files` ships `./src`; "built package" coverage in this repo is satisfied by `bun pm pack` + tarball extract, not by a compile step.
 ---
+
+
+## [2026-05-20 23:18 CDT] - US-046 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: no safe cleanup was available in the changed TypeScript tests; `spec/09-embedding.md` received two wording-only prose trims in the embedding intro and public-API overview.
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comments cite planning docs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup is documentation-only. Imports, public APIs, error handling, side effects, return values, and test assertions are unchanged.
+- Verification run and result: `lsp_diagnostics spec/09-embedding.md` clean; `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6 pass / 0 fail / 26 expects); full serial `bun test --concurrency=1` passed (1044 pass / 11 skip / 0 fail / 5466 expects).
+---
