@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
@@ -207,5 +209,97 @@ describe("compose ServiceType (raw passthrough)", () => {
         metadata,
       }),
     ).toThrow(/does not accept Lando "build:".*Use "composeBuild:"/);
+  });
+
+  describe("tilde expansion in volume bind sources", () => {
+    test("~/data:/data expands ~ to homedir", () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          db: {
+            type: "compose",
+            image: "alpine:3",
+            volumes: ["~/data:/data"],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("db")];
+      if (service === undefined) throw new Error("db service missing");
+
+      const plan = composeServiceType.toServicePlan({
+        name: "db",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      });
+
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({
+        type: "bind",
+        source: `${homedir()}/data`,
+        target: "/data",
+        readOnly: false,
+      });
+    });
+
+    test("~:/home/app expands bare ~ to homedir", () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          app: {
+            type: "compose",
+            image: "alpine:3",
+            volumes: ["~:/home/app"],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("app")];
+      if (service === undefined) throw new Error("app service missing");
+
+      const plan = composeServiceType.toServicePlan({
+        name: "app",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      });
+
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({
+        type: "bind",
+        source: homedir(),
+        target: "/home/app",
+        readOnly: false,
+      });
+    });
+
+    test("./data:/data relative path still resolves under appRoot", () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          web: {
+            type: "compose",
+            image: "alpine:3",
+            volumes: ["./data:/data"],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("web")];
+      if (service === undefined) throw new Error("web service missing");
+
+      const plan = composeServiceType.toServicePlan({
+        name: "web",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      });
+
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({
+        type: "bind",
+        source: "/srv/apps/myapp/data",
+        target: "/data",
+        readOnly: false,
+      });
+    });
   });
 });
