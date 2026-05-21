@@ -42,8 +42,49 @@ jobs:
       - name: Test
         run: bun run test:unit
 
+  schema-snapshot:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate schema snapshot
+        run: bun run codegen:schema-snapshot
+
+      - name: Verify schema snapshot is current
+        run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json
+
+  bundled-codegen:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate bundled plugins
+        run: bun run codegen:bundled-plugins
+
+      - name: Regenerate bundled recipes
+        run: bun run codegen:bundled-recipes
+
+      - name: Verify bundled codegen is current
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts
+
   build-linux-x64:
-    needs: [static-checks]
+    needs: [static-checks, schema-snapshot, bundled-codegen]
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4

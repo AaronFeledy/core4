@@ -5,7 +5,13 @@ import { describe, expect, test } from "bun:test";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const runbookPath = resolve(repoRoot, "docs/ci-runbook.md");
 
-const requiredChecks = ["static-checks", "build-linux-x64", "provider-integration-linux-x64"] as const;
+const requiredChecks = [
+  "static-checks",
+  "schema-snapshot",
+  "bundled-codegen",
+  "build-linux-x64",
+  "provider-integration-linux-x64",
+] as const;
 
 const extractBranchProtectionSection = (runbook: string): string => {
   const lines = runbook.split("\n");

@@ -33,6 +33,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "schema-snapshot",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-schema-snapshot.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "oclif-manifest",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
     cwd: CORE_ROOT,

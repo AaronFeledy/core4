@@ -12,6 +12,16 @@ bun run lint
 bun run test:unit
 ```
 
+## Generated schema and bundled-codegen gates
+
+CI fails if generated schema snapshots or bundled plugin/recipe tables drift. Update all generated outputs with `bun run codegen`:
+
+```bash
+bun run codegen
+```
+
+For focused local checks, CI runs `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, and `bun run codegen:bundled-recipes`, then verifies the outputs with `git diff --exit-code`.
+
 ## Linux x64 binary build
 
 ```bash
@@ -24,9 +34,9 @@ If the build job fails after producing the binary, inspect it from GitHub Action
 
 ## Provider integration
 
-Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Keep `--parallel` and `--isolate` limited to focused experiments until shared fixtures and plugin class identity are per-test isolated.
+Provider integration tests intentionally stay serial because they share Docker/Podman sockets, images, ports, and app names. Keep `--parallel` and `--isolate` for focused experiments until shared fixtures and plugin class identity are isolated per test.
 
-Start the same Podman socket pattern used by CI:
+Use the same Podman socket pattern as CI:
 
 ```bash
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
@@ -35,7 +45,7 @@ export LANDO_DEFAULT_PROVIDER_ID=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
 ```
 
-Then reproduce the provider integration job:
+To reproduce the provider integration job:
 
 ```bash
 LANDO_MVP_BINARY_PATH="$PWD/dist/lando" LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario
@@ -43,11 +53,11 @@ bun test plugins/provider-lando/test --filter=integration
 bun test plugins/provider-docker/test --filter=integration
 ```
 
-On a failed provider integration run, download diagnostics from `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics`.
+If the provider integration job fails, download diagnostics from `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics`.
 
 ## Branch protection
 
-The `main` branch must be protected in GitHub with required status checks enabled. The required status checks are `static-checks`, `build-linux-x64`, and `provider-integration-linux-x64`; all three must pass before a pull request can merge to `main`.
+Protect `main` in GitHub with required status checks enabled. The required checks are `static-checks`, `schema-snapshot`, `bundled-codegen`, `build-linux-x64`, and `provider-integration-linux-x64`; all five must pass before a pull request can merge to `main`.
 
 ## Bun upgrade smoke checks
 

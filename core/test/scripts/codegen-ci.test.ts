@@ -63,9 +63,9 @@ describe("ci workflow codegen", () => {
 
     const workflow = await readFile(workflowPath, "utf8");
 
-    // All three jobs must reference the .bun-version file, not a hardcoded version string
+    // All generated jobs must reference the .bun-version file, not a hardcoded version string
     const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-    expect(versionFileMatches).toBe(3);
+    expect(versionFileMatches).toBe(5);
     expect(workflow).not.toContain("bun-version: ");
 
     // Mutating package.json engines.bun must NOT change the generated workflow
@@ -83,5 +83,26 @@ describe("ci workflow codegen", () => {
       await writeFile(packageJsonPath, originalPackageJson);
       await runCodegen();
     }
+  });
+
+  test("generates schema-snapshot and bundled-codegen drift gates", async () => {
+    await runCodegen();
+
+    const workflow = await readFile(workflowPath, "utf8");
+
+    expect(workflow).toContain("schema-snapshot:");
+    expect(workflow).toContain("- name: Regenerate schema snapshot");
+    expect(workflow).toContain("run: bun run codegen:schema-snapshot");
+    expect(workflow).toContain("run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json");
+
+    expect(workflow).toContain("bundled-codegen:");
+    expect(workflow).toContain("- name: Regenerate bundled plugins");
+    expect(workflow).toContain("run: bun run codegen:bundled-plugins");
+    expect(workflow).toContain("- name: Regenerate bundled recipes");
+    expect(workflow).toContain("run: bun run codegen:bundled-recipes");
+    expect(workflow).toContain(
+      "run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts",
+    );
+    expect(workflow).toContain("needs: [static-checks, schema-snapshot, bundled-codegen]");
   });
 });
