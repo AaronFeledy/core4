@@ -5100,3 +5100,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Behavior review: cleanup changes only runbook prose. Commands, required check names, CI job behavior, imports, public APIs, error handling, side effects, return values, fixtures, and assertions are unchanged.
 - Verification run and result: `lsp_diagnostics docs/ci-runbook.md` clean; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-runbook.test.ts` passed; full serial `PATH="$HOME/.bun/bin:$PATH" bun test --concurrency=1` passed (1055 pass / 11 skip / 0 fail). An earlier concurrent full-suite run failed before the final wording adjustment due the runbook assertion and unrelated compiled-build races; the final serial run passed cleanly.
 ---
+
+## [2026-05-21 10:16 CDT] - Push
+- Branch: us-050-library-api-recipe-ci
+- Push: pushed
+- Commit(s): b765899 chore: remove AI slop; 1b58f3b feat: Add library API and recipe test layers to CI
+- PR: #129 https://github.com/AaronFeledy/core4/pull/129 (created)
+---
