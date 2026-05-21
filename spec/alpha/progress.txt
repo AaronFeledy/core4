@@ -5242,3 +5242,9 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - The new codegen test now mutates the live `package.json` and restores it in `finally`; future codegen-test edits should keep that restore path (or move to a temp clone) so a `SIGKILL` between writes does not leave the repo on an alpha engine range.
   - `engines.bun` substring assertions on generator scripts catch regressions that wouldn't show up in the generated YAML diff — useful pattern for future "single source of truth" CI gates.
 ---
+## [2026-05-21 17:45 UTC] - Push
+- Branch: us-053-pin-bun-version-file
+- Push: pushed
+- Commit(s): 6ab8c6d feat: Keep Bun version source pinned to .bun-version; 2c75c99 docs: record US-053 review entry
+- PR: #132 https://github.com/AaronFeledy/core4/pull/132 (created)
+---
