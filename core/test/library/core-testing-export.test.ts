@@ -9,6 +9,8 @@ import corePackage from "../../package.json";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sdkRoot = resolve(repoRoot, "sdk");
+const externalDependencyRoot = resolve(repoRoot, "node_modules");
+const packedConsumerDependencies = ["effect"] as const;
 
 interface RunResult {
   readonly exitCode: number;
@@ -17,7 +19,13 @@ interface RunResult {
 }
 
 const runCommand = async (cmd: ReadonlyArray<string>, cwd: string): Promise<RunResult> => {
-  const proc = Bun.spawn({ cmd: [...cmd], cwd, stdout: "pipe", stderr: "pipe" });
+  const proc = Bun.spawn({
+    cmd: [...cmd],
+    cwd,
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, PWD: cwd },
+  });
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
     new Response(proc.stdout).text(),
@@ -25,6 +33,14 @@ const runCommand = async (cmd: ReadonlyArray<string>, cwd: string): Promise<RunR
   ]);
 
   return { exitCode, stdout, stderr };
+};
+
+const assertCommandSucceeded = (label: string, result: RunResult) => {
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `${label} failed with exit code ${result.exitCode}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  }
 };
 
 describe("@lando/core/testing package export", () => {
@@ -67,6 +83,14 @@ describe("@lando/core/testing package export", () => {
       await symlink(join(extractDir, "package"), join(scopedDir, "core"), "dir");
       await symlink(sdkRoot, join(scopedDir, "sdk"), "dir");
 
+      for (const dependency of packedConsumerDependencies) {
+        await symlink(
+          join(externalDependencyRoot, dependency),
+          join(consumerDir, "node_modules", dependency),
+          "dir",
+        );
+      }
+
       const resolved = await runCommand(
         [
           process.execPath,
@@ -76,7 +100,7 @@ describe("@lando/core/testing package export", () => {
         consumerDir,
       );
 
-      expect(resolved.exitCode).toBe(0);
+      assertCommandSucceeded("packed @lando/core/testing import", resolved);
       expect(resolved.stderr).toBe("");
       expect(resolved.stdout).toContain("test\n");
       expect(resolved.stdout).toContain(join(extractDir, "package/src/testing/index.ts"));
