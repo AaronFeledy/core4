@@ -5249,15 +5249,6 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - PR: #132 https://github.com/AaronFeledy/core4/pull/132 (created)
 ---
 
-## [2026-05-21 12:52 CDT] - Babysit
-- PR: #132 https://github.com/AaronFeledy/core4/pull/132
-- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
-- Review feedback: none
-- Triage rounds used: 0
-- Merge: merged (squash)
-- Local main / branch refreshed: yes
-- Remaining local state, if any: on `main` at `c4e3f4c`; remote story branch deleted by merge; local story branch absent; `spec/alpha/progress.txt` has this babysit note appended
----
 
 ## [2026-05-21 12:52 CDT] - Babysit
 - PR: #132 https://github.com/AaronFeledy/core4/pull/132
