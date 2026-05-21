@@ -5000,3 +5000,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): 90f56c0 chore: remove AI slop; a7c8718 fix(sdk): catch helper exports like defineLandofile in compat guard; 22433fc feat: Keep SDK additions backward-compatible
 - PR: #127 https://github.com/AaronFeledy/core4/pull/127 (created)
 ---
+
+## [2026-05-21 08:20 CDT] - Babysit
+- PR: #127 https://github.com/AaronFeledy/core4/pull/127
+- CI outcome: pass (static-checks SUCCESS, build-linux-x64 SUCCESS, provider-integration-linux-x64 SUCCESS, Cursor Bugbot SUCCESS)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) — squash commit 549aa1a on main
+- Local main / branch refreshed: yes
+- Remaining local state, if any: none; stayed on `main`; local branch `us-048-sdk-backward-compatible` deleted
+---
