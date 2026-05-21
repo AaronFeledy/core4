@@ -301,10 +301,6 @@ export function makeLandoRuntime(options: { readonly bootstrap: "app" }): Layer.
 >;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer {
-  if (process.env.LANDO_DEBUG_THROW_ON_RUNTIME === "1") {
-    throw new Error("makeLandoRuntime debug hook was reached.");
-  }
-
   const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);
 
   if (Either.isLeft(decoded)) {

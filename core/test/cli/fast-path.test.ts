@@ -24,7 +24,6 @@ const runCommand = async (cmd: ReadonlyArray<string>, env: NodeJS.ProcessEnv = {
     env: {
       ...process.env,
       ...env,
-      LANDO_DEBUG_THROW_ON_RUNTIME: "1",
     },
     stdout: "pipe",
     stderr: "pipe",
