@@ -218,12 +218,25 @@ const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   list: () => Effect.succeed([]),
 };
 
-const embeddingPluginLayers = (
+const collectEmbeddingPluginLayers = (
   options: LandoRuntimeOptions,
-): ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =>
-  (options.plugins?.layers ?? []).filter(Layer.isLayer) as unknown as ReadonlyArray<
-    Layer.Layer<unknown, unknown, unknown>
-  >;
+): Either.Either<ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>, LandoRuntimeBootstrapError> => {
+  const entries = options.plugins?.layers ?? [];
+  const layers: Layer.Layer<unknown, unknown, unknown>[] = [];
+  for (let index = 0; index < entries.length; index++) {
+    const entry = entries[index];
+    if (!Layer.isLayer(entry)) {
+      return Either.left(
+        bootstrapError(
+          `Invalid Lando runtime options: plugins.layers[${index}] is not an Effect Layer.`,
+          entry,
+        ),
+      );
+    }
+    layers.push(entry);
+  }
+  return Either.right(layers);
+};
 
 const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
@@ -325,7 +338,12 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     decoded.right.bootstrap ?? "app",
     decoded.right.logger === "pretty" ? "pretty" : "silent",
   );
-  const hostLayers = embeddingPluginLayers(decoded.right);
+  const hostLayersResult = collectEmbeddingPluginLayers(decoded.right);
 
+  if (Either.isLeft(hostLayersResult)) {
+    return Layer.fail(hostLayersResult.left);
+  }
+
+  const hostLayers = hostLayersResult.right;
   return hostLayers.length === 0 ? baseLayer : (Layer.mergeAll(baseLayer, ...hostLayers) as RuntimeLayer);
 }
