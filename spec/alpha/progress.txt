@@ -4820,3 +4820,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+
+
+## [2026-05-20 22:56 CDT] - US-046
+- Published and verified the `@lando/core/testing` surface for embedding tests, including workspace package-name resolution, packed-package resolution, provider injection, and provider-contract coverage for the re-exported `TestRuntimeProvider`.
+- Files changed: `core/test/library/core-testing-export.test.ts`, `core/test/testing/test-runtime.test.ts`, `spec/09-embedding.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics` could not run because `typescript-language-server` is not installed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `bun test core/test/library/core-testing-export.test.ts core/test/testing/test-runtime.test.ts` passed (6 pass); `PATH="$HOME/.bun/bin:$PATH" bun run build` passed; full `PATH="$HOME/.bun/bin:$PATH" bun test` passed (1044 pass, 11 skip, 0 fail). Manual QA: `bun -e 'const m = await import("@lando/core/testing"); ...'` printed `provider=test` and resolved to `core/src/testing/index.ts`.
+- **Learnings for future iterations:**
+  - Package export tests can exercise both workspace resolution (`Bun.resolveSync("@lando/core/testing", repoRoot)`) and a packed-package layout by `bun pm pack --ignore-scripts`, extracting to a temp `node_modules/@lando/core`, and symlinking local `@lando/sdk`.
+  - Full test runs that spawn `bun` by name require `~/.bun/bin` on `PATH`; invoking `~/.bun/bin/bun test` alone is not enough for child-process build/codegen tests.
+  - Several compiled-binary tests rebuild the same `core/dist/lando`; running the full suite after `bun run build` avoids missing-binary ordering failures, and the default concurrent full suite can occasionally hit `ETXTBSY` on that shared binary.
+---

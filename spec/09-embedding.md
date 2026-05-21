@@ -356,22 +356,27 @@ Provided test fixtures (illustrative):
 ```ts
 import { test, expect } from "bun:test";
 import { Effect } from "effect";
-import { TestRuntime, withLandofile, expectEvent } from "@lando/core/testing";
-import { appStart } from "@lando/core/cli";
+import { RuntimeProvider } from "@lando/core/services";
+import { TestRuntimeProvider, provideTestRuntime } from "@lando/core/testing";
 
-test("starting an app emits post-start", async () => {
+test("injecting the test provider", async () => {
   const program = Effect.gen(function* () {
-    yield* appStart({ reconcile: false });
-    yield* expectEvent("post-start", (e) => e.app.name === "demo");
+    const provider = yield* RuntimeProvider;
+    return provider.id;
   });
 
-  await Effect.runPromise(
+  const providerId = await Effect.runPromise(
     program.pipe(
-      Effect.provide(withLandofile({ name: "demo", services: { app: { type: "lando" } } })),
-      Effect.provide(TestRuntime),
-      Effect.scoped,
+      Effect.provide(
+        provideTestRuntime({
+          bootstrap: "provider",
+          with: { RuntimeProvider: TestRuntimeProvider },
+        }),
+      ),
     ),
   );
+
+  expect(providerId).toBe("test");
 });
 ```
 

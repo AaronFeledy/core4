@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer } from "effect";
 
 import { ConfigService, FileSystem, Logger, ProcessRunner, RuntimeProvider } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestRuntime, provideTestRuntime } from "@lando/core/testing";
+import { runProviderContract } from "@lando/sdk/test";
 
 describe("@lando/core/testing", () => {
   test("makeTestRuntime provides in-memory service doubles and records calls", async () => {
@@ -52,17 +53,24 @@ describe("@lando/core/testing", () => {
   });
 
   test("provider bootstrap supports RuntimeProvider overrides", async () => {
+    const injectedProvider = { ...TestRuntimeProvider, id: "injected-test" };
+
     const context = await Effect.runPromise(
       Effect.scoped(
         Layer.build(
           provideTestRuntime({
             bootstrap: "provider",
-            with: { RuntimeProvider: TestRuntimeProvider },
+            with: { RuntimeProvider: injectedProvider },
           }),
         ),
       ),
     );
+    const provider = Context.get(context, RuntimeProvider);
 
-    expect(Option.isSome(Context.getOption(context, RuntimeProvider))).toBe(true);
+    expect(provider.id).toBe("injected-test");
+  });
+
+  test("re-exported TestRuntimeProvider passes the provider contract", async () => {
+    await expect(Effect.runPromise(runProviderContract(TestRuntimeProvider))).resolves.toBeUndefined();
   });
 });
