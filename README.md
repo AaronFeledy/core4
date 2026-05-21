@@ -54,6 +54,8 @@ bun test
 ```
 
 CI failures can be reproduced locally with the [CI runbook](./docs/ci-runbook.md).
+Alpha testers can follow the [Alpha install and bug report guide](./docs/alpha-install-and-bug-reports.md)
+for supported install paths, checksum verification, diagnostics, and report artifacts.
 
 ## Status
 

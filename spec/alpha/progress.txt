@@ -5268,3 +5268,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Branch after sync: main
 - Stash created: no
 ---
+## [2026-05-21 18:12 UTC] - US-054
+- Implemented Alpha install and bug-report documentation covering Linux x64 dev prerelease downloads, `SHA256SUMS` verification, npm `dev` installs, `lando doctor`, and required report artifacts.
+- Files changed: `README.md`, `docs/alpha-install-and-bug-reports.md`, `core/test/build/alpha-install-docs.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: lsp_diagnostics unavailable because `typescript-language-server` is not installed; `bun test core/test/build/alpha-install-docs.test.ts core/test/build/ci-runbook.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1063 pass, 11 skip); manual docs QA read the new guide and verified it includes the supported install paths, checksum command, diagnostic command, and bug-report artifact fields.
+- **Learnings for future iterations:**
+  - Patterns discovered: documentation-only acceptance criteria can be locked with small build tests that assert required wording and README links.
+  - Gotchas encountered: this shell does not include Bun on `PATH`; use `$HOME/.bun/bin` when running repo checks.
+  - Useful context: run `bun run build` before the full suite if `core/dist/lando` has stale permissions from an interrupted compiled CLI test.
+---
