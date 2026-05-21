@@ -5181,3 +5181,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Keep the generated release workflow as the source of truth through `scripts/build-release-workflow.ts`; `.github/workflows/release.yml` is regenerated output.
   - Run `bun test` serially when touching `core/test/scripts/codegen-ci.test.ts`; that test intentionally mutates and restores root `package.json` while checking Bun-version drift.
 ---
+
+## [2026-05-21 12:05 CDT] - US-052 Review
+- Reviewed the build commit `1e8f0e0` against PRD-07 US-052 acceptance criteria.
+- Files changed: none (review-only; no code or test changes required).
+- `review-work` findings: none flagged as real / in-scope. The single watch-out below is pre-existing tech debt outside the story's scope, so no fix is applied here.
+- Verification run and result: focused `bun test core/test/scripts/npm-dev-package.test.ts core/test/scripts/codegen-ci.test.ts core/test/build/ci-runbook.test.ts` passed (12 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed. Full suite was already green per the build step's verification entry above; not re-run since no files changed since then.
+- AC checklist: (1) workspace build steps and dry-run coverage present in generated `release.yml` and asserted in codegen test ✓; (2) packaging plan for `@lando/sdk` documented in `docs/ci-runbook.md` ✓; (3) trusted publishing via OIDC (`id-token: write`) with no `NPM_TOKEN`/`NODE_AUTH_TOKEN` path, asserted in codegen test ✓; (4) `--tag dev` on every publish and a runtime `test "$before_latest" = "$after_latest"` guard asserted in the codegen test ✓.
+- **Learnings for future iterations:**
+  - Watch-out: `core/package.json` still carries `"prepack": "bunx oclif manifest"`, which AGENTS.md flags as breaking on workspace TS symlinks. The npm publish workflow already runs `build:manifest` via `bun run ../scripts/build-oclif-manifest.ts` (the supported path), but prepack will re-invoke `bunx oclif manifest` during both `npm publish --dry-run` and the real publish. The first real CI run of the generated `release.yml` will surface any breakage; if so, switching `prepack` to `bun run build:manifest` is the obvious follow-up. Pre-existing — not introduced by US-052 and not fixed in this review per scope rules.
+  - `npm view <pkg> dist-tags.latest --json 2>/dev/null || true` correctly handles the first-publish case where the package isn't in the registry yet: both `before_latest` and `after_latest` collapse to empty strings, so the equality check is stable on the first dev publish.
+  - `--provenance` is omitted from the dry-run step on purpose; npm's provenance flow only works in the real publish path with OIDC, so adding it to dry-run would break the dry-run gate.
+---
