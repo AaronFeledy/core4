@@ -57,6 +57,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
 - Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
 - `makeLandoRuntime` embedding tests can pass host-provided service overrides through `plugins.layers`; the runtime merges those Layers after the base bootstrap Layer, so duplicate service tags (for example `RuntimeProvider` / `RuntimeProviderRegistry`) are resolved in favor of the host layer.
+- `@lando/core/cli/operations` is the unstable Effect-bearing command API for embedding hosts; use `invokeOperation(operation, { render, renderError })` when a host needs result/error/output as data instead of throwing or writing to stdio. Keep it out of `core/src/cli/index.ts` so the CLI fast path does not statically import Effect/OCLIF.
 
 ## Iteration Log
 
@@ -4891,4 +4892,54 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Triage rounds used: 1
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
+---
+
+## 2026-05-21 - Sync
+- Previous branch: us-046-core-testing-provider
+- Previous PR: #125 https://github.com/AaronFeledy/core4/pull/125
+- Action: caught up after prior merge (PR #125 already MERGED); pushed 1 local-only progress-log commit (affd8fb) to origin/main
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-21 06:31 CDT] - US-047
+- Implemented the unstable `@lando/core/cli/operations` invocation helper so embedding hosts can run Effect command operations and receive success/error plus optional rendered output as data.
+- Files changed: `core/src/cli/operations.ts`, `core/test/library/cli-operations-export.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics core/src/cli/operations.ts` could not run because `typescript-language-server` is not installed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `bun test core/test/library/cli-operations-export.test.ts core/test/cli/fast-path.test.ts` passed (11 pass); full `PATH="$HOME/.bun/bin:$PATH" bun test` passed (1046 pass, 11 skip, 0 fail). Manual QA: `bun -e` imported `@lando/core/cli/operations`, invoked `listServices` through `invokeOperation`, and printed `{"ok":true,"value":{"apps":[]},"output":"No Lando apps applied on this host."}`.
+- **Learnings for future iterations:**
+  - Package subpath API tests should assert workspace resolution with `Bun.resolveSync(...)` and invoke through package-name imports, not internal source paths.
+  - `makeLandoRuntime({ config: ... })` validates the option shape but does not currently override `ConfigServiceLive`; tests that need isolated config roots should use the `LANDO_USER_CONF_ROOT` / `LANDO_USER_DATA_ROOT` env overlay and restore it afterward.
+  - Keep Effect-bearing command operation exports in `@lando/core/cli/operations`, not `@lando/core/cli`, to preserve the fast-path static import boundary.
+---
+
+## [2026-05-21 07:35 CDT] - US-047 Review
+- Reviewed commit `a2b997b` against PRD-Alpha-06 §US-047. Ran 3-agent review-work (goal verifier Oracle, code-quality Oracle, context miner) in parallel.
+- `review-work` findings — fixed:
+  - Code quality (Oracle): `invokeOperation` silently dropped defects on mixed Causes (`Sequential(Fail(E), Die(d))` returned `{ok:false}` and lost the defect). Restricted the typed-failure branch to *pure* failures (`Cause.failureOption` Some AND no defects AND not interrupted); mixed/defect/interrupt causes now escape as defects via the existing `throw new Error(Cause.pretty(...))` path. Added a defect+interrupt+mixed-cause unit test.
+- `review-work` findings — rejected:
+  - Code quality (Oracle): "Prefer `Effect.matchCauseEffect` over `Effect.exit + Effect.map + throw`." Rejected as a stylistic preference; the current shape matches existing operation wrappers in the repo (e.g. `core/src/cli/commands/init.ts`) and the explicit pure-failure guard is now self-documenting. The `never` error channel remains type-sound because defects propagate out-of-band.
+  - Context mining (general): "Operations subpath omits `doctor`/`pluginAdd`/`pluginRemove`/`bun`/`x` exports vs spec §16.7." Rejected as out of scope. The re-export list is identical to HEAD~1 — the gap is pre-existing (introduced when commit `023a4aa` moved Effect-bearing exports out of `cli/index.ts`). US-047 only added the `invokeOperation` helper; the PRD AC requires "*a* supported command" (singular), which the test demonstrates. Expanding the export surface is a separate story.
+  - Context mining (general): "`spec/09-embedding.md` still documents `@lando/core/cli` subpath with `appStart`/`appInfo` naming." Rejected as out of scope. Spec/implementation divergence is pre-existing and tracked across the chapter; not a US-047 regression.
+- Files changed: `core/src/cli/operations.ts` (3 explicit Cause-shape checks + 4-line necessary comment), `core/test/library/cli-operations-export.test.ts` (added defect/interrupt/mixed-cause test).
+- Side effect during review: an earlier interrupted test run left `package.json` mutated (the `core/test/build/biome.test.ts` lint-violation fixture); restored via `git checkout package.json`.
+- Verification run: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passes; `bun run lint` passes; `bun test` 1047 pass / 11 skip / 0 fail.
+- **Learnings for future iterations:**
+  - `Cause.failureOption` returns `Some(E)` even when the same Cause contains defects or interrupts. Any host-side wrapper that converts `Exit.Failure` to a typed-error result MUST additionally check `Cause.dieOption` and `Cause.isInterrupted` before classifying as a clean typed failure, otherwise defect/interrupt information is silently dropped.
+  - The `core/test/build/biome.test.ts` fixture mutates `package.json` in place; interrupting the test run leaves the working tree dirty. After any aborted `bun test`, `git diff package.json` is a quick sanity check.
+---
+
+## [2026-05-21 06:58 CDT] - US-047 Slop Cleanup
+- Ran branch-wide `remove-ai-slops` after review and before push with the planning-doc comment rules.
+- Slop-remover result: comment/docs-only cleanup. `core/src/cli/operations.ts` had release-planning wording in the module header rephrased as plain API-stability text; `AGENTS.md` had two adjacent duplicate deferred-renderer notes merged without dropping technical details. `core/test/library/cli-operations-export.test.ts`, `spec/alpha/prd.json`, and current branch `spec/alpha/progress.txt` needed no safe cleanup.
+- Planning-doc leakage scan over branch-changed source/test comments passed; no code comment still cites specs, phases, PRDs, story IDs, or section markers.
+- Behavior review: cleanup changes are documentation/comment-only. Imports, public APIs, error handling, side effects, return values, and test assertions are unchanged.
+- Verification run and result: `lsp_diagnostics core/src/cli/operations.ts` could not run because `typescript-language-server` is not installed; `git diff --check` passed; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; focused `PATH="$HOME/.bun/bin:$PATH" bun test core/test/library/cli-operations-export.test.ts` passed (`FOCUSED_EXIT=0`). Full `bun test` was not completed: the host run spawned `core/bin/lando.ts apps:scratch:info` and was stopped per `.local/DEV-ENV.md`; `.local/bin/lando4-dev --check` failed with `wsl.exe is not available from this shell; run from the host distro`, so the sandbox could not be entered from this environment.
+---
+
+## [2026-05-21 06:56 CDT] - Push
+- Branch: us-047-cli-operations-api
+- Push: pushed
+- Commit(s): a8597ae chore: remove AI slop; acb6092 fix(cli/operations): preserve defect/interrupt info in invokeOperation; a2b997b feat: Expose `@lando/core/cli/operations` command invocation API
+- PR: #126 https://github.com/AaronFeledy/core4/pull/126 (created)
 ---
