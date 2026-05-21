@@ -114,7 +114,7 @@ jobs:
           npm publish --workspace @lando/core --access public --tag dev --provenance
           after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
           test "$before_latest" = "$after_latest"
-          npm view @lando/core dist-tags.dev --json | grep -Eq '"?4\.0\.0-alpha\.[0-9]+"?'
+          npm view @lando/core dist-tags.dev --json | grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'
 `;
 
 const main = async (): Promise<void> => {

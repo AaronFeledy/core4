@@ -198,6 +198,7 @@ describe("ci workflow codegen", () => {
     expect(workflow).toContain("npm publish --workspace @lando/core --access public --tag dev --provenance");
     expect(workflow).toContain('test "$before_latest" = "$after_latest"');
     expect(workflow).toContain("npm view @lando/core dist-tags.dev --json");
+    expect(workflow).toContain(`grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'`);
     expect(workflow).not.toContain("NPM_TOKEN");
     expect(workflow).not.toContain("NODE_AUTH_TOKEN");
   });
