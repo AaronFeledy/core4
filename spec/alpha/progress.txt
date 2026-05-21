@@ -5213,3 +5213,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes
 - Remaining local state, if any: on `main` at `5b364fc`; remote story branch deleted; local story branch deleted if present; `spec/alpha/progress.txt` has this babysit note appended
 ---
+
+## [2026-05-21 12:23] - Sync
+- Previous branch: us-052-publish-core-npm-dev-tag
+- Previous PR: #131 https://github.com/AaronFeledy/core4/pull/131
+- Action: caught up after prior merge (Case C — PR already merged)
+- Fast path: progress.txt-only dirty tree stashed, committed as "docs: update progress log" (2eb0a46), pushed to origin/main
+- Local main updated: yes (already at origin/main after fast-path commit push)
+- Branch after sync: main
+- Stash created: no
+---
