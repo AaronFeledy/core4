@@ -5290,3 +5290,9 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - Patterns discovered: 5-agent `review-work` over a docs-only commit collapses to 3 useful agents (goal, code-quality, context-mining); QA and security agents have no surface and can be skipped explicitly.
   - Gotchas encountered: `background_output` by raw `bg_*` id returns "Task not found" once the system-reminder completion notification fires — resume the agent via its `task_id` session id with `task(task_id="ses_*", run_in_background=false, prompt="Return your final review output verbatim.")` instead.
   - Useful context: docs-AC PRs benefit from a context-mining pass that grounds wording in the actual shipping scripts (`scripts/build-release-workflow.ts`, `scripts/prepare-npm-dev-packages.ts`) and bug-report formatter, not just the spec.
+## [2026-05-21 18:26 UTC] - Push
+- Branch: us-054-alpha-install-bug-report-docs
+- Push: pushed
+- Commit(s): 7ae7a6f feat: Document alpha install and bug-report path; b5ed4cc docs: record US-054 review verdict and rejections
+- PR: #133 https://github.com/AaronFeledy/core4/pull/133 (created)
+---
