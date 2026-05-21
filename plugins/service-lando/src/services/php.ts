@@ -14,7 +14,7 @@ export type SupportedPhpFramework = (typeof SUPPORTED_PHP_FRAMEWORKS)[number];
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const HEALTHCHECK_PORT = 80;
 
-const FRAMEWORK_WEBROOTS: Record<SupportedPhpFramework, string> = {
+export const FRAMEWORK_WEBROOTS: Record<SupportedPhpFramework, string> = {
   drupal: "web",
   wordpress: "",
   laravel: "public",
@@ -22,12 +22,9 @@ const FRAMEWORK_WEBROOTS: Record<SupportedPhpFramework, string> = {
   none: "",
 };
 
-const FRAMEWORK_WEBROOT_PATHS: Record<SupportedPhpFramework, string> = {
-  drupal: "/app/web",
-  wordpress: "/app",
-  laravel: "/app/public",
-  symfony: "/app/public",
-  none: "/app",
+export const frameworkWebrootPath = (framework: SupportedPhpFramework): string => {
+  const rel = FRAMEWORK_WEBROOTS[framework];
+  return rel === "" ? "/app" : `/app/${rel}`;
 };
 
 const REMEDIATION_VERSION = (requested: string): string =>
@@ -65,9 +62,8 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => (
     const framework = validateFramework(service.framework);
     const appName = appNameFor(input);
     const serviceType = `php:${resolvedVersion}`;
-    const webroot = FRAMEWORK_WEBROOT_PATHS[framework];
-    const workingDirectory =
-      service.workingDirectory ?? PortablePath.make(FRAMEWORK_WEBROOT_PATHS[framework]);
+    const webroot = frameworkWebrootPath(framework);
+    const workingDirectory = service.workingDirectory ?? PortablePath.make(frameworkWebrootPath(framework));
     const environment = buildLandoEnv({
       serviceName: name,
       serviceType,
@@ -128,7 +124,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => (
       extensions: {
         "lando-service-php": {
           framework,
-          webroot: FRAMEWORK_WEBROOTS[framework] === "" ? "/app" : `/app/${FRAMEWORK_WEBROOTS[framework]}`,
+          webroot: frameworkWebrootPath(framework),
           version: resolvedVersion,
         },
       },
