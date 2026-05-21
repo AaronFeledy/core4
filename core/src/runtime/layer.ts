@@ -218,6 +218,13 @@ const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   list: () => Effect.succeed([]),
 };
 
+const embeddingPluginLayers = (
+  options: LandoRuntimeOptions,
+): ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =>
+  (options.plugins?.layers ?? []).filter(Layer.isLayer) as unknown as ReadonlyArray<
+    Layer.Layer<unknown, unknown, unknown>
+  >;
+
 const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     LoggerLive({ mode: loggerMode }),
@@ -314,8 +321,11 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     return Layer.fail(bootstrapError("Invalid Lando runtime options.", decoded.left));
   }
 
-  return runtimeLayerFor(
+  const baseLayer = runtimeLayerFor(
     decoded.right.bootstrap ?? "app",
     decoded.right.logger === "pretty" ? "pretty" : "silent",
   );
+  const hostLayers = embeddingPluginLayers(decoded.right);
+
+  return hostLayers.length === 0 ? baseLayer : (Layer.mergeAll(baseLayer, ...hostLayers) as RuntimeLayer);
 }

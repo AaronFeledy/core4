@@ -13,6 +13,7 @@
  * and asserts a placeholder.
  */
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 describe("import boundaries", () => {
   test("can import the default entry", async () => {
@@ -46,6 +47,12 @@ describe("import boundaries", () => {
     expect(mod.PreStartEvent).toBeDefined();
     expect(mod.PostStartEvent).toBeDefined();
     expect(mod.SubscriberPriority).toBeDefined();
+  });
+
+  test("marks the Alpha library API as unstable/dev-channel only", async () => {
+    const source = await readFile(new URL("../../src/index.ts", import.meta.url), "utf8");
+    expect(source).toContain("unstable");
+    expect(source).toContain("dev/next channels");
   });
 
   // TODO: static-analyze the resolved import graph for the default

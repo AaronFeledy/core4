@@ -56,6 +56,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Command-index cache helpers live in `core/src/cache/command-index.ts` and `core/src/cache/command-index-writer.ts`; app-command freshness includes Landofile stat metadata plus a `toolingFingerprint`, plugin-command freshness includes a manifest fingerprint, and callers that must surface cache build failures should use `writePluginCommandCacheStrict` instead of the best-effort `writePluginCommandCache`.
 - `cwd-app-map` cache helpers live in `core/src/cache/cwd-app-map.ts`; use a fixed magic/version/hash header (4 B `LCWM` + 8 B BE schema version + 32 B sha256-of-payload = 44 B) plus `node:v8` serialize/deserialize (not `Bun.serialize`, which is unavailable in this repo's Bun) and let `apps:list` merge cache-only entries with provider state. Three invariants the helper MUST keep or US-041 regresses: (1) `readCwdAppMap` compares stored `landoVersion` against `CORE_VERSION` and treats a mismatch as a silent cache miss (§12.1 whole-cache invalidation; corruption still surfaces a `CacheError` with remediation because the AC explicitly demands it); (2) `normalizeEntries` MUST NOT use `new Map([newEntry, ...existing].map(...))` — `Map` is last-write-wins, so a stale existing entry would overwrite the freshly upserted one. The dedup is a first-wins loop with a regression test in `core/test/services/cache.test.ts`; (3) `listServices` in `core/src/cli/commands/list.ts` MUST default `userCacheRoot` to `resolveUserCacheRoot()` — otherwise the OCLIF `apps:list` / compiled `apps:list` / `poweroff` paths skip the cache silently because they call `listServices()` with no options. Atomic-via-rename writes are deferred to US-042; today's `writeFile` is acceptable because the sha256 header turns torn writes into a clean `CacheError` (which `apps:list` swallows to `[]`).
 - Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
+- `makeLandoRuntime` embedding tests can pass host-provided service overrides through `plugins.layers`; the runtime merges those Layers after the base bootstrap Layer, so duplicate service tags (for example `RuntimeProvider` / `RuntimeProviderRegistry`) are resolved in favor of the host layer.
 
 ## Iteration Log
 
@@ -4735,4 +4736,14 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main updated: yes (already at origin/main after ff-only; 1 commit ahead due to progress-log fast-path)
 - Branch after sync: main
 - Stash created: no
+---
+
+## [2026-05-20 21:55 CDT] - US-045
+- Implemented library app-bootstrap coverage for `makeLandoRuntime({ bootstrap: "app" })`, including host-provided Layer overrides that let embedding tests run app planning and provider operations with `TestRuntimeProvider`.
+- Files changed: `core/src/runtime/layer.ts`, `core/src/index.ts`, `core/test/library/make-runtime-app.test.ts`, `core/test/library/import-boundary.test.ts`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/library/make-runtime-app.test.ts core/test/library/import-boundary.test.ts core/test/runtime/make-runtime.test.ts` passed; manual library API QA script printed `{ "provider":"test", "apply":{"changed":false}, "exec":{"exitCode":0,"stdout":"echo ok","stderr":""} }`; full `bun test` passed (1040 pass, 11 skip) after refreshing the compiled binary with `bun run build`; an earlier full run failed in compiled-CLI tests when `core/dist/lando` had been cleaned/stale, and focused setup passed after rebuild.
+- **Learnings for future iterations:**
+  - `makeLandoRuntime`'s existing `plugins.layers` option is the lightest embedding seam for host/test service overrides; merge host layers after the base runtime so duplicate service tags are overridden by the host layer.
+  - Library API tests should import through `@lando/core` and `@lando/core/testing` rather than internal source paths when asserting embedding-host behavior.
+  - If full `bun test` fails in the compiled setup install-dir case, run `bun run build` once to refresh `core/dist/lando` permissions before rerunning the focused setup test.
 ---
