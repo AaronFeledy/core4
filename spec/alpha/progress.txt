@@ -4951,5 +4951,5 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Triage rounds used: 0
 - Merge: merged (squash) — squash commit 368dfd8 on main
 - Local main / branch refreshed: yes
-- Remaining local state, if any: still on `main`; local branch `us-047-cli-operations-api` deleted; this babysit report is uncommitted in `spec/alpha/progress.txt`
+- Remaining local state, if any: none; stayed on `main`; local branch `us-047-cli-operations-api` deleted
 ---
