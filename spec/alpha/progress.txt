@@ -5193,3 +5193,15 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
   - `npm view <pkg> dist-tags.latest --json 2>/dev/null || true` correctly handles the first-publish case where the package isn't in the registry yet: both `before_latest` and `after_latest` collapse to empty strings, so the equality check is stable on the first dev publish.
   - `--provenance` is omitted from the dry-run step on purpose; npm's provenance flow only works in the real publish path with OIDC, so adding it to dry-run would break the dry-run gate.
 ---
+## [2026-05-21 16:55 UTC] - Push
+- Branch: us-052-publish-core-npm-dev-tag
+- Push: pushed
+- Commit(s): 1e8f0e0 feat: Publish @lando/core alpha package to npm dev tag; 67e8695 docs: record US-052 review entry
+- PR: #131 https://github.com/AaronFeledy/core4/pull/131 (created)
+---
+## [2026-05-21 16:55 UTC] - Push
+- Branch: us-052-publish-core-npm-dev-tag
+- Push: pushed
+- Commit(s): 1e8f0e0 feat: Publish @lando/core alpha package to npm dev tag; 67e8695 docs: record US-052 review entry
+- PR: #131 https://github.com/AaronFeledy/core4/pull/131 (created)
+---
