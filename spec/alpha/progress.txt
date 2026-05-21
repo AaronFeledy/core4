@@ -58,6 +58,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Binary cache encoding fixtures live in `core/test/cache/fixtures/binary-cache/*.bin` and are compared byte-for-byte by `core/test/cache/binary-encoding.test.ts`; intentional format/header/schema-version changes should update fixtures and exported cache header constants together.
 - `makeLandoRuntime` embedding tests can pass host-provided service overrides through `plugins.layers`; the runtime merges those Layers after the base bootstrap Layer, so duplicate service tags (for example `RuntimeProvider` / `RuntimeProviderRegistry`) are resolved in favor of the host layer.
 - `@lando/core/cli/operations` is the unstable Effect-bearing command API for embedding hosts; use `invokeOperation(operation, { render, renderError })` when a host needs result/error/output as data instead of throwing or writing to stdio. Keep it out of `core/src/cli/index.ts` so the CLI fast path does not statically import Effect/OCLIF.
+- SDK public-surface changes must update the compatibility guard in `sdk/test/library/sdk-backward-compatibility.test.ts`: MVP schema/tag signature changes go through `sdk/test/fixtures/sdk-mvp-surface.json`, while additive Alpha schema/tag exports must be listed in `sdk/API_COMPATIBILITY.md`.
 
 ## Iteration Log
 
@@ -4952,4 +4953,23 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Merge: merged (squash) — squash commit 368dfd8 on main
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none; stayed on `main`; local branch `us-047-cli-operations-api` deleted
+---
+
+## [2026-05-21 12:06 UTC] - Sync
+- Previous branch: us-047-cli-operations-api
+- Previous PR: #126 https://github.com/AaronFeledy/core4/pull/126
+- Action: caught up after prior merge (PR #126 already MERGED; local main and remote branch already in sync)
+- Local main updated: yes (already up to date — previous iteration's babysit left main current)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-21 07:23 CDT] - US-048
+- Implemented an SDK backward-compatibility guard that checks the frozen MVP schema exports and service-tag signatures, and verifies every additive Alpha schema/tag export is documented.
+- Files changed: `sdk/test/library/sdk-backward-compatibility.test.ts`, `sdk/test/fixtures/sdk-mvp-surface.json`, `sdk/API_COMPATIBILITY.md`, `sdk/AGENTS.md`, `spec/alpha/prd.json`, `spec/alpha/progress.txt`.
+- Verification run and result: `lsp_diagnostics sdk/test/library/sdk-backward-compatibility.test.ts` could not run because `typescript-language-server` is not installed; `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/library/sdk-backward-compatibility.test.ts sdk/test/library/exports.test.ts sdk/test/services/tags.test.ts` passed (14 pass); `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` passed; `PATH="$HOME/.bun/bin:$PATH" bun run lint` passed; full `PATH="$HOME/.bun/bin:$PATH" bun test` passed (1050 pass, 11 skip, 0 fail). Manual QA: the focused compatibility test executed the new guard and reported 3 pass / 0 fail.
+- **Learnings for future iterations:**
+  - Patterns discovered: TypeScript AST parsing is the practical way to freeze SDK service-tag signatures because `Context.Tag` service shapes are erased at runtime.
+  - Gotchas encountered: `sdk/test/` is not covered by `tsc -b`; compatibility tests need Bun execution plus lint to catch test-file issues.
+  - Useful context: new additive SDK schemas/tags must be listed in `sdk/API_COMPATIBILITY.md` and, for MVP-surface changes, intentionally update `sdk/test/fixtures/sdk-mvp-surface.json`.
 ---

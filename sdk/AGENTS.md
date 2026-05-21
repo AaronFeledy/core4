@@ -29,3 +29,4 @@ The SDK is the API-stable surface. Per `spec/ROADMAP.md` Phasing principle 1, an
 
 - SDK tests live in `sdk/test/` and import via the canonical public path (`@lando/sdk/schema`, `@lando/sdk/errors`, …) so they exercise the same surface plugin authors will use. Bun's workspace resolver handles the self-import.
 - `tsc -b` (root `bun run typecheck`) does not walk `sdk/test/`; Bun runs the tests directly. Treat `bun run typecheck` + `bun test` together as the typecheck/test gate.
+- The SDK compatibility guard lives in `sdk/test/library/sdk-backward-compatibility.test.ts` with the frozen MVP surface in `sdk/test/fixtures/sdk-mvp-surface.json`; new additive SDK exports must also be listed in `sdk/API_COMPATIBILITY.md` or the test fails.

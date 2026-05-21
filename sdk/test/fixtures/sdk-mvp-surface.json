@@ -1,0 +1,109 @@
+{
+  "schemaNames": [
+    "AppId",
+    "AppPlan",
+    "AppRef",
+    "BOOTSTRAP_RANK",
+    "BootstrapLevel",
+    "GlobalConfig",
+    "HostPlatform",
+    "LandofileShape",
+    "PluginManifest",
+    "ProviderCapabilities",
+    "ProviderId",
+    "ServiceInfo",
+    "ServiceName",
+    "ServicePlan",
+    "getJsonSchema"
+  ],
+  "serviceTags": {
+    "AppPlanner": [
+      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>"
+    ],
+    "BuildOrchestrator": [
+      "build: (plan: AppPlan) => Effect.Effect<void, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
+    ],
+    "CacheService": [
+      "invalidate: (key: string) => Effect.Effect<void, CacheError>",
+      "read: <A, I>(key: string, schema?: Schema.Schema<A, I>) => Effect.Effect<A | null, CacheError>",
+      "write: <A>(key: string, value: A, ttlMs?: number) => Effect.Effect<void, CacheError>",
+      "writeAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, CacheError>"
+    ],
+    "ConfigService": [
+      "get: <K extends keyof GlobalConfig>(key: K) => Effect.Effect<GlobalConfig[K], ConfigError>",
+      "load: Effect.Effect<GlobalConfig, ConfigError>"
+    ],
+    "EventService": [
+      "publish: (event: LandoEvent) => Effect.Effect<void, EventError>",
+      "subscribe: (name: string) => Stream.Stream<LandoEvent, EventError>",
+      "subscribeQueue: Effect.Effect<Queue.Dequeue<LandoEvent>, never, Scope.Scope>",
+      "waitFor: (name: string, filter?: (event: LandoEvent) => boolean) => Effect.Effect<LandoEvent, EventError>"
+    ],
+    "FileSystem": [
+      "exists: (path: string) => Effect.Effect<boolean, FileSystemError>",
+      "mkdir: (path: string) => Effect.Effect<void, FileSystemError>",
+      "read: (path: string) => Stream.Stream<Uint8Array, FileSystemError>",
+      "readDir: (path: string) => Effect.Effect<ReadonlyArray<string>, FileSystemError>",
+      "readFile: (path: string) => Effect.Effect<string, FileSystemError>",
+      "readText: (path: string) => Effect.Effect<string, FileSystemError>",
+      "remove: (path: string) => Effect.Effect<void, FileSystemError>",
+      "stat: (path: string) => Effect.Effect<FileStat, FileSystemError>",
+      "write: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>",
+      "writeAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, FileSystemError>",
+      "writeFile: (path: string, content: string) => Effect.Effect<void, FileSystemError>"
+    ],
+    "LandofileService": [
+      "discover: Effect.Effect<LandofileShape, LandofileNotFoundError | LandofileParseError | LandofileValidationError | LandofileSandboxError | LandofileTimeoutError | NotImplementedError>"
+    ],
+    "Logger": [
+      "debug: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",
+      "error: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",
+      "info: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>",
+      "warn: (message: string, data?: Readonly<Record<string, unknown>>) => Effect.Effect<void, EventError>"
+    ],
+    "PluginRegistry": [
+      "list: Effect.Effect<ReadonlyArray<PluginManifest>, PluginManifestError>",
+      "load: (name: string) => Effect.Effect<PluginManifest, PluginLoadError | PluginManifestError>",
+      "loadServiceType: (id: string) => Effect.Effect<ServiceTypeShape, PluginLoadError | PluginManifestError>"
+    ],
+    "ProcessRunner": [
+      "run: (options: ProcessSpawnOptions) => Effect.Effect<ProcessResult, ProcessExecError | ProcessTimeoutError>",
+      "stream: (options: ProcessSpawnOptions) => Stream.Stream<ProcessStreamChunk, ProcessExecError | ProcessTimeoutError>"
+    ],
+    "RuntimeProvider": [
+      "apply: (plan: AppPlan, options: ApplyOptions) => Effect.Effect<ApplyResult, ProviderError, Scope.Scope>",
+      "buildArtifact: (spec: ArtifactBuildSpec) => Effect.Effect<ArtifactRef, ProviderError, Scope.Scope>",
+      "capabilities: ProviderCapabilities",
+      "destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>",
+      "displayName: string",
+      "exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>",
+      "execStream: (target: ExecTarget, command: CommandSpec) => Stream.Stream<ExecChunk, ProviderError, Scope.Scope>",
+      "getStatus: Effect.Effect<ProviderStatus, ProviderError>",
+      "getVersions: Effect.Effect<ProviderVersions, ProviderError>",
+      "id: string",
+      "inspect: (target: ServiceSelector) => Effect.Effect<ServiceRuntimeInfo, ProviderError>",
+      "isAvailable: Effect.Effect<boolean, ProviderUnavailableError>",
+      "list: (filter: ListFilter) => Effect.Effect<ReadonlyArray<ServiceRuntimeInfo>, ProviderError>",
+      "logs: (target: LogTarget, options: LogOptions) => Stream.Stream<LogChunk, ProviderError>",
+      "platform: HostPlatform",
+      "pullArtifact: (spec: ArtifactPullSpec) => Effect.Effect<ArtifactRef, ProviderError>",
+      "removeArtifact: (ref: ArtifactRef) => Effect.Effect<void, ProviderError>",
+      "restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
+      "run: (spec: EphemeralRunSpec) => Effect.Effect<ExecResult, ProviderError, Scope.Scope>",
+      "setup: (options: ProviderSetupOptions) => Effect.Effect<void, ProviderError, Scope.Scope>",
+      "start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
+      "stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
+      "version: string"
+    ],
+    "RuntimeProviderRegistry": [
+      "capabilities: Effect.Effect<ProviderCapabilities, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>",
+      "list: Effect.Effect<ReadonlyArray<ProviderId>, ProviderUnavailableError>",
+      "select: (plan?: AppPlan) => Effect.Effect<RuntimeProviderShape, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>"
+    ],
+    "ShellRunner": [
+      "exec: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
+      "run: (command: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
+      "runScript: (path: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>"
+    ]
+  }
+}
