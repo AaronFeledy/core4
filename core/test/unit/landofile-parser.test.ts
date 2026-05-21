@@ -34,3 +34,30 @@ describe("parseLandofile — quote-aware comment stripping (bugbot PR#28 finding
     expect((result as Record<string, unknown>).name).toBe("myapp");
   });
 });
+
+describe("parseLandofile — apostrophe-in-unquoted-scalar regression (bugbot PR#138)", () => {
+  test("apostrophe in unquoted value is literal — trailing comment is stripped", async () => {
+    const result = await parse("description: it's a test # comment\n");
+    expect((result as Record<string, unknown>).description).toBe("it's a test");
+  });
+
+  test("apostrophe as last value char before comment — stripped correctly", async () => {
+    const result = await parse("description: it's # comment\n");
+    expect((result as Record<string, unknown>).description).toBe("it's");
+  });
+
+  test("embedded double-quotes in unquoted value — trailing comment stripped without quote tracking", async () => {
+    const result = await parse('description: she said "hi" # comment\n');
+    expect((result as Record<string, unknown>).description).toBe('she said "hi"');
+  });
+
+  test("double-quoted value with apostrophe and embedded hash — only tail comment is stripped", async () => {
+    const result = await parse('description: "it\'s a # not comment" # tail\n');
+    expect((result as Record<string, unknown>).description).toBe("it's a # not comment");
+  });
+
+  test("plain unquoted value without apostrophes — trailing comment is stripped", async () => {
+    const result = await parse("description: regular value # trailing\n");
+    expect((result as Record<string, unknown>).description).toBe("regular value");
+  });
+});

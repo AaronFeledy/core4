@@ -50,19 +50,54 @@ const parseError = (filePath: string, message: string, line?: number, column?: n
   new LandofileParseErrorClass({ message, filePath, line, column });
 
 const stripComment = (line: string): string => {
-  let inSingle = false;
-  let inDouble = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === "'" && !inDouble) {
-      inSingle = !inSingle;
-    } else if (ch === '"' && !inSingle) {
-      inDouble = !inDouble;
-    } else if (ch === "#" && !inSingle && !inDouble && i > 0 && /\s/.test(line.charAt(i - 1))) {
-      return line.slice(0, i).trimEnd();
-    }
+  const colonIdx = line.indexOf(":");
+  if (colonIdx === -1) {
+    return line.replace(/\s+#.*$/, "");
   }
-  return line;
+
+  const beforeColon = line.slice(0, colonIdx + 1);
+  const afterColon = line.slice(colonIdx + 1);
+  const valueIdx = afterColon.search(/\S/);
+  if (valueIdx === -1) {
+    return line;
+  }
+
+  const valuePrefix = afterColon.slice(0, valueIdx);
+  const valuePart = afterColon.slice(valueIdx);
+
+  if (valuePart.startsWith('"')) {
+    let i = 1;
+    while (i < valuePart.length) {
+      if (valuePart[i] === "\\" && i + 1 < valuePart.length) {
+        i += 2;
+      } else if (valuePart[i] === '"') {
+        i += 1;
+        break;
+      } else {
+        i += 1;
+      }
+    }
+    const tail = valuePart.slice(i).replace(/\s+#.*$/, "");
+    return beforeColon + valuePrefix + valuePart.slice(0, i) + tail;
+  }
+
+  if (valuePart.startsWith("'")) {
+    let i = 1;
+    while (i < valuePart.length) {
+      if (valuePart[i] === "'" && valuePart[i + 1] === "'") {
+        i += 2;
+      } else if (valuePart[i] === "'") {
+        i += 1;
+        break;
+      } else {
+        i += 1;
+      }
+    }
+    const tail = valuePart.slice(i).replace(/\s+#.*$/, "");
+    return beforeColon + valuePrefix + valuePart.slice(0, i) + tail;
+  }
+
+  return beforeColon + valuePrefix + valuePart.replace(/\s+#.*$/, "");
 };
 
 const parseInlineArray = (value: string, filePath: string, line: number): ReadonlyArray<unknown> => {
