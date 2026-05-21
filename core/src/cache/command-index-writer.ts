@@ -36,14 +36,29 @@ export interface WriteAppCommandCacheOptions {
   readonly now?: () => number;
 }
 
+interface AppCommandCacheSource {
+  readonly filePath: string;
+  readonly stats: {
+    readonly mtimeMs: number;
+    readonly size: number;
+  };
+}
+
+const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCacheSource | undefined> => {
+  const filePath = await findLandofilePath(cwd);
+  if (filePath === undefined) return undefined;
+
+  return { filePath, stats: await stat(filePath) };
+};
+
 const writeAppCommandCacheTask = async (
   options: WriteAppCommandCacheOptions,
 ): Promise<string | undefined> => {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = await findLandofilePath(cwd);
-  if (filePath === undefined) return undefined;
+  const source = await resolveAppCommandCacheSource(cwd);
+  if (source === undefined) return undefined;
 
-  const stats = await stat(filePath);
+  const { filePath, stats } = source;
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const appName = options.landofile.name ?? "unnamed";
   const appRoot = dirname(filePath);
@@ -56,6 +71,7 @@ const writeAppCommandCacheTask = async (
     cacheRoot,
     toolingFingerprint,
     entriesFingerprint,
+    source,
   });
   if (cached !== null) return cachePath;
 
@@ -131,16 +147,17 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
 interface ReadAppCommandCacheTaskOptions extends WriteAppCommandCacheOptions {
   readonly toolingFingerprint?: string;
   readonly entriesFingerprint?: string;
+  readonly source?: AppCommandCacheSource;
 }
 
 const readAppCommandCacheTask = async (
   options: ReadAppCommandCacheTaskOptions,
 ): Promise<AppCommandIndexPayload | null> => {
   const cwd = options.cwd ?? process.cwd();
-  const filePath = await findLandofilePath(cwd);
-  if (filePath === undefined) return null;
+  const source = options.source ?? (await resolveAppCommandCacheSource(cwd));
+  if (source === undefined) return null;
 
-  const stats = await stat(filePath);
+  const { filePath, stats } = source;
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const appName = options.landofile.name ?? "unnamed";
   const appRoot = dirname(filePath);
