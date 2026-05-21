@@ -4727,3 +4727,12 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Local main / branch refreshed: yes (local `main` reset to `origin/main` at 8600dc5 after preserving prior local-only main commit 20e1cff on `backup/main-before-pr123-refresh-20e1cff`)
 - Remaining local state, if any: on `main`; story branch deleted locally and pruned from `origin`; `spec/alpha/progress.txt` has this uncommitted babysit report; backup branch `backup/main-before-pr123-refresh-20e1cff` preserves the previous local-only PR #122 babysit progress commit
 ---
+
+## 2026-05-20 - Sync
+- Previous branch: us-043-plugin-command-index-cache
+- Previous PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- Action: caught up after prior merge (PR #123 already MERGED); fast-path committed stale progress.txt changes to local main first
+- Local main updated: yes (already at origin/main after ff-only; 1 commit ahead due to progress-log fast-path)
+- Branch after sync: main
+- Stash created: no
+---
