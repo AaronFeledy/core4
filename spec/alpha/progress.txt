@@ -4717,3 +4717,13 @@ Spec source of truth: spec/ROADMAP.md Phase 2 + spec/{01..19}-*.md
 - Commit(s): 7cfb8f0 feat: Implement plugin command index cache; d5705ab fix: Harden app command cache refresh safety; b0c7575 chore: remove AI slop; ed97f1c fix: invalidate app command cache on entry changes; fe2d9dc fix: remove dead plugin cache conditional; f2e843f fix: dedupe Landofile discovery in app command cache writer; 391b774 docs: record PR #123 Bugbot triage follow-up
 - PR: #123 https://github.com/AaronFeledy/core4/pull/123 (existing)
 ---
+
+## [2026-05-20 21:40 CDT] - Babysit
+- PR: #123 https://github.com/AaronFeledy/core4/pull/123
+- CI outcome: pass (Cursor Bugbot, static-checks, build-linux-x64, provider-integration-linux-x64)
+- Review feedback: none blocking (all Bugbot review threads are resolved; no human change requests)
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (local `main` reset to `origin/main` at 8600dc5 after preserving prior local-only main commit 20e1cff on `backup/main-before-pr123-refresh-20e1cff`)
+- Remaining local state, if any: on `main`; story branch deleted locally and pruned from `origin`; `spec/alpha/progress.txt` has this uncommitted babysit report; backup branch `backup/main-before-pr123-refresh-20e1cff` preserves the previous local-only PR #122 babysit progress commit
+---
