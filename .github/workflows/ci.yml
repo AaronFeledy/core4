@@ -211,8 +211,8 @@ jobs:
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
           LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
-          bun test plugins/provider-lando/test --filter=integration | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
-          bun test plugins/provider-docker/test --filter=integration | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+          bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
+          bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
 
       - name: Teardown Podman
         if: always()

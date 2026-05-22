@@ -141,10 +141,10 @@ describe("ci workflow", () => {
       '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-lando/test --filter=integration",
+      "          bun test plugins/provider-lando/test/*.integration.test.ts",
     );
     expect(providerIntegration).toContain(
-      "          bun test plugins/provider-docker/test --filter=integration",
+      "          bun test plugins/provider-docker/test/*.integration.test.ts",
     );
     expect(providerIntegration).not.toContain(
       "          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts",
