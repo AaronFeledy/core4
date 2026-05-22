@@ -20,6 +20,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 
 ## Codebase Patterns
 
+- Docs component prop schemas that participate in the schema gate need exports from `@lando/sdk/docs/components`, `@lando/core/docs/components`, and `@lando/sdk/schema`, plus `scripts/build-schema-snapshot.ts` / `sdk/API_COMPATIBILITY.md` updates.
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
 
 ## Cross-PRD prerequisites
@@ -55,3 +56,50 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
 - PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
 ---
+## 2026-05-22 14:56 - Babysit
+- PR: #154 https://github.com/AaronFeledy/core4/pull/154
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; `.local/looper/.last-branch` still records the completed branch for loop bookkeeping.
+---
+
+## [2026-05-22 19:58 UTC] - Sync
+- Previous branch: us-057-guide-frontmatter-schema
+- Previous PR: #154 https://github.com/AaronFeledy/core4/pull/154
+- Action: caught up after prior merge (PR #154 was already MERGED, all CI green); fast-pathed a dirty progress.txt onto local main before reconciliation
+- Local main updated: yes (already up to date with origin/main; 1 commit ahead due to progress log fast-path commit)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-22 21:40 - US-058
+- Implemented Alpha 2 docs component prop schemas for Guide, Scenario, Step, Run, Verify, Cleanup, Variable, Hidden, UseFixture, plus the Alpha 2 MatcherSchema subset and deferred-feature remediation helpers.
+- Files changed: `sdk/src/docs/components/props.ts`, `sdk/src/docs/components/index.ts`, `core/src/docs/components/index.ts`, `core/package.json`, `sdk/src/schema/index.ts`, `scripts/build-schema-snapshot.ts`, `sdk/test/fixtures/schema-snapshot.json`, `sdk/API_COMPATIBILITY.md`, `core/test/docs/component-props.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/docs/component-props.test.ts core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (15 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1116 pass, 11 skip, 0 fail); manual QA via `bun -e` imported from `@lando/core/docs/components` and observed Alpha 2 success plus `NotImplementedError:§19.14`/`NotImplementedError:§19.3` for deferred props; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Docs component prop schemas that participate in the schema gate need three public-surface updates together: `@lando/sdk/docs/components`, `@lando/core/docs/components`, and the `@lando/sdk/schema` JSON schema registry/snapshot.
+  - Deferred component props should follow the GuideFrontmatter pattern: schema decode helpers pre-scan for Beta keys and return tagged `NotImplementedError` before the generic Effect Schema parse path.
+---
+## 2026-05-22 15:33 - US-058 Review
+- Reviewed commit aac0c71 against US-058 acceptance criteria in `spec/alpha2/prd-alpha2-01-guide-schema-and-scenario-context.md` (lines 40-65). No fixes required.
+- Files changed: none (review-only iteration).
+- `review-work` findings: fixed (none) / rejected: (1) Oracle NITPICK on `MatcherSchema` including `Schema.Array(Schema.Unknown)` as a union arm — rejected because the AC names "scalar deep-equal" plus operator forms without explicitly forbidding bare arrays, deep-equal extension to arrays is the natural reading of §19.3, and the round-trip test already exercises a `Verify.expect: { regex: ... }` and `anyOf` path; treating bare-array deep-equal as an additive concern is consistent with the "narrow on purpose / additive later" guidance in the PRD's Technical Considerations.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1116 pass, 11 skip, 0 fail, 5901 expect()); `bun run codegen` was idempotent (`git status` clean afterward); focused `bun test core/test/docs/component-props.test.ts` passed (6 pass, 98 expect()).
+- **Learnings for future iterations:**
+  - When the loop's Oracle reviewer flags an interpretation question on AC wording, check the PRD's "Non-Goals" and "Technical Considerations" sections: they often resolve "is this in scope?" without expanding the implementation.
+  - Bun is not on `$PATH` by default in this sandbox shell; prepend `/home/aaron/.bun/bin` before invoking `bun` for any verification command.
+---
+## 2026-05-22 20:42 UTC - Push
+- Branch: us-058-component-prop-schemas
+- Push: pushed
+- Commit(s): db3a8dc docs: record US-058 review (no fixes required); aac0c71 feat: Publish Alpha 2 component prop schemas; 19ffd9c docs: record sync catch-up for us-057-guide-frontmatter-schema; 1525f7b docs: update progress log
+- PR: #155 https://github.com/AaronFeledy/core4/pull/155 (created)
+---
+
+## 2026-05-22 21:54 UTC - PR #155 Bugbot Triage
+- CI/check triage: all GitHub Actions checks in `.local/tmp/pr-155-babysit-state.txt` were already passing; Cursor Bugbot was neutral/skipping after posting one review comment.
+- Review triage: accepted Bugbot's `decodeScenarioPropsEither` finding as real because the `render: false` reason pre-check bypassed the full `ScenarioProps` schema and could mask the scenario-specific filter message or missing `id` diagnostics.
+- Fix: removed the redundant pre-check, kept the deferred `layer: "e2e"` `NotImplementedError` guard, and added regression coverage for the schema filter message plus missing-`id` preservation.
+- Follow-up Bugbot triage: accepted the new Run/Verify exact-one pre-check finding as real for the same reason; removed those redundant pre-checks so schema filters and field-level parse diagnostics surface, while keeping explicit Beta `runtime`/`tooling`/matcher guards.

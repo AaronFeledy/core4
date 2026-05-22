@@ -85,6 +85,16 @@
     "sdkSchemas": [
       "DeprecationNotice",
       "GuideFrontmatter",
+      "GuideProps",
+      "ScenarioProps",
+      "StepProps",
+      "RunProps",
+      "VerifyProps",
+      "CleanupProps",
+      "VariableProps",
+      "HiddenProps",
+      "UseFixtureProps",
+      "MatcherSchema",
       "BootstrapLevel",
       "AppRef",
       "AppPlan",
@@ -639,6 +649,25 @@
       "enum": ["none", "minimal", "plugins", "commands", "tooling", "provider", "global", "scratch", "app"],
       "type": "string"
     },
+    "CleanupProps": {
+      "$defs": {
+        "CleanupProps": {
+          "$id": "/schemas/%7B%7D",
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "array"
+            }
+          ],
+          "description": "Alpha 2 <Cleanup> component props.",
+          "title": "Cleanup Props"
+        }
+      },
+      "$ref": "#/$defs/CleanupProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
     "DeprecationNotice": {
       "$defs": {
         "DeprecationNotice": {
@@ -805,6 +834,46 @@
         }
       },
       "$ref": "#/$defs/GuideFrontmatter",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "GuideProps": {
+      "$defs": {
+        "GuideProps": {
+          "$id": "/schemas/%7B%7D",
+          "anyOf": [
+            {
+              "type": "object"
+            },
+            {
+              "type": "array"
+            }
+          ],
+          "description": "Alpha 2 <Guide> component props.",
+          "title": "Guide Props"
+        }
+      },
+      "$ref": "#/$defs/GuideProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "HiddenProps": {
+      "$defs": {
+        "HiddenProps": {
+          "additionalProperties": false,
+          "description": "Alpha 2 <Hidden> component props.",
+          "properties": {
+            "reason": {
+              "description": "a string at least 8 character(s) long",
+              "minLength": 8,
+              "title": "minLength(8)",
+              "type": "string"
+            }
+          },
+          "required": ["reason"],
+          "title": "Hidden Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/HiddenProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "HostPlatform": {
@@ -1355,6 +1424,113 @@
       "required": [],
       "type": "object"
     },
+    "MatcherSchema": {
+      "$defs": {
+        "MatcherAnyOf": {
+          "additionalProperties": false,
+          "properties": {
+            "anyOf": {
+              "items": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["anyOf"],
+          "type": "object"
+        },
+        "MatcherNot": {
+          "additionalProperties": false,
+          "properties": {
+            "not": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            }
+          },
+          "required": ["not"],
+          "type": "object"
+        },
+        "MatcherPartialObject": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "MatcherRegex": {
+          "additionalProperties": false,
+          "properties": {
+            "regex": {
+              "type": "string"
+            }
+          },
+          "required": ["regex"],
+          "type": "object"
+        },
+        "MatcherScalar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "MatcherSchema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MatcherScalar"
+            },
+            {
+              "items": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/MatcherRegex"
+            },
+            {
+              "$ref": "#/$defs/MatcherSchemaRef"
+            },
+            {
+              "$ref": "#/$defs/MatcherAnyOf"
+            },
+            {
+              "$ref": "#/$defs/MatcherNot"
+            },
+            {
+              "$ref": "#/$defs/MatcherPartialObject"
+            }
+          ],
+          "description": "Alpha 2 declarative matcher subset for executable-guide verification.",
+          "title": "Matcher Schema"
+        },
+        "MatcherSchemaRef": {
+          "additionalProperties": false,
+          "properties": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "required": ["schema"],
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/MatcherSchema",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
     "PluginManifest": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -1557,6 +1733,77 @@
     "ProviderId": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "string"
+    },
+    "RunProps": {
+      "$defs": {
+        "RunProps": {
+          "additionalProperties": false,
+          "description": "Alpha 2 <Run> component props.",
+          "properties": {
+            "answers": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "command": {
+              "type": "string"
+            },
+            "expectExit": {
+              "description": "an integer",
+              "title": "int",
+              "type": "integer"
+            },
+            "shell": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "Run Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/RunProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "ScenarioProps": {
+      "$defs": {
+        "ComponentId": {
+          "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        "ScenarioProps": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/$defs/ComponentId"
+            },
+            "layer": {
+              "enum": ["scenario"],
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "render": {
+              "type": "boolean"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["id"],
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/ScenarioProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "ServiceInfo": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -2014,6 +2261,202 @@
         "extensions"
       ],
       "type": "object"
+    },
+    "StepProps": {
+      "$defs": {
+        "ComponentId": {
+          "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        "StepProps": {
+          "additionalProperties": false,
+          "description": "Alpha 2 <Step> component props.",
+          "properties": {
+            "name": {
+              "$ref": "#/$defs/ComponentId"
+            }
+          },
+          "required": ["name"],
+          "title": "Step Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/StepProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "UseFixtureProps": {
+      "$defs": {
+        "UseFixtureProps": {
+          "additionalProperties": false,
+          "description": "Alpha 2 <UseFixture> component props.",
+          "properties": {
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": ["name"],
+          "title": "Use Fixture Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/UseFixtureProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "VariableProps": {
+      "$defs": {
+        "VariableProps": {
+          "additionalProperties": false,
+          "description": "Alpha 2 <Variable> component props.",
+          "properties": {
+            "display": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "value"],
+          "title": "Variable Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/VariableProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "VerifyProps": {
+      "$defs": {
+        "MatcherAnyOf": {
+          "additionalProperties": false,
+          "properties": {
+            "anyOf": {
+              "items": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["anyOf"],
+          "type": "object"
+        },
+        "MatcherNot": {
+          "additionalProperties": false,
+          "properties": {
+            "not": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            }
+          },
+          "required": ["not"],
+          "type": "object"
+        },
+        "MatcherPartialObject": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "MatcherRegex": {
+          "additionalProperties": false,
+          "properties": {
+            "regex": {
+              "type": "string"
+            }
+          },
+          "required": ["regex"],
+          "type": "object"
+        },
+        "MatcherScalar": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "MatcherSchema": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MatcherScalar"
+            },
+            {
+              "items": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "type": "array"
+            },
+            {
+              "$ref": "#/$defs/MatcherRegex"
+            },
+            {
+              "$ref": "#/$defs/MatcherSchemaRef"
+            },
+            {
+              "$ref": "#/$defs/MatcherAnyOf"
+            },
+            {
+              "$ref": "#/$defs/MatcherNot"
+            },
+            {
+              "$ref": "#/$defs/MatcherPartialObject"
+            }
+          ],
+          "description": "Alpha 2 declarative matcher subset for executable-guide verification.",
+          "title": "Matcher Schema"
+        },
+        "MatcherSchemaRef": {
+          "additionalProperties": false,
+          "properties": {
+            "schema": {
+              "type": "string"
+            }
+          },
+          "required": ["schema"],
+          "type": "object"
+        },
+        "VerifyProps": {
+          "additionalProperties": false,
+          "description": "Alpha 2 <Verify> component props.",
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "errorTag": {
+              "type": "string"
+            },
+            "event": {
+              "type": "string"
+            },
+            "expect": {
+              "$ref": "#/$defs/MatcherSchema"
+            },
+            "file": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "Verify Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/VerifyProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     }
   }
 }

@@ -9,6 +9,36 @@ export {
   decodeGuideFrontmatter,
   decodeGuideFrontmatterEither,
 } from "../docs/guide-frontmatter.ts";
+export {
+  CleanupProps,
+  GuideProps,
+  HiddenProps,
+  MatcherAnyOf,
+  MatcherNot,
+  MatcherPartialObject,
+  MatcherRegex,
+  MatcherScalar,
+  MatcherSchema,
+  MatcherSchemaRef,
+  RunProps,
+  ScenarioProps,
+  StepProps,
+  UseFixtureProps,
+  VariableProps,
+  VerifyProps,
+} from "../docs/components/props.ts";
+import {
+  CleanupProps,
+  GuideProps,
+  HiddenProps,
+  MatcherSchema,
+  RunProps,
+  ScenarioProps,
+  StepProps,
+  UseFixtureProps,
+  VariableProps,
+  VerifyProps,
+} from "../docs/components/props.ts";
 import { DeprecationNotice, GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
@@ -946,6 +976,16 @@ export type TemplateRenderContext = typeof TemplateRenderContext.Type;
 const JSON_SCHEMA_REGISTRY = {
   DeprecationNotice,
   GuideFrontmatter,
+  GuideProps,
+  ScenarioProps,
+  StepProps,
+  RunProps,
+  VerifyProps,
+  CleanupProps,
+  VariableProps,
+  HiddenProps,
+  UseFixtureProps,
+  MatcherSchema,
   BootstrapLevel,
   AppRef,
   AppPlan,
@@ -971,6 +1011,26 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(DeprecationNotice);
     case "GuideFrontmatter":
       return JSONSchema.make(GuideFrontmatter);
+    case "GuideProps":
+      return JSONSchema.make(GuideProps);
+    case "ScenarioProps":
+      return JSONSchema.make(ScenarioProps);
+    case "StepProps":
+      return JSONSchema.make(StepProps);
+    case "RunProps":
+      return JSONSchema.make(RunProps);
+    case "VerifyProps":
+      return JSONSchema.make(VerifyProps);
+    case "CleanupProps":
+      return JSONSchema.make(CleanupProps);
+    case "VariableProps":
+      return JSONSchema.make(VariableProps);
+    case "HiddenProps":
+      return JSONSchema.make(HiddenProps);
+    case "UseFixtureProps":
+      return JSONSchema.make(UseFixtureProps);
+    case "MatcherSchema":
+      return JSONSchema.make(MatcherSchema);
     case "AppRef":
       return JSONSchema.make(AppRef);
     case "AppPlan":

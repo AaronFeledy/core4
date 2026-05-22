@@ -16,6 +16,7 @@
 - `BunShellScriptFrontMatter`
 - `CertificatePlan`
 - `CommandSpec`
+- `CleanupProps`
 - `DataStoreMountPlan`
 - `defineLandofile`
 - `DataStorePlan`
@@ -26,10 +27,19 @@
 - `EndpointPlan`
 - `GuideFrontmatter`
 - `GuideId`
+- `GuideProps`
 - `HealthcheckInput`
 - `HealthcheckPlan`
+- `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `MatcherAnyOf`
+- `MatcherNot`
+- `MatcherPartialObject`
+- `MatcherRegex`
+- `MatcherScalar`
+- `MatcherSchema`
+- `MatcherSchemaRef`
 - `MountInput`
 - `MountPlan`
 - `NetworkPlan`
@@ -55,7 +65,10 @@
 - `RouteInput`
 - `RoutePlan`
 - `RouteRef`
+- `RunProps`
+- `ScenarioProps`
 - `ServiceConfig`
+- `StepProps`
 - `StorageInput`
 - `StorageScope`
 - `TelemetryConfig`
@@ -66,6 +79,9 @@
 - `ToolingVarLiteral`
 - `ToolingVarPrompt`
 - `ToolingVarSh`
+- `UseFixtureProps`
+- `VariableProps`
+- `VerifyProps`
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
 
