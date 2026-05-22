@@ -49,3 +49,15 @@ Rationale: <link to the PR description that made the call>
 - Removed planning-phase wording from comments in `sdk/src/schema/index.ts` while preserving the schema exports and runtime behavior.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (9 pass); branch-changed source/test comment leakage scan passed; `lsp_diagnostics sdk/src/schema/index.ts` could not run because `typescript-language-server` is not installed; full `bun test` was attempted and failed in compiled CLI parity tests with exit 135 / empty compiled stderr, unrelated to the comment-only cleanup.
 ---
+## 2026-05-22 14:47 - Push
+- Branch: us-057-guide-frontmatter-schema
+- Push: pushed
+- Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
+- PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
+---
+## 2026-05-22 14:47 - Push
+- Branch: us-057-guide-frontmatter-schema
+- Push: pushed
+- Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
+- PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
+---
