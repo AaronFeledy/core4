@@ -112,10 +112,10 @@ const createDefaultRunCli =
         } satisfies ScenarioRunResult;
       }
 
-      const stdout = captureWrite(process.stdout);
-      const stderr = captureWrite(process.stderr);
       const previousCwd = process.cwd();
       const previousExitCode = process.exitCode;
+      const stdout = captureWrite(process.stdout);
+      const stderr = captureWrite(process.stderr);
 
       try {
         process.chdir(testDir);

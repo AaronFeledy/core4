@@ -161,3 +161,8 @@ Rationale: <link to the PR description that made the call>
 - Review triage: accepted Cursor Bugbot's ScenarioContext error-type erasure comment as real because `E | unknown` collapses to `unknown`, which erases caller error inference from `withScenarioContext`.
 - Fix: changed the helper return type to `Effect.Effect<A, E | Cause.UnknownException, R>` so the body callback's `E` is preserved.
 - Verification plan: run `bun run typecheck`, `bun run lint`, and `bun test --max-concurrency=1` before push.
+
+## [2026-05-22 23:31 UTC] - PR #156 Triage
+- Review triage: accepted Cursor Bugbot's stream-capture leak comment as real because restoring stdout/stderr interceptors only in `finally` can leak the monkey-patch if any pre-`try` setup throws.
+- Fix: moved `process.cwd()` / `process.exitCode` capture ahead of the write interception setup in `core/src/testing/scenario-context.ts` so the restore state is captured before any possible throw point.
+- Verification plan: run `bun run typecheck`, `bun run lint`, and `bun test --max-concurrency=1` before push.
