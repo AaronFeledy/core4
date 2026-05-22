@@ -82,3 +82,12 @@ Rationale: <link to the PR description that made the call>
   - Docs component prop schemas that participate in the schema gate need three public-surface updates together: `@lando/sdk/docs/components`, `@lando/core/docs/components`, and the `@lando/sdk/schema` JSON schema registry/snapshot.
   - Deferred component props should follow the GuideFrontmatter pattern: schema decode helpers pre-scan for Beta keys and return tagged `NotImplementedError` before the generic Effect Schema parse path.
 ---
+## 2026-05-22 15:33 - US-058 Review
+- Reviewed commit aac0c71 against US-058 acceptance criteria in `spec/alpha2/prd-alpha2-01-guide-schema-and-scenario-context.md` (lines 40-65). No fixes required.
+- Files changed: none (review-only iteration).
+- `review-work` findings: fixed (none) / rejected: (1) Oracle NITPICK on `MatcherSchema` including `Schema.Array(Schema.Unknown)` as a union arm — rejected because the AC names "scalar deep-equal" plus operator forms without explicitly forbidding bare arrays, deep-equal extension to arrays is the natural reading of §19.3, and the round-trip test already exercises a `Verify.expect: { regex: ... }` and `anyOf` path; treating bare-array deep-equal as an additive concern is consistent with the "narrow on purpose / additive later" guidance in the PRD's Technical Considerations.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1116 pass, 11 skip, 0 fail, 5901 expect()); `bun run codegen` was idempotent (`git status` clean afterward); focused `bun test core/test/docs/component-props.test.ts` passed (6 pass, 98 expect()).
+- **Learnings for future iterations:**
+  - When the loop's Oracle reviewer flags an interpretation question on AC wording, check the PRD's "Non-Goals" and "Technical Considerations" sections: they often resolve "is this in scope?" without expanding the implementation.
+  - Bun is not on `$PATH` by default in this sandbox shell; prepend `/home/aaron/.bun/bin` before invoking `bun` for any verification command.
+---
