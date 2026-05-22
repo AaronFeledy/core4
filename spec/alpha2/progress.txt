@@ -91,3 +91,9 @@ Rationale: <link to the PR description that made the call>
   - When the loop's Oracle reviewer flags an interpretation question on AC wording, check the PRD's "Non-Goals" and "Technical Considerations" sections: they often resolve "is this in scope?" without expanding the implementation.
   - Bun is not on `$PATH` by default in this sandbox shell; prepend `/home/aaron/.bun/bin` before invoking `bun` for any verification command.
 ---
+## 2026-05-22 20:42 UTC - Push
+- Branch: us-058-component-prop-schemas
+- Push: pushed
+- Commit(s): db3a8dc docs: record US-058 review (no fixes required); aac0c71 feat: Publish Alpha 2 component prop schemas; 19ffd9c docs: record sync catch-up for us-057-guide-frontmatter-schema; 1525f7b docs: update progress log
+- PR: #155 https://github.com/AaronFeledy/core4/pull/155 (created)
+---
