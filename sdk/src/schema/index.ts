@@ -516,7 +516,15 @@ export const ServiceConfig = Schema.Struct({
     }),
   ),
 
-  ports: Schema.optional(Schema.Array(Schema.String)),
+  ports: Schema.optional(
+    Schema.Array(
+      Schema.transform(Schema.Union(Schema.String, Schema.Number), Schema.String, {
+        strict: true,
+        decode: String,
+        encode: (s) => s,
+      }),
+    ),
+  ),
   volumes: Schema.optional(Schema.Array(Schema.String)),
 
   appMount: Schema.optional(

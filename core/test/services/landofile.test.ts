@@ -194,6 +194,32 @@ describe("LandofileServiceLive — numeric/boolean environment values", () => {
   });
 });
 
+describe("LandofileServiceLive — numeric ports coercion (bugbot PR#28 finding 2)", () => {
+  test("coerces numeric port scalars in ports: list to strings", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "    ports:",
+          "      - 8080",
+          "      - 9000:90",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+
+      const web = landofile.services?.[ServiceName.make("web")];
+      expect(web?.ports).toEqual(["8080", "9000:90"]);
+    });
+  });
+});
+
 describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () => {
   test("parses mounts: bind shorthand entries, volume object entries, and appMount.excludes patterns", async () => {
     await withTempCwd(async (dir) => {

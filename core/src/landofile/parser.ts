@@ -49,7 +49,64 @@ interface ParsedLine {
 const parseError = (filePath: string, message: string, line?: number, column?: number): LandofileParseError =>
   new LandofileParseErrorClass({ message, filePath, line, column });
 
-const stripComment = (line: string): string => line.replace(/\s+#.*$/, "");
+const stripComment = (line: string): string => {
+  const colonIdx = line.indexOf(":");
+  if (colonIdx === -1) {
+    return line.replace(/\s+#.*$/, "");
+  }
+
+  const beforeColon = line.slice(0, colonIdx + 1);
+  const afterColon = line.slice(colonIdx + 1);
+  const valueIdx = afterColon.search(/\S/);
+  if (valueIdx === -1) {
+    return line;
+  }
+
+  const valuePrefix = afterColon.slice(0, valueIdx);
+  const valuePart = afterColon.slice(valueIdx);
+
+  // A comment can start immediately after the colon, e.g. `services: # services`.
+  // Once `valuePrefix` is split off the leading whitespace is gone, so the
+  // `/\s+#.*$/` fallback below cannot match. Detect this explicitly and drop the
+  // comment so `parseMap` sees an empty value and can look for a nested block.
+  if (valuePart.startsWith("#")) {
+    return beforeColon;
+  }
+
+  if (valuePart.startsWith('"')) {
+    let i = 1;
+    while (i < valuePart.length) {
+      if (valuePart[i] === "\\" && i + 1 < valuePart.length) {
+        i += 2;
+      } else if (valuePart[i] === '"') {
+        i += 1;
+        break;
+      } else {
+        i += 1;
+      }
+    }
+    const tail = valuePart.slice(i).replace(/\s+#.*$/, "");
+    return beforeColon + valuePrefix + valuePart.slice(0, i) + tail;
+  }
+
+  if (valuePart.startsWith("'")) {
+    let i = 1;
+    while (i < valuePart.length) {
+      if (valuePart[i] === "'" && valuePart[i + 1] === "'") {
+        i += 2;
+      } else if (valuePart[i] === "'") {
+        i += 1;
+        break;
+      } else {
+        i += 1;
+      }
+    }
+    const tail = valuePart.slice(i).replace(/\s+#.*$/, "");
+    return beforeColon + valuePrefix + valuePart.slice(0, i) + tail;
+  }
+
+  return beforeColon + valuePrefix + valuePart.replace(/\s+#.*$/, "");
+};
 
 const parseInlineArray = (value: string, filePath: string, line: number): ReadonlyArray<unknown> => {
   const inner = value.slice(1, -1).trim();
