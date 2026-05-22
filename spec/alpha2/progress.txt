@@ -20,6 +20,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 
 ## Codebase Patterns
 
+- Docs component prop schemas that participate in the schema gate need exports from `@lando/sdk/docs/components`, `@lando/core/docs/components`, and `@lando/sdk/schema`, plus `scripts/build-schema-snapshot.ts` / `sdk/API_COMPATIBILITY.md` updates.
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
 
 ## Cross-PRD prerequisites
@@ -72,4 +73,12 @@ Rationale: <link to the PR description that made the call>
 - Local main updated: yes (already up to date with origin/main; 1 commit ahead due to progress log fast-path commit)
 - Branch after sync: main
 - Stash created: no
+---
+## 2026-05-22 21:40 - US-058
+- Implemented Alpha 2 docs component prop schemas for Guide, Scenario, Step, Run, Verify, Cleanup, Variable, Hidden, UseFixture, plus the Alpha 2 MatcherSchema subset and deferred-feature remediation helpers.
+- Files changed: `sdk/src/docs/components/props.ts`, `sdk/src/docs/components/index.ts`, `core/src/docs/components/index.ts`, `core/package.json`, `sdk/src/schema/index.ts`, `scripts/build-schema-snapshot.ts`, `sdk/test/fixtures/schema-snapshot.json`, `sdk/API_COMPATIBILITY.md`, `core/test/docs/component-props.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/docs/component-props.test.ts core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (15 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1116 pass, 11 skip, 0 fail); manual QA via `bun -e` imported from `@lando/core/docs/components` and observed Alpha 2 success plus `NotImplementedError:§19.14`/`NotImplementedError:§19.3` for deferred props; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Docs component prop schemas that participate in the schema gate need three public-surface updates together: `@lando/sdk/docs/components`, `@lando/core/docs/components`, and the `@lando/sdk/schema` JSON schema registry/snapshot.
+  - Deferred component props should follow the GuideFrontmatter pattern: schema decode helpers pre-scan for Beta keys and return tagged `NotImplementedError` before the generic Effect Schema parse path.
 ---
