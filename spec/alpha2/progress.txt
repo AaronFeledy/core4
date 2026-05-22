@@ -103,3 +103,14 @@ Rationale: <link to the PR description that made the call>
 - Review triage: accepted Bugbot's `decodeScenarioPropsEither` finding as real because the `render: false` reason pre-check bypassed the full `ScenarioProps` schema and could mask the scenario-specific filter message or missing `id` diagnostics.
 - Fix: removed the redundant pre-check, kept the deferred `layer: "e2e"` `NotImplementedError` guard, and added regression coverage for the schema filter message plus missing-`id` preservation.
 - Follow-up Bugbot triage: accepted the new Run/Verify exact-one pre-check finding as real for the same reason; removed those redundant pre-checks so schema filters and field-level parse diagnostics surface, while keeping explicit Beta `runtime`/`tooling`/matcher guards.
+---
+
+## [2026-05-22 21:29 UTC] - Babysit
+- PR: #155 https://github.com/AaronFeledy/core4/pull/155
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot Scenario pre-check issue, then follow-up Run/Verify pre-check issue)
+- Triage rounds used: 2
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; local story branch deleted; remote story branch absent after prune/delete check.
+---
