@@ -29,21 +29,6 @@ const hiddenComponentError = (): NotImplementedError =>
       "Move this coverage into a colocated `<Scenario render={false}>` per §19.9. `<Hidden>` ships in Phase 3 Beta — see `spec/ROADMAP.md`.",
   });
 
-const requireExactlyOne = (
-  component: string,
-  input: Record<string, unknown>,
-  keys: ReadonlyArray<string>,
-) => {
-  const present = keys.filter((key) => Object.hasOwn(input, key) && input[key] !== undefined);
-  if (present.length === 1) return undefined;
-  return new NotImplementedError({
-    message: `<${component}> requires exactly one of ${keys.map((key) => `\`${key}\``).join(", ")}.`,
-    commandId: `guide.component.${component.toLowerCase()}`,
-    specSection: "§19.3",
-    remediation: `Choose exactly one Alpha 2 ${component} target per §19.3.`,
-  });
-};
-
 const asRecord = (input: unknown): Record<string, unknown> | undefined => {
   if (input === null || typeof input !== "object" || Array.isArray(input)) return undefined;
   return input as Record<string, unknown>;
@@ -243,8 +228,6 @@ export const decodeRunPropsEither = (input: unknown): Either.Either<RunProps, De
       return Either.left(betaComponentPropsError("Run", "runtime", "§19.14"));
     if (Object.hasOwn(record, "tooling"))
       return Either.left(betaComponentPropsError("Run", "tooling", "§19.14"));
-    const exclusive = requireExactlyOne("Run", record, ["command", "shell"]);
-    if (exclusive !== undefined) return Either.left(exclusive);
   }
   return decodeEither(RunProps, input);
 };
@@ -276,8 +259,6 @@ export const decodeVerifyPropsEither = (input: unknown): Either.Either<VerifyPro
       return Either.left(betaComponentPropsError("Verify", "runtime", "§19.14"));
     if (Object.hasOwn(record, "tooling"))
       return Either.left(betaComponentPropsError("Verify", "tooling", "§19.14"));
-    const exclusive = requireExactlyOne("Verify", record, ["event", "command", "file", "errorTag"]);
-    if (exclusive !== undefined) return Either.left(exclusive);
     const betaMatcherKey = findBetaMatcherKey(record.expect);
     if (betaMatcherKey !== undefined)
       return Either.left(betaComponentPropsError("Verify", betaMatcherKey, "§19.3"));

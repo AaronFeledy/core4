@@ -106,7 +106,22 @@ describe("Alpha 2 component prop schemas", () => {
 
     const both = decodeRunPropsEither({ command: "lando start", shell: "lando start" });
     expect(both._tag).toBe("Left");
-    if (Either.isLeft(both)) expect(both.left).toBeInstanceOf(NotImplementedError);
+    if (Either.isLeft(both)) {
+      expect(both.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(both.left);
+      expect(issues.map((issue) => issue.message)).toContain(
+        "<Run> requires exactly one of `command` or `shell`.",
+      );
+    }
+
+    const invalidAnswers = decodeRunPropsEither({ command: "lando start", answers: { name: 123 } });
+    expect(invalidAnswers._tag).toBe("Left");
+    if (Either.isLeft(invalidAnswers)) {
+      expect(invalidAnswers.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(invalidAnswers.left);
+      expect(issues.some((issue) => issue.path.join(".") === "answers.name")).toBe(true);
+    }
+
     expectNotImplemented(decodeRunPropsEither({ runtime: "appStart" }), "runtime");
     expectNotImplemented(decodeRunPropsEither({ tooling: "npm" }), "tooling");
   });
@@ -134,7 +149,12 @@ describe("Alpha 2 component prop schemas", () => {
 
     const multipleTargets = decodeVerifyPropsEither({ event: "post-start", file: "lando.yml" });
     expect(multipleTargets._tag).toBe("Left");
-    if (Either.isLeft(multipleTargets)) expect(multipleTargets.left).toBeInstanceOf(NotImplementedError);
+    if (Either.isLeft(multipleTargets)) {
+      expect(multipleTargets.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(multipleTargets.left);
+      expect(issues.map((issue) => issue.message)).toContain("<Verify> requires exactly one target.");
+    }
+
     expectNotImplemented(decodeVerifyPropsEither({ command: "lando start", runtime: "appStart" }), "runtime");
     expectNotImplemented(decodeVerifyPropsEither({ command: "lando start", tooling: "npm" }), "tooling");
     expectNotImplemented(
