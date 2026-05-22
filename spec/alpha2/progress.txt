@@ -166,3 +166,13 @@ Rationale: <link to the PR description that made the call>
 - Review triage: accepted Cursor Bugbot's stream-capture leak comment as real because restoring stdout/stderr interceptors only in `finally` can leak the monkey-patch if any pre-`try` setup throws.
 - Fix: moved `process.cwd()` / `process.exitCode` capture ahead of the write interception setup in `core/src/testing/scenario-context.ts` so the restore state is captured before any possible throw point.
 - Verification plan: run `bun run typecheck`, `bun run lint`, and `bun test --max-concurrency=1` before push.
+
+## [2026-05-22 23:44 UTC] - Babysit
+- PR: #156 https://github.com/AaronFeledy/core4/pull/156
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Cursor Bugbot comments: note transcript frame type, ScenarioContext error type preservation, stream-capture restore ordering)
+- Triage rounds used: 3
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; local story branch deleted; remote branch deleted by merge.
+---
