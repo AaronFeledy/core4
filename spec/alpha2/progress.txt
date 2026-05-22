@@ -55,9 +55,3 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
 - PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
 ---
-## 2026-05-22 14:47 - Push
-- Branch: us-057-guide-frontmatter-schema
-- Push: pushed
-- Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
-- PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
----
