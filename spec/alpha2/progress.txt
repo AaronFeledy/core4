@@ -1,0 +1,33 @@
+# Alpha 2 Progress Log — Lando v4 Phase 2.5 (guide scenario engine)
+
+Source PRDs: spec/alpha2/prd-alpha2-{01..04}-*.md
+Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.md (§19)
+
+## Conventions
+
+- Each story corresponds to a US-XXX section in one of the four prd-alpha2-*.md files.
+  Mapping (priority -> source PRD US):
+    1-5   -> prd-alpha2-01-guide-schema-and-scenario-context.md      US-057..061
+    6-10  -> prd-alpha2-02-mdx-codegen-pipeline.md                   US-062..066
+    11-13 -> prd-alpha2-03-author-command-and-source-mapper.md       US-067..069
+    14-17 -> prd-alpha2-04-lint-ci-and-recipe-readme.md              US-070..073
+
+- Every story is TDD (red -> green -> clean) per the Alpha 2 index PRD's verification contract.
+- Read the corresponding source PRD section before starting a story for full acceptance criteria detail.
+- Generated guide-scenario tests under `test/scenarios/generated/guides/**` are gitignored per §19.7 and MUST NOT be committed.
+- Alpha 2 default test runtime is `TestRuntimeProvider` (`layer: "scenario"`); no real provider socket required.
+- US-073 is a CONDITIONAL story. Decide once at PR-open time: if no `recipes/*/README.mdx` exists with executable components in this repo, close US-073 as "Not applicable in Alpha 2; deferred to Beta per §19.13" and record the decision below. Do not re-evaluate mid-series.
+
+## Cross-PRD prerequisites
+
+- Alpha PRD-06 (library testing surface) must be shipped: `@lando/core/testing`, `TestRuntimeProvider`, in-process CLI runner.
+- Alpha PRD-07 (CI + schema gates): the schema snapshot diff and the codegen drift checks Alpha 2 extends are already in place.
+- Alpha PRD-05 redaction module exists and is reused by US-071 transcripts; do not introduce a parallel copy.
+
+## US-073 conditional decision
+
+Status: <to be decided at PR-open>
+
+Rationale: <link to the PR description that made the call>
+
+## Story log

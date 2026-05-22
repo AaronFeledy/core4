@@ -40,3 +40,4 @@ pnpm-lock.yaml
 
 # Sisyphus agent workspace (project-local)
 .sisyphus/
+.omo/

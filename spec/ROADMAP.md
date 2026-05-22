@@ -10,7 +10,7 @@
 
 1. **MVP → Alpha**: prove the architecture works end-to-end on the *easiest* surface. One provider, one service, the happy path. No promises.
 2. **Alpha → Beta**: breadth across the catalog (service types, providers, plugins) with the bundled set hardened. Library API usable internally; docs not yet stable.
-3. **Beta → RC**: governance contracts go live (deprecation, signing, supply chain, schema publication, executable-tutorials-as-tests). Open decisions in §14.2 are closed. No new feature surface.
+3. **Beta → RC**: governance contracts go live (deprecation, signing, supply chain, schema publication, executable-guides-as-scenarios). Open decisions in §14.2 are closed. No new feature surface.
 4. **RC → 4.0 GA**: only fixes from RC, plus the §17.9 binary acceptance criteria (signed, notarized, SBOM, self-update, curl-pipe installer all green on all platforms).
 5. **4.x minors**: address things explicitly listed as "deferred to post-v4.0" in §14.2 and §6.12, in priority order.
 
@@ -240,6 +240,54 @@ Breadth that covers the most common stacks. Persistent caches. Tooling system re
 
 External alpha testers can scaffold a Drupal or Rails project, run `lando start`, run `lando drush`/`lando rails`, and have it work without touching internals. Bug rate is the gating signal — close the worst-N before tagging Beta.
 
+
+---
+
+## Phase 2.5 — Alpha2 ("guide scenario engine")
+
+> **One sentence**: Lando's authored guides can generate and run scenario-layer tests, including hidden guide-local edge cases, without requiring the full docs site renderer.
+>
+> **Audience**: core maintainers and guide authors preparing the public Alpha surface.
+
+### Goal
+
+Introduce the testing half of §19's Executable Guides model. Alpha2 does **not** add broad product capability; it makes guides and scenario coverage share one source of truth before Beta expands the runtime surface.
+
+### Concrete deliverables
+
+**Executable Guides + Scenarios (§19):**
+- Rename the docs-as-tests model from executable tutorials to **Executable Guides**: MDX-authored guides that define runnable **Scenarios**.
+- Make **Scenario** the engine primitive: generated tests are per scenario variant, not per page.
+- Support one rendered reader scenario per guide plus guide-local `render={false}` test-only scenarios for related edge cases and regressions.
+- Keep Diátaxis as editorial metadata (`tutorial` / `how-to` / `explanation` / `reference`), not as the execution model. Public docs may group tutorials and how-tos under "Guides".
+- Preserve the regular scenario suite for non-documentary coverage; broad regressions and shared invariants stay in standalone scenario fixtures rather than hidden guide blocks.
+
+**Alpha2 generator slice:**
+- `scripts/build-guide-scenarios.ts` parses a minimal executable-guide subset and generates TypeScript tests under `test/scenarios/generated/guides/**`.
+- A compatibility `scripts/build-doc-tests.ts` alias may exist during migration, but `build-guide-scenarios` is the spec-owned generator name.
+- Initial component subset: `<Guide>`, `<Scenario>`, `<Step>`, `<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<Hidden>`, and `<UseFixture>`.
+- Scenario layer only at first: `layer: "scenario"` runs against `@lando/core/testing` / `TestRuntimeProvider`. Real-provider `layer: "e2e"` guide scenarios remain Beta+/RC hardening.
+- Generated tests carry `// @source`, `// @scenario`, and optional `// @variant` headers.
+
+**Author/debug workflow:**
+- Add a focused local command such as `bun run docs:scenario <guide-id>` with `--scenario`, `--variant`, `--keep`, `--debug`, and `--explain` behavior.
+- Add source-mapped failure reporting so guide-sourced failures point at MDX or colocated case files before generated `.ts` files.
+- Add fixture-copy discipline: guide fixtures are immutable inputs copied into temp scenario roots before mutation.
+
+**Transcripts (test side only):**
+- Write internal transcript artifacts for scenario runs.
+- Public docs consume only visible reader-scenario frames later; hidden blocks, test-only scenarios, fixtures, and internal event traces are excluded from public transcript frames.
+- Do **not** build Starlight rendering or transcript embedding in Alpha2.
+
+**CI / gates:**
+- Add a focused generated-guide-scenario test gate: generator exits 0, generated TypeScript type-checks, and generated scenario tests pass.
+- Add minimal lint for executable guides: valid frontmatter, unique scenario ids, required reasons for test-only scenarios, and no rendered executable components in explanation/reference pages.
+- Defer full guide lint, full component schema publication, tabs/axes matrix breadth, public transcript rendering, and recipe README strip/flatten to later phases unless needed by an Alpha recipe.
+
+### Exit criteria for Alpha2
+
+At least one authored guide generates and runs a passing `layer: "scenario"` reader scenario against `TestRuntimeProvider`, at least one hidden guide-local test-only scenario runs without rendering, failures map back to guide source coordinates, and no docs-site render is required for the test gate.
+
 ---
 
 ## Phase 3 — Beta ("full breadth")
@@ -413,13 +461,13 @@ Operational release-readiness. No new features — only the things that make a s
 - Generated reference docs (Starlight) ship with deprecation callouts
 - Schema gate (§13.2) enforced in CI
 
-**Executable tutorials (§19):**
-- MDX → TypeScript codegen pipeline
-- Typed JSX component vocabulary
-- `TutorialContext`, display vs execute, transcripts, source-location preservation
-- Lint and quality gates
+**Executable guides and scenarios (§19):**
+- MDX → generated scenario TypeScript pipeline
+- Typed JSX component vocabulary for guides, scenarios, steps, actions, assertions, fixtures, and variants
+- `ScenarioContext`, display vs execute, internal/public transcripts, source-location preservation
+- Lint and quality gates for rendered reader scenarios and hidden test-only scenarios
 - Recipe README integration (§19.13)
-- Per-PR CI gate: scenario tutorials on every platform; e2e tutorial `@smoke` subset on Linux x64
+- Per-PR CI gate: scenario-layer guide scenarios on every platform; e2e guide-scenario `@smoke` subset on Linux x64
 
 **Release engineering (§17):**
 - `scripts/release.ts` orchestrator runs all 13 stages

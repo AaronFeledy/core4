@@ -1,275 +1,345 @@
-# Lando v4 — Executable Tutorials
+# Lando v4 — Executable Guides and Scenarios
 
 > **Part 17 of 18** · [Index](./README.md)
 
-This part defines how Lando v4 keeps narrative user docs and end-to-end test coverage in lock-step. An *executable tutorial* is an MDX file that is both the authored guide a reader follows and the structured source from which one or more TypeScript test files are generated. Prose stays prose; structured assertions live in the typed props of a small JSX component vocabulary; codegen compiles the components into runnable tests that drive `@lando/core/testing` against the live runtime; the same components render in Starlight as styled command blocks with embedded transcripts captured from the most recent test run.
+This part defines how Lando v4 keeps user-facing docs and scenario coverage in lock-step. An **executable guide** is an MDX-authored guide that can generate one or more runnable **scenarios**. The guide stays optimized for the reader; the scenario engine owns execution, assertions, fixtures, variants, cleanup, source mapping, and transcripts.
 
-This is the v4 mechanism for the Diátaxis *tutorial* and *how-to* buckets. *Reference* docs remain codegen from the canonical registries (§17.2). *Explanation* docs remain prose-only. There is no markdown-as-test surface in v4; the v3 Leia format is retired (§13.1).
+The core model is:
+
+> **Executable Guides are MDX-authored guide files that define Scenarios. A Scenario is the engine's runnable unit.**
+
+Guides may contain reader-facing scenarios that render in the docs and test-only scenarios that stay invisible but validate related edge cases. Unrelated regressions live in standalone scenario fixtures. Diátaxis remains editorial metadata for docs; it is not the execution model.
 
 ---
 
-## 19. Executable Tutorials
+## 19. Executable Guides and Scenarios
 
 ### 19.1 Mission
 
-A v4 tutorial has three audiences whose needs differ: the reader wants narrative; CI wants structured assertions and Scope-bound cleanup; the author wants one file. v3 collapsed all three into bash blocks parsed by a markdown runner, optimizing for the test runner and degrading the doc. v4 inverts that — every assertion lives in the typed props of a JSX component, the document is the canonical source for both the rendered page and every generated test it implies, and the tests cannot drift from the doc because they do not exist on disk between runs.
+A v4 guide has three audiences whose needs differ:
 
-The mechanism applies to:
+1. **Readers** want a clean Lando guide: prose, commands, expected output, and enough validation to know the setup worked.
+2. **CI** wants structured, deterministic scenarios with cleanup, assertions, source mapping, and fixture isolation.
+3. **Authors** want one natural place to keep a guide's visible path and closely related edge cases from drifting apart.
 
-- `docs/src/content/docs/tutorials/**/*.mdx` — Diátaxis tutorials.
-- `docs/src/content/docs/how-to/**/*.mdx` — Diátaxis how-tos.
-- `recipes/<id>/README.mdx` — recipe-author-supplied tutorial for using a canonical recipe (§8.8.2).
+v3 collapsed all three into bash blocks parsed by a markdown runner. v4 separates the concerns: user-facing docs are **Guides**, runnable behavior is **Scenarios**, and static input state is **Fixtures**. The same MDX source may define both visible reader scenarios and hidden test-only scenarios, but hidden coverage must not pollute the rendered page.
 
-It does **not** apply to the `explanation/` or `reference/` buckets or to the blog. Executable components in those buckets are a lint failure (§19.10).
+The mechanism applies to authored guide sources:
 
-### 19.2 The artifact
+- `docs/src/content/docs/guides/**/*.mdx` — Lando's public guide surface.
+- `docs/src/content/docs/tutorials/**/*.mdx` — Diátaxis tutorial pages when the docs tree chooses to expose that bucket separately.
+- `docs/src/content/docs/how-to/**/*.mdx` — Diátaxis how-to pages.
+- `recipes/<id>/README.mdx` — recipe-author-supplied guide for using a canonical recipe (§8.8.2).
 
-An executable tutorial is an MDX file with required frontmatter, a single top-level `<Tutorial>` element, and any combination of the components listed in §19.3 inside it.
+It does **not** apply to explanation, reference, or blog content. Executable components in those buckets are a lint failure (§19.10). Standalone non-documentary scenario coverage belongs under `test/scenarios/` or a future scenario-fixture tree, not in public docs.
+
+### 19.2 Model and artifact
+
+An executable guide is an MDX file with required frontmatter, a single top-level `<Guide>` element, and one or more `<Scenario>` elements. The engine compiles scenarios, not pages.
 
 ```mdx
 ---
 title: Set up a WordPress site with Lando
-diataxis: tutorial
+diataxis: how-to
 test:
-  id: wordpress-tutorial
-  layer: e2e
-  tags: ["recipes", "wordpress", "smoke"]
+  id: wordpress-guide
+  defaultLayer: scenario
+  tags: ["recipes", "wordpress"]
 ---
 
-import { Tutorial, Step, Run, Verify, Cleanup, Variable }
+import { Guide, Scenario, Step, Run, Verify, Cleanup, Variable }
   from "@lando/core/docs/components";
 
-<Tutorial>
+<Guide>
 
 <Variable name="siteName" value="mysite" display="mysite" />
 
-<Step name="scaffold">
-  <Run command="lando init --recipe wordpress" answers={{ name: "{{siteName}}" }} />
-  <Verify file=".lando.yml" matchesSchema="Landofile" />
-</Step>
+<Scenario id="reader" render tags={["smoke"]}>
+  <Step name="scaffold">
+    <Run command="lando init --recipe wordpress" answers={{ name: "{{siteName}}" }} />
+    <Verify file=".lando.yml" matchesSchema="Landofile" />
+  </Step>
 
-<Step name="start">
-  <Run command="lando start" />
-  <Verify event="post-start" status="success" within="60s" />
-</Step>
+  <Step name="start">
+    <Run command="lando start" />
+    <Verify event="post-start" status="success" within="60s" />
+  </Step>
 
-<Cleanup>
-  <Run command="lando destroy -y" />
-</Cleanup>
+  <Cleanup>
+    <Run command="lando destroy -y" />
+  </Cleanup>
+</Scenario>
 
-</Tutorial>
+<Scenario
+  id="rejects-invalid-service-type"
+  render={false}
+  reason="Regression coverage for Landofile validation remediation"
+  tags={["edge", "landofile"]}
+>
+  <Step name="start-invalid-app">
+    <UseFixture name="invalid-service-type" />
+    <Run command="lando start" expectExit={1} />
+    <Verify errorTag="LandofileValidationError" remediationIncludes="service type" />
+  </Step>
+</Scenario>
+
+</Guide>
 ```
 
-The frontmatter `test:` block validates against the `TutorialFrontmatter` schema, defined in `@lando/sdk` and re-exported through `@lando/core/schema`. Its keys:
+The key terms:
+
+| Term | Meaning |
+|---|---|
+| **Guide** | Authored MDX document, rendered for users. Public navigation should call these guides, recipes, concepts, or reference pages — not tests. |
+| **Diátaxis kind** | Editorial metadata (`tutorial`, `how-to`, `explanation`, `reference`). It constrains where executable components are allowed but does not define execution. |
+| **Scenario** | One executable behavior flow compiled into tests. A guide may define multiple scenarios. |
+| **Reader scenario** | A scenario with `render`/`render={true}`. Its visible steps and sanitized captured output may appear in public docs. |
+| **Test-only scenario** | A colocated scenario with `render={false}`. It generates tests and source-mapped failures but does not render and does not produce public transcript frames. |
+| **Fixture scenario** | A standalone non-doc scenario under the scenario test tree. Use for regressions, contracts, or edge cases with no natural guide home. |
+| **Variant** | One axis/tab/platform/provider cell of a scenario. Each variant emits a separate generated test and transcript. |
+| **Step** | Ordered unit inside a scenario. |
+| **Action/assertion** | `Run`, `Verify`, `Inspect`, `Cleanup`, or explicitly justified `Inline` code inside a step. |
+| **Fixture** | Immutable input copied into a temp workspace before mutation. Fixtures are data, not test logic. |
+
+The frontmatter `test:` block validates against `GuideFrontmatter` (formerly `TutorialFrontmatter` during the pre-Alpha2 spec), defined in `@lando/sdk` and re-exported through `@lando/core/schema`. Its keys:
 
 | Key | Meaning |
 |---|---|
-| `id` | Stable kebab-case identifier; matches the generated test filename prefix. |
-| `layer` | `"scenario"` (against `TestRuntimeProvider`, every PR) or `"e2e"` (real provider, nightly + smoke subset on PRs). |
-| `provider` | Inferred from `layer` (`"scenario"`→`"test"`, `"e2e"`→`"real"`); rarely overridden. |
-| `timeout` | Per-tutorial timeout in ms. Default 60 000 (scenario), 300 000 (e2e). The §2.1 hot-path budgets do not apply. |
-| `platforms` | Platform allowlist. Empty/omitted = every platform in the matrix. |
-| `tags` | Test tags. Implicitly tagged with `"tutorial"` and the diataxis bucket. |
-| `skip` | Skip every variant. The MDX still renders. `reason` is required; `until` is optional. |
+| `id` | Stable kebab-case guide identifier; used as the generated scenario filename prefix. |
+| `defaultLayer` | Default scenario layer: `"scenario"` (against `TestRuntimeProvider`) or `"e2e"` (real provider). Individual `<Scenario>` elements may override it. |
+| `provider` | Default provider. Inferred from layer (`"scenario"` → `"test"`, `"e2e"` → `"real"`) unless overridden. |
+| `timeout` | Default per-scenario timeout in ms. Default 60 000 for scenario layer and 300 000 for e2e. |
+| `platforms` | Platform allowlist. Empty/omitted = every platform in the applicable matrix. |
+| `tags` | Guide-level tags inherited by scenarios. Each scenario is also tagged with `guide:<id>` and the Diátaxis bucket. |
+| `skip` | Skip every scenario variant. Reason required; `until` optional. |
 | `deprecated` | A `DeprecationNotice` (§18.2). |
 | `tabs` | Single-axis sugar (§19.16). Mutually exclusive with `axes:`. |
 | `axes` | Multi-axis declaration (§19.16). Mutually exclusive with `tabs:`. |
-| `variants` | Per-cell overrides keyed by the dot-joined axis-value path (e.g., `"drupal-11.npm"`); refines `skip`/`platforms`/`tags` for a single Cartesian cell. |
+| `variants` | Per-cell overrides keyed by dot-joined axis values; refines skip/platforms/tags for a single variant. |
 
-The `diataxis:` frontmatter key (independent of `test:`) constrains which components are legal in the file. Allowed values: `"tutorial"`, `"how-to"`, `"explanation"`, `"reference"`. Only `"tutorial"` and `"how-to"` MAY contain executable components. Files declaring both `tabs:` and `axes:` are rejected by lint.
+`diataxis:` remains independent metadata. Allowed values: `tutorial`, `how-to`, `explanation`, `reference`. Only `tutorial` and `how-to` MAY contain rendered executable scenarios. Lando's public docs may group both under a broader **Guides** navigation label.
 
 ### 19.3 Component vocabulary
 
-The component set is intentionally small. Prop schemas are published in `@lando/sdk/docs/components`, round-trip through the §13.2 schema gate, and are re-exported by `@lando/core/docs/components` alongside the JSX/Astro implementations and the AST helpers used by `scripts/build-doc-tests.ts`. New components are a §4-style abstraction add: every component MUST have a published prop schema, MUST render in Starlight, and MUST have a deterministic generator path.
+The component set is intentionally small. Prop schemas are published in `@lando/sdk/docs/components`, round-trip through the §13.2 schema gate, and are re-exported by `@lando/core/docs/components` alongside the JSX/Astro implementations and AST helpers used by `scripts/build-guide-scenarios.ts` (the successor to the older `scripts/build-doc-tests.ts` name). New components are a §4-style abstraction add: every component MUST have a published prop schema, MUST render in Starlight when applicable, and MUST have a deterministic generator path.
 
 | Component | Renders | Generates | Required props |
 |---|---|---|---|
-| `<Tutorial>` | Scoped wrapper; numbered headings, transcript shell | `describe()`; opens an Effect `Scope`; resolves `TutorialContext` | (root only) |
-| `<Step name="…">` | Titled, numbered block | `test(name, …)`; per-step Effect program | `name` (kebab-case, unique per variant) |
-| `<Run>` | Code block + collapsible captured transcript | Calls `runCli`, `shell`, `runTooling`, or a `runtime` method | one of `command`, `shell`, `tooling`, `runtime` |
-| `<Verify>` | Optional ✓ annotation; can be hidden | `expect(...)` against the captured artifact | one of `event`, `command`, `file`, `tooling`, `runtime` |
-| `<Inspect>` | Pretty-rendered captured file/JSON/log | Snapshot assertion | one of `file`, `json`, `events`, `output` |
-| `<Variable>` | Nothing, or its `display` value inline | `const <name> = <value>` in the prelude; available via `{{name}}` interpolation | `name`, `value` |
-| `<Hidden>` | Nothing | Inline test code; same generator paths as the contained children | `reason` (≥ 8 chars) |
-| `<Cleanup>` | Single collapsed callout | `Effect.addFinalizer` registered before any `test()` runs | (none) |
-| `<Skip>` | Children with a "skipped" badge | `test.skip(...)` for the contained `<Step>`s | `reason`, optional `until` |
-| `<Inline>` | A code block (`lang="ts"` by default) | Verbatim TypeScript injected into the generated test | `lang`, `code`, `justification` (≥ 8 chars) |
-| `<Tabs>` | A Starlight tab group | Forks codegen along the declared axis (§19.16) | `axis` when the tutorial has multiple axes; optional otherwise |
-| `<Tab>` | One tab pane inside a `<Tabs>` | Content for variants whose axis value matches `name` | `name` (matches a value declared in `tabs:`/`axes:`) |
+| `<Guide>` | Page wrapper and guide-scoped transcript shell | `describe()` group and guide metadata | (root only) |
+| `<Scenario>` | Visible scenario when `render` is true; nothing when `render={false}` | One generated scenario suite per variant | `id`; `reason` when `render={false}` |
+| `<Step name="…">` | Titled, numbered block for rendered scenarios | `test(name, …)` or a generated step function | `name` (kebab-case, unique per scenario variant) |
+| `<Run>` | Code block + optional captured output | Calls `runCli`, `shell`, `runTooling`, or a runtime method | one of `command`, `shell`, `tooling`, `runtime` |
+| `<Verify>` | Optional reader-facing validation annotation | `expect(...)` against captured artifacts | one of `event`, `command`, `file`, `tooling`, `runtime`, `errorTag` |
+| `<Inspect>` | Pretty-rendered captured file/JSON/log for visible scenarios | Snapshot/assertion against file, JSON, events, or output | one of `file`, `json`, `events`, `output` |
+| `<Variable>` | Nothing, or its `display` value inline | Adds a variable to `ScenarioContext.vars` | `name`, `value` |
+| `<Hidden>` | Nothing | Invisible support code inside the current scenario | `reason` (≥ 8 chars) |
+| `<Cleanup>` | Collapsed cleanup block when useful to readers | `Effect.addFinalizer` registered before scenario steps run | (none) |
+| `<Skip>` | Children with a skipped badge for rendered scenarios | `test.skip(...)` for contained steps/scenarios | `reason`, optional `until` |
+| `<Inline>` | A code block (`lang="ts"` by default) when rendered | Verbatim TypeScript injected into generated scenario code | `lang`, `code`, `justification` (≥ 8 chars) |
+| `<UseFixture>` | Nothing | Copies an immutable fixture into the scenario temp dir | `name` |
+| `<Tabs>` | A Starlight tab group | Forks scenario codegen along the declared axis (§19.16) | `axis` when the guide has multiple axes; optional otherwise |
+| `<Tab>` | One tab pane inside `<Tabs>` | Content for variants whose axis value matches `name` | `name` (matches a declared axis value) |
 
-`<Inline>` is the explicit escape hatch for shapes the typed components do not cover. The lint gate caps inline density and requires the `justification` prop. Custom matcher logic also belongs in `<Inline>`.
+`<Hidden>` is deliberately narrow. It may set up isolation, seed deterministic state, or assert an invariant directly supporting the current scenario. It MUST NOT define a distinct product behavior. Distinct hidden coverage belongs in a `render={false}` scenario or standalone fixture scenario.
 
-The assertion vocabulary used by `<Verify>` and `<Inspect>` is `MatcherSchema`, also defined in `@lando/sdk/docs/components`. It is a small declarative language: scalars match by deep-equal, plain objects match partially by default, and tagged operators add `exact`, `partial`, `regex`, `schema`, `anyOf`, `allOf`, `oneOf`, and `not`. Anything else belongs in `<Inline>`.
+The assertion vocabulary used by `<Verify>` and `<Inspect>` is `MatcherSchema`, also defined in `@lando/sdk/docs/components`. It is a small declarative language: scalars match by deep-equal, plain objects match partially by default, and tagged operators add `exact`, `partial`, `regex`, `schema`, `anyOf`, `allOf`, `oneOf`, and `not`. Anything else belongs in `<Inline>` with a justification.
 
-### 19.4 The TutorialContext
+### 19.4 The ScenarioContext
 
-Every generated test opens an Effect `Scope` and binds a `TutorialContext` for the duration of the run. The context is the only Effect requirement on the generated program; it is provided by `@lando/core/testing` and is shape-stable across `layer`, `provider`, and variant. Its fields:
+Every generated scenario opens an Effect `Scope` and binds a `ScenarioContext` for the duration of the run. The context is the only Effect requirement on the generated program; it is provided by `@lando/core/testing` and is shape-stable across layer, provider, and variant. Its fields:
 
-- `id` — tutorial id from frontmatter.
-- `variant` — axis-value map for this variant (empty for tutorials with no axes); available to `<Inline>` for variant-specific assertions.
-- `testDir` — per-test working directory under `os.tmpdir()`, created at scope acquire and removed at finalize unless `KEEP_TUTORIAL_DIRS=1`.
+- `guideId` — guide id from frontmatter, when sourced from a guide.
+- `scenarioId` — scenario id.
+- `variant` — axis-value map for this variant; available to `<Inline>` and companion cases.
+- `testDir` — per-scenario working directory under `os.tmpdir()`, created at scope acquire and removed at finalize unless `KEEP_SCENARIO_DIRS=1` or the author command passes `--keep`.
 - `runtime` — `TestRuntime` for `layer: "scenario"`, real `LandoRuntime` for `layer: "e2e"`.
 - `vars` — `<Variable>` declarations in source order.
-- `runCli`, `shell` — invoke the CLI binary or a `Bun.$` pipeline; return captured stdout/stderr/exit/event-trace.
+- `runCli`, `shell` — invoke the CLI binary or a Bun Shell pipeline; return captured stdout/stderr/exit/event trace.
 - `events` — lifecycle event stream for the active runtime.
-- `transcript` — append-only writer; generators emit transcript writes automatically.
+- `transcript` — append-only writer with frame visibility metadata.
+- `fixtures` — resolved fixture registry for this guide/scenario.
 
-`TutorialContext` is part of the embedding-host testing surface (§16.8). Embedding hosts MAY use it to author their own executable tutorials targeting library entry points (§19.14).
+`ScenarioContext` is part of the embedding-host testing surface (§16.8). Embedding hosts MAY use it to author their own executable guides or standalone scenario fixtures targeting library entry points (§19.14).
 
 ### 19.5 Display vs. execute
 
-Every executable component has up to two views: what the *reader* sees and what the *test* does. They are bound by default — `<Run command="lando start" />` shows `lando start` and runs `lando start`. They diverge only when the component carries an explicit override prop (`displayCommand`, `displayShell`, `display` on `<Variable>`). Inferred display rewriting is forbidden — too easy to make the doc lie.
+Every executable component has up to two views: what the reader sees and what the test does. They are bound by default — `<Run command="lando start" />` shows `lando start` and runs `lando start`. They diverge only when the component carries an explicit override prop (`displayCommand`, `displayShell`, `display` on `<Variable>`). Inferred display rewriting is forbidden.
 
-Path substitution is the most common legitimate divergence. The recommended idiom is to declare a `<Variable display="~/projects/mysite" value={ctx.testDir} />` at the top of the tutorial and reference it via `{{siteName}}`-style interpolation that the renderer resolves to `display` and the generator resolves to `value`. The lint gate (§19.10) caps display:execute divergence at 25% of executable components per tutorial.
+Path substitution is the most common legitimate divergence. The recommended idiom is to declare a `<Variable display="~/projects/mysite" value={ctx.testDir} />` at the top of the guide and reference it through interpolation. The renderer resolves to `display`; the generator resolves to `value`. The lint gate (§19.10) caps display:execute divergence at 25% of executable components per rendered scenario.
 
 ### 19.6 Transcripts
 
-A *transcript* is the captured artifact set produced by one variant of a tutorial run: per-`<Run>` stdout, stderr, exit code, lifecycle event trace, and the final state of any `<Inspect>` target. Transcripts are written to `dist/transcripts/<id>[.<axis-value>...].json` at test time and consumed by the docs renderer at site build time. The `Transcript` and `TranscriptFrame` schemas are canonical, defined in `@lando/sdk/docs/components`, and round-trip through the §13.2 schema gate.
+A *transcript* is the captured artifact set produced by one scenario variant: per-`<Run>` stdout, stderr, exit code, lifecycle event trace, final `<Inspect>` artifacts, and cleanup status. Transcripts are written to `dist/transcripts/<guide-or-fixture-id>/<scenario-id>[.<axis-value>...].json` at test time.
 
-Transcripts are **regenerated every test run, gitignored, and never committed**. Drift is caught by the docs preview build of the PR — a materially different transcript is visible to the reviewer. There is no separate `git diff --exit-code` against transcripts. When a transcript is absent at site-build time (developer authored a new tutorial without running tests yet), the renderer shows the static command and a "no transcript yet" placeholder rather than failing the build.
+There are two transcript surfaces:
+
+| Surface | Contents | Consumers |
+|---|---|---|
+| **Internal transcript** | All sanitized frames, including hidden/test-only scenario frames, support events, and cleanup. | CI artifacts, local debug commands, failure reports. |
+| **Public transcript** | Only visible frames from rendered reader scenarios. Hidden blocks, test-only scenarios, fixtures, and internal event traces are excluded. | Docs renderer and recipe README strip/flatten flow. |
+
+Transcripts are **regenerated every test run, gitignored, and never committed**. Drift is caught by docs preview/review for public frames and by scenario test failures for internal frames. When a public transcript is absent at site-build time, the renderer shows the static command and a "no captured output yet" placeholder rather than failing the docs build.
 
 Redaction is uniform with the rest of the runtime:
 
-- The `pre-shell-exec` redaction policy (§3.5, §11.2) applies to every captured stdout/stderr.
-- `BunSelfRunner` payloads observed via `pre-bun-self-exec`/`post-bun-self-exec` (§3.4) — registry tokens, secret-resolved env, the `LANDO_DISALLOW_BUN_BE_BUN_REENTRY` re-entry marker — are stripped identically.
-- Absolute paths under `os.tmpdir()` are rewritten to the tutorial's display path (or `~/projects/<siteName>`), timestamps are masked to `YYYY-MM-DD HH:MM:SS`, container ids and port allocations are masked to placeholder tokens, and `.lndo.site` salts are stripped.
+- The `pre-shell-exec` redaction policy (§3.5, §11.2) applies to captured stdout/stderr.
+- `BunSelfRunner` payloads observed via `pre-bun-self-exec`/`post-bun-self-exec` (§3.4) are stripped identically.
+- Absolute temp paths are rewritten to the guide's display path, timestamps are masked, container ids and port allocations are masked, and `.lndo.site` salts are stripped.
 
-The redaction list is published as `@lando/sdk/docs/redactions` and is itself test-covered by the redaction gate in §19.10.
+The redaction list is published as `@lando/sdk/docs/redactions` and is test-covered by the redaction gate in §19.10.
 
 ### 19.7 Codegen contract
 
-The MDX→TypeScript codegen lives at `scripts/build-doc-tests.ts` and is registered in §17.2's codegen catalog as a §17.1 stage-1 generator that runs before type-check.
+The MDX→scenario codegen lives at `scripts/build-guide-scenarios.ts` and is registered in §17.2's codegen catalog as a §17.1 stage-1 generator that runs before type-check. For backward compatibility during the Alpha2 migration, `scripts/build-doc-tests.ts` MAY exist as a thin alias, but the spec-owned name is `build-guide-scenarios`.
 
-**Inputs.** `docs/src/content/docs/tutorials/**/*.mdx`, `docs/src/content/docs/how-to/**/*.mdx`, `recipes/*/README.mdx`.
+**Inputs.** `docs/src/content/docs/guides/**/*.mdx`, `docs/src/content/docs/tutorials/**/*.mdx`, `docs/src/content/docs/how-to/**/*.mdx`, `recipes/*/README.mdx`, and colocated guide case files when supported (for example `<guide>.cases.ts`).
 
-**Outputs.** `test/mdx/<bucket>/<id>[.<axis-value>...].test.ts` per Cartesian-product cell (one variant when no axes are declared) plus a `test/mdx/index.ts` barrel. Outputs are **gitignored** and regenerated each run.
+**Outputs.** Generated tests under `test/scenarios/generated/guides/<guide-id>/<scenario-id>[.<axis-value>...].test.ts` and `test/scenarios/generated/fixtures/<fixture-id>/<scenario-id>[.<axis-value>...].test.ts`, plus a generated index. Outputs are **gitignored** and regenerated each run. A compatibility `test/mdx/**` barrel MAY remain during transition, but generated scenario paths are canonical.
 
-**Generation steps.** Parse MDX → validate frontmatter (`tabs:`/`axes:` mutex) → walk the AST collecting `<Tutorial>` and descendants → validate every component's props against its prop schema → resolve the variant set (Cartesian product of all declared axes; singleton `[{}]` if none) → for each variant, flatten the component tree (non-`<Tabs>` content goes verbatim into every variant; `<Tabs axis="A">` content goes only into variants whose A-value matches; missing tab/step combinations emit `test.skip(...)` so coverage gaps surface in test reports) → emit one TypeScript file per variant with `// @generated` and `// @source: <mdx-path>:<line-range>` headers above every `test()`, `expect()`, `addFinalizer`, and emitted `<Inline>`; tabbed variants additionally carry `// @variant: <axis>=<value>...` so failure output identifies the cell.
+**Generation steps.** Parse MDX → validate `GuideFrontmatter` (`tabs:`/`axes:` mutex) → walk the AST collecting `<Guide>`, `<Scenario>`, and descendants → validate every component's props against its prop schema → resolve scenarios → resolve variant sets → flatten the component tree for each variant → emit one TypeScript file per scenario variant with `// @generated`, `// @source: <source-path>:<line-range>`, `// @scenario: <scenario-id>`, and optional `// @variant: <axis>=<value>...` headers above every generated `test()`, `expect()`, finalizer, and emitted `<Inline>`.
 
-The generator MUST be deterministic. Identical input MDX produces byte-identical generated TypeScript. Determinism is asserted by re-running into a temp dir and comparing.
+The generator MUST be deterministic. Identical inputs produce byte-identical generated TypeScript. Determinism is asserted by re-running into a temp dir and comparing.
 
-Because outputs are not committed, the §17.2 staleness gate is replaced by: generator exits 0; `tsc --noEmit` over generated paths passes; `bun test test/mdx/` passes under each layer's CI matrix entry (§13.6). A `bun run dev:tutorials` watcher regenerates on MDX change and re-runs only the affected variants.
+Because outputs are not committed, the staleness gate is replaced by: generator exits 0; `tsc --noEmit` over generated paths passes; `bun test test/scenarios/generated/` passes under each layer's CI matrix entry (§13.6). A `bun run dev:guides` watcher regenerates on MDX or colocated-case edit and re-runs only affected scenarios.
 
 ### 19.8 Source-location preservation
 
-Failure-traceability is not optional. A reader who breaks a tutorial must land on the MDX line that owns the failing assertion, not on a generated `.ts` file. Two mechanisms cooperate: the `// @source:` and `// @variant:` headers emitted by codegen (§19.7) and the **MDX source-mapper reporter** at `scripts/test-reporters/mdx-source-mapper.ts`, enabled by default for the `test/mdx/` layer via `bunfig.toml`. The reporter post-processes failure output, finds the nearest preceding `@source:` header for each generated-line stack frame, rewrites the primary frame to point at the MDX path/line range, prefixes the failure description with the variant axis-value map when one is present, and keeps the generated frame as a secondary annotation. The reporter is itself test-covered by a fixture pair under `test/mdx-reporter/` (§19.10).
+Failure traceability is not optional. A maintainer who breaks a scenario must land on the source that owns the failing assertion, not on a generated `.ts` file.
 
-### 19.9 Hidden / Cleanup discipline
+Generated failures report:
 
-`<Hidden>` carries setup and isolation that the reader does not perform. Every block requires a `reason` (≥ 8 chars) surfaced in lint reports and `lando doctor --tutorials --verbose`. The hidden:visible step ratio is capped at 1:3 *per variant*; violations require a `{/* lint:hidden-ratio-justified: <reason> */}` comment immediately above the offending block. A `<Hidden>` MUST NOT contain a `<Cleanup>` (cleanup must remain visible) and MUST NOT contain a `<Variable>` whose value is needed by a visible step without an accompanying `display` prop.
+```text
+Guide: docs/src/content/docs/guides/node-postgres.mdx:42
+Scenario: rejects-invalid-service-type
+Variant: linux.provider-lando
+Step: start-invalid-app
+Fixture: docs/src/content/docs/guides/fixtures/node-postgres/invalid-service-type
 
-`<Cleanup>` runs regardless of test outcome (success, assertion failure, timeout, interrupt) via `Effect.addFinalizer`. Every `<Tutorial layer="e2e">` MUST contain at least one `<Cleanup>` block applicable to every generated variant — a cleanup nested inside a single `<Tab>` does not satisfy the rule. Cleanup commands MUST be idempotent; the contract suite's tutorial harness runs every cleanup block twice and asserts the second invocation does not error. The renderer surfaces cleanup as a single collapsed callout under the tutorial's last visible step.
+Original generated frame:
+test/scenarios/generated/guides/node-postgres/rejects-invalid-service-type.linux.test.ts:87
+```
+
+Two mechanisms cooperate: source headers emitted by codegen (§19.7) and the **scenario source-mapper reporter** at `scripts/test-reporters/scenario-source-mapper.ts`. The older `mdx-source-mapper` name MAY remain as an alias during migration. The reporter post-processes failure output, finds the nearest preceding source/scenario/variant headers for each generated-line stack frame, rewrites the primary frame to the MDX or `.cases.ts` source range, prefixes the failure description with scenario and variant, and keeps the generated frame as a secondary annotation. The reporter is test-covered by fixture pairs under `test/scenarios/reporter/`.
+
+### 19.9 Hidden, test-only, and fixture discipline
+
+Executable guides can contain hidden coverage, but hidden coverage is constrained:
+
+- `<Hidden>` supports the current scenario only. It may not define a distinct behavior.
+- A `<Scenario render={false}>` is the colocated form for related edge cases and regressions.
+- Standalone fixture scenarios under `test/scenarios/` are the form for non-documentary behavior coverage.
+
+A test-only scenario MUST declare `reason`, `tags`, and an owner/domain once ownership metadata exists. It renders nothing, contributes no public transcript frames, and is excluded from scaffolded recipe READMEs. Its failures still map to source coordinates.
+
+Promotion rules:
+
+- If a case tests a core invariant, move it to the regular scenario suite.
+- If a case tests docs fidelity or a guide-specific promise, keep it with the guide.
+- If three guides need the same hidden case, it is not guide-specific anymore.
+- If a hidden/test-only scenario fails mostly due to provider or infra instability, move it out of guide execution or tag it for the e2e/nightly layer.
+
+Fixtures are immutable. The harness copies fixture directories into `ScenarioContext.testDir` before mutation. Fixture names should match scenario names unless intentionally shared; shared fixtures require an owner comment or metadata field.
 
 ### 19.10 Lint and quality gates
 
-`bun run lint:tutorials` is a merge gate (§13.4) that walks every executable-tutorial MDX file and asserts:
+`bun run lint:guides` is a merge gate (§13.4). During Alpha2 migration, `bun run lint:tutorials` MAY alias it. The lint walks every executable guide MDX file and asserts:
 
-- Frontmatter validates against `TutorialFrontmatter`.
-- `diataxis:` is `"tutorial"` or `"how-to"`. Other buckets containing `<Tutorial>` (or any executable component) fail.
+- Frontmatter validates against `GuideFrontmatter`.
+- `diataxis:` is `tutorial` or `how-to` for rendered executable scenarios. Other buckets containing rendered executable components fail.
 - `tabs:` and `axes:` are not both present.
-- Every `<Step name>` is unique within its containing variant.
+- Every `<Scenario id>` is unique within a guide.
+- Every rendered guide has at least one reader scenario unless explicitly marked test-only in frontmatter.
+- Every test-only scenario has `render={false}` and a `reason`.
+- Every `<Step name>` is unique within its containing scenario variant.
 - Every component's props validate against the prop schema in `@lando/sdk/docs/components`.
-- `<Hidden>` `reason`, `<Inline>` `justification`, and the hidden:visible / `<Inline>`-density / display:execute caps hold (§19.5, §19.9).
-- Every `<Tutorial layer="e2e">` carries at least one `<Cleanup>` applicable to every variant.
-- No raw fenced bash/sh/zsh code blocks appear inside `<Tutorial>` — shell snippets MUST go through `<Run>` or `<Inline>`. (This is the v3 Leia failure mode and is rejected outright.)
+- `<Hidden>` `reason`, `<Inline>` `justification`, and hidden:visible / inline-density / display:execute caps hold.
+- `<Hidden>` does not contain a distinct product behavior assertion; those must be test-only scenarios.
+- Every `<Scenario layer="e2e">` carries at least one `<Cleanup>` applicable to every variant.
+- No raw fenced bash/sh/zsh code blocks appear inside `<Guide>`; shell snippets MUST go through `<Run>` or `<Inline>`.
 - Every `<Verify>` `expect` value parses against `MatcherSchema`.
-- Every `<Verify event="...">` name is a member of the canonical event registry (the same registry that drives §13.4's "event registry drift" check). Unknown event names — including stale v3-style ids like `post-app-start` — fail the lint with `TutorialUnknownEventError` and a suggestion list. The flagship `<Verify event="post-start" ...>` example in §19.2 is exercised by the lint-fixture suite to keep this rule honest.
-- `<Tabs>` blocks do not nest (`TutorialNestedTabsError`); every `<Tab name>` matches a value declared for the enclosing axis; every `axes:`-declared axis has either exactly one `default: true` value or every value `default: false`; every `variants:` key resolves to a real Cartesian cell (`TutorialVariantKeyError`).
+- Every `<Verify event="...">` name is a member of the canonical event registry.
+- `<Tabs>` blocks do not nest; every `<Tab name>` matches a declared axis value; every `variants:` key resolves to a real Cartesian cell.
 
 Cooperating gates:
 
-- **Schema gate (§13.2):** `TutorialFrontmatter`, every component prop schema, `MatcherSchema`, `Transcript`, `TranscriptFrame`, `TabAxis`, and `TabAxisValue` round-trip through encode/decode.
-- **Type gate (§13.3):** generated `test/mdx/**/*.test.ts` passes `tsc --noEmit`.
-- **Reporter gate:** the source-mapper reporter is exercised by a fixture pair (multi-axis MDX + seeded failure → expected reporter output, with the variant prefix asserted).
+- **Schema gate (§13.2):** `GuideFrontmatter`, every component prop schema, `MatcherSchema`, `Transcript`, `TranscriptFrame`, `TabAxis`, and `TabAxisValue` round-trip through encode/decode.
+- **Type gate (§13.3):** generated `test/scenarios/generated/**/*.test.ts` passes `tsc --noEmit`.
+- **Reporter gate:** the source-mapper reporter is exercised by fixture pairs (MDX + colocated cases + seeded failure → expected mapped output).
 - **Redaction gate:** a fixture transcript whose contents include every redaction class redacts byte-identically to the canonical golden frame.
 
 ### 19.11 Test layer position
 
-Executable tutorials add one row to the §13.1 test-layer table and one column to the §13.6 CI matrix. Per-PR CI runs every variant of every `layer: "scenario"` tutorial on every supported platform plus the `@smoke`-tagged subset of `layer: "e2e"` variants on Linux x64. Nightly runs every `layer: "e2e"` variant on Linux x64/arm64 and macOS x64/arm64. The weekly provider matrix runs every `layer: "e2e"` variant against every provider in the matrix.
+Executable guides add generated scenarios to the §13.1 test layer matrix:
 
-Per-variant budgets: scenario variants must hold p95 < 30 s; e2e smoke variants must hold p95 < 5 min including provider setup (`lando setup` cost is measured separately and excluded). These are advisory at v4.0 GA and become merge gates once the perf-budget suite's tutorial coverage is in place (§13.1).
+- Per-PR CI runs every variant of every generated `layer: "scenario"` reader or test-only scenario on every supported platform.
+- Per-PR CI runs the `@smoke`-tagged subset of generated `layer: "e2e"` scenarios on Linux x64.
+- Nightly CI runs every generated `layer: "e2e"` scenario on Linux x64/arm64 and macOS x64/arm64.
+- The weekly provider matrix runs generated e2e scenarios against each provider in the provider matrix.
 
-Authors are expected to be deliberate about axis fan-out. A tutorial declaring `axes: { v: [a,b], pm: [c,d,e] }` produces six variants, each running on every per-PR platform. Per-axis-value `platforms:` and per-cell `variants:` overrides are the right tool when the matrix is broader than CI cost allows.
+Per-variant budgets: scenario variants should hold p95 < 30 s; e2e smoke variants should hold p95 < 5 min including provider setup (`lando setup` cost is measured separately and excluded). These are advisory at v4.0 GA and become merge gates once the perf-budget suite has guide-scenario coverage (§13.1).
+
+Authors must be deliberate about axis fan-out. A guide declaring `axes: { v: [a,b], pm: [c,d,e] }` produces six variants per scenario, each running on every applicable platform. Per-axis-value `platforms:` and per-cell `variants:` overrides are the right tool when the matrix is broader than CI cost allows.
+
+### 19.12 Author commands
+
+The guide-scenario engine exposes one focused local workflow:
+
+```bash
+bun run docs:scenario node-postgres
+bun run docs:scenario node-postgres --scenario rejects-invalid-service-type
+bun run docs:scenario node-postgres --variant php-8.3.postgres
+bun run docs:scenario node-postgres --keep
+bun run docs:scenario node-postgres --explain
+```
+
+Required behaviors:
+
+- `--keep` preserves the temp dir and prints its path.
+- `--debug` prints generated test path, source map, resolved variables, and fixture copy map.
+- `--update-transcript` regenerates local transcript artifacts.
+- `--scenario <id>` runs one scenario.
+- `--step <name>` runs or stops after one step when the generated shape supports it.
+- `--fixture <name>` forces a fixture-backed scenario when applicable.
+- `--explain` prints the MDX/cases → scenario plan without running it.
+
+Failure output MUST include a copy-pasteable re-run command.
 
 ### 19.13 Recipe README integration
 
-`recipes/<id>/README.mdx` is the canonical location for an executable tutorial that walks a user through a canonical recipe (§8.8.2). The MDX rendered into the docs site uses the full vocabulary; the file copied into the user's project at scaffold time is a **prose-only render** of the same MDX with executable components stripped or flattened.
+`recipes/<id>/README.mdx` is the canonical location for an executable guide that walks a user through a canonical recipe (§8.8.2). The MDX rendered into the docs site uses the full vocabulary; the file copied into the user's project at scaffold time is a **prose-only render** of the same guide with executable components stripped or flattened.
 
-`scripts/build-recipe-readmes.ts` (§17.2 codegen catalog) performs the strip and writes `recipes/<id>/.scaffold/<axis-value>[.<axis-value>...].md` for every legal axis-value combination. The cell selected at scaffold time is the one matching the user's resolved `lando init` answers (the recipe manifest declares the prompt-answer→axis-value mapping; see §8.8). This guarantees that what the user sees in their scaffolded project is plain Markdown — never an MDX file with broken JSX imports — and is single-variant rather than tab-confusing.
+`scripts/build-recipe-readmes.ts` (§17.2 codegen catalog) performs the strip and writes `recipes/<id>/.scaffold/<axis-value>[.<axis-value>...].md` for every legal axis-value combination. The cell selected at scaffold time is the one matching the user's resolved `lando init` answers (the recipe manifest declares the prompt-answer→axis-value mapping; see §8.8).
 
-The strip rules: `<Tutorial>` is unwrapped, `<Step>` becomes a numbered Markdown heading, `<Run>` becomes a fenced code block of the *displayed* command (transcript omitted because the user's context will produce different output), `<Verify>` and `<Hidden>` are omitted, `<Inspect>` becomes a fenced block of the most recent transcript value (or "(generated at runtime)" when none exists), `<Variable>` is replaced by its `display` at every interpolation site, `<Cleanup>` becomes a final "Cleanup" section listing displayed commands, `<Inline>` becomes a `ts` fenced block, and `<Tabs>` is resolved to the chosen tab's content. Recipe authors MAY set `<Tutorial scaffoldStrip={false}>` to suppress the strip and copy the MDX directly — rare and explicit; the author then takes responsibility for editor-side rendering.
+The strip rules: `<Guide>` and the rendered reader `<Scenario>` are unwrapped, `<Step>` becomes a numbered Markdown heading, `<Run>` becomes a fenced code block of the displayed command, `<Verify>` and `<Hidden>` are omitted, test-only scenarios are omitted entirely, `<Inspect>` becomes a fenced block of the most recent public transcript value (or "(generated at runtime)" when none exists), `<Variable>` is replaced by its `display`, `<Cleanup>` becomes a final "Cleanup" section listing displayed commands, `<Inline>` becomes a `ts` fenced block only when rendered, and `<Tabs>` resolves to the chosen tab's content. Recipe authors MAY set `<Guide scaffoldStrip={false}>` to suppress the strip and copy the MDX directly — rare and explicit.
 
-### 19.14 Library-mode tutorials
+### 19.14 Library-mode guides and scenarios
 
-Tutorials that document the embedding API (§16) target the library entry points instead of the binary. `<Run runtime="appStart" />` invokes `LandoRuntime` operations directly through `TutorialContext.runtime`; the rendered docs show the host TypeScript code (using `makeLandoRuntime` and the targeted method) rather than a CLI command. The same `<Verify>`, `<Inspect>`, `<Cleanup>`, and `<Tabs>` vocabulary applies. Mixing CLI and runtime forms in one tutorial is allowed and common (a host walking through `runTooling` for a build step followed by `runCli` to spawn an interactive subshell). The lint gate enforces that every `<Run runtime="…" />` is paired with a rendered TypeScript snippet showing the host code.
+Guides that document the embedding API (§16) target library entry points instead of the binary. `<Run runtime="appStart" />` invokes `LandoRuntime` operations directly through `ScenarioContext.runtime`; rendered docs show host TypeScript code rather than a CLI command. The same `<Verify>`, `<Inspect>`, `<Cleanup>`, `<Tabs>`, and test-only scenario vocabulary applies. Mixing CLI and runtime forms in one guide is allowed when the reader story needs it. The lint gate enforces that every `<Run runtime="…" />` is paired with rendered TypeScript showing the host code.
 
 ### 19.15 Acceptance criteria
 
 The §15.C checklist gains the following items, all release-blocking for v4.0 GA:
 
-- Every executable tutorial under `docs/src/content/docs/{tutorials,how-to}/**` and every `recipes/<id>/README.mdx` containing `<Tutorial>` produces a passing generated test (or variant set) on the per-PR matrix.
-- The tutorial linter and the source-mapper reporter pass on every supported platform; the reporter translates a known-failing fixture into MDX coordinates with no off-by-one errors, including the variant axis-value prefix when the fixture declares axes.
-- Every component prop schema in `@lando/sdk/docs/components` round-trips through the §13.2 schema gate, including `TabsProps`, `TabProps`, `TabAxis`, and `TabAxisValue`.
+- Every executable guide under `docs/src/content/docs/{guides,tutorials,how-to}/**` and every `recipes/<id>/README.mdx` containing `<Guide>` produces passing generated scenario tests for every applicable variant, or is explicitly skipped with a reason.
+- Test-only scenarios colocated with guides are hidden from rendered docs, excluded from public transcript frames, source-mapped to MDX or `.cases.ts` coordinates, and reported separately from reader scenario failures.
+- The guide linter and source-mapper reporter pass on every supported platform.
+- Every component prop schema in `@lando/sdk/docs/components` round-trips through the §13.2 schema gate, including `GuideFrontmatter`, `ScenarioProps`, `TabsProps`, `TabProps`, `TabAxis`, and `TabAxisValue`.
 - The redaction gate passes against a fixture transcript exercising every redaction class.
-- Every `layer: "e2e"` tutorial's cleanup is idempotent under the second-invocation harness.
-- Every recipe README's strip-and-flatten output scaffolds into a directory whose `README.md` contains no MDX JSX, no `import` statements, no unresolved interpolation expressions, and no `<Tabs>`/`<Tab>` markers.
-- A multi-axis fixture tutorial (≥ 2 axes, ≥ 2 values per axis) generates the full Cartesian product of test files, each runs cleanly, and the reporter prefixes failure output with the variant axis-value map.
+- Every `layer: "e2e"` scenario's cleanup is idempotent under the second-invocation harness.
+- Every recipe README strip-and-flatten output scaffolds into a directory whose `README.md` contains no MDX JSX, no imports, no unresolved interpolation expressions, and no test-only scenario content.
+- A multi-axis fixture guide (≥ 2 axes, ≥ 2 values per axis) generates the full Cartesian product of scenario tests, each runs cleanly, and the reporter prefixes failure output with the scenario and variant map.
 
 ### 19.16 Tabbed variants
 
-Tutorials often need to branch (Drupal 10 vs 11, Composer vs npm, macOS vs Linux). v4 makes the tabs the source of truth for the test matrix.
+Guides often need to branch (Drupal 10 vs 11, Composer vs npm, macOS vs Linux). v4 makes the tabs the source of truth for scenario variants.
 
-**Axes.** A tutorial declares zero or more axes in frontmatter. Each axis has a name and an ordered list of values. The variant set is the **Cartesian product** of every axis's values; a tutorial with no axes has the singleton variant. Two declaration forms (mutually exclusive):
+**Axes.** A guide declares zero or more axes in frontmatter. Each axis has a name and ordered values. The variant set is the Cartesian product of every axis's values; a guide with no axes has the singleton variant. Two declaration forms are mutually exclusive:
 
 - `tabs:` — single-axis sugar; implicit axis name `default`.
-- `axes:` — explicit multi-axis; each key is the axis name, each value is a `TabAxis` declaration with its values.
+- `axes:` — explicit multi-axis; each key is the axis name, each value is a `TabAxis` declaration.
 
-The `TabAxis` and `TabAxisValue` schemas live in `@lando/sdk/docs/components`. Each `TabAxisValue` carries a `name`, `label`, optional `icon`, optional `default: true` (exactly one per axis when there is more than one value), and may refine `tags`/`platforms`/`skip` for that axis-value's variants. The frontmatter `variants:` map provides per-cell overrides keyed by the dot-joined axis-value path. Resolution order (later wins): tutorial-wide → per-axis-value → per-cell.
+The `TabAxis` and `TabAxisValue` schemas live in `@lando/sdk/docs/components`. Each `TabAxisValue` carries a `name`, `label`, optional `icon`, optional `default: true`, and may refine tags/platforms/skip for that axis value's variants. Frontmatter `variants:` provides per-cell overrides keyed by dot-joined axis values. Resolution order (later wins): guide-wide → per-axis-value → per-cell → scenario-local override.
 
-**`<Tabs>`/`<Tab>`.** A `<Tabs axis="A">` block iterates axis A; each `<Tab name="V">` provides the content for variants whose A-value is V. The `axis` prop is required when the tutorial has more than one axis and inferred otherwise. Multiple `<Tabs>` blocks are allowed and orthogonal — same-axis blocks concatenate their per-tab content; different-axis blocks compose Cartesian-product-style. **Nesting is forbidden.** Multi-axis variation is expressed by separate top-level `<Tabs>` blocks each on their own axis. The `syncKey` prop mirrors Starlight's cross-page tab synchronization and is purely a UX feature.
+**`<Tabs>`/`<Tab>`.** A `<Tabs axis="A">` block iterates axis A; each `<Tab name="V">` provides content for variants whose A-value is V. The `axis` prop is required when the guide has more than one axis and inferred otherwise. Multiple `<Tabs>` blocks are allowed and orthogonal. Nesting is forbidden.
 
-**Coverage gaps.** Within a single `<Tabs>` block, not every tab needs to include every step. The codegen rule: the union of `<Step name>` values across all tabs in a block defines the block's step set; for any step name a matched tab does not include, the variant emits `test.skip(<step-name>, "axis A=V tab does not include step <step-name>")`. For variants whose axis value is not represented by any tab in this block, the block emits one `test.skip` per step in the union. This keeps test reports honest — readers see exactly which steps are absent for which axis values.
-
-**Naming.** Generated test files use dot-separated axis-value suffixes in declaration order: `<id>.test.ts` (no axes), `<id>.<value>.test.ts` (`tabs:`), `<id>.<axis1-value>.<axis2-value>.....test.ts` (`axes:`). The `describe()` block matches.
-
-**Rendering.** Each `<Tabs>` block renders as a Starlight tab group. The transcript embedded in each tab pane is the transcript captured for *that variant's* run; switching tabs swaps both the displayed command set and the captured output.
-
-**Worked example.** A single-axis tutorial can fork scaffold input while sharing later steps:
-
-```mdx
----
-test:
-  id: node-api-tutorial
-  layer: e2e
-  tabs:
-    - { name: express, label: Express }
-    - { name: hono, label: Hono, default: true }
----
-<Tutorial>
-
-<Tabs>
-  <Tab name="express">
-    <Step name="scaffold">
-      <Run command="lando init --recipe node-api" answers={{ framework: "express" }} />
-    </Step>
-  </Tab>
-  <Tab name="hono">
-    <Step name="scaffold">
-      <Run command="lando init --recipe node-api" answers={{ framework: "hono" }} />
-    </Step>
-  </Tab>
-</Tabs>
-
-<Step name="start">
-  <Run command="lando start" />
-  <Verify event="post-start" status="success" />
-</Step>
-
-<Cleanup>
-  <Run command="lando destroy -y" />
-</Cleanup>
-
-</Tutorial>
-```
-
-This generates `node-api-tutorial.express.test.ts` and `node-api-tutorial.hono.test.ts`. The `start` step and `<Cleanup>` are byte-identical in both; the `scaffold` step differs.
+**Coverage gaps.** Within a single `<Tabs>` block, not every tab needs every step. The codegen rule: the union of `<Step name>` values across all tabs in a block defines the block's step set; for any step name a matched tab does not include, the variant emits `test.skip(<step-name>, "axis A=V tab does not include step <step-name>")`. For variants whose axis value is absent from a block, the block emits one skip per step in the union. This keeps reports honest: maintainers see exactly which steps are absent for which axis values.

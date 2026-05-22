@@ -1,7 +1,7 @@
 # Lando v4 — Deprecation and Surface Evolution
 
 > **Part 16 of 18** · [Index](./README.md)
-> **Read next:** [17 Executable Tutorials](./17-executable-tutorials.md)
+> **Read next:** [17 Executable Guides and Scenarios](./17-executable-tutorials.md)
 
 This part defines how Lando v4 deprecates public surfaces — built-in commands, plugin contributions, Landofile and global-config keys, schemas, public exports, lifecycle events, recipes, tagged errors — across the lifetime of the v4 series. Deprecation is a cross-cutting concern: every part of the spec that describes a public surface refers back here for the *how*, while §18 owns the *what*.
 
