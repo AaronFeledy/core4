@@ -595,18 +595,19 @@ export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
 export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 
 /**
- * ToolingVar — Alpha-supported var forms only. Beta-deferred surfaces such
- * as unsafe `{ raw: ... }` interpolation and remote-source vars are
- * rejected by `LandofileService` before schema decode with a tagged
+ * ToolingVar — var forms accepted by the current Landofile loader. Unsupported
+ * surfaces such as unsafe `{ raw: ... }` interpolation and remote-source vars
+ * are rejected by `LandofileService` before schema decode with a tagged
  * `NotImplementedError`.
  */
 export const ToolingVar = Schema.Union(ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt);
 export type ToolingVar = typeof ToolingVar.Type;
 
 /**
- * ToolingTaskShape — Alpha-supported Landofile `tooling.<name>` task entry.
+ * ToolingTaskShape — Landofile `tooling.<name>` task entry accepted by the
+ * current loader.
  *
- * Alpha-supported fields:
+ * Accepted fields:
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
@@ -644,14 +645,14 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  * `vars:` are intentionally absent because they live inline in the
  * script.
  *
- * Alpha-supported fields (matching `ToolingTaskShape`):
+ * Accepted fields (matching `ToolingTaskShape`):
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  *   Defaults to `:host` when omitted.
  * - `desc:` / `description:` / `summary:` — short help text. `desc` is
  *   accepted as an alias for `description` by script-backed tooling.
  *   list.
  *
- * Beta-deferred fields (`aliases`, `topLevelAlias`, `bootstrap`,
+ * Unsupported fields (`aliases`, `topLevelAlias`, `bootstrap`,
  * `flags`, `args`, `passThrough`, `sources`, `generates`, `status`,
  * `preconditions`, `run`, `platforms`, `internal`, `disabled`,
  * `engine`) are detected pre-decode (including nested YAML list/object

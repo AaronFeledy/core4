@@ -44,3 +44,8 @@ Rationale: <link to the PR description that made the call>
   - Schema tests can import new package subpaths directly once `sdk/package.json#exports` is updated; no Bun install is needed for existing workspace packages.
   - `lsp_diagnostics` is unavailable in this environment because `typescript-language-server` is not installed; use `bun run typecheck` for TypeScript diagnostics.
 ---
+## 2026-05-22 15:20 - Slop cleanup after US-057
+- Ran the branch-wide AI slop remover after review; delegated per-file cleanup checks reported no functional edits needed.
+- Removed planning-phase wording from comments in `sdk/src/schema/index.ts` while preserving the schema exports and runtime behavior.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (9 pass); branch-changed source/test comment leakage scan passed; `lsp_diagnostics sdk/src/schema/index.ts` could not run because `typescript-language-server` is not installed; full `bun test` was attempted and failed in compiled CLI parity tests with exit 135 / empty compiled stderr, unrelated to the comment-only cleanup.
+---
