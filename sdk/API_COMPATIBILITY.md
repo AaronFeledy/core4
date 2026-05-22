@@ -20,8 +20,12 @@
 - `defineLandofile`
 - `DataStorePlan`
 - `DependencyPlan`
+- `DeprecationNotice`
+- `DeprecationSeverity`
 - `EndpointInput`
 - `EndpointPlan`
+- `GuideFrontmatter`
+- `GuideId`
 - `HealthcheckInput`
 - `HealthcheckPlan`
 - `HostAliasPlan`
@@ -62,6 +66,8 @@
 - `ToolingVarLiteral`
 - `ToolingVarPrompt`
 - `ToolingVarSh`
+- `decodeGuideFrontmatter`
+- `decodeGuideFrontmatterEither`
 
 ## Additive Alpha service tags
 

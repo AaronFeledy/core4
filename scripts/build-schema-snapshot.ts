@@ -19,6 +19,8 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
 
 const SDK_SCHEMA_NAMES = [
+  "DeprecationNotice",
+  "GuideFrontmatter",
   "BootstrapLevel",
   "AppRef",
   "AppPlan",

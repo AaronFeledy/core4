@@ -1,6 +1,16 @@
 /** Public Effect schemas for SDK contracts. */
 import { JSONSchema, Schema } from "effect";
 
+export {
+  DeprecationNotice,
+  DeprecationSeverity,
+  GuideFrontmatter,
+  GuideId,
+  decodeGuideFrontmatter,
+  decodeGuideFrontmatterEither,
+} from "../docs/guide-frontmatter.ts";
+import { DeprecationNotice, GuideFrontmatter } from "../docs/guide-frontmatter.ts";
+
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
 
@@ -933,6 +943,8 @@ export type TemplateRenderContext = typeof TemplateRenderContext.Type;
 // JSON Schema accessors.
 
 const JSON_SCHEMA_REGISTRY = {
+  DeprecationNotice,
+  GuideFrontmatter,
   BootstrapLevel,
   AppRef,
   AppPlan,
@@ -954,6 +966,10 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
   switch (schemaName) {
     case "BootstrapLevel":
       return JSONSchema.make(BootstrapLevel);
+    case "DeprecationNotice":
+      return JSONSchema.make(DeprecationNotice);
+    case "GuideFrontmatter":
+      return JSONSchema.make(GuideFrontmatter);
     case "AppRef":
       return JSONSchema.make(AppRef);
     case "AppPlan":
