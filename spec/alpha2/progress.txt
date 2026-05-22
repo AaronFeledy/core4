@@ -114,3 +114,12 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; local story branch deleted; remote story branch absent after prune/delete check.
 ---
+
+## [2026-05-22] - Sync
+- Previous branch: us-058-component-prop-schemas
+- Previous PR: #155 https://github.com/AaronFeledy/core4/pull/155
+- Action: caught up after prior merge (PR was already MERGED); also committed local progress-log update to main (fast path) and pushed
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
