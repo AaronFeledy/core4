@@ -61,3 +61,24 @@ describe("parseLandofile — apostrophe-in-unquoted-scalar regression (bugbot PR
     expect((result as Record<string, unknown>).description).toBe("regular value");
   });
 });
+
+describe("parseLandofile — comment-after-colon regression (bugbot PR#138 finding 2)", () => {
+  test("comment-only value after key is treated as empty (allows nested block)", async () => {
+    const result = await parse(["services: # the services", "  web:", "    type: node"].join("\n"));
+    const services = (result as Record<string, unknown>).services as Record<string, unknown>;
+    expect(services).toBeDefined();
+    const web = services.web as Record<string, unknown>;
+    expect(web.type).toBe("node");
+  });
+
+  test("comment-only value with no nested block becomes an empty object", async () => {
+    const result = await parse("services: # nothing here\n");
+    expect((result as Record<string, unknown>).services).toEqual({});
+  });
+
+  test("comment-only value with no whitespace between colon and hash also becomes empty", async () => {
+    const result = await parse(["services:# no space", "  web:", "    type: node"].join("\n"));
+    const services = (result as Record<string, unknown>).services as Record<string, unknown>;
+    expect(services.web).toEqual({ type: "node" });
+  });
+});

@@ -65,6 +65,14 @@ const stripComment = (line: string): string => {
   const valuePrefix = afterColon.slice(0, valueIdx);
   const valuePart = afterColon.slice(valueIdx);
 
+  // A comment can start immediately after the colon, e.g. `services: # services`.
+  // Once `valuePrefix` is split off the leading whitespace is gone, so the
+  // `/\s+#.*$/` fallback below cannot match. Detect this explicitly and drop the
+  // comment so `parseMap` sees an empty value and can look for a nested block.
+  if (valuePart.startsWith("#")) {
+    return beforeColon;
+  }
+
   if (valuePart.startsWith('"')) {
     let i = 1;
     while (i < valuePart.length) {
