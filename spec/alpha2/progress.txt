@@ -174,5 +174,5 @@ Rationale: <link to the PR description that made the call>
 - Triage rounds used: 3
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
-- Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; local story branch deleted; remote branch deleted by merge.
+- Remaining local state: none after committing this babysit report; local story branch deleted; remote branch deleted by merge.
 ---
