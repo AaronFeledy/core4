@@ -73,7 +73,22 @@ describe("Alpha 2 component prop schemas", () => {
 
     const missingReason = decodeScenarioPropsEither({ id: "hidden", render: false });
     expect(missingReason._tag).toBe("Left");
-    if (Either.isLeft(missingReason)) expect(missingReason.left).toBeInstanceOf(ParseResult.ParseError);
+    if (Either.isLeft(missingReason)) {
+      expect(missingReason.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(missingReason.left);
+      expect(issues.map((issue) => issue.message)).toContain(
+        "<Scenario render={false}> requires a `reason` of at least 8 characters.",
+      );
+    }
+
+    const missingId = decodeScenarioPropsEither({ render: false });
+    expect(missingId._tag).toBe("Left");
+    if (Either.isLeft(missingId)) {
+      expect(missingId.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(missingId.left);
+      expect(issues.some((issue) => issue.path.includes("id"))).toBe(true);
+    }
+
     expectNotImplemented(decodeScenarioPropsEither({ id: "reader", layer: "e2e" }), "layer");
   });
 

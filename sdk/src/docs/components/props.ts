@@ -233,14 +233,6 @@ const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either
 export const decodeScenarioPropsEither = (input: unknown): Either.Either<ScenarioProps, DecodeError> => {
   const record = asRecord(input);
   if (record?.layer === "e2e") return Either.left(betaComponentPropsError("Scenario", "layer", "§19.11"));
-  if (record?.render === false && (typeof record.reason !== "string" || record.reason.length < 8)) {
-    const reasonCheck = Schema.decodeUnknownEither(
-      Schema.Struct({ reason: Schema.String.pipe(Schema.minLength(8)) }),
-    )({
-      reason: record.reason,
-    });
-    if (Either.isLeft(reasonCheck)) return Either.left(reasonCheck.left);
-  }
   return decodeEither(ScenarioProps, input);
 };
 

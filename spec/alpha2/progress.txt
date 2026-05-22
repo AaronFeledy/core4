@@ -97,3 +97,8 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): db3a8dc docs: record US-058 review (no fixes required); aac0c71 feat: Publish Alpha 2 component prop schemas; 19ffd9c docs: record sync catch-up for us-057-guide-frontmatter-schema; 1525f7b docs: update progress log
 - PR: #155 https://github.com/AaronFeledy/core4/pull/155 (created)
 ---
+
+## 2026-05-22 21:54 UTC - PR #155 Bugbot Triage
+- CI/check triage: all GitHub Actions checks in `.local/tmp/pr-155-babysit-state.txt` were already passing; Cursor Bugbot was neutral/skipping after posting one review comment.
+- Review triage: accepted Bugbot's `decodeScenarioPropsEither` finding as real because the `render: false` reason pre-check bypassed the full `ScenarioProps` schema and could mask the scenario-specific filter message or missing `id` diagnostics.
+- Fix: removed the redundant pre-check, kept the deferred `layer: "e2e"` `NotImplementedError` guard, and added regression coverage for the schema filter message plus missing-`id` preservation.
