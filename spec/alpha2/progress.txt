@@ -146,3 +146,9 @@ Rationale: <link to the PR description that made the call>
   - When a story is described as "ship the surface" (typed fields + tagged stubs) and a subsequent story owns the body, leaving `NotImplementedError`-throwing stubs is the correct discipline — flag any future "fill in" PR that does NOT update the corresponding AC tracking.
   - `process.env.X = undefined` is portable under Bun (sets to undefined) but lossy under Node (sets to the string `"undefined"`). Prefer `delete process.env.X` for env restore if a helper ever moves out of Bun-only test files.
 ---
+## 2026-05-22 17:34 CDT - Push
+- Branch: us-059-scenario-context-helpers
+- Push: pushed
+- Commit(s): de1ea4a docs: record US-059 review (no fixes required); 2c72466 feat: Ship ScenarioContext and Alpha 2 testing helpers
+- PR: #156 https://github.com/AaronFeledy/core4/pull/156 (created)
+---
