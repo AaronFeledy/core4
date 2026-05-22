@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Context, Effect } from "effect";
+import { type Cause, Context, Effect } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/services";
@@ -187,7 +187,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
 export const withScenarioContext = <A, E, R>(
   options: WithScenarioContextOptions,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | unknown, R> =>
+): Effect.Effect<A, E | Cause.UnknownException, R> =>
   Effect.scoped(
     Effect.acquireRelease(
       Effect.tryPromise(() =>
