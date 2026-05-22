@@ -83,6 +83,8 @@
       "@lando/service-lando"
     ],
     "sdkSchemas": [
+      "DeprecationNotice",
+      "GuideFrontmatter",
       "BootstrapLevel",
       "AppRef",
       "AppPlan",
@@ -637,6 +639,43 @@
       "enum": ["none", "minimal", "plugins", "commands", "tooling", "provider", "global", "scratch", "app"],
       "type": "string"
     },
+    "DeprecationNotice": {
+      "$defs": {
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/DeprecationNotice",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
     "GlobalConfig": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -670,6 +709,103 @@
       },
       "required": [],
       "type": "object"
+    },
+    "GuideFrontmatter": {
+      "$defs": {
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        },
+        "GuideFrontmatter": {
+          "additionalProperties": false,
+          "description": "Alpha 2 executable guide frontmatter.",
+          "properties": {
+            "defaultLayer": {
+              "enum": ["scenario"],
+              "type": "string"
+            },
+            "deprecated": {
+              "$ref": "#/$defs/DeprecationNotice"
+            },
+            "id": {
+              "$ref": "#/$defs/GuideId"
+            },
+            "platforms": {
+              "items": {
+                "enum": ["darwin", "linux", "win32", "wsl"],
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "provider": {
+              "enum": ["test"],
+              "type": "string"
+            },
+            "skip": {
+              "additionalProperties": false,
+              "properties": {
+                "reason": {
+                  "type": "string"
+                },
+                "until": {
+                  "type": "string"
+                }
+              },
+              "required": ["reason"],
+              "type": "object"
+            },
+            "tags": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "timeout": {
+              "description": "a positive number",
+              "exclusiveMinimum": 0,
+              "title": "positive",
+              "type": "integer"
+            }
+          },
+          "required": ["id"],
+          "title": "Guide Frontmatter",
+          "type": "object"
+        },
+        "GuideId": {
+          "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "type": "string"
+        }
+      },
+      "$ref": "#/$defs/GuideFrontmatter",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "HostPlatform": {
       "$schema": "http://json-schema.org/draft-07/schema#",

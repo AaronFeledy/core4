@@ -18,6 +18,10 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Alpha 2 default test runtime is `TestRuntimeProvider` (`layer: "scenario"`); no real provider socket required.
 - US-073 is a CONDITIONAL story. Decide once at PR-open time: if no `recipes/*/README.mdx` exists with executable components in this repo, close US-073 as "Not applicable in Alpha 2; deferred to Beta per §19.13" and record the decision below. Do not re-evaluate mid-series.
 
+## Codebase Patterns
+
+- New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
+
 ## Cross-PRD prerequisites
 
 - Alpha PRD-06 (library testing surface) must be shipped: `@lando/core/testing`, `TestRuntimeProvider`, in-process CLI runner.
@@ -31,3 +35,23 @@ Status: <to be decided at PR-open>
 Rationale: <link to the PR description that made the call>
 
 ## Story log
+## 2026-05-22 14:28 - US-057
+- Implemented the Alpha 2 `GuideFrontmatter` Effect Schema with kebab-case ids, default timeout, Alpha-only layer/provider values, skip/deprecated fields, and targeted `NotImplementedError` remediation for deferred frontmatter keys plus `defaultLayer: "e2e"`.
+- Files changed: `sdk/src/docs/guide-frontmatter.ts`, `sdk/src/docs/components/index.ts`, `sdk/src/schema/index.ts`, `sdk/package.json`, `scripts/build-schema-snapshot.ts`, `sdk/test/fixtures/schema-snapshot.json`, `sdk/API_COMPATIBILITY.md`, `core/test/docs/guide-frontmatter.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (9 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed once (1110 pass, 11 skip, 0 fail); manual QA via `bun -e` decoded defaults through `@lando/sdk/docs/components` + `@lando/core/schema` and observed `NotImplementedError:§19.16:true` for `tabs`.
+- **Learnings for future iterations:**
+  - Public SDK schema additions need both the schema snapshot registry (`scripts/build-schema-snapshot.ts`) and the SDK compatibility doc (`sdk/API_COMPATIBILITY.md`) updated.
+  - Schema tests can import new package subpaths directly once `sdk/package.json#exports` is updated; no Bun install is needed for existing workspace packages.
+  - `lsp_diagnostics` is unavailable in this environment because `typescript-language-server` is not installed; use `bun run typecheck` for TypeScript diagnostics.
+---
+## 2026-05-22 15:20 - Slop cleanup after US-057
+- Ran the branch-wide AI slop remover after review; delegated per-file cleanup checks reported no functional edits needed.
+- Removed planning-phase wording from comments in `sdk/src/schema/index.ts` while preserving the schema exports and runtime behavior.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (9 pass); branch-changed source/test comment leakage scan passed; `lsp_diagnostics sdk/src/schema/index.ts` could not run because `typescript-language-server` is not installed; full `bun test` was attempted and failed in compiled CLI parity tests with exit 135 / empty compiled stderr, unrelated to the comment-only cleanup.
+---
+## 2026-05-22 14:47 - Push
+- Branch: us-057-guide-frontmatter-schema
+- Push: pushed
+- Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
+- PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
+---
