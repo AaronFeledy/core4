@@ -152,3 +152,7 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): de1ea4a docs: record US-059 review (no fixes required); 2c72466 feat: Ship ScenarioContext and Alpha 2 testing helpers
 - PR: #156 https://github.com/AaronFeledy/core4/pull/156 (created)
 ---
+## 2026-05-22 22:05 UTC - PR #156 Triage
+- Review triage: accepted Cursor Bugbot's ScenarioTranscriptFrame comment as real because the test exercises `kind: "note"` and the public `ScenarioTranscriptFrame` type should accept every frame kind the helper writes.
+- Fix: widened `core/src/testing/scenario-context.ts` transcript frame union to include `"note"`; no other code changes were needed.
+- Verification plan: run `bun run typecheck`, `bun run lint`, and `bun test` before push.

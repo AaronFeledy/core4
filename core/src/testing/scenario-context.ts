@@ -23,7 +23,7 @@ export interface ScenarioRunResult {
 }
 
 export interface ScenarioTranscriptFrame {
-  readonly kind: "run" | "event" | "message";
+  readonly kind: "run" | "event" | "message" | "note";
   readonly data: unknown;
 }
 
