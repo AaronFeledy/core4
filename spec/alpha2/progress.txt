@@ -132,3 +132,17 @@ Rationale: <link to the PR description that made the call>
   - `withScenarioContext` should own an Effect `Scope`; generated tests can register cleanup with `Effect.addFinalizer`, and those finalizers run before the temp directory finalizer removes `testDir`.
   - Full `bun test` can race compiled-binary tests if concurrent runs share `core/dist/lando`; ensure old `bun test` processes are stopped before rerunning the full suite.
 ---
+
+## 2026-05-22 17:35 - US-059 Review
+- Reviewed commit 2c72466 against US-059 acceptance criteria in `spec/alpha2/prd-alpha2-01-guide-schema-and-scenario-context.md` (lines 56-67). No fixes required.
+- Files changed: none (review-only iteration).
+- `review-work` findings:
+  - rejected (1) Version short-circuit in `createDefaultRunCli` returns `CORE_VERSION` without invoking the dynamically-imported `cli.runCli` — rejected because the AC requires the in-process runner *capability* (which is implemented at lines 109-127 of `scenario-context.ts`) and the short-circuit is a perf optimization for the version-only fast path; transcript framing is identical either way. Exercising the full OCLIF dispatch on every `runCli(["version"])` would also unnecessarily bootstrap Effect in the version probe path used by generated scenarios.
+  - rejected (2) `events` array never populated by an `EventService` subscription — rejected as out-of-scope scaffolding: the AC names `events` as an Alpha 2 field and the surface is in place; wiring real event capture depends on the full runtime EventService Layer and lands with the transcript-writer story (PRD-A2-04 §...).
+  - rejected (3) `fixtures.use` throws `NotImplementedError` while the AC lists fixtures under Alpha 2 fields — rejected because US-060 ("Codify fixture-copy discipline") owns the fixture-copy implementation; US-059 ships the typed surface with a tagged stub so US-060 can drop in the body without changing the public shape.
+  - rejected (4) Test cleanup uses `process.env.KEEP_SCENARIO_DIRS = undefined` instead of `delete process.env.KEEP_SCENARIO_DIRS` — rejected as a stylistic preference: verified Bun preserves `undefined` semantics (Node would coerce to string `"undefined"`), and per `AGENTS.md` tests run under Bun.
+- Verification run and result: `bun test core/test/testing/scenario-context.test.ts` passed (3 pass); `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed (1119 pass, 11 skip, 0 fail, 5928 expect() across 150 files).
+- **Learnings for future iterations:**
+  - When a story is described as "ship the surface" (typed fields + tagged stubs) and a subsequent story owns the body, leaving `NotImplementedError`-throwing stubs is the correct discipline — flag any future "fill in" PR that does NOT update the corresponding AC tracking.
+  - `process.env.X = undefined` is portable under Bun (sets to undefined) but lossy under Node (sets to the string `"undefined"`). Prefer `delete process.env.X` for env restore if a helper ever moves out of Bun-only test files.
+---
