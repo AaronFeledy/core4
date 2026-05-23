@@ -13,7 +13,6 @@ import {
   type CleanupProps,
   type GuideFrontmatter,
   type RunProps,
-  type ScenarioProps,
   type UseFixtureProps,
   type VariableProps,
   type VerifyProps,
@@ -423,12 +422,7 @@ const parseStep = (node: MdxNode, sourcePath: string): GuideStepNode => {
 const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => {
   assertAlpha2Component("Scenario", sourcePath);
   const props = propsOf(node);
-  const scenario = decodeOrThrow(
-    decodeScenarioPropsEither(props),
-    sourcePath,
-    "Scenario",
-    props,
-  ) as ScenarioProps;
+  const scenario = decodeOrThrow(decodeScenarioPropsEither(props), sourcePath, "Scenario", props);
   return {
     id: scenario.id,
     render: scenario.render,

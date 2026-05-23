@@ -96,7 +96,7 @@ describe("build-guide-scenarios MDX walker", () => {
     ]);
   });
 
-  test("Beta-only frontmatter exits through the schema-level remediation", async () => {
+  test("unsupported frontmatter exits through the schema-level remediation", async () => {
     const content = await fixture("beta-only/beta.mdx");
     expect(() => parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content)).toThrow(
       NotImplementedError,
@@ -123,7 +123,7 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
-  test("emits deterministic Alpha 2 TypeScript scenario tests", async () => {
+  test("emits deterministic generated TypeScript scenario tests", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-ts-"));
     try {
       const asts = [
