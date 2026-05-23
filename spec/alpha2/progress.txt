@@ -235,3 +235,7 @@ Rationale: <link to the PR description that made the call>
 - Fix: changed the `FileSystemLive.lstat` fallback message to `Failed to lstat <path>`.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1134 tests, 0 fail).
 ---
+## 2026-05-22 - PR #157 Triage
+- Bugbot comment: real — `lstat` used the `stat` fallback text, so the error message didn't identify the failing operation.
+- Fix: changed the `lstat` fallback to `Failed to lstat ${path}` in `core/src/services/file-system.ts`.
+- Verification: `bun test core/test/services/file-system.test.ts`, `bun run lint`, `bun run typecheck`, and `bun test` all passed.
