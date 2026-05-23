@@ -154,7 +154,7 @@ const renderRun = (
       "      lastFailure = runAttempt.left;",
       "    } else {",
       "      lastRun = runAttempt.right;",
-      "      expect(runAttempt.right.exitCode).toBe(0);",
+      `      expect(runAttempt.right.exitCode).toBe(${component.props.expectExit ?? 0});`,
       "    }",
     ].join("\n");
   }

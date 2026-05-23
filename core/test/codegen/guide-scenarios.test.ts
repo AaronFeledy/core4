@@ -188,6 +188,38 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("renders Run expectExit when provided", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-exit-"));
+    try {
+      const content = [
+        "---",
+        "id: exit-case",
+        "provider: test",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="nonzero-exit">',
+        '    <Step name="run">',
+        '      <Run command="version" expectExit={1} />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      await mkdir(join(root, "docs/guides/exit-case"), { recursive: true });
+      await Bun.write(join(root, "docs/guides/exit-case/exit-case.mdx"), content);
+
+      const asts = [parseGuideScenarioAst("docs/guides/exit-case/exit-case.mdx", content)];
+      await emitGuideScenarioTests(asts, root);
+      const generated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/exit-case/nonzero-exit.test.ts"),
+      ).text();
+      expect(generated).toContain("expect(runAttempt.right.exitCode).toBe(1);");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("generated scenario TypeScript runs against ScenarioContext", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-run-"));
     try {
