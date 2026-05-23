@@ -280,3 +280,12 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): 4616a6e feat: Reject Hidden component at SDK boundary with remediation; 4863d1a docs: record US-061 review verification
 - PR: #158 https://github.com/AaronFeledy/core4/pull/158 (created)
 ---
+## [2026-05-22 21:06 CDT] - Babysit
+- PR: #158 https://github.com/AaronFeledy/core4/pull/158
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (local main reset to origin/main after GitHub merge succeeded but local fast-forward was blocked by a duplicate squashed progress-log commit)
+- Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
+---
