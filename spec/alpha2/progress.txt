@@ -361,5 +361,5 @@ Rationale: <link to the PR description that made the call>
 ---
 ## 2026-05-23 04:21 UTC - PR #160 Bugbot Follow-up
 - Review triage: accepted Bugbot's generated array matcher finding as real and removed the now-unused `renderGuideScenarioAst` helper. Fixed generated `matchesExpected` to structurally compare arrays before object/primitive fallback.
-- Verification plan: run focused guide-scenario tests, then `bun run typecheck` and `bun run lint` before push.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (9 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed.
 ---
