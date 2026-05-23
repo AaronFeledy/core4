@@ -274,3 +274,9 @@ Rationale: <link to the PR description that made the call>
   - When asserting "verbatim" remediation text, do an end-to-end import + throw round-trip (not just a unit-test substring check) — the loop reviewer can confirm the SDK barrel re-export and the runtime error payload in one shot.
   - Allowlist-based component gating is more durable than denylist for "Alpha 2 only" surfaces: any future non-Alpha-2 component name added by spec drift gets rejected automatically without a code change.
 ---
+## 2026-05-22 20:58 CDT - Push
+- Branch: us-061-hidden-component-remediation
+- Push: pushed
+- Commit(s): 4616a6e feat: Reject Hidden component at SDK boundary with remediation; 4863d1a docs: record US-061 review verification
+- PR: #158 https://github.com/AaronFeledy/core4/pull/158 (created)
+---
