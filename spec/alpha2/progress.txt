@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 
 - Docs component prop schemas that participate in the schema gate need exports from `@lando/sdk/docs/components`, `@lando/core/docs/components`, and `@lando/sdk/schema`, plus `scripts/build-schema-snapshot.ts` / `sdk/API_COMPATIBILITY.md` updates.
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
+- Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
 
 ## Cross-PRD prerequisites
 
@@ -176,3 +177,65 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state: none after committing this babysit report; local story branch deleted; remote branch deleted by merge.
 ---
+
+## [2026-05-22 18:50 CDT] - Sync
+- Previous branch: us-059-scenario-context-helpers
+- Previous PR: #156 https://github.com/AaronFeledy/core4/pull/156
+- Action: caught up after prior merge (PR #156 was already MERGED; remote branch already deleted)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-22 19:12 - US-060
+- Implemented fixture-copy discipline for `ScenarioContext.fixtures.use`, including per-guide fixture precedence, shared fallback lookup, immutable source copying into `testDir`, idempotent repeated use, missing-fixture tagged errors, and symlink rejection.
+- Files changed: `core/src/testing/scenario-context.ts`, `core/src/services/file-system.ts`, `core/src/testing/test-runtime.ts`, `core/src/runtime/layer.ts`, `core/test/testing/scenario-context.test.ts`, `sdk/src/errors/index.ts`, `sdk/src/services/index.ts`, `sdk/test/fixtures/sdk-mvp-surface.json`, `sdk/test/library/exports.test.ts`, `sdk/test/services/tags.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/testing/scenario-context.test.ts sdk/test/services/tags.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts --max-concurrency=1` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1122 pass, 11 skip, 0 fail); manual QA via `bun -e` copied a fixture into `testDir`, mutated the copy, re-used it idempotently, and observed the source fixture remained unchanged; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Symlink-sensitive fixture handling needs `FileSystem.lstat`; adding a service method requires updating the Live/runtime/test doubles, `sdk/test/services/tags.test.ts`, and the frozen SDK compatibility fixture.
+  - Full `bun test` can race compiled-binary tests if overlapping Bun test processes are still running; check and stop stray `bun test` processes before rerunning the full suite.
+---
+
+## 2026-05-22 19:55 CDT - US-060 Review
+- Reviewed US-060 fixture-copy discipline (commit 1f8ede6) via 3 parallel Oracle agents (goal-verification, code-quality, security).
+- `review-work` findings:
+  - **Fixed**: Code-quality MAJOR — `findFixtureSource` silently fell through to the shared-fixture candidate when the per-guide candidate existed as a non-directory (regular file). This violated AC #1 ("per-guide overrides shared") because a malformed/accidental per-guide entry would be invisibly bypassed instead of failing loudly. Now fails with `FileIoError("Fixture <name> source is not a directory: <path>")`. New test added asserting the failure does NOT use the shared fallback.
+  - **Rejected**: Security MEDIUM — path traversal via `name` / `guideId` / `scenarioId` interpolated into `path.join(...)`. PRD §19.9 scopes the US-060 security guardrail explicitly to symlink rejection ("security guardrail for later sandboxing work"); `GuideId` is already constrained to kebab-case at the frontmatter schema layer (US-057); broader sandbox confinement is a future story.
+  - **Rejected**: Security LOW — symlink TOCTOU, intermediate symlink components, empty-name copy. Reviewer flagged as accepted-risk for test-runner infra.
+  - **Rejected**: Code-quality MAJOR — cwd-mutating test helper. The full `bun test` suite (default concurrency, file-level worker isolation) passes; `withTempCwd` is contained to one test file's sequential tests. Adding a `workspaceRoot` option to `WithScenarioContextOptions` is API surface expansion beyond the AC.
+  - **Rejected**: Code-quality MINOR/NITPICK — broad `FileSystemError` in public type, full-file buffering in `readBytes`, escaped quotes in template literals, `Effect.tap` ordering. Stylistic / non-blocking; reviewer confirmed ordering is correct.
+  - **Rejected**: Goal-verifier WARN — `process.cwd()` anchoring + partial-copy retry + concurrent-use TOCTOU. Reviewer marked all as acceptable; no AC violation.
+- Files changed: `core/src/testing/scenario-context.ts` (fail non-directory candidate in `findFixtureSource`), `core/test/testing/scenario-context.test.ts` (added non-directory-fallthrough test).
+- Verification run and result: `bun test core/test/testing/scenario-context.test.ts` 7/7 passed; focused suite `bun test core/test/testing/scenario-context.test.ts sdk/test/services/tags.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts --max-concurrency=1` 21/21 passed; `bun run typecheck` clean; `bun run lint` clean; full `bun test` had 2 transient failures in compiled-binary tests (`core/test/build/compile.test.ts`, `core/test/cli/aliases.test.ts`) which are unrelated flakiness already documented in prior progress entries — both pass when re-run with `--max-concurrency=1`.
+- **Learnings for future iterations:**
+  - When two fallback paths are tried in order and only "directory" wins, a present-but-wrong-type first candidate should fail loudly rather than fall through — silent fallback violates the override semantics and hides authoring mistakes.
+  - Bun's compiled-binary tests (`compile.test.ts`, `aliases.test.ts`) race when full `bun test` runs in parallel; treat single-run failures of those files as flakiness and confirm by re-running with `--max-concurrency=1`.
+---
+
+## 2026-05-22 19:38 CDT - Slop cleanup after US-060
+- Ran the branch-wide AI slop remover after review and before push; per-file cleanup agents reported no functional edits needed except one planning-term test-name cleanup. Reverted an overbroad comment deletion in `core/src/runtime/layer.ts` because those comments were durable module docs, not disposable slop.
+- Files changed: `sdk/test/services/tags.test.ts` (removed planning-phase wording from one test name), `spec/alpha2/progress.txt` (this cleanup record).
+- Verification run and result: branch-changed source/test planning-comment leakage scan passed; `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed (1123 pass, 11 skip, 0 fail); focused `bun test sdk/test/services/tags.test.ts` passed via the slop-remover agent; `lsp_diagnostics sdk/test/services/tags.test.ts` could not run because `typescript-language-server` is not installed.
+---
+
+## 2026-05-22 19:41 CDT - Push
+- Branch: us-060-fixture-copy-discipline
+- Push: pushed
+- Commit(s): ae1e37a chore: remove AI slop; 10fb970 fix(testing): reject non-directory fixture candidates (US-060 review); 1f8ede6 feat: Codify fixture-copy discipline
+- PR: #157 https://github.com/AaronFeledy/core4/pull/157 (created)
+---
+## 2026-05-22 - PR #157 Bugbot triage
+- Accepted both Bugbot comments as real: renamed guide-fixture error payload fields from `name` to `fixtureName` to avoid shadowing `Error.prototype.name`, and added `isSymbolicLink: false` to the `lstat` stubs in runtime/test doubles so they match real `lstat` shape.
+- Verification: `bun run typecheck`, `bun run lint`, and `bun test` all passed; focused scenario-context and tags tests passed during triage.
+## 2026-05-22 - PR #157 triage
+- Triage decisions: Bugbot item 1 was real (the guide-fixture errors were shadowing `Error.prototype.name`); Bugbot item 2 was real (the `lstat` stubs were missing `isSymbolicLink`, which diverged from the real FileSystem contract).
+- Fixes: renamed the guide-fixture error payload field to `fixtureName` end-to-end and updated the scenario-context assertions; added `isSymbolicLink: false` to the runtime and SDK test `lstat` stubs.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed with `PATH=/home/aaron/.bun/bin:$PATH` so subprocesses could find Bun (1134 tests, 0 fail).
+## 2026-05-22 - PR #157 second Bugbot triage
+- Accepted Bugbot's `lstat` fallback message comment as real: the fallback string reused `stat`, obscuring which FileSystem operation failed for non-Error throws.
+- Fix: changed the `FileSystemLive.lstat` fallback message to `Failed to lstat <path>`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1134 tests, 0 fail).
+---
+## 2026-05-22 - PR #157 Triage
+- Bugbot comment: real — `lstat` used the `stat` fallback text, so the error message didn't identify the failing operation.
+- Fix: changed the `lstat` fallback to `Failed to lstat ${path}` in `core/src/services/file-system.ts`.
+- Verification: `bun test core/test/services/file-system.test.ts`, `bun run lint`, `bun run typecheck`, and `bun test` all passed.

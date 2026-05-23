@@ -355,6 +355,24 @@ export class FileIoError extends Schema.TaggedError<FileIoError>()("FileIoError"
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class GuideFixtureNotFoundError extends Schema.TaggedError<GuideFixtureNotFoundError>()(
+  "GuideFixtureNotFoundError",
+  {
+    message: Schema.String,
+    fixtureName: Schema.String,
+    candidates: Schema.Array(Schema.String),
+  },
+) {}
+
+export class GuideFixtureSymlinkError extends Schema.TaggedError<GuideFixtureSymlinkError>()(
+  "GuideFixtureSymlinkError",
+  {
+    message: Schema.String,
+    fixtureName: Schema.String,
+    path: Schema.String,
+  },
+) {}
+
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,
   event: Schema.optional(Schema.String),

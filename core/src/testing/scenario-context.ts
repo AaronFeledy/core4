@@ -1,11 +1,18 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Cause, Context, Effect } from "effect";
+import { type Cause, Chunk, Context, Effect, Stream } from "effect";
 
-import { NotImplementedError } from "@lando/sdk/errors";
-import type { LandoEvent } from "@lando/sdk/services";
+import {
+  FileIoError,
+  FileNotFoundError,
+  GuideFixtureNotFoundError,
+  GuideFixtureSymlinkError,
+  NotImplementedError,
+} from "@lando/sdk/errors";
+import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
 
+import { FileSystemLive } from "../services/file-system.ts";
 import { CORE_VERSION } from "../version.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime.ts";
 
@@ -33,7 +40,9 @@ export interface ScenarioTranscript {
 }
 
 export interface ScenarioFixtures {
-  readonly use: (name: string) => Effect.Effect<string, NotImplementedError>;
+  readonly use: (
+    name: string,
+  ) => Effect.Effect<string, GuideFixtureNotFoundError | GuideFixtureSymlinkError | FileSystemError>;
 }
 
 export interface ScenarioContext {
@@ -72,14 +81,125 @@ const shellNotImplemented = (command: string): NotImplementedError =>
       'Use `<Run command="…">` for Alpha 2 guide scenarios. Shell runners ship in Phase 3 Beta — see `spec/ROADMAP.md`.',
   });
 
-const fixturesNotImplemented = (name: string): NotImplementedError =>
-  new NotImplementedError({
-    message: `<UseFixture name=\"${name}\"> is implemented by the fixture-copy discipline story`,
-    commandId: "guide.fixture.use",
-    specSection: "§19.9",
-    remediation:
-      "Fixture copying is implemented by the Alpha 2 fixture-copy discipline story; keep fixture sources immutable per §19.9.",
+const fixtureSymlinkError = (name: string, path: string): GuideFixtureSymlinkError =>
+  new GuideFixtureSymlinkError({
+    message: `Fixture "${name}" contains a symbolic link: ${path}`,
+    fixtureName: name,
+    path,
   });
+
+const fixtureNotFoundError = (name: string, candidates: ReadonlyArray<string>): GuideFixtureNotFoundError =>
+  new GuideFixtureNotFoundError({
+    message: `Fixture "${name}" was not found in any candidate path`,
+    fixtureName: name,
+    candidates: [...candidates],
+  });
+
+const fixtureIoError = (path: string, message: string): FileIoError => new FileIoError({ message, path });
+
+const readBytes = (path: string): Effect.Effect<Uint8Array, FileSystemError, FileSystem> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem;
+    const chunks = yield* Stream.runCollect(fileSystem.read(path));
+    const arrays = Chunk.toReadonlyArray(chunks);
+    const total = arrays.reduce((size, chunk) => size + chunk.byteLength, 0);
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of arrays) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  });
+
+const copyFixtureDirectory = (
+  name: string,
+  source: string,
+  target: string,
+): Effect.Effect<void, GuideFixtureSymlinkError | FileSystemError, FileSystem> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem;
+    const sourceStat = yield* fileSystem.lstat(source);
+    if (sourceStat.isSymbolicLink === true) {
+      return yield* Effect.fail(fixtureSymlinkError(name, source));
+    }
+    if (!sourceStat.isDirectory) {
+      return yield* Effect.fail(
+        fixtureIoError(source, `Fixture "${name}" source is not a directory: ${source}`),
+      );
+    }
+
+    yield* fileSystem.mkdir(target);
+    const entries = yield* fileSystem.readDir(source);
+    for (const entry of entries) {
+      const childSource = join(source, entry);
+      const childTarget = join(target, entry);
+      const childStat = yield* fileSystem.lstat(childSource);
+      if (childStat.isSymbolicLink === true) {
+        return yield* Effect.fail(fixtureSymlinkError(name, childSource));
+      }
+      if (childStat.isDirectory) {
+        yield* copyFixtureDirectory(name, childSource, childTarget);
+        continue;
+      }
+      if (childStat.isFile) {
+        yield* fileSystem.write(childTarget, yield* readBytes(childSource));
+      }
+    }
+  });
+
+const findFixtureSource = (
+  name: string,
+  candidates: ReadonlyArray<string>,
+): Effect.Effect<
+  string,
+  GuideFixtureNotFoundError | GuideFixtureSymlinkError | FileSystemError,
+  FileSystem
+> =>
+  Effect.gen(function* () {
+    const fileSystem = yield* FileSystem;
+    for (const candidate of candidates) {
+      const stat = yield* Effect.either(fileSystem.lstat(candidate));
+      if (stat._tag === "Left") {
+        if (stat.left instanceof FileNotFoundError) {
+          continue;
+        }
+        return yield* Effect.fail(stat.left);
+      }
+      if (stat.right.isSymbolicLink === true) {
+        return yield* Effect.fail(fixtureSymlinkError(name, candidate));
+      }
+      if (stat.right.isDirectory) {
+        return candidate;
+      }
+      return yield* Effect.fail(
+        fixtureIoError(candidate, `Fixture "${name}" source is not a directory: ${candidate}`),
+      );
+    }
+    return yield* Effect.fail(fixtureNotFoundError(name, candidates));
+  });
+
+const createFixtureUse = (guideId: string, testDir: string): ScenarioFixtures["use"] => {
+  const copied = new Set<string>();
+
+  return (name) => {
+    const target = join(testDir, name);
+    if (copied.has(name)) {
+      return Effect.succeed(target);
+    }
+
+    const candidates = [
+      join(process.cwd(), "docs", "guides", guideId, "fixtures", name),
+      join(process.cwd(), "docs", "guides", "fixtures", name),
+    ];
+    return findFixtureSource(name, candidates).pipe(
+      Effect.flatMap((source) => copyFixtureDirectory(name, source, target)),
+      Effect.as(target),
+      Effect.tap(() => Effect.sync(() => copied.add(name))),
+      Effect.provide(FileSystemLive),
+    );
+  };
+};
 
 const captureWrite = (stream: typeof process.stdout | typeof process.stderr) => {
   const chunks: string[] = [];
@@ -179,7 +299,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
       append: (frame) => Effect.sync(() => transcriptFrames.push(frame)),
     },
     fixtures: {
-      use: (name) => Effect.fail(fixturesNotImplemented(name)),
+      use: createFixtureUse(options.guideId, testDir),
     },
   };
 };

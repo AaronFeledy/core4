@@ -1,3 +1,5 @@
+import { lstat as nodeLstat } from "node:fs/promises";
+
 import { type Context, Effect, Layer, Stream } from "effect";
 
 import { FileIoError, FileNotFoundError, FilePermissionError } from "@lando/sdk/errors";
@@ -114,6 +116,24 @@ const stat = async (path: string): Promise<FileStat> => {
   }
 };
 
+const lstat = async (path: string): Promise<FileStat> => {
+  try {
+    const stats = await nodeLstat(path);
+    return {
+      size: stats.size,
+      mtimeMs: stats.mtimeMs,
+      isFile: stats.isFile(),
+      isDirectory: stats.isDirectory(),
+      isSymbolicLink: stats.isSymbolicLink(),
+    };
+  } catch (cause) {
+    if (codeFrom(cause) === "ENOENT") {
+      throw notFound(path);
+    }
+    throw cause;
+  }
+};
+
 const mkdir = async (path: string): Promise<void> => {
   const marker = joinPath(path, `.lando-mkdir-${crypto.randomUUID()}`);
   await Bun.write(marker, "");
@@ -173,6 +193,11 @@ const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
     Effect.tryPromise({
       try: () => stat(path),
       catch: mapFileError(path, `Failed to stat ${path}`),
+    }),
+  lstat: (path) =>
+    Effect.tryPromise({
+      try: () => lstat(path),
+      catch: mapFileError(path, `Failed to lstat ${path}`),
     }),
   mkdir: (path) =>
     Effect.tryPromise({

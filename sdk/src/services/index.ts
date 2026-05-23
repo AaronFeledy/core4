@@ -68,6 +68,7 @@ export interface FileStat {
   readonly mtimeMs: number;
   readonly isFile: boolean;
   readonly isDirectory: boolean;
+  readonly isSymbolicLink?: boolean;
 }
 
 export interface ProviderSetupOptions {
@@ -395,6 +396,7 @@ export class FileSystem extends Context.Tag("@lando/core/FileSystem")<
     ) => Effect.Effect<void, FileSystemError>;
     readonly exists: (path: string) => Effect.Effect<boolean, FileSystemError>;
     readonly stat: (path: string) => Effect.Effect<FileStat, FileSystemError>;
+    readonly lstat: (path: string) => Effect.Effect<FileStat, FileSystemError>;
     readonly mkdir: (path: string) => Effect.Effect<void, FileSystemError>;
     readonly remove: (path: string) => Effect.Effect<void, FileSystemError>;
     readonly readDir: (path: string) => Effect.Effect<ReadonlyArray<string>, FileSystemError>;

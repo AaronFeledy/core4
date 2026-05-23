@@ -72,6 +72,7 @@ const EXPECTED_TAGS = [
       "writeAtomic",
       "exists",
       "stat",
+      "lstat",
       "mkdir",
       "remove",
       "readDir",
@@ -94,7 +95,7 @@ type TaggedFailure<E> = [E] extends [never] ? never : E extends { readonly _tag:
 const assertTaggedFailure = <T extends true>(value: T): T => value;
 
 describe("Effect service tags", () => {
-  test("exports the Phase 1 service tags as Context.Tag instances", () => {
+  test("exports the service tags as Context.Tag instances", () => {
     for (const { tag, key } of EXPECTED_TAGS) {
       expect(Context.isTag(tag)).toBe(true);
       expect(tag.key).toBe(key);
@@ -139,6 +140,7 @@ describe("Effect service tags", () => {
         "writeAtomic",
         "exists",
         "stat",
+        "lstat",
         "mkdir",
         "remove",
         "readDir",
@@ -192,6 +194,8 @@ describe("Effect service tags", () => {
       writeAtomic: (_path: string, _content: string | Uint8Array) => Effect.void,
       exists: (_path: string) => Effect.succeed(false),
       stat: (_path: string) => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+      lstat: (_path: string) =>
+        Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false, isSymbolicLink: false }),
       mkdir: (_path: string) => Effect.void,
       remove: (_path: string) => Effect.void,
       readDir: (_path: string) => Effect.succeed([]),
