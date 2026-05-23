@@ -230,3 +230,8 @@ Rationale: <link to the PR description that made the call>
 - Triage decisions: Bugbot item 1 was real (the guide-fixture errors were shadowing `Error.prototype.name`); Bugbot item 2 was real (the `lstat` stubs were missing `isSymbolicLink`, which diverged from the real FileSystem contract).
 - Fixes: renamed the guide-fixture error payload field to `fixtureName` end-to-end and updated the scenario-context assertions; added `isSymbolicLink: false` to the runtime and SDK test `lstat` stubs.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed with `PATH=/home/aaron/.bun/bin:$PATH` so subprocesses could find Bun (1134 tests, 0 fail).
+## 2026-05-22 - PR #157 second Bugbot triage
+- Accepted Bugbot's `lstat` fallback message comment as real: the fallback string reused `stat`, obscuring which FileSystem operation failed for non-Error throws.
+- Fix: changed the `FileSystemLive.lstat` fallback message to `Failed to lstat <path>`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1134 tests, 0 fail).
+---

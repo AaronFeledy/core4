@@ -197,7 +197,7 @@ const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
   lstat: (path) =>
     Effect.tryPromise({
       try: () => lstat(path),
-      catch: mapFileError(path, `Failed to stat ${path}`),
+      catch: mapFileError(path, `Failed to lstat ${path}`),
     }),
   mkdir: (path) =>
     Effect.tryPromise({
