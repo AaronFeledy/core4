@@ -442,3 +442,12 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - When a codegen stage owns its own output directory cleanup, the codegen-ci drift test pattern (assert ordered stdout markers + read .gitignore + execute the smoke path end-to-end) is a lighter substitute for a full catalog snapshot file — keeps drift coverage without committing a generated artifact.
 ---
+## [2026-05-23 00:47 CDT] - Babysit
+- PR: #162 https://github.com/AaronFeledy/core4/pull/162
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report; pre-existing stashes remain (`preserve-us062-babysit-progress`, `wip us-062 mdx string-literal fix`, `loop-sync-rejected-improvement-20260523030119`)
+---
