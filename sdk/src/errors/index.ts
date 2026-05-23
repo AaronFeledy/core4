@@ -373,6 +373,18 @@ export class GuideFixtureSymlinkError extends Schema.TaggedError<GuideFixtureSym
   },
 ) {}
 
+export class GuideFrontmatterValidationError extends Schema.TaggedError<GuideFrontmatterValidationError>()(
+  "GuideFrontmatterValidationError",
+  {
+    message: Schema.String,
+    sourcePath: Schema.String,
+    field: Schema.String,
+    rejectedValue: Schema.Unknown,
+    issues: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,
   event: Schema.optional(Schema.String),
