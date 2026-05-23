@@ -38,4 +38,18 @@ describe("scenario source-mapper reporter", async () => {
 
     expect(rewriteScenarioSourceMappedOutput(input, { repoRoot, disabled: true })).toBe(input);
   });
+
+  test("keeps the re-run command as the failure block's last line", async () => {
+    const input = (await readFile(resolve(fixturesRoot, "single-frame", "input.txt"), "utf8")).replaceAll(
+      "<repo>",
+      repoRoot,
+    );
+
+    const output = rewriteScenarioSourceMappedOutput(input, { repoRoot });
+    const failureBlock = output.split("\n\n").find((block) => block.includes("(fail) source-map-guide:runs"));
+
+    expect(failureBlock?.split("\n").at(-1)).toBe(
+      "Re-run: bun run docs:scenario source-map-guide --scenario runs",
+    );
+  });
 });

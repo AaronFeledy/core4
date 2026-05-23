@@ -12,3 +12,5 @@ test/scenarios/generated/guides/source-map-guide/runs.fixture.ts:
 
  0 pass
  1 fail
+
+Re-run: bun run docs:scenario source-map-guide --scenario runs

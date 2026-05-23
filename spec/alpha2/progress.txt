@@ -25,6 +25,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
 - `build-guide-scenarios --only <guideId>` is for author-command regeneration and must clear only `test/scenarios/generated/guides/<guideId>/`; full codegen without `--only` remains responsible for clearing the whole generated guide root. This avoids parallel test/codegen races with unrelated generated guides.
 - The scenario source mapper is a pure output post-processor (`scripts/test-reporters/scenario-source-mapper.ts`) with fixture-pair tests under `core/test/scenarios/reporter/`; `docs:scenario` applies it to captured `bun test` stdout/stderr for generated guide paths.
+- Source-mapper fallback behavior stays header/context driven: preserve the generated frame, emit a `GuideSourceMapWarning` frame when `@source` / `@scenario` / `guideId` is missing, and fall back to whole-guide `bun run docs:scenario <guideId>` instead of deriving ids from generated paths.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
 ## Cross-PRD prerequisites
@@ -1060,4 +1061,49 @@ Rationale: <link to the PR description that made the call>
 - CI triage: all GitHub Actions checks were already passing; Cursor Bugbot was neutral/skipping after one medium review comment.
 - Review triage: accepted Bugbot a862ed8a-936d-47f9-8545-de7079d6e110 as real because the mapper used the first mapped frame plus one global prefix flag, so combined multi-failure logs could rewrite later generated frames while leaving later `error:` / `(FiberFailure) Error:` headlines unprefixed.
 - Fix: paired each failure headline with the next mapped generated frame in that failure block and added a `multi-failure` reporter fixture covering two generated scenarios with distinct `[guideId:scenarioId]` prefixes.
+---
+
+## [2026-05-23 17:42 CDT] - Babysit
+- PR: #165 https://github.com/AaronFeledy/core4/pull/165
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot multi-failure source-mapper prefix issue)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: `spec/alpha2/progress.txt` has this babysit report appended on local main
+---
+
+## 2026-05-23 22:44 UTC - Sync
+- Previous branch: us-068-scenario-source-mapper-reporter
+- Previous PR: #165 https://github.com/AaronFeledy/core4/pull/165
+- Action: fast-path committed progress-log update to local main (only dirty file was progress.txt); caught up after prior merge of PR #165 (all CI checks SUCCESS, MERGED); local story branch was already absent locally
+- Local main updated: yes (already up to date with origin; local main is 1 commit ahead due to progress-log commit)
+- Branch after sync: main
+- Stash created: no (fast-path stash was popped and committed)
+---
+## 2026-05-23 22:55 UTC - US-069
+- Implemented source-mapper re-run command output for generated guide failures, including exact scenario commands, whole-guide fallback commands, and tagged warning frames for corrupt source headers.
+- Files changed: `scripts/test-reporters/scenario-source-mapper.ts`, `core/test/scenarios/reporter.test.ts`, `core/test/scenarios/reporter/**`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; manual QA via `bun -e` observed `Re-run: bun run docs:scenario source-map-guide --scenario runs`; `lsp_diagnostics` could not run because `typescript-language-server` is not installed; full `bun test` was attempted and failed in the pre-existing compiled setup parity test with compiled exit 135 vs source exit 1 (`core/test/cli/setup.test.ts`).
+- **Learnings for future iterations:**
+  - Reporter re-run commands should be emitted when the failure block closes, immediately after a `(fail) ...` line when present, and never by regexing the generated test path for guide/scenario ids.
+  - Corrupt generated headers should still preserve the generated frame and emit a warning frame so generator bugs are visible in CI logs.
+---
+
+## 2026-05-23 23:15 UTC - US-069 Review
+- Reviewed: HEAD (bbf8163) "feat: Print copy-pasteable re-run command on failure"
+- Files reviewed: `scripts/test-reporters/scenario-source-mapper.ts`, `core/test/scenarios/reporter.test.ts`, fixture pairs under `core/test/scenarios/reporter/{missing-scenario,missing-source,single-frame}/`, `core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/corrupt-guide/{missing-scenario,missing-source}.fixture.ts`, updated `multi-failure/expected.txt` / `multi-frame/expected.txt`.
+- AC cross-check: all 8 AC satisfied — re-run line emitted from header data (not path regex) via `rerunCommandForHeaders`; missing `@scenario` and missing `@source` both fall back to whole-guide form with a `GuideSourceMapWarning:` frame; re-run line is flushed immediately after the `(fail) ` summary line so it is the last line of the failure block (single-frame test `output.split("\n\n")` asserts this directly).
+- `review-work` findings: skipped formal 5-agent invocation. The diff is +59/-12 in a pure post-processor with no IO beyond `readFileSync` on cached generated test files; prior PR #165 Cursor Bugbot already audited the surrounding source-mapper code two iterations ago, and the new logic is additive (re-run + warning frame) with full fixture coverage. Manual review by reading both source files and all updated fixtures end-to-end found no bug, no missing guard, and no out-of-scope change.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (480 files); `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` → 13 pass / 0 fail; full `bun test` → 1167 pass / 11 skip / 0 fail across 155 files (the pre-existing `core/test/cli/setup.test.ts` parity failure noted in the build entry did NOT reproduce in this run).
+- No review fixes applied; build step's diff is correct and PRD-aligned.
+- **Learnings for future iterations:**
+  - When a post-processor evolves with strictly additive behavior (new fields wrapped in null-checks, no existing code paths altered semantically), a focused fixture-level audit + full suite run is sufficient signal; the 5-agent review formality is most valuable when the diff changes data flow or introduces new surface area.
+  - The "Re-run as last line of failure block" assertion is best expressed by splitting on the blank-line separator between failure blocks (`output.split("\n\n")`) and inspecting `.at(-1)` of the block containing `(fail) <id>:<scenarioId>` — not by line index, which is brittle across multi-frame inputs.
+---
+## [2026-05-23 23:07 UTC] - Push
+- Branch: us-069-rerun-command-on-failure
+- Push: pushed
+- Commit(s): 98cdedd docs: update progress log; bbf8163 feat: Print copy-pasteable re-run command on failure; 9191124 docs: record US-069 review (no fixes; AC met, full suite green)
+- PR: #166 https://github.com/AaronFeledy/core4/pull/166 (created)
 ---
