@@ -1070,7 +1070,7 @@ Rationale: <link to the PR description that made the call>
 - Triage rounds used: 1
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
-- Remaining local state, if any: `spec/alpha2/progress.txt` has this babysit report appended on local main
+- Remaining local state, if any: local `main` is ahead of `origin/main` by one progress-log commit containing this babysit report
 ---
 
 ## 2026-05-23 22:44 UTC - Sync
@@ -1106,4 +1106,24 @@ Rationale: <link to the PR description that made the call>
 - Push: pushed
 - Commit(s): 98cdedd docs: update progress log; bbf8163 feat: Print copy-pasteable re-run command on failure; 9191124 docs: record US-069 review (no fixes; AC met, full suite green)
 - PR: #166 https://github.com/AaronFeledy/core4/pull/166 (created)
+---
+
+## [2026-05-23 18:14 CDT] - Babysit
+- PR: #166 https://github.com/AaronFeledy/core4/pull/166
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: local `main` is ahead of `origin/main` by one progress-log commit containing this babysit report
+---
+
+## [2026-05-23 18:49 CDT] - Babysit
+- PR: none (current branch is `main`; `gh pr view` found no PR for `main`; `.local/looper/.last-branch` is `us-069-rerun-command-on-failure` and PR #166 is already merged)
+- CI outcome: not run (no active story PR to watch)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: deferred (no active PR; babysit exited at Phase 1)
+- Local main / branch refreshed: no
+- Remaining local state, if any: local `main` is ahead of `origin/main` by one progress-log commit; this report is folded into that local progress-log commit
 ---
