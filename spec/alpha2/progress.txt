@@ -533,3 +533,15 @@ Rationale: <link to the PR description that made the call>
   - Author-command filtered generation should not delete the whole generated guide root; codegen tests can run concurrently and expect unrelated generated guide files to survive until their assertion finishes.
   - `bun run <script>` emits a `$ bun run ...` command line on stderr; command tests should assert meaningful stderr content rather than expecting an empty stream.
 ---
+## 2026-05-23 22:15 CDT - US-067 Review
+- Reviewed build commit 7b1f865 against AC in `spec/alpha2/prd-alpha2-03-author-command-and-source-mapper.md` §US-067.
+- No review fixes applied; no files changed.
+- `review-work` findings (one-line each):
+  - FYI (accepted): `--keep` prints the temp dir path directly from `withScenarioContext`'s finalizer via a new `LANDO_DOCS_SCENARIO_KEEP=1` gate instead of "reading from the PRD-A2-01 transcript stub" as the AC parenthetical describes. User-visible behavior matches the AC; the alternative is a transcript-frame schema extension that exceeds the story. Tracked here only.
+  - REJECTED (out-of-scope): "Move temp-dir print out of scenario-context to avoid author-command coupling to core test plumbing." Author-command code already reads scenario-context's stdout; refactoring to capture-and-replay would change the streaming UX during `--keep` runs and is not a bugfix.
+  - REJECTED (false positive): "docs-scenario tests write into the real `docs/guides/` tree." Consistent with existing `core/test/scripts/codegen-ci.test.ts` precedent and uses non-colliding guide ids; no regression introduced by US-067.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (474 files); `bun test core/test/scripts/docs-scenario.test.ts` → 5 pass / 0 fail; full `bun test` → 1150 pass / 11 skip / 9 fail. Each of the 9 failures reproduces identically on HEAD~1 (e.g. `tsbuildinfo runtime isolation > clean removes …` exits 127); root cause is the host PATH not containing `/home/aaron/.bun/bin`, which AGENTS.md already documents as a CLI-subprocess-test fragility. Not introduced by US-067 and out of scope.
+- **Learnings for future iterations:**
+  - When an AC parenthetical names an implementation pathway ("read back from the transcript stub") and the build chooses a different pathway with identical user-visible behavior, document the deviation in the progress entry rather than expanding the story to refactor — but always confirm the original pathway's cost before accepting.
+  - Pre-existing subprocess-spawn-without-PATH-prepend tests will silently look like new regressions during a focused-story review when the host shell lacks bun in PATH; always re-run the failing test on HEAD~1 before flagging.
+---
