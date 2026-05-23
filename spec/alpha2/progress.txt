@@ -223,3 +223,10 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): ae1e37a chore: remove AI slop; 10fb970 fix(testing): reject non-directory fixture candidates (US-060 review); 1f8ede6 feat: Codify fixture-copy discipline
 - PR: #157 https://github.com/AaronFeledy/core4/pull/157 (created)
 ---
+## 2026-05-22 - PR #157 Bugbot triage
+- Accepted both Bugbot comments as real: renamed guide-fixture error payload fields from `name` to `fixtureName` to avoid shadowing `Error.prototype.name`, and added `isSymbolicLink: false` to the `lstat` stubs in runtime/test doubles so they match real `lstat` shape.
+- Verification: `bun run typecheck` passed; `bun test core/test/testing/scenario-context.test.ts sdk/test/services/tags.test.ts` passed.
+## 2026-05-22 - PR #157 triage
+- Triage decisions: Bugbot item 1 was real (the guide-fixture errors were shadowing `Error.prototype.name`); Bugbot item 2 was real (the `lstat` stubs were missing `isSymbolicLink`, which diverged from the real FileSystem contract).
+- Fixes: renamed the guide-fixture error payload field to `fixtureName` end-to-end and updated the scenario-context assertions; added `isSymbolicLink: false` to the runtime and SDK test `lstat` stubs.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed with `PATH=/home/aaron/.bun/bin:$PATH` so subprocesses could find Bun (1134 tests, 0 fail).

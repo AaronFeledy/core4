@@ -359,7 +359,7 @@ export class GuideFixtureNotFoundError extends Schema.TaggedError<GuideFixtureNo
   "GuideFixtureNotFoundError",
   {
     message: Schema.String,
-    name: Schema.String,
+    fixtureName: Schema.String,
     candidates: Schema.Array(Schema.String),
   },
 ) {}
@@ -368,7 +368,7 @@ export class GuideFixtureSymlinkError extends Schema.TaggedError<GuideFixtureSym
   "GuideFixtureSymlinkError",
   {
     message: Schema.String,
-    name: Schema.String,
+    fixtureName: Schema.String,
     path: Schema.String,
   },
 ) {}

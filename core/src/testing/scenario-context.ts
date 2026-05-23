@@ -84,14 +84,14 @@ const shellNotImplemented = (command: string): NotImplementedError =>
 const fixtureSymlinkError = (name: string, path: string): GuideFixtureSymlinkError =>
   new GuideFixtureSymlinkError({
     message: `Fixture "${name}" contains a symbolic link: ${path}`,
-    name,
+    fixtureName: name,
     path,
   });
 
 const fixtureNotFoundError = (name: string, candidates: ReadonlyArray<string>): GuideFixtureNotFoundError =>
   new GuideFixtureNotFoundError({
     message: `Fixture "${name}" was not found in any candidate path`,
-    name,
+    fixtureName: name,
     candidates: [...candidates],
   });
 

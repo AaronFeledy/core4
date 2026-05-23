@@ -150,7 +150,8 @@ describe("withScenarioContext", () => {
     const error = failure?._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(GuideFixtureNotFoundError);
     if (error instanceof GuideFixtureNotFoundError) {
-      expect(error.name).toBe("missing");
+      expect(error.name).toBe("GuideFixtureNotFoundError");
+      expect(error.fixtureName).toBe("missing");
       expect(error.candidates).toEqual([
         join(exit.root, "docs", "guides", "node-postgres", "fixtures", "missing"),
         join(exit.root, "docs", "guides", "fixtures", "missing"),
@@ -201,6 +202,8 @@ describe("withScenarioContext", () => {
     expect(failure?._tag).toBe("Some");
     const error = failure?._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(GuideFixtureSymlinkError);
+    expect(error.name).toBe("GuideFixtureSymlinkError");
+    expect(error.fixtureName).toBe("symlinked");
     expect(
       error instanceof GuideFixtureSymlinkError ? error.path.endsWith(join("symlinked", "link.txt")) : false,
     ).toBe(true);

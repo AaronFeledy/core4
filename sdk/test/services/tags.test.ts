@@ -194,7 +194,8 @@ describe("Effect service tags", () => {
       writeAtomic: (_path: string, _content: string | Uint8Array) => Effect.void,
       exists: (_path: string) => Effect.succeed(false),
       stat: (_path: string) => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
-      lstat: (_path: string) => Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false }),
+      lstat: (_path: string) =>
+        Effect.succeed({ size: 0, mtimeMs: 0, isFile: true, isDirectory: false, isSymbolicLink: false }),
       mkdir: (_path: string) => Effect.void,
       remove: (_path: string) => Effect.void,
       readDir: (_path: string) => Effect.succeed([]),
