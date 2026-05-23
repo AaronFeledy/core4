@@ -451,3 +451,11 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report; pre-existing stashes remain (`preserve-us062-babysit-progress`, `wip us-062 mdx string-literal fix`, `loop-sync-rejected-improvement-20260523030119`)
 ---
+## [2026-05-23 20:15 UTC] - Sync
+- Previous branch: us-065-guide-scenarios-codegen
+- Previous PR: #162 https://github.com/AaronFeledy/core4/pull/162
+- Action: caught up after prior merge (PR #162 already MERGED; fast-path committed dirty progress.txt to local main before reconciling)
+- Local main updated: yes (already at origin/main after fast-path commit)
+- Branch after sync: main
+- Stash created: no
+---
