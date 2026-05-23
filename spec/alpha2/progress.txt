@@ -306,3 +306,18 @@ Rationale: <link to the PR description that made the call>
   - Reuse the existing Landofile YAML subset parser for MDX frontmatter so nested Alpha 2 fields stay aligned with repo parsing behavior.
   - The guide walker consumes `mdxJsxFlowElement` nodes from the `unified` + `remark-mdx` stack; AST node shapes are now fixture-covered and documented in `AGENTS.md`.
 ---
+## [2026-05-23 03:04 UTC] - Push
+- Branch: us-062-deterministic-mdx-walker
+- Push: pushed
+- Commit(s): 27e7b6e feat: Implement deterministic MDX walker for build-guide-scenarios
+- PR: #159 https://github.com/AaronFeledy/core4/pull/159 (created)
+---
+## [2026-05-23 03:15 UTC] - Sync
+- Previous branch: us-062-deterministic-mdx-walker
+- Previous PR: #159 https://github.com/AaronFeledy/core4/pull/159
+- Action: caught up after prior merge (PR was already merged; local main updated via ff-pull; story branch was absent locally)
+- Improvement assessment: uncommitted changes in scripts/build-guide-scenarios.ts and guide-scenarios.test.ts rejected as standalone PR (files do not exist on main — entangled with US-062 story); stashed as loop-sync-rejected-improvement-20260523030119
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: yes (loop-sync-rejected-improvement-20260523030119)
+---
