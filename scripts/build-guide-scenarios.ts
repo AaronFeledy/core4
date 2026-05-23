@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { Effect, Either } from "effect";
@@ -31,6 +31,7 @@ import { GuideFrontmatterValidationError, NotImplementedError } from "../sdk/src
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
+const GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";
 
 const isNotFound = (cause: unknown): boolean =>
   cause !== null && typeof cause === "object" && (cause as { code?: unknown }).code === "ENOENT";
@@ -97,6 +98,176 @@ const stable = (value: unknown): unknown => {
 
 export const renderGuideScenarioAst = (asts: ReadonlyArray<GuideScenarioAst>): string =>
   `${JSON.stringify(stable(asts), null, 2)}\n`;
+
+const quote = (value: string): string => JSON.stringify(value);
+
+const interpolate = (value: string, variables: ReadonlyMap<string, VariableProps>): string =>
+  value.replace(/\{\{\s*([A-Za-z_$][\w$-]*)\s*\}\}/g, (_match, name: string) => {
+    const variable = variables.get(name);
+    return variable?.value ?? "";
+  });
+
+const sourceComment = (sourcePath: string, line: number): string => `  // @source: ${sourcePath}:${line}`;
+
+const collectVariables = (scenario: GuideScenarioNode): ReadonlyMap<string, VariableProps> => {
+  const variables = new Map<string, VariableProps>();
+  for (const step of scenario.steps) {
+    for (const component of step.components) {
+      if (component.kind === "Variable") variables.set(component.props.name, component.props);
+    }
+  }
+  return variables;
+};
+
+const renderMatcher = (value: unknown): string => JSON.stringify(value, null, 2);
+
+const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps>): string =>
+  [...variables.values()]
+    .map((variable) => {
+      const display =
+        variable.display === undefined ? "" : `\n    // @display: ${variable.name} = ${variable.display}`;
+      return `${display}\n    context.vars.set(${quote(variable.name)}, { value: ${quote(variable.value)}${
+        variable.display === undefined ? "" : `, display: ${quote(variable.display)}`
+      } });`;
+    })
+    .join("\n");
+
+const renderCleanupFinalizers = (scenario: GuideScenarioNode, sourcePath: string): string =>
+  scenario.steps
+    .flatMap((step) => step.components.filter((component) => component.kind === "Cleanup"))
+    .map(
+      (component) =>
+        `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => Effect.void);`,
+    )
+    .join("\n");
+
+const renderRun = (
+  component: Extract<GuideStepComponent, { kind: "Run" }>,
+  variables: ReadonlyMap<string, VariableProps>,
+): string => {
+  if (component.props.command !== undefined) {
+    const answers = component.props.answers ?? {};
+    return [
+      `    const runAttempt = yield* Effect.either(context.runCli(${quote(interpolate(component.props.command, variables))}, {`,
+      `      answers: ${JSON.stringify(answers)},`,
+      "    }));",
+      "    if (Either.isLeft(runAttempt)) {",
+      "      lastFailure = runAttempt.left;",
+      "    } else {",
+      "      lastRun = runAttempt.right;",
+      "      expect(runAttempt.right.exitCode).toBe(0);",
+      "    }",
+    ].join("\n");
+  }
+  return `    yield* context.shell(${quote(component.props.shell ?? "")});`;
+};
+
+const renderVerify = (
+  component: Extract<GuideStepComponent, { kind: "Verify" }>,
+  variables: ReadonlyMap<string, VariableProps>,
+): string => {
+  const expected = component.props.expect === undefined ? undefined : renderMatcher(component.props.expect);
+  if (component.props.event !== undefined) {
+    const actual = `context.events.find((event) => event._tag === ${quote(component.props.event)})`;
+    return expected === undefined
+      ? `    expect(${actual}).toBeDefined();`
+      : `    expect(matchesExpected(${actual}, ${expected})).toBe(true);`;
+  }
+  if (component.props.command !== undefined) {
+    return [
+      `    const verifyRun = yield* context.runCli(${quote(interpolate(component.props.command, variables))});`,
+      "    expect(verifyRun.exitCode).toBe(0);",
+      ...(expected === undefined
+        ? []
+        : [
+            `    expect(matchesExpected({ stdout: verifyRun.stdout, stderr: verifyRun.stderr }, ${expected})).toBe(true);`,
+          ]),
+    ].join("\n");
+  }
+  if (component.props.file !== undefined) {
+    const filePath = interpolate(component.props.file, variables);
+    return [
+      `    const fileContent = yield* Effect.promise(() => Bun.file(join(context.testDir, ${quote(filePath)})).text());`,
+      ...(expected === undefined
+        ? ["    expect(fileContent).toBeDefined();"]
+        : [`    expect(matchesExpected(fileContent, ${expected})).toBe(true);`]),
+    ].join("\n");
+  }
+  return `    expect(((lastFailure ?? lastRun) as { _tag?: string })?._tag).toBe(${quote(component.props.errorTag ?? "")});`;
+};
+
+const renderStepComponent = (
+  component: GuideStepComponent,
+  sourcePath: string,
+  variables: ReadonlyMap<string, VariableProps>,
+): string => {
+  if (component.kind === "Variable" || component.kind === "Cleanup") return "";
+  const body = (() => {
+    switch (component.kind) {
+      case "Run":
+        return renderRun(component, variables);
+      case "Verify":
+        return renderVerify(component, variables);
+      case "UseFixture":
+        return `    yield* context.fixtures.use(${quote(component.props.name)});`;
+    }
+  })();
+  return `${sourceComment(sourcePath, component.line)}\n    {\n${body}\n    }`;
+};
+
+const renderScenarioTest = (guide: GuideScenarioAst, scenario: GuideScenarioNode): string => {
+  const variables = collectVariables(scenario);
+  const variableSetup = renderVariableSetup(variables);
+  const cleanupFinalizers = renderCleanupFinalizers(scenario, guide.sourcePath);
+  const steps = scenario.steps
+    .map((step) => {
+      const components = step.components
+        .map((component) => renderStepComponent(component, guide.sourcePath, variables))
+        .filter(Boolean)
+        .join("\n");
+      return `${sourceComment(guide.sourcePath, step.line)}\n    // @step: ${step.stepName}${components === "" ? "" : `\n${components}`}`;
+    })
+    .join("\n");
+
+  return `// @generated
+// @source: ${guide.sourcePath}:${scenario.line}
+// @scenario: ${scenario.id}
+// @variant:
+
+import { join } from "node:path";
+
+import { expect, test } from "bun:test";
+import { Effect, Either } from "effect";
+
+import { withScenarioContext } from "@lando/core/testing";
+
+const matchesExpected = (actual: unknown, expected: unknown): boolean => {
+  if (expected === undefined) return actual !== undefined;
+  if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
+    const record = expected as Record<string, unknown>;
+    if (typeof record.regex === "string") return new RegExp(record.regex).test(String(actual));
+    if (typeof record.schema === "string") return actual !== undefined;
+    if (Array.isArray(record.anyOf)) return record.anyOf.some((item) => matchesExpected(actual, item));
+    if (Object.hasOwn(record, "not")) return !matchesExpected(actual, record.not);
+    if (actual === null || typeof actual !== "object") return false;
+    return Object.entries(record).every(([key, value]) => matchesExpected((actual as Record<string, unknown>)[key], value));
+  }
+  return Object.is(actual, expected);
+};
+
+test(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
+  await Effect.runPromise(
+    withScenarioContext({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)} }, (context) =>
+      Effect.gen(function* () {
+        let lastRun: unknown;
+        let lastFailure: unknown;
+${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? "" : `${cleanupFinalizers}\n`}${steps}
+      }),
+    ),
+  );
+});
+`;
+};
 
 const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<string, unknown> => {
   if (yaml === undefined) return {};
@@ -348,10 +519,35 @@ export const buildGuideScenarioAst = async (root = REPO_ROOT): Promise<ReadonlyA
   return asts.sort((left, right) => left.sourcePath.localeCompare(right.sourcePath));
 };
 
+export const emitGuideScenarioTests = async (
+  asts: ReadonlyArray<GuideScenarioAst>,
+  root = REPO_ROOT,
+  outputRoot = GENERATED_GUIDE_TEST_ROOT,
+): Promise<ReadonlyArray<string>> => {
+  const written: string[] = [];
+  for (const guide of asts) {
+    const guideId = guide.frontmatter.id;
+    for (const scenario of [...guide.scenarios].sort((left, right) => left.id.localeCompare(right.id))) {
+      const relativePath = `${outputRoot}/${guideId}/${scenario.id}.test.ts`;
+      const absolutePath = resolve(root, relativePath);
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await Bun.write(absolutePath, renderScenarioTest(guide, scenario));
+      written.push(relativePath);
+    }
+  }
+  return written.sort((left, right) => left.localeCompare(right));
+};
+
+export const buildGuideScenarioTests = async (
+  root = REPO_ROOT,
+  outputRoot = GENERATED_GUIDE_TEST_ROOT,
+): Promise<ReadonlyArray<string>> =>
+  emitGuideScenarioTests(await buildGuideScenarioAst(root), root, outputRoot);
+
 const main = async (): Promise<void> => {
   try {
-    const asts = await buildGuideScenarioAst(REPO_ROOT);
-    process.stdout.write(renderGuideScenarioAst(asts));
+    const written = await buildGuideScenarioTests(REPO_ROOT);
+    process.stdout.write(`${JSON.stringify(written, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify(error, null, 2)}\n`);
     process.exitCode = 1;

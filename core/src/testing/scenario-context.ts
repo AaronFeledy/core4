@@ -29,6 +29,10 @@ export interface ScenarioRunResult {
   readonly events: ReadonlyArray<LandoEvent>;
 }
 
+export interface ScenarioRunOptions {
+  readonly answers?: Readonly<Record<string, string>>;
+}
+
 export interface ScenarioTranscriptFrame {
   readonly kind: "run" | "event" | "message" | "note";
   readonly data: unknown;
@@ -52,7 +56,10 @@ export interface ScenarioContext {
   readonly testDir: string;
   readonly runtime: TestRuntime;
   readonly vars: Map<string, ScenarioVariable>;
-  readonly runCli: (command: string | ReadonlyArray<string>) => Effect.Effect<ScenarioRunResult, unknown>;
+  readonly runCli: (
+    command: string | ReadonlyArray<string>,
+    options?: ScenarioRunOptions,
+  ) => Effect.Effect<ScenarioRunResult, unknown>;
   readonly shell: (command: string) => Effect.Effect<never, NotImplementedError>;
   readonly events: ReadonlyArray<LandoEvent>;
   readonly transcript: ScenarioTranscript;

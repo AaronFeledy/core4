@@ -321,3 +321,11 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: yes (loop-sync-rejected-improvement-20260523030119)
 ---
+## 2026-05-23 03:25 UTC - US-063
+- Implemented Alpha 2 TypeScript scenario emission in `scripts/build-guide-scenarios.ts`, including one generated `.test.ts` per scenario, required source/scenario/variant headers, `withScenarioContext` test bodies, variable setup and interpolation, pre-step cleanup finalizers, Run/Verify/UseFixture emission, and deterministic writes.
+- Files changed: `scripts/build-guide-scenarios.ts`, `core/src/testing/scenario-context.ts`, `core/test/codegen/guide-scenarios.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (7 pass); `bun run typecheck` passed; `bun run lint` passed; manual QA via `bun run scripts/build-guide-scenarios.ts` exited 0 and printed `[]` for the repo's currently empty guide set; temp-root manual QA generated `test/scenarios/generated/guides/smoke-guide/version-check.test.ts` and `bun test` ran it successfully (1 pass). Full `bun test` was not completed in this shell because it can execute `lando` paths and the required `lando4-dev` sandbox entry failed with `wsl.exe is not available from this shell`; a host full-suite attempt was stopped to avoid host-system pollution. `lsp_diagnostics` was not run because `typescript-language-server` is unavailable.
+- **Learnings for future iterations:**
+  - Keep generated guide tests as plain Bun test files that import `withScenarioContext` from `@lando/core/testing`; the generator can validate behavior by emitting to a temp root and running the generated file directly.
+  - `build-guide-scenarios` currently writes generated tests when run as a script; US-065 owns gitignore/codegen registration and output cleanup.
+---
