@@ -239,3 +239,13 @@ Rationale: <link to the PR description that made the call>
 - Bugbot comment: real — `lstat` used the `stat` fallback text, so the error message didn't identify the failing operation.
 - Fix: changed the `lstat` fallback to `Failed to lstat ${path}` in `core/src/services/file-system.ts`.
 - Verification: `bun test core/test/services/file-system.test.ts`, `bun run lint`, `bun run typecheck`, and `bun test` all passed.
+
+## 2026-05-22 20:28 CDT - Babysit
+- PR: #157 https://github.com/AaronFeledy/core4/pull/157
+- CI outcome: pass (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot)
+- Review feedback: fixed (Bugbot comments addressed: guide-fixture error `name` shadowing, `lstat` stub shape, and `lstat` fallback message)
+- Triage rounds used: 2
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: none before this babysit log entry
+---
