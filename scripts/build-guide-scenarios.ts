@@ -67,6 +67,14 @@ export interface GuideScenarioAst {
   readonly scenarios: ReadonlyArray<GuideScenarioNode>;
 }
 
+export interface BuildGuideScenarioOptions {
+  readonly onlyGuide?: string;
+}
+
+interface EmitGuideScenarioOptions {
+  readonly clearGuideId?: string;
+}
+
 type MdxNode = {
   readonly type: string;
   readonly name?: string | null;
@@ -514,22 +522,28 @@ export const discoverGuideMdxFiles = async (root = REPO_ROOT): Promise<ReadonlyA
   return [...guides, ...recipes].sort((left, right) => left.localeCompare(right));
 };
 
-export const buildGuideScenarioAst = async (root = REPO_ROOT): Promise<ReadonlyArray<GuideScenarioAst>> => {
+export const buildGuideScenarioAst = async (
+  root = REPO_ROOT,
+  options: BuildGuideScenarioOptions = {},
+): Promise<ReadonlyArray<GuideScenarioAst>> => {
   const files = await discoverGuideMdxFiles(root);
   const asts = await Promise.all(
     files.map(async (sourcePath) =>
       parseGuideScenarioAst(sourcePath, await Bun.file(resolve(root, sourcePath)).text()),
     ),
   );
-  return asts.sort((left, right) => left.sourcePath.localeCompare(right.sourcePath));
+  return asts
+    .filter((guide) => options.onlyGuide === undefined || guide.frontmatter.id === options.onlyGuide)
+    .sort((left, right) => left.sourcePath.localeCompare(right.sourcePath));
 };
 
 export const emitGuideScenarioTests = async (
   asts: ReadonlyArray<GuideScenarioAst>,
   root = REPO_ROOT,
   outputRoot = GENERATED_GUIDE_TEST_ROOT,
+  options: EmitGuideScenarioOptions = {},
 ): Promise<ReadonlyArray<string>> => {
-  await rm(resolve(root, outputRoot), { force: true, recursive: true });
+  await rm(resolve(root, outputRoot, options.clearGuideId ?? ""), { force: true, recursive: true });
   const written: string[] = [];
   for (const guide of asts) {
     const guideId = guide.frontmatter.id;
@@ -547,12 +561,39 @@ export const emitGuideScenarioTests = async (
 export const buildGuideScenarioTests = async (
   root = REPO_ROOT,
   outputRoot = GENERATED_GUIDE_TEST_ROOT,
+  options: BuildGuideScenarioOptions = {},
 ): Promise<ReadonlyArray<string>> =>
-  emitGuideScenarioTests(await buildGuideScenarioAst(root), root, outputRoot);
+  emitGuideScenarioTests(await buildGuideScenarioAst(root, options), root, outputRoot, {
+    ...(options.onlyGuide === undefined ? {} : { clearGuideId: options.onlyGuide }),
+  });
+
+const parseBuildGuideScenarioArgs = (args: ReadonlyArray<string>): BuildGuideScenarioOptions => {
+  const options: { onlyGuide?: string } = {};
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === "--only") {
+      const value = args[index + 1];
+      if (value === undefined || value.startsWith("--")) throw new Error("--only requires a guide id");
+      options.onlyGuide = value;
+      index += 1;
+      continue;
+    }
+    if (arg?.startsWith("--only=")) {
+      options.onlyGuide = arg.slice("--only=".length);
+      continue;
+    }
+    throw new Error(`Unknown build-guide-scenarios flag: ${arg}`);
+  }
+  return options;
+};
 
 const main = async (): Promise<void> => {
   try {
-    const written = await buildGuideScenarioTests(REPO_ROOT);
+    const written = await buildGuideScenarioTests(
+      REPO_ROOT,
+      GENERATED_GUIDE_TEST_ROOT,
+      parseBuildGuideScenarioArgs(Bun.argv.slice(2)),
+    );
     process.stdout.write(`${JSON.stringify(written, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify(error, null, 2)}\n`);

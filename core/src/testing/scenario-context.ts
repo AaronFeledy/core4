@@ -431,7 +431,11 @@ export const withScenarioContext = <A, E, R>(
       ),
       (testDir) =>
         process.env.KEEP_SCENARIO_DIRS === "1"
-          ? Effect.void
+          ? Effect.sync(() => {
+              if (process.env.LANDO_DOCS_SCENARIO_KEEP === "1") {
+                process.stdout.write(`Scenario temp dir: ${testDir}\n`);
+              }
+            })
           : Effect.promise(() => rm(testDir, { recursive: true, force: true })),
     ).pipe(
       Effect.flatMap((testDir) => {
