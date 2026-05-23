@@ -390,3 +390,16 @@ Rationale: <link to the PR description that made the call>
   - Generated guide metadata headers should remain the source of truth for downstream lint/reporting; add new scenario metadata there without changing the generated Effect body when behavior is otherwise identical.
   - For generator-specific tagged errors that should survive package-barrel imports, add the SDK error export and a package exports test alongside the generator test.
 ---
+## 2026-05-23 05:25 UTC - US-064 Review
+- Reviewed US-064 via 5-agent `review-work` fan-out (Goal/Constraint, Code Quality, Security, QA Execution, Context Mining).
+- `review-work` findings:
+  - fixed: Context Mining flagged `GuideHiddenScenarioReasonError` violated PRD-A2-01 line 95 ("Every tagged error MUST follow the existing `NotImplementedError` payload contract (`commandId`, `specSection`, `remediation`)") — added `commandId: "guide.scenario.hidden-reason"` and `specSection: "§19.9"` fields, populated them at the throw site, and extended the unit test to lock both values.
+  - rejected: Goal Verification "WARN" suggesting `line` field on the tagged error — out of scope; US-064 AC does not require it and `sourcePath + scenarioId` already disambiguates.
+  - rejected: Security "advisory" about escaping `// @source:` comment header — pre-existing behavior, not introduced by US-064, no exploit vector.
+  - rejected (deferred): Convention drift in sibling `GuideFrontmatterValidationError` / `GuideFixtureNotFoundError` / `GuideFixtureSymlinkError` (also missing `commandId`/`specSection`) — pre-existing from US-060/US-062, out of scope for US-064 review; should land in a follow-up retrofit story.
+- Files changed: `sdk/src/errors/index.ts`, `scripts/build-guide-scenarios.ts`, `core/test/codegen/guide-scenarios.test.ts`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts sdk/test/library/exports.test.ts` passed (18 pass, 132 expect); `bun run typecheck` passed; `bun run lint` passed.
+- **Learnings for future iterations:**
+  - PRD-A2-01 line 95 is a global Alpha 2 invariant: every new tagged error added under Alpha 2 must include `commandId` and `specSection` in addition to `message` and `remediation`. Easy to miss when copying sibling shapes from earlier-drifted errors.
+  - When the build step adds a tagged error, also assert on `commandId` / `specSection` (not just `remediation` substring) in the accompanying test — it pins the convention and surfaces convention drift early.
+---

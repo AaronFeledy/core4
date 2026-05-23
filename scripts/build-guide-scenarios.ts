@@ -419,6 +419,8 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
   if (props.render === false && (typeof props.reason !== "string" || props.reason.length < 8)) {
     throw new GuideHiddenScenarioReasonError({
       message: `<Scenario render={false}> at ${sourcePath} requires a reason of at least 8 characters.`,
+      commandId: "guide.scenario.hidden-reason",
+      specSection: "§19.9",
       sourcePath,
       scenarioId: typeof props.id === "string" ? props.id : "<unknown>",
       rejectedValue: props.reason,

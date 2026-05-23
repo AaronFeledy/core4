@@ -332,6 +332,10 @@ describe("build-guide-scenarios MDX walker", () => {
         expect(error instanceof GuideHiddenScenarioReasonError ? error.remediation : "").toContain(
           "PRD-A2-00",
         );
+        expect(error instanceof GuideHiddenScenarioReasonError ? error.commandId : "").toBe(
+          "guide.scenario.hidden-reason",
+        );
+        expect(error instanceof GuideHiddenScenarioReasonError ? error.specSection : "").toBe("§19.9");
       }
     }
   });
