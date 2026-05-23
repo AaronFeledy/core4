@@ -289,3 +289,20 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes (local main reset to origin/main after GitHub merge succeeded but local fast-forward was blocked by a duplicate squashed progress-log commit)
 - Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
 ---
+## [2026-05-23 02:09 UTC] - Sync
+- Previous branch: us-061-hidden-component-remediation
+- Previous PR: #158 https://github.com/AaronFeledy/core4/pull/158
+- Action: caught up after prior merge (PR #158 already MERGED; local branch absent, main already current)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-23 02:25 UTC - US-062
+- Implemented deterministic Alpha 2 MDX guide discovery and AST walking in `scripts/build-guide-scenarios.ts`, including `docs/guides/**/*.mdx` plus `recipes/*/README.mdx` discovery, frontmatter validation, Alpha 2 component flattening, Beta remediation propagation, and stable JSON rendering.
+- Files changed: `scripts/build-guide-scenarios.ts`, `core/test/codegen/guide-scenarios.test.ts`, `core/test/codegen/fixtures/guides/**`, `sdk/src/docs/components/props.ts`, `sdk/src/errors/index.ts`, `sdk/test/library/exports.test.ts`, `package.json`, `bun.lock`, `AGENTS.md`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts sdk/test/library/exports.test.ts` passed (12 pass); `bun run typecheck` passed; `bun run lint` passed; full `bun test` completed with 1142 pass, 11 skip, 0 fail (log: `/tmp/us062-full-default.log`); manual QA via `bun run scripts/build-guide-scenarios.ts` exited 0 and printed `[]` for the repo's currently empty guide set. A prior full-suite attempt hit the known compiled-binary race; focused serial rerun of `core/test/cli/version.test.ts core/test/build/compile.test.ts --max-concurrency=1` passed. `lsp_diagnostics` was not run because `typescript-language-server` is unavailable in this environment.
+- **Learnings for future iterations:**
+  - `Bun.file(path).exists()` returns false for directories; guide discovery should use `readdir` with ENOENT handling for missing `docs/guides/` / `recipes/` roots.
+  - Reuse the existing Landofile YAML subset parser for MDX frontmatter so nested Alpha 2 fields stay aligned with repo parsing behavior.
+  - The guide walker consumes `mdxJsxFlowElement` nodes from the `unified` + `remark-mdx` stack; AST node shapes are now fixture-covered and documented in `AGENTS.md`.
+---

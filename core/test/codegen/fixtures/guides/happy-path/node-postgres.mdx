@@ -1,0 +1,20 @@
+---
+id: node-postgres
+provider: test
+timeout: 60000
+tags: [alpha2, docs]
+---
+
+<Guide>
+  <Scenario id="start-app">
+    <Step name="configure">
+      <Variable name="appName" value="node-postgres" display="Node/Postgres" />
+      <UseFixture name="basic-app" />
+    </Step>
+    <Step name="run">
+      <Run command="version" />
+      <Verify event="post-start" expect={{ regex: "ready" }} />
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>

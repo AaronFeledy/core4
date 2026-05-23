@@ -1,0 +1,19 @@
+---
+id: multi-guide
+provider: test
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="first">
+      <Run command="version" />
+      <Verify errorTag="None" />
+    </Step>
+  </Scenario>
+  <Scenario id="hidden-regression" render={false} reason="Hidden regression coverage">
+    <Step name="hidden-step">
+      <Run command="init" />
+      <Verify command="status" expect={{ schema: "StatusEvent" }} />
+    </Step>
+  </Scenario>
+</Guide>

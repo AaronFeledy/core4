@@ -246,6 +246,9 @@ export const decodeScenarioPropsEither = (input: unknown): Either.Either<Scenari
   return decodeEither(ScenarioProps, input);
 };
 
+export const decodeStepPropsEither = (input: unknown): Either.Either<StepProps, DecodeError> =>
+  decodeEither(StepProps, input);
+
 export const decodeRunPropsEither = (input: unknown): Either.Either<RunProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined) {
@@ -290,5 +293,14 @@ export const decodeVerifyPropsEither = (input: unknown): Either.Either<VerifyPro
   }
   return decodeEither(VerifyProps, input);
 };
+
+export const decodeCleanupPropsEither = (input: unknown): Either.Either<CleanupProps, DecodeError> =>
+  decodeEither(CleanupProps, input);
+
+export const decodeVariablePropsEither = (input: unknown): Either.Either<VariableProps, DecodeError> =>
+  decodeEither(VariableProps, input);
+
+export const decodeUseFixturePropsEither = (input: unknown): Either.Either<UseFixtureProps, DecodeError> =>
+  decodeEither(UseFixtureProps, input);
 
 export const hiddenComponentNotImplemented = hiddenComponentError;
