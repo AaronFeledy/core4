@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { type Cause, Chunk, Context, Effect, Stream } from "effect";
+import { type Cause, Chunk, Context, Effect, type Scope, Stream } from "effect";
 
 import {
   FileIoError,
@@ -314,7 +314,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
 export const withScenarioContext = <A, E, R>(
   options: WithScenarioContextOptions,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | Cause.UnknownException, R> =>
+): Effect.Effect<A, E | Cause.UnknownException, Exclude<R, Scope.Scope>> =>
   Effect.scoped(
     Effect.acquireRelease(
       Effect.tryPromise(() =>
