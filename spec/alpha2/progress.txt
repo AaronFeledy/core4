@@ -216,3 +216,17 @@ Rationale: <link to the PR description that made the call>
 - Files changed: `sdk/test/services/tags.test.ts` (removed planning-phase wording from one test name), `spec/alpha2/progress.txt` (this cleanup record).
 - Verification run and result: branch-changed source/test planning-comment leakage scan passed; `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed (1123 pass, 11 skip, 0 fail); focused `bun test sdk/test/services/tags.test.ts` passed via the slop-remover agent; `lsp_diagnostics sdk/test/services/tags.test.ts` could not run because `typescript-language-server` is not installed.
 ---
+
+## 2026-05-22 19:41 CDT - Push
+- Branch: us-060-fixture-copy-discipline
+- Push: pushed
+- Commit(s): ae1e37a chore: remove AI slop; 10fb970 fix(testing): reject non-directory fixture candidates (US-060 review); 1f8ede6 feat: Codify fixture-copy discipline
+- PR: #157 https://github.com/AaronFeledy/core4/pull/157 (created)
+---
+
+## 2026-05-22 19:41 CDT - Push
+- Branch: us-060-fixture-copy-discipline
+- Push: pushed
+- Commit(s): ae1e37a chore: remove AI slop; 10fb970 fix(testing): reject non-directory fixture candidates (US-060 review); 1f8ede6 feat: Codify fixture-copy discipline
+- PR: #157 https://github.com/AaronFeledy/core4/pull/157 (created)
+---
