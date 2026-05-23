@@ -342,3 +342,10 @@ Rationale: <link to the PR description that made the call>
 - Ran branch-wide slop-remover after review and before push. Cleanup changed `scripts/build-guide-scenarios.ts` and `core/test/codegen/guide-scenarios.test.ts`: removed the redundant `ScenarioProps` cast/import now covered by decoder typing and reworded planning-phase wording in test descriptions without changing assertions or generated output expectations.
 - Planning-doc comment scan: no branch-changed source/test comment still cites planning docs; remaining `@source`/`@scenario`/`@variant` generated annotations point to guide source metadata, not planning artifacts.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (7 pass / 0 fail). `lsp_diagnostics` could not run because `typescript-language-server` is not installed. Full `bun test` was not rerun in this shell because it can execute `lando` paths and the required `lando4-dev` sandbox entry failed with `wsl.exe is not available from this shell`; prior US-063 review full-suite run was green before this cosmetic cleanup.
+---
+## 2026-05-23 03:49 UTC - Push
+- Branch: us-063-generated-typescript-scenarios
+- Push: pushed
+- Commit(s): e0587b7 chore: remove AI slop; 4771efd fix: Type withScenarioContext to consume Scope so generated tests typecheck; 1de71d2 feat: Emit Alpha 2 generated TypeScript from MDX scenarios
+- PR: #160 https://github.com/AaronFeledy/core4/pull/160 (created)
+---
