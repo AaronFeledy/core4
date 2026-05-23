@@ -1101,3 +1101,9 @@ Rationale: <link to the PR description that made the call>
   - When a post-processor evolves with strictly additive behavior (new fields wrapped in null-checks, no existing code paths altered semantically), a focused fixture-level audit + full suite run is sufficient signal; the 5-agent review formality is most valuable when the diff changes data flow or introduces new surface area.
   - The "Re-run as last line of failure block" assertion is best expressed by splitting on the blank-line separator between failure blocks (`output.split("\n\n")`) and inspecting `.at(-1)` of the block containing `(fail) <id>:<scenarioId>` — not by line index, which is brittle across multi-frame inputs.
 ---
+## [2026-05-23 23:07 UTC] - Push
+- Branch: us-069-rerun-command-on-failure
+- Push: pushed
+- Commit(s): 98cdedd docs: update progress log; bbf8163 feat: Print copy-pasteable re-run command on failure; 9191124 docs: record US-069 review (no fixes; AC met, full suite green)
+- PR: #166 https://github.com/AaronFeledy/core4/pull/166 (created)
+---
