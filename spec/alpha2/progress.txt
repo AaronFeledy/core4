@@ -381,3 +381,12 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: no (fast path — stash pop applied cleanly)
 ---
+## 2026-05-23 04:50 UTC - US-064
+- Implemented test-only scenario generation for `<Scenario render={false}>`, preserving the render bit in generated test headers as `// @render: false` while keeping generated bodies identical to reader scenarios.
+- Added tagged `GuideHiddenScenarioReasonError` for missing or short test-only scenario reasons, with remediation citing §19.9 and PRD-A2-00's hidden-coverage rule.
+- Files changed: `scripts/build-guide-scenarios.ts`, `core/test/codegen/guide-scenarios.test.ts`, `sdk/src/errors/index.ts`, `sdk/test/library/exports.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts sdk/test/library/exports.test.ts` passed (18 pass); SDK compatibility/export focused `bun test sdk/test/library/sdk-backward-compatibility.test.ts sdk/test/library/exports.test.ts` passed (10 pass); `bun run typecheck` passed; `bun run lint` passed; manual QA via `bun -e` generated a test-only scenario and observed the `// @render: false` header plus `GuideHiddenScenarioReasonError` remediation. Full `bun test` was attempted twice and hit the known compiled-binary race (`core/test/cli/version.test.ts` build exit 1, then `core/test/build/compile.test.ts` executable-bit assertion); serial rerun of affected compiled-binary tests passed (`bun test core/test/build/compile.test.ts core/test/cli/version.test.ts --max-concurrency=1`). `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Generated guide metadata headers should remain the source of truth for downstream lint/reporting; add new scenario metadata there without changing the generated Effect body when behavior is otherwise identical.
+  - For generator-specific tagged errors that should survive package-barrel imports, add the SDK error export and a package exports test alongside the generator test.
+---

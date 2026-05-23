@@ -26,7 +26,11 @@ import {
   decodeVariablePropsEither,
   decodeVerifyPropsEither,
 } from "../sdk/src/docs/components/index.ts";
-import { GuideFrontmatterValidationError, NotImplementedError } from "../sdk/src/errors/index.ts";
+import {
+  GuideFrontmatterValidationError,
+  GuideHiddenScenarioReasonError,
+  NotImplementedError,
+} from "../sdk/src/errors/index.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
@@ -218,7 +222,7 @@ const renderScenarioTest = (guide: GuideScenarioAst, scenario: GuideScenarioNode
   return `// @generated
 // @source: ${guide.sourcePath}:${scenario.line}
 // @scenario: ${scenario.id}
-// @variant:
+${scenario.render === false ? "// @render: false\n" : ""}// @variant:
 
 import { join } from "node:path";
 
@@ -412,6 +416,16 @@ const parseStep = (node: MdxNode, sourcePath: string): GuideStepNode => {
 const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => {
   assertAlpha2Component("Scenario", sourcePath);
   const props = propsOf(node);
+  if (props.render === false && (typeof props.reason !== "string" || props.reason.length < 8)) {
+    throw new GuideHiddenScenarioReasonError({
+      message: `<Scenario render={false}> at ${sourcePath} requires a reason of at least 8 characters.`,
+      sourcePath,
+      scenarioId: typeof props.id === "string" ? props.id : "<unknown>",
+      rejectedValue: props.reason,
+      remediation:
+        "Add a colocated `<Scenario render={false}>` reason of at least 8 characters per §19.9 and PRD-A2-00's hidden-coverage rule.",
+    });
+  }
   const scenario = decodeOrThrow(decodeScenarioPropsEither(props), sourcePath, "Scenario", props);
   return {
     id: scenario.id,

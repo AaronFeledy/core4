@@ -4,7 +4,11 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { GuideFrontmatterValidationError, NotImplementedError } from "@lando/core/errors";
+import {
+  GuideFrontmatterValidationError,
+  GuideHiddenScenarioReasonError,
+  NotImplementedError,
+} from "@lando/core/errors";
 import {
   buildGuideScenarioAst,
   buildGuideScenarioTests,
@@ -176,10 +180,14 @@ describe("build-guide-scenarios MDX walker", () => {
       const hiddenContent = await Bun.file(
         join(root, "test/scenarios/generated/guides/multi-guide/hidden-regression.test.ts"),
       ).text();
+      expect(hiddenContent).toStartWith(
+        "// @generated\n// @source: docs/guides/multi-scenario/multi.mdx:13\n// @scenario: hidden-regression\n// @render: false\n// @variant:",
+      );
       expect(hiddenContent).toContain('const verifyRun = yield* context.runCli("status");');
       const readerContent = await Bun.file(
         join(root, "test/scenarios/generated/guides/multi-guide/reader-path.test.ts"),
       ).text();
+      expect(readerContent).not.toContain("// @render: false");
       expect(readerContent).toContain(
         'expect(((lastFailure ?? lastRun) as { _tag?: string })?._tag).toBe("None");',
       );
@@ -282,6 +290,89 @@ describe("build-guide-scenarios MDX walker", () => {
       expect(written).toEqual(["test/scenarios/generated/guides/smoke-guide/version-check.test.ts"]);
       const proc = Bun.spawnSync({
         cmd: [process.execPath, "test", join(root, written[0] ?? "")],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("test-only scenarios require a reason", () => {
+    const missingReason = [
+      "---",
+      "id: hidden-case",
+      "provider: test",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="missing-reason" render={false}>',
+      '    <Step name="run">',
+      '      <Run command="version" />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+    const shortReason = missingReason.replace(
+      'id="missing-reason" render={false}',
+      'id="short-reason" render={false} reason="short"',
+    );
+
+    for (const content of [missingReason, shortReason]) {
+      expect(() => parseGuideScenarioAst("docs/guides/hidden-case.mdx", content)).toThrow(
+        GuideHiddenScenarioReasonError,
+      );
+      try {
+        parseGuideScenarioAst("docs/guides/hidden-case.mdx", content);
+      } catch (error) {
+        expect(error instanceof GuideHiddenScenarioReasonError ? error.remediation : "").toContain("§19.9");
+        expect(error instanceof GuideHiddenScenarioReasonError ? error.remediation : "").toContain(
+          "PRD-A2-00",
+        );
+      }
+    }
+  });
+
+  test("mixed reader and test-only scenarios both generate runnable tests", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-mixed-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/mixed.mdx"),
+        [
+          "---",
+          "id: mixed-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "  </Scenario>",
+          '  <Scenario id="test-only-path" render={false} reason="Covers hidden behavior">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual([
+        "test/scenarios/generated/guides/mixed-guide/reader-path.test.ts",
+        "test/scenarios/generated/guides/mixed-guide/test-only-path.test.ts",
+      ]);
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", ...written.map((path) => join(root, path))],
         cwd: repoRoot,
         stdout: "pipe",
         stderr: "pipe",
