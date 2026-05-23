@@ -1034,3 +1034,18 @@ Rationale: <link to the PR description that made the call>
   - Source-mapper fixture files should not be named `*.test.ts` under `core/test/**`, or Bun will discover and execute them during the full suite; use a non-test suffix while keeping seeded stack text representative.
   - The current Bun CLI exposes only built-in reporters, so Alpha 2 maps captured generated-test output through the pure source-mapper post-processor in `docs:scenario`.
 ---
+
+## [2026-05-23 22:05 UTC] - US-068 Review
+- Reviewed the scenario source-mapper reporter (`scripts/test-reporters/scenario-source-mapper.ts`), its wiring through `docs:scenario`, and the three fixture pairs.
+- No review fixes applied; no files changed.
+- `review-work` findings (one-line each):
+  - FYI (accepted): Reporter is not registered as a literal `bun test` reporter (the Bun CLI exposes only built-in reporters in 1.3.14) — `docs:scenario` instead post-processes captured stdout/stderr through the pure mapper. Documented in the build progress entry and matches the PRD's "pure additive layer / falsifiable via env bypass" intent; same deviation pattern accepted in US-067.
+  - FYI (accepted): Fixture file lives at `.../source-map-guide/runs.fixture.ts` (not `.test.ts`) to avoid Bun discovering it during the full suite. The mapper's gate keys off the `/test/scenarios/generated/guides/` segment which the fixture preserves, so the behavioral path is exercised end-to-end.
+  - FYI (accepted): The mapper never reads `// @variant:` because Alpha 2 always emits it empty; the AC requirement is "tolerate without misclassifying as missing," which is trivially satisfied by ignoring the header. Beta will need to extend `sourceHeadersForFrame` when variants land.
+  - REJECTED (out of scope): "Module-level `fileCache`/`headerCache` could grow unbounded." `docs:scenario` is one-shot per invocation; bounding the caches would add code without a real leak in the supported run profile.
+  - REJECTED (out of scope refactor): "`findGuideId` regex couples to generated-code formatting (`withScenarioContext({ guideId: "..." }`)." True but contained — the generator and mapper ship together; tightening this to read an explicit `// @guide:` header is a Beta improvement when variant headers also grow.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (477 files); `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` → 9 pass / 0 fail; full `bun test` → 1163 pass / 11 skip / 0 fail across 155 files. No regressions.
+- **Learnings for future iterations:**
+  - When the AC names an infra seam that the host runtime doesn't expose (here: custom `bun test` reporters), prefer a pure post-processor reused at every callsite over inventing a fake registration; document the substitution in the progress log so the next reviewer doesn't flag it as a missed AC.
+  - Storing reporter fixtures as `*.fixture.ts` under `core/test/**` is the safe pattern when the fixture's path layout needs to mirror a real test path — Bun's discovery key is the filename suffix, not the directory.
+---
