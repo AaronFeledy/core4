@@ -29,6 +29,31 @@ const hiddenComponentError = (): NotImplementedError =>
       "Move this coverage into a colocated `<Scenario render={false}>` per §19.9. `<Hidden>` ships in Phase 3 Beta — see `spec/ROADMAP.md`.",
   });
 
+const ALPHA_2_COMPONENTS = [
+  "Guide",
+  "Scenario",
+  "Step",
+  "Run",
+  "Verify",
+  "Cleanup",
+  "Variable",
+  "UseFixture",
+] as const;
+
+const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
+  new NotImplementedError({
+    message: `<${componentName}> is not supported in Alpha 2 at ${hostPath}.`,
+    commandId: `guide.component.${componentName.toLowerCase()}`,
+    specSection: "§19.3",
+    remediation: `<${componentName}> ships in Phase 3 Beta — see \`spec/ROADMAP.md\`.`,
+  });
+
+export const assertAlpha2Component = (componentName: string, hostPath: string): void => {
+  if (componentName === "Hidden") throw hiddenComponentError();
+  if (ALPHA_2_COMPONENTS.some((name) => name === componentName)) return;
+  throw betaComponentError(componentName, hostPath);
+};
+
 const asRecord = (input: unknown): Record<string, unknown> | undefined => {
   if (input === null || typeof input !== "object" || Array.isArray(input)) return undefined;
   return input as Record<string, unknown>;

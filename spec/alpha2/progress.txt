@@ -257,3 +257,11 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: no
 ---
+## 2026-05-22 23:59 - US-061
+- Implemented `assertAlpha2Component(componentName, hostPath)` in `@lando/sdk/docs/components`, with Alpha 2 component acceptance, `<Hidden>` rejection using the exact required remediation, and non-Alpha-2 component rejection for deferred component names.
+- Files changed: `sdk/src/docs/components/props.ts`, `core/test/docs/component-props.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/docs/component-props.test.ts` passed (20 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed once (1137 pass, 11 skip, 0 fail); manual QA via `bun -e` imported `assertAlpha2Component` from `@lando/core/docs/components` and observed `Guide` accepted plus `guide.component.hidden|§19.3` and `guide.component.inspect|§19.3` remediations. A later repeat `bun test` hit the known compiled-binary executable-bit flake in `core/test/build/compile.test.ts`; focused rerun of that file with `--max-concurrency=1` passed. `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Keep docs-component boundary guards in `sdk/src/docs/components/props.ts`; the existing SDK barrel and core docs-components re-export expose them without package export-map changes.
+  - `hostPath` is part of the SDK helper signature for later source-mapped callers; include it in generic component rejection messages so the helper remains source-aware without adding a new error field.
+---
