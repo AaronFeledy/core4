@@ -1049,3 +1049,9 @@ Rationale: <link to the PR description that made the call>
   - When the AC names an infra seam that the host runtime doesn't expose (here: custom `bun test` reporters), prefer a pure post-processor reused at every callsite over inventing a fake registration; document the substitution in the progress log so the next reviewer doesn't flag it as a missed AC.
   - Storing reporter fixtures as `*.fixture.ts` under `core/test/**` is the safe pattern when the fixture's path layout needs to mirror a real test path — Bun's discovery key is the filename suffix, not the directory.
 ---
+## [2026-05-23 17:11 CDT] - Push
+- Branch: us-068-scenario-source-mapper-reporter
+- Push: pushed
+- Commit(s): c05b7b0 docs: record US-068 review (no fixes; AC met with documented bun-reporter deviation); fce5ed4 feat: Implement scenario source-mapper reporter
+- PR: #165 https://github.com/AaronFeledy/core4/pull/165 (created)
+---
