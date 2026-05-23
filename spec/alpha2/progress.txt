@@ -1055,3 +1055,9 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): c05b7b0 docs: record US-068 review (no fixes; AC met with documented bun-reporter deviation); fce5ed4 feat: Implement scenario source-mapper reporter
 - PR: #165 https://github.com/AaronFeledy/core4/pull/165 (created)
 ---
+
+## [2026-05-23 22:22 UTC] - PR #165 Bugbot Triage
+- CI triage: all GitHub Actions checks were already passing; Cursor Bugbot was neutral/skipping after one medium review comment.
+- Review triage: accepted Bugbot a862ed8a-936d-47f9-8545-de7079d6e110 as real because the mapper used the first mapped frame plus one global prefix flag, so combined multi-failure logs could rewrite later generated frames while leaving later `error:` / `(FiberFailure) Error:` headlines unprefixed.
+- Fix: paired each failure headline with the next mapped generated frame in that failure block and added a `multi-failure` reporter fixture covering two generated scenarios with distinct `[guideId:scenarioId]` prefixes.
+---
