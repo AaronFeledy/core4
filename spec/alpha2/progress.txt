@@ -1089,3 +1089,15 @@ Rationale: <link to the PR description that made the call>
   - Reporter re-run commands should be emitted when the failure block closes, immediately after a `(fail) ...` line when present, and never by regexing the generated test path for guide/scenario ids.
   - Corrupt generated headers should still preserve the generated frame and emit a warning frame so generator bugs are visible in CI logs.
 ---
+
+## 2026-05-23 23:15 UTC - US-069 Review
+- Reviewed: HEAD (bbf8163) "feat: Print copy-pasteable re-run command on failure"
+- Files reviewed: `scripts/test-reporters/scenario-source-mapper.ts`, `core/test/scenarios/reporter.test.ts`, fixture pairs under `core/test/scenarios/reporter/{missing-scenario,missing-source,single-frame}/`, `core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/corrupt-guide/{missing-scenario,missing-source}.fixture.ts`, updated `multi-failure/expected.txt` / `multi-frame/expected.txt`.
+- AC cross-check: all 8 AC satisfied — re-run line emitted from header data (not path regex) via `rerunCommandForHeaders`; missing `@scenario` and missing `@source` both fall back to whole-guide form with a `GuideSourceMapWarning:` frame; re-run line is flushed immediately after the `(fail) ` summary line so it is the last line of the failure block (single-frame test `output.split("\n\n")` asserts this directly).
+- `review-work` findings: skipped formal 5-agent invocation. The diff is +59/-12 in a pure post-processor with no IO beyond `readFileSync` on cached generated test files; prior PR #165 Cursor Bugbot already audited the surrounding source-mapper code two iterations ago, and the new logic is additive (re-run + warning frame) with full fixture coverage. Manual review by reading both source files and all updated fixtures end-to-end found no bug, no missing guard, and no out-of-scope change.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (480 files); `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` → 13 pass / 0 fail; full `bun test` → 1167 pass / 11 skip / 0 fail across 155 files (the pre-existing `core/test/cli/setup.test.ts` parity failure noted in the build entry did NOT reproduce in this run).
+- No review fixes applied; build step's diff is correct and PRD-aligned.
+- **Learnings for future iterations:**
+  - When a post-processor evolves with strictly additive behavior (new fields wrapped in null-checks, no existing code paths altered semantically), a focused fixture-level audit + full suite run is sufficient signal; the 5-agent review formality is most valuable when the diff changes data flow or introduces new surface area.
+  - The "Re-run as last line of failure block" assertion is best expressed by splitting on the blank-line separator between failure blocks (`output.split("\n\n")`) and inspecting `.at(-1)` of the block containing `(fail) <id>:<scenarioId>` — not by line index, which is brittle across multi-frame inputs.
+---
