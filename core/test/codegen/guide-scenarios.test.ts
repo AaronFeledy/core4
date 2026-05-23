@@ -220,6 +220,39 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("renders array matchers as structural comparisons", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-array-"));
+    try {
+      const content = [
+        "---",
+        "id: array-case",
+        "provider: test",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="array-match">',
+        '    <Step name="verify">',
+        '      <Verify command="version" expect={ ["0.0.0\\n"] } />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      await mkdir(join(root, "docs/guides/array-case"), { recursive: true });
+      await Bun.write(join(root, "docs/guides/array-case/array-case.mdx"), content);
+
+      const asts = [parseGuideScenarioAst("docs/guides/array-case/array-case.mdx", content)];
+      await emitGuideScenarioTests(asts, root);
+      const generated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/array-case/array-match.test.ts"),
+      ).text();
+      expect(generated).toContain("Array.isArray(actual) && expected.length === actual.length");
+      expect(generated).toContain("expected.every((value, index) => matchesExpected(actual[index], value))");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("generated scenario TypeScript runs against ScenarioContext", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-run-"));
     try {

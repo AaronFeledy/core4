@@ -85,19 +85,6 @@ const processor = unified().use(remarkParse).use(remarkMdx).use(remarkFrontmatte
 
 const lineOf = (node: MdxNode): number => node.position?.start?.line ?? 1;
 
-const stable = (value: unknown): unknown => {
-  if (Array.isArray(value)) return value.map(stable);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(
-    Object.entries(value)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, child]) => [key, stable(child)]),
-  );
-};
-
-export const renderGuideScenarioAst = (asts: ReadonlyArray<GuideScenarioAst>): string =>
-  `${JSON.stringify(stable(asts), null, 2)}\n`;
-
 const quote = (value: string): string => JSON.stringify(value);
 
 const interpolate = (value: string, variables: ReadonlyMap<string, VariableProps>): string =>
@@ -242,6 +229,9 @@ import { withScenarioContext } from "@lando/core/testing";
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected === undefined) return actual !== undefined;
+  if (Array.isArray(expected)) {
+    return Array.isArray(actual) && expected.length === actual.length && expected.every((value, index) => matchesExpected(actual[index], value));
+  }
   if (expected !== null && typeof expected === "object" && !Array.isArray(expected)) {
     const record = expected as Record<string, unknown>;
     if (typeof record.regex === "string") return new RegExp(record.regex).test(String(actual));
