@@ -321,3 +321,45 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: yes (loop-sync-rejected-improvement-20260523030119)
 ---
+## 2026-05-23 03:25 UTC - US-063
+- Implemented Alpha 2 TypeScript scenario emission in `scripts/build-guide-scenarios.ts`, including one generated `.test.ts` per scenario, required source/scenario/variant headers, `withScenarioContext` test bodies, variable setup and interpolation, pre-step cleanup finalizers, Run/Verify/UseFixture emission, and deterministic writes.
+- Files changed: `scripts/build-guide-scenarios.ts`, `core/src/testing/scenario-context.ts`, `core/test/codegen/guide-scenarios.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (7 pass); `bun run typecheck` passed; `bun run lint` passed; manual QA via `bun run scripts/build-guide-scenarios.ts` exited 0 and printed `[]` for the repo's currently empty guide set; temp-root manual QA generated `test/scenarios/generated/guides/smoke-guide/version-check.test.ts` and `bun test` ran it successfully (1 pass). Full `bun test` was not completed in this shell because it can execute `lando` paths and the required `lando4-dev` sandbox entry failed with `wsl.exe is not available from this shell`; a host full-suite attempt was stopped to avoid host-system pollution. `lsp_diagnostics` was not run because `typescript-language-server` is unavailable.
+- **Learnings for future iterations:**
+  - Keep generated guide tests as plain Bun test files that import `withScenarioContext` from `@lando/core/testing`; the generator can validate behavior by emitting to a temp root and running the generated file directly.
+  - `build-guide-scenarios` currently writes generated tests when run as a script; US-065 owns gitignore/codegen registration and output cleanup.
+---
+## 2026-05-23 04:00 UTC - US-063 Review
+- Reviewed `1de71d2` (`feat: Emit Alpha 2 generated TypeScript from MDX scenarios`).
+- Files changed (review): `core/src/testing/scenario-context.ts` (type-signature fix).
+- `review-work` findings: **fixed** — generated tests with `<Cleanup>` emit `yield* Effect.addFinalizer(...)`, which leaves `Scope` in the effect's requirements channel. `Effect.runPromise` then rejects the program at type-check time (`Type 'Scope' is not assignable to type 'never'` under `exactOptionalPropertyTypes: true`), failing US-063 AC #8 (`bun run typecheck` over `test/scenarios/generated/guides/**/*.ts` must pass). Root cause was the `withScenarioContext` return type passing `R` through verbatim even though the implementation already wraps the body in `Effect.scoped`. Fixed by changing the return type to `Effect.Effect<A, E | Cause.UnknownException, Exclude<R, Scope.Scope>>` so generated scenarios that register finalizers compile under the existing tsconfig without a `compilerOptions` change. Rejected: nothing — no false positives in this iteration.
+- Verification run and result: `bun run typecheck` passed (`tsc -b` clean); `bun run lint` passed (`biome check .` 472 files, no fixes); focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (7 pass / 0 fail); full `bun test` passed (1144 pass / 11 skip / 0 fail); manual QA: emitted a scenario with `<Cleanup>` into a temp dir, ran `bunx tsc -p` against the generated file with project paths — passes after the fix, failed with the Scope error before. Generated `cleanup-test.test.ts` also runs successfully under `bun test` (1 pass).
+- **Learnings for future iterations:**
+  - `Effect.addFinalizer` introduces `Scope` in the requirements channel; any helper that wraps user effects in `Effect.scoped` must declare its return type as `Exclude<R, Scope.Scope>` or downstream `Effect.runPromise` callers will fail tsc even though the runtime works fine.
+  - Generator AC that says "generated TS must `tsc --noEmit` cleanly" needs verification by actually running tsc on a sample generated file with every component type combined — emit + parse + run is not enough because Bun's runtime does not enforce Effect's requirement channel.
+---
+## 2026-05-23 04:35 UTC - US-063 Slop cleanup
+- Ran branch-wide slop-remover after review and before push. Cleanup changed `scripts/build-guide-scenarios.ts` and `core/test/codegen/guide-scenarios.test.ts`: removed the redundant `ScenarioProps` cast/import now covered by decoder typing and reworded planning-phase wording in test descriptions without changing assertions or generated output expectations.
+- Planning-doc comment scan: no branch-changed source/test comment still cites planning docs; remaining `@source`/`@scenario`/`@variant` generated annotations point to guide source metadata, not planning artifacts.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (7 pass / 0 fail). `lsp_diagnostics` could not run because `typescript-language-server` is not installed. Full `bun test` was not rerun in this shell because it can execute `lando` paths and the required `lando4-dev` sandbox entry failed with `wsl.exe is not available from this shell`; prior US-063 review full-suite run was green before this cosmetic cleanup.
+---
+## 2026-05-23 03:49 UTC - Push
+- Branch: us-063-generated-typescript-scenarios
+- Push: pushed
+- Commit(s): e0587b7 chore: remove AI slop; 4771efd fix: Type withScenarioContext to consume Scope so generated tests typecheck; 1de71d2 feat: Emit Alpha 2 generated TypeScript from MDX scenarios
+- PR: #160 https://github.com/AaronFeledy/core4/pull/160 (created)
+---
+## 2026-05-22 23:58 UTC - PR #160 Triage
+- Static-checks failure (real-issue): generated guide-scenario tests were executed from a tmp root, so Bun 1.3.14 could not resolve workspace deps like `effect` from the generated file path.
+- Fix: symlinked the repo `node_modules` into the temp guide-run root before invoking the generated scenario test in `core/test/codegen/guide-scenarios.test.ts`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.
+---
+
+## 2026-05-23 04:12 UTC - PR #160 Bugbot Triage
+- Review triage: accepted both findings as real; fixed Run.expectExit generation and ScenarioContext answers forwarding.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.
+---
+## 2026-05-23 04:21 UTC - PR #160 Bugbot Follow-up
+- Review triage: accepted Bugbot's generated array matcher finding as real and removed the now-unused `renderGuideScenarioAst` helper. Fixed generated `matchesExpected` to structurally compare arrays before object/primitive fallback.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (9 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed.
+---

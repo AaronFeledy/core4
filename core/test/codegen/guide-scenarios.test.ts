@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -7,7 +7,9 @@ import { describe, expect, test } from "bun:test";
 import { GuideFrontmatterValidationError, NotImplementedError } from "@lando/core/errors";
 import {
   buildGuideScenarioAst,
+  buildGuideScenarioTests,
   discoverGuideMdxFiles,
+  emitGuideScenarioTests,
   parseGuideScenarioAst,
 } from "../../../scripts/build-guide-scenarios.ts";
 
@@ -15,6 +17,10 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/codegen/fixtures/guides");
 
 const fixture = async (name: string): Promise<string> => readFile(resolve(fixturesRoot, name), "utf8");
+
+const linkNodeModules = async (root: string): Promise<void> => {
+  await symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir");
+};
 
 describe("build-guide-scenarios MDX walker", () => {
   test("discovers docs guides and recipe README MDX files deterministically", async () => {
@@ -94,7 +100,7 @@ describe("build-guide-scenarios MDX walker", () => {
     ]);
   });
 
-  test("Beta-only frontmatter exits through the schema-level remediation", async () => {
+  test("unsupported frontmatter exits through the schema-level remediation", async () => {
     const content = await fixture("beta-only/beta.mdx");
     expect(() => parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content)).toThrow(
       NotImplementedError,
@@ -118,6 +124,171 @@ describe("build-guide-scenarios MDX walker", () => {
     } catch (error) {
       expect(error instanceof GuideFrontmatterValidationError ? error.field : "").toBe("id");
       expect(error instanceof GuideFrontmatterValidationError ? error.rejectedValue : undefined).toBe("Bad");
+    }
+  });
+
+  test("emits deterministic generated TypeScript scenario tests", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-ts-"));
+    try {
+      const asts = [
+        parseGuideScenarioAst(
+          "docs/guides/happy-path/node-postgres.mdx",
+          await fixture("happy-path/node-postgres.mdx"),
+        ),
+        parseGuideScenarioAst(
+          "docs/guides/multi-scenario/multi.mdx",
+          await fixture("multi-scenario/multi.mdx"),
+        ),
+      ];
+
+      const first = await emitGuideScenarioTests(asts, root);
+      const firstContent = await Bun.file(
+        join(root, "test/scenarios/generated/guides/node-postgres/start-app.test.ts"),
+      ).text();
+      const second = await emitGuideScenarioTests(asts, root);
+      const secondContent = await Bun.file(
+        join(root, "test/scenarios/generated/guides/node-postgres/start-app.test.ts"),
+      ).text();
+
+      expect(second).toEqual(first);
+      expect(secondContent).toBe(firstContent);
+      expect(first).toEqual([
+        "test/scenarios/generated/guides/multi-guide/hidden-regression.test.ts",
+        "test/scenarios/generated/guides/multi-guide/reader-path.test.ts",
+        "test/scenarios/generated/guides/node-postgres/start-app.test.ts",
+      ]);
+      expect(firstContent).toStartWith(
+        "// @generated\n// @source: docs/guides/happy-path/node-postgres.mdx:9\n// @scenario: start-app\n// @variant:",
+      );
+      expect(firstContent).toContain('import { withScenarioContext } from "@lando/core/testing";');
+      expect(firstContent).toContain(
+        'withScenarioContext({ guideId: "node-postgres", scenarioId: "start-app" }',
+      );
+      expect(firstContent).toContain("// @display: appName = Node/Postgres");
+      expect(firstContent).toContain(
+        'context.vars.set("appName", { value: "node-postgres", display: "Node/Postgres" });',
+      );
+      expect(firstContent).toContain("yield* Effect.addFinalizer(() => Effect.void);");
+      expect(firstContent).toContain('yield* context.fixtures.use("basic-app");');
+      expect(firstContent).toContain('context.runCli("version", {');
+      expect(firstContent).toContain('context.events.find((event) => event._tag === "post-start")');
+
+      const hiddenContent = await Bun.file(
+        join(root, "test/scenarios/generated/guides/multi-guide/hidden-regression.test.ts"),
+      ).text();
+      expect(hiddenContent).toContain('const verifyRun = yield* context.runCli("status");');
+      const readerContent = await Bun.file(
+        join(root, "test/scenarios/generated/guides/multi-guide/reader-path.test.ts"),
+      ).text();
+      expect(readerContent).toContain(
+        'expect(((lastFailure ?? lastRun) as { _tag?: string })?._tag).toBe("None");',
+      );
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("renders Run expectExit when provided", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-exit-"));
+    try {
+      const content = [
+        "---",
+        "id: exit-case",
+        "provider: test",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="nonzero-exit">',
+        '    <Step name="run">',
+        '      <Run command="version" expectExit={1} />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      await mkdir(join(root, "docs/guides/exit-case"), { recursive: true });
+      await Bun.write(join(root, "docs/guides/exit-case/exit-case.mdx"), content);
+
+      const asts = [parseGuideScenarioAst("docs/guides/exit-case/exit-case.mdx", content)];
+      await emitGuideScenarioTests(asts, root);
+      const generated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/exit-case/nonzero-exit.test.ts"),
+      ).text();
+      expect(generated).toContain("expect(runAttempt.right.exitCode).toBe(1);");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("renders array matchers as structural comparisons", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-array-"));
+    try {
+      const content = [
+        "---",
+        "id: array-case",
+        "provider: test",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="array-match">',
+        '    <Step name="verify">',
+        '      <Verify command="version" expect={ ["0.0.0\\n"] } />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n");
+      await mkdir(join(root, "docs/guides/array-case"), { recursive: true });
+      await Bun.write(join(root, "docs/guides/array-case/array-case.mdx"), content);
+
+      const asts = [parseGuideScenarioAst("docs/guides/array-case/array-case.mdx", content)];
+      await emitGuideScenarioTests(asts, root);
+      const generated = await Bun.file(
+        join(root, "test/scenarios/generated/guides/array-case/array-match.test.ts"),
+      ).text();
+      expect(generated).toContain("Array.isArray(actual) && expected.length === actual.length");
+      expect(generated).toContain("expected.every((value, index) => matchesExpected(actual[index], value))");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("generated scenario TypeScript runs against ScenarioContext", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-run-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/smoke.mdx"),
+        [
+          "---",
+          "id: smoke-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="version-check">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual(["test/scenarios/generated/guides/smoke-guide/version-check.test.ts"]);
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", join(root, written[0] ?? "")],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
     }
   });
 });
