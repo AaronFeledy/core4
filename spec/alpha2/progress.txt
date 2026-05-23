@@ -501,3 +501,9 @@ Rationale: <link to the PR description that made the call>
 - Ran the branch-wide slop-remover step after review. Cleanup changed only `AGENTS.md`: tightened the repo-guidance file intro and replaced "hardcoded fake" with "hardcoded stub" in the generated guide scenario runner note, preserving the documented interim behavior and warnings.
 - Planning-doc comment leakage scan over branch-changed source/test files found no code comments requiring cleanup. Matches that remain are runtime `specSection`/remediation payloads, test assertions/fixtures, or MDX frontmatter and were intentionally left unchanged.
 - Verification run and result: `lsp_diagnostics AGENTS.md` passed; `git diff --check` passed; `/home/aaron/.bun/bin/bun run typecheck` passed; `/home/aaron/.bun/bin/bun run lint` passed. Full `bun test` was not completed in this shell: the safe sandbox entry `.local/bin/lando4-dev --exec bun test` failed with `wsl.exe is not available from this shell`, and a host full-suite attempt was stopped by the tool wrapper after startup. No code or test behavior changed in this slop-remover pass.
+## [2026-05-23 20:47 UTC] - Push
+- Branch: us-066-node-postgres-fixture-guide
+- Push: pushed
+- Commit(s): 2237236 chore: remove AI slop; 6268de8 fix(us-066): honest interim wording + literal render attribute; ce29c10 feat: Provide canonical node-postgres Alpha 2 fixture guide
+- PR: #163 https://github.com/AaronFeledy/core4/pull/163 (created)
+---
