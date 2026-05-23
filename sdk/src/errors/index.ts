@@ -385,6 +385,19 @@ export class GuideFrontmatterValidationError extends Schema.TaggedError<GuideFro
   },
 ) {}
 
+export class GuideHiddenScenarioReasonError extends Schema.TaggedError<GuideHiddenScenarioReasonError>()(
+  "GuideHiddenScenarioReasonError",
+  {
+    message: Schema.String,
+    commandId: Schema.String,
+    specSection: Schema.String,
+    sourcePath: Schema.String,
+    scenarioId: Schema.String,
+    rejectedValue: Schema.Unknown,
+    remediation: Schema.String,
+  },
+) {}
+
 export class EventError extends Schema.TaggedError<EventError>()("EventError", {
   message: Schema.String,
   event: Schema.optional(Schema.String),
