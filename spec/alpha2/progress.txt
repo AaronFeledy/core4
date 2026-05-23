@@ -354,3 +354,8 @@ Rationale: <link to the PR description that made the call>
 - Fix: symlinked the repo `node_modules` into the temp guide-run root before invoking the generated scenario test in `core/test/codegen/guide-scenarios.test.ts`.
 - Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.
 ---
+
+## 2026-05-22 - PR #160 Triage
+- Review triage: accepted both Cursor Bugbot findings as real. Fixed guide-scenario codegen to honor per-Run `expectExit`, and made ScenarioContext `runCli` forward scripted `answers` into init as `--answer` flags.
+- Verification plan: run focused guide-scenario + ScenarioContext tests, then `bun run typecheck` and `bun run lint` before push.
+---
