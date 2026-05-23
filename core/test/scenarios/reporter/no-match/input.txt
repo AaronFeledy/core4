@@ -1,0 +1,2 @@
+error: ordinary test failed
+    at /home/aaron/projects/experiments/lando4-rewrite2/core/test/unit/example.test.ts:3:1

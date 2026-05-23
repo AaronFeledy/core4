@@ -24,6 +24,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
 - Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
 - `build-guide-scenarios --only <guideId>` is for author-command regeneration and must clear only `test/scenarios/generated/guides/<guideId>/`; full codegen without `--only` remains responsible for clearing the whole generated guide root. This avoids parallel test/codegen races with unrelated generated guides.
+- The scenario source mapper is a pure output post-processor (`scripts/test-reporters/scenario-source-mapper.ts`) with fixture-pair tests under `core/test/scenarios/reporter/`; `docs:scenario` applies it to captured `bun test` stdout/stderr for generated guide paths.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
 ## Cross-PRD prerequisites
@@ -1023,4 +1024,13 @@ Rationale: <link to the PR description that made the call>
 - Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
+---
+
+## 2026-05-23 21:57 UTC - US-068
+- Implemented the scenario source-mapper post-processor for generated guide test output, including MDX frame rewrite, scenario prefixing, generated-frame annotations, no-match pass-through, and the `LANDO_DISABLE_GUIDE_SOURCE_MAPPER=1` bypass. Wired `docs:scenario` to apply the mapper to captured generated-test output.
+- Files changed: `scripts/test-reporters/scenario-source-mapper.ts`, `scripts/docs-scenario.ts`, `core/test/scenarios/reporter.test.ts`, `core/test/scenarios/reporter/**`, `core/test/scripts/docs-scenario.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` passed (9 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1174 tests across 155 files: 1163 pass, 11 skip, 0 fail); manual QA via a temporary failing `mapper-red` guide observed `[mapper-red:runs]`, `at docs/guides/mapper-red.mdx:9`, and `Generated: test/scenarios/generated/guides/mapper-red/runs.test.ts:47:41` in `bun run docs:scenario mapper-red --scenario runs` output; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Source-mapper fixture files should not be named `*.test.ts` under `core/test/**`, or Bun will discover and execute them during the full suite; use a non-test suffix while keeping seeded stack text representative.
+  - The current Bun CLI exposes only built-in reporters, so Alpha 2 maps captured generated-test output through the pure source-mapper post-processor in `docs:scenario`.
 ---
