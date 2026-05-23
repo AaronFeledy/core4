@@ -434,3 +434,11 @@ Rationale: <link to the PR description that made the call>
   - `build-guide-scenarios` now owns output cleanup through `emitGuideScenarioTests`; tests that seed stale generated files can assert cleanup by calling the exported emitter directly.
   - Codegen catalog registration can be verified through the existing `[codegen] run <id>` stdout stream; keep guide scenario codegen before later generator stages so generated TS exists before type/test gates.
 ---
+## 2026-05-23 06:45 UTC - US-065 Review
+- Reviewed build commit 460223a against AC in spec/alpha2/prd-alpha2-02-mdx-codegen-pipeline.md.
+- No code changes required. All AC verified: build-guide-scenarios registered as first generator in scripts/codegen.ts (ahead of all TS-compiling stages), `.gitignore` ignores `test/scenarios/generated/guides/**`, `emitGuideScenarioTests` rm's outputRoot before writing (covered by new "clears stale generated guide tests" test), and the codegen-ci suite asserts `[codegen] run build-guide-scenarios` appears in stdout before `schema-snapshot` (catalog drift coverage).
+- `review-work` findings: none worth fixing in scope. Minor observations rejected as out-of-scope: (a) codegen-ci test transiently mkdir's `docs/guides/` and only rm's the smoke fixture, leaving an empty directory — inert, untracked, not a regression; (b) the finally-block `runCodegen()` in the new codegen-ci test could mask the primary error if it throws — pre-existing pattern in the file, not introduced by this story.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (472 files, no findings); `bun test core/test/codegen/guide-scenarios.test.ts core/test/scripts/codegen-ci.test.ts` → 21 pass / 0 fail. Full `bun test` not re-run because no files changed since the build step recorded fresh focused output.
+- **Learnings for future iterations:**
+  - When a codegen stage owns its own output directory cleanup, the codegen-ci drift test pattern (assert ordered stdout markers + read .gitignore + execute the smoke path end-to-end) is a lighter substitute for a full catalog snapshot file — keeps drift coverage without committing a generated artifact.
+---
