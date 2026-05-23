@@ -249,3 +249,34 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none before this babysit log entry
 ---
+## 2026-05-23 01:30 UTC - Sync
+- Previous branch: us-060-fixture-copy-discipline
+- Previous PR: #157 https://github.com/AaronFeledy/core4/pull/157
+- Action: caught up after prior merge (PR already MERGED, all CI green)
+- Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-22 23:59 - US-061
+- Implemented `assertAlpha2Component(componentName, hostPath)` in `@lando/sdk/docs/components`, with Alpha 2 component acceptance, `<Hidden>` rejection using the exact required remediation, and non-Alpha-2 component rejection for deferred component names.
+- Files changed: `sdk/src/docs/components/props.ts`, `core/test/docs/component-props.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/docs/component-props.test.ts` passed (20 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed once (1137 pass, 11 skip, 0 fail); manual QA via `bun -e` imported `assertAlpha2Component` from `@lando/core/docs/components` and observed `Guide` accepted plus `guide.component.hidden|§19.3` and `guide.component.inspect|§19.3` remediations. A later repeat `bun test` hit the known compiled-binary executable-bit flake in `core/test/build/compile.test.ts`; focused rerun of that file with `--max-concurrency=1` passed. `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Keep docs-component boundary guards in `sdk/src/docs/components/props.ts`; the existing SDK barrel and core docs-components re-export expose them without package export-map changes.
+  - `hostPath` is part of the SDK helper signature for later source-mapped callers; include it in generic component rejection messages so the helper remains source-aware without adding a new error field.
+---
+## 2026-05-22 23:59 - US-061 Review
+- Reviewed `4616a6e` (`feat: Reject Hidden component at SDK boundary with remediation`).
+- Files changed (review): none.
+- `review-work` findings: no blocking issues. Allowlist-based `assertAlpha2Component` correctly rejects all non-Alpha-2 names (Inspect/Tabs/Tab/Inline/Skip plus any other) with one-line Phase 3 Beta + `spec/ROADMAP.md` remediation; Hidden branch checked first to preserve the verbatim §19.9 remediation; `hostPath` carried in error message (not remediation) keeps remediation one-line as the AC requires. SDK additive-export gate not triggered because `assertAlpha2Component`/`hiddenComponentNotImplemented` are not re-exported through `@lando/sdk/schema`.
+- Verification run and result: `bun run typecheck` passed (`tsc -b` clean); `bun run lint` passed (`biome check .` 470 files, no fixes); focused `bun test core/test/docs/component-props.test.ts` passed (20 pass / 0 fail); full `bun test` passed (1137 pass / 11 skip / 0 fail); manual QA via `bun -e` import of `@lando/sdk/docs/components` confirmed `Hidden` yields the exact §19.9 remediation byte-for-byte and `Tabs`/unknown component names yield the one-line Beta remediation.
+- **Learnings for future iterations:**
+  - When asserting "verbatim" remediation text, do an end-to-end import + throw round-trip (not just a unit-test substring check) — the loop reviewer can confirm the SDK barrel re-export and the runtime error payload in one shot.
+  - Allowlist-based component gating is more durable than denylist for "Alpha 2 only" surfaces: any future non-Alpha-2 component name added by spec drift gets rejected automatically without a code change.
+---
+## 2026-05-22 20:58 CDT - Push
+- Branch: us-061-hidden-component-remediation
+- Push: pushed
+- Commit(s): 4616a6e feat: Reject Hidden component at SDK boundary with remediation; 4863d1a docs: record US-061 review verification
+- PR: #158 https://github.com/AaronFeledy/core4/pull/158 (created)
+---

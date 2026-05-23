@@ -11,6 +11,7 @@ import {
   UseFixtureProps,
   VariableProps,
   VerifyProps,
+  assertAlpha2Component,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
   decodeVerifyPropsEither,
@@ -198,4 +199,46 @@ describe("Alpha 2 component prop schemas", () => {
     expect(failure).toMatchObject({ commandId: "guide.component.hidden", specSection: "§19.3" });
     expect(failure.remediation).toContain("<Scenario render={false}>");
   });
+
+  test("assertAlpha2Component rejects Hidden with exact remediation", () => {
+    expect(() => assertAlpha2Component("Hidden", "docs/guides/node-postgres.mdx")).toThrow(
+      NotImplementedError,
+    );
+
+    try {
+      assertAlpha2Component("Hidden", "docs/guides/node-postgres.mdx");
+      throw new Error("expected Hidden to be rejected");
+    } catch (error) {
+      expect(error).toBeInstanceOf(NotImplementedError);
+      if (!(error instanceof NotImplementedError)) return;
+      expect(error.commandId).toBe("guide.component.hidden");
+      expect(error.specSection).toBe("§19.3");
+      expect(error.remediation).toBe(
+        "Move this coverage into a colocated `<Scenario render={false}>` per §19.9. `<Hidden>` ships in Phase 3 Beta — see `spec/ROADMAP.md`.",
+      );
+    }
+  });
+
+  test.each(["Inspect", "Tabs", "Tab", "Inline", "Skip"] as const)(
+    "assertAlpha2Component rejects Beta component <%s>",
+    (componentName) => {
+      try {
+        assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx");
+        throw new Error(`expected ${componentName} to be rejected`);
+      } catch (error) {
+        expect(error).toBeInstanceOf(NotImplementedError);
+        if (!(error instanceof NotImplementedError)) return;
+        expect(error.commandId).toBe(`guide.component.${componentName.toLowerCase()}`);
+        expect(error.specSection).toBe("§19.3");
+        expect(error.remediation).toBe(`<${componentName}> ships in Phase 3 Beta — see \`spec/ROADMAP.md\`.`);
+      }
+    },
+  );
+
+  test.each(["Guide", "Scenario", "Step", "Run", "Verify", "Cleanup", "Variable", "UseFixture"] as const)(
+    "assertAlpha2Component accepts Alpha 2 component <%s>",
+    (componentName) => {
+      expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
+    },
+  );
 });
