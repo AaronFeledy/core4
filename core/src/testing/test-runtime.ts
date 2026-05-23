@@ -32,6 +32,7 @@ export interface FileSystemCall {
     | "writeAtomic"
     | "exists"
     | "stat"
+    | "lstat"
     | "mkdir"
     | "remove"
     | "readDir"
@@ -143,6 +144,17 @@ export const makeTestRuntime = (options: TestRuntimeOptions = {}): TestRuntime =
           mtimeMs: 0,
           isFile: files.has(path),
           isDirectory: false,
+        };
+      }),
+    lstat: (path: string) =>
+      Effect.sync(() => {
+        calls.fileSystem.push({ operation: "lstat", path });
+        return {
+          size: files.get(path)?.length ?? 0,
+          mtimeMs: 0,
+          isFile: files.has(path),
+          isDirectory: false,
+          isSymbolicLink: false,
         };
       }),
     mkdir: (path: string) =>

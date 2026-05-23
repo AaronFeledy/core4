@@ -164,6 +164,7 @@ const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
   writeAtomic: () => Effect.void,
   exists: () => Effect.succeed(false),
   stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: false, isDirectory: false }),
+  lstat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: false, isDirectory: false }),
   mkdir: () => Effect.void,
   remove: () => Effect.void,
   readDir: () => Effect.succeed([]),

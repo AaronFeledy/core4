@@ -41,6 +41,7 @@
     ],
     "FileSystem": [
       "exists: (path: string) => Effect.Effect<boolean, FileSystemError>",
+      "lstat: (path: string) => Effect.Effect<FileStat, FileSystemError>",
       "mkdir: (path: string) => Effect.Effect<void, FileSystemError>",
       "read: (path: string) => Stream.Stream<Uint8Array, FileSystemError>",
       "readDir: (path: string) => Effect.Effect<ReadonlyArray<string>, FileSystemError>",

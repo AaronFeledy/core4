@@ -69,6 +69,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.FileNotFoundError).toBeDefined();
     expect(errors.FilePermissionError).toBeDefined();
     expect(errors.FileIoError).toBeDefined();
+    expect(errors.GuideFixtureNotFoundError).toBeDefined();
+    expect(errors.GuideFixtureSymlinkError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {

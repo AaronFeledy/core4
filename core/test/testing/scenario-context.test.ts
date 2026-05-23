@@ -1,10 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Cause, Effect } from "effect";
 
-import { NotImplementedError } from "@lando/core/errors";
+import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
 import { ScenarioContext, withScenarioContext } from "@lando/core/testing";
+
+const withTempCwd = async <A>(body: (root: string) => Promise<A>): Promise<A> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-fixtures-"));
+  const previous = process.cwd();
+  process.chdir(root);
+  try {
+    return await body(root);
+  } finally {
+    process.chdir(previous);
+    await rm(root, { recursive: true, force: true });
+  }
+};
 
 describe("withScenarioContext", () => {
   test("provides a scoped ScenarioContext and removes testDir after success", async () => {
@@ -81,5 +95,90 @@ describe("withScenarioContext", () => {
     expect(error).toBeInstanceOf(NotImplementedError);
     expect(error instanceof NotImplementedError ? error.commandId : undefined).toBe("guide.run.shell");
     expect(error instanceof NotImplementedError ? error.remediation : undefined).toContain("Phase 3 Beta");
+  });
+
+  test("fixtures.use deep-copies per-guide fixtures before mutation and does not re-copy", async () => {
+    const result = await withTempCwd(async () => {
+      const guideFixture = join("docs", "guides", "node-postgres", "fixtures", "app");
+      const sharedFixture = join("docs", "guides", "fixtures", "app");
+      await mkdir(join(guideFixture, "nested"), { recursive: true });
+      await mkdir(sharedFixture, { recursive: true });
+      await writeFile(join(guideFixture, "nested", "config.txt"), "per-guide");
+      await writeFile(join(sharedFixture, "config.txt"), "shared");
+
+      return await Effect.runPromise(
+        withScenarioContext({ guideId: "node-postgres", scenarioId: "fixture-copy" }, (context) =>
+          Effect.promise(async () => {
+            const copied = await Effect.runPromise(context.fixtures.use("app"));
+            const copiedFile = join(copied, "nested", "config.txt");
+            const firstContent = await readFile(copiedFile, "utf8");
+            await writeFile(copiedFile, "mutated copy");
+            const secondCopied = await Effect.runPromise(context.fixtures.use("app"));
+
+            return {
+              copied,
+              secondCopied,
+              firstContent,
+              copiedContent: await readFile(copiedFile, "utf8"),
+              sourceContent: await readFile(join(guideFixture, "nested", "config.txt"), "utf8"),
+              sharedContent: await readFile(join(sharedFixture, "config.txt"), "utf8"),
+            };
+          }),
+        ),
+      );
+    });
+
+    expect(result.secondCopied).toBe(result.copied);
+    expect(result.firstContent).toBe("per-guide");
+    expect(result.copiedContent).toBe("mutated copy");
+    expect(result.sourceContent).toBe("per-guide");
+    expect(result.sharedContent).toBe("shared");
+  });
+
+  test("fixtures.use fails missing fixtures with candidate paths", async () => {
+    const exit = await withTempCwd(async (root) =>
+      Effect.runPromiseExit(
+        withScenarioContext({ guideId: "node-postgres", scenarioId: "missing-fixture" }, (context) =>
+          context.fixtures.use("missing"),
+        ),
+      ).then((result) => ({ root, result })),
+    );
+
+    expect(exit.result._tag).toBe("Failure");
+    const failure = exit.result._tag === "Failure" ? Cause.failureOption(exit.result.cause) : undefined;
+    expect(failure?._tag).toBe("Some");
+    const error = failure?._tag === "Some" ? failure.value : undefined;
+    expect(error).toBeInstanceOf(GuideFixtureNotFoundError);
+    if (error instanceof GuideFixtureNotFoundError) {
+      expect(error.name).toBe("missing");
+      expect(error.candidates).toEqual([
+        join(exit.root, "docs", "guides", "node-postgres", "fixtures", "missing"),
+        join(exit.root, "docs", "guides", "fixtures", "missing"),
+      ]);
+    }
+  });
+
+  test("fixtures.use rejects symbolic links inside fixtures", async () => {
+    const exit = await withTempCwd(async () => {
+      const guideFixture = join("docs", "guides", "node-postgres", "fixtures", "symlinked");
+      await mkdir(guideFixture, { recursive: true });
+      await writeFile(join(guideFixture, "target.txt"), "target");
+      await symlink("target.txt", join(guideFixture, "link.txt"));
+
+      return await Effect.runPromiseExit(
+        withScenarioContext({ guideId: "node-postgres", scenarioId: "symlink-fixture" }, (context) =>
+          context.fixtures.use("symlinked"),
+        ),
+      );
+    });
+
+    expect(exit._tag).toBe("Failure");
+    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    expect(failure?._tag).toBe("Some");
+    const error = failure?._tag === "Some" ? failure.value : undefined;
+    expect(error).toBeInstanceOf(GuideFixtureSymlinkError);
+    expect(
+      error instanceof GuideFixtureSymlinkError ? error.path.endsWith(join("symlinked", "link.txt")) : false,
+    ).toBe(true);
   });
 });

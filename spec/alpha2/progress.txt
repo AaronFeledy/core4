@@ -22,6 +22,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 
 - Docs component prop schemas that participate in the schema gate need exports from `@lando/sdk/docs/components`, `@lando/core/docs/components`, and `@lando/sdk/schema`, plus `scripts/build-schema-snapshot.ts` / `sdk/API_COMPATIBILITY.md` updates.
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
+- Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
 
 ## Cross-PRD prerequisites
 
@@ -175,4 +176,21 @@ Rationale: <link to the PR description that made the call>
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
 - Remaining local state: none after committing this babysit report; local story branch deleted; remote branch deleted by merge.
+---
+
+## [2026-05-22 18:50 CDT] - Sync
+- Previous branch: us-059-scenario-context-helpers
+- Previous PR: #156 https://github.com/AaronFeledy/core4/pull/156
+- Action: caught up after prior merge (PR #156 was already MERGED; remote branch already deleted)
+- Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-22 19:12 - US-060
+- Implemented fixture-copy discipline for `ScenarioContext.fixtures.use`, including per-guide fixture precedence, shared fallback lookup, immutable source copying into `testDir`, idempotent repeated use, missing-fixture tagged errors, and symlink rejection.
+- Files changed: `core/src/testing/scenario-context.ts`, `core/src/services/file-system.ts`, `core/src/testing/test-runtime.ts`, `core/src/runtime/layer.ts`, `core/test/testing/scenario-context.test.ts`, `sdk/src/errors/index.ts`, `sdk/src/services/index.ts`, `sdk/test/fixtures/sdk-mvp-surface.json`, `sdk/test/library/exports.test.ts`, `sdk/test/services/tags.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/testing/scenario-context.test.ts sdk/test/services/tags.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts --max-concurrency=1` passed; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1122 pass, 11 skip, 0 fail); manual QA via `bun -e` copied a fixture into `testDir`, mutated the copy, re-used it idempotently, and observed the source fixture remained unchanged; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Symlink-sensitive fixture handling needs `FileSystem.lstat`; adding a service method requires updating the Live/runtime/test doubles, `sdk/test/services/tags.test.ts`, and the frozen SDK compatibility fixture.
+  - Full `bun test` can race compiled-binary tests if overlapping Bun test processes are still running; check and stop stray `bun test` processes before rerunning the full suite.
 ---
