@@ -23,6 +23,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Docs component prop schemas that participate in the schema gate need exports from `@lando/sdk/docs/components`, `@lando/core/docs/components`, and `@lando/sdk/schema`, plus `scripts/build-schema-snapshot.ts` / `sdk/API_COMPATIBILITY.md` updates.
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
 - Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
+- Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture.
 
 ## Cross-PRD prerequisites
 
@@ -458,4 +459,14 @@ Rationale: <link to the PR description that made the call>
 - Local main updated: yes (already at origin/main after fast-path commit)
 - Branch after sync: main
 - Stash created: no
+---
+## 2026-05-23 15:30 CDT - US-066
+- Implemented the canonical `docs/guides/node-postgres.mdx` Alpha 2 fixture guide with reader and test-only scenarios, plus the immutable invalid-service-type fixture.
+- Updated generated scenario support so `lando`-prefixed commands parse correctly, scenario-layer `start` / `destroy` run against the test harness instead of a host provider, fixture use updates the scenario working directory, and `Verify errorTag` can assert remediation text from captured failures.
+- Files changed: `docs/guides/node-postgres.mdx`, `docs/guides/node-postgres/fixtures/invalid-service-type/.lando.yml`, `core/src/testing/scenario-context.ts`, `scripts/build-guide-scenarios.ts`, `core/test/codegen/guide-scenarios.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun run scripts/build-guide-scenarios.ts` generated two node-postgres scenario tests; manual QA `bun test test/scenarios/generated/guides/node-postgres/` passed (2 pass); focused `bun test core/test/testing/scenario-context.test.ts core/test/codegen/guide-scenarios.test.ts test/scenarios/generated/guides/node-postgres/` passed (23 pass); `bun run typecheck` passed; `bun run lint` passed; full `bun test` output reported 1154 pass, 11 skip, 0 fail before the tool wrapper marked the command timed out after output completion; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Canonical guide commands should be authored as copy-pasteable `lando …` commands; `ScenarioContext.runCli` strips the binary token before invoking the in-process runner.
+  - Alpha 2 generated scenarios use the scenario-layer `TestRuntimeProvider` contract, so guide `start`/`destroy` checks should not require a configured host provider or real provider socket.
+  - `Verify errorTag` assertions need the captured run result's tag and stderr text; include `expect` on the same `<Verify errorTag>` when the guide needs remediation substring coverage.
 ---

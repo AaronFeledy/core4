@@ -188,9 +188,7 @@ describe("build-guide-scenarios MDX walker", () => {
         join(root, "test/scenarios/generated/guides/multi-guide/reader-path.test.ts"),
       ).text();
       expect(readerContent).not.toContain("// @render: false");
-      expect(readerContent).toContain(
-        'expect(((lastFailure ?? lastRun) as { _tag?: string })?._tag).toBe("None");',
-      );
+      expect(readerContent).toContain("const failureForErrorTag = lastFailure ?? lastRun;");
     } finally {
       await rm(root, { force: true, recursive: true });
     }
