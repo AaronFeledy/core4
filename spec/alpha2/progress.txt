@@ -363,3 +363,12 @@ Rationale: <link to the PR description that made the call>
 - Review triage: accepted Bugbot's generated array matcher finding as real and removed the now-unused `renderGuideScenarioAst` helper. Fixed generated `matchesExpected` to structurally compare arrays before object/primitive fallback.
 - Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (9 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed.
 ---
+## [2026-05-22 23:34 CDT] - Babysit
+- PR: #160 https://github.com/AaronFeledy/core4/pull/160
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (static-checks temp dependency resolution; Bugbot expectExit/options forwarding; Bugbot array matcher/dead helper follow-up)
+- Triage rounds used: 3
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
+---
