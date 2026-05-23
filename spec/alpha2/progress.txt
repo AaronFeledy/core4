@@ -1061,3 +1061,13 @@ Rationale: <link to the PR description that made the call>
 - Review triage: accepted Bugbot a862ed8a-936d-47f9-8545-de7079d6e110 as real because the mapper used the first mapped frame plus one global prefix flag, so combined multi-failure logs could rewrite later generated frames while leaving later `error:` / `(FiberFailure) Error:` headlines unprefixed.
 - Fix: paired each failure headline with the next mapped generated frame in that failure block and added a `multi-failure` reporter fixture covering two generated scenarios with distinct `[guideId:scenarioId]` prefixes.
 ---
+
+## [2026-05-23 17:42 CDT] - Babysit
+- PR: #165 https://github.com/AaronFeledy/core4/pull/165
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot multi-failure source-mapper prefix issue)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: `spec/alpha2/progress.txt` has this babysit report appended on local main
+---
