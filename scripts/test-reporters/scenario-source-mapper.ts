@@ -131,11 +131,20 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
     const frame = mapStackLine(line, repoRoot);
     if (frame !== null) mapped.set(index, frame);
   }
-  const firstMappedIndex = [...mapped.keys()][0];
-  if (firstMappedIndex === undefined) return output;
+  if (mapped.size === 0) return output;
 
-  const prefix = mapped.get(firstMappedIndex)?.prefix;
-  let prefixed = false;
+  const prefixByLineIndex = new Map<number, string>();
+  let pendingFailureLineIndex: number | undefined;
+  for (const [index, line] of lines.entries()) {
+    if (shouldPrefixFailureLine(line)) pendingFailureLineIndex = index;
+    const frame = mapped.get(index);
+    if (frame === undefined || pendingFailureLineIndex === undefined) continue;
+    if (!prefixByLineIndex.has(pendingFailureLineIndex)) {
+      prefixByLineIndex.set(pendingFailureLineIndex, frame.prefix);
+    }
+    pendingFailureLineIndex = undefined;
+  }
+
   const rewritten: string[] = [];
   for (const [index, line] of lines.entries()) {
     const frame = mapped.get(index);
@@ -143,9 +152,9 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
       rewritten.push(frame.sourceFrame, frame.generatedFrame);
       continue;
     }
-    if (!prefixed && prefix !== undefined && index < firstMappedIndex && shouldPrefixFailureLine(line)) {
+    const prefix = prefixByLineIndex.get(index);
+    if (prefix !== undefined) {
       rewritten.push(`${prefix} ${line}`);
-      prefixed = true;
       continue;
     }
     rewritten.push(line);
