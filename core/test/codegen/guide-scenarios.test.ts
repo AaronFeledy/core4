@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -17,6 +17,10 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/codegen/fixtures/guides");
 
 const fixture = async (name: string): Promise<string> => readFile(resolve(fixturesRoot, name), "utf8");
+
+const linkNodeModules = async (root: string): Promise<void> => {
+  await symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir");
+};
 
 describe("build-guide-scenarios MDX walker", () => {
   test("discovers docs guides and recipe README MDX files deterministically", async () => {
@@ -206,6 +210,8 @@ describe("build-guide-scenarios MDX walker", () => {
           "",
         ].join("\n"),
       );
+
+      await linkNodeModules(root);
 
       const written = await buildGuideScenarioTests(root);
       expect(written).toEqual(["test/scenarios/generated/guides/smoke-guide/version-check.test.ts"]);
