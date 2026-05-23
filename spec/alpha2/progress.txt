@@ -23,6 +23,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Docs component prop schemas that participate in the schema gate need exports from `@lando/sdk/docs/components`, `@lando/core/docs/components`, and `@lando/sdk/schema`, plus `scripts/build-schema-snapshot.ts` / `sdk/API_COMPATIBILITY.md` updates.
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
 - Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
+- `build-guide-scenarios --only <guideId>` is for author-command regeneration and must clear only `test/scenarios/generated/guides/<guideId>/`; full codegen without `--only` remains responsible for clearing the whole generated guide root. This avoids parallel test/codegen races with unrelated generated guides.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
 ## Cross-PRD prerequisites
@@ -506,4 +507,47 @@ Rationale: <link to the PR description that made the call>
 - Push: pushed
 - Commit(s): 2237236 chore: remove AI slop; 6268de8 fix(us-066): honest interim wording + literal render attribute; ce29c10 feat: Provide canonical node-postgres Alpha 2 fixture guide
 - PR: #163 https://github.com/AaronFeledy/core4/pull/163 (created)
+---
+## [2026-05-23 15:53 CDT] - Babysit
+- PR: #163 https://github.com/AaronFeledy/core4/pull/163
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: `spec/alpha2/progress.txt` updated with this babysit report; local branch `us-066-node-postgres-fixture-guide` deleted/absent; remote branch deleted by merge.
+---
+## [2026-05-23 20:56 UTC] - Sync
+- Previous branch: us-066-node-postgres-fixture-guide
+- Previous PR: #163 https://github.com/AaronFeledy/core4/pull/163
+- Action: caught up after prior merge (PR already MERGED); fast-pathed uncommitted progress.txt change (committed to local main)
+- Local main updated: yes (already up to date with origin/main after progress.txt commit)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-23 16:13 CDT - US-067
+- Implemented the `docs:scenario` author command, including guide-only regeneration, scenario narrowing, explain/debug output, Beta/unknown flag remediation, package script wiring, and keep-mode temp-dir reporting from scenario teardown.
+- Files changed: `scripts/docs-scenario.ts`, `scripts/build-guide-scenarios.ts`, `core/src/testing/scenario-context.ts`, `core/test/scripts/docs-scenario.test.ts`, `package.json`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/scripts/docs-scenario.test.ts core/test/codegen/guide-scenarios.test.ts` passed (17 pass); `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed once (1159 pass, 11 skip, 0 fail); manual QA via `bun run docs:scenario node-postgres --scenario reader-path --explain` printed the expected source-mapped scenario plan. `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Author-command filtered generation should not delete the whole generated guide root; codegen tests can run concurrently and expect unrelated generated guide files to survive until their assertion finishes.
+  - `bun run <script>` emits a `$ bun run ...` command line on stderr; command tests should assert meaningful stderr content rather than expecting an empty stream.
+---
+## 2026-05-23 22:15 CDT - US-067 Review
+- Reviewed build commit 7b1f865 against AC in `spec/alpha2/prd-alpha2-03-author-command-and-source-mapper.md` §US-067.
+- No review fixes applied; no files changed.
+- `review-work` findings (one-line each):
+  - FYI (accepted): `--keep` prints the temp dir path directly from `withScenarioContext`'s finalizer via a new `LANDO_DOCS_SCENARIO_KEEP=1` gate instead of "reading from the PRD-A2-01 transcript stub" as the AC parenthetical describes. User-visible behavior matches the AC; the alternative is a transcript-frame schema extension that exceeds the story. Tracked here only.
+  - REJECTED (out-of-scope): "Move temp-dir print out of scenario-context to avoid author-command coupling to core test plumbing." Author-command code already reads scenario-context's stdout; refactoring to capture-and-replay would change the streaming UX during `--keep` runs and is not a bugfix.
+  - REJECTED (false positive): "docs-scenario tests write into the real `docs/guides/` tree." Consistent with existing `core/test/scripts/codegen-ci.test.ts` precedent and uses non-colliding guide ids; no regression introduced by US-067.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (474 files); `bun test core/test/scripts/docs-scenario.test.ts` → 5 pass / 0 fail; full `bun test` → 1150 pass / 11 skip / 9 fail. Each of the 9 failures reproduces identically on HEAD~1 (e.g. `tsbuildinfo runtime isolation > clean removes …` exits 127); root cause is the host PATH not containing `/home/aaron/.bun/bin`, which AGENTS.md already documents as a CLI-subprocess-test fragility. Not introduced by US-067 and out of scope.
+- **Learnings for future iterations:**
+  - When an AC parenthetical names an implementation pathway ("read back from the transcript stub") and the build chooses a different pathway with identical user-visible behavior, document the deviation in the progress entry rather than expanding the story to refactor — but always confirm the original pathway's cost before accepting.
+  - Pre-existing subprocess-spawn-without-PATH-prepend tests will silently look like new regressions during a focused-story review when the host shell lacks bun in PATH; always re-run the failing test on HEAD~1 before flagging.
+---
+## [2026-05-23 16:27 CDT] - Push
+- Branch: us-067-docs-scenario-command
+- Push: pushed
+- Commit(s): 29b48f5 docs: record US-067 review (no fixes; AC met, failures pre-existing); 7b1f865 feat: Implement bun run docs:scenario author command; 3ba0a7f docs: record sync — us-066 already merged, caught up; 2b50618 docs: update progress log
+- PR: #164 https://github.com/AaronFeledy/core4/pull/164 (created)
 ---
