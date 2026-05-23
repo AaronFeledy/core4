@@ -210,3 +210,9 @@ Rationale: <link to the PR description that made the call>
   - When two fallback paths are tried in order and only "directory" wins, a present-but-wrong-type first candidate should fail loudly rather than fall through — silent fallback violates the override semantics and hides authoring mistakes.
   - Bun's compiled-binary tests (`compile.test.ts`, `aliases.test.ts`) race when full `bun test` runs in parallel; treat single-run failures of those files as flakiness and confirm by re-running with `--max-concurrency=1`.
 ---
+
+## 2026-05-22 19:38 CDT - Slop cleanup after US-060
+- Ran the branch-wide AI slop remover after review and before push; per-file cleanup agents reported no functional edits needed except one planning-term test-name cleanup. Reverted an overbroad comment deletion in `core/src/runtime/layer.ts` because those comments were durable module docs, not disposable slop.
+- Files changed: `sdk/test/services/tags.test.ts` (removed planning-phase wording from one test name), `spec/alpha2/progress.txt` (this cleanup record).
+- Verification run and result: branch-changed source/test planning-comment leakage scan passed; `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed (1123 pass, 11 skip, 0 fail); focused `bun test sdk/test/services/tags.test.ts` passed via the slop-remover agent; `lsp_diagnostics sdk/test/services/tags.test.ts` could not run because `typescript-language-server` is not installed.
+---
