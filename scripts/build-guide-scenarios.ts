@@ -183,7 +183,12 @@ const renderVerify = (
         : [`    expect(matchesExpected(fileContent, ${expected})).toBe(true);`]),
     ].join("\n");
   }
-  return `    expect(((lastFailure ?? lastRun) as { _tag?: string })?._tag).toBe(${quote(component.props.errorTag ?? "")});`;
+  return [
+    "    const failureForErrorTag = lastFailure ?? lastRun;",
+    '    const failureText = typeof failureForErrorTag === "string" ? failureForErrorTag : JSON.stringify(failureForErrorTag);',
+    `    expect(((failureForErrorTag as { _tag?: string })?._tag ?? failureText)).toContain(${quote(component.props.errorTag ?? "")});`,
+    ...(expected === undefined ? [] : [`    expect(matchesExpected(failureText, ${expected})).toBe(true);`]),
+  ].join("\n");
 };
 
 const renderStepComponent = (

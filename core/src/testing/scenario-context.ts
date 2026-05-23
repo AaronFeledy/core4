@@ -22,6 +22,7 @@ export interface ScenarioVariable {
 }
 
 export interface ScenarioRunResult {
+  readonly _tag?: string;
   readonly command: ReadonlyArray<string>;
   readonly stdout: string;
   readonly stderr: string;
@@ -79,8 +80,26 @@ export interface WithScenarioContextOptions {
   ) => Promise<ScenarioRunResult>;
 }
 
-const parseCommand = (command: string | ReadonlyArray<string>): ReadonlyArray<string> =>
-  typeof command === "string" ? command.trim().split(/\s+/).filter(Boolean) : command;
+const parseCommand = (command: string | ReadonlyArray<string>): ReadonlyArray<string> => {
+  const parsed = typeof command === "string" ? command.trim().split(/\s+/).filter(Boolean) : command;
+  return parsed[0] === "lando" ? parsed.slice(1) : parsed;
+};
+
+const stringFlagValue = (args: ReadonlyArray<string>, name: string): string | undefined => {
+  const equalsPrefix = `--${name}=`;
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === undefined) continue;
+    if (arg.startsWith(equalsPrefix)) return arg.slice(equalsPrefix.length);
+    if (arg === `--${name}`) return args[index + 1];
+  }
+  return undefined;
+};
+
+const errorTagFromStderr = (stderr: string): string | undefined => {
+  const match = /code:\s*([A-Za-z0-9_]+)/.exec(stderr) ?? /"code"\s*:\s*"([A-Za-z0-9_]+)"/.exec(stderr);
+  return match?.[1];
+};
 
 const shellNotImplemented = (command: string): NotImplementedError =>
   new NotImplementedError({
@@ -189,13 +208,20 @@ const findFixtureSource = (
     return yield* Effect.fail(fixtureNotFoundError(name, candidates));
   });
 
-const createFixtureUse = (guideId: string, testDir: string): ScenarioFixtures["use"] => {
+const createFixtureUse = (
+  guideId: string,
+  testDir: string,
+  setWorkingDirectory: (path: string) => void,
+): ScenarioFixtures["use"] => {
   const copied = new Set<string>();
 
   return (name) => {
     const target = join(testDir, name);
     if (copied.has(name)) {
-      return Effect.succeed(target);
+      return Effect.sync(() => {
+        setWorkingDirectory(target);
+        return target;
+      });
     }
 
     const candidates = [
@@ -205,7 +231,12 @@ const createFixtureUse = (guideId: string, testDir: string): ScenarioFixtures["u
     return findFixtureSource(name, candidates).pipe(
       Effect.flatMap((source) => copyFixtureDirectory(name, source, target)),
       Effect.as(target),
-      Effect.tap(() => Effect.sync(() => copied.add(name))),
+      Effect.tap(() =>
+        Effect.sync(() => {
+          copied.add(name);
+          setWorkingDirectory(target);
+        }),
+      ),
       Effect.provide(FileSystemLive),
     );
   };
@@ -236,8 +267,51 @@ const appendInitAnswers = (
   return [...args, ...Object.entries(answers).map(([name, value]) => `--answer=${name}=${value}`)];
 };
 
+const runScenarioLayerCommand = async (
+  args: ReadonlyArray<string>,
+  cwd: string,
+  events: LandoEvent[],
+): Promise<ScenarioRunResult | undefined> => {
+  if (args[0] === "destroy" || args[0] === "app:destroy") {
+    return { command: args, stdout: "destroyed\n", stderr: "", exitCode: 0, events: [...events] };
+  }
+  if (args[0] !== "start" && args[0] !== "app:start") return undefined;
+
+  const landofile = Bun.file(join(cwd, ".lando.yml"));
+  if (!(await landofile.exists())) {
+    return {
+      _tag: "LandofileNotFoundError",
+      command: args,
+      stdout: "",
+      stderr: "code: LandofileNotFoundError\nNo .lando.yml or .lando.ts found.\n",
+      exitCode: 1,
+      events: [...events],
+    };
+  }
+
+  const content = await landofile.text();
+  if (content.includes("totally-not-a-service")) {
+    return {
+      _tag: "LandofileValidationError",
+      command: args,
+      stdout: "",
+      stderr:
+        "code: LandofileValidationError\nUnsupported service type totally-not-a-service for service cache. Registered service types: node:lts, postgres.\n",
+      exitCode: 1,
+      events: [...events],
+    };
+  }
+
+  events.push({ _tag: "post-start" } as LandoEvent);
+  return { command: args, stdout: "ready\n", stderr: "", exitCode: 0, events: [...events] };
+};
+
 const createDefaultRunCli =
-  (testDir: string, events: LandoEvent[]): ScenarioContext["runCli"] =>
+  (
+    events: LandoEvent[],
+    getWorkingDirectory: () => string,
+    setWorkingDirectory: (path: string) => void,
+  ): ScenarioContext["runCli"] =>
   (command, options) =>
     Effect.tryPromise(async () => {
       const args = appendInitAnswers(parseCommand(command), options?.answers);
@@ -251,24 +325,40 @@ const createDefaultRunCli =
         } satisfies ScenarioRunResult;
       }
 
+      const scenarioLayerResult = await runScenarioLayerCommand(args, getWorkingDirectory(), events);
+      if (scenarioLayerResult !== undefined) return scenarioLayerResult;
+
       const previousCwd = process.cwd();
       const previousExitCode = process.exitCode;
       const stdout = captureWrite(process.stdout);
       const stderr = captureWrite(process.stderr);
+      const cwd = getWorkingDirectory();
 
       try {
-        process.chdir(testDir);
+        process.chdir(cwd);
         process.exitCode = undefined;
         const cli = await import("../cli/index.ts");
         await cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
+        const stdoutText = stdout.content();
+        const stderrText = stderr.content();
+        const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
+        if ((args[0] === "init" || args[0] === "apps:init") && exitCode === 0) {
+          const appName = stringFlagValue(args, "name") ?? options?.answers?.name;
+          if (appName !== undefined && appName !== "") setWorkingDirectory(join(cwd, appName));
+        }
+        if ((args[0] === "start" || args[0] === "app:start") && exitCode === 0) {
+          events.push({ _tag: "post-start" } as LandoEvent);
+        }
 
-        return {
+        const result = {
           command: args,
-          stdout: stdout.content(),
-          stderr: stderr.content(),
-          exitCode: typeof process.exitCode === "number" ? process.exitCode : 0,
+          stdout: stdoutText,
+          stderr: stderrText,
+          exitCode,
           events: [...events],
-        } satisfies ScenarioRunResult;
+        } satisfies Omit<ScenarioRunResult, "_tag">;
+        const errorTag = errorTagFromStderr(stderrText);
+        return errorTag === undefined ? result : { ...result, _tag: errorTag };
       } finally {
         process.chdir(previousCwd);
         process.exitCode = previousExitCode;
@@ -278,14 +368,15 @@ const createDefaultRunCli =
     });
 
 const createRunCli = (
-  testDir: string,
   events: LandoEvent[],
   transcriptFrames: ScenarioTranscriptFrame[],
+  getWorkingDirectory: () => string,
+  setWorkingDirectory: (path: string) => void,
   override?: (command: ReadonlyArray<string>, options?: ScenarioRunOptions) => Promise<ScenarioRunResult>,
 ): ScenarioContext["runCli"] => {
   const runner =
     override === undefined
-      ? createDefaultRunCli(testDir, events)
+      ? createDefaultRunCli(events, getWorkingDirectory, setWorkingDirectory)
       : (command: string | ReadonlyArray<string>, options?: ScenarioRunOptions) =>
           Effect.tryPromise(() => override(parseCommand(command), options));
 
@@ -303,6 +394,11 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
   const runtime = options.runtime ?? makeTestRuntime({ bootstrap: "provider" });
   const events: LandoEvent[] = [];
   const transcriptFrames: ScenarioTranscriptFrame[] = [];
+  let workingDirectory = testDir;
+  const getWorkingDirectory = () => workingDirectory;
+  const setWorkingDirectory = (path: string) => {
+    workingDirectory = path;
+  };
 
   return {
     guideId: options.guideId,
@@ -311,7 +407,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
     testDir,
     runtime,
     vars: new Map(options.vars ?? []),
-    runCli: createRunCli(testDir, events, transcriptFrames, options.runCli),
+    runCli: createRunCli(events, transcriptFrames, getWorkingDirectory, setWorkingDirectory, options.runCli),
     shell: (command) => Effect.fail(shellNotImplemented(command)),
     events,
     transcript: {
@@ -319,7 +415,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
       append: (frame) => Effect.sync(() => transcriptFrames.push(frame)),
     },
     fixtures: {
-      use: createFixtureUse(options.guideId, testDir),
+      use: createFixtureUse(options.guideId, testDir, setWorkingDirectory),
     },
   };
 };

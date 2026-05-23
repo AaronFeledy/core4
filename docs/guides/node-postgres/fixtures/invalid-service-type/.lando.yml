@@ -1,0 +1,6 @@
+name: invalid-service-type
+runtime: 4
+services:
+  cache:
+    type: totally-not-a-service
+    image: redis:7

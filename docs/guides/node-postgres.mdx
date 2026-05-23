@@ -1,0 +1,31 @@
+---
+id: node-postgres
+provider: test
+timeout: 60000
+tags: [alpha2, docs, node, postgres]
+---
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="node-postgres" display="Node/Postgres" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="invalid-service-type" render={false} reason="Regression coverage for invalid Landofile service type remediation">
+    <Step name="start-invalid-app">
+      <UseFixture name="invalid-service-type" />
+      <Run command="lando start" expectExit={1} />
+      <Verify errorTag="LandofileValidationError" expect={{ regex: "service type" }} />
+    </Step>
+  </Scenario>
+</Guide>
