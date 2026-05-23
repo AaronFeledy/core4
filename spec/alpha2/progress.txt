@@ -545,3 +545,9 @@ Rationale: <link to the PR description that made the call>
   - When an AC parenthetical names an implementation pathway ("read back from the transcript stub") and the build chooses a different pathway with identical user-visible behavior, document the deviation in the progress entry rather than expanding the story to refactor — but always confirm the original pathway's cost before accepting.
   - Pre-existing subprocess-spawn-without-PATH-prepend tests will silently look like new regressions during a focused-story review when the host shell lacks bun in PATH; always re-run the failing test on HEAD~1 before flagging.
 ---
+## [2026-05-23 16:27 CDT] - Push
+- Branch: us-067-docs-scenario-command
+- Push: pushed
+- Commit(s): 29b48f5 docs: record US-067 review (no fixes; AC met, failures pre-existing); 7b1f865 feat: Implement bun run docs:scenario author command; 3ba0a7f docs: record sync — us-066 already merged, caught up; 2b50618 docs: update progress log
+- PR: #164 https://github.com/AaronFeledy/core4/pull/164 (created)
+---
