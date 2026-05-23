@@ -1,0 +1,11 @@
+bun test v1.3.14 (0d9b296a)
+
+test/scenarios/generated/guides/corrupt-guide/missing-scenario.fixture.ts:
+(FiberFailure) Error: expect(received).toBe(expected)
+
+      at toBe (unknown:1:1)
+      at <repo>/core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/corrupt-guide/missing-scenario.fixture.ts:15:15
+(fail) corrupt-guide:unknown [5.00ms]
+
+ 0 pass
+ 1 fail

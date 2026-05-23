@@ -7,6 +7,7 @@ test/scenarios/generated/guides/source-map-guide/runs.fixture.ts:
       at docs/guides/source-map-guide.mdx:9
       Generated: core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/source-map-guide/runs.fixture.ts:19:13
 (fail) source-map-guide:runs [12.00ms]
+Re-run: bun run docs:scenario source-map-guide --scenario runs
 
 test/scenarios/generated/guides/second-guide/verify.fixture.ts:
 [second-guide:verifies] (FiberFailure) Error: expect(third).toEqual(fourth)
@@ -15,6 +16,7 @@ test/scenarios/generated/guides/second-guide/verify.fixture.ts:
       at docs/guides/second-guide.mdx:11
       Generated: core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/second-guide/verify.fixture.ts:19:13
 (fail) second-guide:verifies [8.00ms]
+Re-run: bun run docs:scenario second-guide --scenario verifies
 
  0 pass
  2 fail

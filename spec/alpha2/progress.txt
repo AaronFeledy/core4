@@ -25,6 +25,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
 - `build-guide-scenarios --only <guideId>` is for author-command regeneration and must clear only `test/scenarios/generated/guides/<guideId>/`; full codegen without `--only` remains responsible for clearing the whole generated guide root. This avoids parallel test/codegen races with unrelated generated guides.
 - The scenario source mapper is a pure output post-processor (`scripts/test-reporters/scenario-source-mapper.ts`) with fixture-pair tests under `core/test/scenarios/reporter/`; `docs:scenario` applies it to captured `bun test` stdout/stderr for generated guide paths.
+- Source-mapper fallback behavior stays header/context driven: preserve the generated frame, emit a `GuideSourceMapWarning` frame when `@source` / `@scenario` / `guideId` is missing, and fall back to whole-guide `bun run docs:scenario <guideId>` instead of deriving ids from generated paths.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
 ## Cross-PRD prerequisites
@@ -1070,4 +1071,21 @@ Rationale: <link to the PR description that made the call>
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
 - Remaining local state, if any: `spec/alpha2/progress.txt` has this babysit report appended on local main
+---
+
+## 2026-05-23 22:44 UTC - Sync
+- Previous branch: us-068-scenario-source-mapper-reporter
+- Previous PR: #165 https://github.com/AaronFeledy/core4/pull/165
+- Action: fast-path committed progress-log update to local main (only dirty file was progress.txt); caught up after prior merge of PR #165 (all CI checks SUCCESS, MERGED); local story branch was already absent locally
+- Local main updated: yes (already up to date with origin; local main is 1 commit ahead due to progress-log commit)
+- Branch after sync: main
+- Stash created: no (fast-path stash was popped and committed)
+---
+## 2026-05-23 22:55 UTC - US-069
+- Implemented source-mapper re-run command output for generated guide failures, including exact scenario commands, whole-guide fallback commands, and tagged warning frames for corrupt source headers.
+- Files changed: `scripts/test-reporters/scenario-source-mapper.ts`, `core/test/scenarios/reporter.test.ts`, `core/test/scenarios/reporter/**`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; manual QA via `bun -e` observed `Re-run: bun run docs:scenario source-map-guide --scenario runs`; `lsp_diagnostics` could not run because `typescript-language-server` is not installed; full `bun test` was attempted and failed in the pre-existing compiled setup parity test with compiled exit 135 vs source exit 1 (`core/test/cli/setup.test.ts`).
+- **Learnings for future iterations:**
+  - Reporter re-run commands should be emitted when the failure block closes, immediately after a `(fail) ...` line when present, and never by regexing the generated test path for guide/scenario ids.
+  - Corrupt generated headers should still preserve the generated frame and emit a warning frame so generator bugs are visible in CI logs.
 ---

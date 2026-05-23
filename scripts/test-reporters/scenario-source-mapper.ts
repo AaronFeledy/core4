@@ -11,17 +11,19 @@ interface RewriteOptions {
 }
 
 interface SourceHeaders {
-  readonly sourcePath: string;
-  readonly sourceLine: number;
-  readonly guideId: string;
-  readonly scenarioId: string;
+  readonly sourcePath: string | null;
+  readonly sourceLine: number | null;
+  readonly guideId: string | null;
+  readonly scenarioId: string | null;
 }
 
 interface MappedFrame {
   readonly originalLine: string;
   readonly prefix: string;
-  readonly sourceFrame: string;
+  readonly sourceFrame: string | null;
   readonly generatedFrame: string;
+  readonly warningFrame: string | null;
+  readonly rerunCommand: string | null;
 }
 
 const fileCache = new Map<string, ReadonlyArray<string>>();
@@ -81,8 +83,12 @@ const sourceHeadersForFrame = (filePath: string, line: number): SourceHeaders | 
     const source = findSourceHeader(lines, line);
     const scenarioId = findScenarioId(lines, line);
     const guideId = findGuideId(lines);
-    const headers =
-      source === null || scenarioId === null || guideId === null ? null : { ...source, guideId, scenarioId };
+    const headers = {
+      sourcePath: source?.sourcePath ?? null,
+      sourceLine: source?.sourceLine ?? null,
+      guideId,
+      scenarioId,
+    };
     headerCache.set(key, headers);
     return headers;
   } catch {
@@ -93,6 +99,22 @@ const sourceHeadersForFrame = (filePath: string, line: number): SourceHeaders | 
 
 const formatGeneratedPath = (filePath: string, repoRoot: string): string =>
   normalizePath(relative(repoRoot, filePath));
+
+const missingHeaderNames = (headers: SourceHeaders): ReadonlyArray<string> => {
+  const missing: string[] = [];
+  if (headers.sourcePath === null || headers.sourceLine === null) missing.push("@source");
+  if (headers.scenarioId === null) missing.push("@scenario");
+  if (headers.guideId === null) missing.push("guideId");
+  return missing;
+};
+
+const rerunCommandForHeaders = (headers: SourceHeaders): string | null => {
+  if (headers.guideId === null) return null;
+  if (headers.sourcePath !== null && headers.sourceLine !== null && headers.scenarioId !== null) {
+    return `bun run docs:scenario ${headers.guideId} --scenario ${headers.scenarioId}`;
+  }
+  return `bun run docs:scenario ${headers.guideId}`;
+};
 
 const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
   const match = line.match(STACK_FRAME_RE);
@@ -109,12 +131,25 @@ const mapStackLine = (line: string, repoRoot: string): MappedFrame | null => {
   const generatedLine = Number.parseInt(rawLine, 10);
   const headers = sourceHeadersForFrame(filePath, generatedLine);
   if (headers === null) return null;
+  const missing = missingHeaderNames(headers);
+  const sourceFrame =
+    headers.sourcePath === null || headers.sourceLine === null
+      ? null
+      : `${indent}${headers.sourcePath}:${headers.sourceLine}`;
 
   return {
     originalLine: line,
-    prefix: `[${headers.guideId}:${headers.scenarioId}]`,
-    sourceFrame: `${indent}${headers.sourcePath}:${headers.sourceLine}`,
+    prefix:
+      headers.guideId !== null && headers.scenarioId !== null
+        ? `[${headers.guideId}:${headers.scenarioId}]`
+        : "",
+    sourceFrame,
     generatedFrame: `${indent.replace(/at\s+$/, "")}Generated: ${formatGeneratedPath(filePath, repoRoot)}:${rawLine}:${rawColumn}`,
+    warningFrame:
+      missing.length === 0
+        ? null
+        : `${indent.replace(/at\s+$/, "")}GuideSourceMapWarning: missing ${missing.join(", ")} header; using fallback re-run command`,
+    rerunCommand: rerunCommandForHeaders(headers),
   };
 };
 
@@ -139,26 +174,40 @@ export const rewriteScenarioSourceMappedOutput = (output: string, options: Rewri
     if (shouldPrefixFailureLine(line)) pendingFailureLineIndex = index;
     const frame = mapped.get(index);
     if (frame === undefined || pendingFailureLineIndex === undefined) continue;
-    if (!prefixByLineIndex.has(pendingFailureLineIndex)) {
+    if (frame.prefix !== "" && !prefixByLineIndex.has(pendingFailureLineIndex)) {
       prefixByLineIndex.set(pendingFailureLineIndex, frame.prefix);
     }
     pendingFailureLineIndex = undefined;
   }
 
   const rewritten: string[] = [];
+  let pendingRerunCommand: string | null = null;
   for (const [index, line] of lines.entries()) {
     const frame = mapped.get(index);
     if (frame !== undefined) {
-      rewritten.push(frame.sourceFrame, frame.generatedFrame);
+      if (frame.sourceFrame !== null) rewritten.push(frame.sourceFrame);
+      else rewritten.push(frame.originalLine);
+      rewritten.push(frame.generatedFrame);
+      if (frame.warningFrame !== null) rewritten.push(frame.warningFrame);
+      pendingRerunCommand = frame.rerunCommand;
       continue;
     }
     const prefix = prefixByLineIndex.get(index);
     if (prefix !== undefined) {
       rewritten.push(`${prefix} ${line}`);
+      if (pendingRerunCommand !== null && line.startsWith("(fail) ")) {
+        rewritten.push(`Re-run: ${pendingRerunCommand}`);
+        pendingRerunCommand = null;
+      }
       continue;
     }
     rewritten.push(line);
+    if (pendingRerunCommand !== null && line.startsWith("(fail) ")) {
+      rewritten.push(`Re-run: ${pendingRerunCommand}`);
+      pendingRerunCommand = null;
+    }
   }
+  if (pendingRerunCommand !== null) rewritten.push(`Re-run: ${pendingRerunCommand}`);
   return rewritten.join("\n");
 };
 
