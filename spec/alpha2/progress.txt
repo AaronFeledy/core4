@@ -403,3 +403,9 @@ Rationale: <link to the PR description that made the call>
   - PRD-A2-01 line 95 is a global Alpha 2 invariant: every new tagged error added under Alpha 2 must include `commandId` and `specSection` in addition to `message` and `remediation`. Easy to miss when copying sibling shapes from earlier-drifted errors.
   - When the build step adds a tagged error, also assert on `commandId` / `specSection` (not just `remediation` substring) in the accompanying test — it pins the convention and surfaces convention drift early.
 ---
+## 2026-05-23 05:11 UTC - Push
+- Branch: us-064-test-only-scenarios
+- Push: pushed
+- Commit(s): 78ada2f fix(us-064): add commandId/specSection to GuideHiddenScenarioReasonError; 6c0f2c0 feat: Generate test-only scenarios without rendering
+- PR: #161 https://github.com/AaronFeledy/core4/pull/161 (created)
+---
