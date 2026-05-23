@@ -14,6 +14,11 @@ interface Generator {
 
 const generators: ReadonlyArray<Generator> = [
   {
+    id: "build-guide-scenarios",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-guide-scenarios.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "bundled-plugins",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-plugins.ts`],
     cwd: REPO_ROOT,

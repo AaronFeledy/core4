@@ -409,3 +409,36 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): 78ada2f fix(us-064): add commandId/specSection to GuideHiddenScenarioReasonError; 6c0f2c0 feat: Generate test-only scenarios without rendering
 - PR: #161 https://github.com/AaronFeledy/core4/pull/161 (created)
 ---
+## [2026-05-23 00:18 CDT] - Babysit
+- PR: #161 https://github.com/AaronFeledy/core4/pull/161
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
+---
+## 2026-05-23 05:21 UTC - Sync
+- Previous branch: us-064-test-only-scenarios
+- Previous PR: #161 https://github.com/AaronFeledy/core4/pull/161
+- Action: caught up after prior merge (PR #161 already MERGED); fast-pathed uncommitted progress.txt changes into local main commit
+- Local main updated: yes (already current with origin/main)
+- Branch after sync: main
+- Stash created: no (fast-path stash was transient; popped before commit)
+---
+## 2026-05-23 06:15 UTC - US-065
+- Wired `build-guide-scenarios` into the root codegen catalog as the first generator, added generated guide scenario tests to `.gitignore`, and made guide test emission clear stale outputs before writing current scenarios.
+- Files changed: `.gitignore`, `scripts/codegen.ts`, `scripts/build-guide-scenarios.ts`, `core/test/codegen/guide-scenarios.test.ts`, `core/test/scripts/codegen-ci.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/scripts/codegen-ci.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; manual QA `bun run codegen` exited 0 and showed `[codegen] run build-guide-scenarios` first with no tracked generated-output drift. Full `bun test` was not run because the required `lando4-dev` sandbox entry failed from this shell with `wsl.exe is not available from this shell`; host full-suite execution was avoided because it may execute `lando` binaries. `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - `build-guide-scenarios` now owns output cleanup through `emitGuideScenarioTests`; tests that seed stale generated files can assert cleanup by calling the exported emitter directly.
+  - Codegen catalog registration can be verified through the existing `[codegen] run <id>` stdout stream; keep guide scenario codegen before later generator stages so generated TS exists before type/test gates.
+---
+## 2026-05-23 06:45 UTC - US-065 Review
+- Reviewed build commit 460223a against AC in spec/alpha2/prd-alpha2-02-mdx-codegen-pipeline.md.
+- No code changes required. All AC verified: build-guide-scenarios registered as first generator in scripts/codegen.ts (ahead of all TS-compiling stages), `.gitignore` ignores `test/scenarios/generated/guides/**`, `emitGuideScenarioTests` rm's outputRoot before writing (covered by new "clears stale generated guide tests" test), and the codegen-ci suite asserts `[codegen] run build-guide-scenarios` appears in stdout before `schema-snapshot` (catalog drift coverage).
+- `review-work` findings: none worth fixing in scope. Minor observations rejected as out-of-scope: (a) codegen-ci test transiently mkdir's `docs/guides/` and only rm's the smoke fixture, leaving an empty directory — inert, untracked, not a regression; (b) the finally-block `runCodegen()` in the new codegen-ci test could mask the primary error if it throws — pre-existing pattern in the file, not introduced by this story.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (472 files, no findings); `bun test core/test/codegen/guide-scenarios.test.ts core/test/scripts/codegen-ci.test.ts` → 21 pass / 0 fail. Full `bun test` not re-run because no files changed since the build step recorded fresh focused output.
+- **Learnings for future iterations:**
+  - When a codegen stage owns its own output directory cleanup, the codegen-ci drift test pattern (assert ordered stdout markers + read .gitignore + execute the smoke path end-to-end) is a lighter substitute for a full catalog snapshot file — keeps drift coverage without committing a generated artifact.
+---

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { Effect, Either } from "effect";
@@ -524,6 +524,7 @@ export const emitGuideScenarioTests = async (
   root = REPO_ROOT,
   outputRoot = GENERATED_GUIDE_TEST_ROOT,
 ): Promise<ReadonlyArray<string>> => {
+  await rm(resolve(root, outputRoot), { force: true, recursive: true });
   const written: string[] = [];
   for (const guide of asts) {
     const guideId = guide.frontmatter.id;
