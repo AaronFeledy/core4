@@ -172,6 +172,9 @@ const findFixtureSource = (
       if (stat.right.isDirectory) {
         return candidate;
       }
+      return yield* Effect.fail(
+        fixtureIoError(candidate, `Fixture "${name}" source is not a directory: ${candidate}`),
+      );
     }
     return yield* Effect.fail(fixtureNotFoundError(name, candidates));
   });

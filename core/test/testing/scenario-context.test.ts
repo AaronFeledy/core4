@@ -158,6 +158,30 @@ describe("withScenarioContext", () => {
     }
   });
 
+  test("fixtures.use rejects non-directory fixture candidates without falling back to shared", async () => {
+    const exit = await withTempCwd(async () => {
+      const perGuideFixturesDir = join("docs", "guides", "node-postgres", "fixtures");
+      const perGuideRegularFileAtAppName = join(perGuideFixturesDir, "app");
+      const sharedFallbackDir = join("docs", "guides", "fixtures", "app");
+      await mkdir(perGuideFixturesDir, { recursive: true });
+      await writeFile(perGuideRegularFileAtAppName, "not a directory");
+      await mkdir(sharedFallbackDir, { recursive: true });
+      await writeFile(join(sharedFallbackDir, "config.txt"), "shared");
+
+      return await Effect.runPromiseExit(
+        withScenarioContext({ guideId: "node-postgres", scenarioId: "non-dir-fixture" }, (context) =>
+          context.fixtures.use("app"),
+        ),
+      );
+    });
+
+    expect(exit._tag).toBe("Failure");
+    const failure = exit._tag === "Failure" ? Cause.failureOption(exit.cause) : undefined;
+    const error = failure?._tag === "Some" ? failure.value : undefined;
+    expect((error as { _tag?: string } | undefined)?._tag).toBe("FileIoError");
+    expect((error as { message?: string } | undefined)?.message ?? "").toContain("is not a directory");
+  });
+
   test("fixtures.use rejects symbolic links inside fixtures", async () => {
     const exit = await withTempCwd(async () => {
       const guideFixture = join("docs", "guides", "node-postgres", "fixtures", "symlinked");

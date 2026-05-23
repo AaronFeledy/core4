@@ -194,3 +194,19 @@ Rationale: <link to the PR description that made the call>
   - Symlink-sensitive fixture handling needs `FileSystem.lstat`; adding a service method requires updating the Live/runtime/test doubles, `sdk/test/services/tags.test.ts`, and the frozen SDK compatibility fixture.
   - Full `bun test` can race compiled-binary tests if overlapping Bun test processes are still running; check and stop stray `bun test` processes before rerunning the full suite.
 ---
+
+## 2026-05-22 19:55 CDT - US-060 Review
+- Reviewed US-060 fixture-copy discipline (commit 1f8ede6) via 3 parallel Oracle agents (goal-verification, code-quality, security).
+- `review-work` findings:
+  - **Fixed**: Code-quality MAJOR — `findFixtureSource` silently fell through to the shared-fixture candidate when the per-guide candidate existed as a non-directory (regular file). This violated AC #1 ("per-guide overrides shared") because a malformed/accidental per-guide entry would be invisibly bypassed instead of failing loudly. Now fails with `FileIoError("Fixture <name> source is not a directory: <path>")`. New test added asserting the failure does NOT use the shared fallback.
+  - **Rejected**: Security MEDIUM — path traversal via `name` / `guideId` / `scenarioId` interpolated into `path.join(...)`. PRD §19.9 scopes the US-060 security guardrail explicitly to symlink rejection ("security guardrail for later sandboxing work"); `GuideId` is already constrained to kebab-case at the frontmatter schema layer (US-057); broader sandbox confinement is a future story.
+  - **Rejected**: Security LOW — symlink TOCTOU, intermediate symlink components, empty-name copy. Reviewer flagged as accepted-risk for test-runner infra.
+  - **Rejected**: Code-quality MAJOR — cwd-mutating test helper. The full `bun test` suite (default concurrency, file-level worker isolation) passes; `withTempCwd` is contained to one test file's sequential tests. Adding a `workspaceRoot` option to `WithScenarioContextOptions` is API surface expansion beyond the AC.
+  - **Rejected**: Code-quality MINOR/NITPICK — broad `FileSystemError` in public type, full-file buffering in `readBytes`, escaped quotes in template literals, `Effect.tap` ordering. Stylistic / non-blocking; reviewer confirmed ordering is correct.
+  - **Rejected**: Goal-verifier WARN — `process.cwd()` anchoring + partial-copy retry + concurrent-use TOCTOU. Reviewer marked all as acceptable; no AC violation.
+- Files changed: `core/src/testing/scenario-context.ts` (fail non-directory candidate in `findFixtureSource`), `core/test/testing/scenario-context.test.ts` (added non-directory-fallthrough test).
+- Verification run and result: `bun test core/test/testing/scenario-context.test.ts` 7/7 passed; focused suite `bun test core/test/testing/scenario-context.test.ts sdk/test/services/tags.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts --max-concurrency=1` 21/21 passed; `bun run typecheck` clean; `bun run lint` clean; full `bun test` had 2 transient failures in compiled-binary tests (`core/test/build/compile.test.ts`, `core/test/cli/aliases.test.ts`) which are unrelated flakiness already documented in prior progress entries — both pass when re-run with `--max-concurrency=1`.
+- **Learnings for future iterations:**
+  - When two fallback paths are tried in order and only "directory" wins, a present-but-wrong-type first candidate should fail loudly rather than fall through — silent fallback violates the override semantics and hides authoring mistakes.
+  - Bun's compiled-binary tests (`compile.test.ts`, `aliases.test.ts`) race when full `bun test` runs in parallel; treat single-run failures of those files as flakiness and confirm by re-running with `--max-concurrency=1`.
+---
