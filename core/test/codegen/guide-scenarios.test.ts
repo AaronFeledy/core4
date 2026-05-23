@@ -196,6 +196,28 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("clears stale generated guide tests before writing current scenarios", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-clear-"));
+    try {
+      const stalePath = join(root, "test/scenarios/generated/guides/stale/old.test.ts");
+      await mkdir(join(root, "test/scenarios/generated/guides/stale"), { recursive: true });
+      await Bun.write(stalePath, "stale");
+
+      const asts = [
+        parseGuideScenarioAst(
+          "docs/guides/happy-path/node-postgres.mdx",
+          await fixture("happy-path/node-postgres.mdx"),
+        ),
+      ];
+      const written = await emitGuideScenarioTests(asts, root);
+
+      expect(written).toEqual(["test/scenarios/generated/guides/node-postgres/start-app.test.ts"]);
+      expect(await Bun.file(stalePath).exists()).toBe(false);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("renders Run expectExit when provided", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-exit-"));
     try {

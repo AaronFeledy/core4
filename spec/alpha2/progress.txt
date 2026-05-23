@@ -426,3 +426,11 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: no (fast-path stash was transient; popped before commit)
 ---
+## 2026-05-23 06:15 UTC - US-065
+- Wired `build-guide-scenarios` into the root codegen catalog as the first generator, added generated guide scenario tests to `.gitignore`, and made guide test emission clear stale outputs before writing current scenarios.
+- Files changed: `.gitignore`, `scripts/codegen.ts`, `scripts/build-guide-scenarios.ts`, `core/test/codegen/guide-scenarios.test.ts`, `core/test/scripts/codegen-ci.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/scripts/codegen-ci.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; manual QA `bun run codegen` exited 0 and showed `[codegen] run build-guide-scenarios` first with no tracked generated-output drift. Full `bun test` was not run because the required `lando4-dev` sandbox entry failed from this shell with `wsl.exe is not available from this shell`; host full-suite execution was avoided because it may execute `lando` binaries. `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - `build-guide-scenarios` now owns output cleanup through `emitGuideScenarioTests`; tests that seed stale generated files can assert cleanup by calling the exported emitter directly.
+  - Codegen catalog registration can be verified through the existing `[codegen] run <id>` stdout stream; keep guide scenario codegen before later generator stages so generated TS exists before type/test gates.
+---

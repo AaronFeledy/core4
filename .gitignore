@@ -8,6 +8,9 @@ dist/
 oclif.manifest.json
 **/oclif.manifest.json
 
+# Generated guide scenario tests
+test/scenarios/generated/guides/**
+
 # Dependencies (Bun-only)
 node_modules/
 **/node_modules/
