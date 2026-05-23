@@ -1,0 +1,14 @@
+bun test v1.3.14 (0d9b296a)
+
+test/scenarios/generated/guides/source-map-guide/runs.fixture.ts:
+[source-map-guide:runs] error: expect(received).toBe(expected)
+
+      at toBe (unknown:1:1)
+      at docs/guides/source-map-guide.mdx:9
+      Generated: core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/source-map-guide/runs.fixture.ts:19:13
+      at effect_internal_function (<repo>/node_modules/effect/dist/esm/Utils.js:339:14)
+      at docs/guides/source-map-guide.mdx:9
+      Generated: core/test/scenarios/reporter/fixtures/test/scenarios/generated/guides/source-map-guide/runs.fixture.ts:19:13
+
+ 0 pass
+ 1 fail

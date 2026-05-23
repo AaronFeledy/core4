@@ -24,6 +24,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - New public `@lando/sdk/schema` exports must be listed in `sdk/API_COMPATIBILITY.md`; the SDK backward-compatibility test compares additive exports against that document.
 - Extending SDK service tag methods requires updating all in-tree service doubles plus `sdk/test/services/tags.test.ts` and `sdk/test/fixtures/sdk-mvp-surface.json`.
 - `build-guide-scenarios --only <guideId>` is for author-command regeneration and must clear only `test/scenarios/generated/guides/<guideId>/`; full codegen without `--only` remains responsible for clearing the whole generated guide root. This avoids parallel test/codegen races with unrelated generated guides.
+- The scenario source mapper is a pure output post-processor (`scripts/test-reporters/scenario-source-mapper.ts`) with fixture-pair tests under `core/test/scenarios/reporter/`; `docs:scenario` applies it to captured `bun test` stdout/stderr for generated guide paths.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
 ## Cross-PRD prerequisites
@@ -48,16 +49,40 @@ Rationale: <link to the PR description that made the call>
   - Schema tests can import new package subpaths directly once `sdk/package.json#exports` is updated; no Bun install is needed for existing workspace packages.
   - `lsp_diagnostics` is unavailable in this environment because `typescript-language-server` is not installed; use `bun run typecheck` for TypeScript diagnostics.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 15:20 - Slop cleanup after US-057
 - Ran the branch-wide AI slop remover after review; delegated per-file cleanup checks reported no functional edits needed.
 - Removed planning-phase wording from comments in `sdk/src/schema/index.ts` while preserving the schema exports and runtime behavior.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/docs/guide-frontmatter.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` passed (9 pass); branch-changed source/test comment leakage scan passed; `lsp_diagnostics sdk/src/schema/index.ts` could not run because `typescript-language-server` is not installed; full `bun test` was attempted and failed in compiled CLI parity tests with exit 135 / empty compiled stderr, unrelated to the comment-only cleanup.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-22 14:47 - Push
 - Branch: us-057-guide-frontmatter-schema
 - Push: pushed
 - Commit(s): 64c4ee6 feat: Publish Alpha 2 GuideFrontmatter schema; 5be261e chore: remove AI slop
 - PR: #154 https://github.com/AaronFeledy/core4/pull/154 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-22 14:56 - Babysit
 - PR: #154 https://github.com/AaronFeledy/core4/pull/154
@@ -68,12 +93,28 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; `.local/looper/.last-branch` still records the completed branch for loop bookkeeping.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 
 ## [2026-05-22 19:58 UTC] - Sync
 - Previous branch: us-057-guide-frontmatter-schema
 - Previous PR: #154 https://github.com/AaronFeledy/core4/pull/154
 - Action: caught up after prior merge (PR #154 was already MERGED, all CI green); fast-pathed a dirty progress.txt onto local main before reconciliation
 - Local main updated: yes (already up to date with origin/main; 1 commit ahead due to progress log fast-path commit)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -85,6 +126,14 @@ Rationale: <link to the PR description that made the call>
   - Docs component prop schemas that participate in the schema gate need three public-surface updates together: `@lando/sdk/docs/components`, `@lando/core/docs/components`, and the `@lando/sdk/schema` JSON schema registry/snapshot.
   - Deferred component props should follow the GuideFrontmatter pattern: schema decode helpers pre-scan for Beta keys and return tagged `NotImplementedError` before the generic Effect Schema parse path.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 15:33 - US-058 Review
 - Reviewed commit aac0c71 against US-058 acceptance criteria in `spec/alpha2/prd-alpha2-01-guide-schema-and-scenario-context.md` (lines 40-65). No fixes required.
 - Files changed: none (review-only iteration).
@@ -94,11 +143,27 @@ Rationale: <link to the PR description that made the call>
   - When the loop's Oracle reviewer flags an interpretation question on AC wording, check the PRD's "Non-Goals" and "Technical Considerations" sections: they often resolve "is this in scope?" without expanding the implementation.
   - Bun is not on `$PATH` by default in this sandbox shell; prepend `/home/aaron/.bun/bin` before invoking `bun` for any verification command.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 20:42 UTC - Push
 - Branch: us-058-component-prop-schemas
 - Push: pushed
 - Commit(s): db3a8dc docs: record US-058 review (no fixes required); aac0c71 feat: Publish Alpha 2 component prop schemas; 19ffd9c docs: record sync catch-up for us-057-guide-frontmatter-schema; 1525f7b docs: update progress log
 - PR: #155 https://github.com/AaronFeledy/core4/pull/155 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## 2026-05-22 21:54 UTC - PR #155 Bugbot Triage
@@ -106,6 +171,14 @@ Rationale: <link to the PR description that made the call>
 - Review triage: accepted Bugbot's `decodeScenarioPropsEither` finding as real because the `render: false` reason pre-check bypassed the full `ScenarioProps` schema and could mask the scenario-specific filter message or missing `id` diagnostics.
 - Fix: removed the redundant pre-check, kept the deferred `layer: "e2e"` `NotImplementedError` guard, and added regression coverage for the schema filter message plus missing-`id` preservation.
 - Follow-up Bugbot triage: accepted the new Run/Verify exact-one pre-check finding as real for the same reason; removed those redundant pre-checks so schema filters and field-level parse diagnostics surface, while keeping explicit Beta `runtime`/`tooling`/matcher guards.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## [2026-05-22 21:29 UTC] - Babysit
@@ -117,12 +190,28 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state: `spec/alpha2/progress.txt` updated with this babysit report; local story branch deleted; remote story branch absent after prune/delete check.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 
 ## [2026-05-22] - Sync
 - Previous branch: us-058-component-prop-schemas
 - Previous PR: #155 https://github.com/AaronFeledy/core4/pull/155
 - Action: caught up after prior merge (PR was already MERGED); also committed local progress-log update to main (fast path) and pushed
 - Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -134,6 +223,14 @@ Rationale: <link to the PR description that made the call>
   - Keep `@lando/core/testing` as a small barrel once multiple testing helpers exist; moving `makeTestRuntime` into `core/src/testing/test-runtime.ts` preserves existing exports while letting ScenarioContext import it without a circular barrel dependency.
   - `withScenarioContext` should own an Effect `Scope`; generated tests can register cleanup with `Effect.addFinalizer`, and those finalizers run before the temp directory finalizer removes `testDir`.
   - Full `bun test` can race compiled-binary tests if concurrent runs share `core/dist/lando`; ensure old `bun test` processes are stopped before rerunning the full suite.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## 2026-05-22 17:35 - US-059 Review
@@ -149,11 +246,27 @@ Rationale: <link to the PR description that made the call>
   - When a story is described as "ship the surface" (typed fields + tagged stubs) and a subsequent story owns the body, leaving `NotImplementedError`-throwing stubs is the correct discipline — flag any future "fill in" PR that does NOT update the corresponding AC tracking.
   - `process.env.X = undefined` is portable under Bun (sets to undefined) but lossy under Node (sets to the string `"undefined"`). Prefer `delete process.env.X` for env restore if a helper ever moves out of Bun-only test files.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 17:34 CDT - Push
 - Branch: us-059-scenario-context-helpers
 - Push: pushed
 - Commit(s): de1ea4a docs: record US-059 review (no fixes required); 2c72466 feat: Ship ScenarioContext and Alpha 2 testing helpers
 - PR: #156 https://github.com/AaronFeledy/core4/pull/156 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-22 23:18 UTC - PR #156 Triage
 - Review triage: accepted Cursor Bugbot's ScenarioTranscriptFrame comment as real because the test exercises `kind: "note"` and the public `ScenarioTranscriptFrame` type should accept every frame kind the helper writes.
@@ -179,12 +292,28 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state: none after committing this babysit report; local story branch deleted; remote branch deleted by merge.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 
 ## [2026-05-22 18:50 CDT] - Sync
 - Previous branch: us-059-scenario-context-helpers
 - Previous PR: #156 https://github.com/AaronFeledy/core4/pull/156
 - Action: caught up after prior merge (PR #156 was already MERGED; remote branch already deleted)
 - Local main updated: yes (already at origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -195,6 +324,14 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - Symlink-sensitive fixture handling needs `FileSystem.lstat`; adding a service method requires updating the Live/runtime/test doubles, `sdk/test/services/tags.test.ts`, and the frozen SDK compatibility fixture.
   - Full `bun test` can race compiled-binary tests if overlapping Bun test processes are still running; check and stop stray `bun test` processes before rerunning the full suite.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## 2026-05-22 19:55 CDT - US-060 Review
@@ -212,11 +349,27 @@ Rationale: <link to the PR description that made the call>
   - When two fallback paths are tried in order and only "directory" wins, a present-but-wrong-type first candidate should fail loudly rather than fall through — silent fallback violates the override semantics and hides authoring mistakes.
   - Bun's compiled-binary tests (`compile.test.ts`, `aliases.test.ts`) race when full `bun test` runs in parallel; treat single-run failures of those files as flakiness and confirm by re-running with `--max-concurrency=1`.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 
 ## 2026-05-22 19:38 CDT - Slop cleanup after US-060
 - Ran the branch-wide AI slop remover after review and before push; per-file cleanup agents reported no functional edits needed except one planning-term test-name cleanup. Reverted an overbroad comment deletion in `core/src/runtime/layer.ts` because those comments were durable module docs, not disposable slop.
 - Files changed: `sdk/test/services/tags.test.ts` (removed planning-phase wording from one test name), `spec/alpha2/progress.txt` (this cleanup record).
 - Verification run and result: branch-changed source/test planning-comment leakage scan passed; `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed (1123 pass, 11 skip, 0 fail); focused `bun test sdk/test/services/tags.test.ts` passed via the slop-remover agent; `lsp_diagnostics sdk/test/services/tags.test.ts` could not run because `typescript-language-server` is not installed.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## 2026-05-22 19:41 CDT - Push
@@ -224,6 +377,14 @@ Rationale: <link to the PR description that made the call>
 - Push: pushed
 - Commit(s): ae1e37a chore: remove AI slop; 10fb970 fix(testing): reject non-directory fixture candidates (US-060 review); 1f8ede6 feat: Codify fixture-copy discipline
 - PR: #157 https://github.com/AaronFeledy/core4/pull/157 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-22 - PR #157 Bugbot triage
 - Accepted both Bugbot comments as real: renamed guide-fixture error payload fields from `name` to `fixtureName` to avoid shadowing `Error.prototype.name`, and added `isSymbolicLink: false` to the `lstat` stubs in runtime/test doubles so they match real `lstat` shape.
@@ -236,6 +397,14 @@ Rationale: <link to the PR description that made the call>
 - Accepted Bugbot's `lstat` fallback message comment as real: the fallback string reused `stat`, obscuring which FileSystem operation failed for non-Error throws.
 - Fix: changed the `FileSystemLive.lstat` fallback message to `Failed to lstat <path>`.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1134 tests, 0 fail).
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-22 - PR #157 Triage
 - Bugbot comment: real — `lstat` used the `stat` fallback text, so the error message didn't identify the failing operation.
@@ -251,11 +420,27 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none before this babysit log entry
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 01:30 UTC - Sync
 - Previous branch: us-060-fixture-copy-discipline
 - Previous PR: #157 https://github.com/AaronFeledy/core4/pull/157
 - Action: caught up after prior merge (PR already MERGED, all CI green)
 - Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -267,6 +452,14 @@ Rationale: <link to the PR description that made the call>
   - Keep docs-component boundary guards in `sdk/src/docs/components/props.ts`; the existing SDK barrel and core docs-components re-export expose them without package export-map changes.
   - `hostPath` is part of the SDK helper signature for later source-mapped callers; include it in generic component rejection messages so the helper remains source-aware without adding a new error field.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 23:59 - US-061 Review
 - Reviewed `4616a6e` (`feat: Reject Hidden component at SDK boundary with remediation`).
 - Files changed (review): none.
@@ -276,11 +469,27 @@ Rationale: <link to the PR description that made the call>
   - When asserting "verbatim" remediation text, do an end-to-end import + throw round-trip (not just a unit-test substring check) — the loop reviewer can confirm the SDK barrel re-export and the runtime error payload in one shot.
   - Allowlist-based component gating is more durable than denylist for "Alpha 2 only" surfaces: any future non-Alpha-2 component name added by spec drift gets rejected automatically without a code change.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 20:58 CDT - Push
 - Branch: us-061-hidden-component-remediation
 - Push: pushed
 - Commit(s): 4616a6e feat: Reject Hidden component at SDK boundary with remediation; 4863d1a docs: record US-061 review verification
 - PR: #158 https://github.com/AaronFeledy/core4/pull/158 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## [2026-05-22 21:06 CDT] - Babysit
 - PR: #158 https://github.com/AaronFeledy/core4/pull/158
@@ -291,11 +500,27 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes (local main reset to origin/main after GitHub merge succeeded but local fast-forward was blocked by a duplicate squashed progress-log commit)
 - Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## [2026-05-23 02:09 UTC] - Sync
 - Previous branch: us-061-hidden-component-remediation
 - Previous PR: #158 https://github.com/AaronFeledy/core4/pull/158
 - Action: caught up after prior merge (PR #158 already MERGED; local branch absent, main already current)
 - Local main updated: yes (already up to date with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -308,11 +533,27 @@ Rationale: <link to the PR description that made the call>
   - Reuse the existing Landofile YAML subset parser for MDX frontmatter so nested Alpha 2 fields stay aligned with repo parsing behavior.
   - The guide walker consumes `mdxJsxFlowElement` nodes from the `unified` + `remark-mdx` stack; AST node shapes are now fixture-covered and documented in `AGENTS.md`.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## [2026-05-23 03:04 UTC] - Push
 - Branch: us-062-deterministic-mdx-walker
 - Push: pushed
 - Commit(s): 27e7b6e feat: Implement deterministic MDX walker for build-guide-scenarios
 - PR: #159 https://github.com/AaronFeledy/core4/pull/159 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## [2026-05-23 03:15 UTC] - Sync
 - Previous branch: us-062-deterministic-mdx-walker
@@ -323,6 +564,14 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: yes (loop-sync-rejected-improvement-20260523030119)
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 03:25 UTC - US-063
 - Implemented Alpha 2 TypeScript scenario emission in `scripts/build-guide-scenarios.ts`, including one generated `.test.ts` per scenario, required source/scenario/variant headers, `withScenarioContext` test bodies, variable setup and interpolation, pre-step cleanup finalizers, Run/Verify/UseFixture emission, and deterministic writes.
 - Files changed: `scripts/build-guide-scenarios.ts`, `core/src/testing/scenario-context.ts`, `core/test/codegen/guide-scenarios.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
@@ -330,6 +579,14 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - Keep generated guide tests as plain Bun test files that import `withScenarioContext` from `@lando/core/testing`; the generator can validate behavior by emitting to a temp root and running the generated file directly.
   - `build-guide-scenarios` currently writes generated tests when run as a script; US-065 owns gitignore/codegen registration and output cleanup.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-23 04:00 UTC - US-063 Review
 - Reviewed `1de71d2` (`feat: Emit Alpha 2 generated TypeScript from MDX scenarios`).
@@ -340,10 +597,26 @@ Rationale: <link to the PR description that made the call>
   - `Effect.addFinalizer` introduces `Scope` in the requirements channel; any helper that wraps user effects in `Effect.scoped` must declare its return type as `Exclude<R, Scope.Scope>` or downstream `Effect.runPromise` callers will fail tsc even though the runtime works fine.
   - Generator AC that says "generated TS must `tsc --noEmit` cleanly" needs verification by actually running tsc on a sample generated file with every component type combined — emit + parse + run is not enough because Bun's runtime does not enforce Effect's requirement channel.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 04:35 UTC - US-063 Slop cleanup
 - Ran branch-wide slop-remover after review and before push. Cleanup changed `scripts/build-guide-scenarios.ts` and `core/test/codegen/guide-scenarios.test.ts`: removed the redundant `ScenarioProps` cast/import now covered by decoder typing and reworded planning-phase wording in test descriptions without changing assertions or generated output expectations.
 - Planning-doc comment scan: no branch-changed source/test comment still cites planning docs; remaining `@source`/`@scenario`/`@variant` generated annotations point to guide source metadata, not planning artifacts.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (7 pass / 0 fail). `lsp_diagnostics` could not run because `typescript-language-server` is not installed. Full `bun test` was not rerun in this shell because it can execute `lando` paths and the required `lando4-dev` sandbox entry failed with `wsl.exe is not available from this shell`; prior US-063 review full-suite run was green before this cosmetic cleanup.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-23 03:49 UTC - Push
 - Branch: us-063-generated-typescript-scenarios
@@ -351,19 +624,51 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): e0587b7 chore: remove AI slop; 4771efd fix: Type withScenarioContext to consume Scope so generated tests typecheck; 1de71d2 feat: Emit Alpha 2 generated TypeScript from MDX scenarios
 - PR: #160 https://github.com/AaronFeledy/core4/pull/160 (created)
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-22 23:58 UTC - PR #160 Triage
 - Static-checks failure (real-issue): generated guide-scenario tests were executed from a tmp root, so Bun 1.3.14 could not resolve workspace deps like `effect` from the generated file path.
 - Fix: symlinked the repo `node_modules` into the temp guide-run root before invoking the generated scenario test in `core/test/codegen/guide-scenarios.test.ts`.
 - Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 
 ## 2026-05-23 04:12 UTC - PR #160 Bugbot Triage
 - Review triage: accepted both findings as real; fixed Run.expectExit generation and ScenarioContext answers forwarding.
 - Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 04:21 UTC - PR #160 Bugbot Follow-up
 - Review triage: accepted Bugbot's generated array matcher finding as real and removed the now-unused `renderGuideScenarioAst` helper. Fixed generated `matchesExpected` to structurally compare arrays before object/primitive fallback.
 - Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed (9 pass / 0 fail); `bun run typecheck` passed; `bun run lint` passed.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## [2026-05-22 23:34 CDT] - Babysit
 - PR: #160 https://github.com/AaronFeledy/core4/pull/160
@@ -374,6 +679,14 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 
 ## 2026-05-23 04:37 UTC - Sync
 - Previous branch: us-063-generated-typescript-scenarios
@@ -383,6 +696,14 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: no (fast path — stash pop applied cleanly)
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 04:50 UTC - US-064
 - Implemented test-only scenario generation for `<Scenario render={false}>`, preserving the render bit in generated test headers as `// @render: false` while keeping generated bodies identical to reader scenarios.
 - Added tagged `GuideHiddenScenarioReasonError` for missing or short test-only scenario reasons, with remediation citing §19.9 and PRD-A2-00's hidden-coverage rule.
@@ -391,6 +712,14 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - Generated guide metadata headers should remain the source of truth for downstream lint/reporting; add new scenario metadata there without changing the generated Effect body when behavior is otherwise identical.
   - For generator-specific tagged errors that should survive package-barrel imports, add the SDK error export and a package exports test alongside the generator test.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-23 05:25 UTC - US-064 Review
 - Reviewed US-064 via 5-agent `review-work` fan-out (Goal/Constraint, Code Quality, Security, QA Execution, Context Mining).
@@ -405,11 +734,27 @@ Rationale: <link to the PR description that made the call>
   - PRD-A2-01 line 95 is a global Alpha 2 invariant: every new tagged error added under Alpha 2 must include `commandId` and `specSection` in addition to `message` and `remediation`. Easy to miss when copying sibling shapes from earlier-drifted errors.
   - When the build step adds a tagged error, also assert on `commandId` / `specSection` (not just `remediation` substring) in the accompanying test — it pins the convention and surfaces convention drift early.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 05:11 UTC - Push
 - Branch: us-064-test-only-scenarios
 - Push: pushed
 - Commit(s): 78ada2f fix(us-064): add commandId/specSection to GuideHiddenScenarioReasonError; 6c0f2c0 feat: Generate test-only scenarios without rendering
 - PR: #161 https://github.com/AaronFeledy/core4/pull/161 (created)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## [2026-05-23 00:18 CDT] - Babysit
 - PR: #161 https://github.com/AaronFeledy/core4/pull/161
@@ -420,6 +765,14 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 05:21 UTC - Sync
 - Previous branch: us-064-test-only-scenarios
 - Previous PR: #161 https://github.com/AaronFeledy/core4/pull/161
@@ -427,6 +780,14 @@ Rationale: <link to the PR description that made the call>
 - Local main updated: yes (already current with origin/main)
 - Branch after sync: main
 - Stash created: no (fast-path stash was transient; popped before commit)
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-23 06:15 UTC - US-065
 - Wired `build-guide-scenarios` into the root codegen catalog as the first generator, added generated guide scenario tests to `.gitignore`, and made guide test emission clear stale outputs before writing current scenarios.
@@ -436,6 +797,14 @@ Rationale: <link to the PR description that made the call>
   - `build-guide-scenarios` now owns output cleanup through `emitGuideScenarioTests`; tests that seed stale generated files can assert cleanup by calling the exported emitter directly.
   - Codegen catalog registration can be verified through the existing `[codegen] run <id>` stdout stream; keep guide scenario codegen before later generator stages so generated TS exists before type/test gates.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 06:45 UTC - US-065 Review
 - Reviewed build commit 460223a against AC in spec/alpha2/prd-alpha2-02-mdx-codegen-pipeline.md.
 - No code changes required. All AC verified: build-guide-scenarios registered as first generator in scripts/codegen.ts (ahead of all TS-compiling stages), `.gitignore` ignores `test/scenarios/generated/guides/**`, `emitGuideScenarioTests` rm's outputRoot before writing (covered by new "clears stale generated guide tests" test), and the codegen-ci suite asserts `[codegen] run build-guide-scenarios` appears in stdout before `schema-snapshot` (catalog drift coverage).
@@ -443,6 +812,14 @@ Rationale: <link to the PR description that made the call>
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed (472 files, no findings); `bun test core/test/codegen/guide-scenarios.test.ts core/test/scripts/codegen-ci.test.ts` → 21 pass / 0 fail. Full `bun test` not re-run because no files changed since the build step recorded fresh focused output.
 - **Learnings for future iterations:**
   - When a codegen stage owns its own output directory cleanup, the codegen-ci drift test pattern (assert ordered stdout markers + read .gitignore + execute the smoke path end-to-end) is a lighter substitute for a full catalog snapshot file — keeps drift coverage without committing a generated artifact.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## [2026-05-23 00:47 CDT] - Babysit
 - PR: #162 https://github.com/AaronFeledy/core4/pull/162
@@ -453,11 +830,27 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: modified `spec/alpha2/progress.txt` with this babysit report; pre-existing stashes remain (`preserve-us062-babysit-progress`, `wip us-062 mdx string-literal fix`, `loop-sync-rejected-improvement-20260523030119`)
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## [2026-05-23 20:15 UTC] - Sync
 - Previous branch: us-065-guide-scenarios-codegen
 - Previous PR: #162 https://github.com/AaronFeledy/core4/pull/162
 - Action: caught up after prior merge (PR #162 already MERGED; fast-path committed dirty progress.txt to local main before reconciling)
 - Local main updated: yes (already at origin/main after fast-path commit)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -472,6 +865,14 @@ Rationale: <link to the PR description that made the call>
   - Alpha 2 generated scenarios currently use an in-context fake (`runScenarioLayerCommand`) for `start`/`destroy` so guide tests do not require a configured host provider. This is an interim — `cli.runCli` does not yet accept a layer/provider override, so the scenario's `makeTestRuntime` runtime is unused on the CLI path. Real `TestRuntimeProvider` injection through `cli.runCli` and exercising the real Landofile validator for the invalid-service-type regression are tracked as follow-up work.
   - `Verify errorTag` assertions need the captured run result's tag and stderr text; include `expect` on the same `<Verify errorTag>` when the guide needs remediation substring coverage.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 16:15 CDT - US-066 Review
 - Reviewed build commit ce29c10 against AC in spec/alpha2/prd-alpha2-02-mdx-codegen-pipeline.md §US-066.
 - `review-work` (Oracle goal-verification) findings:
@@ -483,6 +884,14 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - When an AC says "using `TestRuntimeProvider`" but the infrastructure to inject a provider through the in-process CLI does not yet exist, the smallest correct interim is a documented in-context fake plus an explicit follow-up note — NOT a silent claim that the contract is honored. Reviewers should reject misleading wording even when the test surface passes.
   - Scenario-layer fakes that pattern-match on fixture strings (e.g. `content.includes("totally-not-a-service")`) are brittle by design; document the magic-string coupling in AGENTS.md so subsequent fixture edits are aware they may silently change scenario behavior.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-23 16:30 CDT - US-066 Review
 - Reviewed build commit ce29c10 against AC in `spec/alpha2/prd-alpha2-02-mdx-codegen-pipeline.md` §US-066.
@@ -498,6 +907,14 @@ Rationale: <link to the PR description that made the call>
   - `<Scenario render>` defaults to `true` per schema but should still be authored verbatim when AC enumerates the literal attribute spelling — cheap to add, prevents AC-as-spec drift.
   - Don't grow AGENTS.md notes by appending; replace in place. Edit + re-edit on the same line will silently concatenate identical-prefix paragraphs.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## 2026-05-23 17:05 CDT - US-066 Slop Remover
 - Ran the branch-wide slop-remover step after review. Cleanup changed only `AGENTS.md`: tightened the repo-guidance file intro and replaced "hardcoded fake" with "hardcoded stub" in the generated guide scenario runner note, preserving the documented interim behavior and warnings.
 - Planning-doc comment leakage scan over branch-changed source/test files found no code comments requiring cleanup. Matches that remain are runtime `specSection`/remediation payloads, test assertions/fixtures, or MDX frontmatter and were intentionally left unchanged.
@@ -508,6 +925,14 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): 2237236 chore: remove AI slop; 6268de8 fix(us-066): honest interim wording + literal render attribute; ce29c10 feat: Provide canonical node-postgres Alpha 2 fixture guide
 - PR: #163 https://github.com/AaronFeledy/core4/pull/163 (created)
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## [2026-05-23 15:53 CDT] - Babysit
 - PR: #163 https://github.com/AaronFeledy/core4/pull/163
 - CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
@@ -517,11 +942,27 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: yes
 - Remaining local state, if any: `spec/alpha2/progress.txt` updated with this babysit report; local branch `us-066-node-postgres-fixture-guide` deleted/absent; remote branch deleted by merge.
 ---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
 ## [2026-05-23 20:56 UTC] - Sync
 - Previous branch: us-066-node-postgres-fixture-guide
 - Previous PR: #163 https://github.com/AaronFeledy/core4/pull/163
 - Action: caught up after prior merge (PR already MERGED); fast-pathed uncommitted progress.txt change (committed to local main)
 - Local main updated: yes (already up to date with origin/main after progress.txt commit)
+- Branch after sync: main
+- Stash created: no
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
 - Branch after sync: main
 - Stash created: no
 ---
@@ -532,6 +973,14 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - Author-command filtered generation should not delete the whole generated guide root; codegen tests can run concurrently and expect unrelated generated guide files to survive until their assertion finishes.
   - `bun run <script>` emits a `$ bun run ...` command line on stderr; command tests should assert meaningful stderr content rather than expecting an empty stream.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## 2026-05-23 22:15 CDT - US-067 Review
 - Reviewed build commit 7b1f865 against AC in `spec/alpha2/prd-alpha2-03-author-command-and-source-mapper.md` §US-067.
@@ -544,6 +993,14 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - When an AC parenthetical names an implementation pathway ("read back from the transcript stub") and the build chooses a different pathway with identical user-visible behavior, document the deviation in the progress entry rather than expanding the story to refactor — but always confirm the original pathway's cost before accepting.
   - Pre-existing subprocess-spawn-without-PATH-prepend tests will silently look like new regressions during a focused-story review when the host shell lacks bun in PATH; always re-run the failing test on HEAD~1 before flagging.
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
 ---
 ## [2026-05-23 16:27 CDT] - Push
 - Branch: us-067-docs-scenario-command
@@ -559,4 +1016,48 @@ Rationale: <link to the PR description that made the call>
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
 - Remaining local state, if any: progress.txt has this babysit report appended on local main
+---
+## [2026-05-23 21:39 UTC] - Sync
+- Previous branch: us-067-docs-scenario-command
+- Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
+- Action: caught up after prior merge (PR was already MERGED; local main was already at origin/main; local branch did not exist)
+- Local main updated: yes (already current)
+- Branch after sync: main
+- Stash created: no
+---
+
+## 2026-05-23 21:57 UTC - US-068
+- Implemented the scenario source-mapper post-processor for generated guide test output, including MDX frame rewrite, scenario prefixing, generated-frame annotations, no-match pass-through, and the `LANDO_DISABLE_GUIDE_SOURCE_MAPPER=1` bypass. Wired `docs:scenario` to apply the mapper to captured generated-test output.
+- Files changed: `scripts/test-reporters/scenario-source-mapper.ts`, `scripts/docs-scenario.ts`, `core/test/scenarios/reporter.test.ts`, `core/test/scenarios/reporter/**`, `core/test/scripts/docs-scenario.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` passed (9 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1174 tests across 155 files: 1163 pass, 11 skip, 0 fail); manual QA via a temporary failing `mapper-red` guide observed `[mapper-red:runs]`, `at docs/guides/mapper-red.mdx:9`, and `Generated: test/scenarios/generated/guides/mapper-red/runs.test.ts:47:41` in `bun run docs:scenario mapper-red --scenario runs` output; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Source-mapper fixture files should not be named `*.test.ts` under `core/test/**`, or Bun will discover and execute them during the full suite; use a non-test suffix while keeping seeded stack text representative.
+  - The current Bun CLI exposes only built-in reporters, so Alpha 2 maps captured generated-test output through the pure source-mapper post-processor in `docs:scenario`.
+---
+
+## [2026-05-23 22:05 UTC] - US-068 Review
+- Reviewed the scenario source-mapper reporter (`scripts/test-reporters/scenario-source-mapper.ts`), its wiring through `docs:scenario`, and the three fixture pairs.
+- No review fixes applied; no files changed.
+- `review-work` findings (one-line each):
+  - FYI (accepted): Reporter is not registered as a literal `bun test` reporter (the Bun CLI exposes only built-in reporters in 1.3.14) — `docs:scenario` instead post-processes captured stdout/stderr through the pure mapper. Documented in the build progress entry and matches the PRD's "pure additive layer / falsifiable via env bypass" intent; same deviation pattern accepted in US-067.
+  - FYI (accepted): Fixture file lives at `.../source-map-guide/runs.fixture.ts` (not `.test.ts`) to avoid Bun discovering it during the full suite. The mapper's gate keys off the `/test/scenarios/generated/guides/` segment which the fixture preserves, so the behavioral path is exercised end-to-end.
+  - FYI (accepted): The mapper never reads `// @variant:` because Alpha 2 always emits it empty; the AC requirement is "tolerate without misclassifying as missing," which is trivially satisfied by ignoring the header. Beta will need to extend `sourceHeadersForFrame` when variants land.
+  - REJECTED (out of scope): "Module-level `fileCache`/`headerCache` could grow unbounded." `docs:scenario` is one-shot per invocation; bounding the caches would add code without a real leak in the supported run profile.
+  - REJECTED (out of scope refactor): "`findGuideId` regex couples to generated-code formatting (`withScenarioContext({ guideId: "..." }`)." True but contained — the generator and mapper ship together; tightening this to read an explicit `// @guide:` header is a Beta improvement when variant headers also grow.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (477 files); `bun test core/test/scenarios/reporter.test.ts core/test/scripts/docs-scenario.test.ts` → 9 pass / 0 fail; full `bun test` → 1163 pass / 11 skip / 0 fail across 155 files. No regressions.
+- **Learnings for future iterations:**
+  - When the AC names an infra seam that the host runtime doesn't expose (here: custom `bun test` reporters), prefer a pure post-processor reused at every callsite over inventing a fake registration; document the substitution in the progress log so the next reviewer doesn't flag it as a missed AC.
+  - Storing reporter fixtures as `*.fixture.ts` under `core/test/**` is the safe pattern when the fixture's path layout needs to mirror a real test path — Bun's discovery key is the filename suffix, not the directory.
+---
+## [2026-05-23 17:11 CDT] - Push
+- Branch: us-068-scenario-source-mapper-reporter
+- Push: pushed
+- Commit(s): c05b7b0 docs: record US-068 review (no fixes; AC met with documented bun-reporter deviation); fce5ed4 feat: Implement scenario source-mapper reporter
+- PR: #165 https://github.com/AaronFeledy/core4/pull/165 (created)
+---
+
+## [2026-05-23 22:22 UTC] - PR #165 Bugbot Triage
+- CI triage: all GitHub Actions checks were already passing; Cursor Bugbot was neutral/skipping after one medium review comment.
+- Review triage: accepted Bugbot a862ed8a-936d-47f9-8545-de7079d6e110 as real because the mapper used the first mapped frame plus one global prefix flag, so combined multi-failure logs could rewrite later generated frames while leaving later `error:` / `(FiberFailure) Error:` headlines unprefixed.
+- Fix: paired each failure headline with the next mapped generated frame in that failure block and added a `multi-failure` reporter fixture covering two generated scenarios with distinct `[guideId:scenarioId]` prefixes.
 ---

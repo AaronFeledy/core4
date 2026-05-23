@@ -76,6 +76,11 @@ describe("docs:scenario author command", () => {
 
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("toBe(1)");
+      expect(result.stderr).toContain("[docs-scenario-red:runs]");
+      expect(result.stderr).toContain("at docs/guides/docs-scenario-red.mdx:10");
+      expect(result.stderr).toContain(
+        "Generated: test/scenarios/generated/guides/docs-scenario-red/runs.test.ts",
+      );
     } finally {
       await removeGuide(guideId);
     }

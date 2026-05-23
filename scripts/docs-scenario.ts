@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 
 import { NotImplementedError } from "../sdk/src/errors/index.ts";
 import { type GuideScenarioAst, buildGuideScenarioAst } from "./build-guide-scenarios.ts";
+import { rewriteScenarioSourceMappedOutput } from "./test-reporters/scenario-source-mapper.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GENERATOR_PATH = resolve(import.meta.dirname, "build-guide-scenarios.ts");
@@ -190,8 +191,8 @@ const main = async (): Promise<void> => {
       [process.execPath, "test", scenarioPath(options.guideId, options.scenarioId)],
       options.keep ? { KEEP_SCENARIO_DIRS: "1", LANDO_DOCS_SCENARIO_KEEP: "1" } : {},
     );
-    process.stdout.write(test.stdout);
-    process.stderr.write(test.stderr);
+    process.stdout.write(rewriteScenarioSourceMappedOutput(test.stdout, { repoRoot: REPO_ROOT }));
+    process.stderr.write(rewriteScenarioSourceMappedOutput(test.stderr, { repoRoot: REPO_ROOT }));
     process.exitCode = test.exitCode;
   } catch (error) {
     process.stderr.write(`${formatError(error)}\n`);
