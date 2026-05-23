@@ -265,3 +265,12 @@ Rationale: <link to the PR description that made the call>
   - Keep docs-component boundary guards in `sdk/src/docs/components/props.ts`; the existing SDK barrel and core docs-components re-export expose them without package export-map changes.
   - `hostPath` is part of the SDK helper signature for later source-mapped callers; include it in generic component rejection messages so the helper remains source-aware without adding a new error field.
 ---
+## 2026-05-22 23:59 - US-061 Review
+- Reviewed `4616a6e` (`feat: Reject Hidden component at SDK boundary with remediation`).
+- Files changed (review): none.
+- `review-work` findings: no blocking issues. Allowlist-based `assertAlpha2Component` correctly rejects all non-Alpha-2 names (Inspect/Tabs/Tab/Inline/Skip plus any other) with one-line Phase 3 Beta + `spec/ROADMAP.md` remediation; Hidden branch checked first to preserve the verbatim §19.9 remediation; `hostPath` carried in error message (not remediation) keeps remediation one-line as the AC requires. SDK additive-export gate not triggered because `assertAlpha2Component`/`hiddenComponentNotImplemented` are not re-exported through `@lando/sdk/schema`.
+- Verification run and result: `bun run typecheck` passed (`tsc -b` clean); `bun run lint` passed (`biome check .` 470 files, no fixes); focused `bun test core/test/docs/component-props.test.ts` passed (20 pass / 0 fail); full `bun test` passed (1137 pass / 11 skip / 0 fail); manual QA via `bun -e` import of `@lando/sdk/docs/components` confirmed `Hidden` yields the exact §19.9 remediation byte-for-byte and `Tabs`/unknown component names yield the one-line Beta remediation.
+- **Learnings for future iterations:**
+  - When asserting "verbatim" remediation text, do an end-to-end import + throw round-trip (not just a unit-test substring check) — the loop reviewer can confirm the SDK barrel re-export and the runtime error payload in one shot.
+  - Allowlist-based component gating is more durable than denylist for "Alpha 2 only" surfaces: any future non-Alpha-2 component name added by spec drift gets rejected automatically without a code change.
+---
