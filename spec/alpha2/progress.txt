@@ -355,7 +355,6 @@ Rationale: <link to the PR description that made the call>
 - Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.
 ---
 
-## 2026-05-22 - PR #160 Triage
-- Review triage: accepted both Cursor Bugbot findings as real. Fixed guide-scenario codegen to honor per-Run `expectExit`, and made ScenarioContext `runCli` forward scripted `answers` into init as `--answer` flags.
-- Verification plan: run focused guide-scenario + ScenarioContext tests, then `bun run typecheck` and `bun run lint` before push.
----
+## 2026-05-23 04:12 UTC - PR #160 Bugbot Triage
+- Review triage: accepted both findings as real; fixed Run.expectExit generation and ScenarioContext answers forwarding.
+- Verification run and result: focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed.

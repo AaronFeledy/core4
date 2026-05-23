@@ -60,6 +60,60 @@ describe("withScenarioContext", () => {
     expect(existsSync(result.testDir)).toBe(false);
   });
 
+  test("forwards answers to the default init runner", async () => {
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "node-postgres", scenarioId: "init-answers" }, (context) =>
+        Effect.gen(function* () {
+          const run = yield* context.runCli(["init", "--full", "--no-interactive"], {
+            answers: { name: "answers-app" },
+          });
+          const exists = yield* Effect.promise(() =>
+            Bun.file(join(context.testDir, "answers-app", ".lando.yml")).exists(),
+          );
+          return { run, exists };
+        }),
+      ),
+    );
+
+    expect(result.run.exitCode).toBe(0);
+    expect(result.run.command).toEqual(["init", "--full", "--no-interactive", "--answer=name=answers-app"]);
+    expect(result.exists).toBe(true);
+  });
+
+  test("forwards runCli options to custom overrides", async () => {
+    let captured:
+      | {
+          readonly command: ReadonlyArray<string>;
+          readonly options?: { readonly answers?: Readonly<Record<string, string>> };
+        }
+      | undefined;
+
+    await Effect.runPromise(
+      withScenarioContext(
+        {
+          guideId: "node-postgres",
+          scenarioId: "override-options",
+          runCli: async (command, options) => {
+            captured = { command, options };
+            return {
+              command,
+              stdout: "",
+              stderr: "",
+              exitCode: 0,
+              events: [],
+            };
+          },
+        },
+        (context) => context.runCli(["version"], { answers: { name: "override-app" } }),
+      ),
+    );
+
+    expect(captured).toEqual({
+      command: ["version"],
+      options: { answers: { name: "override-app" } },
+    });
+  });
+
   test("preserves testDir when KEEP_SCENARIO_DIRS=1", async () => {
     const previous = process.env.KEEP_SCENARIO_DIRS;
     process.env.KEEP_SCENARIO_DIRS = "1";

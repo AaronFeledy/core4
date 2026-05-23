@@ -73,7 +73,10 @@ export interface WithScenarioContextOptions {
   readonly scenarioId: string;
   readonly vars?: ReadonlyMap<string, ScenarioVariable>;
   readonly runtime?: TestRuntime;
-  readonly runCli?: (command: ReadonlyArray<string>) => Promise<ScenarioRunResult>;
+  readonly runCli?: (
+    command: ReadonlyArray<string>,
+    options?: ScenarioRunOptions,
+  ) => Promise<ScenarioRunResult>;
 }
 
 const parseCommand = (command: string | ReadonlyArray<string>): ReadonlyArray<string> =>
@@ -224,11 +227,20 @@ const captureWrite = (stream: typeof process.stdout | typeof process.stderr) => 
   };
 };
 
+const appendInitAnswers = (
+  args: ReadonlyArray<string>,
+  answers: Readonly<Record<string, string>> | undefined,
+): ReadonlyArray<string> => {
+  if (answers === undefined || Object.keys(answers).length === 0) return args;
+  if (args[0] !== "init" && args[0] !== "apps:init") return args;
+  return [...args, ...Object.entries(answers).map(([name, value]) => `--answer=${name}=${value}`)];
+};
+
 const createDefaultRunCli =
   (testDir: string, events: LandoEvent[]): ScenarioContext["runCli"] =>
-  (command) =>
+  (command, options) =>
     Effect.tryPromise(async () => {
-      const args = parseCommand(command);
+      const args = appendInitAnswers(parseCommand(command), options?.answers);
       if (args.length === 1 && (args[0] === "version" || args[0] === "--version" || args[0] === "-v")) {
         return {
           command: args,
@@ -269,15 +281,16 @@ const createRunCli = (
   testDir: string,
   events: LandoEvent[],
   transcriptFrames: ScenarioTranscriptFrame[],
-  override?: (command: ReadonlyArray<string>) => Promise<ScenarioRunResult>,
+  override?: (command: ReadonlyArray<string>, options?: ScenarioRunOptions) => Promise<ScenarioRunResult>,
 ): ScenarioContext["runCli"] => {
   const runner =
     override === undefined
       ? createDefaultRunCli(testDir, events)
-      : (command: string | ReadonlyArray<string>) => Effect.tryPromise(() => override(parseCommand(command)));
+      : (command: string | ReadonlyArray<string>, options?: ScenarioRunOptions) =>
+          Effect.tryPromise(() => override(parseCommand(command), options));
 
-  return (command) =>
-    runner(command).pipe(
+  return (command, options) =>
+    runner(command, options).pipe(
       Effect.tap((result) =>
         Effect.sync(() => {
           transcriptFrames.push({ kind: "run", data: result });
