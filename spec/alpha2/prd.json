@@ -325,8 +325,8 @@
         "Lint passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Not applicable in Alpha 2; deferred to Beta per \u00a719.13 because no recipes/<id>/README.mdx files exist in this repository at the PR-open decision point."
     }
   ]
 }

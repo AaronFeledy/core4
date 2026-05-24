@@ -39,11 +39,18 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 
 ## US-073 conditional decision
 
-Status: <to be decided at PR-open>
+Status: Not applicable in Alpha 2; deferred to Beta per §19.13.
 
-Rationale: <link to the PR description that made the call>
+Rationale: At the PR-open decision point for US-073, the repository has no `recipes/<id>/README.mdx` files, so there is no Alpha recipe MDX README with executable components to strip/flatten.
 
 ## Story log
+## 2026-05-24 03:53 UTC - US-073
+- Closed the conditional recipe README strip/flatten story as not applicable for Alpha 2 and deferred the generator to Beta per §19.13.
+- Files changed: `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: manual QA `find recipes -mindepth 2 -maxdepth 2 -name README.mdx -print` found no recipe README.mdx files; `jq` confirmed `US-073 passes=true`; `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1182 pass, 11 skip, 0 fail). `lsp_diagnostics` could not run because the Biome LSP server is not installed in this environment.
+- **Learnings for future iterations:**
+  - US-073's gate is a one-time decision: if there is no `recipes/<id>/README.mdx` with executable components at PR-open, mark it not applicable and do not add the Beta strip/flatten generator.
+---
 ## 2026-05-22 14:28 - US-057
 - Implemented the Alpha 2 `GuideFrontmatter` Effect Schema with kebab-case ids, default timeout, Alpha-only layer/provider values, skip/deprecated fields, and targeted `NotImplementedError` remediation for deferred frontmatter keys plus `defaultLayer: "e2e"`.
 - Files changed: `sdk/src/docs/guide-frontmatter.ts`, `sdk/src/docs/components/index.ts`, `sdk/src/schema/index.ts`, `sdk/package.json`, `scripts/build-schema-snapshot.ts`, `sdk/test/fixtures/schema-snapshot.json`, `sdk/API_COMPATIBILITY.md`, `core/test/docs/guide-frontmatter.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
