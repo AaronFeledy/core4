@@ -27,6 +27,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.HostPlatform).toBeDefined();
     expect(schema.ServiceInfo).toBeDefined();
     expect(schema.PluginManifest).toBeDefined();
+    expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
   });
 
@@ -47,6 +48,7 @@ describe("@lando/sdk package exports", () => {
       "HostPlatform",
       "ServiceInfo",
       "PluginManifest",
+      "Transcript",
     ] as const) {
       const jsonSchema = schema.getJsonSchema(schemaName);
 

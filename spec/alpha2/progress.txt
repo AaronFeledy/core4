@@ -28,6 +28,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Source-mapper fallback behavior stays header/context driven: preserve the generated frame, emit a `GuideSourceMapWarning` frame when `@source` / `@scenario` / `guideId` is missing, and fall back to whole-guide `bun run docs:scenario <guideId>` instead of deriving ids from generated paths.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
+- Scenario transcripts are persisted by `withScenarioContext` on `Effect.onExit` under `dist/transcripts/guides/<guideId>/<scenarioId>.json`; keep top-level `startedAt` / `finishedAt` ISO-valid and apply timestamp masking only to stdout/stderr-style transcript fields.
+
 ## Cross-PRD prerequisites
 
 - Alpha PRD-06 (library testing surface) must be shipped: `@lando/core/testing`, `TestRuntimeProvider`, in-process CLI runner.
@@ -1155,3 +1157,57 @@ Rationale: <link to the PR description that made the call>
   - When an AC cites another story by id ("from US-071"), the dependency is intentionally deferred; reviewers should match the AC text to the story boundary rather than reject as incomplete just because the artifact's upstream producer hasn't landed.
   - `if-no-files-found: ignore` on `actions/upload-artifact@v4` is the correct shape for a cross-story upload wiring where the producer ships in a later story — the step is a no-op until the producer arrives, and never fails CI in the meantime.
 ---
+
+## [2026-05-24 01:38 UTC] - Sync
+- Previous branch: us-070-guide-scenario-ci-gate
+- Previous PR: #167 https://github.com/AaronFeledy/core4/pull/167
+- Action: dispatched push (branch had 2 unpushed commits; push succeeded on retry; PR #167 was already MERGED with all CI green; local main rebased onto origin/main, skipping two stale progress-log commits from prior failed-push iterations)
+- Local main updated: yes (rebased to cfdf590, matches origin/main)
+- Branch after sync: main
+- Stash created: no (fast-path progress.txt conflict was resolved inline during rebase)
+---
+## [2026-05-24 01:38 UTC] - Push
+- Branch: us-070-guide-scenario-ci-gate
+- Push: skipped (branch was already on origin; PR opened from existing push)
+- Commit(s): 94975df docs: record US-070 review (no fixes; AC met, full suite green); f2e5ce6 feat: Add per-PR CI gate for guide scenarios
+- PR: #167 https://github.com/AaronFeledy/core4/pull/167 (created)
+---
+## [2026-05-24 01:38 UTC] - Babysit
+- PR: #167 https://github.com/AaronFeledy/core4/pull/167
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state: none
+---
+## 2026-05-24 02:03 UTC - US-071
+- Implemented internal guide scenario transcript persistence at `dist/transcripts/guides/<guideId>/<scenarioId>.json`, including the public `Transcript` Effect Schema, schema snapshot registration, teardown writes for pass/fail runs, run/fixture/verify/cleanup frame capture, render propagation, and redaction of secrets, scenario temp paths, and stdout/stderr timestamps before disk writes.
+- Files changed: `sdk/src/docs/transcript.ts`, `sdk/src/docs/components/index.ts`, `sdk/src/schema/index.ts`, `sdk/test/fixtures/schema-snapshot.json`, `sdk/API_COMPATIBILITY.md`, `scripts/build-schema-snapshot.ts`, `core/src/testing/scenario-context.ts`, `scripts/build-guide-scenarios.ts`, `core/test/testing/scenario-context.test.ts`, `core/test/docs/transcript.test.ts`, `core/test/codegen/guide-scenarios.test.ts`, `sdk/test/library/exports.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused transcript/schema/codegen tests passed (`bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts core/test/docs/transcript.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts`: 35 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1173 pass, 11 skip, 0 fail); manual QA via `bun run docs:scenario node-postgres --scenario reader-path` passed and produced `dist/transcripts/guides/node-postgres/reader-path.json` with `exitStatus: pass` and run/verify frames; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Scenario transcripts are written by `withScenarioContext` teardown, so tests that assert transcript files inside a temporary cwd must read them before restoring/removing that cwd.
+  - Transcript timestamps in the top-level envelope stay valid ISO8601 for schema validation; stdout/stderr timestamps are normalized to `<timestamp>` during redaction before write.
+  - Generated guide scenario assertions that now emit transcript verification frames need matching fixture expectations in `core/test/codegen/guide-scenarios.test.ts` whenever generator output changes.
+---
+## 2026-05-24 02:30 UTC - US-071 Review
+- Reviewed build commit b08c5e8 against US-071 AC; no source changes needed.
+- Files changed: spec/alpha2/progress.txt (this entry only).
+- `review-work` findings: none surfaced; focused review confirmed every AC item is satisfied (transcript write path, §13.2 schema registry + snapshot, TranscriptFrame union shapes, §19.6 redaction layering, `dist/`-gitignored path, green/red/redaction test classes, write-before-read redaction).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (482 files); focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts core/test/docs/transcript.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` → 35 pass / 0 fail; full `bun test` → 1173 pass / 11 skip / 0 fail.
+- **Learnings for future iterations:**
+  - `Effect.onExit` attached inside the `Effect.flatMap` after `Effect.acquireRelease` fires the transcript-write handler BEFORE the outer scope's release tears down the temp testDir — this ordering is what makes "transcript references `<testDir>` paths AND the directory is gone afterwards" both true in the same teardown.
+  - Timestamp masking keyed on `lowerKey.includes("stdout")` is intentional: it catches container fields like `runStdout` inside `verify` frames, not just literal `stdout` keys, which is what the redaction-class test exercises.
+---
+
+## [2026-05-24 02:18 UTC] - Push
+- Branch: us-071-scenario-transcripts
+- Push: pushed
+- Commit(s): 82e4156 docs: record US-071 review (no fixes; AC met, full suite green); b08c5e8 feat: Persist internal transcripts per scenario run
+- PR: #168 https://github.com/AaronFeledy/core4/pull/168 (created)
+---
+
+## [2026-05-24 02:35 UTC] - PR #168 Bugbot triage
+- CI/check triage: static-checks, bundled-codegen, library-api-tests, recipe-tests, schema-snapshot, guide-scenarios-linux-x64, and build-linux-x64 were passing; provider-integration-linux-x64 was still pending during triage; Cursor Bugbot was neutral/skipping after posting one review comment.
+- Review triage: accepted Bugbot's cleanup-frame transcript finding as real because scenario-body `Effect.onExit` persisted transcripts before generated `Effect.addFinalizer` cleanup frames ran.
+- Fix: closed the scenario body in an inner scope before persisting the transcript and added regression coverage proving cleanup frames appended from finalizers are present in `dist/transcripts/guides/**` output.

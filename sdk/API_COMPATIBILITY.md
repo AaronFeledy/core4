@@ -79,6 +79,12 @@
 - `ToolingVarLiteral`
 - `ToolingVarPrompt`
 - `ToolingVarSh`
+- `Transcript`
+- `TranscriptCleanupFrame`
+- `TranscriptFixtureFrame`
+- `TranscriptFrame`
+- `TranscriptRunFrame`
+- `TranscriptVerifyFrame`
 - `UseFixtureProps`
 - `VariableProps`
 - `VerifyProps`

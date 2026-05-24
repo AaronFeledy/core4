@@ -135,7 +135,7 @@ const renderCleanupFinalizers = (scenario: GuideScenarioNode, sourcePath: string
     .flatMap((step) => step.components.filter((component) => component.kind === "Cleanup"))
     .map(
       (component) =>
-        `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => Effect.void);`,
+        `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));`,
     )
     .join("\n");
 
@@ -167,9 +167,12 @@ const renderVerify = (
   const expected = component.props.expect === undefined ? undefined : renderMatcher(component.props.expect);
   if (component.props.event !== undefined) {
     const actual = `context.events.find((event) => event._tag === ${quote(component.props.event)})`;
-    return expected === undefined
-      ? `    expect(${actual}).toBeDefined();`
-      : `    expect(matchesExpected(${actual}, ${expected})).toBe(true);`;
+    return [
+      `    const actual = ${actual};`,
+      `    const matched = ${expected === undefined ? "actual !== undefined" : `matchesExpected(actual, ${expected})`};`,
+      `    yield* context.transcript.append({ kind: "verify", target: "event", matched, expected: ${expected ?? quote(component.props.event)}, actual });`,
+      "    expect(matched).toBe(true);",
+    ].join("\n");
   }
   if (component.props.command !== undefined) {
     return [
@@ -186,16 +189,20 @@ const renderVerify = (
     const filePath = interpolate(component.props.file, variables);
     return [
       `    const fileContent = yield* Effect.promise(() => Bun.file(join(context.testDir, ${quote(filePath)})).text());`,
-      ...(expected === undefined
-        ? ["    expect(fileContent).toBeDefined();"]
-        : [`    expect(matchesExpected(fileContent, ${expected})).toBe(true);`]),
+      `    const matched = ${expected === undefined ? "fileContent !== undefined" : `matchesExpected(fileContent, ${expected})`};`,
+      `    yield* context.transcript.append({ kind: "verify", target: "file", matched, expected: ${expected ?? quote(filePath)}, actual: fileContent });`,
+      "    expect(matched).toBe(true);",
     ].join("\n");
   }
   return [
     "    const failureForErrorTag = lastFailure ?? lastRun;",
     '    const failureText = typeof failureForErrorTag === "string" ? failureForErrorTag : JSON.stringify(failureForErrorTag);',
-    `    expect(((failureForErrorTag as { _tag?: string })?._tag ?? failureText)).toContain(${quote(component.props.errorTag ?? "")});`,
-    ...(expected === undefined ? [] : [`    expect(matchesExpected(failureText, ${expected})).toBe(true);`]),
+    "    const actual = (failureForErrorTag as { _tag?: string })?._tag ?? failureText;",
+    `    const matched = actual.includes(${quote(component.props.errorTag ?? "")})${
+      expected === undefined ? "" : ` && matchesExpected(failureText, ${expected})`
+    };`,
+    `    yield* context.transcript.append({ kind: "verify", target: "errorTag", matched, expected: ${quote(component.props.errorTag ?? "")}, actual });`,
+    "    expect(matched).toBe(true);",
   ].join("\n");
 };
 
@@ -263,7 +270,7 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
 
 test(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
   await Effect.runPromise(
-    withScenarioContext({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)} }, (context) =>
+    withScenarioContext({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;
         let lastFailure: unknown;

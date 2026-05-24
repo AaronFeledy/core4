@@ -31,6 +31,7 @@ const SDK_SCHEMA_NAMES = [
   "HiddenProps",
   "UseFixtureProps",
   "MatcherSchema",
+  "Transcript",
   "BootstrapLevel",
   "AppRef",
   "AppPlan",

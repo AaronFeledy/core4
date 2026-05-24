@@ -1,8 +1,9 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { type Cause, Chunk, Context, Effect, type Scope, Stream } from "effect";
+import { dirname, join } from "node:path";
+import { type Cause, Chunk, Context, Effect, Exit, Schema, type Scope, Stream } from "effect";
 
+import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
   FileIoError,
   FileNotFoundError,
@@ -12,6 +13,7 @@ import {
 } from "@lando/sdk/errors";
 import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
 
+import { redactDetails } from "../cli/redact.ts";
 import { FileSystemLive } from "../services/file-system.ts";
 import { CORE_VERSION } from "../version.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime.ts";
@@ -34,10 +36,7 @@ export interface ScenarioRunOptions {
   readonly answers?: Readonly<Record<string, string>>;
 }
 
-export interface ScenarioTranscriptFrame {
-  readonly kind: "run" | "event" | "message" | "note";
-  readonly data: unknown;
-}
+export type ScenarioTranscriptFrame = TranscriptFrame;
 
 export interface ScenarioTranscript {
   readonly frames: ReadonlyArray<ScenarioTranscriptFrame>;
@@ -53,6 +52,7 @@ export interface ScenarioFixtures {
 export interface ScenarioContext {
   readonly guideId: string;
   readonly scenarioId: string;
+  readonly render: boolean;
   readonly variant: Readonly<Record<string, never>>;
   readonly testDir: string;
   readonly runtime: TestRuntime;
@@ -72,6 +72,7 @@ export const ScenarioContext = Context.GenericTag<ScenarioContext>("@lando/core/
 export interface WithScenarioContextOptions {
   readonly guideId: string;
   readonly scenarioId: string;
+  readonly render?: boolean;
   readonly vars?: ReadonlyMap<string, ScenarioVariable>;
   readonly runtime?: TestRuntime;
   readonly runCli?: (
@@ -125,6 +126,66 @@ const fixtureNotFoundError = (name: string, candidates: ReadonlyArray<string>): 
   });
 
 const fixtureIoError = (path: string, message: string): FileIoError => new FileIoError({ message, path });
+
+const TIMESTAMP_PATTERN = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z\b|\b\d{10,13}\b/g;
+
+const stable = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => [key, stable(child)]),
+  );
+};
+
+const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
+  const redacted = redactDetails(value);
+  const sanitize = (input: unknown, key?: string): unknown => {
+    if (typeof input === "string") {
+      const withPath = input.split(testDir).join("<testDir>");
+      const lowerKey = key?.toLowerCase() ?? "";
+      return lowerKey === "stdout" || lowerKey === "stderr" || lowerKey.includes("stdout")
+        ? withPath.replace(TIMESTAMP_PATTERN, "<timestamp>")
+        : withPath;
+    }
+    if (Array.isArray(input)) return input.map((child) => sanitize(child, key));
+    if (input === null || typeof input !== "object") return input;
+    return Object.fromEntries(
+      Object.entries(input as Record<string, unknown>).map(([childKey, child]) => [
+        childKey,
+        sanitize(child, childKey),
+      ]),
+    );
+  };
+  return sanitize(redacted);
+};
+
+const transcriptPath = (guideId: string, scenarioId: string): string =>
+  join(process.cwd(), "dist", "transcripts", "guides", guideId, `${scenarioId}.json`);
+
+const persistTranscript = (
+  context: ScenarioContext,
+  startedAt: string,
+  exit: Exit.Exit<unknown, unknown>,
+): Effect.Effect<void> =>
+  Effect.tryPromise(async () => {
+    const finishedAt = new Date().toISOString();
+    const transcript = Schema.encodeSync(Transcript)({
+      guideId: context.guideId,
+      scenarioId: context.scenarioId,
+      render: context.render,
+      startedAt,
+      finishedAt,
+      durationMs: Math.max(0, new Date(finishedAt).getTime() - new Date(startedAt).getTime()),
+      exitStatus: Exit.isSuccess(exit) ? "pass" : "fail",
+      frames: context.transcript.frames,
+    });
+    const sanitized = sanitizeTranscriptValue(transcript, context.testDir);
+    const output = transcriptPath(context.guideId, context.scenarioId);
+    await mkdir(dirname(output), { recursive: true });
+    await writeFile(output, `${JSON.stringify(stable(sanitized), null, 2)}\n`);
+  }).pipe(Effect.orDie);
 
 const readBytes = (path: string): Effect.Effect<Uint8Array, FileSystemError, FileSystem> =>
   Effect.gen(function* () {
@@ -212,6 +273,7 @@ const createFixtureUse = (
   guideId: string,
   testDir: string,
   setWorkingDirectory: (path: string) => void,
+  transcriptFrames: ScenarioTranscriptFrame[],
 ): ScenarioFixtures["use"] => {
   const copied = new Set<string>();
 
@@ -235,6 +297,7 @@ const createFixtureUse = (
         Effect.sync(() => {
           copied.add(name);
           setWorkingDirectory(target);
+          transcriptFrames.push({ kind: "fixture", name, copiedTo: target });
         }),
       ),
       Effect.provide(FileSystemLive),
@@ -381,13 +444,22 @@ const createRunCli = (
           Effect.tryPromise(() => override(parseCommand(command), options));
 
   return (command, options) =>
-    runner(command, options).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          transcriptFrames.push({ kind: "run", data: result });
-        }),
-      ),
-    );
+    Effect.gen(function* () {
+      const started = Date.now();
+      const result = yield* runner(command, options);
+      const durationMs = Math.max(0, Date.now() - started);
+      yield* Effect.sync(() => {
+        transcriptFrames.push({
+          kind: "run",
+          command: result.command,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exit: result.exitCode,
+          durationMs,
+        });
+      });
+      return result;
+    });
 };
 
 const makeScenarioContext = (options: WithScenarioContextOptions, testDir: string): ScenarioContext => {
@@ -403,6 +475,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
   return {
     guideId: options.guideId,
     scenarioId: options.scenarioId,
+    render: options.render ?? true,
     variant: {},
     testDir,
     runtime,
@@ -415,7 +488,7 @@ const makeScenarioContext = (options: WithScenarioContextOptions, testDir: strin
       append: (frame) => Effect.sync(() => transcriptFrames.push(frame)),
     },
     fixtures: {
-      use: createFixtureUse(options.guideId, testDir, setWorkingDirectory),
+      use: createFixtureUse(options.guideId, testDir, setWorkingDirectory, transcriptFrames),
     },
   };
 };
@@ -440,7 +513,13 @@ export const withScenarioContext = <A, E, R>(
     ).pipe(
       Effect.flatMap((testDir) => {
         const context = makeScenarioContext(options, testDir);
-        return body(context).pipe(Effect.provideService(ScenarioContext, context));
+        const startedAt = new Date().toISOString();
+        // Inner Effect.scoped is load-bearing: it closes the body's scope
+        // (running `addFinalizer` callbacks that push cleanup frames) BEFORE
+        // Effect.onExit fires persistTranscript. Do not remove.
+        return Effect.scoped(body(context).pipe(Effect.provideService(ScenarioContext, context))).pipe(
+          Effect.onExit((exit) => persistTranscript(context, startedAt, exit)),
+        );
       }),
     ),
   );

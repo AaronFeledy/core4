@@ -166,16 +166,19 @@ describe("build-guide-scenarios MDX walker", () => {
       );
       expect(firstContent).toContain('import { withScenarioContext } from "@lando/core/testing";');
       expect(firstContent).toContain(
-        'withScenarioContext({ guideId: "node-postgres", scenarioId: "start-app" }',
+        'withScenarioContext({ guideId: "node-postgres", scenarioId: "start-app", render: true }',
       );
       expect(firstContent).toContain("// @display: appName = Node/Postgres");
       expect(firstContent).toContain(
         'context.vars.set("appName", { value: "node-postgres", display: "Node/Postgres" });',
       );
-      expect(firstContent).toContain("yield* Effect.addFinalizer(() => Effect.void);");
+      expect(firstContent).toContain(
+        'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',
+      );
       expect(firstContent).toContain('yield* context.fixtures.use("basic-app");');
       expect(firstContent).toContain('context.runCli("version", {');
       expect(firstContent).toContain('context.events.find((event) => event._tag === "post-start")');
+      expect(firstContent).toContain('yield* context.transcript.append({ kind: "verify", target: "event"');
 
       const hiddenContent = await Bun.file(
         join(root, "test/scenarios/generated/guides/multi-guide/hidden-regression.test.ts"),
