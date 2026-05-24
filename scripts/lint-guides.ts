@@ -29,15 +29,18 @@ const ALPHA_2_COMPONENTS = new Set([
   "UseFixture",
 ]);
 
-const DEFERRED_RULES = [
-  // Deferred to Beta; this command enforces only the six hard rules below.
-  "display:execute divergence cap (§19.5)",
-  "standalone <Verify> matcher-schema deep validation",
-  "event-name registry membership",
-  "<Inline> density caps",
-  "<Hidden> content shape",
-] as const;
-void DEFERRED_RULES;
+// Rules deferred to Phase 3 Beta per PRD-A2-04 US-072
+// (`spec/alpha2/prd-alpha2-04-lint-ci-and-recipe-readme.md`). This script
+// enforces ONLY the six Alpha 2 hard rules implemented below; the following
+// rules are explicitly NOT enforced here and require a new PRD story to add:
+//   1. display:execute divergence cap (§19.5)
+//   2. standalone <Verify> matcher-schema deep validation
+//      (codegen-time schema check happens in PRD-A2-02 US-063;
+//       the standalone-pass coverage is deferred)
+//   3. event-name registry membership (no registry exists in Alpha 2)
+//   4. <Inline> density caps
+//   5. <Hidden> content shape (<Hidden> is uniformly schema-rejected
+//      per PRD-A2-01 US-061)
 
 type MdxNode = {
   readonly type: string;
@@ -126,7 +129,7 @@ const elementChildren = (node: MdxNode): ReadonlyArray<MdxNode> =>
   (node.children ?? []).filter((child) => child.type === "mdxJsxFlowElement");
 
 const walkElements = (node: MdxNode, visitor: (node: MdxNode) => void): void => {
-  if (node.type === "mdxJsxFlowElement") visitor(node);
+  if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") visitor(node);
   for (const child of node.children ?? []) walkElements(child, visitor);
 };
 

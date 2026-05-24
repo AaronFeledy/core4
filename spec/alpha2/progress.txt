@@ -568,6 +568,7 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: yes (loop-sync-rejected-improvement-20260523030119)
 ---
+<<<<<<< Updated upstream
 ## [2026-05-23 21:39 UTC] - Sync
 - Previous branch: us-067-docs-scenario-command
 - Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
@@ -1238,4 +1239,36 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - `diataxis:` is authored in MDX frontmatter but is not part of the Alpha 2 `GuideFrontmatter` schema; lint must validate it separately rather than passing it into the schema decoder.
   - Full `bun test` expects the compiled binary at `core/dist/lando`; run `bun run build` first if the checkout was cleaned.
+=======
+## [2026-05-23 03:21 UTC] - Push
+- Branch: us-062-deterministic-mdx-walker
+- Push: pushed
+- Commit(s): 27e7b6e feat: Implement deterministic MDX walker for build-guide-scenarios
+- PR: #159 https://github.com/AaronFeledy/core4/pull/159 (created)
+---
+## [2026-05-23 03:21 UTC] - Babysit
+- PR: #159 https://github.com/AaronFeledy/core4/pull/159
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: neutral (Cursor Bugbot posted 1 non-blocking potential issue)
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: `spec/alpha2/progress.txt` updated; local story branch deleted; a local exploratory fix commit was discarded with the deleted branch
+>>>>>>> Stashed changes
+---
+
+## 2026-05-24 03:10 UTC - US-072 Review
+- Reviewed build commit a15dc98 against PRD-A2-04 US-072. Ran `Skill(review-work, HEAD)` with two parallel agents: a merged Oracle (goal+code+security) and a context miner.
+- Files changed: `scripts/lint-guides.ts`, `core/test/scripts/lint-guides.test.ts`, `core/test/lint/guides/beta-inline-component.mdx` (new fixture).
+- `review-work` findings:
+  - fixed (BLOCKING, context miner): deferred-rule comment in `scripts/lint-guides.ts` now links back to PRD-A2-04 (`spec/alpha2/prd-alpha2-04-lint-ci-and-recipe-readme.md`) per the explicit AC; also replaced the `void DEFERRED_RULES` const with a plain top-of-file comment block.
+  - fixed (MAJOR, Oracle): `walkElements` now visits `mdxJsxTextElement` in addition to `mdxJsxFlowElement`, so rule (5) "no Beta-only component appears anywhere" catches inline JSX like `<Inline>` in prose. Added regression fixture `core/test/lint/guides/beta-inline-component.mdx` + a new test asserting the inline `<Inline>` is reported with a source-mapped frame at line 9, col 33.
+  - rejected (MINOR, Oracle): scenario/step "direct-children-only" scope. The implementation matches the codegen contract and the PRD wording ("every `<Scenario>` unique within a guide", "every `<Step>` unique within its containing scenario"); fixtures and tests are intentionally structural. Walking descendants would expand lint surface beyond AC.
+  - rejected (MINOR, Oracle): `propsOf` throws on dynamic MDX expression attributes. No Alpha 2 fixture or real guide exercises dynamic expression props; the lint allow-list is six explicit rules and adding a graceful-failure path for unsupported expressions is a Beta-or-later change per the PRD non-goals.
+  - rejected (MINOR, Oracle): reuse of `parseLandofile` for YAML frontmatter parsing. Context miner confirmed `parseLandofile` is a limited YAML-subset parser without landofile-only top-level gates, and `scripts/build-guide-scenarios.ts` already uses it for guide frontmatter; switching parsers would create a divergence between codegen and lint without an AC requiring it.
+  - rejected (NITPICK, Oracle): tighten `beta-component.mdx` to a single unsupported component. The fixture's `<Tabs>` + `<Tab>` produces two diagnostics; the existing test asserts `diagnostics[0]` verbatim and still proves rule (5) for flow elements. Inline coverage is now exercised by the new dedicated fixture.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (484 files); `bun run lint:guides` passed; focused `bun test core/test/scripts/lint-guides.test.ts` → 8 pass / 0 fail; full `bun test` → 1181 pass / 11 skip / 1 flaky fail (`compiled CLI version command > prints the core package version`; passes when run in isolation against this branch AND against the build commit when the rest of the suite is not parallel-loading the compiled binary tests — pre-existing, unrelated to MDX lint changes).
+- **Learnings for future iterations:**
+  - MDX inline JSX (`<Inline value="x" />` inside a paragraph) is parsed as `mdxJsxTextElement`, not `mdxJsxFlowElement`. Any "Beta-only component anywhere" gate must walk BOTH types or it silently misses inline-position violations. The diagnostic column for an inline element is the column of the `<` character within the surrounding paragraph line, not the line's first non-whitespace column.
+  - AC bullets that say "documented … with links back to PRD-XX" are checked literally by the context-miner review path; satisfy them with the source PRD path AND the story id in the comment, not just a deferred-rule list.
 ---

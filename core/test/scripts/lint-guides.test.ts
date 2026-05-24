@@ -59,6 +59,14 @@ describe("lint:guides", () => {
     );
   });
 
+  test("reports inline Beta-only components anywhere in prose", async () => {
+    const diagnostics = await lintFixture("beta-inline-component");
+
+    expect(diagnostics).toEqual([
+      "core/test/lint/guides/beta-inline-component.mdx:9:33: guide.component.beta: <Inline> is not supported in Alpha 2. <Inline> ships in Phase 3 Beta — see spec/ROADMAP.md.",
+    ]);
+  });
+
   test("reports rendered scenarios in unsupported diataxis buckets", async () => {
     const diagnostics = await lintFixture("bad-diataxis");
 
