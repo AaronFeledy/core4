@@ -1155,3 +1155,12 @@ Rationale: <link to the PR description that made the call>
   - When an AC cites another story by id ("from US-071"), the dependency is intentionally deferred; reviewers should match the AC text to the story boundary rather than reject as incomplete just because the artifact's upstream producer hasn't landed.
   - `if-no-files-found: ignore` on `actions/upload-artifact@v4` is the correct shape for a cross-story upload wiring where the producer ships in a later story — the step is a no-op until the producer arrives, and never fails CI in the meantime.
 ---
+
+## [2026-05-24 01:38 UTC] - Sync
+- Previous branch: us-070-guide-scenario-ci-gate
+- Previous PR: #167 https://github.com/AaronFeledy/core4/pull/167
+- Action: dispatched push (branch had 2 unpushed commits; push succeeded on retry; PR #167 was already MERGED with all CI green; local main rebased onto origin/main, skipping two stale progress-log commits from prior failed-push iterations)
+- Local main updated: yes (rebased to cfdf590, matches origin/main)
+- Branch after sync: main
+- Stash created: no (fast-path progress.txt conflict was resolved inline during rebase)
+---
