@@ -144,6 +144,41 @@ jobs:
       - name: Run recipe test layer
         run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
+  guide-scenarios-linux-x64:
+    needs: [static-checks]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Run generated guide scenarios
+        run: bun test test/scenarios/generated/guides/**
+
+      - name: Upload guide scenario transcripts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guide-scenario-transcripts-\${{ github.run_id }}.zip
+          path: dist/transcripts/guides/**/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-linux-x64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
     runs-on: ubuntu-22.04
