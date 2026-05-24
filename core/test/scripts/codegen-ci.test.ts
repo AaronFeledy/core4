@@ -129,7 +129,7 @@ describe("ci workflow codegen", () => {
     const releaseWorkflowGenerator = await readFile(releaseWorkflowGeneratorPath, "utf8");
 
     const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-    expect(versionFileMatches).toBe(7);
+    expect(versionFileMatches).toBe(8);
     expect(workflow).not.toContain("bun-version: ");
     expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
     expect(releaseWorkflow).not.toContain("bun-version: ");
@@ -204,6 +204,42 @@ describe("ci workflow codegen", () => {
     );
     expect(workflow).toContain(
       "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
+  });
+
+  test("generates the guide scenario CI gate", async () => {
+    await runCodegen();
+
+    const workflow = await readFile(workflowPath, "utf8");
+
+    expect(workflow).toContain("guide-scenarios-linux-x64:");
+    expect(workflow).toContain("needs: [static-checks]");
+    expect(workflow).toContain("run: bun run codegen");
+    expect(workflow).toContain("run: bun run typecheck");
+    expect(workflow).toContain("run: bun run lint:guides");
+    expect(workflow).toContain("run: bun test test/scenarios/generated/guides/**");
+    expect(workflow).toContain("name: guide-scenario-transcripts-${{ github.run_id }}.zip");
+    expect(workflow).toContain("path: dist/transcripts/guides/**/*.json");
+    expect(workflow).toContain("retention-days: 7");
+
+    expect(
+      workflow.indexOf("run: bun install --frozen-lockfile", workflow.indexOf("guide-scenarios-linux-x64")),
+    ).toBeLessThan(workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")));
+    expect(
+      workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")),
+    ).toBeLessThan(workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")));
+    expect(
+      workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
+    ).toBeLessThan(
+      workflow.indexOf("run: bun run lint:guides", workflow.indexOf("guide-scenarios-linux-x64")),
+    );
+    expect(
+      workflow.indexOf("run: bun run lint:guides", workflow.indexOf("guide-scenarios-linux-x64")),
+    ).toBeLessThan(
+      workflow.indexOf(
+        "run: bun test test/scenarios/generated/guides/**",
+        workflow.indexOf("guide-scenarios-linux-x64"),
+      ),
     );
   });
 

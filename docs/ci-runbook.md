@@ -86,13 +86,14 @@ Default Alpha CI is Linux x64 only. No Windows or linux-arm64 release matrix is 
 
 ## Branch protection
 
-Protect `main` in GitHub with required status checks enabled. All seven required status checks must pass before a pull request can merge to `main`:
+Protect `main` in GitHub with required status checks enabled. All eight required status checks must pass before a pull request can merge to `main`:
 
 - `static-checks`
 - `schema-snapshot`
 - `bundled-codegen`
 - `library-api-tests`
 - `recipe-tests`
+- `guide-scenarios-linux-x64`
 - `build-linux-x64`
 - `provider-integration-linux-x64`
 

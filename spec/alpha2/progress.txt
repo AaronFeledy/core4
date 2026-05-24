@@ -1127,3 +1127,21 @@ Rationale: <link to the PR description that made the call>
 - Local main / branch refreshed: no
 - Remaining local state, if any: local `main` is ahead of `origin/main` by one progress-log commit; this report is folded into that local progress-log commit
 ---
+
+## [2026-05-23 18:51] - Sync
+- Previous branch: us-069-rerun-command-on-failure
+- Previous PR: #166 https://github.com/AaronFeledy/core4/pull/166
+- Action: caught up after prior merge (PR #166 already MERGED)
+- Local main updated: yes (pushed 1 ahead progress-log commit to origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+## 2026-05-24 00:05 UTC - US-070
+- Implemented the generated `guide-scenarios-linux-x64` CI job with the required codegen → typecheck → `lint:guides` → generated guide scenario test order and failure-only transcript artifact upload.
+- Files changed: `scripts/build-ci-workflow.ts`, `.github/workflows/ci.yml`, `core/test/build/ci-workflow.test.ts`, `core/test/scripts/codegen-ci.test.ts`, `core/test/build/branch-protection.test.ts`, `docs/ci-runbook.md`, `package.json`, `AGENTS.md`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun run scripts/build-ci-workflow.ts` regenerated the workflow and the `guide-scenarios-linux-x64` block was inspected in `.github/workflows/ci.yml`; `bun run lint:guides` executed successfully through the Alpha 2 generator-backed wiring; focused `bun test core/test/build/ci-workflow.test.ts core/test/build/branch-protection.test.ts core/test/scripts/codegen-ci.test.ts` passed; `bun run typecheck` passed; `bun run lint` passed; full `bun test` passed (1169 pass, 11 skip, 0 fail); `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - CI job additions need lock-step updates in the generator, generated workflow, branch-protection runbook, branch-protection test, and workflow/codegen tests.
+  - GitHub Actions expressions inside the TypeScript workflow template must escape the interpolation marker as `\${{ ... }}` so the generated YAML keeps `${{ ... }}`.
+  - US-070 wires the CI call to `bun run lint:guides` and keeps it executable through the existing guide-scenario generator; US-072 still owns the lint-specific rule implementation.
+---

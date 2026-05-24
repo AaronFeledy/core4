@@ -112,6 +112,44 @@ describe("ci workflow", () => {
     );
   });
 
+  test("runs generated guide scenarios as a branch-protectable Linux x64 gate", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
+
+    expect(guideScenarios).toContain("    needs: [static-checks]");
+    expect(guideScenarios).toContain("    runs-on: ubuntu-22.04");
+    expect(guideScenarios).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(guideScenarios).toContain("          bun-version-file: .bun-version");
+    expect(guideScenarios).toContain("        run: bun install --frozen-lockfile");
+    expect(guideScenarios).toContain("        run: bun run codegen");
+    expect(guideScenarios).toContain("        run: bun run typecheck");
+    expect(guideScenarios).toContain("        run: bun run lint:guides");
+    expect(guideScenarios).toContain("        run: bun test test/scenarios/generated/guides/**");
+    expect(guideScenarios).toContain("        if: failure()");
+    expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");
+    expect(guideScenarios).toContain("          name: guide-scenario-transcripts-${{ github.run_id }}.zip");
+    expect(guideScenarios).toContain("          path: dist/transcripts/guides/**/*.json");
+    expect(guideScenarios).toContain("          if-no-files-found: ignore");
+    expect(guideScenarios).toContain("          retention-days: 7");
+
+    expect(guideScenarios.indexOf("bun install --frozen-lockfile")).toBeLessThan(
+      guideScenarios.indexOf("bun run codegen"),
+    );
+    expect(guideScenarios.indexOf("bun run codegen")).toBeLessThan(
+      guideScenarios.indexOf("bun run typecheck"),
+    );
+    expect(guideScenarios.indexOf("bun run typecheck")).toBeLessThan(
+      guideScenarios.indexOf("bun run lint:guides"),
+    );
+    expect(guideScenarios.indexOf("bun run lint:guides")).toBeLessThan(
+      guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
+    );
+    expect(guideScenarios.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
+      guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
+    );
+  });
+
   test("runs provider integration tests against a private Podman socket", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
