@@ -1199,3 +1199,10 @@ Rationale: <link to the PR description that made the call>
   - `Effect.onExit` attached inside the `Effect.flatMap` after `Effect.acquireRelease` fires the transcript-write handler BEFORE the outer scope's release tears down the temp testDir — this ordering is what makes "transcript references `<testDir>` paths AND the directory is gone afterwards" both true in the same teardown.
   - Timestamp masking keyed on `lowerKey.includes("stdout")` is intentional: it catches container fields like `runStdout` inside `verify` frames, not just literal `stdout` keys, which is what the redaction-class test exercises.
 ---
+
+## [2026-05-24 02:18 UTC] - Push
+- Branch: us-071-scenario-transcripts
+- Push: pushed
+- Commit(s): 82e4156 docs: record US-071 review (no fixes; AC met, full suite green); b08c5e8 feat: Persist internal transcripts per scenario run
+- PR: #168 https://github.com/AaronFeledy/core4/pull/168 (created)
+---
