@@ -1164,3 +1164,18 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: no (fast-path progress.txt conflict was resolved inline during rebase)
 ---
+## [2026-05-24 01:38 UTC] - Push
+- Branch: us-070-guide-scenario-ci-gate
+- Push: skipped (branch was already on origin; PR opened from existing push)
+- Commit(s): 94975df docs: record US-070 review (no fixes; AC met, full suite green); f2e5ce6 feat: Add per-PR CI gate for guide scenarios
+- PR: #167 https://github.com/AaronFeledy/core4/pull/167 (created)
+---
+## [2026-05-24 01:38 UTC] - Babysit
+- PR: #167 https://github.com/AaronFeledy/core4/pull/167
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state: none
+---
