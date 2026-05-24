@@ -1206,3 +1206,8 @@ Rationale: <link to the PR description that made the call>
 - Commit(s): 82e4156 docs: record US-071 review (no fixes; AC met, full suite green); b08c5e8 feat: Persist internal transcripts per scenario run
 - PR: #168 https://github.com/AaronFeledy/core4/pull/168 (created)
 ---
+
+## [2026-05-24 02:35 UTC] - PR #168 Bugbot triage
+- CI/check triage: static-checks, bundled-codegen, library-api-tests, recipe-tests, schema-snapshot, guide-scenarios-linux-x64, and build-linux-x64 were passing; provider-integration-linux-x64 was still pending during triage; Cursor Bugbot was neutral/skipping after posting one review comment.
+- Review triage: accepted Bugbot's cleanup-frame transcript finding as real because scenario-body `Effect.onExit` persisted transcripts before generated `Effect.addFinalizer` cleanup frames ran.
+- Fix: closed the scenario body in an inner scope before persisting the transcript and added regression coverage proving cleanup frames appended from finalizers are present in `dist/transcripts/guides/**` output.

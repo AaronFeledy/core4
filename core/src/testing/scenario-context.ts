@@ -514,8 +514,10 @@ export const withScenarioContext = <A, E, R>(
       Effect.flatMap((testDir) => {
         const context = makeScenarioContext(options, testDir);
         const startedAt = new Date().toISOString();
-        return body(context).pipe(
-          Effect.provideService(ScenarioContext, context),
+        // Inner Effect.scoped is load-bearing: it closes the body's scope
+        // (running `addFinalizer` callbacks that push cleanup frames) BEFORE
+        // Effect.onExit fires persistTranscript. Do not remove.
+        return Effect.scoped(body(context).pipe(Effect.provideService(ScenarioContext, context))).pipe(
           Effect.onExit((exit) => persistTranscript(context, startedAt, exit)),
         );
       }),

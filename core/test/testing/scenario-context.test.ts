@@ -99,6 +99,36 @@ describe("withScenarioContext", () => {
     ]);
   });
 
+  test("persists cleanup frames pushed from Effect.addFinalizer", async () => {
+    const transcript = await withTempCwd(async (root) => {
+      const transcriptPath = join(
+        root,
+        "dist",
+        "transcripts",
+        "guides",
+        "node-postgres",
+        "transcript-cleanup.json",
+      );
+      await Effect.runPromise(
+        withScenarioContext({ guideId: "node-postgres", scenarioId: "transcript-cleanup" }, (context) =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() =>
+              context.transcript.append({ kind: "cleanup", command: [], exit: 0 }),
+            );
+            yield* context.runCli(["version"]);
+            return undefined;
+          }),
+        ),
+      );
+      return JSON.parse(await readFile(transcriptPath, "utf8")) as Record<string, unknown>;
+    });
+
+    expect(transcript.frames).toEqual([
+      expect.objectContaining({ kind: "run", command: ["version"] }),
+      expect.objectContaining({ kind: "cleanup", command: [], exit: 0 }),
+    ]);
+  });
+
   test("writes a redacted failure transcript before removing testDir", async () => {
     const result = await withTempCwd(async (root) => {
       const transcriptPath = join(
