@@ -29,6 +29,7 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
 - Scenario transcripts are persisted by `withScenarioContext` on `Effect.onExit` under `dist/transcripts/guides/<guideId>/<scenarioId>.json`; keep top-level `startedAt` / `finishedAt` ISO-valid and apply timestamp masking only to stdout/stderr-style transcript fields.
+- `lint:guides` reuses `discoverGuideMdxFiles` but performs its own lightweight MDX walk so it can aggregate multiple source-mapped diagnostics; `diataxis:` is independent frontmatter metadata and must be stripped before decoding with `GuideFrontmatter`.
 
 ## Cross-PRD prerequisites
 
@@ -1229,4 +1230,12 @@ Rationale: <link to the PR description that made the call>
 - Local main updated: yes (already at origin/main)
 - Branch after sync: main
 - Stash created: no
+---
+## 2026-05-23 23:40 - US-072
+- Implemented the minimal `bun run lint:guides` command with source-mapped diagnostics for frontmatter validation, duplicate scenario ids, hidden-scenario reasons, duplicate step names, Beta-only components, and rendered scenarios in unsupported `diataxis:` buckets.
+- Files changed: `scripts/lint-guides.ts`, `package.json`, `core/test/scripts/lint-guides.test.ts`, `core/test/lint/guides/*.mdx`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; focused `bun test core/test/scripts/lint-guides.test.ts` passed; `bun run build` passed; full `bun test --reporter=dots` passed after build (1181 pass, 11 skip, 0 fail); `bun run lint:guides` passed; manual red-path QA with a temporary broken guide exited 1 and printed duplicate-scenario plus diataxis source frames. `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - `diataxis:` is authored in MDX frontmatter but is not part of the Alpha 2 `GuideFrontmatter` schema; lint must validate it separately rather than passing it into the schema decoder.
+  - Full `bun test` expects the compiled binary at `core/dist/lando`; run `bun run build` first if the checkout was cleaned.
 ---

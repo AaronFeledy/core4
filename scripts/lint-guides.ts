@@ -1,0 +1,326 @@
+#!/usr/bin/env bun
+import { dirname, resolve } from "node:path";
+
+import { Effect, Either } from "effect";
+import remarkFrontmatter from "remark-frontmatter";
+import remarkMdx from "remark-mdx";
+import remarkParse from "remark-parse";
+import { unified } from "unified";
+
+import { parseLandofile } from "../core/src/landofile/parser.ts";
+import { decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
+import {
+  GuideFrontmatterValidationError,
+  GuideHiddenScenarioReasonError,
+  NotImplementedError,
+} from "../sdk/src/errors/index.ts";
+import { discoverGuideMdxFiles } from "./build-guide-scenarios.ts";
+
+const REPO_ROOT = resolve(import.meta.dirname, "..");
+
+const ALPHA_2_COMPONENTS = new Set([
+  "Guide",
+  "Scenario",
+  "Step",
+  "Run",
+  "Verify",
+  "Cleanup",
+  "Variable",
+  "UseFixture",
+]);
+
+const DEFERRED_RULES = [
+  // Deferred to Beta; this command enforces only the six hard rules below.
+  "display:execute divergence cap (§19.5)",
+  "standalone <Verify> matcher-schema deep validation",
+  "event-name registry membership",
+  "<Inline> density caps",
+  "<Hidden> content shape",
+] as const;
+void DEFERRED_RULES;
+
+type MdxNode = {
+  readonly type: string;
+  readonly name?: string | null;
+  readonly value?: unknown;
+  readonly attributes?: ReadonlyArray<MdxAttribute>;
+  readonly children?: ReadonlyArray<MdxNode>;
+  readonly position?: { readonly start?: { readonly line?: number; readonly column?: number } };
+};
+
+type MdxAttribute = {
+  readonly type: string;
+  readonly name?: string;
+  readonly value?:
+    | string
+    | null
+    | { readonly type?: string; readonly value?: string; readonly data?: unknown };
+};
+
+export interface GuideLintDiagnostic {
+  readonly sourcePath: string;
+  readonly line: number;
+  readonly column: number;
+  readonly code: string;
+  readonly message: string;
+}
+
+export interface GuideLintResult {
+  readonly diagnostics: ReadonlyArray<GuideLintDiagnostic>;
+}
+
+const processor = unified().use(remarkParse).use(remarkMdx).use(remarkFrontmatter, ["yaml"]);
+
+const lineOf = (node: MdxNode): number => node.position?.start?.line ?? 1;
+const columnOf = (node: MdxNode): number => node.position?.start?.column ?? 1;
+
+const expressionToValue = (expression: string): unknown => {
+  const trimmed = expression.trim();
+  if (trimmed === "true") return true;
+  if (trimmed === "false") return false;
+  if (trimmed === "null") return null;
+  if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1);
+  }
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const jsonish = trimmed.replace(/([{,]\s*)([A-Za-z_$][\w$]*)(\s*:)/g, '$1"$2"$3').replace(/'/g, '"');
+    return JSON.parse(jsonish) as unknown;
+  }
+  throw new Error(`Unsupported MDX attribute expression: ${expression}`);
+};
+
+const propsOf = (node: MdxNode): Record<string, unknown> => {
+  const props: Record<string, unknown> = {};
+  for (const attribute of node.attributes ?? []) {
+    if (attribute.type !== "mdxJsxAttribute" || attribute.name === undefined) continue;
+    if (attribute.value === null || attribute.value === undefined) {
+      props[attribute.name] = true;
+    } else if (typeof attribute.value === "string") {
+      props[attribute.name] = attribute.value;
+    } else {
+      props[attribute.name] = expressionToValue(attribute.value.value ?? "");
+    }
+  }
+  return props;
+};
+
+const firstYaml = (
+  root: MdxNode,
+): { readonly value: string | undefined; readonly node: MdxNode | undefined } => {
+  const node = root.children?.find((child) => child.type === "yaml");
+  return { value: node?.value as string | undefined, node };
+};
+
+const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<string, unknown> => {
+  if (yaml === undefined) return {};
+  const value = Effect.runSync(parseLandofile({ file: sourcePath, content: yaml, cwd: dirname(sourcePath) }));
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+};
+
+const elementChildren = (node: MdxNode): ReadonlyArray<MdxNode> =>
+  (node.children ?? []).filter((child) => child.type === "mdxJsxFlowElement");
+
+const walkElements = (node: MdxNode, visitor: (node: MdxNode) => void): void => {
+  if (node.type === "mdxJsxFlowElement") visitor(node);
+  for (const child of node.children ?? []) walkElements(child, visitor);
+};
+
+const diagnostic = (
+  sourcePath: string,
+  node: MdxNode,
+  code: string,
+  message: string,
+): GuideLintDiagnostic => ({
+  sourcePath,
+  line: lineOf(node),
+  column: columnOf(node),
+  code,
+  message,
+});
+
+const formatErrorMessage = (error: unknown): string => {
+  if (error instanceof NotImplementedError) return `${error.message} ${error.remediation}`;
+  if (error instanceof GuideFrontmatterValidationError) return `${error.message} ${error.remediation}`;
+  if (error instanceof GuideHiddenScenarioReasonError) return `${error.message} ${error.remediation}`;
+  return error instanceof Error ? error.message : String(error);
+};
+
+const validateFrontmatter = (
+  sourcePath: string,
+  root: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): Record<string, unknown> => {
+  const yaml = firstYaml(root);
+  let frontmatter: Record<string, unknown>;
+  try {
+    frontmatter = parseFrontmatter(sourcePath, yaml.value);
+  } catch (error) {
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        yaml.node ?? root,
+        "guide.frontmatter",
+        `Invalid frontmatter: ${formatErrorMessage(error)}`,
+      ),
+    );
+    return {};
+  }
+
+  const { diataxis: _diataxis, ...schemaFrontmatter } = frontmatter;
+  const decoded = decodeGuideFrontmatterEither(schemaFrontmatter);
+  if (Either.isLeft(decoded)) {
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        yaml.node ?? root,
+        "guide.frontmatter",
+        `Invalid frontmatter: ${formatErrorMessage(decoded.left)}`,
+      ),
+    );
+  }
+  return frontmatter;
+};
+
+const lintScenarioIds = (
+  sourcePath: string,
+  guide: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): ReadonlyArray<MdxNode> => {
+  const scenarios = elementChildren(guide).filter((child) => child.name === "Scenario");
+  const seen = new Set<string>();
+  for (const scenario of scenarios) {
+    const id = propsOf(scenario).id;
+    if (typeof id !== "string") continue;
+    if (seen.has(id)) {
+      diagnostics.push(
+        diagnostic(sourcePath, scenario, "guide.scenario.duplicate-id", `Duplicate <Scenario id="${id}">.`),
+      );
+      continue;
+    }
+    seen.add(id);
+  }
+  return scenarios;
+};
+
+const lintHiddenScenarioReason = (
+  sourcePath: string,
+  scenarios: ReadonlyArray<MdxNode>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  for (const scenario of scenarios) {
+    const props = propsOf(scenario);
+    if (props.render !== false) continue;
+    if (typeof props.reason === "string" && props.reason.length >= 8) continue;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        scenario,
+        "guide.scenario.hidden-reason",
+        "<Scenario render={false}> requires a `reason` of at least 8 characters per §19.9.",
+      ),
+    );
+  }
+};
+
+const lintStepNames = (
+  sourcePath: string,
+  scenarios: ReadonlyArray<MdxNode>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  for (const scenario of scenarios) {
+    const seen = new Set<string>();
+    for (const step of elementChildren(scenario).filter((child) => child.name === "Step")) {
+      const name = propsOf(step).name;
+      if (typeof name !== "string") continue;
+      if (seen.has(name)) {
+        diagnostics.push(
+          diagnostic(sourcePath, step, "guide.step.duplicate-name", `Duplicate <Step name="${name}">.`),
+        );
+        continue;
+      }
+      seen.add(name);
+    }
+  }
+};
+
+const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<GuideLintDiagnostic>): void => {
+  walkElements(root, (node) => {
+    if (node.name === undefined || node.name === null || ALPHA_2_COMPONENTS.has(node.name)) return;
+    const remediation =
+      node.name === "Hidden"
+        ? "Move this coverage into a colocated <Scenario render={false}> per §19.9."
+        : `<${node.name}> ships in Phase 3 Beta — see spec/ROADMAP.md.`;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        node,
+        "guide.component.beta",
+        `<${node.name}> is not supported in Alpha 2. ${remediation}`,
+      ),
+    );
+  });
+};
+
+const scenarioRenders = (scenario: MdxNode): boolean => propsOf(scenario).render !== false;
+
+const lintDiataxis = (
+  sourcePath: string,
+  guide: MdxNode | undefined,
+  frontmatter: Record<string, unknown>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  if (!Object.hasOwn(frontmatter, "diataxis")) return;
+  if (guide === undefined || !elementChildren(guide).some(scenarioRenders)) return;
+  if (frontmatter.diataxis === "tutorial" || frontmatter.diataxis === "how-to") return;
+  diagnostics.push(
+    diagnostic(
+      sourcePath,
+      guide,
+      "guide.diataxis",
+      "`diataxis:` must be `tutorial` or `how-to` for guides containing rendered scenarios.",
+    ),
+  );
+};
+
+export const lintGuideContent = (sourcePath: string, content: string): GuideLintResult => {
+  const diagnostics: Array<GuideLintDiagnostic> = [];
+  const root = processor.parse(content) as MdxNode;
+  const frontmatter = validateFrontmatter(sourcePath, root, diagnostics);
+  const guide = elementChildren(root).find((child) => child.name === "Guide");
+  lintComponents(sourcePath, root, diagnostics);
+  const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
+  lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
+  lintStepNames(sourcePath, scenarios, diagnostics);
+  lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
+  return { diagnostics };
+};
+
+export const lintGuides = async (root = REPO_ROOT): Promise<GuideLintResult> => {
+  const diagnostics: Array<GuideLintDiagnostic> = [];
+  const files = await discoverGuideMdxFiles(root);
+  for (const sourcePath of files) {
+    const result = lintGuideContent(sourcePath, await Bun.file(resolve(root, sourcePath)).text());
+    diagnostics.push(...result.diagnostics);
+  }
+  return { diagnostics };
+};
+
+export const formatGuideLintDiagnostic = (entry: GuideLintDiagnostic): string =>
+  `${entry.sourcePath}:${entry.line}:${entry.column}: ${entry.code}: ${entry.message}`;
+
+const main = async (): Promise<void> => {
+  const result = await lintGuides(REPO_ROOT);
+  if (result.diagnostics.length === 0) {
+    process.stdout.write("Guide lint passed.\n");
+    return;
+  }
+  process.stderr.write(`${result.diagnostics.map(formatGuideLintDiagnostic).join("\n")}\n`);
+  process.exitCode = 1;
+};
+
+if (import.meta.main) await main();
