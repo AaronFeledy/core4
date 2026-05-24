@@ -1211,3 +1211,13 @@ Rationale: <link to the PR description that made the call>
 - CI/check triage: static-checks, bundled-codegen, library-api-tests, recipe-tests, schema-snapshot, guide-scenarios-linux-x64, and build-linux-x64 were passing; provider-integration-linux-x64 was still pending during triage; Cursor Bugbot was neutral/skipping after posting one review comment.
 - Review triage: accepted Bugbot's cleanup-frame transcript finding as real because scenario-body `Effect.onExit` persisted transcripts before generated `Effect.addFinalizer` cleanup frames ran.
 - Fix: closed the scenario body in an inner scope before persisting the transcript and added regression coverage proving cleanup frames appended from finalizers are present in `dist/transcripts/guides/**` output.
+---
+## [2026-05-24 02:36 UTC] - Babysit
+- PR: #168 https://github.com/AaronFeledy/core4/pull/168
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot cleanup-frame transcript issue fixed in fafb8ab before merge)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: none
+---
