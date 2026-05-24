@@ -1,0 +1,17 @@
+---
+id: duplicate-scenario
+provider: test
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="first">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+  <Scenario id="reader-path">
+    <Step name="second">
+      <Run command="status" />
+    </Step>
+  </Scenario>
+</Guide>

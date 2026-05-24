@@ -1,0 +1,18 @@
+---
+id: lint-green
+provider: test
+diataxis: tutorial
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+  <Scenario id="hidden-regression" render={false} reason="Regression coverage">
+    <Step name="hidden-run">
+      <Run command="status" />
+    </Step>
+  </Scenario>
+</Guide>

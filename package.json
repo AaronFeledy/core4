@@ -28,7 +28,7 @@
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
     "docs:scenario": "bun run scripts/docs-scenario.ts",
-    "lint:guides": "bun run scripts/build-guide-scenarios.ts",
+    "lint:guides": "bun run scripts/lint-guides.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",
