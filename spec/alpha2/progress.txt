@@ -1274,3 +1274,10 @@ Rationale: <link to the PR description that made the call>
 - Ran the branch-wide AI slop remover after review. Cleanup agents changed only `scripts/lint-guides.ts`, replacing planning-doc traceability comments with plain technical comments; fixture/test/metadata agents reported no safe cosmetic edits needed.
 - Removed committed conflict-marker leftovers from `spec/alpha2/progress.txt` without changing the retained progress entries.
 - Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun run lint:guides` passed; focused `bun test core/test/scripts/lint-guides.test.ts` passed (8 pass); focused `bun test core/test/build/compile.test.ts` passed; branch-changed source/test comment leakage scan passed; `git diff --check` passed; `lsp_diagnostics scripts/lint-guides.ts` could not run because `typescript-language-server` is not installed. Full `bun test` was attempted after rebuild and reported 1181 pass / 11 skip / 1 fail in `compiled Linux x64 binary > builds an executable lando binary with version and help fast paths`; the same compiled-binary test passed immediately when run in isolation, so the full-suite failure is unrelated to the comment/progress cleanup.
+
+## [2026-05-24 03:41 UTC] - Push
+- Branch: us-072-lint-guides
+- Push: pushed
+- Commit(s): a15dc98 feat: Implement minimal bun run lint:guides; 6ee0162 fix: address US-072 review (inline-Beta walker + PRD-A2-04 link); 1ecd410 chore: remove AI slop
+- PR: #169 https://github.com/AaronFeledy/core4/pull/169 (created)
+---
