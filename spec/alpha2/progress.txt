@@ -28,6 +28,8 @@ Spec source of truth: spec/ROADMAP.md Phase 2.5 + spec/17-executable-tutorials.m
 - Source-mapper fallback behavior stays header/context driven: preserve the generated frame, emit a `GuideSourceMapWarning` frame when `@source` / `@scenario` / `guideId` is missing, and fall back to whole-guide `bun run docs:scenario <guideId>` instead of deriving ids from generated paths.
 - Generated guide scenarios may author reader-facing commands as `lando ...`; `ScenarioContext.runCli` strips the leading binary token for the in-process runner and advances its working directory after `init` / `UseFixture` so later `lando start` / `lando destroy` calls run inside the scaffolded app or copied fixture. NOTE: `start` and `destroy` are currently short-circuited by an in-context fake (`runScenarioLayerCommand` in `core/src/testing/scenario-context.ts`) — `cli.runCli` does not yet accept a runtime/layer override, so the scenario's `runtime` field built from `makeTestRuntime` is not wired into the CLI. Real `TestRuntimeProvider` injection through `cli.runCli` is follow-up work; until then the invalid-Landofile regression coverage is by string-match against the fixture, not by exercising the real Landofile validator.
 
+- Scenario transcripts are persisted by `withScenarioContext` on `Effect.onExit` under `dist/transcripts/guides/<guideId>/<scenarioId>.json`; keep top-level `startedAt` / `finishedAt` ISO-valid and apply timestamp masking only to stdout/stderr-style transcript fields.
+
 ## Cross-PRD prerequisites
 
 - Alpha PRD-06 (library testing surface) must be shipped: `@lando/core/testing`, `TestRuntimeProvider`, in-process CLI runner.
@@ -1178,4 +1180,13 @@ Rationale: <link to the PR description that made the call>
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
 - Remaining local state: none
+---
+## 2026-05-24 02:03 UTC - US-071
+- Implemented internal guide scenario transcript persistence at `dist/transcripts/guides/<guideId>/<scenarioId>.json`, including the public `Transcript` Effect Schema, schema snapshot registration, teardown writes for pass/fail runs, run/fixture/verify/cleanup frame capture, render propagation, and redaction of secrets, scenario temp paths, and stdout/stderr timestamps before disk writes.
+- Files changed: `sdk/src/docs/transcript.ts`, `sdk/src/docs/components/index.ts`, `sdk/src/schema/index.ts`, `sdk/test/fixtures/schema-snapshot.json`, `sdk/API_COMPATIBILITY.md`, `scripts/build-schema-snapshot.ts`, `core/src/testing/scenario-context.ts`, `scripts/build-guide-scenarios.ts`, `core/test/testing/scenario-context.test.ts`, `core/test/docs/transcript.test.ts`, `core/test/codegen/guide-scenarios.test.ts`, `sdk/test/library/exports.test.ts`, `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
+- Verification run and result: focused transcript/schema/codegen tests passed (`bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts core/test/docs/transcript.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts`: 35 pass); `bun run typecheck` passed; `bun run lint` passed; `bun test` passed (1173 pass, 11 skip, 0 fail); manual QA via `bun run docs:scenario node-postgres --scenario reader-path` passed and produced `dist/transcripts/guides/node-postgres/reader-path.json` with `exitStatus: pass` and run/verify frames; `lsp_diagnostics` could not run because `typescript-language-server` is not installed.
+- **Learnings for future iterations:**
+  - Scenario transcripts are written by `withScenarioContext` teardown, so tests that assert transcript files inside a temporary cwd must read them before restoring/removing that cwd.
+  - Transcript timestamps in the top-level envelope stay valid ISO8601 for schema validation; stdout/stderr timestamps are normalized to `<timestamp>` during redaction before write.
+  - Generated guide scenario assertions that now emit transcript verification frames need matching fixture expectations in `core/test/codegen/guide-scenarios.test.ts` whenever generator output changes.
 ---

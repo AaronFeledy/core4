@@ -27,6 +27,14 @@ export {
   VariableProps,
   VerifyProps,
 } from "../docs/components/props.ts";
+export {
+  Transcript,
+  TranscriptCleanupFrame,
+  TranscriptFixtureFrame,
+  TranscriptFrame,
+  TranscriptRunFrame,
+  TranscriptVerifyFrame,
+} from "../docs/transcript.ts";
 import {
   CleanupProps,
   GuideProps,
@@ -40,6 +48,7 @@ import {
   VerifyProps,
 } from "../docs/components/props.ts";
 import { DeprecationNotice, GuideFrontmatter } from "../docs/guide-frontmatter.ts";
+import { Transcript } from "../docs/transcript.ts";
 
 export const AppId = Schema.String.pipe(Schema.brand("AppId"));
 export type AppId = typeof AppId.Type;
@@ -986,6 +995,7 @@ const JSON_SCHEMA_REGISTRY = {
   HiddenProps,
   UseFixtureProps,
   MatcherSchema,
+  Transcript,
   BootstrapLevel,
   AppRef,
   AppPlan,
@@ -1031,6 +1041,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(UseFixtureProps);
     case "MatcherSchema":
       return JSONSchema.make(MatcherSchema);
+    case "Transcript":
+      return JSONSchema.make(Transcript);
     case "AppRef":
       return JSONSchema.make(AppRef);
     case "AppPlan":

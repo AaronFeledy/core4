@@ -3,10 +3,11 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect } from "effect";
+import { Cause, Effect, Schema } from "effect";
 
 import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
 import { ScenarioContext, withScenarioContext } from "@lando/core/testing";
+import { Transcript } from "@lando/sdk/docs/components";
 
 const withTempCwd = async <A>(body: (root: string) => Promise<A>): Promise<A> => {
   const root = await mkdtemp(join(tmpdir(), "lando-fixtures-"));
@@ -38,7 +39,13 @@ describe("withScenarioContext", () => {
               cleanupSawTestDir = existsSync(context.testDir);
             }),
           );
-          yield* context.transcript.append({ kind: "note", data: "before run" });
+          yield* context.transcript.append({
+            kind: "verify",
+            target: "event",
+            matched: true,
+            expected: "ready",
+            actual: "ready",
+          });
           const run = yield* context.runCli(["version"]);
 
           return {
@@ -58,6 +65,96 @@ describe("withScenarioContext", () => {
     expect(result.processRunnerCalls).toBe(0);
     expect(cleanupSawTestDir).toBe(true);
     expect(existsSync(result.testDir)).toBe(false);
+  });
+
+  test("writes a schema-valid transcript on success", async () => {
+    const transcript = await withTempCwd(async (root) => {
+      const transcriptPath = join(
+        root,
+        "dist",
+        "transcripts",
+        "guides",
+        "node-postgres",
+        "transcript-green.json",
+      );
+      await Effect.runPromise(
+        withScenarioContext({ guideId: "node-postgres", scenarioId: "transcript-green" }, (context) =>
+          Effect.gen(function* () {
+            yield* context.runCli(["version"]);
+            return undefined;
+          }),
+        ),
+      );
+      return JSON.parse(await readFile(transcriptPath, "utf8")) as Record<string, unknown>;
+    });
+
+    expect(Schema.decodeUnknownSync(Transcript)(transcript)).toMatchObject({
+      guideId: "node-postgres",
+      scenarioId: "transcript-green",
+      render: true,
+      exitStatus: "pass",
+    });
+    expect(transcript.frames).toEqual([
+      expect.objectContaining({ kind: "run", command: ["version"], stdout: "0.0.0\n", exit: 0 }),
+    ]);
+  });
+
+  test("writes a redacted failure transcript before removing testDir", async () => {
+    const result = await withTempCwd(async (root) => {
+      const transcriptPath = join(
+        root,
+        "dist",
+        "transcripts",
+        "guides",
+        "node-postgres",
+        "transcript-red.json",
+      );
+      const exit = await Effect.runPromiseExit(
+        withScenarioContext(
+          {
+            guideId: "node-postgres",
+            scenarioId: "transcript-red",
+            runCli: async (command) => ({
+              command,
+              stdout: `AUTH_TOKEN=secret ${new Date("2026-05-23T12:00:00.000Z").toISOString()}`,
+              stderr: "AUTH_TOKEN=secret",
+              exitCode: 0,
+              events: [],
+            }),
+          },
+          (context) =>
+            Effect.gen(function* () {
+              const run = yield* context.runCli(["version"]);
+              yield* context.transcript.append({
+                kind: "verify",
+                target: "errorTag",
+                matched: false,
+                expected: "ExpectedError",
+                actual: { token: "secret", runStdout: run.stdout, path: context.testDir },
+              });
+              return yield* Effect.fail(new Error("expected failure"));
+            }),
+        ),
+      );
+      const raw = await readFile(transcriptPath, "utf8");
+      return { root, raw, exit };
+    });
+
+    expect(result.exit._tag).toBe("Failure");
+    const raw = result.raw;
+    const transcript = JSON.parse(raw) as Record<string, unknown>;
+    expect(transcript.exitStatus).toBe("fail");
+    expect(raw).not.toContain("secret");
+    expect(raw).not.toContain("2026-05-23T12:00:00.000Z");
+    expect(raw).not.toContain("lando-scenario-node-postgres-transcript-red");
+    expect(raw).toContain("[REDACTED]");
+    expect(raw).toContain("<timestamp>");
+    expect(raw).toContain("<testDir>");
+    expect(transcript.frames).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "verify", target: "errorTag", matched: false }),
+      ]),
+    );
   });
 
   test("forwards answers to the default init runner", async () => {
