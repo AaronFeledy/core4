@@ -568,7 +568,6 @@ Rationale: <link to the PR description that made the call>
 - Branch after sync: main
 - Stash created: yes (loop-sync-rejected-improvement-20260523030119)
 ---
-<<<<<<< Updated upstream
 ## [2026-05-23 21:39 UTC] - Sync
 - Previous branch: us-067-docs-scenario-command
 - Previous PR: #164 https://github.com/AaronFeledy/core4/pull/164
@@ -1239,7 +1238,6 @@ Rationale: <link to the PR description that made the call>
 - **Learnings for future iterations:**
   - `diataxis:` is authored in MDX frontmatter but is not part of the Alpha 2 `GuideFrontmatter` schema; lint must validate it separately rather than passing it into the schema decoder.
   - Full `bun test` expects the compiled binary at `core/dist/lando`; run `bun run build` first if the checkout was cleaned.
-=======
 ## [2026-05-23 03:21 UTC] - Push
 - Branch: us-062-deterministic-mdx-walker
 - Push: pushed
@@ -1254,7 +1252,6 @@ Rationale: <link to the PR description that made the call>
 - Merge: merged (squash)
 - Local main / branch refreshed: yes
 - Remaining local state, if any: `spec/alpha2/progress.txt` updated; local story branch deleted; a local exploratory fix commit was discarded with the deleted branch
->>>>>>> Stashed changes
 ---
 
 ## 2026-05-24 03:10 UTC - US-072 Review
@@ -1272,3 +1269,8 @@ Rationale: <link to the PR description that made the call>
   - MDX inline JSX (`<Inline value="x" />` inside a paragraph) is parsed as `mdxJsxTextElement`, not `mdxJsxFlowElement`. Any "Beta-only component anywhere" gate must walk BOTH types or it silently misses inline-position violations. The diagnostic column for an inline element is the column of the `<` character within the surrounding paragraph line, not the line's first non-whitespace column.
   - AC bullets that say "documented … with links back to PRD-XX" are checked literally by the context-miner review path; satisfy them with the source PRD path AND the story id in the comment, not just a deferred-rule list.
 ---
+
+## 2026-05-23 22:40 CDT - Slop cleanup after US-072
+- Ran the branch-wide AI slop remover after review. Cleanup agents changed only `scripts/lint-guides.ts`, replacing planning-doc traceability comments with plain technical comments; fixture/test/metadata agents reported no safe cosmetic edits needed.
+- Removed committed conflict-marker leftovers from `spec/alpha2/progress.txt` without changing the retained progress entries.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed; `bun run build` passed; `bun run lint:guides` passed; focused `bun test core/test/scripts/lint-guides.test.ts` passed (8 pass); focused `bun test core/test/build/compile.test.ts` passed; branch-changed source/test comment leakage scan passed; `git diff --check` passed; `lsp_diagnostics scripts/lint-guides.ts` could not run because `typescript-language-server` is not installed. Full `bun test` was attempted after rebuild and reported 1181 pass / 11 skip / 1 fail in `compiled Linux x64 binary > builds an executable lando binary with version and help fast paths`; the same compiled-binary test passed immediately when run in isolation, so the full-suite failure is unrelated to the comment/progress cleanup.
