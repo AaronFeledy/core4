@@ -44,6 +44,15 @@ Status: Not applicable in Alpha 2; deferred to Beta per §19.13.
 Rationale: At the PR-open decision point for US-073, the repository has no `recipes/<id>/README.mdx` files, so there is no Alpha recipe MDX README with executable components to strip/flatten.
 
 ## Story log
+## 2026-05-24 04:15 UTC - US-073 Review
+- Reviewed the conditional closure commit `4c09240` ("feat: (Conditional) Implement recipe README strip/flatten").
+- Files changed: none (review-only; no fixes required).
+- `review-work` findings:
+  - Rejected: Oracle flagged "PR description not shown updated" as a soft FAIL. Out of scope for the loop step — PR-body is an external maintainer action, not a checked-in artifact (verified `.github/pull_request_template.md` has no description field to update).
+  - Rejected: Context miner FYI about `spec/alpha2/prd-alpha2-00-index.md` saying "US-072" where it means "US-073" for recipe README strip/flatten. Pre-existing documentation drift not introduced by the US-073 build step; out of scope per loop rules.
+  - Confirmed: closure language ("Not applicable in Alpha 2; deferred to Beta per §19.13") matches PRD-A2-04 verbatim; `recipes/` directory truly does not exist; PRD-A2-02 codegen remains a no-op for the recipe README path without changes.
+- Verification: relied on build-step verification output (typecheck/lint/test passing) since no source files changed; `git status` clean.
+---
 ## 2026-05-24 03:53 UTC - US-073
 - Closed the conditional recipe README strip/flatten story as not applicable for Alpha 2 and deferred the generator to Beta per §19.13.
 - Files changed: `spec/alpha2/prd.json`, `spec/alpha2/progress.txt`.
@@ -1306,4 +1315,11 @@ Rationale: At the PR-open decision point for US-073, the repository has no `reci
 - Local main updated: yes
 - Branch after sync: main
 - Stash created: no
+---
+
+## [2026-05-24 04:24 UTC] - Push
+- Branch: us-073-recipe-readme-strip-flatten
+- Push: pushed
+- Commit(s): 4c09240 feat: (Conditional) Implement recipe README strip/flatten
+- PR: #170 https://github.com/AaronFeledy/core4/pull/170 (created)
 ---
