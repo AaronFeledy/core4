@@ -1145,3 +1145,13 @@ Rationale: <link to the PR description that made the call>
   - GitHub Actions expressions inside the TypeScript workflow template must escape the interpolation marker as `\${{ ... }}` so the generated YAML keeps `${{ ... }}`.
   - US-070 wires the CI call to `bun run lint:guides` and keeps it executable through the existing guide-scenario generator; US-072 still owns the lint-specific rule implementation.
 ---
+## 2026-05-24 00:35 UTC - US-070 Review
+- Reviewed build commit f2e5ce6 against US-070 AC; no source changes needed.
+- Files changed: spec/alpha2/progress.txt (this entry only).
+- `review-work` findings:
+  - rejected: "Transcript upload is a no-op — no producer writes `dist/transcripts/guides/**/*.json`." OUT OF SCOPE — US-070 AC explicitly says "(from US-071)"; US-071 is the separate story that owns transcript production. US-070 only owns the upload-step wiring, which is correctly placed with `if-no-files-found: ignore` so the step is a safe no-op until US-071 lands. Re-introducing transcript production here would conflate two stories.
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (480 files); focused `bun test core/test/build/ci-workflow.test.ts core/test/build/branch-protection.test.ts core/test/scripts/codegen-ci.test.ts` → 20 pass / 0 fail; `bun run codegen` followed by `git status --short` showed a clean tree (no drift in `.github/workflows/ci.yml` or `.github/workflows/release.yml`).
+- **Learnings for future iterations:**
+  - When an AC cites another story by id ("from US-071"), the dependency is intentionally deferred; reviewers should match the AC text to the story boundary rather than reject as incomplete just because the artifact's upstream producer hasn't landed.
+  - `if-no-files-found: ignore` on `actions/upload-artifact@v4` is the correct shape for a cross-story upload wiring where the producer ships in a later story — the step is a no-op until the producer arrives, and never fails CI in the meantime.
+---
