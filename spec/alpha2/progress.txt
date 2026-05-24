@@ -1190,3 +1190,12 @@ Rationale: <link to the PR description that made the call>
   - Transcript timestamps in the top-level envelope stay valid ISO8601 for schema validation; stdout/stderr timestamps are normalized to `<timestamp>` during redaction before write.
   - Generated guide scenario assertions that now emit transcript verification frames need matching fixture expectations in `core/test/codegen/guide-scenarios.test.ts` whenever generator output changes.
 ---
+## 2026-05-24 02:30 UTC - US-071 Review
+- Reviewed build commit b08c5e8 against US-071 AC; no source changes needed.
+- Files changed: spec/alpha2/progress.txt (this entry only).
+- `review-work` findings: none surfaced; focused review confirmed every AC item is satisfied (transcript write path, §13.2 schema registry + snapshot, TranscriptFrame union shapes, §19.6 redaction layering, `dist/`-gitignored path, green/red/redaction test classes, write-before-read redaction).
+- Verification run and result: `bun run typecheck` passed; `bun run lint` passed (482 files); focused `bun test core/test/codegen/guide-scenarios.test.ts core/test/testing/scenario-context.test.ts core/test/docs/transcript.test.ts sdk/test/library/exports.test.ts sdk/test/library/sdk-backward-compatibility.test.ts` → 35 pass / 0 fail; full `bun test` → 1173 pass / 11 skip / 0 fail.
+- **Learnings for future iterations:**
+  - `Effect.onExit` attached inside the `Effect.flatMap` after `Effect.acquireRelease` fires the transcript-write handler BEFORE the outer scope's release tears down the temp testDir — this ordering is what makes "transcript references `<testDir>` paths AND the directory is gone afterwards" both true in the same teardown.
+  - Timestamp masking keyed on `lowerKey.includes("stdout")` is intentional: it catches container fields like `runStdout` inside `verify` frames, not just literal `stdout` keys, which is what the redaction-class test exercises.
+---
