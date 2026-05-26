@@ -3,3 +3,69 @@
 Source PRDs: spec/beta/prd-beta-{00..13}-*.md
 Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-binary-build-and-release.md (§17)
 
+## [2026-05-26 21:06 UTC] - Sync
+- Previous branch: us-073-recipe-readme-strip-flatten
+- Previous PR: #170 https://github.com/AaronFeledy/core4/pull/170
+- Action: caught up after prior merge (PR #170 was already MERGED, all CI green)
+- Local main updated: yes (already up to date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## Codebase Patterns
+- `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
+- `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
+- Windows Podman machine lifecycle is structurally identical to macOS (`ensureWindowsPodmanMachine` mirrors `ensureMacOSPodmanMachine`); the separation exists for future divergence (e.g. WSL-specific machine flags).
+- Host-mutating live tests should gate on both the expected platform and an exact opt-in env value (`process.platform !== "win32" || process.env.GATE_VAR !== "1"`) so accidental truthy values do not run provider setup on the wrong host.
+
+## [2026-05-26] - US-074
+- Implemented Windows VM lifecycle for `@lando/provider-lando`
+- Files changed:
+  - `plugins/provider-lando/src/capabilities.ts`: `bindMountPerformanceForPlatform("win32")` → `"slow"`; `bindMounts` set `true` for Windows (WSL2 supports bind mounts per spec §5.8.1)
+  - `plugins/provider-lando/src/setup.ts`: Added `WindowsMachinePrerequisiteError`; extended `machineFailure()` to detect Hyper-V/WSL2/VMP messages; added `ensureWindowsPodmanMachine`, `stopWindowsPodmanMachine`, `upgradeWindowsPodmanMachine`, `teardownWindowsPodmanMachine`; wired Windows machine step into `buildSetupSteps` and `setupProviderLando`
+  - `plugins/provider-lando/src/index.ts`: Exported all new Windows-specific symbols
+  - `plugins/provider-lando/test/capabilities.test.ts`: Updated Windows assertions to expect `bindMountPerformance: "slow"` and `bindMounts: true`
+  - `plugins/provider-lando/test/setup.integration.test.ts`: Added 6 Windows machine lifecycle tests (fake-client) + 1 live test gated on `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1`
+- Verification: `bun test plugins/provider-lando/` → 74 pass, 8 skip, 0 fail; `bun run typecheck` → exit 0; `bun run lint` → no fixes needed
+- **Learnings for future iterations:**
+  - The 9 pre-existing test failures in the full suite (`ProcessRunnerLive`, `compiled` binary tests, `codegen`) are environment failures (`bun` not on PATH in the test runner) — not regressions; safe to ignore in this env.
+  - Windows and macOS machine runners share the same `PodmanMachineRunner` interface; only the `ensureXxx` orchestration functions differ per platform.
+  - `ProviderCapabilities.bindMounts` should be `true` for Windows because WSL2 supports bind mounts; `bindMountPerformance: "slow"` reflects the VM-mediated cross-boundary overhead.
+---
+
+## [2026-05-26 21:39 UTC] - US-074 Review
+- Reviewed the US-074 Windows provider-lando lifecycle implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits (`f75b1987..HEAD`).
+- Fixed confirmed review blockers:
+  - Threaded the resolved host platform through `makeSystemPodmanMachineRunner()` / `runMachineCommand()` so real Windows Podman stderr maps to `WindowsMachinePrerequisiteError` instead of generic or macOS remediation.
+  - Added system-runner stderr coverage for Hyper-V / WSL2 / Virtual Machine Platform prerequisite output.
+  - Tightened the Windows live test gate to `process.platform === "win32"` plus `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1`.
+  - Added the required US-074 guide coverage file at `docs/guides/setup/provider-lando-windows.mdx`.
+- Files changed:
+  - `plugins/provider-lando/src/setup.ts`
+  - `plugins/provider-lando/test/setup.integration.test.ts`
+  - `docs/guides/setup/provider-lando-windows.mdx`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: real Windows system-runner prerequisite failures were not receiving Windows-specific remediation.
+  - Fixed: Windows remediation tests injected `WindowsMachinePrerequisiteError` directly and missed stderr classification.
+  - Fixed: Windows live test was env-gated but not platform/exact-value gated.
+  - Fixed: required US-074 guide coverage was missing.
+  - Rejected/deferred: WSL distro unregister during teardown is an open PRD question/default larger than this review fix; current US-074 acceptance only requires fake-client teardown transitions, so this remains future CLI/provider teardown work rather than a scoped repair.
+- Verification: `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun run typecheck` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun run lint` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun run lint:guides` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun test plugins/provider-lando/` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun test` → 1191 pass, 12 skip, 0 fail.
+- **Learnings for future iterations:**
+  - When adding platform-specific prerequisite errors, thread platform context through the real system runner and test stderr classification through the runner seam, not only direct fake error propagation.
+  - Guide coverage requirements apply as soon as `plugins/provider-lando/**` changes for PRD-B-01 stories; add the mapped `docs/guides/setup/*.mdx` file or record a valid skip reason.
+---
+
+## [2026-05-26 22:01 UTC] - Push
+- Branch: us-074-provider-lando-windows-lifecycle
+- Push: pushed
+- Commit(s): 69e14d1c feat: provider-lando Windows VM lifecycle; e6770fd3 chore: mark US-074 complete and update progress log; 1cdbac8d fix: wire Windows Podman prerequisite remediation; 1fd670e5 docs: record US-074 review fixes
+- PR: #172 https://github.com/AaronFeledy/core4/pull/172 (created)
+---
+
+## [2026-05-26 22:14 UTC] - PR #172 static-checks triage
+- CI failure: real issue; OCLIF command discovery treated `core/src/cli/oclif/commands/deferred-stub.ts` as a command id and emitted `Warning: Error` (`command deferred-stub not found`) on stderr during source-mode CLI startup.
+- Fix: moved the deferred-stub helper out of the OCLIF commands discovery tree and updated stub command imports; kept the init scenario stderr assertion intact.
+- Verification: `~/.bun/bin/bun test core/test/cli/init.scenario.test.ts` → exit 0; `~/.bun/bin/bun run typecheck` → exit 0; `~/.bun/bin/bun run lint` → exit 0; `~/.bun/bin/bun test` without PATH fix hit known local `bun`-not-on-PATH failures, then `PATH="$HOME/.bun/bin:$PATH" bun test` → exit 0.
+---

@@ -23,6 +23,9 @@ const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 const PROVIDER_ID = "lando";
 const MINIMUM_PODMAN_VERSION = "4.9.0";
 
+const currentHostPlatform = (): HostPlatform =>
+  process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32";
+
 export class PodmanNotInstalledError extends ProviderUnavailableError {
   constructor(cause?: unknown) {
     super({
@@ -68,6 +71,20 @@ export class PodmanMachinePrerequisiteError extends ProviderUnavailableError {
       message: "Podman machine prerequisites are not available on this macOS host.",
       remediation:
         "Enable Apple's virtualization framework support, install the required Podman machine helper components, then rerun `lando setup`.",
+      cause,
+    });
+  }
+}
+
+export class WindowsMachinePrerequisiteError extends ProviderUnavailableError {
+  constructor(cause?: unknown) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "setup",
+      message:
+        "Windows virtualization prerequisites are not available. Hyper-V, WSL2, and Virtual Machine Platform are required.",
+      remediation:
+        "Enable Hyper-V, WSL2, and Virtual Machine Platform in Windows Features, then run `wsl --install` and rerun `lando setup`.",
       cause,
     });
   }
@@ -141,9 +158,24 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
   }),
 });
 
-const machineFailure = (operation: string, cause: unknown): ProviderUnavailableError => {
+const machineFailure = (
+  operation: string,
+  cause: unknown,
+  platform: HostPlatform,
+): ProviderUnavailableError => {
   const output = typeof cause === "object" && cause !== null && "stderr" in cause ? cause.stderr : cause;
-  if (typeof output === "string" && /virtualization|vfkit|hypervisor|qemu|helper/i.test(output)) {
+  if (
+    platform === "win32" &&
+    typeof output === "string" &&
+    /virtualization|hyper-v|wsl|virtual machine platform|wsl2|wslapi|hypervisor/i.test(output)
+  ) {
+    return new WindowsMachinePrerequisiteError(cause);
+  }
+  if (
+    platform === "darwin" &&
+    typeof output === "string" &&
+    /virtualization|vfkit|hypervisor|qemu|helper/i.test(output)
+  ) {
     return new PodmanMachinePrerequisiteError(cause);
   }
 
@@ -167,7 +199,12 @@ const readProcess = async (proc: ReturnType<typeof Bun.spawn>) => {
   return { stdout, stderr, exitCode };
 };
 
-const runMachineCommand = (command: string, args: ReadonlyArray<string>, operation: string) =>
+const runMachineCommand = (
+  command: string,
+  args: ReadonlyArray<string>,
+  operation: string,
+  platform: HostPlatform,
+) =>
   Effect.tryPromise({
     try: async () => {
       const result = await readProcess(Bun.spawn([command, ...args], { stderr: "pipe", stdout: "pipe" }));
@@ -176,14 +213,15 @@ const runMachineCommand = (command: string, args: ReadonlyArray<string>, operati
       }
       return result.stdout;
     },
-    catch: (cause) => machineFailure(operation, cause),
+    catch: (cause) => machineFailure(operation, cause, platform),
   });
 
 export const makeSystemPodmanMachineRunner = (
   command = "podman",
   machineName = "lando",
+  platform: HostPlatform = currentHostPlatform(),
 ): PodmanMachineRunner => ({
-  inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect").pipe(
+  inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect", platform).pipe(
     // `Effect.map` does not catch synchronous throws, so a malformed `podman machine inspect`
     // payload would become an Effect defect instead of a typed `ProviderUnavailableError`.
     // Channel parse failures through `Effect.try` so callers always see the tagged error.
@@ -223,11 +261,15 @@ export const makeSystemPodmanMachineRunner = (
         : Effect.fail(cause);
     }),
   ),
-  create: runMachineCommand(command, ["machine", "init", machineName], "create").pipe(Effect.asVoid),
-  start: runMachineCommand(command, ["machine", "start", machineName], "start").pipe(Effect.asVoid),
-  stop: runMachineCommand(command, ["machine", "stop", machineName], "stop").pipe(Effect.asVoid),
-  upgrade: runMachineCommand(command, ["machine", "os", "apply", machineName], "upgrade").pipe(Effect.asVoid),
-  teardown: runMachineCommand(command, ["machine", "rm", "--force", machineName], "teardown").pipe(
+  create: runMachineCommand(command, ["machine", "init", machineName], "create", platform).pipe(
+    Effect.asVoid,
+  ),
+  start: runMachineCommand(command, ["machine", "start", machineName], "start", platform).pipe(Effect.asVoid),
+  stop: runMachineCommand(command, ["machine", "stop", machineName], "stop", platform).pipe(Effect.asVoid),
+  upgrade: runMachineCommand(command, ["machine", "os", "apply", machineName], "upgrade", platform).pipe(
+    Effect.asVoid,
+  ),
+  teardown: runMachineCommand(command, ["machine", "rm", "--force", machineName], "teardown", platform).pipe(
     Effect.asVoid,
   ),
 });
@@ -256,6 +298,33 @@ export const stopMacOSPodmanMachine = (
 ): Effect.Effect<void, ProviderUnavailableError> => machine.stop;
 
 export const teardownMacOSPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.teardown;
+
+export const ensureWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    const status = yield* machine.inspect;
+    if (status === "missing") {
+      yield* machine.create;
+      yield* machine.start;
+      return;
+    }
+    if (status === "stopped") {
+      yield* machine.start;
+    }
+  });
+
+export const upgradeWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.upgrade;
+
+export const stopWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.stop;
+
+export const teardownWindowsPodmanMachine = (
   machine: PodmanMachineRunner,
 ): Effect.Effect<void, ProviderUnavailableError> => machine.teardown;
 
@@ -349,7 +418,8 @@ const buildSetupSteps = (
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
   steps.push({ taskId: "podman", label: "Detect Podman" });
-  if (platform === "darwin") steps.push({ taskId: "machine", label: "Ensure Podman machine" });
+  if (platform === "darwin" || platform === "win32")
+    steps.push({ taskId: "machine", label: "Ensure Podman machine" });
   steps.push({ taskId: "socket", label: "Probe Podman API" });
   if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
@@ -412,9 +482,7 @@ export const setupProviderLando = (
   options: SetupOptions = {},
 ): Effect.Effect<SetupResult, ProviderUnavailableError> =>
   Effect.gen(function* () {
-    const platform =
-      options.platform ??
-      (process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32");
+    const platform = options.platform ?? currentHostPlatform();
     const hasBundle = options.runtimeBundleDownloader !== undefined;
     const hasStateDir = options.stateDir !== undefined;
     const steps = buildSetupSteps(platform, hasBundle, hasStateDir);
@@ -467,7 +535,20 @@ export const setupProviderLando = (
           options.eventService,
           machineStep,
           counter,
-          ensureMacOSPodmanMachine(options.podmanMachine ?? makeSystemPodmanMachineRunner()),
+          ensureMacOSPodmanMachine(
+            options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
+          ),
+        );
+      }
+
+      if (platform === "win32" && machineStep !== undefined) {
+        yield* withStep(
+          options.eventService,
+          machineStep,
+          counter,
+          ensureWindowsPodmanMachine(
+            options.podmanMachine ?? makeSystemPodmanMachineRunner(undefined, undefined, platform),
+          ),
         );
       }
 

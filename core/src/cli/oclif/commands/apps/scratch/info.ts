@@ -1,4 +1,4 @@
-import { makeDeferredStubCommand } from "../../deferred-stub.ts";
+import { makeDeferredStubCommand } from "../../../deferred-stub.ts";
 
 export default makeDeferredStubCommand({
   id: "apps:scratch:info",

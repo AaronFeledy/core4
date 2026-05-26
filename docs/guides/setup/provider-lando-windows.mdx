@@ -1,0 +1,16 @@
+---
+id: provider-lando-windows
+provider: test
+platforms: [win32]
+timeout: 120000
+tags: [beta, docs, provider-lando, setup, windows]
+---
+
+<Guide>
+  <Scenario id="windows-machine-lifecycle" render={false} reason="Platform-aware Windows provider setup scenarios are gated outside the default generated guide suite">
+    <Step name="setup-docs">
+      <Variable name="setupCommand" value="lando setup --yes" display="Run setup on a Windows host" />
+      <Variable name="doctorCommand" value="lando doctor" display="Confirm bindMountPerformance is slow" />
+    </Step>
+  </Scenario>
+</Guide>
