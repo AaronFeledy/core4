@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -14,6 +14,7 @@ import {
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
   makeProviderLayer,
+  makeSystemPodmanMachineRunner,
   providerStatePath,
   setupProviderLando,
   stopMacOSPodmanMachine,
@@ -411,6 +412,41 @@ describe("provider-lando setup", () => {
     }
   });
 
+  test("maps Windows system runner prerequisite stderr to actionable remediation", async () => {
+    const fakePodmanDir = await mkdtemp(join(tmpdir(), "lando-provider-windows-podman-"));
+    const fakePodman = join(fakePodmanDir, "podman");
+    await writeFile(
+      fakePodman,
+      [
+        "#!/usr/bin/env sh",
+        'echo "Virtualization support is disabled. Enable Hyper-V, WSL2, and Virtual Machine Platform." >&2',
+        "exit 1",
+        "",
+      ].join("\n"),
+    );
+    await chmod(fakePodman, 0o755);
+
+    try {
+      const exit = await Effect.runPromiseExit(
+        makeSystemPodmanMachineRunner(fakePodman, "lando", "win32").create,
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
+          expect(failure.value.remediation).toContain("Hyper-V");
+          expect(failure.value.remediation).toContain("WSL2");
+          expect(failure.value.remediation).toContain("Virtual Machine Platform");
+        }
+      }
+    } finally {
+      await rm(fakePodmanDir, { recursive: true, force: true });
+    }
+  });
+
   test("Windows setup task tree includes the machine step", async () => {
     const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
 
@@ -438,7 +474,7 @@ describe("provider-lando setup", () => {
     expect(completedIds).toContain("machine");
   });
 
-  test.skipIf(!process.env.LANDO_TEST_WINDOWS_PROVIDER_LANDO)(
+  test.skipIf(process.platform !== "win32" || process.env.LANDO_TEST_WINDOWS_PROVIDER_LANDO !== "1")(
     "runs provider-lando Windows machine setup against the host Podman machine",
     async () => {
       await Effect.runPromise(setupProviderLando({ platform: "win32" }));
