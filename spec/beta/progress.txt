@@ -69,3 +69,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Fix: moved the deferred-stub helper out of the OCLIF commands discovery tree and updated stub command imports; kept the init scenario stderr assertion intact.
 - Verification: `~/.bun/bin/bun test core/test/cli/init.scenario.test.ts` → exit 0; `~/.bun/bin/bun run typecheck` → exit 0; `~/.bun/bin/bun run lint` → exit 0; `~/.bun/bin/bun test` without PATH fix hit known local `bun`-not-on-PATH failures, then `PATH="$HOME/.bun/bin:$PATH" bun test` → exit 0.
 ---
+
+## [2026-05-26 22:44 UTC] - Babysit
+- PR: #172 https://github.com/AaronFeledy/core4/pull/172
+- CI outcome: pass
+- Review feedback: fixed (static-checks OCLIF deferred-stub discovery warning repaired; no review comments)
+- Triage rounds used: 1
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: none after recording this note
+---
