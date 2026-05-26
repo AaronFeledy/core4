@@ -73,6 +73,20 @@ export class PodmanMachinePrerequisiteError extends ProviderUnavailableError {
   }
 }
 
+export class WindowsMachinePrerequisiteError extends ProviderUnavailableError {
+  constructor(cause?: unknown) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "setup",
+      message:
+        "Windows virtualization prerequisites are not available. Hyper-V, WSL2, and Virtual Machine Platform are required.",
+      remediation:
+        "Enable Hyper-V, WSL2, and Virtual Machine Platform in Windows Features, then run `wsl --install` and rerun `lando setup`.",
+      cause,
+    });
+  }
+}
+
 export interface PodmanCommandRunner {
   readonly version: Effect.Effect<string, PodmanNotInstalledError>;
 }
@@ -141,10 +155,21 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
   }),
 });
 
-const machineFailure = (operation: string, cause: unknown): ProviderUnavailableError => {
+const machineFailure = (
+  operation: string,
+  cause: unknown,
+  platform: HostPlatform = "linux",
+): ProviderUnavailableError => {
   const output = typeof cause === "object" && cause !== null && "stderr" in cause ? cause.stderr : cause;
   if (typeof output === "string" && /virtualization|vfkit|hypervisor|qemu|helper/i.test(output)) {
     return new PodmanMachinePrerequisiteError(cause);
+  }
+  if (
+    platform === "win32" &&
+    typeof output === "string" &&
+    /hyper-v|wsl|virtual machine platform|wsl2|wslapi/i.test(output)
+  ) {
+    return new WindowsMachinePrerequisiteError(cause);
   }
 
   return new ProviderUnavailableError({
@@ -259,6 +284,33 @@ export const teardownMacOSPodmanMachine = (
   machine: PodmanMachineRunner,
 ): Effect.Effect<void, ProviderUnavailableError> => machine.teardown;
 
+export const ensureWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> =>
+  Effect.gen(function* () {
+    const status = yield* machine.inspect;
+    if (status === "missing") {
+      yield* machine.create;
+      yield* machine.start;
+      return;
+    }
+    if (status === "stopped") {
+      yield* machine.start;
+    }
+  });
+
+export const upgradeWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.upgrade;
+
+export const stopWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.stop;
+
+export const teardownWindowsPodmanMachine = (
+  machine: PodmanMachineRunner,
+): Effect.Effect<void, ProviderUnavailableError> => machine.teardown;
+
 const parsePodmanVersion = (versionOutput: string): string => {
   const match = /\d+\.\d+\.\d+(?:[-+][\w.-]+)?/.exec(versionOutput);
   return match?.[0] ?? versionOutput;
@@ -349,7 +401,8 @@ const buildSetupSteps = (
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
   steps.push({ taskId: "podman", label: "Detect Podman" });
-  if (platform === "darwin") steps.push({ taskId: "machine", label: "Ensure Podman machine" });
+  if (platform === "darwin" || platform === "win32")
+    steps.push({ taskId: "machine", label: "Ensure Podman machine" });
   steps.push({ taskId: "socket", label: "Probe Podman API" });
   if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
@@ -468,6 +521,15 @@ export const setupProviderLando = (
           machineStep,
           counter,
           ensureMacOSPodmanMachine(options.podmanMachine ?? makeSystemPodmanMachineRunner()),
+        );
+      }
+
+      if (platform === "win32" && machineStep !== undefined) {
+        yield* withStep(
+          options.eventService,
+          machineStep,
+          counter,
+          ensureWindowsPodmanMachine(options.podmanMachine ?? makeSystemPodmanMachineRunner()),
         );
       }
 

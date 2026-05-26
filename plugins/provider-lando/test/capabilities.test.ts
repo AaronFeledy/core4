@@ -25,7 +25,7 @@ describe("provider-lando capabilities", () => {
     expect(Object.keys(windows).sort()).toEqual(expectedFields);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
-    expect(windows.bindMountPerformance).toBe("none");
+    expect(windows.bindMountPerformance).toBe("slow");
   });
 
   test("declares the Linux MVP ProviderCapabilities through the Live Layer", async () => {
@@ -54,13 +54,14 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 
-  test("uses platform-specific MVP capabilities before Podman API discovery", async () => {
+  test("declares Windows support with slow bind mount performance", async () => {
     const layer = makeProviderLayer({ platform: "win32" });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.platform).toBe("win32");
     expect(runtimeProvider.capabilities).toEqual(mvpProviderCapabilities("win32"));
-    expect(runtimeProvider.capabilities.bindMountPerformance).toBe("none");
+    expect(runtimeProvider.capabilities.bindMounts).toBe(true);
+    expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
   });
 
   test("builds Podman API HTTP-over-UNIX requests without invoking the podman binary", () => {

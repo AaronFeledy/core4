@@ -15,6 +15,7 @@ const bindMountPerformanceForPlatform = (
 ): ProviderCapabilities["bindMountPerformance"] => {
   if (platform === "linux") return "native";
   if (platform === "darwin") return "slow";
+  if (platform === "win32") return "slow";
   return "none";
 };
 
@@ -142,7 +143,7 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     hostReachability: "emulated",
     sharedCrossAppNetwork: false,
     persistentStorage: true,
-    bindMounts: platform === "linux" || platform === "darwin",
+    bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     copyMounts: false,
     hostPortPublish: "proxy",

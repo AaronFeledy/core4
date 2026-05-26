@@ -10,13 +10,18 @@ import {
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
   RuntimeBundleVerificationError,
+  WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
+  ensureWindowsPodmanMachine,
   makeProviderLayer,
   providerStatePath,
   setupProviderLando,
   stopMacOSPodmanMachine,
+  stopWindowsPodmanMachine,
   teardownMacOSPodmanMachine,
+  teardownWindowsPodmanMachine,
   upgradeMacOSPodmanMachine,
+  upgradeWindowsPodmanMachine,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
@@ -327,4 +332,117 @@ describe("provider-lando setup", () => {
       }
     }
   });
+
+  test("creates and starts the Windows Podman machine when it is missing", async () => {
+    const calls: string[] = [];
+
+    await Effect.runPromise(ensureWindowsPodmanMachine(machineRunner("missing", calls)));
+
+    expect(calls).toEqual(["inspect", "create", "start"]);
+  });
+
+  test("starts the Windows Podman machine when it is stopped", async () => {
+    const calls: string[] = [];
+
+    await Effect.runPromise(ensureWindowsPodmanMachine(machineRunner("stopped", calls)));
+
+    expect(calls).toEqual(["inspect", "start"]);
+  });
+
+  test("leaves the Windows Podman machine running when it is already running", async () => {
+    const calls: string[] = [];
+
+    await Effect.runPromise(ensureWindowsPodmanMachine(machineRunner("running", calls)));
+
+    expect(calls).toEqual(["inspect"]);
+  });
+
+  test("stops, upgrades, and tears down the Windows Podman machine through the fake client", async () => {
+    const calls: string[] = [];
+    const machine = machineRunner("running", calls);
+
+    await Effect.runPromise(stopWindowsPodmanMachine(machine));
+    await Effect.runPromise(upgradeWindowsPodmanMachine(machine));
+    await Effect.runPromise(teardownWindowsPodmanMachine(machine));
+
+    expect(calls).toEqual(["stop", "upgrade", "teardown"]);
+  });
+
+  test("runs Windows machine setup before validating the Podman API socket", async () => {
+    const calls: string[] = [];
+    const result = await Effect.runPromise(
+      setupProviderLando({
+        platform: "win32",
+        podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+        podmanCommand: podmanCommand("podman version 5.2.0"),
+        podmanMachine: machineRunner("missing", calls),
+      }),
+    );
+
+    expect(calls).toEqual(["inspect", "create", "start"]);
+    expect(result.podmanVersion).toBe("5.2.0");
+  });
+
+  test("fails with actionable remediation when Windows virtualization prerequisites are missing", async () => {
+    const exit = await Effect.runPromiseExit(
+      setupProviderLando({
+        platform: "win32",
+        podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+        podmanCommand: podmanCommand("podman version 5.2.0"),
+        podmanMachine: {
+          ...machineRunner("missing", []),
+          create: Effect.fail(
+            new WindowsMachinePrerequisiteError({ stderr: "Hyper-V is not enabled on this system" }),
+          ),
+        },
+      }),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
+        expect(failure.value.remediation).toContain("Hyper-V");
+        expect(failure.value.remediation).toContain("WSL2");
+        expect(failure.value.remediation).toContain("lando setup");
+      }
+    }
+  });
+
+  test("Windows setup task tree includes the machine step", async () => {
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+
+    await Effect.runPromise(
+      setupProviderLando({
+        platform: "win32",
+        podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+        podmanCommand: podmanCommand("podman version 5.2.0"),
+        podmanMachine: machineRunner("running", []),
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              captured.push(event);
+            }),
+        },
+      }),
+    );
+
+    const treeStart = captured[0];
+    expect((treeStart?.children ?? []) as ReadonlyArray<string>).toContain("machine");
+
+    const completedIds = captured
+      .filter((event) => event._tag === "task.complete")
+      .map((event) => event.taskId as string);
+    expect(completedIds).toContain("machine");
+  });
+
+  test.skipIf(!process.env.LANDO_TEST_WINDOWS_PROVIDER_LANDO)(
+    "runs provider-lando Windows machine setup against the host Podman machine",
+    async () => {
+      await Effect.runPromise(setupProviderLando({ platform: "win32" }));
+    },
+    120_000,
+  );
 });
