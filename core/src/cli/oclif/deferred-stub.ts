@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { LandoCommandBase, type LandoCommandNamespace, type LandoCommandSpec } from "../command-base.ts";
+import { LandoCommandBase, type LandoCommandNamespace, type LandoCommandSpec } from "./command-base.ts";
 
 interface DeferredStubInput {
   readonly id: string;
