@@ -79,3 +79,35 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none after recording this note
 ---
+
+## [2026-05-26 17:47 CDT] - Sync
+- Previous branch: us-074-provider-lando-windows-lifecycle
+- Previous PR: #172 https://github.com/AaronFeledy/core4/pull/172
+- Action: caught up after prior merge (PR was already MERGED; local branch deleted, main already at origin/main)
+- Local main updated: yes (already up to date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-26 18:30 CDT] - US-075
+- Implemented pinned runtime-bundle manifest and idempotent default downloader for `@lando/provider-lando` across Linux, macOS, and Windows.
+- Files changed:
+  - `plugins/provider-lando/runtime-bundle-versions.json` (new): Mechanism A pinned manifest with entries for linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64; placeholder SHA-256 values flagged in `_comment` until the §17.3 build pipeline supplies real artifacts.
+  - `plugins/provider-lando/src/runtime-bundle.ts` (new): `ProviderBundleChecksumError` (remediation cites spec §5.8.1), schema-validated `RUNTIME_BUNDLE_MANIFEST`, `resolveRuntimeBundleEntry(platform, arch)`, `runtimeBundleCachePath(stateDir, entry)`, `makeRuntimeBundleDownloader({entry, …})` (test seam), `makeDefaultRuntimeBundleDownloader({platform, arch, stateDir, fetchImpl})` that reuses any cached bundle whose SHA-256 matches the pinned value (idempotent re-runs), atomically persists the verified bytes under `<stateDir>/provider-lando/runtime-bundle/<filename>`, and surfaces typed `ProviderUnavailableError` for transport/HTTP/cache-write failures.
+  - `plugins/provider-lando/src/setup.ts`: Removed the legacy `RuntimeBundleVerificationError` class, routed `verifyRuntimeBundle` through the new `ProviderBundleChecksumError` so all bundle checksum mismatches share one §5.8.1-citing remediation.
+  - `plugins/provider-lando/src/index.ts`: Exports the new symbols/types and drops the legacy error name.
+  - `plugins/provider-lando/test/runtime-bundle.test.ts` (new): Covers manifest shape, platform/arch resolution (incl. failure for `win32-arm64`), `ProviderBundleChecksumError` remediation, cache-path computation, idempotent cache reuse with a throwing `fetch`, corruption recovery, mismatch failure, HTTP 5xx failure, and default-downloader plumbing through the shipped manifest.
+  - `plugins/provider-lando/test/setup.integration.test.ts`: Existing bundle-mismatch test now asserts `ProviderBundleChecksumError` and that the remediation contains "§5.8.1".
+  - `docs/guides/setup/provider-lando-windows.mdx`: Added a non-rendered `windows-runtime-bundle` scenario block describing the pinned manifest, idempotent cache path under the per-user state dir, and the tagged checksum error.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-lando/` → 93 pass, 8 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1209 pass, 12 skip, 0 fail
+- **Learnings for future iterations:**
+  - The static `RUNTIME_BUNDLE_MANIFEST` ships placeholder SHA-256 values, so any caller-driven test that goes through `makeDefaultRuntimeBundleDownloader` can only exercise the failure branches. Test the happy/idempotent paths through `makeRuntimeBundleDownloader({entry, …})`, which accepts a caller-supplied entry whose SHA-256 is known. Apply this seam-injection pattern whenever a downloader needs deterministic SHA fixtures alongside a production-pinned manifest.
+  - `import data from "../runtime-bundle-versions.json" with { type: "json" }` works under the workspace's `resolveJsonModule: true` + `verbatimModuleSyntax: true` setup; the JSON file does not need to be listed in the tsconfig `include` because the import itself drags the resolution.
+  - The idempotency contract is "on-disk SHA matches pinned SHA → reuse, no fetch". A corrupted cache (SHA mismatch) MUST fall through to the download path; tests should assert this by pre-writing junk bytes and then observing both that fetch was invoked AND that the cache file is replaced with the verified bytes.
+  - When introducing a new tagged subclass of `ProviderUnavailableError`, name + remediation are the contract for the spec, not the parent tag — keep the parent for catch-all error handling but assert the subclass via `instanceof` in tests.
+---

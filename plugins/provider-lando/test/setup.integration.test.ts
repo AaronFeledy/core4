@@ -9,7 +9,7 @@ import {
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
-  RuntimeBundleVerificationError,
+  ProviderBundleChecksumError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
@@ -229,8 +229,9 @@ describe("provider-lando setup", () => {
       expect(failure._tag).toBe("Some");
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
-        expect(failure.value).toBeInstanceOf(RuntimeBundleVerificationError);
+        expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
         expect(failure.value.remediation).toContain("checksum");
+        expect(failure.value.remediation).toContain("§5.8.1");
       }
     }
   });

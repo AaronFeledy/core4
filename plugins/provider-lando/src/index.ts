@@ -50,7 +50,6 @@ export {
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
-  RuntimeBundleVerificationError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
@@ -74,6 +73,21 @@ export type {
   SetupOptions,
   SetupResult,
 } from "./setup.ts";
+
+export {
+  ProviderBundleChecksumError,
+  RUNTIME_BUNDLE_MANIFEST,
+  makeDefaultRuntimeBundleDownloader,
+  makeRuntimeBundleDownloader,
+  resolveRuntimeBundleEntry,
+  runtimeBundleCachePath,
+} from "./runtime-bundle.ts";
+export type {
+  DefaultRuntimeBundleDownloaderOptions,
+  RuntimeBundleDownloaderOptions,
+  RuntimeBundleEntry,
+  RuntimeBundleManifest,
+} from "./runtime-bundle.ts";
 
 export {
   decodeProviderCapabilities,

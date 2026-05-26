@@ -13,4 +13,12 @@ tags: [beta, docs, provider-lando, setup, windows]
       <Variable name="doctorCommand" value="lando doctor" display="Confirm bindMountPerformance is slow" />
     </Step>
   </Scenario>
+
+  <Scenario id="windows-runtime-bundle" render={false} reason="Runtime-bundle download paths are exercised by plugins/provider-lando unit tests; the Windows host path remains opt-in until release artifacts are pinned">
+    <Step name="runtime-bundle-download">
+      <Variable name="bundleManifest" value="plugins/provider-lando/runtime-bundle-versions.json" display="Pinned manifest carries the URL and SHA-256 for every supported host" />
+      <Variable name="bundleCachePath" value="$LANDO_DATA_DIR/provider-lando/runtime-bundle/lando-runtime-win32-x64.zip" display="Idempotent cache path under the per-user state directory" />
+      <Variable name="checksumError" value="ProviderBundleChecksumError" display="Tagged failure raised on a SHA-256 mismatch; remediation cites spec §5.8.1" />
+    </Step>
+  </Scenario>
 </Guide>

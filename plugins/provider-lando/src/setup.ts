@@ -15,6 +15,7 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
+import { ProviderBundleChecksumError } from "./runtime-bundle.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
@@ -45,19 +46,6 @@ export class PodmanSocketUnreachableError extends ProviderUnavailableError {
       operation: "setup",
       message: "The Podman API socket is not reachable.",
       remediation: "Run `systemctl --user start podman.socket` and rerun `lando setup`.",
-      cause,
-    });
-  }
-}
-
-export class RuntimeBundleVerificationError extends ProviderUnavailableError {
-  constructor(message: string, cause?: unknown) {
-    super({
-      providerId: PROVIDER_ID,
-      operation: "setup",
-      message,
-      remediation:
-        "The Lando runtime bundle did not match its pinned checksum. Retry `lando setup`; if it fails again, report the release artifact and checksum.",
       cause,
     });
   }
@@ -356,7 +344,7 @@ const verifyRuntimeBundle = (bundle: RuntimeBundle) =>
       const actual = sha256Hex(bundle.bytes);
       const expected = normalizeSha256(bundle.sha256);
       if (actual !== expected) {
-        throw new RuntimeBundleVerificationError("The Lando runtime bundle checksum did not match.", {
+        throw new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", {
           expected,
           actual,
         });
@@ -364,9 +352,9 @@ const verifyRuntimeBundle = (bundle: RuntimeBundle) =>
       return bundle;
     },
     catch: (cause) =>
-      cause instanceof RuntimeBundleVerificationError
+      cause instanceof ProviderBundleChecksumError
         ? cause
-        : new RuntimeBundleVerificationError("Failed to verify the Lando runtime bundle checksum.", cause),
+        : new ProviderBundleChecksumError("Failed to verify the Lando runtime bundle checksum.", cause),
   });
 
 const persistSetupState = (
