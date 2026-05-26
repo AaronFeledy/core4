@@ -56,3 +56,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - When adding platform-specific prerequisite errors, thread platform context through the real system runner and test stderr classification through the runner seam, not only direct fake error propagation.
   - Guide coverage requirements apply as soon as `plugins/provider-lando/**` changes for PRD-B-01 stories; add the mapped `docs/guides/setup/*.mdx` file or record a valid skip reason.
 ---
+
+## [2026-05-26 22:01 UTC] - Push
+- Branch: us-074-provider-lando-windows-lifecycle
+- Push: pushed
+- Commit(s): 69e14d1c feat: provider-lando Windows VM lifecycle; e6770fd3 chore: mark US-074 complete and update progress log; 1cdbac8d fix: wire Windows Podman prerequisite remediation; 1fd670e5 docs: record US-074 review fixes
+- PR: #172 https://github.com/AaronFeledy/core4/pull/172 (created)
+---
