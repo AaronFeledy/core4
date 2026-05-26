@@ -16,7 +16,7 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
 - `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
 - Windows Podman machine lifecycle is structurally identical to macOS (`ensureWindowsPodmanMachine` mirrors `ensureMacOSPodmanMachine`); the separation exists for future divergence (e.g. WSL-specific machine flags).
-- Live tests gated by env-var use `test.skipIf(!process.env.GATE_VAR)` pattern; the env var is documented in the test itself.
+- Host-mutating live tests should gate on both the expected platform and an exact opt-in env value (`process.platform !== "win32" || process.env.GATE_VAR !== "1"`) so accidental truthy values do not run provider setup on the wrong host.
 
 ## [2026-05-26] - US-074
 - Implemented Windows VM lifecycle for `@lando/provider-lando`
@@ -31,4 +31,28 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The 9 pre-existing test failures in the full suite (`ProcessRunnerLive`, `compiled` binary tests, `codegen`) are environment failures (`bun` not on PATH in the test runner) — not regressions; safe to ignore in this env.
   - Windows and macOS machine runners share the same `PodmanMachineRunner` interface; only the `ensureXxx` orchestration functions differ per platform.
   - `ProviderCapabilities.bindMounts` should be `true` for Windows because WSL2 supports bind mounts; `bindMountPerformance: "slow"` reflects the VM-mediated cross-boundary overhead.
+---
+
+## [2026-05-26 21:39 UTC] - US-074 Review
+- Reviewed the US-074 Windows provider-lando lifecycle implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits (`f75b1987..HEAD`).
+- Fixed confirmed review blockers:
+  - Threaded the resolved host platform through `makeSystemPodmanMachineRunner()` / `runMachineCommand()` so real Windows Podman stderr maps to `WindowsMachinePrerequisiteError` instead of generic or macOS remediation.
+  - Added system-runner stderr coverage for Hyper-V / WSL2 / Virtual Machine Platform prerequisite output.
+  - Tightened the Windows live test gate to `process.platform === "win32"` plus `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1`.
+  - Added the required US-074 guide coverage file at `docs/guides/setup/provider-lando-windows.mdx`.
+- Files changed:
+  - `plugins/provider-lando/src/setup.ts`
+  - `plugins/provider-lando/test/setup.integration.test.ts`
+  - `docs/guides/setup/provider-lando-windows.mdx`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: real Windows system-runner prerequisite failures were not receiving Windows-specific remediation.
+  - Fixed: Windows remediation tests injected `WindowsMachinePrerequisiteError` directly and missed stderr classification.
+  - Fixed: Windows live test was env-gated but not platform/exact-value gated.
+  - Fixed: required US-074 guide coverage was missing.
+  - Rejected/deferred: WSL distro unregister during teardown is an open PRD question/default larger than this review fix; current US-074 acceptance only requires fake-client teardown transitions, so this remains future CLI/provider teardown work rather than a scoped repair.
+- Verification: `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun run typecheck` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun run lint` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun run lint:guides` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun test plugins/provider-lando/` → exit 0; `PATH="/home/aaron/.bun/bin:$PATH" /home/aaron/.bun/bin/bun test` → 1191 pass, 12 skip, 0 fail.
+- **Learnings for future iterations:**
+  - When adding platform-specific prerequisite errors, thread platform context through the real system runner and test stderr classification through the runner seam, not only direct fake error propagation.
+  - Guide coverage requirements apply as soon as `plugins/provider-lando/**` changes for PRD-B-01 stories; add the mapped `docs/guides/setup/*.mdx` file or record a valid skip reason.
 ---
