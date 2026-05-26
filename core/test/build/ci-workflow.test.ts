@@ -51,7 +51,7 @@ describe("ci workflow", () => {
     expect(triggers).toContain("  pull_request:");
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
-    expect(staticChecks).toContain("    runs-on: ubuntu-22.04");
+    expect(staticChecks).toContain("    runs-on: ubuntu-24.04");
     expect(staticChecks).toContain("        uses: oven-sh/setup-bun@v2");
     expect(staticChecks).toContain("          bun-version-file: .bun-version");
     expect(staticChecks).toContain("        run: bun install --frozen-lockfile");
@@ -78,7 +78,7 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain(
       "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
     );
-    expect(buildLinux).toContain("    runs-on: ubuntu-22.04");
+    expect(buildLinux).toContain("    runs-on: ubuntu-24.04");
     expect(buildLinux).toContain("        run: bun run build");
     expect(buildLinux).toContain("          test -f dist/lando");
     expect(buildLinux).toContain("          ./dist/lando --version");
@@ -101,11 +101,11 @@ describe("ci workflow", () => {
     const libraryApiTests = findIndentedBlock(jobs, "library-api-tests", 2);
     const recipeTests = findIndentedBlock(jobs, "recipe-tests", 2);
 
-    expect(libraryApiTests).toContain("    runs-on: ubuntu-22.04");
+    expect(libraryApiTests).toContain("    runs-on: ubuntu-24.04");
     expect(libraryApiTests).toContain("      - name: Run library API tests");
     expect(libraryApiTests).toContain("        run: bun test core/test/library sdk/test/library");
 
-    expect(recipeTests).toContain("    runs-on: ubuntu-22.04");
+    expect(recipeTests).toContain("    runs-on: ubuntu-24.04");
     expect(recipeTests).toContain("      - name: Run recipe test layer");
     expect(recipeTests).toContain(
       "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
@@ -118,7 +118,7 @@ describe("ci workflow", () => {
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
 
     expect(guideScenarios).toContain("    needs: [static-checks]");
-    expect(guideScenarios).toContain("    runs-on: ubuntu-22.04");
+    expect(guideScenarios).toContain("    runs-on: ubuntu-24.04");
     expect(guideScenarios).toContain("        uses: oven-sh/setup-bun@v2");
     expect(guideScenarios).toContain("          bun-version-file: .bun-version");
     expect(guideScenarios).toContain("        run: bun install --frozen-lockfile");
@@ -156,7 +156,7 @@ describe("ci workflow", () => {
     const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
 
     expect(providerIntegration).toContain("    needs: [build-linux-x64]");
-    expect(providerIntegration).toContain("    runs-on: ubuntu-22.04");
+    expect(providerIntegration).toContain("    runs-on: ubuntu-24.04");
     expect(providerIntegration).toContain("    timeout-minutes: 20");
     expect(providerIntegration).toContain("      - name: Install Podman");
     expect(providerIntegration).toContain("          sudo apt-get install -y podman");
