@@ -959,7 +959,7 @@
       "description": "As a maintainer, every PR runs a static-checks job that runs typecheck + lint + non-integration `bun test` on Linux x64. (PRD-07 US-001)",
       "acceptanceCriteria": [
         "Failing test `core/test/ci/static-checks.test.ts` parses .github/workflows/ci.yml and asserts a `static-checks` job exists with steps: bun install, bun run typecheck, bun run lint, bun test (filtering out *.integration.test.ts)",
-        "Job runs on ubuntu-22.04 (pinned, not latest, per cross-cutting risks)",
+        "Job runs on ubuntu-24.04 (pinned, not latest, per cross-cutting risks)",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -990,7 +990,7 @@
       "description": "As a maintainer, every PR has a `provider-integration-linux-x64` job that starts a private Podman socket in the runner and runs every *.integration.test.ts plus the MVP exit-criteria scenario. (PRD-07 US-003)",
       "acceptanceCriteria": [
         "Failing test `core/test/ci/provider-integration.test.ts` parses ci.yml and asserts a `provider-integration-linux-x64` job exists with steps: install podman, start socket, set LANDO_TEST_PODMAN_SOCKET env var, run integration test glob, run mvp-exit-criteria scenario",
-        "Job runs on ubuntu-22.04",
+        "Job runs on ubuntu-24.04",
         "Job depends on build-linux-x64",
         "Tests pass",
         "Typecheck passes",

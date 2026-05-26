@@ -29,7 +29,7 @@ Depends on: **PRD-A2-02, PRD-A2-03**.
 - [ ] `scripts/build-ci-workflow.ts` adds a new job (`guide-scenarios-linux-x64`) that runs after `static-checks` and in parallel with `provider-integration-linux-x64`.
 - [ ] The job runs, in order: `bun install` → `bun run codegen` (which transitively runs `build-guide-scenarios`) → `bun run typecheck` → `bun run lint:guides` → `bun test test/scenarios/generated/guides/**`.
 - [ ] The job is required for merge to `main`; the same rule is encoded in `.github/CODEOWNERS` or the repo's branch protection equivalent that PRD-Alpha-07 set up.
-- [ ] The job runs only on `ubuntu-22.04` per the Alpha CI pinning rule in `spec/ROADMAP.md` cross-cutting risks.
+- [ ] The job runs only on `ubuntu-24.04` per the Alpha CI pinning rule in `spec/ROADMAP.md` cross-cutting risks.
 - [ ] The job uploads any failing scenario's internal transcript JSON (US-071) as a CI artifact with 7-day retention named `guide-scenario-transcripts-<run-id>.zip`.
 - [ ] Tests cover the workflow generator: codegen regenerates `.github/workflows/ci.yml` with the new job; the existing `git diff --exit-code` drift gate from Alpha PRD-07 passes.
 - [ ] `bun run typecheck`, `bun run lint`, `bun test` pass.
@@ -87,7 +87,7 @@ Depends on: **PRD-A2-02, PRD-A2-03**.
 - No render of public transcripts. The internal transcript artifact is the only Alpha 2 transcript surface.
 - No Starlight integration, no `<Inspect>` snapshots, no `<Tabs>`/axis fan-out, no per-variant CI matrix.
 - No watch mode beyond the inner author command from PRD-A2-03 (`bun run dev:guides` is Beta+).
-- No nightly cron, no multi-platform matrix, no provider matrix change. Alpha 2's CI gate runs only on `ubuntu-22.04` per-PR.
+- No nightly cron, no multi-platform matrix, no provider matrix change. Alpha 2's CI gate runs only on `ubuntu-24.04` per-PR.
 - No `lint:guides` rules beyond the six enumerated in US-072.
 - No alias for `bun run lint:tutorials`. Spec-owned name only.
 - No public docs site rendering of guides or transcripts.
