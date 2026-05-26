@@ -23,7 +23,7 @@ permissions:
 jobs:
   dev-prerelease-linux-x64:
     if: github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -73,7 +73,7 @@ jobs:
   npm-dev-packages:
     if: github.event.workflow_run.conclusion == 'success'
     needs: [dev-prerelease-linux-x64]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 

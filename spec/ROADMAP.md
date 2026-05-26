@@ -392,6 +392,18 @@ Feature-complete against the spec. From here on, no new feature surface — only
 - Import-boundary test enforces no OCLIF in default entry
 - Library mode defaults: silent logger, json renderer, no auto-discovery, no telemetry
 
+**CLI dispatch unification (spike — informs §14.2 decision):**
+- Spike: can `@oclif/core`'s `execute()` dispatch reliably inside `bun build --compile` against `oclif.manifest.json` + `core/src/cli/oclif/compiled-commands.ts`? Drive a representative slice (`app:start`, `meta:setup`, `meta:bun --version` passthrough, one deferred command) and verify exit code, stderr remediation, and JSON-renderer parity against the existing `runCompiledCli` output.
+- If the spike succeeds: delete `runCompiledCli` in `core/src/cli/run.ts`, drop the relaxed-import rule in spec §8.4.1, fold §8.4.1 into a brief historical note, and close §14.2 "Compiled-binary CLI dispatch unification" with option (a).
+- If the spike fails: promote §8.4.1's parity rules to normative, close §14.2 with option (b), and add a compiled-binary parity test layer to §13.1 covering every canonical command id in `MVP_COMMAND_IDS` plus the §17.1 stage-7 deferred-command set.
+- Either outcome: update AGENTS.md's three interim notes (Dual CLI dispatch / Single source of truth / Compiled CLI test coverage).
+
+**Renderer wiring at the CLI command boundary (closes §14.2 row + §2.4 lint-gate prohibition):**
+- Wire the `Renderer` Live Layer at the CLI command boundary per §8.9; commands stop writing through `console.log`/`console.error` in `core/src/cli/run.ts` and per-command `render` helpers.
+- Add `renderer` to `GlobalConfig` Schema so the `flag > env > config > default` precedence already exposed by `core/src/cli/renderer-selection.ts` resolves end-to-end.
+- Ship the §13.4 lint gate that catches direct `process.stdout.write` / `console.*` calls outside the two §2.4 carve-outs (`bin/lando.ts`, `core/src/cli/oclif/pre-renderer.ts`).
+- Closes §14.2 "Renderer wiring at the CLI command boundary" and converts the §2.4 interim caveats into the originally-specified prohibitions.
+
 **Build / distribution:**
 - All 5 platform binaries: `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`
 - Codegen pipeline complete: `scripts/codegen.ts`, `scripts/build-bundled-plugins.ts`
@@ -592,7 +604,7 @@ These were called out in §14.2 and the canonical surface non-goals as **archite
 | **Compose subset creep** | Each accepted Compose key is a permanent compatibility commitment | Maintain an explicit allowlist file from MVP; reject anything not on it with a remediation message |
 | **`bundled.ts` codegen drift** | Bundled plugin set is bake-time only; a missing plugin breaks the binary silently | Ship `scripts/build-bundled-plugins.ts` in MVP even if hand-curated |
 | **Hot-path latency** | The promised ~150ms on `tooling` bootstrap is the perceived performance number | Add a benchmark gate in CI starting Beta; track regression by commit |
-| **CI runner Podman drift** | MVP ships CI with Podman in the runner (PRD-07). GitHub-hosted runner image changes can break the private-socket setup silently. | Pin `ubuntu-22.04` (not `latest`); on every Bun/Podman bump, run the integration job manually before merging. |
+| **CI runner Podman drift** | MVP ships CI with Podman in the runner (PRD-07). GitHub-hosted runner image changes can break the private-socket setup silently. | Pin `ubuntu-24.04` (not `latest`); on every Bun/Podman bump, run the integration job manually before merging. |
 | **Plugin trust UX** | Open decision at GA — wrong shape hurts plugin adoption | Don't ship plugin install (Beta) without a stub; finalize at RC |
 | **Telemetry default-on** | Privacy-sensitive default — wrong inventory becomes a public incident | Inventory must be reviewed at RC by someone outside core eng |
 

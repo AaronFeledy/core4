@@ -50,7 +50,7 @@ permissions:
 
 jobs:
   static-checks:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -72,7 +72,7 @@ jobs:
         run: bun run test:unit
 
   schema-snapshot:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -91,7 +91,7 @@ jobs:
         run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json
 
   bundled-codegen:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -113,7 +113,7 @@ jobs:
         run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts
 
   library-api-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -129,7 +129,7 @@ jobs:
         run: bun test core/test/library sdk/test/library
 
   recipe-tests:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -146,7 +146,7 @@ jobs:
 
   guide-scenarios-linux-x64:
     needs: [static-checks]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -181,7 +181,7 @@ jobs:
 
   build-linux-x64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -218,7 +218,7 @@ jobs:
 
   provider-integration-linux-x64:
     needs: [build-linux-x64]
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4

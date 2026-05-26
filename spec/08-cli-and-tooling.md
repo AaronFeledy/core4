@@ -388,6 +388,29 @@ OCLIF is consumed in *one place only*: `src/cli/oclif/`. Outside that directory,
 
 **Namespace-to-topic mapping.** A canonical command id like `app:start` is a two-segment OCLIF id (topic `app`, command `start`). Three-segment ids like `meta:plugin:add` produce a nested topic (`meta` topic, `plugin` sub-topic, `add` command). The OCLIF adapter generates `Topics` entries from the registered namespaces and registers each canonical command under its topic. **Top-level aliases** (§8.1.2) are registered as additional OCLIF commands sharing the same `run()` implementation; they are flagged in the manifest with an `aliasOf:` pointer to the canonical id and rendered in the "Common commands" help group rather than under their topic.
 
+### 8.4.1 Compiled-binary dispatch (interim)
+
+§8.4 above describes the OCLIF integration policy as it applies to **source mode** — `bun core/bin/lando.ts <cmd>` and the test harnesses that drive `core/bin/lando.ts` through `runCli`. In source mode, `runCli` calls `@oclif/core`'s `execute()` and the policy in §8.4 is normative.
+
+The **compiled `$bunfs` binary** produced by `bun build --compile` does NOT route through `@oclif/core` at runtime. `runCli` detects `entryPath.includes("$bunfs")` and forks to a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`) that parses argv directly and dispatches to the same `LandoCommandSpec.run` implementations the OCLIF path uses. This divergence is **interim** and is tracked as a GA-blocking open decision in §14.2 ("Compiled-binary CLI dispatch unification").
+
+**Why the fork exists.** OCLIF v4's `execute()` performs runtime command discovery against the on-disk `commands/` tree, which is not addressable inside a `bun build --compile` single-executable binary. The static manifest (`oclif.manifest.json`) and the static command registry (`core/src/cli/oclif/compiled-commands.ts`) together carry every shape `execute()` would otherwise discover at runtime, but the dispatcher itself has not yet been wired to consume them inside the compiled binary.
+
+**Parity rules (normative while this section is in force).** The two paths share command implementations and renderers by construction; only argv parsing, help/version interception, and `command_not_found` are forked.
+
+- Every `LandoCommandSpec` and its `render` function MUST live in exactly one module under `core/src/cli/commands/` and be imported by both paths.
+- Every cross-cutting CLI helper (renderer selection, deferred-command remediation, bug-report formatting, error-tag rendering) MUST live in one shared module under `core/src/cli/` and be invoked at both entry points (`LandoCommandBase.runEffect` for source; the top of `runCompiledCli` for compiled).
+- Both paths MUST produce semantically identical exit codes, tagged-error payloads (`commandId`, `specSection`, `remediation`), and JSON-renderer event fields after normalizing timestamps and temp paths. The §17.1 stage-7 contract continues to gate this.
+- New canonical command ids MUST be registered in BOTH the OCLIF command class under `core/src/cli/oclif/commands/<topic>/<cmd>.ts` AND the static registry `core/src/cli/oclif/compiled-commands.ts`.
+- The implemented-canonical-id set is tracked at runtime by `MVP_COMMAND_IDS` in `core/src/cli/oclif/command-base.ts` (source path) and the matching `argv[0]` switch in `runCompiledCli` (compiled path). Every canonical id NOT in the implemented set MUST be paired with an entry in `core/src/cli/deferred-commands.ts::DEFERRED_COMMAND_PLANS` so both paths emit the catalog's phase-tagged `NotImplementedError`. Adding a canonical id to `MVP_COMMAND_IDS` without a matching compiled-dispatcher branch (or removing one without removing the other) is a parity bug that the §13.1 deferred-commands test layer is responsible for catching.
+
+**Known accepted divergences (interim).** These are tolerated until §14.2 closes. They MUST NOT widen.
+
+- The compiled binary does not accept OCLIF flexible-taxonomy space forms for multi-segment canonical ids (e.g., `lando plugin add` resolves only via `lando plugin:add`). The colon form is canonical.
+- Help and version output in the compiled binary are rendered by hand-rolled `printRootHelp` / `printCommandHelp` in `core/src/cli/run.ts`, not by OCLIF's help class. The two help outputs are NOT byte-identical.
+- The §8.4 rule "outside `src/cli/oclif/`, no module imports `@oclif/core`" is relaxed for `core/src/cli/run.ts`, which imports `execute` and the `Command` type. Every other module under `core/src/` MUST still observe the §8.4 rule.
+- Scenario tests target source mode (`core/bin/lando.ts`) by default; the compiled binary is exercised by a smaller set of dedicated tests (`core/test/build/compile.test.ts`, `core/test/cli/setup.test.ts`). The §13.1 layer-coverage rules MUST treat both as the same surface even when the per-test target differs.
+
 ### 8.5 Tooling schema
 
 `tooling:` is Lando's Taskfile-inspired task runner surface. It is not a promise of 1:1 compatibility with `Taskfile.yml`; Lando borrows the durable concepts (`cmds`, `deps`, `vars`, `sources`, `generates`, `status`, `preconditions`, `run`) and adapts execution to services, providers, lifecycle events, Effect Schema, and the hot-path cache.

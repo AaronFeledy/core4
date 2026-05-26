@@ -258,7 +258,7 @@
         "`scripts/build-ci-workflow.ts` adds `guide-scenarios-linux-x64` job after `static-checks`, in parallel with `provider-integration-linux-x64`",
         "Job runs in order: `bun install` \u2192 `bun run codegen` \u2192 `bun run typecheck` \u2192 `bun run lint:guides` \u2192 `bun test test/scenarios/generated/guides/**`",
         "Job is required for merge to `main` per branch protection",
-        "Job pinned to `ubuntu-22.04` per ROADMAP cross-cutting Podman-drift risk note",
+        "Job pinned to `ubuntu-24.04` per ROADMAP cross-cutting Podman-drift risk note",
         "Job uploads any failing scenario's internal transcript JSON (from US-071) as CI artifact `guide-scenario-transcripts-<run-id>.zip` with 7-day retention",
         "`bun run codegen` regenerates `.github/workflows/ci.yml` with the new job; Alpha PRD-07 `git diff --exit-code` drift gate passes",
         "Tests pass",

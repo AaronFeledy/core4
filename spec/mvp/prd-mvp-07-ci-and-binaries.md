@@ -38,7 +38,7 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 **Acceptance Criteria:**
 - [ ] Failing test in `core/test/build/ci-workflow.test.ts` parses `.github/workflows/ci.yml` (using a YAML parser already in the workspace) and asserts:
   - The workflow's `on:` triggers include `pull_request` against `main` and `push` against `main`.
-  - A job named `static-checks` exists, runs on `ubuntu-22.04` (or `ubuntu-latest` pinned in a comment), with a step matrix that calls `bun install`, `bun run typecheck`, `bun run lint`, `bun test --filter=!*.integration` (the static suite).
+  - A job named `static-checks` exists, runs on `ubuntu-24.04` (LTS pin, not `ubuntu-latest`), with a step matrix that calls `bun install`, `bun run typecheck`, `bun run lint`, `bun test --filter=!*.integration` (the static suite).
   - The job uses Bun via `oven-sh/setup-bun@v2` (or whatever current pinned version) with `bun-version-file: .bun-version` (or matches `package.json#engines.bun`).
   - The job sets `permissions:` to the minimum needed (`contents: read`).
 - [ ] Test asserts the workflow does *not* set `pull_request_target`, does *not* check out forks with write tokens, does *not* expose secrets in fork PRs.
@@ -127,7 +127,7 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 ## Functional Requirements
 
 - FR-1: `.github/workflows/ci.yml` is the single CI workflow at MVP. It contains exactly three jobs: `static-checks`, `build-linux-x64`, `provider-integration-linux-x64`.
-- FR-2: All three jobs run on `ubuntu-22.04` (pinned, with the rationale documented in a workflow comment — `ubuntu-latest` drift is a known footgun).
+- FR-2: All three jobs run on `ubuntu-24.04` (pinned, with the rationale documented in a workflow comment — `ubuntu-latest` drift is a known footgun).
 - FR-3: `static-checks` does not require Podman. It runs on every PR. Wall-clock budget: ≤5 minutes (advisory at MVP, hard cap at Beta).
 - FR-4: `build-linux-x64` produces `dist/lando`, runs `--version` and `--help` smoke checks, uploads as `lando-linux-x64` artifact with 7-day retention. Wall-clock budget: ≤5 minutes.
 - FR-5: `provider-integration-linux-x64` starts a private Podman socket in the runner, exports `LANDO_TEST_PODMAN_SOCKET`, runs the integration + scenario suites, tears down on success or failure. Wall-clock budget: ≤20 minutes.
@@ -153,7 +153,7 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 
 ## Technical Considerations
 
-- **Podman in GitHub-hosted runners.** `ubuntu-22.04` ships with Podman ≥4.x. The setup step starts a private socket via `podman system service --time=0 unix:///tmp/podman.sock &` and waits for the socket file to exist before tests run. Rootless mode (no `sudo`) — that exercises the same code path the dev box uses. If a future runner image drops Podman, fall back to `apt-get install -y podman` in the setup step (slow, ~30s).
+- **Podman in GitHub-hosted runners.** `ubuntu-24.04` ships with Podman ≥4.9. The setup step starts a private socket via `podman system service --time=0 unix:///tmp/podman.sock &` and waits for the socket file to exist before tests run. Rootless mode (no `sudo`) — that exercises the same code path the dev box uses. If a future runner image drops Podman, fall back to `apt-get install -y podman` in the setup step (slow, ~30s).
 - **Test concurrency.** `static-checks` and `build-linux-x64` can run in parallel; `provider-integration-linux-x64` depends on `static-checks` to avoid burning a Podman runner on a tree that won't typecheck. Total wall-clock for a green PR: ~25 minutes.
 - **Artifact size.** `bun build --compile` produces a ~50–100MB self-contained binary. 7-day retention × ~10 PRs/day × 100MB = ~7GB rolling — comfortably within GitHub's free-tier artifact storage.
 - **Secret hygiene.** The workflow declares `permissions: { contents: read }` at the top level. Jobs that need write (none at MVP) would scope it per-job. Fork PRs run with read-only tokens by default — no secrets exposed.
@@ -176,4 +176,4 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 - The "diagnostic bundle on failure" pattern (US-003) needs a documented shape — what files, what naming, what retention. Default: `failure-diagnostics-${{ github.run_id }}.tar.gz` containing `podman.log`, `dist/lando` if built, `core/test/**/*.log` (any test that wrote a log file). Implementer fills the exact contents.
 - Branch protection in US-007 is *policy*, not code. Should we adopt Probot Settings (`.github/settings.yml`) to manage it as code? Default: Beta. At MVP, the documented runbook + a manual one-time setup is acceptable.
 - `bun test`'s `--filter` semantics for excluding integration tests: confirm the exact flag in current Bun (`--testNamePattern`? `--filter`? path-based exclusion?). Implementer pins the right invocation.
-- Is `ubuntu-22.04` or `ubuntu-24.04` the right pin? Default: `22.04` — older but more stable Podman; revisit at Alpha when 24.04 is the LTS.
+- ~~Is `ubuntu-22.04` or `ubuntu-24.04` the right pin?~~ **Resolved (Beta paradigm review):** `ubuntu-24.04` — 24.04 is the current LTS, ships Podman ≥4.9, and per-PR rationale (`ubuntu-latest` drift footgun) is unchanged. All Linux Actions workflows pin to `ubuntu-24.04`.
