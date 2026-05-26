@@ -63,3 +63,9 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 69e14d1c feat: provider-lando Windows VM lifecycle; e6770fd3 chore: mark US-074 complete and update progress log; 1cdbac8d fix: wire Windows Podman prerequisite remediation; 1fd670e5 docs: record US-074 review fixes
 - PR: #172 https://github.com/AaronFeledy/core4/pull/172 (created)
 ---
+
+## [2026-05-26 22:14 UTC] - PR #172 static-checks triage
+- CI failure: real issue; OCLIF command discovery treated `core/src/cli/oclif/commands/deferred-stub.ts` as a command id and emitted `Warning: Error` (`command deferred-stub not found`) on stderr during source-mode CLI startup.
+- Fix: moved the deferred-stub helper out of the OCLIF commands discovery tree and updated stub command imports; kept the init scenario stderr assertion intact.
+- Verification: `~/.bun/bin/bun test core/test/cli/init.scenario.test.ts` → exit 0; `~/.bun/bin/bun run typecheck` → exit 0; `~/.bun/bin/bun run lint` → exit 0; `~/.bun/bin/bun test` without PATH fix hit known local `bun`-not-on-PATH failures, then `PATH="$HOME/.bun/bin:$PATH" bun test` → exit 0.
+---
