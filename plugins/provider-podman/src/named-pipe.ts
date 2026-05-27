@@ -178,7 +178,7 @@ const decodeChunkedBuffer = (
   return { chunks, remainder: remaining, complete: false };
 };
 
-async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<Bytes> {
+export async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<Bytes> {
   let buffer: Bytes = new Uint8Array(0);
   for await (const chunk of chunks) {
     buffer = concatBytes([buffer, chunk]);
@@ -189,6 +189,10 @@ async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<
       if (decoded.complete) return;
       if (decoded.chunks.length === 0) break;
     }
+  }
+
+  if (buffer.length > 0) {
+    for (const bodyChunk of flushChunkedBufferAtEnd(buffer)) yield bodyChunk;
   }
 }
 

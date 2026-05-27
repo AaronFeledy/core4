@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import type { Socket } from "node:net";
 import { Cause, Effect } from "effect";
 
-import { flushChunkedBufferAtEnd, makeRuntimeProvider } from "@lando/provider-podman";
+import { decodeChunkedBody, flushChunkedBufferAtEnd, makeRuntimeProvider } from "@lando/provider-podman";
 import { connectNamedPipeSocket, namedPipeInfoFailure } from "../src/named-pipe.ts";
 
 describe("provider-podman named-pipe chunk flush", () => {
@@ -20,6 +20,21 @@ describe("provider-podman named-pipe chunk flush", () => {
     const body = new TextEncoder().encode("5\r\nhello\r\n0\r\n\r\n");
 
     const chunks = flushChunkedBufferAtEnd(body);
+
+    expect(chunks).toHaveLength(1);
+    expect(new TextDecoder().decode(chunks[0])).toBe("hello");
+  });
+
+  test("decodes the final chunk when the trailing CRLF is missing at end-of-stream", async () => {
+    const body = new TextEncoder().encode("5\r\nhello");
+
+    const chunks = await Array.fromAsync(
+      decodeChunkedBody(
+        (async function* () {
+          yield body;
+        })(),
+      ),
+    );
 
     expect(chunks).toHaveLength(1);
     expect(new TextDecoder().decode(chunks[0])).toBe("hello");

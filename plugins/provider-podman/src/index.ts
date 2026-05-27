@@ -43,9 +43,9 @@ import {
 } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
-import { flushChunkedBufferAtEnd, makeNamedPipePodmanApiClient } from "./named-pipe.ts";
+import { decodeChunkedBody, flushChunkedBufferAtEnd, makeNamedPipePodmanApiClient } from "./named-pipe.ts";
 
-export { flushChunkedBufferAtEnd };
+export { decodeChunkedBody, flushChunkedBufferAtEnd };
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
