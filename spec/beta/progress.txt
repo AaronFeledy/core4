@@ -458,3 +458,37 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - When mapping low-level Podman API connection failures (`ENOENT`, `ECONNREFUSED`, "named pipe not found", "system cannot find the path") to a Podman Desktop "machine not running" error, walk the error chain (`message`, `stderr`, `code`, `cause`) — the typed `ProviderUnavailableError` from `provider-lando` carries the real cause one level deeper.
 
 ---
+## [2026-05-27 11:31 CDT] - US-079 Review
+- Reviewed the US-079 `@lando/provider-podman` Podman Desktop implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commit (`HEAD`).
+- Fixed confirmed review blockers:
+  - Added a Windows named-pipe Podman API client path and routed exported/default `makePodmanApiClient()` through it for `npipe:` sockets, so the Windows Podman Desktop default is no longer fake-client-only.
+  - Allowed provider-podman's default Windows `npipe://./pipe/podman-machine-default` path while preserving fail-closed rejection for unsupported non-Unix/non-npipe transports.
+  - Converted malformed Podman Desktop machine names into a tagged `InvalidPodmanMachineNameError` and added rejection coverage.
+  - Used the effective process environment for Podman Desktop machine-not-running remediation, so env-selected machines do not report `podman-machine-default` incorrectly.
+  - Tightened the live Podman Desktop contract gate to require macOS/Windows in addition to `LANDO_TEST_PODMAN_DESKTOP_SOCKET`.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`
+  - `plugins/provider-podman/src/named-pipe.ts`
+  - `plugins/provider-podman/test/capabilities.test.ts`
+  - `plugins/provider-podman/test/desktop.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: Windows Podman Desktop resolved to `npipe://...` but the real provider rejected non-`unix://` sockets.
+  - Fixed: the real Podman API client was Unix-socket-only, so the documented Windows live `npipe://...` path could not run.
+  - Fixed: live Podman Desktop test was env-gated but not platform-gated.
+  - Fixed: machine-not-running remediation could use the default machine name even when `process.env` selected a custom machine.
+  - Fixed: malformed machine-name rejection was claimed in the progress log but lacked test coverage and threw a raw error.
+  - Rejected: guide-coverage table omission for US-079 is a PRD ownership/documentation drift concern, not a story blocker; this review kept the existing US-079 guide files and did not expand PRD governance scope.
+- Verification:
+  - LSP diagnostics attempted on changed TypeScript files; TypeScript LSP exited with code -2, matching prior local LSP behavior.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/ --reporter=junit --reporter-outfile=/tmp/us079-review-provider-podman-all.xml` → 56 tests, 112 assertions, 0 failures, 2 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/doctor.test.ts --reporter=junit --reporter-outfile=/tmp/us079-review-doctor.xml` → 15 tests, 102 assertions, 0 failures, 1 skip.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-review-full.xml` → 1315 tests, 6410 assertions, 0 failures, 16 skips.
+- **Learnings for future iterations:**
+  - Discovery tests are insufficient when a provider has scheme-specific transports; add a factory-path regression that the default platform socket reaches the real client factory instead of stopping at validation.
+  - For platform-specific live tests, gate on both the exact opt-in environment variable and the expected host platform so accidental CI env leakage cannot exercise host runtimes on the wrong OS.
+  - When a remediation references a selected machine name, derive both socket resolution and error text from one effective environment object.
+---
