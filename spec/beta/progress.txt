@@ -360,3 +360,47 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Tagged subclasses of SDK errors (e.g. `ProviderLandoConflictError extends ProviderUnavailableError`) preserve `instanceof` checks for both classes, so callers in the registry that map `ProviderCapabilityError | ProviderUnavailableError` to a final `ProviderUnavailableError` keep working without special-casing the subclass.
   - When `provider-podman` reuses provider-lando's lifecycle helpers, the underlying tagged errors still embed `providerId: "lando"`. That is acceptable for US-078 (the user-visible surface is the registry-level error and the inspect snapshot `providerId`, both of which read `podman`); a full identity rewrite would require duplicating the lifecycle and is out of scope.
 ---
+
+## [2026-05-27 02:11 CDT] - US-078 Review
+- Reviewed the US-078 `@lando/provider-podman` Linux opt-in provider implementation against `spec/beta/prd-beta-01-provider-matrix.md`, the HEAD build-step commit, direct checks, and specialist `review-work` findings.
+- Fixed confirmed review blockers:
+  - Wired `lando setup --provider=podman` through the source OCLIF setup command and the compiled dispatcher so the documented opt-in/remediation path selects the requested provider instead of the configured default.
+  - Added root typecheck coverage for `plugins/provider-podman` by adding the package to the root `tsconfig.json` references.
+  - Hardened provider-podman socket handling to default to rootless `/run/user/$UID/podman/podman.sock` when `XDG_RUNTIME_DIR` is unavailable and to reject non-Unix `DOCKER_HOST` transports before constructing the Unix-socket API client.
+  - Made provider-lando conflict-state parsing fail closed on malformed/non-string state instead of treating unreadable/corrupt setup state as no conflict.
+  - Persisted provider-podman applied plans under `provider-podman/apps` so follow-up CLI invocations can inspect/exec/logs/destroy without an in-memory plan.
+- Files changed:
+  - `core/src/cli/oclif/commands/meta/setup.ts`
+  - `core/src/cli/run.ts`
+  - `core/test/cli/setup.test.ts`
+  - `docs/guides/setup/provider-podman-linux.mdx`
+  - `plugins/provider-podman/src/index.ts`
+  - `plugins/provider-podman/test/capabilities.test.ts`
+  - `plugins/provider-podman/test/conflict.test.ts`
+  - `plugins/provider-podman/test/contract.integration.test.ts`
+  - `tsconfig.json`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: `--provider=podman` was declared and referenced by conflict remediation but ignored by setup selection.
+  - Fixed: root `bun run typecheck` did not include the new provider-podman workspace package.
+  - Fixed: non-Unix `DOCKER_HOST`/Windows npipe values could be passed into the reused Unix-socket Podman client.
+  - Fixed: Linux discovery could silently fall back to the rootful `/run/podman/podman.sock` while advertising `rootless: true`.
+  - Fixed: provider-lando conflict detection failed open on malformed setup state.
+  - Fixed: provider-podman did not persist applied plans across provider instances / CLI invocations.
+  - Rejected/deferred: provider-lando production setup often lacks a recorded managed socket unless a socket path is injected; fully deriving the private runtime-bundle socket is provider-lando setup plumbing beyond this US-078 review fix, while the US-078 conflict path now fails closed when state is malformed and rejects when a socket is recorded.
+  - Rejected/deferred: literal non-auto-loading concern; repo convention for opt-in providers is bundled/discoverable but not default-selected, matching the US-078 build-step learning and later provider-selection stories.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/ core/test/cli/setup.test.ts` → 34 pass, 1 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/library/sdk-backward-compatibility.test.ts core/test/services/runtime-provider-registry.test.ts core/test/services/plugin-registry.test.ts core/test/plugins/bundled.test.ts test/scenarios/generated/guides/provider-podman-linux/ plugins/provider-lando/` → 116 pass, 8 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides docs/guides/setup/provider-podman-linux.mdx` → Guide lint passed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us078-review-full.xml` → 1265 pass, 15 skip, 0 fail.
+  - `git diff --check` → clean.
+  - LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2; `tsc -b` was clean.
+- **Learnings for future iterations:**
+  - Declaring a provider-selection CLI flag is not enough; setup-like commands must thread parsed flags into `RuntimeProviderRegistry.select` in both source and compiled dispatch paths.
+  - New workspace packages must be added to root `tsconfig.json` references or the repo-wide typecheck gate does not cover them.
+  - Provider-podman reuses provider-lando's Unix-socket Podman transport, so US-078 should reject TCP/npipe overrides until a transport-specific client lands in US-079 or later.
+  - User-installed provider lifecycle state should live under the provider's own state root (`provider-podman/apps`) rather than relying on process-local plan maps.
+---
