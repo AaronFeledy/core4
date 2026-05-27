@@ -534,3 +534,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Files changed:
   - `plugins/provider-podman/src/index.ts`: eager `resolvePodmanDesktopMachine(effectiveEnv)` call with typed-error catch; `Effect.mapError` branch now reuses the resolved name instead of calling the throwing helper inline.
 - Verification: pending - `bun run typecheck`, `bun run lint`, `bun test plugins/provider-podman/`, then full `bun test` before push. Results recorded below once green.
+
+## [2026-05-27 17:46 UTC] - US-079 PR #178 Bugbot triage round 2 push
+- Branch: us-079-provider-podman-desktop
+- Commit pushed: c776d37 fix(provider-podman): resolve Podman Desktop machine name eagerly
+- Verification (post-commit, clean working tree):
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 56 pass, 2 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-round2-postcommit.xml` → 1301 pass, 16 skip, 0 fail across 177 files / 144s
+- Coordination note: the cross-package shared-named-pipe extraction explored during this round was reverted as out-of-scope and stashed locally as `pr178-round2-named-pipe-refactor-deferred` per the orchestrator's mandate to keep this PR scoped to the typed-error fix. The duplication concern from Bugbot comment 2 remains open for a follow-up refactor PR.
