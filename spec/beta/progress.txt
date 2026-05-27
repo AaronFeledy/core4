@@ -559,3 +559,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 57 pass, 2 skip, 0 fail
   - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-round3-postcommit.xml` → 1302 pass, 16 skip, 0 fail across 177 files / 128.75s
+
+## [2026-05-27 18:21 UTC] - US-079 PR #178 Bugbot triage round 4 push
+- Triaged Cursor Bugbot's fourth review (commit `3211323`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/named-pipe.ts` L205, "Socket not destroyed on named-pipe connection failure", Low) - **real issue, fixed**. Both named-pipe request paths created a socket and awaited connect before entering the existing `try`/`finally`; if the pipe connection failed before `connect`, the function rejected without destroying the socket. Fix: extracted `connectNamedPipeSocket(socket)` so the one-shot `connect`/`error` listeners clean each other up and the socket is destroyed on pre-connect error before rethrowing.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR**. The shared npipe transport extraction remains a follow-up cross-package refactor, not a correctness blocker for this PR.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: added `connectNamedPipeSocket` and reused it in both named-pipe request paths.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: added regression coverage that a socket receiving `error` before `connect` is destroyed and the original error is rethrown.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
