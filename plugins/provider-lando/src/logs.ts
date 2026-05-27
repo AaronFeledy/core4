@@ -85,6 +85,10 @@ const makeLogsDecoder = (service: ServicePlan) => {
       return decodeRaw(chunk);
     }
 
+    if (chunk.length === 0) {
+      return [];
+    }
+
     const merged = new Uint8Array(frameBuffer.length + chunk.length);
     merged.set(frameBuffer);
     merged.set(chunk, frameBuffer.length);

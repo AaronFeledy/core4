@@ -122,6 +122,23 @@ describe("provider-lando logs", () => {
     ]);
   });
 
+  test("does not lock into framed mode after an empty chunk", async () => {
+    const fake = makeFakeApi(
+      new Uint8Array(0),
+      textEncoder.encode("2026-05-14T00:00:00Z raw podman after empty chunk\n"),
+    );
+
+    const chunks = await Effect.runPromise(
+      logs(plan, { app: appId, service: node.name }, { follow: false }, { podmanApi: fake.api }).pipe(
+        Stream.runCollect,
+      ),
+    );
+
+    expect(Array.from(chunks, (chunk) => [chunk.service, chunk.stream, chunk.line])).toEqual([
+      [node.name, "stdout", "raw podman after empty chunk"],
+    ]);
+  });
+
   test("follow defaults to true and streams new chunks", async () => {
     const fake = makeFakeApi(frame("stdout", "first\n"), frame("stderr", "second\n"));
 
