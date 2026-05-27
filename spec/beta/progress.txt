@@ -794,3 +794,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - AbortSignal timing in synchronous fake APIs: wrap the first `/start` response with `Effect.tap(() => Effect.sync(() => controller.abort()))` to trigger cancellation mid-iteration
   - `biome check --fix` handles import ordering, `noNonNullAssertion`, and `useLiteralKeys` in one pass; run it before manual lint review
 ---
+
+## [2026-05-27 22:05 UTC] - Push + Babysit
+- Branch: us-081-provider-negative-path-coverage
+- Push: pushed
+- Commit(s): ed42cc7 feat: provider negative-path coverage (partial-failure cleanup, abort signal); 8e7069c chore: mark US-081 complete and update progress log
+- PR: #180 https://github.com/AaronFeledy/core4/pull/180 (created)
+- CI outcome: all checks SUCCESS or NEUTRAL (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, guide-scenarios-linux-x64, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot NEUTRAL)
+- Triage rounds used: 0
+- Merge: merged (squash) → 727f2f9
+- Local main / branch refreshed: yes; remote + local story branch deleted
+---
