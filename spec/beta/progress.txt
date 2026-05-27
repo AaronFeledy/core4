@@ -585,3 +585,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → exit 0
+
+## [2026-05-27 18:41 UTC] - US-079 PR #178 Bugbot triage round 6 push
+- Triaged Cursor Bugbot's sixth review (commit `058117d`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L148, "Duplicate ENOENT pattern in machine-not-running detection array", Low) - **real issue, fixed**. Round 5 added `/ENOENT/i` near the end of `MACHINE_NOT_RUNNING_PATTERNS`, but the array already had `/ENOENT/i` as its first pattern. Fix: remove the duplicate later entry and keep the existing first pattern, preserving behavior.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: removed duplicate `/ENOENT/i` entry from `MACHINE_NOT_RUNNING_PATTERNS`.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
