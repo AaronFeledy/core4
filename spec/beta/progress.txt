@@ -876,3 +876,38 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The `provider-conflict` check intentionally has empty `capabilities` so the text renderer drops capability fields and only emits the name/severity/runtime/solution lines; relying on text snapshots for context fields will fail — assert against the structured `result.checks[i].context` or the NDJSON `context` payload instead.
   - Biome's `lint/performance/noDelete` rule requires `Reflect.deleteProperty(process.env, "X")` instead of `delete process.env.X` for env-var unset/restore patterns in test scaffolding.
 ---
+
+## [2026-05-27 18:11 CDT] - US-082 Review
+- Reviewed US-082 provider selection precedence and conflict diagnostics against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits on `us-082-provider-selection-precedence`.
+- Fixed confirmed review blockers:
+  - Made runtime provider registry default selection honor `LANDO_PROVIDER > config > capability default` when no planned app provider is supplied.
+  - Made app planning encode the resolved `Landofile provider: > LANDO_PROVIDER > config > capability default` provider instead of always defaulting providerless apps to `lando`.
+  - Made `meta:doctor` pre-detect provider-lando/provider-podman socket conflicts before constructing provider-podman, so it emits a structured `provider-conflict` check instead of failing during provider selection.
+  - Made the structured conflict solution command executable (`lando setup --provider=podman`) while preserving the remediation text that names both alternatives.
+- Files changed:
+  - `core/src/cli/commands/doctor.ts`
+  - `core/src/providers/registry.ts`
+  - `core/src/services/planner.ts`
+  - `core/test/cli/doctor.test.ts`
+  - `core/test/services/app-planner.test.ts`
+  - `core/test/services/runtime-provider-registry.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: app lifecycle/provider selection still ignored `LANDO_PROVIDER` and config defaults when the Landofile omitted `provider:`.
+  - Fixed: real `meta:doctor` conflict diagnostics could be bypassed when selecting provider-podman constructed the provider and failed before the appended conflict check.
+  - Fixed: structured conflict `DoctorSolution.command` was `lando setup --provider=` without a provider value.
+  - Rejected/deferred: actual `meta:doctor` Landofile discovery remains out of this review fix because `meta:doctor` intentionally bootstraps at provider level and must keep working outside app contexts; the underlying `doctor({ landofileProviderId })` path and app planner cover Landofile precedence, while app-context doctor discovery should be handled as a separate CLI/app-bootstrap design change.
+  - Rejected: low-risk provider-id control-character output injection is pre-existing schema looseness for local operator inputs; JSON output is escaped and unknown providers fail closed, so this is not a scoped US-082 blocker.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing non-null assertion warnings in provider contract integration tests outside the US-082 diff.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/doctor.test.ts core/test/services/app-planner.test.ts core/test/services/runtime-provider-registry.test.ts core/test/providers/precedence.test.ts core/test/providers/conflict.test.ts core/test/cli/setup.test.ts` → 88 pass, 1 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1379 pass, 16 skip, 0 fail.
+  - `git diff --check` → exit 0.
+  - LSP diagnostics were attempted for changed TypeScript files but the TypeScript LSP server exited with code -2; `tsc -b` typecheck was clean.
+- **Learnings for future iterations:**
+  - Provider precedence must be applied both where provider capabilities are chosen and where `AppPlan.provider` is encoded; otherwise app commands can plan for `lando` while diagnostics/setup report a different selected provider.
+  - Conflict diagnostics that depend on provider construction must run before constructing a provider that can throw the same conflict, or doctor will emit the raw provider error instead of structured checks.
+  - Keep provider-level doctor bootstrapping separate from app-context Landofile discovery unless the CLI design explicitly changes to support optional app bootstrap.
+---
