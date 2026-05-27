@@ -3,7 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DateTime, Effect, Stream } from "effect";
+import type { ServiceStartError } from "@lando/sdk/errors";
+import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
 import {
   type DockerApiClient,
@@ -187,6 +188,134 @@ const makeFakeApi = () => {
 
   return { api, calls };
 };
+
+interface FakeDockerApiHooks {
+  readonly failStartFor?: ReadonlySet<string>;
+  readonly failCreateFor?: ReadonlySet<string>;
+  readonly volumes?: Set<string>;
+}
+
+const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
+  const running = new Set<string>();
+  const existing = new Set<string>();
+  const volumes = hooks.volumes ?? new Set<string>();
+  const calls: DockerHttpRequest[] = [];
+
+  const api: DockerApiClient = {
+    info: Effect.succeed({}),
+    request: (request) =>
+      Effect.sync((): DockerHttpResponse => {
+        calls.push(request);
+        if (request.path === "/networks/create") {
+          return { status: 201, body: "{}" };
+        }
+        if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+          return { status: 204, body: "" };
+        }
+        if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
+          const volName = decodeURIComponent(request.path.slice("/volumes/".length));
+          const deleted = volumes.delete(volName);
+          return { status: deleted ? 204 : 404, body: "" };
+        }
+        if (request.path.startsWith("/containers/create?name=")) {
+          const createdName = decodeURIComponent(request.path.slice("/containers/create?name=".length));
+          if (hooks.failCreateFor?.has(createdName) === true) {
+            return {
+              status: 500,
+              body: `forced create failure for ${createdName}: env DB_PASSWORD=hunter2 rejected`,
+            };
+          }
+          if (existing.has(createdName)) {
+            return { status: 409, body: "already exists" };
+          }
+          existing.add(createdName);
+          return { status: 201, body: "{}" };
+        }
+        if (request.path.endsWith("/start")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
+          if (hooks.failStartFor?.has(name) === true) {
+            return { status: 500, body: `forced start failure for ${name}` };
+          }
+          if (running.has(name)) {
+            return { status: 304, body: "" };
+          }
+          running.add(name);
+          return { status: 204, body: "" };
+        }
+        if (request.path.endsWith("/stop")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length));
+          running.delete(name);
+          return { status: 204, body: "" };
+        }
+        if (request.path.endsWith("?force=true") && request.method === "DELETE") {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"?force=true".length));
+          const existed = existing.delete(name);
+          running.delete(name);
+          return { status: existed ? 204 : 404, body: "" };
+        }
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/json")) {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
+          if (!existing.has(name)) {
+            return { status: 404, body: "" };
+          }
+          return {
+            status: 200,
+            body: JSON.stringify({
+              Id: `${name}-id`,
+              State: { Running: running.has(name), Status: running.has(name) ? "running" : "stopped" },
+            }),
+          };
+        }
+        return { status: 500, body: `unexpected ${request.method} ${request.path}` };
+      }),
+    stream: (request) => {
+      calls.push(request);
+      return Stream.empty;
+    },
+  };
+
+  return { api, calls, running, existing, volumes };
+};
+
+const dbServiceName = ServiceName.make("db");
+
+const makeDbService = (): ServicePlan => ({
+  name: dbServiceName,
+  type: "postgres",
+  provider: providerId,
+  primary: false,
+  artifact: { kind: "ref", ref: "postgres:16-alpine" },
+  command: ["postgres"],
+  environment: { DB_PASSWORD: "hunter2" },
+  mounts: [],
+  storage: [
+    {
+      store: "myapp_db_data",
+      target: PortablePath.make("/var/lib/postgresql/data"),
+      readOnly: false,
+    },
+  ],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata,
+  extensions: {},
+});
+
+const makeMultiServicePlan = (opts: { includeStores?: boolean } = {}): AppPlan => ({
+  id: appId,
+  name: "My App",
+  slug: "myapp",
+  root: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+  provider: providerId,
+  services: { [dbServiceName]: makeDbService(), [serviceName]: makeService() },
+  routes: [],
+  networks: [],
+  stores: opts.includeStores ? [{ name: "myapp_db_data", scope: "app" as const }] : [],
+  metadata,
+  extensions: {},
+});
 
 describe("provider-docker RuntimeProvider contract", () => {
   test("flushes the final buffered chunk when a named-pipe chunked stream closes", async () => {
@@ -482,5 +611,144 @@ describe("provider-docker RuntimeProvider contract", () => {
       "win32:passed",
       "wsl:skipped",
     ]);
+  });
+
+  test("rolls back network when the first service start fails after network create", async () => {
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-myapp-db"]) });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+    const plan = makeMultiServicePlan();
+
+    const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: true })));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(fake.existing.size).toBe(0);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
+      false,
+    );
+  });
+
+  test("rolls back the first service and network when the second service start fails", async () => {
+    const fake = makeFakeApiWithHooks({ failStartFor: new Set(["lando-myapp-web"]) });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+    const plan = makeMultiServicePlan();
+
+    const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: true })));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(fake.existing.size).toBe(0);
+    expect(fake.running.size).toBe(0);
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.includes("lando-myapp-db"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.includes("lando-myapp-web"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/networks/"))).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
+      false,
+    );
+  });
+
+  test("cleans up already-started services when abort signal is observed", async () => {
+    const inner = makeFakeApiWithHooks({});
+    const controller = new AbortController();
+    let startCallCount = 0;
+    const wrappedApi: DockerApiClient = {
+      info: inner.api.info,
+      request: (req) => {
+        if (req.path.endsWith("/start")) {
+          startCallCount++;
+          const result = inner.api.request!(req);
+          if (startCallCount === 1) {
+            return result.pipe(Effect.tap(() => Effect.sync(() => controller.abort())));
+          }
+          return result;
+        }
+        return inner.api.request!(req);
+      },
+      stream: inner.api.stream,
+    };
+
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: wrappedApi }))),
+    );
+    const plan = makeMultiServicePlan();
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(plan, { reconcile: true, signal: controller.signal })),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(inner.running.size).toBe(0);
+    expect(inner.calls.some((call) => call.path.includes("/stop"))).toBe(true);
+  });
+
+  test("failure errors include providerId, operation, remediation, and redacted details", async () => {
+    const fake = makeFakeApiWithHooks({ failCreateFor: new Set(["lando-myapp-db"]) });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+    const plan = makeMultiServicePlan();
+
+    const exit = await Effect.runPromiseExit(Effect.scoped(provider.apply(plan, { reconcile: true })));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const failures = Array.from(Cause.failures(exit.cause));
+    const startError = failures.find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError).toBeDefined();
+    if (startError === undefined) return;
+    expect(startError.providerId).toBe("docker");
+    expect(startError.operation).toBe("apply");
+    expect(startError.service).toBe("db");
+    expect(typeof startError.remediation).toBe("string");
+    expect(startError.remediation).toMatch(/lando destroy/u);
+    const details = startError.details as { status: number; body: string } | undefined;
+    expect(details?.status).toBe(500);
+    expect(details?.body).toContain("[REDACTED]");
+    expect(details?.body).not.toContain("hunter2");
+  });
+
+  test("destroy with volumes:true removes app-scoped volumes; default preserves them", async () => {
+    const plan = makeMultiServicePlan({ includeStores: true });
+
+    const fake1 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const provider1 = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake1.api }))),
+    );
+    await Effect.runPromise(Effect.scoped(provider1.apply(plan, { reconcile: true })));
+    await Effect.runPromise(provider1.destroy({ app: appId }, { volumes: false }));
+
+    expect(fake1.volumes.has("myapp_db_data")).toBe(true);
+    expect(fake1.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
+      false,
+    );
+
+    const fake2 = makeFakeApiWithHooks({ volumes: new Set(["myapp_db_data"]) });
+    const provider2 = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake2.api }))),
+    );
+    await Effect.runPromise(Effect.scoped(provider2.apply(plan, { reconcile: true })));
+    await Effect.runPromise(provider2.destroy({ app: appId }, { volumes: true }));
+
+    expect(fake2.volumes.has("myapp_db_data")).toBe(false);
+    expect(fake2.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
+      true,
+    );
   });
 });
