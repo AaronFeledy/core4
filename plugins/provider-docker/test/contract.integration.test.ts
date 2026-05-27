@@ -24,7 +24,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
-import { runProviderContract } from "@lando/sdk/test";
+import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -419,4 +419,29 @@ describe("provider-docker RuntimeProvider contract", () => {
     },
     60_000,
   );
+
+  test("matrix: covers linux / darwin / win32 via fake Docker API", async () => {
+    const buildProvider = (platform: "linux" | "darwin" | "win32") =>
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ platform, env: {}, dockerApi: makeFakeApi().api })),
+      );
+
+    const report = await Effect.runPromise(
+      runProviderContractMatrix({
+        providerName: "@lando/provider-docker",
+        cells: [
+          { platform: "linux", supported: true, factory: () => buildProvider("linux") },
+          { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
+          { platform: "win32", supported: true, factory: () => buildProvider("win32") },
+        ],
+      }),
+    );
+
+    expect(report.providerName).toBe("@lando/provider-docker");
+    expect(report.results.map((r) => `${r.platform}:${r.outcome}`)).toEqual([
+      "linux:passed",
+      "darwin:passed",
+      "win32:passed",
+    ]);
+  });
 });

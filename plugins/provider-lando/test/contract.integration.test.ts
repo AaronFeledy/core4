@@ -3,7 +3,7 @@ import { Effect } from "effect";
 
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import { RuntimeProvider } from "@lando/sdk/services";
-import { runProviderContract } from "@lando/sdk/test";
+import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 
 const makeFakeApi = () => {
@@ -98,4 +98,27 @@ describe("provider-lando RuntimeProvider contract", () => {
     },
     60_000,
   );
+
+  test("matrix: covers linux / darwin / win32 via fake Podman API", async () => {
+    const buildProvider = () =>
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: makeFakeApi().api })));
+
+    const report = await Effect.runPromise(
+      runProviderContractMatrix({
+        providerName: "@lando/provider-lando",
+        cells: [
+          { platform: "linux", supported: true, factory: buildProvider },
+          { platform: "darwin", supported: true, factory: buildProvider },
+          { platform: "win32", supported: true, factory: buildProvider },
+        ],
+      }),
+    );
+
+    expect(report.providerName).toBe("@lando/provider-lando");
+    expect(report.results.map((r) => `${r.platform}:${r.outcome}`)).toEqual([
+      "linux:passed",
+      "darwin:passed",
+      "win32:passed",
+    ]);
+  });
 });

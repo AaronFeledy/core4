@@ -282,6 +282,84 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: true })
       .pipe(Effect.mapError(mapProviderFailure("destroy succeeds for the contract fixture")));
+
+    yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);
+    const setupEffect = provider.setup({ force: false });
+    yield* requireContract(Effect.isEffect(setupEffect), "setup returns an Effect", setupEffect);
+
+    yield* requireContract(
+      versions.bundle === undefined || typeof versions.bundle === "string",
+      "getVersions bundle is a string when present",
+      versions,
+    );
+  });
+
+/** Matrix-driven contract runner — runs `runProviderContract` per supported cell, surfaces skip reasons. */
+export type HostPlatformId = "linux" | "darwin" | "win32";
+
+export interface SupportedContractCell {
+  readonly platform: HostPlatformId;
+  readonly supported: true;
+  readonly factory: () => Effect.Effect<RuntimeProviderShape, unknown>;
+}
+
+export interface UnsupportedContractCell {
+  readonly platform: HostPlatformId;
+  readonly supported: false;
+  readonly skipReason: string;
+}
+
+export type ContractMatrixCell = SupportedContractCell | UnsupportedContractCell;
+
+export interface ContractMatrixCellResult {
+  readonly platform: HostPlatformId;
+  readonly outcome: "passed" | "skipped";
+  readonly reason?: string;
+}
+
+export interface ContractMatrixReport {
+  readonly providerName: string;
+  readonly results: ReadonlyArray<ContractMatrixCellResult>;
+}
+
+export interface ContractMatrixOptions {
+  readonly providerName: string;
+  readonly cells: ReadonlyArray<ContractMatrixCell>;
+}
+
+const isSupported = (cell: ContractMatrixCell): cell is SupportedContractCell => cell.supported === true;
+
+export const runProviderContractMatrix = (
+  options: ContractMatrixOptions,
+): Effect.Effect<ContractMatrixReport, ContractFailure> =>
+  Effect.gen(function* () {
+    const results: ContractMatrixCellResult[] = [];
+
+    for (const cell of options.cells) {
+      if (isSupported(cell)) {
+        yield* requireContract(
+          typeof cell.factory === "function",
+          "supported matrix cell declares a factory",
+          cell,
+        );
+
+        const provider = yield* cell
+          .factory()
+          .pipe(Effect.mapError(mapProviderFailure(`matrix cell ${cell.platform} factory resolves`)));
+
+        yield* runProviderContract(provider);
+        results.push({ platform: cell.platform, outcome: "passed" });
+      } else {
+        yield* requireContract(
+          isNonEmptyString(cell.skipReason),
+          "unsupported matrix cell declares a skip reason",
+          cell,
+        );
+        results.push({ platform: cell.platform, outcome: "skipped", reason: cell.skipReason });
+      }
+    }
+
+    return { providerName: options.providerName, results };
   });
 
 /**

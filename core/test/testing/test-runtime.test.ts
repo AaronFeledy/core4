@@ -4,7 +4,7 @@ import { Context, Effect, Layer } from "effect";
 
 import { ConfigService, FileSystem, Logger, ProcessRunner, RuntimeProvider } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestRuntime, provideTestRuntime } from "@lando/core/testing";
-import { runProviderContract } from "@lando/sdk/test";
+import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 
 describe("@lando/core/testing", () => {
   test("makeTestRuntime provides in-memory service doubles and records calls", async () => {
@@ -72,5 +72,25 @@ describe("@lando/core/testing", () => {
 
   test("re-exported TestRuntimeProvider passes the provider contract", async () => {
     await expect(Effect.runPromise(runProviderContract(TestRuntimeProvider))).resolves.toBeUndefined();
+  });
+
+  test("matrix: TestRuntimeProvider is portable across linux / darwin / win32", async () => {
+    const report = await Effect.runPromise(
+      runProviderContractMatrix({
+        providerName: "TestRuntimeProvider",
+        cells: [
+          { platform: "linux", supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
+          { platform: "darwin", supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
+          { platform: "win32", supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
+        ],
+      }),
+    );
+
+    expect(report.providerName).toBe("TestRuntimeProvider");
+    expect(report.results.map((r) => `${r.platform}:${r.outcome}`)).toEqual([
+      "linux:passed",
+      "darwin:passed",
+      "win32:passed",
+    ]);
   });
 });
