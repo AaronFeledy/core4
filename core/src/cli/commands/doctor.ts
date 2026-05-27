@@ -25,6 +25,12 @@ type DoctorError = NoProviderInstalledError | ProviderConfigError | ProviderErro
 export type DoctorStatus = "pass" | "warn" | "fail";
 export type DoctorSeverity = "info" | "warn" | "error";
 export type DoctorSolutionKind = "automatic" | "manual";
+export type DoctorProviderKind = "managed" | "user-installed";
+
+const MANAGED_PROVIDER_IDS: ReadonlySet<string> = new Set(["lando"]);
+
+const providerKindFor = (providerId: string): DoctorProviderKind =>
+  MANAGED_PROVIDER_IDS.has(providerId) ? "managed" : "user-installed";
 
 export interface DoctorSolution {
   readonly kind: DoctorSolutionKind;
@@ -45,6 +51,7 @@ export interface DoctorCheck {
   readonly providerId: string;
   readonly providerName: string;
   readonly providerVersion: string;
+  readonly providerKind: DoctorProviderKind;
   readonly runtimeStatus: string;
   readonly runtime: DoctorRuntime;
   readonly capabilities: Readonly<Record<string, unknown>>;
@@ -86,8 +93,10 @@ export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProvid
       ...(versions?.runtime === undefined ? {} : { version: versions.runtime }),
     };
 
+    const providerKind = providerKindFor(provider.id);
     const context: Record<string, string> = {
       providerId: provider.id,
+      providerKind,
       providerVersion: provider.version,
       runtimeStatus: runtimeMessage,
       platform: provider.platform,
@@ -108,6 +117,7 @@ export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProvid
           providerId: provider.id,
           providerName: provider.displayName,
           providerVersion: provider.version,
+          providerKind,
           runtimeStatus: runtimeMessage,
           runtime,
           capabilities,
@@ -137,6 +147,7 @@ export const renderDoctorResult = (result: DoctorResult): string =>
         `severity: ${check.severity}`,
         `provider: ${check.providerId}`,
         `providerName: ${check.providerName}`,
+        `providerKind: ${check.providerKind}`,
         `providerVersion: ${check.providerVersion}`,
         `runtimeStatus: ${check.runtimeStatus}`,
       ];
@@ -162,6 +173,7 @@ const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): R
 const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> => {
   const knownOrder = [
     "providerId",
+    "providerKind",
     "providerVersion",
     "runtimeStatus",
     "runtimeVersion",
@@ -185,6 +197,7 @@ const checkEventPayload = (check: DoctorCheck): Record<string, unknown> => ({
   severity: check.severity,
   providerId: check.providerId,
   providerName: check.providerName,
+  providerKind: check.providerKind,
   providerVersion: check.providerVersion,
   runtime: {
     running: check.runtime.running,

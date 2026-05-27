@@ -1,0 +1,33 @@
+---
+id: provider-podman-macos
+provider: test
+platforms: [darwin]
+timeout: 120000
+tags: [beta, docs, provider-podman, setup, macos, podman-desktop]
+---
+
+<Guide>
+  <Scenario id="macos-podman-desktop-discovery" render={false} reason="Podman Desktop socket discovery is exercised by plugins/provider-podman/test/capabilities.test.ts; the rendered live path requires a running Podman Desktop machine">
+    <Step name="podman-desktop-socket-discovery">
+      <Variable name="defaultSocket" value="$HOME/.local/share/containers/podman/machine/podman-machine-default/podman.sock" display="Podman Desktop default machine socket on macOS" />
+      <Variable name="machineOverride" value="LANDO_PODMAN_MACHINE=podman-machine-default-root" display="Override the machine name (e.g. rootful) without editing config" />
+      <Variable name="discoveryPrecedence" value="explicit > LANDO_TEST_PODMAN_SOCKET > unix:// DOCKER_HOST > $HOME/.local/share/containers/podman/machine/<machine>/podman.sock" display="Socket precedence on macOS" />
+      <Variable name="bindMountPerformance" value="slow" display="VM-mediated bind mounts are slow on macOS Podman Desktop" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="macos-podman-desktop-machine-not-running" render={false} reason="Machine-not-running remediation is exercised by plugins/provider-podman/test/desktop.integration.test.ts; the rendered path requires Podman Desktop installed">
+    <Step name="machine-not-running-remediation">
+      <Variable name="errorClass" value="PodmanMachineNotRunningError" display="Tagged subclass of ProviderUnavailableError raised when the Podman Desktop machine socket is unreachable" />
+      <Variable name="startCommand" value="podman machine start podman-machine-default" display="CLI remediation for a stopped Podman Desktop machine" />
+      <Variable name="desktopAppRemediation" value="Open Podman Desktop on macOS and start the podman-machine-default machine" display="GUI remediation for the same condition" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="macos-live-contract" render={false} reason="The live SDK contract suite for Podman Desktop is gated by LANDO_TEST_PODMAN_DESKTOP_SOCKET and skipped by default">
+    <Step name="live-contract">
+      <Variable name="liveGate" value="LANDO_TEST_PODMAN_DESKTOP_SOCKET=$HOME/.local/share/containers/podman/machine/podman-machine-default/podman.sock" display="Opt in to the live Podman Desktop contract suite" />
+      <Variable name="testFile" value="plugins/provider-podman/test/desktop.integration.test.ts" display="Test file containing the gated live scenario" />
+    </Step>
+  </Scenario>
+</Guide>

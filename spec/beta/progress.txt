@@ -432,3 +432,29 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-27 11:50 CDT] - US-079
+- Implemented `@lando/provider-podman` Podman Desktop coverage for macOS + Windows.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: added `resolvePodmanDesktopMachine`/`resolvePodmanDesktopMachineName` (precedence: `LANDO_PODMAN_MACHINE` > `PODMAN_MACHINE_NAME` > `podman-machine-default`, with strict `[A-Za-z0-9][A-Za-z0-9._-]*` validation), `discoverPodmanDesktopSockets` (override-first probe order, `[]` on Linux), and `PodmanMachineNotRunningError` (tagged subclass of `ProviderUnavailableError`); wired the new error into the capability/info probe so connection-style failures on `darwin`/`win32` surface a Podman Desktop remediation that includes both `podman machine start <machine>` and the "open Podman Desktop" GUI hint.
+  - `plugins/provider-podman/test/capabilities.test.ts`: extended socket-discovery coverage with `LANDO_PODMAN_MACHINE`/`PODMAN_MACHINE_NAME` override cases for macOS and Windows, malformed-machine-name rejection, and dedicated `discoverPodmanDesktopSockets` + `resolvePodmanDesktopMachine` tests.
+  - `plugins/provider-podman/test/desktop.integration.test.ts` (new): fake-client integration tests covering `apply` / `inspect` / `exec` / `logs` / `destroy` for both `darwin` and `win32`, plus `PodmanMachineNotRunningError` mapping (with the Linux non-mapping case as a regression guard) and a `LANDO_TEST_PODMAN_DESKTOP_SOCKET`-gated live contract test that runs `runProviderContract` against a real Podman Desktop socket.
+  - `core/src/cli/commands/doctor.ts`: derived `providerKind` ("managed" for `provider-lando`, "user-installed" for every other id) and rendered it in both the text output and the NDJSON `doctor.check` payload + `context`; updated ordering helpers so the new field has a stable position.
+  - `core/test/cli/doctor.test.ts`, `core/test/cli/fixtures/meta-doctor.provider-status.ndjson`, `core/test/cli/fixtures/meta-doctor.provider-status.windows.ndjson`: added `providerKind` assertions per provider id and regenerated the golden NDJSON fixtures to include the new field.
+  - `docs/guides/setup/provider-podman-macos.mdx` (new), `docs/guides/setup/provider-podman-windows.mdx` (new): required guide coverage with non-rendered scenarios for Podman Desktop discovery (default + LANDO_PODMAN_MACHINE override), machine-not-running remediation, and the `LANDO_TEST_PODMAN_DESKTOP_SOCKET` live gate.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 51 pass, 2 skip, 0 fail (the 2 skips are the existing `LANDO_TEST_PODMAN_SOCKET` Linux live test and the new `LANDO_TEST_PODMAN_DESKTOP_SOCKET` gated live test).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/doctor.test.ts` → 14 pass, 1 skip (the existing Windows live provider-lando test).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1295 pass, 16 skip, 1 fail; the single failure was the order-sensitive `compiled $bunfs CLI` deferred-stub remediation parity test, which passes when its file (`core/test/cli/deferred-commands.test.ts`) is rerun in isolation (36 tests, 0 fail). Matches the compiled-binary flaky pattern documented in the US-074/US-075 progress notes.
+  - Manual CLI smoke (build step): direct invocation of `doctor()` + `renderDoctorResult()` / `renderDoctorResultAsNdjson()` against `TestRuntimeProvider` with overridden ids confirmed `providerKind: managed` for `id="lando"` and `providerKind: user-installed` for `id` in `{podman, docker, third-party}` in both text and NDJSON outputs.
+  - Manual API smoke: `resolvePodmanSocket` / `discoverPodmanDesktopSockets` returned the expected paths for default + `LANDO_PODMAN_MACHINE` override on `darwin` and `win32`, and `[]` on `linux`.
+- **Learnings for future iterations:**
+  - `RuntimeProviderShape` is on the SDK compat lock (`sdk/test/library/sdk-backward-compatibility.test.ts`); any new field — even optional — fails the frozen-signature equality check. Surface presentation-only distinctions like `providerKind` in the consuming `core/` CLI command (mapped by provider id) instead of widening the SDK service tag.
+  - Provider-lando's bringUp lifecycle inspect (`GET /containers/<name>/json`) decides whether to call `POST /containers/create?name=...`; a fake API that always returns `200` for `/json` makes `create` look like dead code in tests. Track the `existing` set in your fake and return `404` for unknown containers so apply tests actually exercise the create path.
+  - `/exec/<id>/json` ends with `/json` and will collide with the container-inspect handler if the latter only matches by `.endsWith("/json")`. Always gate the container-inspect branch with `.startsWith("/containers/")` (or order the exec handler first) when assembling Podman REST API fakes.
+  - When mapping low-level Podman API connection failures (`ENOENT`, `ECONNREFUSED`, "named pipe not found", "system cannot find the path") to a Podman Desktop "machine not running" error, walk the error chain (`message`, `stderr`, `code`, `cause`) — the typed `ProviderUnavailableError` from `provider-lando` carries the real cause one level deeper.
+
+---

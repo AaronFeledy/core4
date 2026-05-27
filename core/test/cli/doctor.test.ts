@@ -38,6 +38,54 @@ describe("meta:doctor command", () => {
     }
   });
 
+  test("renders providerKind: managed for provider-lando", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)))),
+    );
+    const text = renderDoctorResult(result);
+    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
+    const check = JSON.parse(ndjson.trimEnd().split("\n")[1] ?? "{}") as Record<string, unknown>;
+
+    expect(text).toContain("providerKind: managed");
+    expect(check.providerKind).toBe("managed");
+    expect((check.context as Record<string, string>).providerKind).toBe("managed");
+    expect(result.checks[0]?.providerKind).toBe("managed");
+  });
+
+  test("renders providerKind: user-installed for provider-podman", async () => {
+    const provider = { ...TestRuntimeProvider, id: "podman" };
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)))),
+    );
+    const text = renderDoctorResult(result);
+    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
+    const check = JSON.parse(ndjson.trimEnd().split("\n")[1] ?? "{}") as Record<string, unknown>;
+
+    expect(text).toContain("providerKind: user-installed");
+    expect(check.providerKind).toBe("user-installed");
+    expect((check.context as Record<string, string>).providerKind).toBe("user-installed");
+    expect(result.checks[0]?.providerKind).toBe("user-installed");
+  });
+
+  test("renders providerKind: user-installed for provider-docker", async () => {
+    const provider = { ...TestRuntimeProvider, id: "docker" };
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)))),
+    );
+    const text = renderDoctorResult(result);
+    expect(text).toContain("providerKind: user-installed");
+    expect(result.checks[0]?.providerKind).toBe("user-installed");
+  });
+
+  test("renders providerKind: user-installed for unknown providers (safe default)", async () => {
+    const provider = { ...TestRuntimeProvider, id: "third-party-thing" };
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)))),
+    );
+    expect(result.checks[0]?.providerKind).toBe("user-installed");
+  });
+
   test("renders array-valued capabilities as JSON, not [object Object]", async () => {
     const provider = {
       ...TestRuntimeProvider,
