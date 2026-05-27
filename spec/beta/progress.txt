@@ -237,3 +237,24 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-26 21:35 CDT] - US-077
+- Implemented Windows Docker Desktop support for `@lando/provider-docker`
+- Files changed:
+  - `plugins/provider-docker/src/index.ts`: Added `isNpipeDockerHost` + `npipeSocketPath` helpers; routed npipe URIs through the existing unix-socket curl client (curl `--unix-socket` accepts the `//./pipe/...` form that falls out of stripping `npipe:`); extended `resolveDockerHost` precedence to honor `LANDO_TEST_WINDOWS_DOCKER_SOCKET` ahead of generic test/env sources on win32 and default to `npipe://./pipe/docker_engine`; exported `windowsDockerCapabilities`.
+  - `plugins/provider-docker/test/capabilities.test.ts`: Added Windows capability matrix shape test, Windows host classification, default-named-pipe discovery, precedence test (explicit > LANDO_TEST_WINDOWS_DOCKER_SOCKET > LANDO_TEST_DOCKER_SOCKET > DOCKER_HOST > default), introspection-on-win32, factory-host plumbing, and npipe client construction.
+  - `plugins/provider-docker/test/contract.integration.test.ts`: Added a Windows fake-client test that exercises apply/inspect/exec/logs/destroy and asserts the slow-bindmount capability; added a live contract test gated on `process.platform === "win32"` plus `LANDO_TEST_WINDOWS_DOCKER_SOCKET` or `DOCKER_HOST`.
+  - `docs/guides/setup/provider-docker-windows.mdx` (new): Required US-077 guide coverage; non-rendered scenarios describing the discovery precedence and live-contract gating.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/` → 18 pass, 2 skip, 0 fail (both skips are live tests)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/provider-docker-windows/` → 2 pass, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1226 pass, 14 skip, 0 fail
+- **Learnings for future iterations:**
+  - The existing `isVmMediatedDockerHost(platform, dockerHost)` already short-circuits win32 to `bindMountPerformance: "slow"`, so `dockerCapabilitiesForHost("win32", ...)` already covers the capability surface — no helper changes were needed, only a named export (`windowsDockerCapabilities`) at parity with `linuxDockerCapabilities` / `macosDockerCapabilities`.
+  - `npipe://./pipe/docker_engine` is processed by reusing `makeUnixDockerApiClient(npipeSocketPath(host))`. Stripping just `npipe:` yields `//./pipe/docker_engine`, which curl `--unix-socket` accepts on Windows; this avoids a second curl-based runtime branch.
+  - The Windows live test gate must combine `process.platform === "win32"` with the env-var pair (US-074 pattern) — gating on env alone would let CI export `DOCKER_HOST` for the Linux suite and unintentionally run Windows-only assertions on Linux.
+  - `LANDO_TEST_WINDOWS_DOCKER_SOCKET` is win32-only: ordering it before `LANDO_TEST_DOCKER_SOCKET` is what gives a Windows host a stable test-runner override without disturbing the existing generic Linux/macOS test seam.
+---

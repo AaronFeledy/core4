@@ -295,4 +295,87 @@ describe("provider-docker RuntimeProvider contract", () => {
     },
     60_000,
   );
+
+  test("covers Windows Docker Desktop apply, inspect, exec, logs, and destroy with a fake client", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "win32",
+            env: {},
+            dockerApi: fake.api,
+          }),
+        ),
+      ),
+    );
+    const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
+
+    expect(provider.capabilities.bindMountPerformance).toBe("slow");
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const inspected = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
+    const exec = await Effect.runPromise(
+      provider.exec({ app: appId, service: serviceName }, { command: ["echo", "ok"] }),
+    );
+    const logs = await Effect.runPromise(
+      provider.logs({ app: appId, service: serviceName }, { follow: false }).pipe(
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+      ),
+    );
+    await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
+
+    expect(inspected.status).toBe("running");
+    expect(exec).toEqual({ exitCode: 0, stdout: "exec-ok\n", stderr: "" });
+    expect(logs).toEqual([
+      {
+        service: serviceName,
+        stream: "stdout",
+        line: "ready",
+        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+      },
+    ]);
+    expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /networks/create",
+      "GET /containers/lando-myapp-web/json",
+      "POST /containers/create?name=lando-myapp-web",
+      "POST /containers/lando-myapp-web/start",
+      "GET /containers/lando-myapp-web/json",
+      "POST /containers/lando-myapp-web/exec",
+      "POST /exec/lando-myapp-web-exec/start",
+      "GET /exec/lando-myapp-web-exec/json",
+      "GET /containers/lando-myapp-web/logs?stdout=true&stderr=true&follow=false&timestamps=true",
+      "POST /containers/lando-myapp-web/stop",
+      "DELETE /containers/lando-myapp-web?force=true",
+      "DELETE /networks/lando-myapp",
+    ]);
+  });
+
+  test.skipIf(
+    process.platform !== "win32" ||
+      (!process.env.LANDO_TEST_WINDOWS_DOCKER_SOCKET && !process.env.DOCKER_HOST),
+  )(
+    "passes the SDK provider contract suite against a live Windows Docker Desktop socket",
+    async () => {
+      const dockerHost = process.env.LANDO_TEST_WINDOWS_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
+      expect(dockerHost).toBeTruthy();
+
+      const provider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              platform: "win32",
+              dockerApi: makeDockerApiClient(dockerHost ?? ""),
+            }),
+          ),
+        ),
+      );
+
+      expect(provider.capabilities.bindMountPerformance).toBe("slow");
+      await Effect.runPromise(runProviderContract(provider));
+    },
+    60_000,
+  );
 });

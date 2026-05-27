@@ -1,0 +1,25 @@
+---
+id: provider-docker-windows
+provider: test
+platforms: [win32]
+timeout: 120000
+tags: [beta, docs, provider-docker, setup, windows]
+---
+
+<Guide>
+  <Scenario id="windows-named-pipe-discovery" render={false} reason="Windows Docker Desktop discovery is exercised by plugins/provider-docker unit tests; the live HTTP API path is gated on a real Docker Desktop install">
+    <Step name="docker-host-discovery">
+      <Variable name="defaultHost" value="npipe://./pipe/docker_engine" display="Docker Desktop named-pipe default when no DOCKER_HOST is set" />
+      <Variable name="precedence" value="explicit > LANDO_TEST_WINDOWS_DOCKER_SOCKET > LANDO_TEST_DOCKER_SOCKET > DOCKER_HOST > npipe default" display="Discovery fall-back order" />
+      <Variable name="bindMountPerformance" value="slow" display="Docker Desktop on Windows is VM-mediated; bind mounts are flagged slow" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="windows-live-contract" render={false} reason="The live Docker Engine HTTP API contract suite is gated on a Windows host with Docker Desktop running and either LANDO_TEST_WINDOWS_DOCKER_SOCKET or DOCKER_HOST exported">
+    <Step name="live-contract">
+      <Variable name="gateEnv" value="LANDO_TEST_WINDOWS_DOCKER_SOCKET" display="Preferred env var to point the live suite at a specific Docker Desktop endpoint" />
+      <Variable name="fallbackEnv" value="DOCKER_HOST" display="Fallback env var used when no Lando-scoped override is set" />
+      <Variable name="contractSuite" value="@lando/sdk/test#runProviderContract" display="Shared SDK contract suite exercised by the live test" />
+    </Step>
+  </Scenario>
+</Guide>

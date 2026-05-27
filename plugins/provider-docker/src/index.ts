@@ -287,6 +287,11 @@ const isUnixDockerHost = (dockerHost: string) =>
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
 
+export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe://");
+
+export const npipeSocketPath = (dockerHost: string): string =>
+  dockerHost.startsWith("npipe:") ? dockerHost.slice("npipe:".length) : dockerHost;
+
 const platformFromProcess = (): HostPlatform =>
   process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
 
@@ -332,6 +337,7 @@ export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
 
 export const linuxDockerCapabilities = dockerCapabilitiesForHost("linux", "/var/run/docker.sock");
 export const macosDockerCapabilities = dockerCapabilitiesForHost("darwin", "/var/run/docker.sock");
+export const windowsDockerCapabilities = dockerCapabilitiesForHost("win32", "npipe://./pipe/docker_engine");
 
 export const decodeProviderCapabilities = (input: unknown) =>
   Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
@@ -467,17 +473,22 @@ const makeHttpDockerApiClient = (baseUrl: string): DockerApiClient => ({
 
 export const makeDockerApiClient = (
   dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
-): DockerApiClient =>
-  isUnixDockerHost(dockerHost)
-    ? makeUnixDockerApiClient(unixSocketPath(dockerHost))
-    : makeHttpDockerApiClient(dockerHttpBase(dockerHost));
+): DockerApiClient => {
+  if (isNpipeDockerHost(dockerHost)) return makeUnixDockerApiClient(npipeSocketPath(dockerHost));
+  if (isUnixDockerHost(dockerHost)) return makeUnixDockerApiClient(unixSocketPath(dockerHost));
+  return makeHttpDockerApiClient(dockerHttpBase(dockerHost));
+};
 
 export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): string => {
   const env = options.env ?? process.env;
   if (options.dockerHost !== undefined) return options.dockerHost;
+  const platform = options.platform ?? platformFromProcess();
+  if (platform === "win32" && env.LANDO_TEST_WINDOWS_DOCKER_SOCKET !== undefined) {
+    return env.LANDO_TEST_WINDOWS_DOCKER_SOCKET;
+  }
   if (env.LANDO_TEST_DOCKER_SOCKET !== undefined) return env.LANDO_TEST_DOCKER_SOCKET;
   if (env.DOCKER_HOST !== undefined) return env.DOCKER_HOST;
-  const platform = options.platform ?? platformFromProcess();
+  if (platform === "win32") return "npipe://./pipe/docker_engine";
   if (platform === "linux" && env.HOME !== undefined && env.LANDO_DOCKER_DESKTOP === "1") {
     return `${env.HOME}/.docker/desktop/docker.sock`;
   }
