@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 
 import {
+  UnsupportedPodmanSocketError,
   linuxPodmanCapabilities,
   macosPodmanCapabilities,
   makeRuntimeProvider,
@@ -83,8 +84,10 @@ describe("provider-podman socket discovery", () => {
     );
   });
 
-  test("falls back to /run/podman/podman.sock without XDG_RUNTIME_DIR on Linux", () => {
-    expect(resolvePodmanSocket({ platform: "linux", env: {} })).toBe("/run/podman/podman.sock");
+  test("falls back to the rootless /run/user socket without XDG_RUNTIME_DIR on Linux", () => {
+    expect(resolvePodmanSocket({ platform: "linux", env: {} })).toBe(
+      `/run/user/${process.getuid()}/podman/podman.sock`,
+    );
   });
 
   test("honors discovery precedence: explicit > LANDO_TEST_PODMAN_SOCKET > DOCKER_HOST > default", () => {
@@ -176,5 +179,26 @@ describe("provider-podman RuntimeProvider layer", () => {
       }),
     );
     expect(createdHosts).toEqual(["/run/user/1000/podman/podman.sock"]);
+  });
+
+  test("rejects non-Unix DOCKER_HOST transports before constructing the API client", async () => {
+    const exit = await Effect.runPromiseExit(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: { DOCKER_HOST: "tcp://127.0.0.1:2375" },
+        podmanApiFactory: () => {
+          throw new Error("factory should not run for unsupported transports");
+        },
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(UnsupportedPodmanSocketError);
+      }
+    }
   });
 });

@@ -1,10 +1,65 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect } from "effect";
+import { DateTime } from "effect";
 
 import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  type PlanMetadata,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract } from "@lando/sdk/test";
+
+const providerId = ProviderId.make("podman");
+const appId = AppId.make("persisted-podman");
+const serviceName = ServiceName.make("web");
+
+const metadata: PlanMetadata = {
+  resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
+  source: "provider-podman contract test",
+  runtime: 4,
+};
+
+const servicePlan: ServicePlan = {
+  name: serviceName,
+  type: "node",
+  provider: providerId,
+  primary: true,
+  artifact: { kind: "ref", ref: "node:22-alpine" },
+  command: ["node", "server.js"],
+  environment: {},
+  mounts: [],
+  storage: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata,
+  extensions: {},
+};
+
+const plan: AppPlan = {
+  id: appId,
+  name: "Persisted Podman",
+  slug: "persisted-podman",
+  root: AbsolutePath.make("/tmp/lando-provider-podman-persisted"),
+  provider: providerId,
+  services: { [serviceName]: servicePlan },
+  routes: [],
+  networks: [],
+  stores: [],
+  metadata,
+  extensions: {},
+};
 
 const makeFakeApi = () => {
   const running = new Set<string>();
@@ -47,9 +102,6 @@ const makeFakeApi = () => {
         }
         if (request.path.endsWith("/json")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/json".length));
-          if (!existing.has(name)) {
-            return { status: 404, body: "" };
-          }
           return {
             status: 200,
             body: JSON.stringify({
@@ -84,6 +136,36 @@ describe("provider-podman RuntimeProvider contract", () => {
     await Effect.runPromise(runProviderContract(provider));
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
+  });
+
+  test("persists applied plans for follow-up CLI invocations", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-state-"));
+    try {
+      const firstFake = makeFakeApi();
+      const firstProvider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({ podmanApi: firstFake.api, platform: "linux", env: {}, stateDir }),
+          ),
+        ),
+      );
+      await Effect.runPromise(firstProvider.apply(plan, { reconcile: true }));
+
+      const secondFake = makeFakeApi();
+      const secondProvider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({ podmanApi: secondFake.api, platform: "linux", env: {}, stateDir }),
+          ),
+        ),
+      );
+      const snapshot = await Effect.runPromise(secondProvider.inspect({ app: appId, service: serviceName }));
+
+      expect(snapshot.providerId).toBe("podman");
+      expect(secondFake.calls.some((call) => call.path.endsWith("/json"))).toBe(true);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
   });
 
   test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(

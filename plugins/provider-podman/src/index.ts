@@ -15,7 +15,7 @@
  * (id, displayName, capabilities, inspect snapshot providerId) and the
  * fail-closed conflict-detection path.
  */
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 
 import { Effect, Layer, Schema, Stream } from "effect";
 
@@ -35,7 +35,7 @@ import {
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   type AppId,
-  type AppPlan,
+  AppPlan,
   type HostPlatform,
   PluginManifest,
   ProviderCapabilities,
@@ -87,16 +87,19 @@ const platformFromProcess = (): HostPlatform =>
 const stripUnixPrefix = (value: string): string =>
   value.startsWith("unix://") ? value.slice("unix://".length) : value;
 
+const linuxRootlessRuntimeDir = (env: Readonly<Record<string, string | undefined>>): string => {
+  const xdgRuntimeDir = env.XDG_RUNTIME_DIR;
+  if (xdgRuntimeDir !== undefined && xdgRuntimeDir.length > 0) return xdgRuntimeDir.replace(/\/+$/u, "");
+  const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+  return `/run/user/${uid}`;
+};
+
 const defaultPodmanSocket = (
   platform: HostPlatform,
   env: Readonly<Record<string, string | undefined>>,
 ): string => {
   if (platform === "linux") {
-    const xdgRuntimeDir = env.XDG_RUNTIME_DIR;
-    if (xdgRuntimeDir !== undefined && xdgRuntimeDir.length > 0) {
-      return `${xdgRuntimeDir.replace(/\/+$/u, "")}/podman/podman.sock`;
-    }
-    return "/run/podman/podman.sock";
+    return `${linuxRootlessRuntimeDir(env)}/podman/podman.sock`;
   }
   if (platform === "darwin") {
     const home = env.HOME;
@@ -194,6 +197,33 @@ interface ProviderLandoSetupState {
   readonly socketPath?: string;
 }
 
+export class ProviderLandoStateError extends ProviderUnavailableError {
+  constructor(args: { readonly providerLandoStatePath: string; readonly cause?: unknown }) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "select",
+      message: `Unable to read @lando/provider-lando setup state at ${args.providerLandoStatePath}.`,
+      remediation:
+        "Repair or remove the provider-lando setup state, then rerun `lando setup --provider=podman`.",
+      details: { providerLandoStatePath: args.providerLandoStatePath },
+      ...(args.cause === undefined ? {} : { cause: args.cause }),
+    });
+  }
+}
+
+export class UnsupportedPodmanSocketError extends ProviderUnavailableError {
+  constructor(socketPath: string) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "select",
+      message: "provider-podman currently supports local Unix Podman sockets only.",
+      remediation:
+        "Set DOCKER_HOST to a unix:// Podman socket (for example unix://$XDG_RUNTIME_DIR/podman/podman.sock) or unset it to use the rootless Linux default.",
+      details: { socketPath: socketPath.replace(/^([^:]+:\/\/)[^@/]+@/u, "$1<redacted>@") },
+    });
+  }
+}
+
 const readProviderLandoSetupState = async (
   stateDir: string,
 ): Promise<{ readonly path: string; readonly state: ProviderLandoSetupState } | undefined> => {
@@ -201,10 +231,19 @@ const readProviderLandoSetupState = async (
   try {
     const raw = await readFile(path, "utf8");
     const parsed = JSON.parse(raw) as unknown;
-    if (parsed === null || typeof parsed !== "object") return undefined;
+    if (parsed === null || typeof parsed !== "object") {
+      throw new ProviderLandoStateError({ providerLandoStatePath: path });
+    }
+    if ("socketPath" in parsed && parsed.socketPath !== undefined && typeof parsed.socketPath !== "string") {
+      throw new ProviderLandoStateError({ providerLandoStatePath: path });
+    }
     return { path, state: parsed as ProviderLandoSetupState };
-  } catch {
-    return undefined;
+  } catch (cause) {
+    if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT") {
+      return undefined;
+    }
+    if (cause instanceof ProviderLandoStateError) throw cause;
+    throw new ProviderLandoStateError({ providerLandoStatePath: path, cause });
   }
 };
 
@@ -221,12 +260,11 @@ const normalizeSocketPath = (value: string): string => stripUnixPrefix(value).re
 export const detectProviderLandoConflict = (
   stateDir: string,
   socketPath: string,
-): Effect.Effect<void, ProviderLandoConflictError> =>
+): Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError> =>
   Effect.tryPromise({
     try: () => readProviderLandoSetupState(stateDir),
-    catch: () => undefined,
+    catch: (cause) => cause as ProviderLandoStateError,
   }).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
     Effect.flatMap((record) => {
       if (record === undefined) return Effect.void;
       const recordedSocket = record.state.socketPath;
@@ -241,7 +279,88 @@ export const detectProviderLandoConflict = (
     }),
   );
 
-const noConflict = (): Effect.Effect<void, ProviderLandoConflictError> => Effect.void;
+const noConflict = (): Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError> =>
+  Effect.void;
+
+const unsupportedSocket = (socketPath: string): UnsupportedPodmanSocketError | undefined => {
+  if (socketPath.includes("://") && !socketPath.startsWith("unix://")) {
+    return new UnsupportedPodmanSocketError(socketPath);
+  }
+  return undefined;
+};
+
+const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/u, "");
+
+const APPLIED_STATE_VERSION = 1;
+
+const appliedPlansDir = (stateDir: string): string => `${trimTrailingSlashes(stateDir)}/provider-podman/apps`;
+const appliedPlanPath = (stateDir: string, appId: AppId): string =>
+  `${appliedPlansDir(stateDir)}/${appId}.json`;
+
+const persistAppliedPlan = (stateDir: string, plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const dir = appliedPlansDir(stateDir);
+      await mkdir(dir, { recursive: true });
+      await writeFile(
+        appliedPlanPath(stateDir, plan.id),
+        `${JSON.stringify(
+          {
+            version: APPLIED_STATE_VERSION,
+            providerId: PROVIDER_ID,
+            appId: plan.id,
+            plan: Schema.encodeSync(AppPlan)(plan),
+          },
+          null,
+          2,
+        )}\n`,
+      );
+    },
+    catch: (cause) =>
+      new ProviderUnavailableError({
+        providerId: PROVIDER_ID,
+        operation: "applied-state.persist",
+        message: "Unable to write provider-podman applied plan state.",
+        remediation: `Check permissions for ${stateDir} and rerun the failing lifecycle command.`,
+        cause,
+      }),
+  });
+
+const loadAppliedPlan = (stateDir: string, appId: AppId): Effect.Effect<AppPlan | undefined, never> =>
+  Effect.tryPromise({
+    try: () => readFile(appliedPlanPath(stateDir, appId), "utf8"),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.catchAll(() => Effect.succeed(undefined)),
+    Effect.map((content) => {
+      if (content === undefined) return undefined;
+      try {
+        const envelope = JSON.parse(content) as unknown;
+        if (
+          typeof envelope !== "object" ||
+          envelope === null ||
+          !("version" in envelope) ||
+          envelope.version !== APPLIED_STATE_VERSION ||
+          !("plan" in envelope)
+        ) {
+          return undefined;
+        }
+        const decoded = Schema.decodeUnknownEither(AppPlan)(envelope.plan);
+        return decoded._tag === "Right" ? decoded.right : undefined;
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+
+const removeAppliedPlan = (stateDir: string, appId: AppId): Effect.Effect<void, never> =>
+  Effect.tryPromise({
+    try: () => unlink(appliedPlanPath(stateDir, appId)),
+    catch: (cause) => cause,
+  }).pipe(
+    Effect.asVoid,
+    Effect.catchAll(() => Effect.void),
+  );
 
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
@@ -258,7 +377,9 @@ export interface ProviderLayerOptions {
    * Overrides the default file-based conflict detector. Tests use this seam
    * to assert that the conflict-detection branch can be bypassed safely.
    */
-  readonly conflictDetector?: (socketPath: string) => Effect.Effect<void, ProviderLandoConflictError>;
+  readonly conflictDetector?: (
+    socketPath: string,
+  ) => Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError>;
   readonly eventService?: BringUpOptions["eventService"];
 }
 
@@ -303,6 +424,8 @@ export const makeRuntimeProvider = (
     platform,
     ...(options.env === undefined ? {} : { env: options.env }),
   });
+  const unsupportedSocketError = options.podmanApi === undefined ? unsupportedSocket(socketPath) : undefined;
+  if (unsupportedSocketError !== undefined) return Effect.fail(unsupportedSocketError);
   const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
 
   const conflictCheck =
@@ -325,7 +448,26 @@ export const makeRuntimeProvider = (
 
   const resolvePlan = (target: AppSelector): Effect.Effect<AppPlan | undefined, never> => {
     if (target.plan !== undefined) return Effect.succeed(target.plan);
-    return Effect.succeed(plans.get(target.app));
+    const cached = plans.get(target.app);
+    if (cached !== undefined) return Effect.succeed(cached);
+    if (options.stateDir === undefined) return Effect.succeed(undefined);
+    return loadAppliedPlan(options.stateDir, target.app).pipe(
+      Effect.tap((loaded) =>
+        Effect.sync(() => {
+          if (loaded !== undefined) plans.set(target.app, loaded);
+        }),
+      ),
+    );
+  };
+
+  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
+    plans.set(plan.id, plan);
+    return options.stateDir === undefined ? Effect.void : persistAppliedPlan(options.stateDir, plan);
+  };
+
+  const forgetPlan = (appId: AppId): Effect.Effect<void> => {
+    plans.delete(appId);
+    return options.stateDir === undefined ? Effect.void : removeAppliedPlan(options.stateDir, appId);
   };
 
   return conflictCheck.pipe(
@@ -349,13 +491,7 @@ export const makeRuntimeProvider = (
           bringUp(plan, {
             podmanApi,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
-          }).pipe(
-            Effect.tap(() =>
-              Effect.sync(() => {
-                plans.set(plan.id, plan);
-              }),
-            ),
-          ),
+          }).pipe(Effect.tap(() => rememberPlan(plan))),
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
@@ -365,7 +501,7 @@ export const makeRuntimeProvider = (
             if (plan === undefined) return;
             yield* bringDown(plan, { podmanApi, volumes: destroyOptions.volumes });
             if (destroyOptions.removeState !== false) {
-              plans.delete(target.app);
+              yield* forgetPlan(target.app);
             }
           }),
         exec: (target, command) =>

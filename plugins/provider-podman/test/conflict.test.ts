@@ -7,6 +7,7 @@ import { Effect, Exit } from "effect";
 import { providerStatePath } from "@lando/provider-lando";
 import {
   ProviderLandoConflictError,
+  ProviderLandoStateError,
   detectProviderLandoConflict,
   makeRuntimeProvider,
 } from "@lando/provider-podman";
@@ -48,6 +49,40 @@ describe("provider-podman provider-lando conflict detection", () => {
     await expect(
       Effect.runPromise(detectProviderLandoConflict(stateDir, "/run/user/1000/podman/podman.sock")),
     ).resolves.toBeUndefined();
+  });
+
+  test("fails closed when provider-lando setup state is malformed", async () => {
+    const providerDir = path.join(stateDir, "provider-lando");
+    await mkdir(providerDir, { recursive: true });
+    await writeFile(providerStatePath(stateDir), "not valid json");
+
+    const exit = await Effect.runPromiseExit(
+      detectProviderLandoConflict(stateDir, "/run/user/1000/podman/podman.sock"),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const cause = exit.cause;
+      const error = cause._tag === "Fail" ? cause.error : undefined;
+      expect(error).toBeInstanceOf(ProviderLandoStateError);
+    }
+  });
+
+  test("fails closed when provider-lando setup state has non-string socketPath", async () => {
+    const providerDir = path.join(stateDir, "provider-lando");
+    await mkdir(providerDir, { recursive: true });
+    await writeFile(providerStatePath(stateDir), `${JSON.stringify({ socketPath: 42 })}\n`);
+
+    const exit = await Effect.runPromiseExit(
+      detectProviderLandoConflict(stateDir, "/run/user/1000/podman/podman.sock"),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const cause = exit.cause;
+      const error = cause._tag === "Fail" ? cause.error : undefined;
+      expect(error).toBeInstanceOf(ProviderLandoStateError);
+    }
   });
 
   test("returns success when recorded socket differs from resolved socket", async () => {

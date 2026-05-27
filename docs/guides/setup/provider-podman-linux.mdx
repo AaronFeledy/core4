@@ -10,7 +10,7 @@ tags: [beta, docs, provider-podman, setup, linux]
   <Scenario id="linux-socket-discovery" render={false} reason="Unit tests exercise the user-installed Podman socket discovery precedence; the rendered live socket path requires a real rootless Podman install">
     <Step name="podman-socket-discovery">
       <Variable name="defaultSocket" value="$XDG_RUNTIME_DIR/podman/podman.sock" display="Rootless Linux default when XDG_RUNTIME_DIR is set" />
-      <Variable name="precedence" value="explicit > LANDO_TEST_PODMAN_SOCKET > DOCKER_HOST > $XDG_RUNTIME_DIR/podman/podman.sock > /run/podman/podman.sock" display="Discovery precedence" />
+      <Variable name="precedence" value="explicit > LANDO_TEST_PODMAN_SOCKET > unix:// DOCKER_HOST > $XDG_RUNTIME_DIR/podman/podman.sock > /run/user/$UID/podman/podman.sock" display="Discovery precedence" />
       <Variable name="bindMountPerformance" value="native" display="User-installed rootless Podman talks straight to the host; bind mounts are native on Linux" />
     </Step>
   </Scenario>
