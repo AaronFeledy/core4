@@ -1,0 +1,64 @@
+---
+id: provider-selection
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 120000
+tags: [beta, docs, providers, setup, selection]
+---
+
+<Guide>
+  <Scenario id="precedence-flag-overrides-all" render={false} reason="Provider precedence is unit-tested in core/test/providers/precedence.test.ts; this scenario records the user-visible ordering">
+    <Step name="precedence-order">
+      <Variable
+        name="precedence"
+        value="--provider > Landofile provider: > LANDO_PROVIDER > ~/.lando/config.yml defaultProviderId > capability default (lando)"
+        display="Highest → lowest precedence input"
+      />
+      <Variable
+        name="flagExample"
+        value="lando setup --provider=podman"
+        display="Force a specific provider for the current command"
+      />
+      <Variable
+        name="envExample"
+        value="LANDO_PROVIDER=docker lando start"
+        display="Override the active provider for a single shell"
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="doctor-reports-resolution" render={false} reason="`meta:doctor` rendering is asserted by core/test/cli/doctor.test.ts; the guide records what the operator sees">
+    <Step name="doctor-fields">
+      <Variable
+        name="textFields"
+        value="selectionSource, selectionInputFlag, selectionInputLandofile, selectionInputEnv, selectionInputConfig, selectionInputDefault"
+        display="Plain-text fields surfaced by `lando doctor`"
+      />
+      <Variable
+        name="ndjsonField"
+        value=".selection = { providerId, source, inputs }"
+        display="NDJSON shape on every selected-provider check"
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="lando-podman-socket-conflict" render={false} reason="The provider-lando ↔ provider-podman socket conflict is asserted by core/test/providers/conflict.test.ts and core/test/cli/doctor.test.ts; this scenario records the user-facing remediation">
+    <Step name="conflict-detection">
+      <Variable
+        name="conflictKind"
+        value="provider-lando-podman-socket"
+        display="Reported in the provider-conflict check context"
+      />
+      <Variable
+        name="conflictStatePath"
+        value="$LANDO_DATA_DIR/providers/provider-lando/setup-state.json"
+        display="provider-lando records its bound Podman socket here when set up"
+      />
+      <Variable
+        name="conflictRemediation"
+        value="lando setup --provider=podman or lando setup --provider=lando"
+        display="Pick one provider explicitly to resolve the ambiguity"
+      />
+    </Step>
+  </Scenario>
+</Guide>

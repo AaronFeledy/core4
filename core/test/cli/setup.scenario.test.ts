@@ -8,9 +8,9 @@ import { Effect, Layer, Stream } from "effect";
 
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
-import { EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { ConfigService, EventService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 
@@ -63,7 +63,23 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
     capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
   };
-  return Layer.mergeAll(Layer.succeed(RuntimeProviderRegistry, registry), makeEventServiceLayer(sink));
+  return Layer.mergeAll(
+    Layer.succeed(RuntimeProviderRegistry, registry),
+    makeEventServiceLayer(sink),
+    makeConfigServiceLayer(),
+  );
+};
+
+const makeConfigServiceLayer = () => {
+  const config: GlobalConfig = {
+    defaultProviderId: ProviderId.make("lando"),
+    telemetry: { enabled: false },
+  };
+  const load = Effect.succeed(config);
+  return Layer.succeed(ConfigService, {
+    load,
+    get: (key) => Effect.map(load, (c) => c[key]),
+  });
 };
 
 describe("meta:setup task tree progress", () => {
@@ -155,6 +171,7 @@ describe("meta:setup task tree progress", () => {
       const layer = Layer.mergeAll(
         Layer.succeed(RuntimeProviderRegistry, registry),
         makeEventServiceLayer(sink),
+        makeConfigServiceLayer(),
       );
 
       const exit = await Effect.runPromiseExit(

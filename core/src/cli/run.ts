@@ -393,9 +393,12 @@ const runAppCacheRefresh = async (): Promise<void> => {
   process.exitCode = 1;
 };
 
-const runDoctor = async (): Promise<void> => {
+const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const flagProvider = parseProviderFlag(argv);
   const exit = await Effect.runPromiseExit(
-    doctor().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
+    doctor(flagProvider === undefined ? {} : { flagProviderId: flagProvider }).pipe(
+      Effect.provide(makeLandoRuntime({ bootstrap: "provider" })),
+    ),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderDoctorResult(exit.value));
@@ -1043,7 +1046,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "doctor" || argv[0] === "meta:doctor") {
-    await runDoctor();
+    await runDoctor(argv.slice(1));
     return;
   }
 
