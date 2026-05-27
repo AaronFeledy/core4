@@ -1,10 +1,10 @@
 /**
  * `lando meta:setup` — provider, CA, proxy, and shell-integration setup.
  *
- * Bootstrap: `provider`.
- * **Interactive only** — not exported as a function from `@lando/core/cli`;
- * embedding hosts construct equivalent flows from `@lando/core/services`
- * and `PrivilegeService`.
+ * Provider selection follows the standard precedence
+ * `flag > Landofile > env > config > capability-default`. `meta:setup` does
+ * not load a Landofile, so the effective inputs reduce to
+ * `--provider > LANDO_PROVIDER > config > default`.
  */
 import { fileURLToPath } from "node:url";
 
@@ -12,7 +12,13 @@ import { Flags } from "@oclif/core";
 import { DateTime, Effect } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { RuntimeProviderRegistry } from "@lando/sdk/services";
+import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
+
+import {
+  CAPABILITY_DEFAULT_PROVIDER_ID,
+  readProviderEnvVar,
+  resolveProviderSelection,
+} from "../../../../providers/precedence.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -30,11 +36,11 @@ const inputInstallDir = (input: unknown): string | undefined => {
   return typeof installDir === "string" ? installDir : undefined;
 };
 
-const inputProviderId = (input: unknown): ProviderId | undefined => {
+const inputProviderFlag = (input: unknown): ProviderId | undefined => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return undefined;
-  const flags = input.flags;
+  const flags = (input as { flags?: unknown }).flags;
   if (typeof flags !== "object" || flags === null || !("provider" in flags)) return undefined;
-  const provider = flags.provider;
+  const provider = (flags as { provider?: unknown }).provider;
   return typeof provider === "string" && provider.length > 0 ? ProviderId.make(provider) : undefined;
 };
 
@@ -56,7 +62,7 @@ const setupProviderPlan = (provider: ProviderId): AppPlan => ({
   extensions: {},
 });
 
-export const setupSpec: LandoCommandSpec<SetupResult, unknown, RuntimeProviderRegistry> = {
+export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | RuntimeProviderRegistry> = {
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",
@@ -64,11 +70,22 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, RuntimeProviderRe
   bootstrap: "provider",
   run: (input) =>
     Effect.gen(function* () {
+      const configService = yield* ConfigService;
       const registry = yield* RuntimeProviderRegistry;
-      const providerId = inputProviderId(input);
-      const provider = yield* registry.select(
-        providerId === undefined ? undefined : setupProviderPlan(providerId),
-      );
+
+      const flag = inputProviderFlag(input);
+      const env = readProviderEnvVar(process.env);
+      const configRaw = yield* configService.get("defaultProviderId");
+      const config = configRaw === undefined || configRaw === null ? undefined : configRaw;
+
+      const resolution = resolveProviderSelection({
+        ...(flag === undefined ? {} : { flag }),
+        ...(env === undefined ? {} : { env }),
+        ...(config === undefined ? {} : { config }),
+        capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+      });
+
+      const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
 
       yield* Effect.scoped(provider.setup({ force: false }));
 
@@ -92,7 +109,10 @@ export default class SetupCommand extends LandoCommandBase {
   static override aliases = [...resolveTopLevelAliases(setupSpec)];
   static override flags = {
     yes: Flags.boolean({ description: "Skip confirmation prompts.", default: false }),
-    provider: Flags.string({ description: "Choose a provider (e.g. docker, podman)." }),
+    provider: Flags.string({
+      description:
+        "Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection.",
+    }),
     "skip-provider": Flags.boolean({ default: false }),
     "skip-proxy": Flags.boolean({ default: false }),
     "skip-install-ca": Flags.boolean({ default: false }),

@@ -1,10 +1,3 @@
-/**
- * `RuntimeProviderRegistry` Live Layer.
- *
- * Provider selection defaults to `ConfigService.defaultProviderId`, but a
- * planned app keeps using its encoded `AppPlan.provider` so fresh lifecycle
- * commands do not drift when the global default provider changes.
- */
 import { type Context, Effect, Layer, Stream } from "effect";
 
 import { makeRuntimeProvider as makeLandoRuntimeProvider } from "@lando/provider-lando";
@@ -24,6 +17,12 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
+
+import {
+  CAPABILITY_DEFAULT_PROVIDER_ID,
+  readProviderEnvVar,
+  resolveProviderSelection,
+} from "./precedence.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
@@ -157,14 +156,12 @@ const makeRuntimeProviderRegistry = (
       configService.get("defaultProviderId"),
       toProviderConfig,
     );
-
-    if (defaultProviderId === undefined || defaultProviderId === null) {
-      return yield* Effect.fail(
-        new NoProviderInstalledError({ message: "No default runtime provider is configured." }),
-      );
-    }
-
-    return defaultProviderId;
+    const envProviderId = readProviderEnvVar(process.env);
+    return resolveProviderSelection({
+      ...(envProviderId === undefined ? {} : { env: envProviderId }),
+      ...(defaultProviderId === undefined || defaultProviderId === null ? {} : { config: defaultProviderId }),
+      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+    }).providerId;
   });
 
   const providerFor = (providerId: ProviderId) =>

@@ -1,26 +1,37 @@
-/**
- * `lando doctor` — host/provider diagnostics.
- *
- * Reports the selected runtime provider, its version, its socket/machine
- * status, the capability summary, and solution records carrying
- * `automatic` or `manual` remediation hints when a check is not passing.
- * The command never requires app bootstrap unless app-specific diagnostics
- * are requested.
- */
 import { Effect } from "effect";
 
+import type { ProviderLandoStateError } from "@lando/provider-podman";
 import type {
+  ConfigError,
   NoProviderInstalledError,
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import {
+  type HostPlatform,
   ProviderCapabilities,
   type ProviderCapabilities as ProviderCapabilitiesShape,
+  ProviderId,
 } from "@lando/sdk/schema";
-import { type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { ConfigService, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-type DoctorError = NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError;
+import { type ProviderConflictReport, detectProviderConflicts } from "../../providers/conflict.ts";
+import {
+  CAPABILITY_DEFAULT_PROVIDER_ID,
+  type ProviderSelectionInputs,
+  type ProviderSelectionResolution,
+  type ProviderSelectionSource,
+  readProviderEnvVar,
+  resolveProviderSelection,
+} from "../../providers/precedence.ts";
+
+type DoctorError =
+  | ConfigError
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderError
+  | ProviderLandoStateError
+  | ProviderUnavailableError;
 
 export type DoctorStatus = "pass" | "warn" | "fail";
 export type DoctorSeverity = "info" | "warn" | "error";
@@ -44,6 +55,18 @@ export interface DoctorRuntime {
   readonly version?: string;
 }
 
+export interface DoctorSelectionRecord {
+  readonly providerId: string;
+  readonly source: ProviderSelectionSource;
+  readonly inputs: {
+    readonly flag?: string;
+    readonly landofile?: string;
+    readonly env?: string;
+    readonly config?: string;
+    readonly capabilityDefault: string;
+  };
+}
+
 export interface DoctorCheck {
   readonly name: string;
   readonly status: DoctorStatus;
@@ -57,10 +80,31 @@ export interface DoctorCheck {
   readonly capabilities: Readonly<Record<string, unknown>>;
   readonly context: Readonly<Record<string, string>>;
   readonly solutions: ReadonlyArray<DoctorSolution>;
+  readonly selection?: DoctorSelectionRecord;
 }
 
 export interface DoctorResult {
   readonly checks: ReadonlyArray<DoctorCheck>;
+}
+
+export interface DoctorOptions {
+  /**
+   * Explicit `--provider` value provided on the CLI.
+   */
+  readonly flagProviderId?: string | undefined;
+  /**
+   * Landofile-declared `provider:` field.
+   */
+  readonly landofileProviderId?: string | undefined;
+  /**
+   * Environment lookup used for `LANDO_PROVIDER`. Defaults to `process.env`.
+   */
+  readonly env?: Readonly<Record<string, string | undefined>> | undefined;
+  /**
+   * Host platform used when resolving the Podman socket for the
+   * provider-conflict check. Defaults to the active host's platform.
+   */
+  readonly platform?: HostPlatform | undefined;
 }
 
 const CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
@@ -74,10 +118,136 @@ const SETUP_REMEDIATION: DoctorSolution = {
   command: "lando setup",
 };
 
-export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProviderRegistry> =>
+const branded = (value: string | undefined): ProviderId | undefined => {
+  if (value === undefined) return undefined;
+  const trimmed = value.trim();
+  if (trimmed === "") return undefined;
+  return ProviderId.make(trimmed);
+};
+
+const platformFromProcess = (): HostPlatform =>
+  process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
+
+const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSelectionRecord => ({
+  providerId: String(resolution.providerId),
+  source: resolution.source,
+  inputs: {
+    ...(resolution.inputs.flag === undefined ? {} : { flag: String(resolution.inputs.flag) }),
+    ...(resolution.inputs.landofile === undefined ? {} : { landofile: String(resolution.inputs.landofile) }),
+    ...(resolution.inputs.env === undefined ? {} : { env: String(resolution.inputs.env) }),
+    ...(resolution.inputs.config === undefined ? {} : { config: String(resolution.inputs.config) }),
+    capabilityDefault: String(resolution.inputs.capabilityDefault),
+  },
+});
+
+const conflictSolution = (conflict: ProviderConflictReport): DoctorSolution => ({
+  kind: "manual",
+  description: conflict.remediation,
+  command: `lando setup --provider=${conflict.providerId}`,
+});
+
+const conflictCheck = (
+  conflict: ProviderConflictReport,
+  providerId: string,
+  providerName: string,
+  providerVersion: string,
+  platform: HostPlatform,
+  selection?: DoctorSelectionRecord,
+): DoctorCheck => {
+  const context: Record<string, string> = {
+    providerId,
+    providerKind: providerKindFor(providerId),
+    providerVersion,
+    runtimeStatus: "conflict",
+    platform,
+    conflictKind: "provider-lando-podman-socket",
+  };
+  if (conflict.details !== undefined) {
+    const details = conflict.details;
+    if (typeof details.socketPath === "string") context.socketPath = details.socketPath;
+    if (typeof details.providerLandoStatePath === "string") {
+      context.providerLandoStatePath = details.providerLandoStatePath;
+    }
+  }
+  return {
+    name: "provider-conflict",
+    status: "warn",
+    severity: "warn",
+    providerId,
+    providerName,
+    providerVersion,
+    providerKind: providerKindFor(providerId),
+    runtimeStatus: "conflict",
+    runtime: { running: false, message: conflict.message },
+    capabilities: {},
+    context,
+    solutions: [conflictSolution(conflict)],
+    ...(selection === undefined ? {} : { selection }),
+  };
+};
+
+const gatherSelectionInputs = (
+  options: DoctorOptions,
+): Effect.Effect<ProviderSelectionInputs, ConfigError, ConfigService> =>
   Effect.gen(function* () {
+    const configService = yield* ConfigService;
+    const configProvider = yield* configService.get("defaultProviderId");
+
+    const flag = branded(options.flagProviderId);
+    const landofile = branded(options.landofileProviderId);
+    const env = readProviderEnvVar(options.env ?? process.env);
+    const config = configProvider === undefined || configProvider === null ? undefined : configProvider;
+    return {
+      ...(flag === undefined ? {} : { flag }),
+      ...(landofile === undefined ? {} : { landofile }),
+      ...(env === undefined ? {} : { env }),
+      ...(config === undefined ? {} : { config }),
+      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+    };
+  });
+
+const resolveStateDir = (
+  configService: typeof ConfigService.Service,
+): Effect.Effect<string | undefined, ConfigError> =>
+  Effect.gen(function* () {
+    const userDataRoot = yield* configService.get("userDataRoot");
+    if (typeof userDataRoot !== "string" || userDataRoot.length === 0) return undefined;
+    return `${userDataRoot}/providers`;
+  });
+
+export const doctor = (
+  options: DoctorOptions = {},
+): Effect.Effect<DoctorResult, DoctorError, ConfigService | RuntimeProviderRegistry> =>
+  Effect.gen(function* () {
+    const configService = yield* ConfigService;
     const registry = yield* RuntimeProviderRegistry;
-    const provider = yield* registry.select();
+    const inputs = yield* gatherSelectionInputs(options);
+    const resolution = resolveProviderSelection(inputs);
+    const selection = buildSelectionRecord(resolution);
+    const stateDir = yield* resolveStateDir(configService);
+    const conflicts = yield* detectProviderConflicts({
+      stateDir,
+      platform: options.platform ?? platformFromProcess(),
+      env: options.env ?? process.env,
+    });
+    if (conflicts.length > 0 && String(resolution.providerId) === "podman") {
+      return {
+        checks: conflicts.map((conflict) =>
+          conflictCheck(
+            conflict,
+            String(resolution.providerId),
+            "Podman Runtime Provider",
+            "unknown",
+            options.platform ?? platformFromProcess(),
+            selection,
+          ),
+        ),
+      };
+    }
+    const provider = yield* registry.select({
+      // The registry only needs `.provider` from this command path.
+      provider: resolution.providerId,
+    } as never);
     const status = yield* provider.getStatus;
     const versions = yield* provider.getVersions.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
@@ -100,6 +270,7 @@ export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProvid
       providerVersion: provider.version,
       runtimeStatus: runtimeMessage,
       platform: provider.platform,
+      selectionSource: resolution.source,
     };
     if (versions?.runtime !== undefined) context.runtimeVersion = versions.runtime;
     if (versions?.bundle !== undefined) context.bundleVersion = versions.bundle;
@@ -108,24 +279,34 @@ export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProvid
     const severity: DoctorSeverity = status.running ? "info" : "warn";
     const solutions: ReadonlyArray<DoctorSolution> = status.running ? [] : [SETUP_REMEDIATION];
 
-    return {
-      checks: [
-        {
-          name: "selected-provider",
-          status: checkStatus,
-          severity,
-          providerId: provider.id,
-          providerName: provider.displayName,
-          providerVersion: provider.version,
-          providerKind,
-          runtimeStatus: runtimeMessage,
-          runtime,
-          capabilities,
-          context,
-          solutions,
-        },
-      ],
+    const primaryCheck: DoctorCheck = {
+      name: "selected-provider",
+      status: checkStatus,
+      severity,
+      providerId: provider.id,
+      providerName: provider.displayName,
+      providerVersion: provider.version,
+      providerKind,
+      runtimeStatus: runtimeMessage,
+      runtime,
+      capabilities,
+      context,
+      solutions,
+      selection,
     };
+
+    const conflictChecks = conflicts.map((conflict) =>
+      conflictCheck(
+        conflict,
+        provider.id,
+        provider.displayName,
+        provider.version,
+        options.platform ?? provider.platform,
+        selection,
+      ),
+    );
+
+    return { checks: [primaryCheck, ...conflictChecks] };
   });
 
 const renderCapabilityValue = (value: unknown): string => {
@@ -139,28 +320,40 @@ const renderSolution = (solution: DoctorSolution): string => {
   return `solution[${solution.kind}]: ${solution.description}${command}`;
 };
 
+const renderSelectionLines = (selection: DoctorSelectionRecord): ReadonlyArray<string> => {
+  const lines = [`selectionSource: ${selection.source}`];
+  const { inputs } = selection;
+  if (inputs.flag !== undefined) lines.push(`selectionInputFlag: ${inputs.flag}`);
+  if (inputs.landofile !== undefined) lines.push(`selectionInputLandofile: ${inputs.landofile}`);
+  if (inputs.env !== undefined) lines.push(`selectionInputEnv: ${inputs.env}`);
+  if (inputs.config !== undefined) lines.push(`selectionInputConfig: ${inputs.config}`);
+  lines.push(`selectionInputDefault: ${inputs.capabilityDefault}`);
+  return lines;
+};
+
+const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
+  const lines = [
+    `${check.name}: ${check.status}`,
+    `severity: ${check.severity}`,
+    `provider: ${check.providerId}`,
+    `providerName: ${check.providerName}`,
+    `providerKind: ${check.providerKind}`,
+    `providerVersion: ${check.providerVersion}`,
+    `runtimeStatus: ${check.runtimeStatus}`,
+  ];
+  if (check.runtime.version !== undefined) lines.push(`runtimeVersion: ${check.runtime.version}`);
+  if (check.selection !== undefined) lines.push(...renderSelectionLines(check.selection));
+  for (const [field, value] of Object.entries(check.capabilities)) {
+    lines.push(`${field}: ${renderCapabilityValue(value)}`);
+  }
+  for (const solution of check.solutions) {
+    lines.push(renderSolution(solution));
+  }
+  return lines;
+};
+
 export const renderDoctorResult = (result: DoctorResult): string =>
-  result.checks
-    .flatMap((check) => {
-      const lines = [
-        `${check.name}: ${check.status}`,
-        `severity: ${check.severity}`,
-        `provider: ${check.providerId}`,
-        `providerName: ${check.providerName}`,
-        `providerKind: ${check.providerKind}`,
-        `providerVersion: ${check.providerVersion}`,
-        `runtimeStatus: ${check.runtimeStatus}`,
-      ];
-      if (check.runtime.version !== undefined) lines.push(`runtimeVersion: ${check.runtime.version}`);
-      for (const [field, value] of Object.entries(check.capabilities)) {
-        lines.push(`${field}: ${renderCapabilityValue(value)}`);
-      }
-      for (const solution of check.solutions) {
-        lines.push(renderSolution(solution));
-      }
-      return lines;
-    })
-    .join("\n");
+  result.checks.flatMap((check) => renderCheck(check)).join("\n");
 
 const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): Record<string, unknown> => {
   const ordered: Record<string, unknown> = {};
@@ -179,6 +372,10 @@ const orderContextKeys = (context: Readonly<Record<string, string>>): Record<str
     "runtimeVersion",
     "bundleVersion",
     "platform",
+    "selectionSource",
+    "conflictKind",
+    "socketPath",
+    "providerLandoStatePath",
   ];
   const ordered: Record<string, string> = {};
   for (const key of knownOrder) {
@@ -190,46 +387,51 @@ const orderContextKeys = (context: Readonly<Record<string, string>>): Record<str
   return ordered;
 };
 
-const checkEventPayload = (check: DoctorCheck): Record<string, unknown> => ({
-  _tag: "doctor.check",
-  name: check.name,
-  status: check.status,
-  severity: check.severity,
-  providerId: check.providerId,
-  providerName: check.providerName,
-  providerKind: check.providerKind,
-  providerVersion: check.providerVersion,
-  runtime: {
-    running: check.runtime.running,
-    ...(check.runtime.message === undefined ? {} : { message: check.runtime.message }),
-    ...(check.runtime.version === undefined ? {} : { version: check.runtime.version }),
+const selectionEventPayload = (selection: DoctorSelectionRecord): Record<string, unknown> => ({
+  providerId: selection.providerId,
+  source: selection.source,
+  inputs: {
+    ...(selection.inputs.flag === undefined ? {} : { flag: selection.inputs.flag }),
+    ...(selection.inputs.landofile === undefined ? {} : { landofile: selection.inputs.landofile }),
+    ...(selection.inputs.env === undefined ? {} : { env: selection.inputs.env }),
+    ...(selection.inputs.config === undefined ? {} : { config: selection.inputs.config }),
+    capabilityDefault: selection.inputs.capabilityDefault,
   },
-  capabilities: orderCapabilityKeys(check.capabilities),
-  context: orderContextKeys(check.context),
-  solutions: check.solutions.map((solution) => ({
-    kind: solution.kind,
-    description: solution.description,
-    ...(solution.command === undefined ? {} : { command: solution.command }),
-  })),
 });
+
+const checkEventPayload = (check: DoctorCheck): Record<string, unknown> => {
+  const payload: Record<string, unknown> = {
+    _tag: "doctor.check",
+    name: check.name,
+    status: check.status,
+    severity: check.severity,
+    providerId: check.providerId,
+    providerName: check.providerName,
+    providerKind: check.providerKind,
+    providerVersion: check.providerVersion,
+    runtime: {
+      running: check.runtime.running,
+      ...(check.runtime.message === undefined ? {} : { message: check.runtime.message }),
+      ...(check.runtime.version === undefined ? {} : { version: check.runtime.version }),
+    },
+    capabilities: orderCapabilityKeys(check.capabilities),
+    context: orderContextKeys(check.context),
+    solutions: check.solutions.map((solution) => ({
+      kind: solution.kind,
+      description: solution.description,
+      ...(solution.command === undefined ? {} : { command: solution.command }),
+    })),
+  };
+  if (check.selection !== undefined) {
+    payload.selection = selectionEventPayload(check.selection);
+  }
+  return payload;
+};
 
 export interface DoctorNdjsonOptions {
   readonly now?: Date;
 }
 
-/**
- * Render the doctor result as a deterministic NDJSON event stream.
- *
- * Emits, in order:
- *   1. `doctor.start` with the run timestamp
- *   2. one `doctor.check` per check, carrying severity, context, capabilities,
- *      runtime status, and solution records
- *   3. `doctor.complete` with summary counts and the same timestamp
- *
- * Designed for `--renderer=json` consumers and the named snapshot fixture
- * `meta-doctor.provider-status.ndjson`. Timestamps are injectable via
- * `options.now` so snapshots can be deterministic.
- */
 export const renderDoctorResultAsNdjson = (
   result: DoctorResult,
   options: DoctorNdjsonOptions = {},

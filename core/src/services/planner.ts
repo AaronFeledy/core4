@@ -12,12 +12,24 @@ import {
   type NetworkPlan,
   PortablePath,
   type ProviderCapabilities,
-  ProviderId,
+  type ProviderId,
   type ServiceConfig,
   ServicePlan,
   type StorageScope,
 } from "@lando/sdk/schema";
-import { AppPlanner, CacheService, PluginRegistry, type ServiceTypeHostFacts } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  CacheService,
+  ConfigService,
+  PluginRegistry,
+  type ServiceTypeHostFacts,
+} from "@lando/sdk/services";
+
+import {
+  CAPABILITY_DEFAULT_PROVIDER_ID,
+  readProviderEnvVar,
+  resolveProviderSelection,
+} from "../providers/precedence.ts";
 
 import { deriveAppPlanCacheKey, readCachedAppPlan, writeCachedAppPlan } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
@@ -251,12 +263,6 @@ const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConf
         ? { startPeriodSeconds: existing.startPeriodSeconds }
         : {}),
   };
-  // Guard: a "command" healthcheck with no command is semantically invalid. This can
-  // happen when a user provides a partial authored override (e.g. `{ intervalSeconds: 30 }`)
-  // on a service type that emits no default healthcheck, causing the `?? "command"` fallback
-  // to produce `{ kind: "command" }` with no `command` field. Skip rather than emit an
-  // unexecutable plan; the user must supply a complete override to add a healthcheck to a
-  // service type that doesn't emit one by default.
   if (merged.kind === "command" && merged.command === undefined) {
     return servicePlan;
   }
@@ -274,10 +280,6 @@ const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
       home: userInfo.homedir,
     };
   } catch {
-    // os.userInfo() can throw on some Windows configurations when the user has no
-    // home directory entry. The service-type helper already supports omitting
-    // LANDO_HOST_* when host facts are unavailable, so degrade gracefully rather
-    // than crashing the planner.
     return undefined;
   }
 };
@@ -285,13 +287,13 @@ const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
 const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   cacheService: Context.Tag.Service<typeof CacheService> | undefined,
+  configService: Context.Tag.Service<typeof ConfigService> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError> => {
   const appRoot = process.cwd();
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
-  const provider = landofile.provider ?? ProviderId.make("lando");
   const host = resolveHostFacts();
   const metadata = {
     resolvedAt: new Date().toISOString(),
@@ -309,6 +311,19 @@ const planApp = (
   };
 
   return Effect.gen(function* () {
+    const configProvider =
+      configService === undefined
+        ? undefined
+        : yield* configService
+            .get("defaultProviderId")
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const envProvider = readProviderEnvVar(process.env);
+    const provider = resolveProviderSelection({
+      ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
+      ...(envProvider === undefined ? {} : { env: envProvider }),
+      ...(configProvider === undefined || configProvider === null ? {} : { config: configProvider }),
+      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+    }).providerId;
     const manifests = yield* pluginRegistry.list.pipe(
       Effect.mapError(
         (error) =>
@@ -322,7 +337,7 @@ const planApp = (
     const cacheRoot = resolveUserCacheRoot();
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
-      landofile,
+      landofile: { ...landofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
     });
@@ -480,11 +495,13 @@ export const AppPlannerLive = Layer.effect(
   Effect.gen(function* () {
     const pluginRegistry = yield* PluginRegistry;
     const cacheService = yield* Effect.serviceOption(CacheService);
+    const configService = yield* Effect.serviceOption(ConfigService);
     return {
       plan: (landofile, providerCapabilities) =>
         planApp(
           pluginRegistry,
           cacheService._tag === "Some" ? cacheService.value : undefined,
+          configService._tag === "Some" ? configService.value : undefined,
           landofile,
           providerCapabilities,
         ),
