@@ -772,3 +772,25 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local branch state after merge: repository on `main`, synced with `origin/main`; remote story branch was deleted by `gh pr merge --delete-branch`.
 - Verification during babysit/triage: focused provider log tests, `bun run typecheck`, `bun run lint`, and full `bun test` all passed after the Bugbot fixes.
 ---
+
+## [2026-05-27 21:23 UTC] - Sync
+- Previous branch: us-080-shared-contract-suite
+- Previous PR: #179 https://github.com/AaronFeledy/core4/pull/179
+- Action: caught up after prior merge (PR #179 was already MERGED, all CI green)
+- Local main updated: yes (already up to date, HEAD at e29bdcb)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-27 21:41 UTC] - US-081
+- Added partial-failure rollback + AbortSignal support to `@lando/provider-docker` (provider-lando already had it)
+- Files changed:
+  - `plugins/provider-docker/src/index.ts`: Added `APPLY_REMEDIATION`, `redactDetails`, §5.7-compliant `serviceStartFailure` (cause + remediation + redacted details), silent cleanup helpers (`stopContainerSilent`, `removeContainerSilent`, `removeNetworkSilent`, `removeVolumeSilent`, `rollbackPartialApply`), AbortSignal in `bringUp`, volumes option in `bringDown`, threaded `applyOptions.signal` and `destroyOptions.volumes` through `apply`/`destroy`
+  - `plugins/provider-docker/test/contract.integration.test.ts`: Added `makeFakeApiWithHooks`, 5 new tests: partial failure after first service start, partial failure after second service start, AbortSignal cleanup, §5.7 error field validation (providerId/operation/remediation/redacted details), destroy volumes:true/false
+  - `plugins/provider-podman/test/contract.integration.test.ts`: Added `makeFakeApiWithHooks` and 2 delegation tests: partial failure rollback, AbortSignal cleanup (both verify provider-podman delegates correctly through provider-lando's bringUp)
+- Verification: `bun run typecheck` → exit 0; `bun run lint` → 4 warnings, exit 0; `bun test` → 1335 pass, 16 skip, 0 fail
+- **Learnings for future iterations:**
+  - `provider-docker`'s `bringUp` was always-`changed: true`; updated to accurate idempotent tracking (same as provider-lando pattern)
+  - AbortSignal timing in synchronous fake APIs: wrap the first `/start` response with `Effect.tap(() => Effect.sync(() => controller.abort()))` to trigger cancellation mid-iteration
+  - `biome check --fix` handles import ordering, `noNonNullAssertion`, and `useLiteralKeys` in one pass; run it before manual lint review
+---
