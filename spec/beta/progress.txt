@@ -170,3 +170,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-cleanup-full.xml` → 1226 tests, 6244 assertions, 0 failures, 12 skips; JSON parse + `git diff --check` → clean. LSP diagnostics were attempted for changed files but the TypeScript/Biome LSP servers exited with code -2.
 ---
+
+## [2026-05-27 00:31 UTC] - Push
+- Branch: us-075-provider-lando-windows-bundle
+- Push: pushed
+- Commit(s): 40ad7c86 Record US-075 cleanup; 125547ae Remove provider-lando runtime bundle slop; 3f61529f Record US-075 review verification update; 50bc8563 Record US-075 review fixes; 2dac458f Wire provider-lando default bundle setup; be39e414 Harden provider-lando runtime bundle cache; a6158bcd feat: provider-lando runtime-bundle download and checksum verification
+- PR: #173 https://github.com/AaronFeledy/core4/pull/173 (created)
+---
