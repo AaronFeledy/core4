@@ -1,10 +1,20 @@
 import { describe, expect, test } from "bun:test";
 
-import { Effect, Stream } from "effect";
+import { Effect, Either, Schema, Stream } from "effect";
 
+import {
+  NoProviderInstalledError,
+  ProviderCapabilityError,
+  ProviderUnavailableError,
+} from "@lando/sdk/errors";
 import { AppId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProvider } from "@lando/sdk/services";
-import { ContractFailure, TestRuntimeProvider, runProviderContract } from "@lando/sdk/test";
+import {
+  ContractFailure,
+  TestRuntimeProvider,
+  runProviderContract,
+  runProviderContractMatrix,
+} from "@lando/sdk/test";
 
 const TEST_APP_ID = AppId.make("myapp");
 const TEST_SERVICE_NAME = ServiceName.make("web");
@@ -144,5 +154,308 @@ describe("RuntimeProvider contract", () => {
     const provider: typeof RuntimeProvider.Service = TestRuntimeProvider;
 
     expect(provider.id).toBe("test");
+  });
+
+  test("fails with ContractFailure when setup is not callable", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      setup: undefined,
+    } as unknown as typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "setup is callable");
+  });
+
+  test("fails with ContractFailure when setup does not return an Effect", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      setup: (_options: { force: boolean }) => "not-an-effect" as unknown as Effect.Effect<void>,
+    } as typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "setup returns an Effect");
+  });
+
+  test("fails with ContractFailure when getVersions.bundle is not a string", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      getVersions: Effect.succeed({
+        provider: "0.0.0-test",
+        runtime: "0.0.0-test",
+        bundle: 42 as unknown as string,
+      }),
+    } as typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "getVersions bundle is a string when present");
+  });
+
+  test("accepts an absent getVersions.bundle field", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      getVersions: Effect.succeed({ provider: "0.0.0-test" }),
+    } as typeof TestRuntimeProvider;
+
+    await expect(Effect.runPromise(runProviderContract(provider))).resolves.toBeUndefined();
+  });
+
+  test("accepts a defined string getVersions.bundle field", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      getVersions: Effect.succeed({
+        provider: "0.0.0-test",
+        runtime: "0.0.0-test",
+        bundle: "0.1.0-test",
+      }),
+    } as typeof TestRuntimeProvider;
+
+    await expect(Effect.runPromise(runProviderContract(provider))).resolves.toBeUndefined();
+  });
+});
+
+describe("SDK provider error contract (§5.7)", () => {
+  test("ProviderCapabilityError carries the §5.7 base fields plus capability/required/actual", () => {
+    const error = new ProviderCapabilityError({
+      providerId: "lando",
+      operation: "isAvailable",
+      message: "Missing capability bindMounts",
+      details: { secret: "REDACTED" },
+      remediation: "Run lando setup.",
+      cause: new Error("io"),
+      capability: "bindMounts",
+      requiredValue: true,
+      actualValue: false,
+    });
+
+    expect(error._tag).toBe("ProviderCapabilityError");
+    expect(error.providerId).toBe("lando");
+    expect(error.operation).toBe("isAvailable");
+    expect(error.message).toBe("Missing capability bindMounts");
+    expect(error.details).toEqual({ secret: "REDACTED" });
+    expect(error.remediation).toBe("Run lando setup.");
+    expect(error.cause).toBeInstanceOf(Error);
+    expect(error.capability).toBe("bindMounts");
+    expect(error.requiredValue).toBe(true);
+    expect(error.actualValue).toBe(false);
+  });
+
+  test("ProviderUnavailableError carries the §5.7 base fields", () => {
+    const error = new ProviderUnavailableError({
+      providerId: "podman",
+      operation: "podman-api",
+      message: "API socket unreachable.",
+      remediation: "Start Podman Desktop.",
+      cause: new Error("ENOENT"),
+    });
+
+    expect(error._tag).toBe("ProviderUnavailableError");
+    expect(error.providerId).toBe("podman");
+    expect(error.operation).toBe("podman-api");
+    expect(error.message).toBe("API socket unreachable.");
+    expect(error.remediation).toBe("Start Podman Desktop.");
+    expect(error.cause).toBeInstanceOf(Error);
+  });
+
+  test("NoProviderInstalledError carries message + optional suggestion (§5.7 'no provider' surface)", () => {
+    const error = new NoProviderInstalledError({
+      message: "No runtime provider is installed.",
+      suggestion: "Run `lando setup`.",
+    });
+
+    expect(error._tag).toBe("NoProviderInstalledError");
+    expect(error.message).toBe("No runtime provider is installed.");
+    expect(error.suggestion).toBe("Run `lando setup`.");
+  });
+
+  test("decoding ProviderCapabilityError preserves redacted details", () => {
+    const decoded = Schema.decodeUnknownEither(ProviderCapabilityError)({
+      _tag: "ProviderCapabilityError",
+      providerId: "docker",
+      operation: "info",
+      message: "info failed",
+      details: { auth: "REDACTED" },
+      capability: "rootless",
+      requiredValue: true,
+      actualValue: false,
+    });
+
+    expect(Either.isRight(decoded)).toBe(true);
+    if (Either.isRight(decoded)) {
+      expect(decoded.right.details).toEqual({ auth: "REDACTED" });
+    }
+  });
+});
+
+describe("runProviderContractMatrix", () => {
+  test("is exported as an Effect-returning matrix runner", () => {
+    expect(typeof runProviderContractMatrix).toBe("function");
+  });
+
+  test("runs supported cells and reports skipped cells with reason", async () => {
+    const cells = [
+      {
+        platform: "linux" as const,
+        supported: true,
+        factory: () => Effect.succeed(TestRuntimeProvider),
+      },
+      {
+        platform: "darwin" as const,
+        supported: false,
+        skipReason: "not yet supported",
+      },
+      {
+        platform: "win32" as const,
+        supported: false,
+        skipReason: "not yet supported",
+      },
+      {
+        platform: "wsl" as const,
+        supported: false,
+        skipReason: "not yet supported",
+      },
+    ];
+
+    const report = await Effect.runPromise(runProviderContractMatrix({ providerName: "test", cells }));
+
+    expect(report.providerName).toBe("test");
+    expect(report.results).toHaveLength(4);
+    expect(report.results[0]).toMatchObject({ platform: "linux", outcome: "passed" });
+    expect(report.results[1]).toMatchObject({
+      platform: "darwin",
+      outcome: "skipped",
+      reason: "not yet supported",
+    });
+  });
+
+  test("fails with ContractFailure when a supported cell's contract fails", async () => {
+    const broken = {
+      ...TestRuntimeProvider,
+      displayName: "",
+    } as typeof TestRuntimeProvider;
+
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "broken",
+        cells: [
+          {
+            platform: "linux" as const,
+            supported: true,
+            factory: () => Effect.succeed(broken),
+          },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("provider exposes a non-empty displayName");
+  });
+
+  test("fails with ContractFailure when a supported cell returns the wrong provider platform", async () => {
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "wrong-platform",
+        cells: [
+          {
+            platform: "linux" as const,
+            supported: true,
+            factory: () => Effect.succeed({ ...TestRuntimeProvider, platform: "darwin" }),
+          },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("matrix cell provider platform matches cell platform");
+  });
+
+  test("requires every canonical host platform to be declared", async () => {
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "missing-platform",
+        cells: [
+          { platform: "linux" as const, supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("matrix declares every canonical host platform");
+  });
+
+  test("requires a skipReason for unsupported cells", async () => {
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "missing-skip-reason",
+        cells: [
+          {
+            platform: "linux" as const,
+            supported: true,
+            factory: () => Effect.succeed(TestRuntimeProvider),
+          },
+          {
+            platform: "darwin" as const,
+            supported: false,
+          } as unknown as {
+            platform: "darwin";
+            supported: false;
+            skipReason: string;
+          },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("unsupported matrix cell declares a skip reason");
+  });
+
+  test("requires every cell with supported=true to provide a factory", async () => {
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "missing-factory",
+        cells: [
+          {
+            platform: "linux" as const,
+            supported: true,
+          } as unknown as {
+            platform: "linux";
+            supported: true;
+            factory: () => Effect.Effect<typeof TestRuntimeProvider>;
+          },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("supported matrix cell declares a factory");
   });
 });

@@ -4,12 +4,13 @@
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
  */
-import { DateTime, Effect, Either, Schema, Stream } from "effect";
+import { DateTime, Duration, Effect, Either, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type HostPlatform,
   type PlanMetadata,
   ProviderCapabilities,
   ProviderId,
@@ -64,7 +65,7 @@ const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: ["node", "-e", "setInterval(() => {}, 1000)"],
+  command: ["node", "-e", "console.log('lando-contract-ready'); setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
   storage: [],
@@ -117,12 +118,13 @@ const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArra
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
 
+const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
+
 /**
- * Run the `RuntimeProvider` contract assertions. Covers the Phase 1 shape
- * checks (capability decode, lifecycle method types, fixture apply/inspect/
- * destroy round-trip) and the Phase 2 Alpha lifecycle additions (identity,
- * status, versions, capability completeness, ApplyResult shape, re-apply
- * idempotency, list shape, and volume-preserving destroy).
+ * Run the `RuntimeProvider` contract assertions. Validates capability decode,
+ * lifecycle method types, fixture apply/inspect/destroy round-trips, provider
+ * identity, status, version fields, capability completeness, ApplyResult
+ * shape, re-apply idempotency, list shape, and volume-preserving destroy.
  */
 export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
@@ -266,6 +268,40 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
     yield* requireContract(typeof snapshot.status === "string", "inspect snapshot includes status", snapshot);
 
+    const execResult = yield* provider
+      .exec({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { command: ["echo", "ok"] })
+      .pipe(Effect.mapError(mapProviderFailure("exec returns a structured result")));
+    yield* requireContract(
+      typeof execResult.exitCode === "number",
+      "exec result includes a numeric exitCode",
+      execResult,
+    );
+    yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
+    yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
+
+    const logChunks = yield* Effect.timeoutFail(
+      provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
+        Stream.take(1),
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+        Effect.mapError(mapProviderFailure("logs emits structured chunks")),
+      ),
+      {
+        duration: Duration.seconds(5),
+        onTimeout: () => contractFailure("logs emits at least one chunk", []),
+      },
+    );
+    yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);
+    for (const chunk of logChunks) {
+      yield* requireContract(chunk.service === TEST_SERVICE_NAME, "log chunk includes service name", chunk);
+      yield* requireContract(
+        chunk.stream === "stdout" || chunk.stream === "stderr",
+        "log chunk includes stream name",
+        chunk,
+      );
+      yield* requireContract(typeof chunk.line === "string", "log chunk includes a line", chunk);
+    }
+
     const listed = yield* provider
       .list({ app: TEST_APP_ID })
       .pipe(Effect.mapError(mapProviderFailure("list resolves for the contract fixture")));
@@ -282,6 +318,102 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* provider
       .destroy({ app: TEST_APP_ID }, { volumes: true })
       .pipe(Effect.mapError(mapProviderFailure("destroy succeeds for the contract fixture")));
+
+    yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);
+    const setupEffect = provider.setup({ force: false });
+    yield* requireContract(Effect.isEffect(setupEffect), "setup returns an Effect", setupEffect);
+
+    yield* requireContract(
+      versions.bundle === undefined || typeof versions.bundle === "string",
+      "getVersions bundle is a string when present",
+      versions,
+    );
+  });
+
+/** Matrix-driven contract runner — runs `runProviderContract` per supported cell, surfaces skip reasons. */
+export type HostPlatformId = HostPlatform;
+
+export interface SupportedContractCell {
+  readonly platform: HostPlatformId;
+  readonly supported: true;
+  readonly factory: () => Effect.Effect<RuntimeProviderShape, unknown>;
+}
+
+export interface UnsupportedContractCell {
+  readonly platform: HostPlatformId;
+  readonly supported: false;
+  readonly skipReason: string;
+}
+
+export type ContractMatrixCell = SupportedContractCell | UnsupportedContractCell;
+
+export interface ContractMatrixCellResult {
+  readonly platform: HostPlatformId;
+  readonly outcome: "passed" | "skipped";
+  readonly reason?: string;
+}
+
+export interface ContractMatrixReport {
+  readonly providerName: string;
+  readonly results: ReadonlyArray<ContractMatrixCellResult>;
+}
+
+export interface ContractMatrixOptions {
+  readonly providerName: string;
+  readonly cells: ReadonlyArray<ContractMatrixCell>;
+}
+
+const isSupported = (cell: ContractMatrixCell): cell is SupportedContractCell => cell.supported === true;
+
+export const runProviderContractMatrix = (
+  options: ContractMatrixOptions,
+): Effect.Effect<ContractMatrixReport, ContractFailure> =>
+  Effect.gen(function* () {
+    const results: ContractMatrixCellResult[] = [];
+    const seenPlatforms = new Set<HostPlatform>();
+
+    for (const cell of options.cells) {
+      yield* requireContract(!seenPlatforms.has(cell.platform), "matrix cell platform is unique", cell);
+      seenPlatforms.add(cell.platform);
+    }
+
+    for (const platform of CONTRACT_MATRIX_PLATFORMS) {
+      yield* requireContract(seenPlatforms.has(platform), "matrix declares every canonical host platform", {
+        providerName: options.providerName,
+        platform,
+      });
+    }
+
+    for (const cell of options.cells) {
+      if (isSupported(cell)) {
+        yield* requireContract(
+          typeof cell.factory === "function",
+          "supported matrix cell declares a factory",
+          cell,
+        );
+
+        const provider = yield* cell
+          .factory()
+          .pipe(Effect.mapError(mapProviderFailure(`matrix cell ${cell.platform} factory resolves`)));
+
+        yield* requireContract(
+          provider.platform === cell.platform,
+          "matrix cell provider platform matches cell platform",
+          { platform: cell.platform, providerPlatform: provider.platform },
+        );
+        yield* runProviderContract(provider);
+        results.push({ platform: cell.platform, outcome: "passed" });
+      } else {
+        yield* requireContract(
+          isNonEmptyString(cell.skipReason),
+          "unsupported matrix cell declares a skip reason",
+          cell,
+        );
+        results.push({ platform: cell.platform, outcome: "skipped", reason: cell.skipReason });
+      }
+    }
+
+    return { providerName: options.providerName, results };
   });
 
 /**

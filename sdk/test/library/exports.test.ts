@@ -113,6 +113,7 @@ describe("@lando/sdk package exports", () => {
     const sdkTest = await import("@lando/sdk/test");
 
     expect(sdkTest.runProviderContract).toBeDefined();
+    expect(sdkTest.runProviderContractMatrix).toBeDefined();
     expect(sdkTest.TestRuntimeProvider).toBeDefined();
   });
 });

@@ -108,3 +108,14 @@
 - `ToolingEngine`
 - `UpdateService`
 - `UrlScanner`
+
+## Additive Beta test helper exports
+
+- `ContractMatrixCell`
+- `ContractMatrixCellResult`
+- `ContractMatrixOptions`
+- `ContractMatrixReport`
+- `HostPlatformId`
+- `SupportedContractCell`
+- `UnsupportedContractCell`
+- `runProviderContractMatrix`

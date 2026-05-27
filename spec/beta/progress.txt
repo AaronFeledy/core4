@@ -633,3 +633,132 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts plugins/provider-podman/test/capabilities.test.ts` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 19:30 UTC] - Sync
+- Previous branch: us-079-provider-podman-desktop
+- Previous PR: #178 https://github.com/AaronFeledy/core4/pull/178
+- Action: caught up after prior merge (PR #178 already MERGED, remote branch pruned)
+- Local main updated: yes (already current with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-27 20:30 UTC] - US-080
+- Implemented the shared `RuntimeProvider` contract suite plus a matrix-driven runner so `TestRuntimeProvider`, `@lando/provider-lando`, `@lando/provider-docker`, and `@lando/provider-podman` all run the same `@lando/sdk/test` contract across every supported platform.
+- Files changed:
+  - `sdk/src/test/index.ts`: extended `runProviderContract` with `setup` invariants (callable + returns Effect), `getVersions().bundle` optional-string invariant, and (via new in-test schema assertions) coverage for the §5.7 provider-error contract; added new exports `runProviderContractMatrix`, `HostPlatformId`, `SupportedContractCell`, `UnsupportedContractCell`, `ContractMatrixCell`, `ContractMatrixCellResult`, `ContractMatrixReport`, `ContractMatrixOptions`.
+  - `sdk/test/contract/provider.test.ts`: new ContractFailure paths for `setup`/`setup-effect`/`bundle-shape`; accepted cases for absent/string bundle; SDK §5.7 error-class shape checks for `ProviderCapabilityError`, `ProviderUnavailableError`, `NoProviderInstalledError` (including a `Schema.decodeUnknownEither` round-trip that preserves redacted `details`); matrix-runner suite (exports, passed+skipped reporting, supported-cell ContractFailure propagation, required `skipReason`, required `factory`).
+  - `sdk/test/library/exports.test.ts`: asserts `sdkTest.runProviderContractMatrix` is exported alongside `runProviderContract`/`TestRuntimeProvider`.
+  - `plugins/provider-lando/test/contract.integration.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 via the existing fake Podman API client.
+  - `plugins/provider-docker/test/contract.integration.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 via `makeProviderLayer({ platform, env: {}, dockerApi: makeFakeApi().api })`.
+  - `plugins/provider-podman/test/contract.integration.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 via `makeProviderLayer({ podmanApi: makeFakeApi().api, platform, env: {} })`.
+  - `core/test/testing/test-runtime.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 against the re-exported `TestRuntimeProvider`.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/provider.test.ts sdk/test/library/exports.test.ts plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts core/test/testing/test-runtime.test.ts` → 49 pass, 4 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-full.xml` → 1323 pass, 16 skip, 0 fail (177 files / 134.69s)
+- **Learnings for future iterations:**
+  - `runProviderContract` is the single shared assertion path — extending it with new invariants (setup, bundle, error-shape) automatically lifts coverage for every existing caller, so the four packages only had to add a matrix wrapper rather than duplicate assertions.
+  - The matrix runner's "skipReason required for unsupported cells / factory required for supported cells" contract is intentional: it forces every package to declare its supported set explicitly (no silent platform gaps) and surfaces skipped cells with a reason in the returned `ContractMatrixReport`.
+  - SDK error-shape coverage is best asserted against the `Schema.decodeUnknownEither(ProviderCapabilityError)` round-trip rather than by triggering real provider errors — US-081 owns the provider-side negative-path coverage, so US-080 stays scoped to the SDK-level contract.
+  - When migrating a contract test, route the cell `factory` through the existing fake-client harness (the per-test `makeFakeApi()` closures) so each matrix cell gets an isolated fake; sharing a single fake across cells would leak state between the lifecycle round-trips.
+---
+
+## [2026-05-27 14:58 CDT] - US-080 Review
+- Reviewed the US-080 shared provider contract suite against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits (`origin/main...HEAD`).
+- Fixed confirmed review blockers:
+  - `runProviderContract` now actually executes `exec` and consumes `logs` for the contract fixture instead of only checking Effect/Stream shapes.
+  - `runProviderContractMatrix` now requires every canonical `HostPlatform` cell (`linux`, `darwin`, `win32`, `wsl`) to be declared and asserts each supported cell returns a provider whose `platform` matches the cell.
+  - Provider contract matrix tests now declare unsupported `wsl` cells with reasons; `provider-lando` and `TestRuntimeProvider` factories now build platform-matching providers.
+  - Podman-backed fake APIs now cover exec/log streams so the stronger shared contract exercises the lifecycle path uniformly.
+  - Listed the additive `@lando/sdk/test` matrix exports in `sdk/API_COMPATIBILITY.md`.
+- Files changed:
+  - `sdk/src/test/index.ts`
+  - `sdk/test/contract/provider.test.ts`
+  - `sdk/API_COMPATIBILITY.md`
+  - `core/test/testing/test-runtime.test.ts`
+  - `plugins/provider-lando/test/contract.integration.test.ts`
+  - `plugins/provider-docker/test/contract.integration.test.ts`
+  - `plugins/provider-podman/test/contract.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: lifecycle contract did not execute `exec` or drain `logs`, so those PRD-required operations were only shape-checked.
+  - Fixed: matrix runner did not assert that a supported cell's provider declared the same platform.
+  - Fixed: matrix type/tests omitted canonical `wsl` cells and therefore could not record skipped-with-reason WSL coverage.
+  - Fixed: new public `@lando/sdk/test` matrix exports were not listed in `sdk/API_COMPATIBILITY.md`.
+  - Rejected: provider-side negative-path error behavior remains US-081 scope; US-080's SDK-level §5.7 error-shape/redaction coverage is retained.
+  - Rejected: duplicate Podman fake client helpers are acceptable local test fixtures for this review; extracting them would be a refactor outside the story repair.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/provider.test.ts sdk/test/library/exports.test.ts plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts core/test/testing/test-runtime.test.ts` → 51 pass, 4 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-review-full.xml` → 1324 pass, 16 skip, 1 fail on the order-sensitive compiled `core/test/cli/setup.test.ts` build step; `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/setup.test.ts` rerun in isolation → 4 pass, 0 fail.
+  - Earlier full-suite run in the same dirty tree hit compiled harness failures in `renderer-flag.scenario.test.ts`, `aliases.test.ts`, and `no-runtime-tsbuildinfo.test.ts`; rerunning those named files together → 17 pass, 0 fail.
+  - LSP diagnostics were attempted for changed TypeScript files but the TypeScript LSP servers exited with code -2; `tsc -b` typecheck was clean.
+- **Learnings for future iterations:**
+  - Contract helpers should execute lifecycle operations after applying the fixture; shape checks alone do not satisfy lifecycle acceptance criteria.
+  - Matrix runners should fail closed on missing canonical host cells and platform-mismatched providers, otherwise a zero-arg factory can make cross-platform cells pass without exercising the intended platform.
+  - Include unsupported WSL cells explicitly with skip reasons whenever provider matrices target native Linux/macOS/Windows only.
+---
+
+## [2026-05-27 14:58 CDT] - US-080 Review
+- Reviewed the US-080 shared provider contract suite against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits (`origin/main...HEAD`).
+- Fixed confirmed review blockers:
+  - `runProviderContract` now executes `exec` and consumes `logs` for the contract fixture instead of only checking Effect/Stream shape.
+  - `runProviderContractMatrix` now requires every canonical `HostPlatform` cell (`linux`, `darwin`, `win32`, `wsl`) to be declared and rejects supported cells whose provider reports a different platform.
+  - Provider matrix tests now declare explicit unsupported WSL skip cells; provider-lando and TestRuntimeProvider factories now return the platform under test.
+  - Provider-lando and provider-podman fake API harnesses now implement exec/log streaming so the shared contract exercises those lifecycle operations.
+  - `sdk/API_COMPATIBILITY.md` now records the additive `@lando/sdk/test` matrix exports.
+- Files changed:
+  - `sdk/src/test/index.ts`
+  - `sdk/test/contract/provider.test.ts`
+  - `sdk/API_COMPATIBILITY.md`
+  - `core/test/testing/test-runtime.test.ts`
+  - `plugins/provider-lando/test/contract.integration.test.ts`
+  - `plugins/provider-docker/test/contract.integration.test.ts`
+  - `plugins/provider-podman/test/contract.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: lifecycle contract did not actually execute `exec` or consume `logs`.
+  - Fixed: matrix cells could pass without the provider declaring the cell platform.
+  - Fixed: canonical WSL host platform could not be represented/skipped.
+  - Fixed: additive `@lando/sdk/test` exports were missing from `sdk/API_COMPATIBILITY.md`.
+  - Rejected: provider-side negative-path error behavior remains US-081 scope; US-080 keeps SDK §5.7 error-shape/redaction coverage.
+  - Rejected: shared Podman fake-client deduplication is non-blocking cleanup; the scoped fix preserved existing per-provider fake seams while adding exec/log coverage.
+- Verification:
+  - LSP diagnostics attempted for changed TypeScript files; TypeScript LSP servers exited with code -2, so `tsc -b` is the type gate.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/provider.test.ts sdk/test/library/exports.test.ts plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts core/test/testing/test-runtime.test.ts` → 51 pass, 4 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-review-full.xml` → failed in compiled/build cleanup tests during full-suite order; reruns of the named failing files (`core/test/cli/setup.test.ts`, `core/test/cli/renderer-flag.scenario.test.ts`, `core/test/cli/aliases.test.ts`, `core/test/build/no-runtime-tsbuildinfo.test.ts`) passed in isolation.
+- **Learnings for future iterations:**
+  - A matrix contract must assert the provider returned for each supported cell advertises that same platform; otherwise matrix reports can overstate coverage.
+  - Canonical host-platform matrices must include explicit unsupported cells for `wsl` while provider support remains native Linux/macOS/Windows.
+  - Shape checks are insufficient for lifecycle acceptance; shared provider contracts should run observable operations for `exec` and `logs` through the fake-client seam.
+---
+
+## [2026-05-27 20:05 UTC] - US-080 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only comment cleanup; no runtime behavior, public API, error handling, fake-provider behavior, contract assertions, or test coverage changed.
+- Files changed:
+  - `sdk/src/test/index.ts`: reworded the `runProviderContract` doc comment to describe the technical contract surface without phase/planning traceability.
+  - `spec/beta/progress.txt`: recorded this cleanup step.
+- Rejected cleanup proposal: reverted a provider-lando test non-null assertion change because it added type-assertion churn for no behavior benefit.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references; remaining `Phase`/`§` hits are test-title strings, not comments.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-cleanup-full.xml` → 1341 tests, 6492 assertions, 1 failure, 16 skips; the failing suite was the known order-sensitive compiled `core/test/cli/setup.test.ts` install-dir parity case, and `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/setup.test.ts` rerun in isolation → exit 0. LSP diagnostics were attempted for `sdk/src/test/index.ts` but the TypeScript LSP server exited with code -2, so `tsc -b` is the type gate.
+---
+
+## [2026-05-27 20:11 UTC] - Push
+- Branch: us-080-shared-contract-suite
+- Push: pushed
+- Commit(s): 1f2a0fd feat: shared provider contract suite covers all four providers; 7028ca4 chore: mark US-080 complete and update progress log; 9cfe0a7 fix: strengthen US-080 provider contract review; 29c8cf0 chore: record US-080 cleanup
+- PR: #179 https://github.com/AaronFeledy/core4/pull/179 (created)
+---
+
+## [2026-05-27] - PR #179 provider-integration triage
+- CI failure: real issue; `provider-integration-linux-x64` failed because the shared live fixture must emit a service log line and live provider-lando Podman logs can arrive as raw timestamped text, while the decoder only emitted Docker attach-framed chunks and therefore produced `[]` for the shared contract assertion.
+- Review feedback: no PR comments or reviews to address (`reviewDecision` empty; Cursor Bugbot passed).
+- Fix: the SDK contract fixture now writes a startup log line, provider-lando and provider-docker logs now decode both attach-framed and raw log streams, fake-client coverage exercises raw log bytes, and the shared contract waits for one followed log chunk with a bounded timeout to avoid live-container startup races.
+- Verification: `bun test plugins/provider-lando/test/logs.integration.test.ts` → 4 tests, 0 failures, 1 skip; `bun test plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts sdk/test/contract/provider.test.ts` → 44 tests, 151 assertions, 0 failures, 4 skips; manual raw-log driver → decoded `[web/stdout/manual ready]`; `bun run typecheck` → exit 0; `bun run lint` → exit 0; `bun test` → 1343 tests, 6498 assertions, 0 failures, 16 skips; GitHub rerun then showed provider-lando live passing and exposed the same log-startup race on provider-docker, so `sdk/src/test/index.ts` now uses bounded `follow:true`/`tail:20` collection for the shared log assertion.
+---

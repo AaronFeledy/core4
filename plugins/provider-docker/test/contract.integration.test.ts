@@ -24,7 +24,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
-import { runProviderContract } from "@lando/sdk/test";
+import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 
 const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
@@ -298,6 +298,39 @@ describe("provider-docker RuntimeProvider contract", () => {
     ]);
   });
 
+  test("decodes raw Docker log bytes", async () => {
+    const fake = makeFakeApi();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      if (request.path.includes("/logs?")) {
+        return Stream.fromIterable([textEncoder.encode("2026-05-17T12:00:00.000Z raw ready\n")]);
+      }
+      return Stream.empty;
+    };
+
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan();
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const logs = await Effect.runPromise(
+      provider.logs({ app: appId, service: serviceName }, { follow: false }).pipe(
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+      ),
+    );
+
+    expect(logs).toEqual([
+      {
+        service: serviceName,
+        stream: "stdout",
+        line: "raw ready",
+        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+      },
+    ]);
+  });
+
   test("declares the Linux Docker Engine capability matrix", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
@@ -419,4 +452,35 @@ describe("provider-docker RuntimeProvider contract", () => {
     },
     60_000,
   );
+
+  test("matrix: covers linux / darwin / win32 via fake Docker API", async () => {
+    const buildProvider = (platform: "linux" | "darwin" | "win32") =>
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ platform, env: {}, dockerApi: makeFakeApi().api })),
+      );
+
+    const report = await Effect.runPromise(
+      runProviderContractMatrix({
+        providerName: "@lando/provider-docker",
+        cells: [
+          { platform: "linux", supported: true, factory: () => buildProvider("linux") },
+          { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
+          { platform: "win32", supported: true, factory: () => buildProvider("win32") },
+          {
+            platform: "wsl",
+            supported: false,
+            skipReason: "provider-docker targets native Windows, not WSL",
+          },
+        ],
+      }),
+    );
+
+    expect(report.providerName).toBe("@lando/provider-docker");
+    expect(report.results.map((r) => `${r.platform}:${r.outcome}`)).toEqual([
+      "linux:passed",
+      "darwin:passed",
+      "win32:passed",
+      "wsl:skipped",
+    ]);
+  });
 });
