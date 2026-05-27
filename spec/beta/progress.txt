@@ -313,3 +313,19 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ## [2026-05-27] - PR #175 triage
 - Patched `plugins/provider-docker/src/index.ts` so chunked named-pipe streams flush a final buffered chunk even if the socket closes before the trailing CRLF arrives.
 - Added a socket-backed regression test in `plugins/provider-docker/test/contract.integration.test.ts` that exercises the named-pipe chunked stream path with an unterminated final chunk.
+
+## [2026-05-27 05:51 UTC] - Sync (uncommitted changes assessment)
+- Found uncommitted changes to `plugins/provider-docker/src/index.ts` (refactored `decodeChunkedBody` from async generator to sync function reusing existing helpers) plus `spec/beta/progress.txt` progress note from previous iteration.
+- Assessment: changes are entangled with in-progress story work on `us-077-provider-docker-windows` / PR #175 (directly address Bugbot comments "Npipe request drops partial chunks" and "Duplicate chunked body decoders"). Not eligible for standalone PR.
+- Stashed as: loop-sync-rejected-improvement-20260527T055121Z (stash@{0})
+- Note: stash is recoverable for use by push.md Phase 4 triage on branch `us-077-provider-docker-windows`.
+---
+
+## [2026-05-27 05:52 UTC] - Sync
+- Previous branch: us-077-provider-docker-windows
+- Previous PR: #175 https://github.com/AaronFeledy/core4/pull/175
+- Action: merged (Case A — all CI checks SUCCESS/NEUTRAL, MERGEABLE, CLEAN, no CHANGES_REQUESTED)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: yes (loop-sync-rejected-improvement-20260527T055121Z — entangled story-branch index.ts changes from failed final triage; dropped as moot after merge)
+---
