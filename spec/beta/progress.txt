@@ -296,3 +296,16 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Planning-doc leakage scan: changed TypeScript code/test comments are clean; the guide frontmatter `beta` tag remains intentional metadata, not code-comment traceability.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides docs/guides/setup/provider-docker-windows.mdx` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us077-cleanup-full.xml` → 2515 tests, 0 failures, 0 errors, 28 skips; `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2.
 ---
+
+## [2026-05-27 04:32 UTC] - Push
+- Branch: us-077-provider-docker-windows
+- Push: pushed
+- Commit(s): 2cf3bd2 feat: provider-docker Windows (Docker Desktop) | 3f3271a fix: provider-docker Windows named-pipe transport | 2451dec chore: remove provider-docker Windows slop | aac977c docs: record US-077 cleanup
+- PR: #175 https://github.com/AaronFeledy/core4/pull/175 (created)
+---
+## [2026-05-27 04:48 UTC] - Push
+- Branch: us-077-provider-docker-windows
+- Push: pushed
+- Commit(s): 1031e1e fix: keep npipe stream on one consumer
+- PR: #175 https://github.com/AaronFeledy/core4/pull/175 (updated)
+---
