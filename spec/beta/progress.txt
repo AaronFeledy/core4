@@ -926,3 +926,18 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references; remaining spec/section hits are runtime error metadata or test assertions, not comments.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings; `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us082-cleanup-full.xml` → 1395 tests, 6653 assertions, 1 TimeoutError in `core/test/scripts/codegen-ci.test.ts` (`uses .bun-version file as the Bun version source...`); focused rerun `PATH="$HOME/.bun/bin:$PATH" bun test core/test/scripts/codegen-ci.test.ts` → 10 pass, 0 fail, 123 assertions. `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files but the TypeScript LSP server exited with code -2; no MDX LSP is configured.
 ---
+
+## [2026-05-27 18:32 CDT] - Push
+- Branch: us-082-provider-selection-precedence
+- Push: pushed
+- Commit(s):
+  - f17cf6e chore: cleanup
+  - b53eb1c docs: record US-082 review fixes
+  - 400bb71 fix: emit podman conflict doctor check before selection
+  - a9c0541 fix: apply provider precedence to app planning
+  - 97cf413 chore: mark US-082 complete and update progress log
+  - d92891a chore: mark US-082 complete and update progress log
+  - 71daa7b feat: provider selection precedence and conflict diagnostics
+  - 20d44e7 docs: record PR #180 merge babysit
+- PR: #181 https://github.com/AaronFeledy/core4/pull/181 (created)
+---
