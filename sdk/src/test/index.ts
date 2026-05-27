@@ -121,11 +121,10 @@ const isNonEmptyString = (value: unknown): value is string => typeof value === "
 const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
 
 /**
- * Run the `RuntimeProvider` contract assertions. Covers the Phase 1 shape
- * checks (capability decode, lifecycle method types, fixture apply/inspect/
- * destroy round-trip) and the Phase 2 Alpha lifecycle additions (identity,
- * status, versions, capability completeness, ApplyResult shape, re-apply
- * idempotency, list shape, and volume-preserving destroy).
+ * Run the `RuntimeProvider` contract assertions. Validates capability decode,
+ * lifecycle method types, fixture apply/inspect/destroy round-trips, provider
+ * identity, status, version fields, capability completeness, ApplyResult
+ * shape, re-apply idempotency, list shape, and volume-preserving destroy.
  */
 export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {

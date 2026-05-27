@@ -737,3 +737,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Canonical host-platform matrices must include explicit unsupported cells for `wsl` while provider support remains native Linux/macOS/Windows.
   - Shape checks are insufficient for lifecycle acceptance; shared provider contracts should run observable operations for `exec` and `logs` through the fake-client seam.
 ---
+
+## [2026-05-27 20:05 UTC] - US-080 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only comment cleanup; no runtime behavior, public API, error handling, fake-provider behavior, contract assertions, or test coverage changed.
+- Files changed:
+  - `sdk/src/test/index.ts`: reworded the `runProviderContract` doc comment to describe the technical contract surface without phase/planning traceability.
+  - `spec/beta/progress.txt`: recorded this cleanup step.
+- Rejected cleanup proposal: reverted a provider-lando test non-null assertion change because it added type-assertion churn for no behavior benefit.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references; remaining `Phase`/`§` hits are test-title strings, not comments.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-cleanup-full.xml` → 1341 tests, 6492 assertions, 1 failure, 16 skips; the failing suite was the known order-sensitive compiled `core/test/cli/setup.test.ts` install-dir parity case, and `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/setup.test.ts` rerun in isolation → exit 0. LSP diagnostics were attempted for `sdk/src/test/index.ts` but the TypeScript LSP server exited with code -2, so `tsc -b` is the type gate.
+---
