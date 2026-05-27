@@ -941,3 +941,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - 20d44e7 docs: record PR #180 merge babysit
 - PR: #181 https://github.com/AaronFeledy/core4/pull/181 (created)
 ---
+
+## [2026-05-27 23:43 UTC] - Babysit
+- PR: #181 https://github.com/AaronFeledy/core4/pull/181
+- CI outcome: pass
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (local main reset to origin/main after the remote squash already contained the prior local progress-log commit; local story branch absent/deleted)
+- Remaining local state, if any: spec/beta/progress.txt has this uncommitted babysit note
+---
