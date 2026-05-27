@@ -1,5 +1,4 @@
 import { createConnection } from "node:net";
-/** `@lando/provider-docker` — Docker Engine RuntimeProvider. */
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {

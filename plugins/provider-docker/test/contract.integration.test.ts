@@ -79,21 +79,19 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
   ...overrides,
 });
 
-const makePlan = (service = makeService()): AppPlan => {
-  return {
-    id: appId,
-    name: "My App",
-    slug: "myapp",
-    root: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
-    provider: providerId,
-    services: { [serviceName]: service },
-    routes: [],
-    networks: [],
-    stores: [],
-    metadata,
-    extensions: {},
-  };
-};
+const makePlan = (service = makeService()): AppPlan => ({
+  id: appId,
+  name: "My App",
+  slug: "myapp",
+  root: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
+  provider: providerId,
+  services: { [serviceName]: service },
+  routes: [],
+  networks: [],
+  stores: [],
+  metadata,
+  extensions: {},
+});
 
 const makeFakeApi = () => {
   const running = new Set<string>();
@@ -186,7 +184,7 @@ const makeFakeApi = () => {
 };
 
 describe("provider-docker RuntimeProvider contract", () => {
-  test("passes the SDK provider contract suite through the Docker Engine HTTP API", async () => {
+  test("runs the provider contract suite through the Docker Engine API", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
@@ -201,7 +199,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(fake.calls.every((call) => call.path.startsWith("/"))).toBe(true);
   });
 
-  test("covers Docker Engine HTTP API apply, inspect, exec, logs, and destroy with a fake client", async () => {
+  test("covers apply, inspect, exec, logs, and destroy with a fake client", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
@@ -280,7 +278,7 @@ describe("provider-docker RuntimeProvider contract", () => {
   });
 
   test.skipIf(!process.env.LANDO_TEST_DOCKER_SOCKET && !process.env.DOCKER_HOST)(
-    "passes the SDK provider contract suite against a live Docker Engine socket",
+    "runs the provider contract suite against a live Docker Engine socket",
     async () => {
       const dockerHost = process.env.LANDO_TEST_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
       expect(dockerHost).toBeTruthy();
@@ -357,7 +355,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     process.platform !== "win32" ||
       (!process.env.LANDO_TEST_WINDOWS_DOCKER_SOCKET && !process.env.DOCKER_HOST),
   )(
-    "passes the SDK provider contract suite against a live Windows Docker Desktop socket",
+    "runs the provider contract suite against a live Windows Docker Desktop socket",
     async () => {
       const dockerHost = process.env.LANDO_TEST_WINDOWS_DOCKER_SOCKET ?? process.env.DOCKER_HOST;
       expect(dockerHost).toBeTruthy();
