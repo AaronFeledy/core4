@@ -596,3 +596,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 18:52 UTC] - US-079 PR #178 Bugbot triage round 7 push
+- Triaged Cursor Bugbot's seventh review (commit `dcc26ba`, 2 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L203, "Exported `discoverPodmanDesktopSockets` is unused in production code", Low) - **real issue, fixed**. `defaultPodmanSocket` now routes macOS/Windows default socket selection through `discoverPodmanDesktopSockets`, keeping discovery as the shared production path instead of a test-only/export-only helper.
+  - New comment (`plugins/provider-podman/src/index.ts` L216, "Machine name resolved unnecessarily before HOME check on macOS", Low) - **real issue, fixed**. `discoverPodmanDesktopSockets` now checks `HOME` before resolving/validating a macOS machine name, so the `/var/run/podman/podman.sock` fallback path does not reject unrelated invalid machine-name env vars when `HOME` is unavailable.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: share default Podman Desktop socket selection through `discoverPodmanDesktopSockets`; check macOS `HOME` before machine-name resolution.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/capabilities.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
