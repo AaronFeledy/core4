@@ -145,3 +145,16 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Host-platform default helpers should return `undefined`/fail closed for unknown platforms; do not collapse unknown platforms into Windows just because Windows is the only remaining supported literal.
   - Treat bundled manifests as a supply-chain boundary: schema + runtime cache helpers should reject path separators/traversal even when the current checked-in manifest is safe.
 ---
+
+## [2026-05-26 19:08 CDT] - US-075 Review Verification Update
+- Updated post-commit verification note after rerunning the full suite on a clean worktree.
+- Files changed:
+  - `spec/beta/progress.txt`
+- `review-work` findings: no new findings; this entry corrects the verification record only.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-final-full.xml` → 1226 tests, 6241 assertions, 1 failure, 12 skips; the failing suite was `core/test/cli/renderer-flag.scenario.test.ts` compiled `$bunfs` renderer parity.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/renderer-flag.scenario.test.ts` rerun in isolation → 12 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/compile.test.ts` rerun in isolation → 1 pass, 0 fail.
+- **Learnings for future iterations:**
+  - Full-suite compiled CLI scenario failures can be order/flakiness-sensitive; rerun the named failing file to distinguish provider-story regressions from unrelated compiled harness instability.
+---
