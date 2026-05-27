@@ -1,4 +1,5 @@
 import { createConnection } from "node:net";
+import type { Socket } from "node:net";
 
 import { Effect, Stream } from "effect";
 
@@ -25,6 +26,23 @@ const podmanHttpRequestText = (request: PodmanHttpRequest, body: string | undefi
     );
   }
   return `${headers.join("\r\n")}\r\n\r\n${body ?? ""}`;
+};
+
+export const connectNamedPipeSocket = async (socket: Socket): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    const onConnect = () => {
+      socket.off("error", onError);
+      resolve();
+    };
+    const onError = (cause: Error) => {
+      socket.off("connect", onConnect);
+      socket.destroy();
+      reject(cause);
+    };
+
+    socket.once("connect", onConnect);
+    socket.once("error", onError);
+  });
 };
 
 const headerSeparator: Bytes = new TextEncoder().encode("\r\n\r\n");
@@ -199,10 +217,7 @@ async function* streamNamedPipePodmanRequest(
 ): AsyncGenerator<Bytes> {
   const socket = createConnection({ path: pipePath });
   const body = requestBody(request);
-  await new Promise<void>((resolve, reject) => {
-    socket.once("connect", resolve);
-    socket.once("error", reject);
-  });
+  await connectNamedPipeSocket(socket);
   const initialChunks: Bytes[] = [];
   socket.write(podmanHttpRequestText(request, body));
 
@@ -272,10 +287,7 @@ const requestNamedPipePodman = async (
 ): Promise<PodmanHttpResponse> => {
   const socket = createConnection({ path: pipePath });
   const body = requestBody(request);
-  await new Promise<void>((resolve, reject) => {
-    socket.once("connect", resolve);
-    socket.once("error", reject);
-  });
+  await connectNamedPipeSocket(socket);
   socket.write(podmanHttpRequestText(request, body));
   try {
     const responseBytes = await collectBytes(socket);
