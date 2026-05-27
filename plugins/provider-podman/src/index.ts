@@ -188,17 +188,22 @@ export const discoverPodmanDesktopSockets = (
   const env = options.env ?? process.env;
   if (platform === "linux") return [];
 
+  if (platform === "darwin") {
+    const home = env.HOME;
+    if (home === undefined || home.length === 0) return [];
+    const overrideMachine = resolvePodmanDesktopMachine(env);
+    const machines: ReadonlyArray<string> =
+      overrideMachine === DEFAULT_PODMAN_DESKTOP_MACHINE
+        ? [DEFAULT_PODMAN_DESKTOP_MACHINE]
+        : [overrideMachine, DEFAULT_PODMAN_DESKTOP_MACHINE];
+    return machines.map((machine) => macosPodmanDesktopSocket(home, machine));
+  }
+
   const overrideMachine = resolvePodmanDesktopMachine(env);
   const machines: ReadonlyArray<string> =
     overrideMachine === DEFAULT_PODMAN_DESKTOP_MACHINE
       ? [DEFAULT_PODMAN_DESKTOP_MACHINE]
       : [overrideMachine, DEFAULT_PODMAN_DESKTOP_MACHINE];
-
-  if (platform === "darwin") {
-    const home = env.HOME;
-    if (home === undefined || home.length === 0) return [];
-    return machines.map((machine) => macosPodmanDesktopSocket(home, machine));
-  }
   return machines.map((machine) => windowsPodmanDesktopSocket(machine));
 };
 
@@ -210,14 +215,12 @@ const defaultPodmanSocket = (
     return `${linuxRootlessRuntimeDir(env)}/podman/podman.sock`;
   }
   if (platform === "darwin") {
-    const machineName = resolvePodmanDesktopMachine(env);
-    const home = env.HOME;
-    if (home !== undefined && home.length > 0) {
-      return macosPodmanDesktopSocket(home, machineName);
-    }
-    return "/var/run/podman/podman.sock";
+    return discoverPodmanDesktopSockets({ platform, env })[0] ?? "/var/run/podman/podman.sock";
   }
-  return windowsPodmanDesktopSocket(resolvePodmanDesktopMachine(env));
+  return (
+    discoverPodmanDesktopSockets({ platform, env })[0] ??
+    windowsPodmanDesktopSocket(DEFAULT_PODMAN_DESKTOP_MACHINE)
+  );
 };
 
 /**
