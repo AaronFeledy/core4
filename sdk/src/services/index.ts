@@ -83,6 +83,7 @@ export interface ProviderStatus {
 export interface ProviderVersions {
   readonly provider: string;
   readonly runtime?: string;
+  readonly bundle?: string;
 }
 
 export interface ArtifactBuildSpec {

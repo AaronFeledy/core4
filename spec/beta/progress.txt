@@ -187,3 +187,34 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none
 ---
+
+## [2026-05-27 00:42 UTC] - Sync
+- Previous branch: us-075-provider-lando-windows-bundle
+- Previous PR: #173 https://github.com/AaronFeledy/core4/pull/173
+- Action: caught up after prior merge (PR was already MERGED)
+- Local main updated: yes
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-27 01:00 UTC] - US-076
+- Implemented Windows capability surface in `meta:doctor` for `@lando/provider-lando`
+- Files changed:
+  - `sdk/src/services/index.ts`: Added `bundle?: string` to `ProviderVersions` interface
+  - `plugins/provider-lando/src/index.ts`: Added `bundleVersion` closure variable; setup tap now also captures `result.runtimeBundleVersion`; `getVersions` exposes `bundle: bundleVersion` when set
+  - `core/src/cli/commands/doctor.ts`: Added `context.bundleVersion` from `versions?.bundle`; added `"bundleVersion"` to `orderContextKeys` known-order array
+  - `core/test/cli/fixtures/meta-doctor.provider-status.windows.ndjson` (new): Snapshot fixture for the Windows provider path (`win32` platform, `bindMountPerformance: "slow"`, `sharedCrossAppNetwork: false`, `bundleVersion: "0.1.0-test"`)
+  - `core/test/cli/doctor.test.ts`: Added `WINDOWS_FIXTURE_PATH`; added snapshot test, behavioral assertions test, and live test block (skipped without `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1`)
+- Verification: `bun run typecheck` → exit 0; `bun run lint` → exit 0; `bun test core/test/cli/doctor.test.ts` → 10 pass, 1 skip; `bun test` → 1216 pass, 13 skip, 0 fail
+- **Learnings for future iterations:**
+  - `ProviderVersions` in `sdk/src/services/index.ts` is a plain TS interface (not a Schema, not a Context.Tag shape); adding optional fields is additive and does not need listing in `sdk/API_COMPATIBILITY.md`
+  - Bundle version is only available after `setupProviderLando` completes; cold `doctor()` calls (before `lando setup` runs) will have `bundleVersion` absent from context — that is expected and the doctor renders correctly either way
+  - The `orderContextKeys` known-order list controls the NDJSON context field order; keep it in sync with new context fields added in `doctor()`
+---
+
+## [2026-05-27 01:13 UTC] - Push
+- Branch: us-076-provider-lando-windows-doctor
+- Push: pushed
+- Commit(s): 06de73a feat: provider-lando Windows capability surface in meta:doctor
+- PR: #174 https://github.com/AaronFeledy/core4/pull/174 (created)
+---
