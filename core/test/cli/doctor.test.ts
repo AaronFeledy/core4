@@ -471,7 +471,7 @@ describe("meta:doctor command", () => {
         expect(solution?.description).toContain("lando setup --provider=");
         expect(solution?.description).toContain("provider=podman");
         expect(solution?.description).toContain("provider=lando");
-        expect(solution?.command).toBe("lando setup --provider=");
+        expect(solution?.command).toBe("lando setup --provider=podman");
 
         const text = renderDoctorResult(result);
         expect(text).toContain("provider-conflict: warn");
@@ -485,6 +485,42 @@ describe("meta:doctor command", () => {
         expect(complete.warned).toBe(1);
         expect(complete.failed).toBe(0);
         expect(complete.checks).toBe(2);
+      } finally {
+        await rm(dataRoot, { recursive: true, force: true });
+      }
+    });
+
+    test("emits a provider-conflict check before selecting provider-podman", async () => {
+      const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-preselect-conflict-"));
+      try {
+        const socket = "/run/user/1000/podman/podman.sock";
+        await writeProviderLandoState(dataRoot, socket);
+        const registry = {
+          list: Effect.succeed([ProviderId.make("podman")]),
+          capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+          select: () => Effect.die("provider-podman should not be constructed when conflict is pre-detected"),
+        };
+        const result = await Effect.runPromise(
+          doctor({
+            env: { LANDO_PROVIDER: "podman", XDG_RUNTIME_DIR: "/run/user/1000" },
+            platform: "linux",
+          }).pipe(
+            Effect.provide(
+              Layer.merge(
+                Layer.succeed(RuntimeProviderRegistry, registry),
+                Layer.succeed(ConfigService, buildConfigServiceWith(dataRoot)),
+              ),
+            ),
+          ),
+        );
+
+        expect(result.checks).toHaveLength(1);
+        const conflictCheck = result.checks[0] as DoctorCheck;
+        expect(conflictCheck.name).toBe("provider-conflict");
+        expect(conflictCheck.providerId).toBe("podman");
+        expect(conflictCheck.selection?.source).toBe("env");
+        expect(conflictCheck.selection?.providerId).toBe("podman");
+        expect(conflictCheck.solutions[0]?.command).toBe("lando setup --provider=podman");
       } finally {
         await rm(dataRoot, { recursive: true, force: true });
       }

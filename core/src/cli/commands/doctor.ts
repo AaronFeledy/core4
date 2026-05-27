@@ -161,7 +161,7 @@ const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSe
 const conflictSolution = (conflict: ProviderConflictReport): DoctorSolution => ({
   kind: "manual",
   description: conflict.remediation,
-  command: "lando setup --provider=",
+  command: `lando setup --provider=${conflict.providerId}`,
 });
 
 const conflictCheck = (
@@ -170,6 +170,7 @@ const conflictCheck = (
   providerName: string,
   providerVersion: string,
   platform: HostPlatform,
+  selection?: DoctorSelectionRecord,
 ): DoctorCheck => {
   const context: Record<string, string> = {
     providerId,
@@ -199,6 +200,7 @@ const conflictCheck = (
     capabilities: {},
     context,
     solutions: [conflictSolution(conflict)],
+    ...(selection === undefined ? {} : { selection }),
   };
 };
 
@@ -239,6 +241,27 @@ export const doctor = (
     const registry = yield* RuntimeProviderRegistry;
     const inputs = yield* gatherSelectionInputs(options);
     const resolution = resolveProviderSelection(inputs);
+    const selection = buildSelectionRecord(resolution);
+    const stateDir = yield* resolveStateDir(configService);
+    const conflicts = yield* detectProviderConflicts({
+      stateDir,
+      platform: options.platform ?? platformFromProcess(),
+      env: options.env ?? process.env,
+    });
+    if (conflicts.length > 0 && String(resolution.providerId) === "podman") {
+      return {
+        checks: conflicts.map((conflict) =>
+          conflictCheck(
+            conflict,
+            String(resolution.providerId),
+            "Podman Runtime Provider",
+            "unknown",
+            options.platform ?? platformFromProcess(),
+            selection,
+          ),
+        ),
+      };
+    }
     const provider = yield* registry.select({
       // synthetic plan carrying the resolved id; only `.provider` is read
       provider: resolution.providerId,
@@ -274,8 +297,6 @@ export const doctor = (
     const severity: DoctorSeverity = status.running ? "info" : "warn";
     const solutions: ReadonlyArray<DoctorSolution> = status.running ? [] : [SETUP_REMEDIATION];
 
-    const selection = buildSelectionRecord(resolution);
-
     const primaryCheck: DoctorCheck = {
       name: "selected-provider",
       status: checkStatus,
@@ -292,13 +313,6 @@ export const doctor = (
       selection,
     };
 
-    const stateDir = yield* resolveStateDir(configService);
-    const conflicts = yield* detectProviderConflicts({
-      stateDir,
-      platform: options.platform ?? platformFromProcess(),
-      env: options.env ?? process.env,
-    });
-
     const conflictChecks = conflicts.map((conflict) =>
       conflictCheck(
         conflict,
@@ -306,6 +320,7 @@ export const doctor = (
         provider.displayName,
         provider.version,
         options.platform ?? provider.platform,
+        selection,
       ),
     );
 
