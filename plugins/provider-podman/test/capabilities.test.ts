@@ -280,6 +280,21 @@ describe("provider-podman RuntimeProvider layer", () => {
     expect(createdHosts).toEqual(["npipe://./pipe/podman-machine-default"]);
   });
 
+  test("does not validate Podman Desktop machine names on Linux", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {
+          XDG_RUNTIME_DIR: "/run/user/1000",
+          LANDO_PODMAN_MACHINE: "bad;name",
+        },
+        podmanApi: { info: Effect.succeed({}) },
+      }),
+    );
+
+    expect(provider.id).toBe("podman");
+  });
+
   test("rejects non-Unix DOCKER_HOST transports before constructing the API client", async () => {
     const exit = await Effect.runPromiseExit(
       makeRuntimeProvider({

@@ -561,15 +561,17 @@ export const makeRuntimeProvider = (
   if (unsupportedSocketError !== undefined) return Effect.fail(unsupportedSocketError);
   const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
 
-  // Resolve eagerly so an invalid LANDO_PODMAN_MACHINE surfaces as a typed
-  // ProviderUnavailableError instead of throwing synchronously inside the
-  // Effect.mapError below (which would become a Cause.Die defect).
-  let desktopMachineName: string;
-  try {
-    desktopMachineName = resolvePodmanDesktopMachine(effectiveEnv);
-  } catch (cause) {
-    if (cause instanceof ProviderUnavailableError) return Effect.fail(cause);
-    throw cause;
+  let desktopMachineName: string | undefined;
+  if (platform === "darwin" || platform === "win32") {
+    // Resolve eagerly so an invalid LANDO_PODMAN_MACHINE surfaces as a typed
+    // ProviderUnavailableError instead of throwing synchronously inside the
+    // Effect.mapError below (which would become a Cause.Die defect).
+    try {
+      desktopMachineName = resolvePodmanDesktopMachine(effectiveEnv);
+    } catch (cause) {
+      if (cause instanceof ProviderUnavailableError) return Effect.fail(cause);
+      throw cause;
+    }
   }
 
   const conflictCheck =
@@ -586,7 +588,7 @@ export const makeRuntimeProvider = (
         if ((platform === "darwin" || platform === "win32") && isLikelyMachineNotRunning(cause)) {
           return new PodmanMachineNotRunningError({
             platform,
-            machineName: desktopMachineName,
+            machineName: desktopMachineName ?? resolvePodmanDesktopMachine(effectiveEnv),
             socketPath,
             cause,
           });
