@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { mkdtemp, rm } from "node:fs/promises";
+import { type Server, createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Effect, Stream } from "effect";
 
 import {
   dockerCapabilitiesForHost,
@@ -8,11 +12,23 @@ import {
   macosDockerCapabilities,
   makeDockerApiClient,
   makeProviderLayer,
+  npipeSocketPath,
   resolveDockerHost,
   windowsDockerCapabilities,
 } from "@lando/provider-docker";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+
+const listen = (server: Server, socketPath: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+
+const close = (server: Server): Promise<void> =>
+  new Promise((resolve, reject) => {
+    server.close((error) => (error === undefined ? resolve() : reject(error)));
+  });
 
 describe("provider-docker capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
@@ -203,5 +219,63 @@ describe("provider-docker capabilities", () => {
     const client = makeDockerApiClient("npipe://./pipe/docker_engine");
     expect(typeof client.request).toBe("function");
     expect(typeof client.stream).toBe("function");
+  });
+
+  test("normalizes Docker Desktop npipe URIs to Windows named-pipe paths", () => {
+    expect(npipeSocketPath("npipe://./pipe/docker_engine")).toBe("\\\\.\\pipe\\docker_engine");
+    expect(npipeSocketPath("npipe:////./pipe/docker_engine")).toBe("\\\\.\\pipe\\docker_engine");
+  });
+
+  test("sends npipe Docker API requests over an IPC socket", async () => {
+    const socketDir = await mkdtemp(join(tmpdir(), "lando-provider-docker-npipe-"));
+    const socketPath = join(socketDir, "docker.sock");
+    const requests: string[] = [];
+    const server = createServer((socket) => {
+      socket.once("data", (chunk) => {
+        requests.push(chunk.toString());
+        socket.end("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}");
+      });
+    });
+
+    try {
+      await listen(server, socketPath);
+      const client = makeDockerApiClient(`npipe:${socketPath}`);
+      await Effect.runPromise(client.info);
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).toStartWith("GET /v1.43/info HTTP/1.1");
+    } finally {
+      await close(server);
+      await rm(socketDir, { recursive: true, force: true });
+    }
+  });
+
+  test("streams npipe Docker API responses over an IPC socket", async () => {
+    const socketDir = await mkdtemp(join(tmpdir(), "lando-provider-docker-npipe-stream-"));
+    const socketPath = join(socketDir, "docker.sock");
+    const body = new Uint8Array([1, 2, 3]);
+    const server = createServer((socket) => {
+      socket.once("data", () => {
+        socket.write(`HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\n\r\n`);
+        socket.end(body);
+      });
+    });
+
+    try {
+      await listen(server, socketPath);
+      const client = makeDockerApiClient(`npipe:${socketPath}`);
+      if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
+      const chunks = await Effect.runPromise(
+        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+          Stream.runCollect,
+          Effect.map((collected) => Array.from(collected)),
+        ),
+      );
+
+      expect(chunks).toEqual([body]);
+    } finally {
+      await close(server);
+      await rm(socketDir, { recursive: true, force: true });
+    }
   });
 });

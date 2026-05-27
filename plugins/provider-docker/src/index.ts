@@ -1,3 +1,4 @@
+import { createConnection } from "node:net";
 /** `@lando/provider-docker` — Docker Engine RuntimeProvider. */
 import { Effect, Layer, Schema, Stream } from "effect";
 
@@ -35,6 +36,7 @@ export const PLUGIN_NAME = "@lando/provider-docker" as const;
 
 const PROVIDER_ID = "docker";
 const textDecoder = new TextDecoder();
+type Bytes = Uint8Array<ArrayBufferLike>;
 
 export interface DockerHttpRequest {
   readonly method: "GET" | "POST" | "DELETE";
@@ -201,6 +203,177 @@ const dockerApiFailure = (
         cause,
       });
 
+const requestBody = (request: DockerHttpRequest): string | undefined =>
+  request.body === undefined ? undefined : JSON.stringify(request.body);
+
+const dockerHttpRequestText = (request: DockerHttpRequest, body: string | undefined): string => {
+  const headers = [
+    `${request.method} /v1.43${request.path} HTTP/1.1`,
+    "Host: localhost",
+    "Connection: close",
+  ];
+  if (body !== undefined) {
+    headers.push(
+      "Content-Type: application/json",
+      `Content-Length: ${new TextEncoder().encode(body).length}`,
+    );
+  }
+  return `${headers.join("\r\n")}\r\n\r\n${body ?? ""}`;
+};
+
+const headerSeparator: Bytes = new TextEncoder().encode("\r\n\r\n");
+
+const indexOfBytes = (haystack: Bytes, needle: Bytes): number => {
+  for (let index = 0; index <= haystack.length - needle.length; index += 1) {
+    let matched = true;
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      if (haystack[index + offset] !== needle[offset]) {
+        matched = false;
+        break;
+      }
+    }
+    if (matched) return index;
+  }
+  return -1;
+};
+
+const concatBytes = (chunks: ReadonlyArray<Bytes>): Bytes => {
+  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+};
+
+interface ParsedDockerHttpHead {
+  readonly status: number;
+  readonly headers: ReadonlyMap<string, string>;
+  readonly bodyStart: Bytes;
+}
+
+const parseDockerHttpHead = (bytes: Bytes, operation: string): ParsedDockerHttpHead => {
+  const marker = indexOfBytes(bytes, headerSeparator);
+  if (marker === -1) {
+    throw internal(operation, "Docker API response did not include HTTP headers.", textDecoder.decode(bytes));
+  }
+  const head = textDecoder.decode(bytes.slice(0, marker));
+  const [statusLine, ...headerLines] = head.split("\r\n");
+  const statusText = statusLine?.split(/\s+/u)[1];
+  const status = statusText === undefined ? Number.NaN : Number.parseInt(statusText, 10);
+  if (!Number.isInteger(status)) {
+    throw internal(operation, "Docker API response did not include an HTTP status code.", head);
+  }
+  const headers = new Map<string, string>();
+  for (const line of headerLines) {
+    const separator = line.indexOf(":");
+    if (separator !== -1) {
+      headers.set(line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim());
+    }
+  }
+  return { status, headers, bodyStart: bytes.slice(marker + headerSeparator.length) };
+};
+
+async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<Bytes> {
+  let buffer: Bytes = new Uint8Array(0);
+  for await (const chunk of chunks) {
+    buffer = concatBytes([buffer, chunk]);
+    while (true) {
+      const marker = indexOfBytes(buffer, new TextEncoder().encode("\r\n"));
+      if (marker === -1) break;
+      const size = Number.parseInt(textDecoder.decode(buffer.slice(0, marker)), 16);
+      if (!Number.isInteger(size)) break;
+      const chunkStart = marker + 2;
+      const chunkEnd = chunkStart + size;
+      if (buffer.length < chunkEnd + 2) break;
+      if (size === 0) return;
+      yield buffer.slice(chunkStart, chunkEnd);
+      buffer = buffer.slice(chunkEnd + 2);
+    }
+  }
+}
+
+async function* streamNamedPipeRequest(pipePath: string, request: DockerHttpRequest): AsyncGenerator<Bytes> {
+  const socket = createConnection({ path: pipePath });
+  const body = requestBody(request);
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("error", reject);
+  });
+  const initialChunks: Bytes[] = [];
+  socket.write(dockerHttpRequestText(request, body));
+
+  try {
+    let parsed: ParsedDockerHttpHead | undefined;
+    for await (const chunk of socket) {
+      initialChunks.push(chunk);
+      const merged = concatBytes(initialChunks);
+      if (indexOfBytes(merged, headerSeparator) === -1) continue;
+      parsed = parseDockerHttpHead(merged, "docker-api");
+      if (parsed.status < 200 || parsed.status >= 300) {
+        throw unavailable(
+          "docker-api",
+          `Docker API stream request failed with HTTP ${parsed.status}.`,
+          request,
+        );
+      }
+      const bodyChunks = (async function* () {
+        if (parsed.bodyStart.length > 0) yield parsed.bodyStart;
+        for await (const next of socket) yield next;
+      })();
+      if (parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked") {
+        yield* decodeChunkedBody(bodyChunks);
+      } else {
+        yield* bodyChunks;
+      }
+      return;
+    }
+    throw internal("docker-api", "Docker API stream response ended before HTTP headers.", request);
+  } finally {
+    socket.destroy();
+  }
+}
+
+const collectBytes = async (chunks: AsyncIterable<Bytes>): Promise<Bytes> => {
+  const collected: Bytes[] = [];
+  for await (const chunk of chunks) {
+    collected.push(chunk);
+  }
+  return concatBytes(collected);
+};
+
+const requestNamedPipe = async (
+  pipePath: string,
+  request: DockerHttpRequest,
+): Promise<DockerHttpResponse> => {
+  const socket = createConnection({ path: pipePath });
+  const body = requestBody(request);
+  await new Promise<void>((resolve, reject) => {
+    socket.once("connect", resolve);
+    socket.once("error", reject);
+  });
+  socket.write(dockerHttpRequestText(request, body));
+  try {
+    const responseBytes = await collectBytes(socket);
+    const parsed = parseDockerHttpHead(responseBytes, "docker-api");
+    const bodyBytes =
+      parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked"
+        ? await collectBytes(
+            decodeChunkedBody(
+              (async function* () {
+                yield parsed.bodyStart;
+              })(),
+            ),
+          )
+        : parsed.bodyStart;
+    return { status: parsed.status, body: textDecoder.decode(bodyBytes) };
+  } finally {
+    socket.destroy();
+  }
+};
+
 async function* streamUnixSocketRequest(
   socketPath: string,
   request: DockerHttpRequest,
@@ -287,10 +460,17 @@ const isUnixDockerHost = (dockerHost: string) =>
 const unixSocketPath = (dockerHost: string) =>
   dockerHost.startsWith("unix://") ? dockerHost.slice("unix://".length) : dockerHost;
 
-export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe://");
+export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
 
-export const npipeSocketPath = (dockerHost: string): string =>
-  dockerHost.startsWith("npipe:") ? dockerHost.slice("npipe:".length) : dockerHost;
+export const npipeSocketPath = (dockerHost: string): string => {
+  if (!dockerHost.startsWith("npipe:")) return dockerHost;
+  const pipePath = dockerHost.slice("npipe:".length);
+  const dockerDesktopPipe = pipePath.match(/^\/{2,4}\.\/pipe\/(.+)$/u);
+  if (dockerDesktopPipe !== null) {
+    return `\\\\.\\pipe\\${(dockerDesktopPipe[1] ?? "").replaceAll("/", "\\")}`;
+  }
+  return pipePath;
+};
 
 const platformFromProcess = (): HostPlatform =>
   process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
@@ -443,6 +623,30 @@ const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
   }),
 });
 
+const makeNamedPipeDockerApiClient = (pipePath: string): DockerApiClient => ({
+  stream: (input) =>
+    Stream.fromAsyncIterable(streamNamedPipeRequest(pipePath, input), (cause) =>
+      dockerApiFailure(input, cause),
+    ),
+  request: (input) =>
+    Effect.tryPromise({
+      try: () => requestNamedPipe(pipePath, input),
+      catch: (cause) => dockerApiFailure(input, cause),
+    }),
+  info: Effect.gen(function* () {
+    const response = yield* makeNamedPipeDockerApiClient(pipePath).request?.({
+      method: "GET",
+      path: "/info",
+    }) ?? Effect.fail(unavailable("capabilities", "Docker API request client is missing."));
+    if (response.status < 200 || response.status >= 300) {
+      yield* Effect.fail(
+        unavailable("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
+      );
+    }
+    return yield* parseInfoJson(response);
+  }),
+});
+
 const makeHttpDockerApiClient = (baseUrl: string): DockerApiClient => ({
   stream: (input) =>
     Stream.fromAsyncIterable(streamHttpRequest(baseUrl, input), (cause) => dockerApiFailure(input, cause)),
@@ -474,7 +678,7 @@ const makeHttpDockerApiClient = (baseUrl: string): DockerApiClient => ({
 export const makeDockerApiClient = (
   dockerHost = process.env.DOCKER_HOST ?? "/var/run/docker.sock",
 ): DockerApiClient => {
-  if (isNpipeDockerHost(dockerHost)) return makeUnixDockerApiClient(npipeSocketPath(dockerHost));
+  if (isNpipeDockerHost(dockerHost)) return makeNamedPipeDockerApiClient(npipeSocketPath(dockerHost));
   if (isUnixDockerHost(dockerHost)) return makeUnixDockerApiClient(unixSocketPath(dockerHost));
   return makeHttpDockerApiClient(dockerHttpBase(dockerHost));
 };
