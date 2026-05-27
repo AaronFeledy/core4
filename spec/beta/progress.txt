@@ -571,3 +571,17 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 18:33 UTC] - US-079 PR #178 Bugbot triage round 5 push
+- Triaged Cursor Bugbot's fifth review (commit `cd07aa6`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/named-pipe.ts` L338, "Named pipe info errors bypass machine-not-running detection", Medium) - **real issue, fixed**. The named-pipe `info` path wrapped connect failures as `ProviderCapabilityError`, so `makeRuntimeProvider` never entered its `ProviderUnavailableError` machine-not-running branch. Fix: route named-pipe info connect failures through the same transport failure mapper as request/stream, keep the raw connection error in the standard `cause` field, and recognize `ENOENT` in the Podman Desktop machine-not-running pattern set.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: added `namedPipeInfoFailure` and reused it for the `info` catch path; `podmanApiFailure` now puts the raw transport error in `cause` rather than nested in `details`.
+  - `plugins/provider-podman/src/index.ts`: added `ENOENT` to the Podman Desktop machine-not-running detector.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: added deterministic regression coverage that a named-pipe info ENOENT maps through `makeRuntimeProvider` to machine remediation.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → exit 0
