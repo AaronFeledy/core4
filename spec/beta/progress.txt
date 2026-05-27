@@ -211,3 +211,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Bundle version is only available after `setupProviderLando` completes; cold `doctor()` calls (before `lando setup` runs) will have `bundleVersion` absent from context — that is expected and the doctor renders correctly either way
   - The `orderContextKeys` known-order list controls the NDJSON context field order; keep it in sync with new context fields added in `doctor()`
 ---
+
+## [2026-05-27 01:13 UTC] - Push
+- Branch: us-076-provider-lando-windows-doctor
+- Push: pushed
+- Commit(s): 06de73a feat: provider-lando Windows capability surface in meta:doctor
+- PR: #174 https://github.com/AaronFeledy/core4/pull/174 (created)
+---
