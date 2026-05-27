@@ -111,3 +111,37 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The idempotency contract is "on-disk SHA matches pinned SHA → reuse, no fetch". A corrupted cache (SHA mismatch) MUST fall through to the download path; tests should assert this by pre-writing junk bytes and then observing both that fetch was invoked AND that the cache file is replaced with the verified bytes.
   - When introducing a new tagged subclass of `ProviderUnavailableError`, name + remediation are the contract for the spec, not the parent tag — keep the parent for catch-all error handling but assert the subclass via `instanceof` in tests.
 ---
+
+## [2026-05-26 18:59 CDT] - US-075 Review
+- Reviewed the US-075 runtime-bundle implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commit (`HEAD`).
+- Fixed confirmed review blockers:
+  - Wired `makeRuntimeProvider({ stateDir })` to construct the default pinned-manifest runtime-bundle downloader when no explicit test/downstream downloader is supplied, so normal `lando setup` exercises the bundle download/checksum path.
+  - Made host-platform defaulting fail closed for unsupported `process.platform` values instead of silently treating every non-Linux/non-macOS host as Windows.
+  - Hardened runtime-bundle cache paths by rejecting non-basename manifest filenames and using a unique temp file for verified bundle persistence.
+- Files changed:
+  - `plugins/provider-lando/src/index.ts`
+  - `plugins/provider-lando/src/runtime-bundle.ts`
+  - `plugins/provider-lando/test/runtime-bundle.test.ts`
+  - `plugins/provider-lando/test/setup.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: production provider setup skipped runtime-bundle download/verification unless a downloader was injected.
+  - Fixed: unsupported host platforms silently mapped to `win32` in default platform resolution.
+  - Fixed: runtime-bundle filename/path handling could escape the cache root if a manifest/caller supplied path separators or traversal.
+  - Fixed: temp bundle writes used a predictable timestamp path; now they use a UUID temp path with exclusive create and best-effort cleanup.
+  - Rejected/deferred: placeholder SHA-256 values are an acknowledged pre-release artifact-pinning gap for the §17.3 build pipeline, not a code-path bug in this story; the downloader correctly fails closed until real artifacts are pinned.
+  - Rejected/deferred: proxy/custom-CA-aware fetch wiring is part of the broader §10.3.1 network subsystem and no resolved network client layer exists in this codebase yet; the downloader keeps a `fetchImpl` seam so that integration can be wired when the subsystem lands.
+  - Rejected: redundant `setup.ts` checksum verification is intentional defense-in-depth at the setup boundary and preserves the existing `RuntimeBundleDownloader` contract.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-review-provider-lando.xml plugins/provider-lando/test/runtime-bundle.test.ts plugins/provider-lando/test/setup.integration.test.ts` → 44 tests, 137 assertions, 0 failures, 2 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-review-provider-lando-all.xml plugins/provider-lando/` → 105 tests, 376 assertions, 0 failures, 8 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-review-full.xml` → 1226 tests, 6228 assertions, 2 failures, 12 skips while the review fix was still uncommitted; failures were the dirty-tree-sensitive `core/test/build/biome.test.ts` lint-gate test and compiled alias output in `core/test/cli/aliases.test.ts`, not provider-lando runtime-bundle failures.
+  - LSP diagnostics tool could not attach to the TypeScript server (`exited with code -2`); `tsc -b` typecheck was clean.
+- **Learnings for future iterations:**
+  - Adding a default downloader factory is not enough; provider construction must wire it for the normal `stateDir` path and tests should exercise the provider-level default, not only the low-level test seam.
+  - Host-platform default helpers should return `undefined`/fail closed for unknown platforms; do not collapse unknown platforms into Windows just because Windows is the only remaining supported literal.
+  - Treat bundled manifests as a supply-chain boundary: schema + runtime cache helpers should reject path separators/traversal even when the current checked-in manifest is safe.
+---
