@@ -465,10 +465,10 @@ export const makeRuntimeProvider = (
       Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))),
     );
 
-  const forgetPlan = (appId: AppId): Effect.Effect<void> => {
-    plans.delete(appId);
-    return options.stateDir === undefined ? Effect.void : removeAppliedPlan(options.stateDir, appId);
-  };
+  const forgetPlan = (appId: AppId): Effect.Effect<void> =>
+    (options.stateDir === undefined ? Effect.void : removeAppliedPlan(options.stateDir, appId)).pipe(
+      Effect.tap(() => Effect.sync(() => plans.delete(appId))),
+    );
 
   return conflictCheck.pipe(
     Effect.flatMap(() => capabilities),
