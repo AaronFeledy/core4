@@ -130,8 +130,6 @@ export const resolvePodmanDesktopMachine = (env: Readonly<Record<string, string 
   return candidate;
 };
 
-export const resolvePodmanDesktopMachineName = resolvePodmanDesktopMachine;
-
 const MACHINE_NOT_RUNNING_PATTERNS = [
   /ENOENT/i,
   /ECONNREFUSED/i,
@@ -145,7 +143,6 @@ const MACHINE_NOT_RUNNING_PATTERNS = [
   /Connect to .* failed/i,
   /pipe.*not\s+found/i,
   /pipe not exist/i,
-  /named pipe/i,
   /not\s+reachable/i,
   /socket.*not\s+found/i,
 ];
@@ -576,7 +573,7 @@ export const makeRuntimeProvider = (
         if ((platform === "darwin" || platform === "win32") && isLikelyMachineNotRunning(cause)) {
           return new PodmanMachineNotRunningError({
             platform,
-            machineName: resolvePodmanDesktopMachineName(effectiveEnv),
+            machineName: resolvePodmanDesktopMachine(effectiveEnv),
             socketPath,
             cause,
           });

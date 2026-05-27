@@ -510,3 +510,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 3c1bd41 feat: @lando/provider-podman on macOS + Windows via Podman Desktop; 88ec019 fix(provider-podman): support Windows Podman Desktop npipe; 381bac2 docs: record US-079 review fixes; 903000b chore: remove AI slop
 - PR: #178 https://github.com/AaronFeledy/core4/pull/178 (created)
 ---
+
+## [2026-05-27 17:20 UTC] - US-079 Bugbot triage
+- Fixed the two remaining low-severity Cursor Bugbot findings in `plugins/provider-podman/src/index.ts`:
+  - removed the unused `resolvePodmanDesktopMachineName` alias export and updated the remaining callsite to use `resolvePodmanDesktopMachine` directly
+  - tightened the machine-not-running pattern set by dropping the broad `/named pipe/i` matcher
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/capabilities.test.ts` → 26 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/desktop.integration.test.ts` → 14 pass, 1 skip, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 54 pass, 2 skip, 0 fail.
+---
