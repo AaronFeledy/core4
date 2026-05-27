@@ -79,3 +79,101 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none after recording this note
 ---
+
+## [2026-05-26 17:47 CDT] - Sync
+- Previous branch: us-074-provider-lando-windows-lifecycle
+- Previous PR: #172 https://github.com/AaronFeledy/core4/pull/172
+- Action: caught up after prior merge (PR was already MERGED; local branch deleted, main already at origin/main)
+- Local main updated: yes (already up to date)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-26 18:30 CDT] - US-075
+- Implemented pinned runtime-bundle manifest and idempotent default downloader for `@lando/provider-lando` across Linux, macOS, and Windows.
+- Files changed:
+  - `plugins/provider-lando/runtime-bundle-versions.json` (new): Mechanism A pinned manifest with entries for linux-x64, linux-arm64, darwin-x64, darwin-arm64, win32-x64; placeholder SHA-256 values flagged in `_comment` until the §17.3 build pipeline supplies real artifacts.
+  - `plugins/provider-lando/src/runtime-bundle.ts` (new): `ProviderBundleChecksumError` (remediation cites spec §5.8.1), schema-validated `RUNTIME_BUNDLE_MANIFEST`, `resolveRuntimeBundleEntry(platform, arch)`, `runtimeBundleCachePath(stateDir, entry)`, `makeRuntimeBundleDownloader({entry, …})` (test seam), `makeDefaultRuntimeBundleDownloader({platform, arch, stateDir, fetchImpl})` that reuses any cached bundle whose SHA-256 matches the pinned value (idempotent re-runs), atomically persists the verified bytes under `<stateDir>/provider-lando/runtime-bundle/<filename>`, and surfaces typed `ProviderUnavailableError` for transport/HTTP/cache-write failures.
+  - `plugins/provider-lando/src/setup.ts`: Removed the legacy `RuntimeBundleVerificationError` class, routed `verifyRuntimeBundle` through the new `ProviderBundleChecksumError` so all bundle checksum mismatches share one §5.8.1-citing remediation.
+  - `plugins/provider-lando/src/index.ts`: Exports the new symbols/types and drops the legacy error name.
+  - `plugins/provider-lando/test/runtime-bundle.test.ts` (new): Covers manifest shape, platform/arch resolution (incl. failure for `win32-arm64`), `ProviderBundleChecksumError` remediation, cache-path computation, idempotent cache reuse with a throwing `fetch`, corruption recovery, mismatch failure, HTTP 5xx failure, and default-downloader plumbing through the shipped manifest.
+  - `plugins/provider-lando/test/setup.integration.test.ts`: Existing bundle-mismatch test now asserts `ProviderBundleChecksumError` and that the remediation contains "§5.8.1".
+  - `docs/guides/setup/provider-lando-windows.mdx`: Added a non-rendered `windows-runtime-bundle` scenario block describing the pinned manifest, idempotent cache path under the per-user state dir, and the tagged checksum error.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-lando/` → 93 pass, 8 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1209 pass, 12 skip, 0 fail
+- **Learnings for future iterations:**
+  - The static `RUNTIME_BUNDLE_MANIFEST` ships placeholder SHA-256 values, so any caller-driven test that goes through `makeDefaultRuntimeBundleDownloader` can only exercise the failure branches. Test the happy/idempotent paths through `makeRuntimeBundleDownloader({entry, …})`, which accepts a caller-supplied entry whose SHA-256 is known. Apply this seam-injection pattern whenever a downloader needs deterministic SHA fixtures alongside a production-pinned manifest.
+  - `import data from "../runtime-bundle-versions.json" with { type: "json" }` works under the workspace's `resolveJsonModule: true` + `verbatimModuleSyntax: true` setup; the JSON file does not need to be listed in the tsconfig `include` because the import itself drags the resolution.
+  - The idempotency contract is "on-disk SHA matches pinned SHA → reuse, no fetch". A corrupted cache (SHA mismatch) MUST fall through to the download path; tests should assert this by pre-writing junk bytes and then observing both that fetch was invoked AND that the cache file is replaced with the verified bytes.
+  - When introducing a new tagged subclass of `ProviderUnavailableError`, name + remediation are the contract for the spec, not the parent tag — keep the parent for catch-all error handling but assert the subclass via `instanceof` in tests.
+---
+
+## [2026-05-26 18:59 CDT] - US-075 Review
+- Reviewed the US-075 runtime-bundle implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commit (`HEAD`).
+- Fixed confirmed review blockers:
+  - Wired `makeRuntimeProvider({ stateDir })` to construct the default pinned-manifest runtime-bundle downloader when no explicit test/downstream downloader is supplied, so normal `lando setup` exercises the bundle download/checksum path.
+  - Made host-platform defaulting fail closed for unsupported `process.platform` values instead of silently treating every non-Linux/non-macOS host as Windows.
+  - Hardened runtime-bundle cache paths by rejecting non-basename manifest filenames and using a unique temp file for verified bundle persistence.
+- Files changed:
+  - `plugins/provider-lando/src/index.ts`
+  - `plugins/provider-lando/src/runtime-bundle.ts`
+  - `plugins/provider-lando/test/runtime-bundle.test.ts`
+  - `plugins/provider-lando/test/setup.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: production provider setup skipped runtime-bundle download/verification unless a downloader was injected.
+  - Fixed: unsupported host platforms silently mapped to `win32` in default platform resolution.
+  - Fixed: runtime-bundle filename/path handling could escape the cache root if a manifest/caller supplied path separators or traversal.
+  - Fixed: temp bundle writes used a predictable timestamp path; now they use a UUID temp path with exclusive create and best-effort cleanup.
+  - Rejected/deferred: placeholder SHA-256 values are an acknowledged pre-release artifact-pinning gap for the §17.3 build pipeline, not a code-path bug in this story; the downloader correctly fails closed until real artifacts are pinned.
+  - Rejected/deferred: proxy/custom-CA-aware fetch wiring is part of the broader §10.3.1 network subsystem and no resolved network client layer exists in this codebase yet; the downloader keeps a `fetchImpl` seam so that integration can be wired when the subsystem lands.
+  - Rejected: redundant `setup.ts` checksum verification is intentional defense-in-depth at the setup boundary and preserves the existing `RuntimeBundleDownloader` contract.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-review-provider-lando.xml plugins/provider-lando/test/runtime-bundle.test.ts plugins/provider-lando/test/setup.integration.test.ts` → 44 tests, 137 assertions, 0 failures, 2 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-review-provider-lando-all.xml plugins/provider-lando/` → 105 tests, 376 assertions, 0 failures, 8 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-review-full.xml` → 1226 tests, 6228 assertions, 2 failures, 12 skips while the review fix was still uncommitted; failures were the dirty-tree-sensitive `core/test/build/biome.test.ts` lint-gate test and compiled alias output in `core/test/cli/aliases.test.ts`, not provider-lando runtime-bundle failures.
+  - LSP diagnostics tool could not attach to the TypeScript server (`exited with code -2`); `tsc -b` typecheck was clean.
+- **Learnings for future iterations:**
+  - Adding a default downloader factory is not enough; provider construction must wire it for the normal `stateDir` path and tests should exercise the provider-level default, not only the low-level test seam.
+  - Host-platform default helpers should return `undefined`/fail closed for unknown platforms; do not collapse unknown platforms into Windows just because Windows is the only remaining supported literal.
+  - Treat bundled manifests as a supply-chain boundary: schema + runtime cache helpers should reject path separators/traversal even when the current checked-in manifest is safe.
+---
+
+## [2026-05-26 19:08 CDT] - US-075 Review Verification Update
+- Updated post-commit verification note after rerunning the full suite on a clean worktree.
+- Files changed:
+  - `spec/beta/progress.txt`
+- `review-work` findings: no new findings; this entry corrects the verification record only.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-final-full.xml` → 1226 tests, 6241 assertions, 1 failure, 12 skips; the failing suite was `core/test/cli/renderer-flag.scenario.test.ts` compiled `$bunfs` renderer parity.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/renderer-flag.scenario.test.ts` rerun in isolation → 12 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/compile.test.ts` rerun in isolation → 1 pass, 0 fail.
+- **Learnings for future iterations:**
+  - Full-suite compiled CLI scenario failures can be order/flakiness-sensitive; rerun the named failing file to distinguish provider-story regressions from unrelated compiled harness instability.
+---
+
+## [2026-05-27 00:28 UTC] - US-075 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only comment/prose cleanup; no runtime behavior, public API, error handling, cache semantics, checksum logic, or test assertions changed.
+- Files changed:
+  - `plugins/provider-lando/runtime-bundle-versions.json`: tightened the manifest annotation to remove planning-doc traceability prose.
+  - `plugins/provider-lando/src/runtime-bundle.ts`: removed redundant doc blocks that restated exported names and behavior already covered by tests.
+  - `plugins/provider-lando/src/setup.ts`: shortened two explanatory comments while preserving the parse/error-classification rationale.
+  - `plugins/provider-lando/test/runtime-bundle.test.ts`: removed assertion-restating test comments without changing fixtures or assertions.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-cleanup-full.xml` → 1226 tests, 6244 assertions, 0 failures, 12 skips; JSON parse + `git diff --check` → clean. LSP diagnostics were attempted for changed files but the TypeScript/Biome LSP servers exited with code -2.
+---
+
+## [2026-05-27 00:31 UTC] - Push
+- Branch: us-075-provider-lando-windows-bundle
+- Push: pushed
+- Commit(s): 40ad7c86 Record US-075 cleanup; 125547ae Remove provider-lando runtime bundle slop; 3f61529f Record US-075 review verification update; 50bc8563 Record US-075 review fixes; 2dac458f Wire provider-lando default bundle setup; be39e414 Harden provider-lando runtime bundle cache; a6158bcd feat: provider-lando runtime-bundle download and checksum verification
+- PR: #173 https://github.com/AaronFeledy/core4/pull/173 (created)
+---

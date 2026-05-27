@@ -19,6 +19,7 @@ import {
 import { exec, execStream } from "./exec.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
+import { makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
 import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
@@ -50,7 +51,6 @@ export {
   PodmanMachinePrerequisiteError,
   PodmanNotInstalledError,
   PodmanSocketUnreachableError,
-  RuntimeBundleVerificationError,
   WindowsMachinePrerequisiteError,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
@@ -74,6 +74,21 @@ export type {
   SetupOptions,
   SetupResult,
 } from "./setup.ts";
+
+export {
+  ProviderBundleChecksumError,
+  RUNTIME_BUNDLE_MANIFEST,
+  makeDefaultRuntimeBundleDownloader,
+  makeRuntimeBundleDownloader,
+  resolveRuntimeBundleEntry,
+  runtimeBundleCachePath,
+} from "./runtime-bundle.ts";
+export type {
+  DefaultRuntimeBundleDownloaderOptions,
+  RuntimeBundleDownloaderOptions,
+  RuntimeBundleEntry,
+  RuntimeBundleManifest,
+} from "./runtime-bundle.ts";
 
 export {
   decodeProviderCapabilities,
@@ -110,12 +125,28 @@ const makeNoPlanError = (appId: AppId, operation: string) =>
       "Run `lando start` (or `lando app:start`) to start the app, then retry. Alternatively, pass an AppPlan directly via `target.plan`.",
   });
 
+const currentHostPlatform = (): HostPlatform | undefined => {
+  if (process.platform === "darwin" || process.platform === "linux" || process.platform === "win32") {
+    return process.platform;
+  }
+  return undefined;
+};
+
+const unsupportedHostPlatformError = () =>
+  new ProviderUnavailableError({
+    providerId: "lando",
+    operation: "setup",
+    message: `provider-lando does not support host platform ${process.platform}.`,
+    remediation: "Run `lando setup` on Linux, macOS, or Windows, or select another runtime provider.",
+  });
+
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanCommand?: PodmanCommandRunner;
   readonly podmanMachine?: PodmanMachineRunner;
   readonly platform?: HostPlatform;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
+  readonly runtimeBundleFetchImpl?: typeof fetch;
   readonly stateDir?: string;
   readonly socketPath?: string;
   readonly eventService?: BringUpOptions["eventService"];
@@ -128,9 +159,21 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
   let runtimeVersion: string | undefined;
-  const platform =
-    options.platform ??
-    (process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32");
+  const platform = options.platform ?? currentHostPlatform();
+  if (platform === undefined) {
+    return Effect.fail(unsupportedHostPlatformError());
+  }
+  const runtimeBundleDownloader =
+    options.runtimeBundleDownloader ??
+    (stateDir === undefined
+      ? undefined
+      : makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform,
+          ...(options.runtimeBundleFetchImpl === undefined
+            ? {}
+            : { fetchImpl: options.runtimeBundleFetchImpl }),
+        }));
   const capabilities =
     podmanApi === undefined
       ? Effect.succeed(mvpProviderCapabilities(platform))
@@ -175,9 +218,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
             ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
             platform,
-            ...(options.runtimeBundleDownloader === undefined
-              ? {}
-              : { runtimeBundleDownloader: options.runtimeBundleDownloader }),
+            ...(runtimeBundleDownloader === undefined ? {} : { runtimeBundleDownloader }),
             ...(stateDir === undefined ? {} : { stateDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),

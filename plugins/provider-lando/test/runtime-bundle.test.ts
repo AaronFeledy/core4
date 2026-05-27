@@ -1,0 +1,386 @@
+import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { Cause, Effect, Exit } from "effect";
+
+import {
+  ProviderBundleChecksumError,
+  RUNTIME_BUNDLE_MANIFEST,
+  makeDefaultRuntimeBundleDownloader,
+  resolveRuntimeBundleEntry,
+  runtimeBundleCachePath,
+} from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
+
+import { type RuntimeBundleEntry, makeRuntimeBundleDownloader } from "../src/runtime-bundle.ts";
+
+const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+
+const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
+  if (!Exit.isFailure(exit)) {
+    throw new Error("expected effect to fail");
+  }
+  const failure = Cause.failureOption(exit.cause);
+  if (failure._tag !== "Some") {
+    throw new Error(`expected a tagged failure, got ${JSON.stringify(exit.cause)}`);
+  }
+  return failure.value;
+};
+
+interface FetchCallLog {
+  calls: number;
+  urls: string[];
+}
+
+const fakeFetch = (
+  responses: Map<string, { body: Uint8Array; status?: number }>,
+  log: FetchCallLog,
+): typeof fetch =>
+  ((input: RequestInfo | URL): Promise<Response> => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    log.calls += 1;
+    log.urls.push(url);
+    const match = responses.get(url);
+    if (match === undefined) {
+      return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
+    }
+    const status = match.status ?? 200;
+    return Promise.resolve(
+      new Response(match.body, {
+        status,
+        statusText: status >= 400 ? "Error" : "OK",
+      }),
+    );
+  }) as typeof fetch;
+
+const throwingFetch: typeof fetch = (() => {
+  throw new Error("network unreachable");
+}) as typeof fetch;
+
+const syntheticEntry = (filename: string, bytes: Uint8Array): RuntimeBundleEntry => ({
+  url: `https://example.test/${filename}`,
+  sha256: sha256(bytes),
+  filename,
+  sizeBytes: bytes.byteLength,
+});
+
+describe("RUNTIME_BUNDLE_MANIFEST", () => {
+  test("declares pinned entries for every supported platform/arch", () => {
+    const keys = Object.keys(RUNTIME_BUNDLE_MANIFEST.bundles).sort();
+    expect(keys).toEqual(["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]);
+  });
+
+  test("every entry carries a 64-char hex SHA-256, a non-empty filename, and an https URL", () => {
+    for (const [key, entry] of Object.entries(RUNTIME_BUNDLE_MANIFEST.bundles)) {
+      expect(entry.sha256, `${key} sha256`).toMatch(/^[0-9a-f]{64}$/);
+      expect(entry.filename.length, `${key} filename`).toBeGreaterThan(0);
+      expect(entry.url, `${key} url`).toMatch(/^https:\/\//);
+    }
+  });
+
+  test("schema version + runtime version are populated", () => {
+    expect(RUNTIME_BUNDLE_MANIFEST.schemaVersion).toBe(1);
+    expect(RUNTIME_BUNDLE_MANIFEST.runtimeVersion.length).toBeGreaterThan(0);
+  });
+});
+
+describe("resolveRuntimeBundleEntry", () => {
+  test("returns the pinned entry for win32 x64", async () => {
+    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("win32", "x64"));
+    expect(entry.url).toContain("win32-x64");
+    expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  test("returns the pinned entry for linux x64", async () => {
+    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("linux", "x64"));
+    expect(entry.url).toContain("linux-x64");
+  });
+
+  test("returns the pinned entry for darwin arm64", async () => {
+    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("darwin", "arm64"));
+    expect(entry.url).toContain("darwin-arm64");
+  });
+
+  test("fails closed with actionable remediation for an unsupported platform/arch", async () => {
+    const exit = await Effect.runPromiseExit(resolveRuntimeBundleEntry("win32", "arm64"));
+    const failure = expectFailure(exit);
+    expect(failure).toBeInstanceOf(ProviderUnavailableError);
+    const provider = failure as ProviderUnavailableError;
+    expect(provider.message).toContain("win32-arm64");
+    expect(provider.remediation).toContain("§5.8.1");
+  });
+});
+
+describe("ProviderBundleChecksumError", () => {
+  test("is a ProviderUnavailableError subtype", () => {
+    const err = new ProviderBundleChecksumError("test");
+    expect(err).toBeInstanceOf(ProviderUnavailableError);
+    expect(err).toBeInstanceOf(ProviderBundleChecksumError);
+  });
+
+  test("remediation cites spec §5.8.1 and instructs the user to rerun `lando setup`", () => {
+    const err = new ProviderBundleChecksumError("test");
+    expect(err.remediation).toContain("§5.8.1");
+    expect(err.remediation).toContain("`lando setup`");
+  });
+
+  test("preserves the original cause", () => {
+    const cause = { expected: "aa", actual: "bb" };
+    const err = new ProviderBundleChecksumError("mismatch", cause);
+    expect(err.cause).toEqual(cause);
+  });
+});
+
+describe("runtimeBundleCachePath", () => {
+  test("stores the bundle under <stateDir>/provider-lando/runtime-bundle/<filename>", async () => {
+    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("linux", "x64"));
+    expect(runtimeBundleCachePath("/var/lando", entry)).toBe(
+      `/var/lando/provider-lando/runtime-bundle/${entry.filename}`,
+    );
+  });
+
+  test("strips a trailing slash on stateDir before joining", async () => {
+    const entry = await Effect.runPromise(resolveRuntimeBundleEntry("linux", "x64"));
+    expect(runtimeBundleCachePath("/var/lando/", entry)).toBe(
+      `/var/lando/provider-lando/runtime-bundle/${entry.filename}`,
+    );
+  });
+
+  test("rejects filenames that could escape the bundle cache directory", () => {
+    const bytes = new TextEncoder().encode("safe bytes");
+    for (const filename of ["../escape.zip", "nested/escape.zip", "nested\\escape.zip", ".", ".."] as const) {
+      const entry = syntheticEntry(filename, bytes);
+      try {
+        runtimeBundleCachePath("/var/lando", entry);
+        throw new Error(`expected ${filename} to be rejected`);
+      } catch (cause) {
+        expect(cause).toBeInstanceOf(ProviderUnavailableError);
+      }
+    }
+  });
+});
+
+describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
+  test("downloads, verifies, and persists the bundle on cache miss", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-download-"));
+    try {
+      const bytes = new TextEncoder().encode("lando-runtime-bundle-payload");
+      const entry = syntheticEntry("synthetic-linux-x64.tar.gz", bytes);
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
+      });
+
+      const bundle = await Effect.runPromise(downloader.download);
+
+      expect(bundle.version).toBe("9.9.9-test");
+      expect(bundle.sha256).toBe(entry.sha256);
+      expect(bundle.bytes).toEqual(bytes);
+      expect(log.calls).toBe(1);
+      expect(log.urls[0]).toBe(entry.url);
+
+      const cachePath = runtimeBundleCachePath(stateDir, entry);
+      const onDisk = await readFile(cachePath);
+      expect(new Uint8Array(onDisk.buffer, onDisk.byteOffset, onDisk.byteLength)).toEqual(bytes);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("is idempotent: a re-run with a valid cached bundle does not contact the network", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-idempotent-"));
+    try {
+      const bytes = new TextEncoder().encode("cached-and-valid-bundle");
+      const entry = syntheticEntry("synthetic-darwin-arm64.tar.gz", bytes);
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
+      });
+
+      await Effect.runPromise(downloader.download);
+      expect(log.calls).toBe(1);
+
+      const second = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: throwingFetch,
+      });
+      const bundle = await Effect.runPromise(second.download);
+
+      expect(bundle.bytes).toEqual(bytes);
+      expect(bundle.sha256).toBe(entry.sha256);
+      expect(log.calls).toBe(1);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("re-downloads when the cached bundle SHA does not match the pinned entry", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-stale-"));
+    try {
+      const validBytes = new TextEncoder().encode("the-real-bundle-bytes");
+      const entry = syntheticEntry("synthetic-win32-x64.zip", validBytes);
+      const cachePath = runtimeBundleCachePath(stateDir, entry);
+
+      await mkdir(dirname(cachePath), { recursive: true });
+      const stale = new TextEncoder().encode("STALE-cached-bytes");
+      await writeFile(cachePath, stale);
+      expect(sha256(stale)).not.toBe(entry.sha256);
+
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: fakeFetch(new Map([[entry.url, { body: validBytes }]]), log),
+      });
+
+      const bundle = await Effect.runPromise(downloader.download);
+      expect(bundle.bytes).toEqual(validBytes);
+      expect(bundle.sha256).toBe(entry.sha256);
+      expect(log.calls).toBe(1);
+
+      const onDisk = await readFile(cachePath);
+      expect(new Uint8Array(onDisk.buffer, onDisk.byteOffset, onDisk.byteLength)).toEqual(validBytes);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("fails closed with ProviderBundleChecksumError when downloaded bytes do not match the pinned SHA", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-mismatch-"));
+    try {
+      const expectedBytes = new TextEncoder().encode("the-pinned-bundle");
+      const entry = syntheticEntry("synthetic-linux-arm64.tar.gz", expectedBytes);
+      const tampered = new TextEncoder().encode("tampered-bytes");
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: fakeFetch(new Map([[entry.url, { body: tampered }]]), log),
+      });
+
+      const exit = await Effect.runPromiseExit(downloader.download);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
+      const checksum = failure as ProviderBundleChecksumError;
+      expect(checksum.remediation).toContain("§5.8.1");
+      expect(checksum.message).toContain(entry.filename);
+
+      const cachePath = runtimeBundleCachePath(stateDir, entry);
+      const onDisk = await readFile(cachePath).catch(() => undefined);
+      expect(onDisk).toBeUndefined();
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("surfaces a tagged ProviderUnavailableError on HTTP non-2xx", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-http-"));
+    try {
+      const entry = syntheticEntry("synthetic-darwin-x64.tar.gz", new TextEncoder().encode("anything"));
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: fakeFetch(new Map([[entry.url, { body: new Uint8Array(), status: 503 }]]), log),
+      });
+
+      const exit = await Effect.runPromiseExit(downloader.download);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
+      const provider = failure as ProviderUnavailableError;
+      expect(provider.message).toContain("download");
+      expect(provider.remediation).toContain("§5.8.1");
+
+      const cachePath = runtimeBundleCachePath(stateDir, entry);
+      const onDisk = await readFile(cachePath).catch(() => undefined);
+      expect(onDisk).toBeUndefined();
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("surfaces a tagged ProviderUnavailableError when fetch itself throws", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-net-"));
+    try {
+      const entry = syntheticEntry("synthetic-linux-x64.tar.gz", new TextEncoder().encode("anything"));
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        fetchImpl: throwingFetch,
+      });
+
+      const exit = await Effect.runPromiseExit(downloader.download);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
+      expect((failure as ProviderUnavailableError).remediation).toContain("§5.8.1");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifest)", () => {
+  test("fails closed with ProviderBundleChecksumError when downloaded bytes do not match the pinned manifest SHA", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-"));
+    try {
+      const entry = await Effect.runPromise(resolveRuntimeBundleEntry("win32", "x64"));
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeDefaultRuntimeBundleDownloader({
+        stateDir,
+        platform: "win32",
+        arch: "x64",
+        fetchImpl: fakeFetch(
+          new Map([[entry.url, { body: new TextEncoder().encode("tampered-windows-bundle") }]]),
+          log,
+        ),
+      });
+
+      const exit = await Effect.runPromiseExit(downloader.download);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
+      expect((failure as ProviderBundleChecksumError).remediation).toContain("§5.8.1");
+      expect(log.calls).toBe(1);
+      expect(log.urls[0]).toBe(entry.url);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("propagates the unsupported-platform error from the manifest resolver", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-unsupported-"));
+    try {
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeDefaultRuntimeBundleDownloader({
+        stateDir,
+        platform: "win32",
+        arch: "arm64",
+        fetchImpl: fakeFetch(new Map(), log),
+      });
+
+      const exit = await Effect.runPromiseExit(downloader.download);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect((failure as ProviderUnavailableError).message).toContain("win32-arm64");
+      expect(log.calls).toBe(0);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});

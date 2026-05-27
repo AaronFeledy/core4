@@ -15,6 +15,7 @@ import type { HostPlatform } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
+import { ProviderBundleChecksumError } from "./runtime-bundle.ts";
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
@@ -45,19 +46,6 @@ export class PodmanSocketUnreachableError extends ProviderUnavailableError {
       operation: "setup",
       message: "The Podman API socket is not reachable.",
       remediation: "Run `systemctl --user start podman.socket` and rerun `lando setup`.",
-      cause,
-    });
-  }
-}
-
-export class RuntimeBundleVerificationError extends ProviderUnavailableError {
-  constructor(message: string, cause?: unknown) {
-    super({
-      providerId: PROVIDER_ID,
-      operation: "setup",
-      message,
-      remediation:
-        "The Lando runtime bundle did not match its pinned checksum. Retry `lando setup`; if it fails again, report the release artifact and checksum.",
       cause,
     });
   }
@@ -222,9 +210,7 @@ export const makeSystemPodmanMachineRunner = (
   platform: HostPlatform = currentHostPlatform(),
 ): PodmanMachineRunner => ({
   inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect", platform).pipe(
-    // `Effect.map` does not catch synchronous throws, so a malformed `podman machine inspect`
-    // payload would become an Effect defect instead of a typed `ProviderUnavailableError`.
-    // Channel parse failures through `Effect.try` so callers always see the tagged error.
+    // Use `Effect.try` so a synchronous `podman machine inspect` parse failure still maps to a typed `ProviderUnavailableError`.
     Effect.flatMap((stdout) =>
       Effect.try({
         try: (): PodmanMachineStatus => {
@@ -246,9 +232,7 @@ export const makeSystemPodmanMachineRunner = (
           }),
       }),
     ),
-    // Exit code 125 from `podman machine inspect` is "no such machine" only when stderr
-    // confirms the absence; other 125 failures (prerequisite errors, broken state) must
-    // surface so we don't silently treat them as a missing machine.
+    // Treat exit code 125 as a missing machine only when stderr confirms that case; other 125 failures must surface.
     Effect.catchAll((cause) => {
       const raw = cause.cause;
       if (typeof raw !== "object" || raw === null) {
@@ -356,7 +340,7 @@ const verifyRuntimeBundle = (bundle: RuntimeBundle) =>
       const actual = sha256Hex(bundle.bytes);
       const expected = normalizeSha256(bundle.sha256);
       if (actual !== expected) {
-        throw new RuntimeBundleVerificationError("The Lando runtime bundle checksum did not match.", {
+        throw new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", {
           expected,
           actual,
         });
@@ -364,9 +348,9 @@ const verifyRuntimeBundle = (bundle: RuntimeBundle) =>
       return bundle;
     },
     catch: (cause) =>
-      cause instanceof RuntimeBundleVerificationError
+      cause instanceof ProviderBundleChecksumError
         ? cause
-        : new RuntimeBundleVerificationError("Failed to verify the Lando runtime bundle checksum.", cause),
+        : new ProviderBundleChecksumError("Failed to verify the Lando runtime bundle checksum.", cause),
   });
 
 const persistSetupState = (
