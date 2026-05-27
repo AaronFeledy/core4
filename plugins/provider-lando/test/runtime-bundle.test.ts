@@ -147,6 +147,19 @@ describe("runtimeBundleCachePath", () => {
       `/var/lando/provider-lando/runtime-bundle/${entry.filename}`,
     );
   });
+
+  test("rejects filenames that could escape the bundle cache directory", () => {
+    const bytes = new TextEncoder().encode("safe bytes");
+    for (const filename of ["../escape.zip", "nested/escape.zip", "nested\\escape.zip", ".", ".."] as const) {
+      const entry = syntheticEntry(filename, bytes);
+      try {
+        runtimeBundleCachePath("/var/lando", entry);
+        throw new Error(`expected ${filename} to be rejected`);
+      } catch (cause) {
+        expect(cause).toBeInstanceOf(ProviderUnavailableError);
+      }
+    }
+  });
 });
 
 describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {

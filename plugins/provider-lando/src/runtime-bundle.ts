@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join, relative, resolve } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -33,9 +33,9 @@ export class ProviderBundleChecksumError extends ProviderUnavailableError {
 }
 
 const RuntimeBundleEntrySchema = Schema.Struct({
-  url: Schema.String,
+  url: Schema.String.pipe(Schema.pattern(/^https:\/\//u)),
   sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
-  filename: Schema.String.pipe(Schema.minLength(1)),
+  filename: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
   sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
 });
 
@@ -57,6 +57,22 @@ export const RUNTIME_BUNDLE_MANIFEST: RuntimeBundleManifest =
   Schema.decodeUnknownSync(RuntimeBundleManifestSchema)(manifestData);
 
 const platformArchKey = (platform: HostPlatform, arch: string): string => `${platform}-${arch}`;
+
+const currentHostPlatform = (): HostPlatform | undefined => {
+  if (process.platform === "darwin" || process.platform === "linux" || process.platform === "win32") {
+    return process.platform;
+  }
+  return undefined;
+};
+
+const unsupportedHostPlatformError = () =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: `No pinned runtime-bundle entry for unsupported host platform ${process.platform}.`,
+    remediation:
+      "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest (spec §5.8.1).",
+  });
 
 /**
  * Resolve the pinned manifest entry for a given host platform + arch.
@@ -86,14 +102,34 @@ export const resolveRuntimeBundleEntry = (
   );
 
 /** Filesystem location where the resolved bundle is cached under the per-user state directory. */
-export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEntry): string =>
-  `${stateDir.replace(/\/+$/u, "")}/provider-lando/runtime-bundle/${entry.filename}`;
+export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEntry): string => {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(entry.filename)) {
+    throw new ProviderUnavailableError({
+      providerId: PROVIDER_ID,
+      operation: "setup",
+      message: `Invalid runtime-bundle filename ${entry.filename}.`,
+      remediation: "Use a basename-only runtime-bundle filename from the pinned manifest (spec §5.8.1).",
+    });
+  }
+
+  const baseDir = resolve(stateDir, "provider-lando", "runtime-bundle");
+  const cachePath = resolve(baseDir, entry.filename);
+  const relativePath = relative(baseDir, cachePath);
+  if (relativePath === "" || relativePath.startsWith("..") || relativePath.includes("/../")) {
+    throw new ProviderUnavailableError({
+      providerId: PROVIDER_ID,
+      operation: "setup",
+      message: `Runtime-bundle filename ${entry.filename} escapes the provider cache directory.`,
+      remediation: "Use a basename-only runtime-bundle filename from the pinned manifest (spec §5.8.1).",
+    });
+  }
+
+  return cachePath;
+};
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const currentArch = (): string => process.arch;
-const currentHostPlatform = (): HostPlatform =>
-  process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32";
 
 const readCachedBundle = (cachePath: string): Promise<Uint8Array | undefined> =>
   readFile(cachePath).then(
@@ -173,9 +209,14 @@ export const makeRuntimeBundleDownloader = (
       try: async () => {
         const dir = dirname(cachePath);
         await mkdir(dir, { recursive: true });
-        const tmpPath = `${cachePath}.tmp-${process.pid}-${Date.now()}`;
-        await writeFile(tmpPath, fetched);
-        await rename(tmpPath, cachePath);
+        const tmpPath = join(dir, `.${entry.filename}.tmp-${process.pid}-${randomUUID()}`);
+        try {
+          await writeFile(tmpPath, fetched, { flag: "wx" });
+          await rename(tmpPath, cachePath);
+        } catch (cause) {
+          await rm(tmpPath, { force: true });
+          throw cause;
+        }
       },
       catch: (cause) =>
         new ProviderUnavailableError({
@@ -220,10 +261,13 @@ export interface DefaultRuntimeBundleDownloaderOptions {
 export const makeDefaultRuntimeBundleDownloader = (
   options: DefaultRuntimeBundleDownloaderOptions,
 ): RuntimeBundleDownloader => {
-  const platform = options.platform ?? currentHostPlatform();
   const arch = options.arch ?? currentArch();
 
   const downloadEffect: Effect.Effect<RuntimeBundle, ProviderUnavailableError> = Effect.gen(function* () {
+    const platform = options.platform ?? currentHostPlatform();
+    if (platform === undefined) {
+      return yield* Effect.fail(unsupportedHostPlatformError());
+    }
     const entry = yield* resolveRuntimeBundleEntry(platform, arch);
     const inner = makeRuntimeBundleDownloader({
       stateDir: options.stateDir,
