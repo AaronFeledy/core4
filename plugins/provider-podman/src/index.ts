@@ -225,7 +225,7 @@ const defaultPodmanSocket = (
  * Resolve the Podman socket path following the discovery precedence:
  *
  * 1. Explicit `socketPath` option.
- * 2. `LANDO_TEST_PODMAN_SOCKET` env (test seam).
+ * 2. `LANDO_TEST_PODMAN_SOCKET` env.
  * 3. `DOCKER_HOST` env override (Podman's libpod is Docker-Engine-API-compatible).
  * 4. Platform default (`$XDG_RUNTIME_DIR/podman/podman.sock` on Linux).
  */
@@ -621,7 +621,6 @@ export const makeRuntimeProvider = (
         platform,
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
-        // No managed setup: user already installed Podman.
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0" }),

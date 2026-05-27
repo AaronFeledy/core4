@@ -492,3 +492,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - For platform-specific live tests, gate on both the exact opt-in environment variable and the expected host platform so accidental CI env leakage cannot exercise host runtimes on the wrong OS.
   - When a remediation references a selected machine name, derive both socket resolution and error text from one effective environment object.
 ---
+## [2026-05-27 16:54 UTC] - US-079 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only cleanup; no provider behavior, public API, socket discovery precedence, named-pipe transport, doctor output semantics, test assertions, fixtures, docs, or generated/planning files changed.
+- Files changed:
+  - `core/src/cli/commands/doctor.ts`: reworded the module header to remove planning-section citations while preserving the durable diagnostic summary.
+  - `plugins/provider-podman/src/index.ts`: removed one redundant setup comment and shortened the `LANDO_TEST_PODMAN_SOCKET` precedence note without changing socket resolution.
+  - `plugins/provider-podman/test/capabilities.test.ts`: removed redundant inline comments that restated the socket-precedence assertions.
+- Slop-remover output: source/test/doc cleanup agents reported no safe edits for `named-pipe.ts`, doctor tests, desktop integration tests, and Podman Desktop guide files; accepted only the cosmetic source/test comment edits above.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, section markers, development phases, PRDs, story IDs, or story prose.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/ core/test/cli/doctor.test.ts` → exit 0; first full `bun test --reporter=junit --reporter-outfile=/tmp/us079-cleanup-full.xml` run hit the known order-sensitive `core/test/cli/deferred-commands.test.ts` compiled `$bunfs` parity failure, which passed in isolation; rerun `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-cleanup-rerun.xml` → 1315 tests, 6410 assertions, 0 failures, 16 skips; `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP servers exited with code -2.
+---

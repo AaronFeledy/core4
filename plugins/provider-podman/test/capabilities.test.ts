@@ -94,7 +94,6 @@ describe("provider-podman socket discovery", () => {
   });
 
   test("honors discovery precedence: explicit > LANDO_TEST_PODMAN_SOCKET > DOCKER_HOST > default", () => {
-    // explicit beats everything
     expect(
       resolvePodmanSocket({
         socketPath: "/explicit/sock",
@@ -107,7 +106,6 @@ describe("provider-podman socket discovery", () => {
       }),
     ).toBe("/explicit/sock");
 
-    // LANDO_TEST beats DOCKER_HOST + default
     expect(
       resolvePodmanSocket({
         platform: "linux",
@@ -119,7 +117,6 @@ describe("provider-podman socket discovery", () => {
       }),
     ).toBe("/test/sock");
 
-    // DOCKER_HOST beats default
     expect(
       resolvePodmanSocket({
         platform: "linux",

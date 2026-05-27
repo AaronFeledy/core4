@@ -2,10 +2,10 @@
  * `lando doctor` — host/provider diagnostics.
  *
  * Reports the selected runtime provider, its version, its socket/machine
- * status, the full §5.4 capability summary, and §10.9 solution records
- * carrying `automatic` or `manual` remediation hints when a check is not
- * passing. The command never requires app bootstrap unless app-specific
- * diagnostics are requested.
+ * status, the capability summary, and solution records carrying
+ * `automatic` or `manual` remediation hints when a check is not passing.
+ * The command never requires app bootstrap unless app-specific diagnostics
+ * are requested.
  */
 import { Effect } from "effect";
 
