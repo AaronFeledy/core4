@@ -65,7 +65,7 @@ const makeTestServicePlan = (providerId: ProviderId): ServicePlan => ({
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: ["node", "-e", "setInterval(() => {}, 1000)"],
+  command: ["node", "-e", "console.log('lando-contract-ready'); setInterval(() => {}, 1000)"],
   environment: {},
   mounts: [],
   storage: [],

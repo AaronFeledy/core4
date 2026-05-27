@@ -108,6 +108,20 @@ describe("provider-lando logs", () => {
     expect(fake.calls[0]?.path).toContain("follow=false");
   });
 
+  test("decodes raw Podman log bytes", async () => {
+    const fake = makeFakeApi(textEncoder.encode("2026-05-14T00:00:00Z raw podman ready\n"));
+
+    const chunks = await Effect.runPromise(
+      logs(plan, { app: appId, service: node.name }, { follow: false }, { podmanApi: fake.api }).pipe(
+        Stream.runCollect,
+      ),
+    );
+
+    expect(Array.from(chunks, (chunk) => [chunk.service, chunk.stream, chunk.line])).toEqual([
+      [node.name, "stdout", "raw podman ready"],
+    ]);
+  });
+
   test("follow defaults to true and streams new chunks", async () => {
     const fake = makeFakeApi(frame("stdout", "first\n"), frame("stderr", "second\n"));
 

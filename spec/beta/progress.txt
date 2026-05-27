@@ -755,3 +755,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 1f2a0fd feat: shared provider contract suite covers all four providers; 7028ca4 chore: mark US-080 complete and update progress log; 9cfe0a7 fix: strengthen US-080 provider contract review; 29c8cf0 chore: record US-080 cleanup
 - PR: #179 https://github.com/AaronFeledy/core4/pull/179 (created)
 ---
+
+## [2026-05-27] - PR #179 provider-integration triage
+- CI failure: real issue; `provider-integration-linux-x64` failed because the shared live fixture must emit a service log line and live provider-lando Podman logs can arrive as raw timestamped text, while the decoder only emitted Docker attach-framed chunks and therefore produced `[]` for the shared contract assertion.
+- Review feedback: no PR comments or reviews to address (`reviewDecision` empty; Cursor Bugbot passed).
+- Fix: the SDK contract fixture now writes a startup log line, provider-lando logs now decode both attach-framed and raw Podman log streams, and fake-client coverage exercises raw Podman log bytes.
+- Verification: `bun test plugins/provider-lando/test/logs.integration.test.ts` → 4 tests, 0 failures, 1 skip; `bun test plugins/provider-lando/test/contract.integration.test.ts sdk/test/contract/provider.test.ts` → 30 tests, 0 failures, 1 skip; manual raw-log driver → decoded `[web/stdout/manual ready]`; `bun run typecheck` → exit 0; `bun run lint` → exit 0; `bun test` → 1342 tests, 6497 assertions, 0 failures, 16 skips.
+---
