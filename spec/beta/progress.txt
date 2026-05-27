@@ -842,3 +842,37 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch: us-082-provider-selection-precedence
 - Commit: 71daa7b feat: provider selection precedence and conflict diagnostics
 ---
+
+## [2026-05-27 18:30 CDT] - US-082
+- Implemented provider selection precedence (`flag > Landofile > env > config > capability-default`) and lando↔podman socket conflict diagnostics surfaced through `meta:doctor`.
+- Files changed:
+  - `core/src/providers/precedence.ts` (new): pure `resolveProviderSelection`, `readProviderEnvVar` (reads `LANDO_PROVIDER`), `CAPABILITY_DEFAULT_PROVIDER_ID` (`lando`).
+  - `core/src/providers/conflict.ts` (new): `detectProviderConflicts({ stateDir, platform?, env? })` wraps `provider-podman`'s `detectProviderLandoConflict` + `resolvePodmanSocket` and returns shape-stable `ProviderConflictReport[]`. Fails closed when no `stateDir`.
+  - `core/src/cli/commands/doctor.ts`: accepts `DoctorOptions` (`flagProviderId`, `landofileProviderId`, `env`, `platform`); gathers env+config inputs, runs the resolver, emits a `selection` record on the `selected-provider` check, and appends a separate `provider-conflict` check (status=`warn`, severity=`warn`) carrying the typed remediation (`lando setup --provider=…`) when the lando/podman socket overlap is detected. Adds `ConfigService` to the doctor effect requirements.
+  - `core/src/cli/oclif/commands/meta/doctor.ts`: adds `--provider` flag; threads parsed flag into `doctor({ flagProviderId })`; widens spec R to `ConfigService | RuntimeProviderRegistry`.
+  - `core/src/cli/oclif/commands/meta/setup.ts`: same precedence resolver; reads `LANDO_PROVIDER` + config defaultProviderId before falling back to `lando`; widens spec R to `ConfigService | RuntimeProviderRegistry`; flag description updated.
+  - `core/src/cli/run.ts`: compiled-mode `runDoctor(argv)` now parses `--provider` via existing `parseProviderFlag` and forwards it as `flagProviderId`.
+  - `core/test/providers/precedence.test.ts` (new): 17 cases covering every input pair (flag/landofile/env/config/default) plus multi-input resolution and `readProviderEnvVar` env-var parsing.
+  - `core/test/providers/conflict.test.ts` (new): 6 cases — empty when no stateDir, no state file, mismatched socket; conflict + remediation when sockets match; trailing-slash normalization; `ProviderLandoStateError` propagation.
+  - `core/test/cli/doctor.test.ts`: extended with provider-selection precedence reporting (default/config/env/landofile/flag) and provider-conflict diagnostics (conflict emit + no-conflict negative); added `ConfigService` mock via `buildConfigService` and `buildLayers` helper.
+  - `core/test/cli/fixtures/meta-doctor.provider-status{,.windows}.ndjson`: regenerated to include the new `context.selectionSource` field and `selection` payload.
+  - `core/test/cli/setup.test.ts`: provides `ConfigService` via `buildSetupLayers`; adds 4 precedence integration tests (config fallback, env beats config, flag beats env+config, capability default).
+  - `core/test/cli/setup.scenario.test.ts`: provides `ConfigService` for the happy-path and Podman-socket-unreachable scenarios so the meta:setup task-tree progress tests still bind their layer to the new spec requirements.
+  - `docs/guides/setup/provider-selection.mdx` (new): non-rendered scenarios covering the precedence rules, the doctor-reported fields, and the socket-conflict remediation.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (4 pre-existing warnings unrelated to this story)
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/providers/ core/test/cli/doctor.test.ts core/test/cli/setup.test.ts core/test/cli/setup.scenario.test.ts` → 56 pass, 1 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` (post `bun run build`) → 1374 pass, 16 skip, 0 fail across 1390 tests
+  - Manual CLI QA against `core/dist/lando doctor` with isolated `LANDO_USER_CONF_ROOT`/`LANDO_USER_DATA_ROOT`:
+    - Defaults: `selectionSource: config`, `selectionInputConfig: lando`, `selectionInputDefault: lando`.
+    - `LANDO_PROVIDER=podman lando doctor` → selects podman (fails reaching socket as expected) — env path resolved.
+    - `lando doctor --provider=docker` → `selectionSource: flag`, `selectionInputFlag: docker`, `selectionInputConfig: lando`.
+    - Faked `data/providers/provider-lando/setup-state.json` with the resolved Podman rootless socket → second check `provider-conflict: warn` with `solution[manual]: Choose one provider explicitly. Run \`lando setup --provider=podman\` … (lando setup --provider=)`.
+- **Learnings for future iterations:**
+  - When a CLI command starts depending on a new SDK service (here `ConfigService` was added to doctor + setup specs), every existing test that built a hand-rolled layer must be updated; the failure is a runtime `Service not found` not a typecheck error, so search for `Layer.succeed(<existing-service>, …)` callers when widening spec `R`.
+  - Doctor's stable NDJSON shape is fixture-locked. New fields go into `context` and/or a top-level `selection` field; regenerate `meta-doctor.provider-status{,.windows}.ndjson` by running `doctor` against the same fake provider and config used in the snapshot test.
+  - The `provider-conflict` check intentionally has empty `capabilities` so the text renderer drops capability fields and only emits the name/severity/runtime/solution lines; relying on text snapshots for context fields will fail — assert against the structured `result.checks[i].context` or the NDJSON `context` payload instead.
+  - Biome's `lint/performance/noDelete` rule requires `Reflect.deleteProperty(process.env, "X")` instead of `delete process.env.X` for env-var unset/restore patterns in test scaffolding.
+---
