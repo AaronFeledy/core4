@@ -404,3 +404,22 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Provider-podman reuses provider-lando's Unix-socket Podman transport, so US-078 should reject TCP/npipe overrides until a transport-specific client lands in US-079 or later.
   - User-installed provider lifecycle state should live under the provider's own state root (`provider-podman/apps`) rather than relying on process-local plan maps.
 ---
+
+## [2026-05-27 03:06 CDT] - US-078 Cleanup
+- Ran branch-wide AI slop cleanup after review and before push.
+- Accepted cleanup:
+  - `plugins/provider-podman/src/index.ts`: removed two code-comment references to follow-up story tracking while preserving the technical platform description.
+- Rejected cleanup proposals as not purely cosmetic / not needed for planning-comment leakage:
+  - `.github/workflows/ci.yml`: restored generated workflow comment block because generated files should not be hand-edited for cosmetic cleanup.
+  - `core/src/providers/registry.ts`: restored durable provider-registry module documentation.
+  - `plugins/provider-podman/test/capabilities.test.ts`: restored explanatory precedence comments after the per-file agent failed and left only comment deletions.
+  - `plugins/provider-podman/test/conflict.test.ts`: restored helper refactor because this cleanup step should not restructure tests.
+- Planning-comment scan:
+  - No branch-changed code comments still reference spec paths, sections, development phases, PRDs, or story IDs.
+  - Remaining matches are runtime remediation fields/messages, schema property names, test names, or guide frontmatter/prose that are outside the code-comment cleanup rule.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`Checked 496 files in 310ms. No fixes applied.`)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → exit 0
+  - `git diff --check` → clean
+  - `lsp_diagnostics plugins/provider-podman/src/index.ts` attempted; TypeScript LSP exited with code -2, matching the review-step LSP instability already noted.

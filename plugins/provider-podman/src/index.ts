@@ -4,7 +4,7 @@
  *
  * Unlike `@lando/provider-lando`, this plugin does NOT manage a private Podman
  * machine. It targets an existing user-installed rootless Podman (Linux) or a
- * Podman Desktop machine (macOS / Windows — refined further in US-079).
+ * Podman Desktop machine on macOS / Windows.
  *
  * Wire format reuses the Podman REST API client and lifecycle ops from
  * `@lando/provider-lando` (apply / inspect / exec / logs / destroy speak the
@@ -108,7 +108,7 @@ const defaultPodmanSocket = (
     }
     return "/var/run/podman/podman.sock";
   }
-  // Windows / Podman Desktop default; refined further in US-079.
+  // Windows / Podman Desktop default.
   return "npipe://./pipe/podman-machine-default";
 };
 
