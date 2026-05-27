@@ -15,7 +15,7 @@
  * (id, displayName, capabilities, inspect snapshot providerId) and the
  * fail-closed conflict-detection path.
  */
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 
 import { Effect, Layer, Schema, Stream } from "effect";
 
@@ -34,7 +34,7 @@ import {
 } from "@lando/provider-lando";
 import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
-  type AppId,
+  AppId,
   AppPlan,
   type HostPlatform,
   PluginManifest,
@@ -491,6 +491,7 @@ export const makeRuntimeProvider = (
           bringUp(plan, {
             podmanApi,
             ...(applyOptions.signal === undefined ? {} : { signal: applyOptions.signal }),
+            ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           }).pipe(Effect.tap(() => rememberPlan(plan))),
         start: () => Effect.void,
         stop: () => Effect.void,
@@ -539,20 +540,40 @@ export const makeRuntimeProvider = (
             return { ...snapshot, providerId: providerIdBranded };
           }),
         list: (filter) =>
-          Effect.forEach(Array.from(plans.values()), (plan) =>
-            Effect.forEach(Object.values(plan.services), (service) =>
-              inspect(plan, { app: plan.id, service: service.name }, { podmanApi }).pipe(
-                Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded })),
+          Effect.gen(function* () {
+            const inMemoryIds = Array.from(plans.keys());
+            const stateDir = options.stateDir;
+            const persistedIds: string[] =
+              stateDir === undefined
+                ? []
+                : yield* Effect.tryPromise({
+                    try: () => readdir(appliedPlansDir(stateDir)),
+                    catch: (cause) => cause,
+                  }).pipe(
+                    Effect.catchAll(() => Effect.succeed([] as string[])),
+                    Effect.map((files) =>
+                      files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length)),
+                    ),
+                  );
+
+            const allIds = [
+              ...inMemoryIds,
+              ...persistedIds.map((id) => AppId.make(id)).filter((id) => !plans.has(id)),
+            ] as AppId[];
+            const resolved = yield* Effect.forEach(allIds, (id) => resolvePlan({ app: id }));
+            const validPlans = resolved.filter((p): p is AppPlan => p !== undefined);
+
+            const snapshots = yield* Effect.forEach(validPlans, (plan) =>
+              Effect.forEach(Object.values(plan.services), (service) =>
+                inspect(plan, { app: plan.id, service: service.name }, { podmanApi }).pipe(
+                  Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded })),
+                ),
               ),
-            ),
-          ).pipe(
-            Effect.map((snapshots) => snapshots.flat()),
-            Effect.map((snapshots) =>
-              filter.app === undefined
-                ? snapshots
-                : snapshots.filter((snapshot) => snapshot.app === filter.app),
-            ),
-          ),
+            );
+
+            const flat = snapshots.flat();
+            return filter.app === undefined ? flat : flat.filter((snapshot) => snapshot.app === filter.app);
+          }),
       }),
     ),
   );

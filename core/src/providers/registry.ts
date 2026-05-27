@@ -182,6 +182,7 @@ const makeRuntimeProviderRegistry = (
           : providerIdText === "podman"
             ? yield* makePodmanRuntimeProvider({
                 ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+                ...(eventService === undefined ? {} : { eventService }),
               }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
             : providers[providerIdText];
 
