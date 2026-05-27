@@ -544,3 +544,18 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 56 pass, 2 skip, 0 fail
   - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-round2-postcommit.xml` → 1301 pass, 16 skip, 0 fail across 177 files / 144s
 - Coordination note: the cross-package shared-named-pipe extraction explored during this round was reverted as out-of-scope and stashed locally as `pr178-round2-named-pipe-refactor-deferred` per the orchestrator's mandate to keep this PR scoped to the typed-error fix. The duplication concern from Bugbot comment 2 remains open for a follow-up refactor PR.
+
+## [2026-05-27 18:09 UTC] - US-079 PR #178 Bugbot triage round 3 push
+- Triaged Cursor Bugbot's third review (commit `8e92a9b`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L573, "Eager machine-name validation fails Linux provider unnecessarily", Low) - **real issue, fixed**. The eager `resolvePodmanDesktopMachine(effectiveEnv)` call ran unconditionally even though `desktopMachineName` is only consumed inside the `(platform === "darwin" || platform === "win32")` branch of the capability-probe `Effect.mapError`. On Linux an invalid `LANDO_PODMAN_MACHINE`/`PODMAN_MACHINE_NAME` would fail provider init with `InvalidPodmanMachineNameError` even though the rootless socket path never uses the machine name. Fix: wrap the eager resolver in `if (platform === "darwin" || platform === "win32")` so Linux ignores the desktop machine env vars; keep the typed-error catch unchanged for darwin/win32.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR**. Same reasoning as round 2: the duplication is architectural cleanup, not a correctness bug, and extracting a shared npipe transport is a cross-package refactor touching `provider-docker`, `provider-podman`, `package.json`/`tsconfig.json`, and integration test surface. Stash `pr178-round2-named-pipe-refactor-deferred` preserves the spike work for a follow-up refactor PR.
+- Branch: us-079-provider-podman-desktop
+- Commit pushed: 7620bba fix(provider-podman): gate desktop machine validation
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: gated the eager `resolvePodmanDesktopMachine` call behind `platform === "darwin" || platform === "win32"`; the `Effect.mapError` branch keeps its `desktopMachineName ?? resolvePodmanDesktopMachine(effectiveEnv)` fallback (only reachable on darwin/win32 where the eager block already returned a typed `ProviderUnavailableError` on invalid names).
+  - `plugins/provider-podman/test/capabilities.test.ts`: new Linux regression test asserts `makeRuntimeProvider({ platform: "linux", env: { ..., LANDO_PODMAN_MACHINE: "bad;name" } })` resolves successfully and does not surface `InvalidPodmanMachineNameError`.
+- Verification (post-commit, clean working tree on `7620bba`):
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 57 pass, 2 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-round3-postcommit.xml` → 1302 pass, 16 skip, 0 fail across 177 files / 128.75s
