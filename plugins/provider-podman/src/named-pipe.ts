@@ -157,7 +157,31 @@ async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<
   }
 }
 
-const flushChunkedBufferAtEnd = (buffer: Bytes): ReadonlyArray<Bytes> => decodeChunkedBuffer(buffer).chunks;
+export const flushChunkedBufferAtEnd = (buffer: Bytes): ReadonlyArray<Bytes> => {
+  const chunks: Bytes[] = [];
+  let remaining: Bytes = buffer;
+
+  while (true) {
+    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
+    if (sizeEnd === -1) break;
+
+    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
+    if (!Number.isInteger(size)) break;
+
+    const chunkStart = sizeEnd + chunkSeparator.length;
+    const chunkEnd = chunkStart + size;
+    if (remaining.length < chunkEnd) break;
+
+    if (size === 0) return chunks;
+
+    chunks.push(remaining.slice(chunkStart, chunkEnd));
+    if (remaining.length < chunkEnd + chunkSeparator.length) break;
+
+    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
+  }
+
+  return chunks;
+};
 
 export const npipeSocketPath = (socketPath: string): string => {
   if (!socketPath.startsWith("npipe:")) return socketPath;

@@ -517,3 +517,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - tightened the machine-not-running pattern set by dropping the broad `/named pipe/i` matcher
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/capabilities.test.ts` → 26 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/desktop.integration.test.ts` → 14 pass, 1 skip, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 54 pass, 2 skip, 0 fail.
 ---
+
+## [2026-05-27 17:45 UTC] - US-079 npipe regression fix
+- Fixed the Windows Podman Desktop named-pipe stream flush path so a complete final chunk is not dropped when the socket closes before the terminal CRLF is buffered.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: replaced the end-of-stream `flushChunkedBufferAtEnd` helper with the same permissive chunk flush logic used by `provider-docker`, so the final chunk is yielded even if the trailing chunk terminator arrives split or missing at close.
+  - `plugins/provider-podman/src/index.ts`: re-exported `flushChunkedBufferAtEnd` for the regression test.
+  - `plugins/provider-podman/test/named-pipe.test.ts` (new): regression coverage for a final chunk without trailing CRLF and for a complete chunked frame.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → 2 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 56 pass, 2 skip, 0 fail.
+---
