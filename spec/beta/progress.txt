@@ -158,3 +158,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - **Learnings for future iterations:**
   - Full-suite compiled CLI scenario failures can be order/flakiness-sensitive; rerun the named failing file to distinguish provider-story regressions from unrelated compiled harness instability.
 ---
+
+## [2026-05-27 00:28 UTC] - US-075 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only comment/prose cleanup; no runtime behavior, public API, error handling, cache semantics, checksum logic, or test assertions changed.
+- Files changed:
+  - `plugins/provider-lando/runtime-bundle-versions.json`: tightened the manifest annotation to remove planning-doc traceability prose.
+  - `plugins/provider-lando/src/runtime-bundle.ts`: removed redundant doc blocks that restated exported names and behavior already covered by tests.
+  - `plugins/provider-lando/src/setup.ts`: shortened two explanatory comments while preserving the parse/error-classification rationale.
+  - `plugins/provider-lando/test/runtime-bundle.test.ts`: removed assertion-restating test comments without changing fixtures or assertions.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us075-cleanup-full.xml` → 1226 tests, 6244 assertions, 0 failures, 12 skips; JSON parse + `git diff --check` → clean. LSP diagnostics were attempted for changed files but the TypeScript/Biome LSP servers exited with code -2.
+---
