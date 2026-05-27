@@ -309,3 +309,7 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 1031e1e fix: keep npipe stream on one consumer
 - PR: #175 https://github.com/AaronFeledy/core4/pull/175 (updated)
 ---
+
+## [2026-05-27] - PR #175 triage
+- Patched `plugins/provider-docker/src/index.ts` so chunked named-pipe streams flush a final buffered chunk even if the socket closes before the trailing CRLF arrives.
+- Added a socket-backed regression test in `plugins/provider-docker/test/contract.integration.test.ts` that exercises the named-pipe chunked stream path with an unterminated final chunk.
