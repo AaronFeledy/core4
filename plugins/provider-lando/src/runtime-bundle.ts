@@ -13,12 +13,6 @@ import type { RuntimeBundle, RuntimeBundleDownloader } from "./setup.ts";
 
 const PROVIDER_ID = "lando";
 
-/**
- * Tagged error raised when the Lando runtime bundle's SHA-256 does not match
- * the pinned value in {@link RUNTIME_BUNDLE_MANIFEST}. Checksum verification
- * fails closed: the setup pipeline must not proceed when the on-disk or
- * freshly-downloaded bundle differs from the bundled manifest.
- */
 export class ProviderBundleChecksumError extends ProviderUnavailableError {
   constructor(message: string, cause?: unknown) {
     super({
@@ -48,11 +42,6 @@ const RuntimeBundleManifestSchema = Schema.Struct({
 export type RuntimeBundleEntry = Schema.Schema.Type<typeof RuntimeBundleEntrySchema>;
 export type RuntimeBundleManifest = Schema.Schema.Type<typeof RuntimeBundleManifestSchema>;
 
-/**
- * Compile-time-pinned runtime-bundle manifest. The same JSON is consumed
- * unchanged for Linux, macOS, and Windows: every platform/arch entry carries
- * the bundle URL plus its pinned SHA-256.
- */
 export const RUNTIME_BUNDLE_MANIFEST: RuntimeBundleManifest =
   Schema.decodeUnknownSync(RuntimeBundleManifestSchema)(manifestData);
 
@@ -101,7 +90,6 @@ export const resolveRuntimeBundleEntry = (
     ),
   );
 
-/** Filesystem location where the resolved bundle is cached under the per-user state directory. */
 export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEntry): string => {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(entry.filename)) {
     throw new ProviderUnavailableError({
@@ -145,18 +133,6 @@ export interface RuntimeBundleDownloaderOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
-/**
- * Build a {@link RuntimeBundleDownloader} for an explicit pinned entry.
- *
- * The downloader is idempotent: a re-run with a valid cached bundle (whose
- * on-disk SHA matches `entry.sha256`) does not contact the network. Mismatch
- * fails closed with {@link ProviderBundleChecksumError}.
- *
- * Production code SHOULD call {@link makeDefaultRuntimeBundleDownloader}
- * which routes through the shipped manifest. This lower-level factory is the
- * shared implementation and is the test seam used to verify behavior under
- * deterministic SHA-256 values that the static manifest cannot supply.
- */
 export const makeRuntimeBundleDownloader = (
   options: RuntimeBundleDownloaderOptions,
 ): RuntimeBundleDownloader => {
@@ -246,18 +222,6 @@ export interface DefaultRuntimeBundleDownloaderOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
-/**
- * Build a {@link RuntimeBundleDownloader} that resolves the runtime bundle
- * through the shipped pinned manifest, caches it under the per-user state
- * directory, and is idempotent: a re-run with a valid cached bundle does not
- * contact the network.
- *
- * Failure modes (all fail closed):
- *  - Unknown platform/arch → {@link ProviderUnavailableError}
- *  - Network or HTTP error during download → {@link ProviderUnavailableError}
- *  - Downloaded bytes do not match pinned SHA-256 → {@link ProviderBundleChecksumError}
- *  - Cache write failure → {@link ProviderUnavailableError}
- */
 export const makeDefaultRuntimeBundleDownloader = (
   options: DefaultRuntimeBundleDownloaderOptions,
 ): RuntimeBundleDownloader => {

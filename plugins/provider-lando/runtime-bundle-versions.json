@@ -1,5 +1,5 @@
 {
-  "_comment": "Pinned manifest for the Lando-managed runtime bundle (Podman + helper binaries). Per spec §5.8.1, URL and SHA-256 are resolved through this manifest for every supported host platform. Placeholder SHA-256 values are intentional pre-release fixtures and will be replaced by the §17.3 build pipeline before GA.",
+  "_comment": "Pinned runtime-bundle manifest for supported host platforms. SHA-256 values are placeholders until release artifact generation replaces them.",
   "schemaVersion": 1,
   "runtimeVersion": "0.1.0",
   "bundles": {

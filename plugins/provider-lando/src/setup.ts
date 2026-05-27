@@ -210,9 +210,7 @@ export const makeSystemPodmanMachineRunner = (
   platform: HostPlatform = currentHostPlatform(),
 ): PodmanMachineRunner => ({
   inspect: runMachineCommand(command, ["machine", "inspect", machineName], "inspect", platform).pipe(
-    // `Effect.map` does not catch synchronous throws, so a malformed `podman machine inspect`
-    // payload would become an Effect defect instead of a typed `ProviderUnavailableError`.
-    // Channel parse failures through `Effect.try` so callers always see the tagged error.
+    // Use `Effect.try` so a synchronous `podman machine inspect` parse failure still maps to a typed `ProviderUnavailableError`.
     Effect.flatMap((stdout) =>
       Effect.try({
         try: (): PodmanMachineStatus => {
@@ -234,9 +232,7 @@ export const makeSystemPodmanMachineRunner = (
           }),
       }),
     ),
-    // Exit code 125 from `podman machine inspect` is "no such machine" only when stderr
-    // confirms the absence; other 125 failures (prerequisite errors, broken state) must
-    // surface so we don't silently treat them as a missing machine.
+    // Treat exit code 125 as a missing machine only when stderr confirms that case; other 125 failures must surface.
     Effect.catchAll((cause) => {
       const raw = cause.cause;
       if (typeof raw !== "object" || raw === null) {

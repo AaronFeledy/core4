@@ -205,12 +205,9 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
         fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
       });
 
-      // First run populates the cache.
       await Effect.runPromise(downloader.download);
       expect(log.calls).toBe(1);
 
-      // Second run MUST reuse the cache. Substitute a throwing fetch to prove the
-      // network is never contacted.
       const second = makeRuntimeBundleDownloader({
         stateDir,
         entry,
@@ -221,7 +218,6 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
 
       expect(bundle.bytes).toEqual(bytes);
       expect(bundle.sha256).toBe(entry.sha256);
-      // The first downloader's log MUST still be at 1 — no further network calls.
       expect(log.calls).toBe(1);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
@@ -235,7 +231,6 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       const entry = syntheticEntry("synthetic-win32-x64.zip", validBytes);
       const cachePath = runtimeBundleCachePath(stateDir, entry);
 
-      // Pre-populate the cache with stale bytes whose SHA does NOT match the entry.
       await mkdir(dirname(cachePath), { recursive: true });
       const stale = new TextEncoder().encode("STALE-cached-bytes");
       await writeFile(cachePath, stale);
@@ -254,7 +249,6 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       expect(bundle.sha256).toBe(entry.sha256);
       expect(log.calls).toBe(1);
 
-      // The cache file has been overwritten with the freshly-fetched bytes.
       const onDisk = await readFile(cachePath);
       expect(new Uint8Array(onDisk.buffer, onDisk.byteOffset, onDisk.byteLength)).toEqual(validBytes);
     } finally {
@@ -284,7 +278,6 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       expect(checksum.remediation).toContain("§5.8.1");
       expect(checksum.message).toContain(entry.filename);
 
-      // The bad bundle MUST NOT be persisted to the cache.
       const cachePath = runtimeBundleCachePath(stateDir, entry);
       const onDisk = await readFile(cachePath).catch(() => undefined);
       expect(onDisk).toBeUndefined();
