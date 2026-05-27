@@ -32,7 +32,7 @@ import {
   makePodmanApiClient,
   providerStatePath as providerLandoStatePath,
 } from "@lando/provider-lando";
-import { ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
+import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AppId,
   AppPlan,
@@ -173,22 +173,6 @@ export const podmanCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
 export const macosPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("darwin");
 export const windowsPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("win32");
-
-export const decodeProviderCapabilities = (input: unknown) =>
-  Schema.decodeUnknown(ProviderCapabilities)(input).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ProviderCapabilityError({
-          providerId: PROVIDER_ID,
-          operation: "capabilities",
-          message: "provider-podman returned invalid ProviderCapabilities.",
-          capability: "ProviderCapabilities",
-          requiredValue: "@lando/sdk/schema ProviderCapabilities",
-          actualValue: input,
-          cause,
-        }),
-    ),
-  );
 
 interface ProviderLandoSetupState {
   readonly podmanVersion?: string;
