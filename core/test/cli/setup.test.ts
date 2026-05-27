@@ -9,7 +9,7 @@ import { Effect, Layer } from "effect";
 import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
-import { ProviderId } from "@lando/sdk/schema";
+import { type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
@@ -87,6 +87,39 @@ describe("meta:setup command", () => {
     expect(setupCalls).toBe(1);
     expect(setupSpec.render?.(result)).toBe(
       'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
+    );
+  });
+
+  test("honors an explicit provider flag when selecting setup provider", async () => {
+    let selectedProvider: string | undefined;
+    let setupCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "podman",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando"), ProviderId.make("podman")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: (plan?: AppPlan) => {
+        selectedProvider = plan?.provider === undefined ? undefined : String(plan.provider);
+        return Effect.succeed(provider);
+      },
+    };
+
+    const result = await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { provider: "podman" } })
+        .pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, registry))),
+    );
+
+    expect(selectedProvider).toBe("podman");
+    expect(setupCalls).toBe(1);
+    expect(setupSpec.render?.(result)).toBe(
+      'setup complete: Lando runtime (podman)\nLANDO_INSTALL_DIR="/opt/lando"',
     );
   });
 
