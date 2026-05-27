@@ -237,3 +237,79 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-26 21:35 CDT] - US-077
+- Implemented Windows Docker Desktop support for `@lando/provider-docker`
+- Files changed:
+  - `plugins/provider-docker/src/index.ts`: Added `isNpipeDockerHost` + `npipeSocketPath` helpers; routed npipe URIs through the existing unix-socket curl client (curl `--unix-socket` accepts the `//./pipe/...` form that falls out of stripping `npipe:`); extended `resolveDockerHost` precedence to honor `LANDO_TEST_WINDOWS_DOCKER_SOCKET` ahead of generic test/env sources on win32 and default to `npipe://./pipe/docker_engine`; exported `windowsDockerCapabilities`.
+  - `plugins/provider-docker/test/capabilities.test.ts`: Added Windows capability matrix shape test, Windows host classification, default-named-pipe discovery, precedence test (explicit > LANDO_TEST_WINDOWS_DOCKER_SOCKET > LANDO_TEST_DOCKER_SOCKET > DOCKER_HOST > default), introspection-on-win32, factory-host plumbing, and npipe client construction.
+  - `plugins/provider-docker/test/contract.integration.test.ts`: Added a Windows fake-client test that exercises apply/inspect/exec/logs/destroy and asserts the slow-bindmount capability; added a live contract test gated on `process.platform === "win32"` plus `LANDO_TEST_WINDOWS_DOCKER_SOCKET` or `DOCKER_HOST`.
+  - `docs/guides/setup/provider-docker-windows.mdx` (new): Required US-077 guide coverage; non-rendered scenarios describing the discovery precedence and live-contract gating.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/` → 18 pass, 2 skip, 0 fail (both skips are live tests)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/provider-docker-windows/` → 2 pass, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1226 pass, 14 skip, 0 fail
+- **Learnings for future iterations:**
+  - The existing `isVmMediatedDockerHost(platform, dockerHost)` already short-circuits win32 to `bindMountPerformance: "slow"`, so `dockerCapabilitiesForHost("win32", ...)` already covers the capability surface — no helper changes were needed, only a named export (`windowsDockerCapabilities`) at parity with `linuxDockerCapabilities` / `macosDockerCapabilities`.
+  - `npipe://./pipe/docker_engine` is processed by reusing `makeUnixDockerApiClient(npipeSocketPath(host))`. Stripping just `npipe:` yields `//./pipe/docker_engine`, which curl `--unix-socket` accepts on Windows; this avoids a second curl-based runtime branch.
+  - The Windows live test gate must combine `process.platform === "win32"` with the env-var pair (US-074 pattern) — gating on env alone would let CI export `DOCKER_HOST` for the Linux suite and unintentionally run Windows-only assertions on Linux.
+  - `LANDO_TEST_WINDOWS_DOCKER_SOCKET` is win32-only: ordering it before `LANDO_TEST_DOCKER_SOCKET` is what gives a Windows host a stable test-runner override without disturbing the existing generic Linux/macOS test seam.
+---
+
+## [2026-05-27 03:35 UTC] - US-077 Review
+- Reviewed the US-077 provider-docker Windows Docker Desktop implementation against `spec/beta/prd-beta-01-provider-matrix.md`, repo context, and the build-step commit (`HEAD` before review fix).
+- Fixed confirmed review blocker:
+  - Replaced the default `npipe://./pipe/docker_engine` branch's Unix-socket curl reuse with a real IPC/named-pipe HTTP transport, including Docker Desktop URI normalization to `\\.\pipe\docker_engine` and request/stream coverage through a local IPC socket.
+- Files changed:
+  - `plugins/provider-docker/src/index.ts`
+  - `plugins/provider-docker/test/capabilities.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: `npipe://` was routed through `curl --unix-socket`, which does not validate or implement Windows named-pipe HTTP transport for Docker Desktop.
+  - Rejected: core registry still has a hardcoded stub `docker` provider; US-077 scope is the provider plugin contract, while core provider-selection wiring is covered by later provider-selection stories.
+  - Rejected: Windows drive-letter bind-path translation is not a new US-077 blocker; this story's acceptance covers Docker API lifecycle/discovery and the existing provider contract uses portable fake-client plans.
+  - Rejected: duplicate generic + Windows live Docker tests on Windows are low-risk and intentional enough for now; both are opt-in/host-gated and exercise different default platform assumptions.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/ --reporter=junit --reporter-outfile=/tmp/provider-docker-review2.xml` → 23 tests, 65 assertions, 0 failures, 2 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/provider-docker-windows/ --reporter=junit --reporter-outfile=/tmp/us077-guide.xml` → 2 tests, 0 failures.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides docs/guides/setup/provider-docker-windows.mdx` → `Guide lint passed.`
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us077-review-full.xml` → 1243 tests, 6279 assertions, 0 failures, 14 skips.
+  - LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2; `tsc -b` was clean.
+- **Learnings for future iterations:**
+  - Do not reuse curl's Unix-socket transport for Docker Desktop `npipe://` endpoints; normalize Docker's URI form to a Windows named-pipe path and send HTTP over IPC directly.
+  - A construction-only API-client test is not enough for transport branches. Add a local IPC-socket request/stream test so fake-client coverage proves the selected transport can actually speak HTTP.
+---
+
+## [2026-05-27 04:10 UTC] - US-077 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only cleanup; no Docker host resolution, named-pipe transport behavior, public exports, live-test gates, assertions, or provider contract semantics changed.
+- Files changed:
+  - `docs/guides/setup/provider-docker-windows.mdx`: shortened guide scenario reasons and variable display text while preserving scenario IDs, values, render flags, and coverage intent.
+  - `plugins/provider-docker/src/index.ts`: removed a redundant module header comment.
+  - `plugins/provider-docker/test/contract.integration.test.ts`: collapsed a trivial fixture helper and shortened verbose test names without changing assertions or gates.
+- Slop-remover output: `plugins/provider-docker/test/capabilities.test.ts` and the extra review passes reported no safe edits; accepted only the cosmetic edits above.
+- Planning-doc leakage scan: changed TypeScript code/test comments are clean; the guide frontmatter `beta` tag remains intentional metadata, not code-comment traceability.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides docs/guides/setup/provider-docker-windows.mdx` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us077-cleanup-full.xml` → 2515 tests, 0 failures, 0 errors, 28 skips; `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2.
+---
+
+## [2026-05-27 04:32 UTC] - Push
+- Branch: us-077-provider-docker-windows
+- Push: pushed
+- Commit(s): 2cf3bd2 feat: provider-docker Windows (Docker Desktop) | 3f3271a fix: provider-docker Windows named-pipe transport | 2451dec chore: remove provider-docker Windows slop | aac977c docs: record US-077 cleanup
+- PR: #175 https://github.com/AaronFeledy/core4/pull/175 (created)
+---
+## [2026-05-27 04:48 UTC] - Push
+- Branch: us-077-provider-docker-windows
+- Push: pushed
+- Commit(s): 1031e1e fix: keep npipe stream on one consumer
+- PR: #175 https://github.com/AaronFeledy/core4/pull/175 (updated)
+---
+
+## [2026-05-27] - PR #175 triage
+- Patched `plugins/provider-docker/src/index.ts` so chunked named-pipe streams flush a final buffered chunk even if the socket closes before the trailing CRLF arrives.
+- Added a socket-backed regression test in `plugins/provider-docker/test/contract.integration.test.ts` that exercises the named-pipe chunked stream path with an unterminated final chunk.
