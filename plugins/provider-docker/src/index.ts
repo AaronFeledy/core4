@@ -1262,17 +1262,7 @@ const makeLogsDecoder = (service: ServicePlan) => {
     }
 
     const frames = decodeFrame(chunk);
-    if (chunk.length === 0) {
-      return frames.flatMap((frame) =>
-        textDecoder
-          .decode(frame.chunk)
-          .split(/\r?\n/u)
-          .filter((line) => line.length > 0)
-          .map((line) => parseLogLine(service, frame.kind, line)),
-      );
-    }
-
-    mode = "framed";
+    if (chunk.length > 0) mode = "framed";
     return frames.flatMap((frame) =>
       textDecoder
         .decode(frame.chunk)
