@@ -165,10 +165,23 @@ const runDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
-const runSetup = async (): Promise<void> => {
+const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg.startsWith("--provider=")) return arg.slice("--provider=".length);
+    if (arg === "--provider") return argv[index + 1];
+  }
+  return undefined;
+};
+
+const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   const installDir = dirname(process.execPath);
+  const provider = parseProviderFlag(argv);
   const exit = await Effect.runPromiseExit(
-    setupSpec.run({ installDir }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
+    setupSpec
+      .run({ installDir, flags: provider === undefined ? {} : { provider } })
+      .pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
   );
   if (Exit.isSuccess(exit)) {
     const rendered = setupSpec.render?.(exit.value);
@@ -1021,7 +1034,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "setup" || argv[0] === "meta:setup") {
-    await runSetup();
+    await runSetup(argv.slice(1));
     return;
   }
 

@@ -17,10 +17,11 @@ import type { Layer } from "effect";
 import type { PluginManifest } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
-import * as plugin3 from "@lando/logger-pretty";
+import * as plugin4 from "@lando/logger-pretty";
 import * as plugin1 from "@lando/provider-docker";
 import * as plugin0 from "@lando/provider-lando";
-import * as plugin2 from "@lando/service-lando";
+import * as plugin2 from "@lando/provider-podman";
+import * as plugin3 from "@lando/service-lando";
 interface BundledPluginModule {
   readonly [key: string]: unknown;
 }
@@ -62,15 +63,21 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceTypesFrom({ ...plugin1 }),
   },
   {
-    name: "@lando/service-lando",
-    layer: plugin2.services,
+    name: "@lando/provider-podman",
+    layer: plugin2.provider,
     manifest: plugin2.manifest,
     ...serviceTypesFrom({ ...plugin2 }),
   },
   {
-    name: "@lando/logger-pretty",
-    layer: plugin3.logger,
+    name: "@lando/service-lando",
+    layer: plugin3.services,
     manifest: plugin3.manifest,
     ...serviceTypesFrom({ ...plugin3 }),
+  },
+  {
+    name: "@lando/logger-pretty",
+    layer: plugin4.logger,
+    manifest: plugin4.manifest,
+    ...serviceTypesFrom({ ...plugin4 }),
   },
 ];

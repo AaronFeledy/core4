@@ -1,0 +1,16 @@
+# @lando/provider-podman — opt-in user-installed Podman RuntimeProvider.
+
+name: "@lando/provider-podman"
+version: "0.0.0"
+api: 4
+description: "Opt-in user-installed Podman RuntimeProvider implementation."
+enabled: true
+updateable: true
+
+provides:
+  providers:
+    - id: podman
+      module: ./src/provider.ts
+
+requires:
+  "@lando/core": "^4.0.0"

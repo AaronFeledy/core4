@@ -1,0 +1,33 @@
+---
+id: provider-podman-linux
+provider: test
+platforms: [linux]
+timeout: 120000
+tags: [beta, docs, provider-podman, setup, linux]
+---
+
+<Guide>
+  <Scenario id="linux-socket-discovery" render={false} reason="Unit tests exercise the user-installed Podman socket discovery precedence; the rendered live socket path requires a real rootless Podman install">
+    <Step name="podman-socket-discovery">
+      <Variable name="defaultSocket" value="$XDG_RUNTIME_DIR/podman/podman.sock" display="Rootless Linux default when XDG_RUNTIME_DIR is set" />
+      <Variable name="precedence" value="explicit > LANDO_TEST_PODMAN_SOCKET > unix:// DOCKER_HOST > $XDG_RUNTIME_DIR/podman/podman.sock > /run/user/$UID/podman/podman.sock" display="Discovery precedence" />
+      <Variable name="bindMountPerformance" value="native" display="User-installed rootless Podman talks straight to the host; bind mounts are native on Linux" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="linux-opt-in" render={false} reason="provider-podman is opt-in only; the rendered flow requires a Landofile checkout and a real Podman socket">
+    <Step name="opt-in-selection">
+      <Variable name="landofileField" value="provider: podman" display="Opt in by setting provider in your .lando.yml" />
+      <Variable name="cliFlag" value="lando setup --provider=podman" display="Or pass --provider=podman to lando setup" />
+      <Variable name="defaultProvider" value="lando" display="Default stays @lando/provider-lando; provider-podman never auto-loads" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="linux-provider-lando-conflict" render={false} reason="Conflict diagnostics fire only when provider-lando has recorded the same Podman socket; covered by plugins/provider-podman/test/conflict.test.ts">
+    <Step name="conflict-detection">
+      <Variable name="recordedStatePath" value="$LANDO_DATA_DIR/providers/provider-lando/setup-state.json" display="provider-lando records its managed socket in this JSON file when lando setup runs" />
+      <Variable name="conflictError" value="ProviderLandoConflictError" display="Tagged subclass of ProviderUnavailableError surfaced when both providers target the same socket" />
+      <Variable name="remediation" value="Run `lando setup --provider=podman` or `lando setup --provider=lando` to pick one explicitly" display="Conflict remediation guidance" />
+    </Step>
+  </Scenario>
+</Guide>

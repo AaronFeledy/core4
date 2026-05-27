@@ -72,6 +72,15 @@
         "@lando/sdk": "workspace:*",
       },
     },
+    "plugins/provider-podman": {
+      "name": "@lando/provider-podman",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/provider-lando": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "plugins/proxy-traefik": {
       "name": "@lando/proxy-traefik",
       "version": "0.0.0",
@@ -249,6 +258,8 @@
     "@lando/provider-docker": ["@lando/provider-docker@workspace:plugins/provider-docker"],
 
     "@lando/provider-lando": ["@lando/provider-lando@workspace:plugins/provider-lando"],
+
+    "@lando/provider-podman": ["@lando/provider-podman@workspace:plugins/provider-podman"],
 
     "@lando/proxy-traefik": ["@lando/proxy-traefik@workspace:plugins/proxy-traefik"],
 

@@ -112,6 +112,7 @@ describe("provider-lando setup", () => {
                 sha256: sha256(bundleBytes),
               }),
             },
+            socketPath: "/tmp/lando-test.sock",
             stateDir,
           }),
         ),
@@ -129,6 +130,7 @@ describe("provider-lando setup", () => {
         podmanVersion: "5.2.0",
         runtimeBundleVersion: "0.0.0-test",
         runtimeBundleSha256: sha256(bundleBytes),
+        socketPath: "/tmp/lando-test.sock",
       });
     } finally {
       await rm(stateDir, { recursive: true, force: true });

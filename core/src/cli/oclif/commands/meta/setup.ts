@@ -9,8 +9,9 @@
 import { fileURLToPath } from "node:url";
 
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
+import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
@@ -29,6 +30,32 @@ const inputInstallDir = (input: unknown): string | undefined => {
   return typeof installDir === "string" ? installDir : undefined;
 };
 
+const inputProviderId = (input: unknown): ProviderId | undefined => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return undefined;
+  const flags = input.flags;
+  if (typeof flags !== "object" || flags === null || !("provider" in flags)) return undefined;
+  const provider = flags.provider;
+  return typeof provider === "string" && provider.length > 0 ? ProviderId.make(provider) : undefined;
+};
+
+const setupProviderPlan = (provider: ProviderId): AppPlan => ({
+  id: AppId.make("setup"),
+  name: "setup",
+  slug: "setup",
+  root: AbsolutePath.make("/"),
+  provider,
+  services: {},
+  routes: [],
+  networks: [],
+  stores: [],
+  metadata: {
+    resolvedAt: DateTime.unsafeMake("1970-01-01T00:00:00.000Z"),
+    source: "meta:setup",
+    runtime: 4,
+  },
+  extensions: {},
+});
+
 export const setupSpec: LandoCommandSpec<SetupResult, unknown, RuntimeProviderRegistry> = {
   id: "meta:setup",
   summary: "Run host setup (provider, CA, proxy, shell integration).",
@@ -38,7 +65,10 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, RuntimeProviderRe
   run: (input) =>
     Effect.gen(function* () {
       const registry = yield* RuntimeProviderRegistry;
-      const provider = yield* registry.select();
+      const providerId = inputProviderId(input);
+      const provider = yield* registry.select(
+        providerId === undefined ? undefined : setupProviderPlan(providerId),
+      );
 
       yield* Effect.scoped(provider.setup({ force: false }));
 
