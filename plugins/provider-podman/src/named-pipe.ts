@@ -72,11 +72,28 @@ const podmanApiFailure = (
 ): ProviderUnavailableError | ProviderInternalError =>
   cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
     ? cause
-    : unavailable("podman-api", "Failed to call the Podman API.", {
-        method: request.method,
-        path: request.path,
+    : unavailable(
+        "podman-api",
+        "Failed to call the Podman API.",
+        { method: request.method, path: request.path },
         cause,
+      );
+
+export const namedPipeInfoFailure = (cause: unknown): ProviderCapabilityError | ProviderUnavailableError => {
+  const infoRequest: PodmanHttpRequest = { method: "GET", path: "/libpod/info" };
+  const failure = podmanApiFailure(infoRequest, cause);
+  return failure instanceof ProviderUnavailableError
+    ? failure
+    : new ProviderCapabilityError({
+        providerId: PROVIDER_ID,
+        operation: "capabilities",
+        message: "Failed to inspect provider-podman capabilities through the Podman API.",
+        capability: "podman-info",
+        requiredValue: "Podman HTTP API info response",
+        actualValue: undefined,
+        cause: failure,
       });
+};
 
 const indexOfBytes = (haystack: Bytes, needle: Bytes): number => {
   for (let index = 0; index <= haystack.length - needle.length; index += 1) {
@@ -323,18 +340,7 @@ export const makeNamedPipePodmanApiClient = (socketPath: string): PodmanApiClien
     info: Effect.gen(function* () {
       const response = yield* Effect.tryPromise({
         try: () => requestNamedPipePodman(pipePath, { method: "GET", path: "/libpod/info" }),
-        catch: (cause) =>
-          cause instanceof ProviderUnavailableError
-            ? cause
-            : new ProviderCapabilityError({
-                providerId: PROVIDER_ID,
-                operation: "capabilities",
-                message: "Failed to inspect provider-podman capabilities through the Podman API.",
-                capability: "podman-info",
-                requiredValue: "Podman HTTP API info response",
-                actualValue: undefined,
-                cause,
-              }),
+        catch: namedPipeInfoFailure,
       });
       if (response.status < 200 || response.status >= 300) {
         yield* Effect.fail(
