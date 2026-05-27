@@ -284,3 +284,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Do not reuse curl's Unix-socket transport for Docker Desktop `npipe://` endpoints; normalize Docker's URI form to a Windows named-pipe path and send HTTP over IPC directly.
   - A construction-only API-client test is not enough for transport branches. Add a local IPC-socket request/stream test so fake-client coverage proves the selected transport can actually speak HTTP.
 ---
+
+## [2026-05-27 04:10 UTC] - US-077 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only cleanup; no Docker host resolution, named-pipe transport behavior, public exports, live-test gates, assertions, or provider contract semantics changed.
+- Files changed:
+  - `docs/guides/setup/provider-docker-windows.mdx`: shortened guide scenario reasons and variable display text while preserving scenario IDs, values, render flags, and coverage intent.
+  - `plugins/provider-docker/src/index.ts`: removed a redundant module header comment.
+  - `plugins/provider-docker/test/contract.integration.test.ts`: collapsed a trivial fixture helper and shortened verbose test names without changing assertions or gates.
+- Slop-remover output: `plugins/provider-docker/test/capabilities.test.ts` and the extra review passes reported no safe edits; accepted only the cosmetic edits above.
+- Planning-doc leakage scan: changed TypeScript code/test comments are clean; the guide frontmatter `beta` tag remains intentional metadata, not code-comment traceability.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides docs/guides/setup/provider-docker-windows.mdx` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/test/capabilities.test.ts plugins/provider-docker/test/contract.integration.test.ts` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us077-cleanup-full.xml` → 2515 tests, 0 failures, 0 errors, 28 skips; `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2.
+---
