@@ -748,3 +748,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references; remaining `Phase`/`§` hits are test-title strings, not comments.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-cleanup-full.xml` → 1341 tests, 6492 assertions, 1 failure, 16 skips; the failing suite was the known order-sensitive compiled `core/test/cli/setup.test.ts` install-dir parity case, and `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/setup.test.ts` rerun in isolation → exit 0. LSP diagnostics were attempted for `sdk/src/test/index.ts` but the TypeScript LSP server exited with code -2, so `tsc -b` is the type gate.
 ---
+
+## [2026-05-27 20:11 UTC] - Push
+- Branch: us-080-shared-contract-suite
+- Push: pushed
+- Commit(s): 1f2a0fd feat: shared provider contract suite covers all four providers; 7028ca4 chore: mark US-080 complete and update progress log; 9cfe0a7 fix: strengthen US-080 provider contract review; 29c8cf0 chore: record US-080 cleanup
+- PR: #179 https://github.com/AaronFeledy/core4/pull/179 (created)
+---
