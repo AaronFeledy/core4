@@ -460,10 +460,10 @@ export const makeRuntimeProvider = (
     );
   };
 
-  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    plans.set(plan.id, plan);
-    return options.stateDir === undefined ? Effect.void : persistAppliedPlan(options.stateDir, plan);
-  };
+  const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> =>
+    (options.stateDir === undefined ? Effect.void : persistAppliedPlan(options.stateDir, plan)).pipe(
+      Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))),
+    );
 
   const forgetPlan = (appId: AppId): Effect.Effect<void> => {
     plans.delete(appId);
