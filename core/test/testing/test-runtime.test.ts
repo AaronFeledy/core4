@@ -79,9 +79,22 @@ describe("@lando/core/testing", () => {
       runProviderContractMatrix({
         providerName: "TestRuntimeProvider",
         cells: [
-          { platform: "linux", supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
-          { platform: "darwin", supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
-          { platform: "win32", supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
+          {
+            platform: "linux",
+            supported: true,
+            factory: () => Effect.succeed({ ...TestRuntimeProvider, platform: "linux" }),
+          },
+          {
+            platform: "darwin",
+            supported: true,
+            factory: () => Effect.succeed({ ...TestRuntimeProvider, platform: "darwin" }),
+          },
+          {
+            platform: "win32",
+            supported: true,
+            factory: () => Effect.succeed({ ...TestRuntimeProvider, platform: "win32" }),
+          },
+          { platform: "wsl", supported: false, skipReason: "TestRuntimeProvider tracks host OS cells only" },
         ],
       }),
     );
@@ -91,6 +104,7 @@ describe("@lando/core/testing", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
+      "wsl:skipped",
     ]);
   });
 });

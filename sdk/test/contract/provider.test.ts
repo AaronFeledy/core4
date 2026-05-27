@@ -300,12 +300,22 @@ describe("runProviderContractMatrix", () => {
         supported: false,
         skipReason: "not yet supported",
       },
+      {
+        platform: "win32" as const,
+        supported: false,
+        skipReason: "not yet supported",
+      },
+      {
+        platform: "wsl" as const,
+        supported: false,
+        skipReason: "not yet supported",
+      },
     ];
 
     const report = await Effect.runPromise(runProviderContractMatrix({ providerName: "test", cells }));
 
     expect(report.providerName).toBe("test");
-    expect(report.results).toHaveLength(2);
+    expect(report.results).toHaveLength(4);
     expect(report.results[0]).toMatchObject({ platform: "linux", outcome: "passed" });
     expect(report.results[1]).toMatchObject({
       platform: "darwin",
@@ -329,6 +339,9 @@ describe("runProviderContractMatrix", () => {
             supported: true,
             factory: () => Effect.succeed(broken),
           },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
         ],
       }),
     );
@@ -341,6 +354,51 @@ describe("runProviderContractMatrix", () => {
     expect(exit.cause.error.assertion).toBe("provider exposes a non-empty displayName");
   });
 
+  test("fails with ContractFailure when a supported cell returns the wrong provider platform", async () => {
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "wrong-platform",
+        cells: [
+          {
+            platform: "linux" as const,
+            supported: true,
+            factory: () => Effect.succeed({ ...TestRuntimeProvider, platform: "darwin" }),
+          },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("matrix cell provider platform matches cell platform");
+  });
+
+  test("requires every canonical host platform to be declared", async () => {
+    const exit = await Effect.runPromiseExit(
+      runProviderContractMatrix({
+        providerName: "missing-platform",
+        cells: [
+          { platform: "linux" as const, supported: true, factory: () => Effect.succeed(TestRuntimeProvider) },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(ContractFailure);
+    expect(exit.cause.error.assertion).toBe("matrix declares every canonical host platform");
+  });
+
   test("requires a skipReason for unsupported cells", async () => {
     const exit = await Effect.runPromiseExit(
       runProviderContractMatrix({
@@ -348,12 +406,19 @@ describe("runProviderContractMatrix", () => {
         cells: [
           {
             platform: "linux" as const,
+            supported: true,
+            factory: () => Effect.succeed(TestRuntimeProvider),
+          },
+          {
+            platform: "darwin" as const,
             supported: false,
           } as unknown as {
-            platform: "linux";
+            platform: "darwin";
             supported: false;
             skipReason: string;
           },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
         ],
       }),
     );
@@ -379,6 +444,9 @@ describe("runProviderContractMatrix", () => {
             supported: true;
             factory: () => Effect.Effect<typeof TestRuntimeProvider>;
           },
+          { platform: "darwin" as const, supported: false, skipReason: "not supported" },
+          { platform: "win32" as const, supported: false, skipReason: "not supported" },
+          { platform: "wsl" as const, supported: false, skipReason: "not supported" },
         ],
       }),
     );

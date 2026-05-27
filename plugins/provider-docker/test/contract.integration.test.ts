@@ -433,6 +433,11 @@ describe("provider-docker RuntimeProvider contract", () => {
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
           { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
+          {
+            platform: "wsl",
+            supported: false,
+            skipReason: "provider-docker targets native Windows, not WSL",
+          },
         ],
       }),
     );
@@ -442,6 +447,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
+      "wsl:skipped",
     ]);
   });
 });

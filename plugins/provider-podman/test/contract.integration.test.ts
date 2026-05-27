@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
-import { DateTime } from "effect";
+import { DateTime, Effect, Stream } from "effect";
 
 import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
 import { type PodmanApiClient, makePodmanApiClient, makeProviderLayer } from "@lando/provider-podman";
@@ -22,6 +21,19 @@ import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test"
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");
 const serviceName = ServiceName.make("web");
+const textEncoder = new TextEncoder();
+
+const attachFrame = (stream: 1 | 2, text: string) => {
+  const payload = textEncoder.encode(text);
+  const frame = new Uint8Array(8 + payload.length);
+  frame[0] = stream;
+  frame[4] = (payload.length >>> 24) & 0xff;
+  frame[5] = (payload.length >>> 16) & 0xff;
+  frame[6] = (payload.length >>> 8) & 0xff;
+  frame[7] = payload.length & 0xff;
+  frame.set(payload, 8);
+  return frame;
+};
 
 const metadata: PlanMetadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-27T00:00:00Z"),
@@ -64,6 +76,7 @@ const plan: AppPlan = {
 const makeFakeApi = () => {
   const running = new Set<string>();
   const existing = new Set<string>();
+  const execs = new Map<string, number>();
   const calls: PodmanHttpRequest[] = [];
 
   const api: PodmanApiClient = {
@@ -78,10 +91,26 @@ const makeFakeApi = () => {
         if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
+        if (request.path.startsWith("/exec/") && request.path.endsWith("/json") && request.method === "GET") {
+          const execId = decodeURIComponent(request.path.slice("/exec/".length, -"/json".length));
+          if (!execs.has(execId)) {
+            return { status: 404, body: "" };
+          }
+          return { status: 200, body: JSON.stringify({ ExitCode: execs.get(execId) }) };
+        }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
           existing.add(name);
           return { status: 201, body: JSON.stringify({ Id: `${name}-id` }) };
+        }
+        if (request.path.endsWith("/exec") && request.method === "POST") {
+          const name = decodeURIComponent(request.path.slice("/containers/".length, -"/exec".length));
+          if (!existing.has(name)) {
+            return { status: 404, body: "" };
+          }
+          const execId = `${name}-exec`;
+          execs.set(execId, 0);
+          return { status: 201, body: JSON.stringify({ Id: execId }) };
         }
         if (request.path.endsWith("/start")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
@@ -116,6 +145,16 @@ const makeFakeApi = () => {
           body: JSON.stringify({ error: `unhandled ${request.method} ${request.path}` }),
         };
       }),
+    stream: (request) => {
+      calls.push(request);
+      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
+        return Stream.fromIterable([attachFrame(1, "exec-ok\n")]);
+      }
+      if (request.path.includes("/logs?")) {
+        return Stream.fromIterable([attachFrame(1, "2026-05-17T12:00:00.000Z ready\n")]);
+      }
+      return Stream.empty;
+    },
   };
 
   return { api, calls };
@@ -209,6 +248,11 @@ describe("provider-podman RuntimeProvider contract", () => {
           { platform: "linux", supported: true, factory: () => buildProvider("linux") },
           { platform: "darwin", supported: true, factory: () => buildProvider("darwin") },
           { platform: "win32", supported: true, factory: () => buildProvider("win32") },
+          {
+            platform: "wsl",
+            supported: false,
+            skipReason: "provider-podman targets native Windows, not WSL",
+          },
         ],
       }),
     );
@@ -218,6 +262,7 @@ describe("provider-podman RuntimeProvider contract", () => {
       "linux:passed",
       "darwin:passed",
       "win32:passed",
+      "wsl:skipped",
     ]);
   });
 });

@@ -10,6 +10,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type HostPlatform,
   type PlanMetadata,
   ProviderCapabilities,
   ProviderId,
@@ -116,6 +117,8 @@ const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArra
 >;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
+
+const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
 
 /**
  * Run the `RuntimeProvider` contract assertions. Covers the Phase 1 shape
@@ -266,6 +269,35 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
     yield* requireContract(typeof snapshot.status === "string", "inspect snapshot includes status", snapshot);
 
+    const execResult = yield* provider
+      .exec({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { command: ["echo", "ok"] })
+      .pipe(Effect.mapError(mapProviderFailure("exec returns a structured result")));
+    yield* requireContract(
+      typeof execResult.exitCode === "number",
+      "exec result includes a numeric exitCode",
+      execResult,
+    );
+    yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
+    yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
+
+    const logChunks = yield* provider
+      .logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false })
+      .pipe(
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+        Effect.mapError(mapProviderFailure("logs emits structured chunks")),
+      );
+    yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);
+    for (const chunk of logChunks) {
+      yield* requireContract(chunk.service === TEST_SERVICE_NAME, "log chunk includes service name", chunk);
+      yield* requireContract(
+        chunk.stream === "stdout" || chunk.stream === "stderr",
+        "log chunk includes stream name",
+        chunk,
+      );
+      yield* requireContract(typeof chunk.line === "string", "log chunk includes a line", chunk);
+    }
+
     const listed = yield* provider
       .list({ app: TEST_APP_ID })
       .pipe(Effect.mapError(mapProviderFailure("list resolves for the contract fixture")));
@@ -295,7 +327,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
   });
 
 /** Matrix-driven contract runner — runs `runProviderContract` per supported cell, surfaces skip reasons. */
-export type HostPlatformId = "linux" | "darwin" | "win32";
+export type HostPlatformId = HostPlatform;
 
 export interface SupportedContractCell {
   readonly platform: HostPlatformId;
@@ -334,6 +366,19 @@ export const runProviderContractMatrix = (
 ): Effect.Effect<ContractMatrixReport, ContractFailure> =>
   Effect.gen(function* () {
     const results: ContractMatrixCellResult[] = [];
+    const seenPlatforms = new Set<HostPlatform>();
+
+    for (const cell of options.cells) {
+      yield* requireContract(!seenPlatforms.has(cell.platform), "matrix cell platform is unique", cell);
+      seenPlatforms.add(cell.platform);
+    }
+
+    for (const platform of CONTRACT_MATRIX_PLATFORMS) {
+      yield* requireContract(seenPlatforms.has(platform), "matrix declares every canonical host platform", {
+        providerName: options.providerName,
+        platform,
+      });
+    }
 
     for (const cell of options.cells) {
       if (isSupported(cell)) {
@@ -347,6 +392,11 @@ export const runProviderContractMatrix = (
           .factory()
           .pipe(Effect.mapError(mapProviderFailure(`matrix cell ${cell.platform} factory resolves`)));
 
+        yield* requireContract(
+          provider.platform === cell.platform,
+          "matrix cell provider platform matches cell platform",
+          { platform: cell.platform, providerPlatform: provider.platform },
+        );
         yield* runProviderContract(provider);
         results.push({ platform: cell.platform, outcome: "passed" });
       } else {
