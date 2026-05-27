@@ -159,6 +159,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
   const stateDir = options.stateDir;
   let runtimeVersion: string | undefined;
+  let bundleVersion: string | undefined;
   const platform = options.platform ?? currentHostPlatform();
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
@@ -226,6 +227,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             Effect.tap((result) =>
               Effect.sync(() => {
                 runtimeVersion = result.podmanVersion;
+                bundleVersion = result.runtimeBundleVersion;
               }),
             ),
             Effect.asVoid,
@@ -234,6 +236,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         getVersions: Effect.sync(() => ({
           provider: "0.0.0",
           ...(runtimeVersion === undefined ? {} : { runtime: runtimeVersion }),
+          ...(bundleVersion === undefined ? {} : { bundle: bundleVersion }),
         })),
         buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),

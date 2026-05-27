@@ -6,10 +6,16 @@ import { Effect, Layer } from "effect";
 import { RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
-import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import {
+  type DoctorCheck,
+  doctor,
+  renderDoctorResult,
+  renderDoctorResultAsNdjson,
+} from "../../src/cli/commands/doctor.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
+const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   list: Effect.succeed([ProviderId.make(provider.id)]),
@@ -184,4 +190,85 @@ describe("meta:doctor command", () => {
     const context = check.context as Record<string, string>;
     expect(context).not.toHaveProperty("runtimeVersion");
   });
+
+  test("ndjson output matches the meta-doctor.provider-status.windows.ndjson fixture (Windows path)", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      platform: "win32" as const,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        sharedCrossAppNetwork: false,
+        bindMountPerformance: "slow" as const,
+        copyMounts: false,
+      },
+      getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
+    };
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)))),
+    );
+    const actual = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
+    const expected = readFileSync(WINDOWS_FIXTURE_PATH, "utf-8");
+
+    expect(actual).toBe(expected);
+  });
+
+  test("Windows path surfaces bindMountPerformance slow, sharedCrossAppNetwork false, and bundle version", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      platform: "win32" as const,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        sharedCrossAppNetwork: false,
+        bindMountPerformance: "slow" as const,
+        copyMounts: false,
+      },
+      getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
+    };
+    const result = await Effect.runPromise(
+      doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)))),
+    );
+    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
+    const lines = ndjson
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    const check = lines[1] as Record<string, unknown>;
+
+    const capabilities = check.capabilities as Record<string, unknown>;
+    expect(capabilities.bindMountPerformance).toBe("slow");
+    expect(capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(capabilities.bindMounts).toBe(true);
+
+    const context = check.context as Record<string, string>;
+    expect(context.bundleVersion).toBe("0.1.0-test");
+    expect(context.platform).toBe("win32");
+  });
+
+  const liveWindowsEnabled =
+    process.platform === "win32" && process.env.LANDO_TEST_WINDOWS_PROVIDER_LANDO === "1";
+  const liveTest = liveWindowsEnabled ? test : test.skip;
+
+  liveTest(
+    "live: Windows provider-lando doctor surfaces win32 capabilities and socket/machine status",
+    async () => {
+      const { makeProviderLayer } = await import("@lando/provider-lando");
+      const { RuntimeProvider } = await import("@lando/sdk/services");
+
+      const layer = makeProviderLayer({ platform: "win32" });
+      const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+      const registry = buildRegistry(runtimeProvider as typeof TestRuntimeProvider);
+      const result = await Effect.runPromise(
+        doctor().pipe(Effect.provide(Layer.succeed(RuntimeProviderRegistry, registry))),
+      );
+
+      expect(result.checks.length).toBeGreaterThanOrEqual(1);
+      const check = result.checks[0] as DoctorCheck;
+      expect(check.capabilities.bindMountPerformance).toBe("slow");
+      expect(check.capabilities.sharedCrossAppNetwork).toBe(false);
+      expect(check.capabilities.bindMounts).toBe(true);
+      expect(check.context.platform).toBe("win32");
+    },
+  );
 });

@@ -93,6 +93,7 @@ export const doctor = (): Effect.Effect<DoctorResult, DoctorError, RuntimeProvid
       platform: provider.platform,
     };
     if (versions?.runtime !== undefined) context.runtimeVersion = versions.runtime;
+    if (versions?.bundle !== undefined) context.bundleVersion = versions.bundle;
 
     const checkStatus: DoctorStatus = status.running ? "pass" : "warn";
     const severity: DoctorSeverity = status.running ? "info" : "warn";
@@ -159,7 +160,14 @@ const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): R
 };
 
 const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> => {
-  const knownOrder = ["providerId", "providerVersion", "runtimeStatus", "runtimeVersion", "platform"];
+  const knownOrder = [
+    "providerId",
+    "providerVersion",
+    "runtimeStatus",
+    "runtimeVersion",
+    "bundleVersion",
+    "platform",
+  ];
   const ordered: Record<string, string> = {};
   for (const key of knownOrder) {
     if (Object.hasOwn(context, key)) ordered[key] = context[key] as string;
