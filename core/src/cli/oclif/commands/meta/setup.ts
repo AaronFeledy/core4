@@ -1,11 +1,6 @@
 /**
  * `lando meta:setup` — provider, CA, proxy, and shell-integration setup.
  *
- * Bootstrap: `provider`.
- * **Interactive only** — not exported as a function from `@lando/core/cli`;
- * embedding hosts construct equivalent flows from `@lando/core/services`
- * and `PrivilegeService`.
- *
  * Provider selection follows the standard precedence
  * `flag > Landofile > env > config > capability-default`. `meta:setup` does
  * not load a Landofile, so the effective inputs reduce to
@@ -90,8 +85,6 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
       });
 
-      // Carry the resolved provider through the existing synthetic-plan seam
-      // so the registry routes us to the right provider construction path.
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
 
       yield* Effect.scoped(provider.setup({ force: false }));

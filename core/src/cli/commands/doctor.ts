@@ -1,18 +1,3 @@
-/**
- * `lando doctor` — host/provider diagnostics.
- *
- * Reports the selected runtime provider, the inputs that produced the
- * selection (`--provider` flag, Landofile `provider:`, `LANDO_PROVIDER`,
- * `~/.lando/config.yml`, or the capability default), its version, its
- * socket/machine status, the capability summary, and solution records
- * carrying `automatic` or `manual` remediation hints when a check is not
- * passing. The command also surfaces provider conflicts (the
- * `provider-lando` ↔ `provider-podman` shared-socket case) eagerly so the
- * user can resolve them before lifecycle commands fail.
- *
- * The command never requires app bootstrap unless app-specific diagnostics
- * are requested.
- */
 import { Effect } from "effect";
 
 import type { ProviderLandoStateError } from "@lando/provider-podman";
@@ -104,14 +89,11 @@ export interface DoctorResult {
 
 export interface DoctorOptions {
   /**
-   * Explicit `--provider` value provided on the CLI. When set it slots into
-   * the resolver's `flag` precedence position. `undefined` means no flag was
-   * provided.
+   * Explicit `--provider` value provided on the CLI.
    */
   readonly flagProviderId?: string | undefined;
   /**
-   * Landofile-declared `provider:` field. `undefined` when the doctor is run
-   * outside an app context (typical for `meta:doctor`).
+   * Landofile-declared `provider:` field.
    */
   readonly landofileProviderId?: string | undefined;
   /**
@@ -263,7 +245,7 @@ export const doctor = (
       };
     }
     const provider = yield* registry.select({
-      // synthetic plan carrying the resolved id; only `.provider` is read
+      // The registry only needs `.provider` from this command path.
       provider: resolution.providerId,
     } as never);
     const status = yield* provider.getStatus;
@@ -450,20 +432,6 @@ export interface DoctorNdjsonOptions {
   readonly now?: Date;
 }
 
-/**
- * Render the doctor result as a deterministic NDJSON event stream.
- *
- * Emits, in order:
- *   1. `doctor.start` with the run timestamp
- *   2. one `doctor.check` per check, carrying severity, context, capabilities,
- *      runtime status, solution records, and (on `selected-provider`) the
- *      selection record naming the source and inputs of the resolved provider
- *   3. `doctor.complete` with summary counts and the same timestamp
- *
- * Designed for `--renderer=json` consumers and the named snapshot fixture
- * `meta-doctor.provider-status.ndjson`. Timestamps are injectable via
- * `options.now` so snapshots can be deterministic.
- */
 export const renderDoctorResultAsNdjson = (
   result: DoctorResult,
   options: DoctorNdjsonOptions = {},

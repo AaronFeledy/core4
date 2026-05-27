@@ -911,3 +911,18 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Conflict diagnostics that depend on provider construction must run before constructing a provider that can throw the same conflict, or doctor will emit the raw provider error instead of structured checks.
   - Keep provider-level doctor bootstrapping separate from app-context Landofile discovery unless the CLI design explicitly changes to support optional app bootstrap.
 ---
+
+## [2026-05-27 18:40 CDT] - US-082 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only comment/prose cleanup; no runtime behavior, provider selection precedence, doctor output shape, provider conflict detection, public API, error handling, or test assertions changed.
+- Files changed:
+  - `core/src/cli/commands/doctor.ts`: removed verbose command/rendering comments while preserving doctor option docs and the registry-selection note.
+  - `core/src/cli/oclif/commands/meta/setup.ts`: removed bootstrap/seam comments that restated command structure.
+  - `core/src/providers/conflict.ts`: shortened provider-conflict comments without changing typed conflict reporting.
+  - `core/src/providers/precedence.ts`: removed redundant resolver comments; precedence behavior remains covered by tests.
+  - `core/src/providers/registry.ts`: removed a module banner that restated registry behavior.
+  - `core/src/services/planner.ts`: removed redundant explanatory comments around existing guards/fallbacks.
+  - `docs/guides/setup/provider-selection.mdx`: reworded hidden scenario reasons to avoid internal test-path traceability.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references; remaining spec/section hits are runtime error metadata or test assertions, not comments.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings; `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us082-cleanup-full.xml` → 1395 tests, 6653 assertions, 1 TimeoutError in `core/test/scripts/codegen-ci.test.ts` (`uses .bun-version file as the Bun version source...`); focused rerun `PATH="$HOME/.bun/bin:$PATH" bun test core/test/scripts/codegen-ci.test.ts` → 10 pass, 0 fail, 123 assertions. `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files but the TypeScript LSP server exited with code -2; no MDX LSP is configured.
+---

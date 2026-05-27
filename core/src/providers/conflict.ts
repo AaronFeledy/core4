@@ -1,20 +1,12 @@
 /**
- * Provider conflict detection for `meta:doctor`.
+ * Provider conflict detection.
  *
- * The single conflict the runtime currently knows how to diagnose is the
- * `@lando/provider-lando` ↔ `@lando/provider-podman` socket collision: when
- * `provider-lando` has been set up against a Podman socket that
- * `provider-podman` would also target, both providers race over the same
- * Podman API and the user must pick one explicitly.
+ * Detects when `@lando/provider-lando` and `@lando/provider-podman` target
+ * the same Podman socket, which would make both providers control the same
+ * Podman API.
  *
- * Detection re-uses `provider-podman`'s existing `detectProviderLandoConflict`
- * helper (which reads `<stateDir>/provider-lando/setup-state.json`) and
- * `resolvePodmanSocket` (which mirrors the user-installed Podman resolution
- * `provider-podman` would perform at construction time). The doctor command
- * runs the same detection eagerly so it can surface the typed
- * `ProviderLandoConflictError` (carrying its `lando setup --provider=…`
- * remediation) even when the user has not yet asked the runtime to construct
- * `provider-podman`.
+ * Detection reuses provider-podman's setup-state and socket resolution helpers
+ * so callers report the same typed conflict users would hit at runtime.
  */
 import { Effect } from "effect";
 
@@ -27,18 +19,8 @@ import {
 import type { HostPlatform } from "@lando/sdk/schema";
 
 export interface DetectProviderConflictsOptions {
-  /**
-   * Root state directory passed to providers, typically
-   * `<userDataRoot>/providers`. Conflict detection is skipped when this is
-   * `undefined`.
-   */
   readonly stateDir: string | undefined;
-  /** Host platform; defaults to the current `process.platform`. */
   readonly platform?: HostPlatform;
-  /**
-   * Environment lookup used to resolve the Podman socket (mirrors what
-   * `provider-podman` would do). Defaults to `process.env`.
-   */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -65,12 +47,7 @@ const toReport = (error: ProviderLandoConflictError): ProviderConflictReport => 
 /**
  * Detect provider-lando ↔ provider-podman socket conflicts.
  *
- * Returns an array of `ProviderConflictReport` objects. Empty array means
- * no conflict was detected (either provider-lando has not been set up, the
- * recorded socket does not match, or `stateDir` is unavailable).
- *
- * Underlying `ProviderLandoStateError` (malformed state file) is propagated
- * as a typed failure so callers can surface it explicitly.
+ * Malformed provider-lando state propagates as `ProviderLandoStateError`.
  */
 export const detectProviderConflicts = (
   options: DetectProviderConflictsOptions,

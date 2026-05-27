@@ -1,10 +1,3 @@
-/**
- * `RuntimeProviderRegistry` Live Layer.
- *
- * Provider selection defaults to `ConfigService.defaultProviderId`, but a
- * planned app keeps using its encoded `AppPlan.provider` so fresh lifecycle
- * commands do not drift when the global default provider changes.
- */
 import { type Context, Effect, Layer, Stream } from "effect";
 
 import { makeRuntimeProvider as makeLandoRuntimeProvider } from "@lando/provider-lando";

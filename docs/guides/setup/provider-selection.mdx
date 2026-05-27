@@ -7,7 +7,7 @@ tags: [beta, docs, providers, setup, selection]
 ---
 
 <Guide>
-  <Scenario id="precedence-flag-overrides-all" render={false} reason="Provider precedence is unit-tested in core/test/providers/precedence.test.ts; this scenario records the user-visible ordering">
+  <Scenario id="precedence-flag-overrides-all" render={false} reason="Keeps the user-visible provider precedence examples covered without rendering a separate walkthrough">
     <Step name="precedence-order">
       <Variable
         name="precedence"
@@ -27,7 +27,7 @@ tags: [beta, docs, providers, setup, selection]
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-reports-resolution" render={false} reason="`meta:doctor` rendering is asserted by core/test/cli/doctor.test.ts; the guide records what the operator sees">
+  <Scenario id="doctor-reports-resolution" render={false} reason="Keeps the selected-provider doctor output fields covered without rendering a separate walkthrough">
     <Step name="doctor-fields">
       <Variable
         name="textFields"
@@ -42,7 +42,7 @@ tags: [beta, docs, providers, setup, selection]
     </Step>
   </Scenario>
 
-  <Scenario id="lando-podman-socket-conflict" render={false} reason="The provider-lando ↔ provider-podman socket conflict is asserted by core/test/providers/conflict.test.ts and core/test/cli/doctor.test.ts; this scenario records the user-facing remediation">
+  <Scenario id="lando-podman-socket-conflict" render={false} reason="Keeps the lando and podman socket-conflict remediation covered without rendering a separate walkthrough">
     <Step name="conflict-detection">
       <Variable
         name="conflictKind"
