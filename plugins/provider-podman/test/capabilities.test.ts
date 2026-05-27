@@ -2,11 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect } from "effect";
 
 import {
+  InvalidPodmanMachineNameError,
   UnsupportedPodmanSocketError,
+  discoverPodmanDesktopSockets,
   linuxPodmanCapabilities,
   macosPodmanCapabilities,
   makeRuntimeProvider,
   podmanCapabilitiesForPlatform,
+  resolvePodmanDesktopMachine,
   resolvePodmanSocket,
   windowsPodmanCapabilities,
 } from "@lando/provider-podman";
@@ -91,7 +94,6 @@ describe("provider-podman socket discovery", () => {
   });
 
   test("honors discovery precedence: explicit > LANDO_TEST_PODMAN_SOCKET > DOCKER_HOST > default", () => {
-    // explicit beats everything
     expect(
       resolvePodmanSocket({
         socketPath: "/explicit/sock",
@@ -104,7 +106,6 @@ describe("provider-podman socket discovery", () => {
       }),
     ).toBe("/explicit/sock");
 
-    // LANDO_TEST beats DOCKER_HOST + default
     expect(
       resolvePodmanSocket({
         platform: "linux",
@@ -116,7 +117,6 @@ describe("provider-podman socket discovery", () => {
       }),
     ).toBe("/test/sock");
 
-    // DOCKER_HOST beats default
     expect(
       resolvePodmanSocket({
         platform: "linux",
@@ -133,6 +133,90 @@ describe("provider-podman socket discovery", () => {
 
   test("uses npipe path on Windows by default", () => {
     expect(resolvePodmanSocket({ platform: "win32", env: {} })).toBe("npipe://./pipe/podman-machine-default");
+  });
+
+  test("honors LANDO_PODMAN_MACHINE override on macOS Podman Desktop", () => {
+    expect(
+      resolvePodmanSocket({
+        platform: "darwin",
+        env: { HOME: "/Users/alice", LANDO_PODMAN_MACHINE: "podman-machine-custom" },
+      }),
+    ).toBe("/Users/alice/.local/share/containers/podman/machine/podman-machine-custom/podman.sock");
+  });
+
+  test("honors CONTAINERS_MACHINE_PROVIDER-style PODMAN_MACHINE_NAME override on Windows Podman Desktop", () => {
+    expect(
+      resolvePodmanSocket({
+        platform: "win32",
+        env: { PODMAN_MACHINE_NAME: "podman-machine-rootful" },
+      }),
+    ).toBe("npipe://./pipe/podman-machine-rootful");
+  });
+
+  test("LANDO_PODMAN_MACHINE takes precedence over PODMAN_MACHINE_NAME", () => {
+    expect(
+      resolvePodmanSocket({
+        platform: "darwin",
+        env: {
+          HOME: "/Users/alice",
+          LANDO_PODMAN_MACHINE: "lando-machine",
+          PODMAN_MACHINE_NAME: "podman-machine-other",
+        },
+      }),
+    ).toBe("/Users/alice/.local/share/containers/podman/machine/lando-machine/podman.sock");
+  });
+});
+
+describe("provider-podman Podman Desktop discovery", () => {
+  test("discoverPodmanDesktopSockets enumerates known macOS default machine candidates", () => {
+    const candidates = discoverPodmanDesktopSockets({
+      platform: "darwin",
+      env: { HOME: "/Users/alice" },
+    });
+
+    expect(candidates).toContain(
+      "/Users/alice/.local/share/containers/podman/machine/podman-machine-default/podman.sock",
+    );
+    expect(candidates.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("discoverPodmanDesktopSockets enumerates Windows npipe candidates", () => {
+    const candidates = discoverPodmanDesktopSockets({ platform: "win32", env: {} });
+    expect(candidates).toContain("npipe://./pipe/podman-machine-default");
+    expect(candidates.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("discoverPodmanDesktopSockets places the env-overridden machine name first when supplied", () => {
+    const candidates = discoverPodmanDesktopSockets({
+      platform: "darwin",
+      env: { HOME: "/Users/alice", LANDO_PODMAN_MACHINE: "my-machine" },
+    });
+    expect(candidates[0]).toBe("/Users/alice/.local/share/containers/podman/machine/my-machine/podman.sock");
+  });
+
+  test("discoverPodmanDesktopSockets returns an empty list on Linux (rootless socket lives elsewhere)", () => {
+    const candidates = discoverPodmanDesktopSockets({
+      platform: "linux",
+      env: { XDG_RUNTIME_DIR: "/run/user/1000" },
+    });
+    expect(candidates).toEqual([]);
+  });
+
+  test("resolvePodmanDesktopMachine defaults to podman-machine-default and honors overrides", () => {
+    expect(resolvePodmanDesktopMachine({})).toBe("podman-machine-default");
+    expect(resolvePodmanDesktopMachine({ PODMAN_MACHINE_NAME: "rootful" })).toBe("rootful");
+    expect(
+      resolvePodmanDesktopMachine({ LANDO_PODMAN_MACHINE: "lando", PODMAN_MACHINE_NAME: "ignored" }),
+    ).toBe("lando");
+  });
+
+  test("rejects malformed Podman Desktop machine names with a tagged provider error", () => {
+    expect(() => resolvePodmanDesktopMachine({ LANDO_PODMAN_MACHINE: "bad;name" })).toThrow(
+      InvalidPodmanMachineNameError,
+    );
+    expect(() => resolvePodmanDesktopMachine({ PODMAN_MACHINE_NAME: "../podman" })).toThrow(
+      InvalidPodmanMachineNameError,
+    );
   });
 });
 
@@ -179,6 +263,36 @@ describe("provider-podman RuntimeProvider layer", () => {
       }),
     );
     expect(createdHosts).toEqual(["/run/user/1000/podman/podman.sock"]);
+  });
+
+  test("constructs the default Windows Podman Desktop API client through the npipe socket", async () => {
+    const createdHosts: Array<string> = [];
+    await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "win32",
+        env: {},
+        podmanApiFactory: (socketPath) => {
+          createdHosts.push(socketPath);
+          return { info: Effect.succeed({}) };
+        },
+      }),
+    );
+    expect(createdHosts).toEqual(["npipe://./pipe/podman-machine-default"]);
+  });
+
+  test("does not validate Podman Desktop machine names on Linux", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {
+          XDG_RUNTIME_DIR: "/run/user/1000",
+          LANDO_PODMAN_MACHINE: "bad;name",
+        },
+        podmanApi: { info: Effect.succeed({}) },
+      }),
+    );
+
+    expect(provider.id).toBe("podman");
   });
 
   test("rejects non-Unix DOCKER_HOST transports before constructing the API client", async () => {

@@ -432,3 +432,204 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-27 11:50 CDT] - US-079
+- Implemented `@lando/provider-podman` Podman Desktop coverage for macOS + Windows.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: added `resolvePodmanDesktopMachine`/`resolvePodmanDesktopMachineName` (precedence: `LANDO_PODMAN_MACHINE` > `PODMAN_MACHINE_NAME` > `podman-machine-default`, with strict `[A-Za-z0-9][A-Za-z0-9._-]*` validation), `discoverPodmanDesktopSockets` (override-first probe order, `[]` on Linux), and `PodmanMachineNotRunningError` (tagged subclass of `ProviderUnavailableError`); wired the new error into the capability/info probe so connection-style failures on `darwin`/`win32` surface a Podman Desktop remediation that includes both `podman machine start <machine>` and the "open Podman Desktop" GUI hint.
+  - `plugins/provider-podman/test/capabilities.test.ts`: extended socket-discovery coverage with `LANDO_PODMAN_MACHINE`/`PODMAN_MACHINE_NAME` override cases for macOS and Windows, malformed-machine-name rejection, and dedicated `discoverPodmanDesktopSockets` + `resolvePodmanDesktopMachine` tests.
+  - `plugins/provider-podman/test/desktop.integration.test.ts` (new): fake-client integration tests covering `apply` / `inspect` / `exec` / `logs` / `destroy` for both `darwin` and `win32`, plus `PodmanMachineNotRunningError` mapping (with the Linux non-mapping case as a regression guard) and a `LANDO_TEST_PODMAN_DESKTOP_SOCKET`-gated live contract test that runs `runProviderContract` against a real Podman Desktop socket.
+  - `core/src/cli/commands/doctor.ts`: derived `providerKind` ("managed" for `provider-lando`, "user-installed" for every other id) and rendered it in both the text output and the NDJSON `doctor.check` payload + `context`; updated ordering helpers so the new field has a stable position.
+  - `core/test/cli/doctor.test.ts`, `core/test/cli/fixtures/meta-doctor.provider-status.ndjson`, `core/test/cli/fixtures/meta-doctor.provider-status.windows.ndjson`: added `providerKind` assertions per provider id and regenerated the golden NDJSON fixtures to include the new field.
+  - `docs/guides/setup/provider-podman-macos.mdx` (new), `docs/guides/setup/provider-podman-windows.mdx` (new): required guide coverage with non-rendered scenarios for Podman Desktop discovery (default + LANDO_PODMAN_MACHINE override), machine-not-running remediation, and the `LANDO_TEST_PODMAN_DESKTOP_SOCKET` live gate.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 51 pass, 2 skip, 0 fail (the 2 skips are the existing `LANDO_TEST_PODMAN_SOCKET` Linux live test and the new `LANDO_TEST_PODMAN_DESKTOP_SOCKET` gated live test).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/doctor.test.ts` → 14 pass, 1 skip (the existing Windows live provider-lando test).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1295 pass, 16 skip, 1 fail; the single failure was the order-sensitive `compiled $bunfs CLI` deferred-stub remediation parity test, which passes when its file (`core/test/cli/deferred-commands.test.ts`) is rerun in isolation (36 tests, 0 fail). Matches the compiled-binary flaky pattern documented in the US-074/US-075 progress notes.
+  - Manual CLI smoke (build step): direct invocation of `doctor()` + `renderDoctorResult()` / `renderDoctorResultAsNdjson()` against `TestRuntimeProvider` with overridden ids confirmed `providerKind: managed` for `id="lando"` and `providerKind: user-installed` for `id` in `{podman, docker, third-party}` in both text and NDJSON outputs.
+  - Manual API smoke: `resolvePodmanSocket` / `discoverPodmanDesktopSockets` returned the expected paths for default + `LANDO_PODMAN_MACHINE` override on `darwin` and `win32`, and `[]` on `linux`.
+- **Learnings for future iterations:**
+  - `RuntimeProviderShape` is on the SDK compat lock (`sdk/test/library/sdk-backward-compatibility.test.ts`); any new field — even optional — fails the frozen-signature equality check. Surface presentation-only distinctions like `providerKind` in the consuming `core/` CLI command (mapped by provider id) instead of widening the SDK service tag.
+  - Provider-lando's bringUp lifecycle inspect (`GET /containers/<name>/json`) decides whether to call `POST /containers/create?name=...`; a fake API that always returns `200` for `/json` makes `create` look like dead code in tests. Track the `existing` set in your fake and return `404` for unknown containers so apply tests actually exercise the create path.
+  - `/exec/<id>/json` ends with `/json` and will collide with the container-inspect handler if the latter only matches by `.endsWith("/json")`. Always gate the container-inspect branch with `.startsWith("/containers/")` (or order the exec handler first) when assembling Podman REST API fakes.
+  - When mapping low-level Podman API connection failures (`ENOENT`, `ECONNREFUSED`, "named pipe not found", "system cannot find the path") to a Podman Desktop "machine not running" error, walk the error chain (`message`, `stderr`, `code`, `cause`) — the typed `ProviderUnavailableError` from `provider-lando` carries the real cause one level deeper.
+
+---
+## [2026-05-27 11:31 CDT] - US-079 Review
+- Reviewed the US-079 `@lando/provider-podman` Podman Desktop implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commit (`HEAD`).
+- Fixed confirmed review blockers:
+  - Added a Windows named-pipe Podman API client path and routed exported/default `makePodmanApiClient()` through it for `npipe:` sockets, so the Windows Podman Desktop default is no longer fake-client-only.
+  - Allowed provider-podman's default Windows `npipe://./pipe/podman-machine-default` path while preserving fail-closed rejection for unsupported non-Unix/non-npipe transports.
+  - Converted malformed Podman Desktop machine names into a tagged `InvalidPodmanMachineNameError` and added rejection coverage.
+  - Used the effective process environment for Podman Desktop machine-not-running remediation, so env-selected machines do not report `podman-machine-default` incorrectly.
+  - Tightened the live Podman Desktop contract gate to require macOS/Windows in addition to `LANDO_TEST_PODMAN_DESKTOP_SOCKET`.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`
+  - `plugins/provider-podman/src/named-pipe.ts`
+  - `plugins/provider-podman/test/capabilities.test.ts`
+  - `plugins/provider-podman/test/desktop.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: Windows Podman Desktop resolved to `npipe://...` but the real provider rejected non-`unix://` sockets.
+  - Fixed: the real Podman API client was Unix-socket-only, so the documented Windows live `npipe://...` path could not run.
+  - Fixed: live Podman Desktop test was env-gated but not platform-gated.
+  - Fixed: machine-not-running remediation could use the default machine name even when `process.env` selected a custom machine.
+  - Fixed: malformed machine-name rejection was claimed in the progress log but lacked test coverage and threw a raw error.
+  - Rejected: guide-coverage table omission for US-079 is a PRD ownership/documentation drift concern, not a story blocker; this review kept the existing US-079 guide files and did not expand PRD governance scope.
+- Verification:
+  - LSP diagnostics attempted on changed TypeScript files; TypeScript LSP exited with code -2, matching prior local LSP behavior.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/ --reporter=junit --reporter-outfile=/tmp/us079-review-provider-podman-all.xml` → 56 tests, 112 assertions, 0 failures, 2 skips.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/doctor.test.ts --reporter=junit --reporter-outfile=/tmp/us079-review-doctor.xml` → 15 tests, 102 assertions, 0 failures, 1 skip.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-review-full.xml` → 1315 tests, 6410 assertions, 0 failures, 16 skips.
+- **Learnings for future iterations:**
+  - Discovery tests are insufficient when a provider has scheme-specific transports; add a factory-path regression that the default platform socket reaches the real client factory instead of stopping at validation.
+  - For platform-specific live tests, gate on both the exact opt-in environment variable and the expected host platform so accidental CI env leakage cannot exercise host runtimes on the wrong OS.
+  - When a remediation references a selected machine name, derive both socket resolution and error text from one effective environment object.
+---
+## [2026-05-27 16:54 UTC] - US-079 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only cleanup; no provider behavior, public API, socket discovery precedence, named-pipe transport, doctor output semantics, test assertions, fixtures, docs, or generated/planning files changed.
+- Files changed:
+  - `core/src/cli/commands/doctor.ts`: reworded the module header to remove planning-section citations while preserving the durable diagnostic summary.
+  - `plugins/provider-podman/src/index.ts`: removed one redundant setup comment and shortened the `LANDO_TEST_PODMAN_SOCKET` precedence note without changing socket resolution.
+  - `plugins/provider-podman/test/capabilities.test.ts`: removed redundant inline comments that restated the socket-precedence assertions.
+- Slop-remover output: source/test/doc cleanup agents reported no safe edits for `named-pipe.ts`, doctor tests, desktop integration tests, and Podman Desktop guide files; accepted only the cosmetic source/test comment edits above.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, section markers, development phases, PRDs, story IDs, or story prose.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/ core/test/cli/doctor.test.ts` → exit 0; first full `bun test --reporter=junit --reporter-outfile=/tmp/us079-cleanup-full.xml` run hit the known order-sensitive `core/test/cli/deferred-commands.test.ts` compiled `$bunfs` parity failure, which passed in isolation; rerun `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-cleanup-rerun.xml` → 1315 tests, 6410 assertions, 0 failures, 16 skips; `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP servers exited with code -2.
+---
+
+## [2026-05-27 17:03 UTC] - Push
+- Branch: us-079-provider-podman-desktop
+- Push: pushed
+- Commit(s): 3c1bd41 feat: @lando/provider-podman on macOS + Windows via Podman Desktop; 88ec019 fix(provider-podman): support Windows Podman Desktop npipe; 381bac2 docs: record US-079 review fixes; 903000b chore: remove AI slop
+- PR: #178 https://github.com/AaronFeledy/core4/pull/178 (created)
+---
+
+## [2026-05-27 17:20 UTC] - US-079 Bugbot triage
+- Fixed the two remaining low-severity Cursor Bugbot findings in `plugins/provider-podman/src/index.ts`:
+  - removed the unused `resolvePodmanDesktopMachineName` alias export and updated the remaining callsite to use `resolvePodmanDesktopMachine` directly
+  - tightened the machine-not-running pattern set by dropping the broad `/named pipe/i` matcher
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/capabilities.test.ts` → 26 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/desktop.integration.test.ts` → 14 pass, 1 skip, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 54 pass, 2 skip, 0 fail.
+---
+
+## [2026-05-27 17:45 UTC] - US-079 npipe regression fix
+- Fixed the Windows Podman Desktop named-pipe stream flush path so a complete final chunk is not dropped when the socket closes before the terminal CRLF is buffered.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: replaced the end-of-stream `flushChunkedBufferAtEnd` helper with the same permissive chunk flush logic used by `provider-docker`, so the final chunk is yielded even if the trailing chunk terminator arrives split or missing at close.
+  - `plugins/provider-podman/src/index.ts`: re-exported `flushChunkedBufferAtEnd` for the regression test.
+  - `plugins/provider-podman/test/named-pipe.test.ts` (new): regression coverage for a final chunk without trailing CRLF and for a complete chunked frame.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → 2 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 56 pass, 2 skip, 0 fail.
+---
+
+## [2026-05-27 17:36 UTC] - US-079 PR #178 Bugbot triage round 2
+- Triaged the two new Cursor Bugbot comments on commit `cdd728e`:
+  - Comment 1 (`plugins/provider-podman/src/index.ts` L574-581, "Throwing `resolvePodmanDesktopMachine` inside `Effect.mapError` causes untyped defect") - **real issue, fixed**. When the socket path was supplied via `options.socketPath`, `DOCKER_HOST`, or `LANDO_TEST_PODMAN_SOCKET`, `resolvePodmanSocket` never validated `LANDO_PODMAN_MACHINE` / `PODMAN_MACHINE_NAME`; a later `isLikelyMachineNotRunning` branch in the capability-probe `Effect.mapError` then called `resolvePodmanDesktopMachine(effectiveEnv)` synchronously, which on an invalid machine name throws `InvalidPodmanMachineNameError` into the Effect runtime as a `Cause.Die` defect instead of a typed `ProviderUnavailableError`. Fix: resolve the desktop machine name eagerly at the top of `makeRuntimeProvider` inside a `try`/`catch` that returns `Effect.fail(cause)` for `ProviderUnavailableError`, then reuse the resolved value inside the `mapError` branch so no synchronous throw can escape from there.
+  - Comment 2 (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker") - **deferred, non-blocking for this PR**. The duplication is real but extracting a shared npipe transport is a cross-package refactor that touches `provider-docker`, `provider-podman` `package.json`/`tsconfig.json`, and the integration test surface; it is architectural cleanup, not a correctness bug, and is out of scope for this story's PR. Filed locally as a stash (`pr178-round2-named-pipe-refactor-deferred`) so the spike work is not lost; the proper home is a follow-up refactor PR scoped to a shared npipe transport with its own tests.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: eager `resolvePodmanDesktopMachine(effectiveEnv)` call with typed-error catch; `Effect.mapError` branch now reuses the resolved name instead of calling the throwing helper inline.
+- Verification: pending - `bun run typecheck`, `bun run lint`, `bun test plugins/provider-podman/`, then full `bun test` before push. Results recorded below once green.
+
+## [2026-05-27 17:46 UTC] - US-079 PR #178 Bugbot triage round 2 push
+- Branch: us-079-provider-podman-desktop
+- Commit pushed: c776d37 fix(provider-podman): resolve Podman Desktop machine name eagerly
+- Verification (post-commit, clean working tree):
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 56 pass, 2 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-round2-postcommit.xml` → 1301 pass, 16 skip, 0 fail across 177 files / 144s
+- Coordination note: the cross-package shared-named-pipe extraction explored during this round was reverted as out-of-scope and stashed locally as `pr178-round2-named-pipe-refactor-deferred` per the orchestrator's mandate to keep this PR scoped to the typed-error fix. The duplication concern from Bugbot comment 2 remains open for a follow-up refactor PR.
+
+## [2026-05-27 18:09 UTC] - US-079 PR #178 Bugbot triage round 3 push
+- Triaged Cursor Bugbot's third review (commit `8e92a9b`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L573, "Eager machine-name validation fails Linux provider unnecessarily", Low) - **real issue, fixed**. The eager `resolvePodmanDesktopMachine(effectiveEnv)` call ran unconditionally even though `desktopMachineName` is only consumed inside the `(platform === "darwin" || platform === "win32")` branch of the capability-probe `Effect.mapError`. On Linux an invalid `LANDO_PODMAN_MACHINE`/`PODMAN_MACHINE_NAME` would fail provider init with `InvalidPodmanMachineNameError` even though the rootless socket path never uses the machine name. Fix: wrap the eager resolver in `if (platform === "darwin" || platform === "win32")` so Linux ignores the desktop machine env vars; keep the typed-error catch unchanged for darwin/win32.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR**. Same reasoning as round 2: the duplication is architectural cleanup, not a correctness bug, and extracting a shared npipe transport is a cross-package refactor touching `provider-docker`, `provider-podman`, `package.json`/`tsconfig.json`, and integration test surface. Stash `pr178-round2-named-pipe-refactor-deferred` preserves the spike work for a follow-up refactor PR.
+- Branch: us-079-provider-podman-desktop
+- Commit pushed: 7620bba fix(provider-podman): gate desktop machine validation
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: gated the eager `resolvePodmanDesktopMachine` call behind `platform === "darwin" || platform === "win32"`; the `Effect.mapError` branch keeps its `desktopMachineName ?? resolvePodmanDesktopMachine(effectiveEnv)` fallback (only reachable on darwin/win32 where the eager block already returned a typed `ProviderUnavailableError` on invalid names).
+  - `plugins/provider-podman/test/capabilities.test.ts`: new Linux regression test asserts `makeRuntimeProvider({ platform: "linux", env: { ..., LANDO_PODMAN_MACHINE: "bad;name" } })` resolves successfully and does not surface `InvalidPodmanMachineNameError`.
+- Verification (post-commit, clean working tree on `7620bba`):
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 57 pass, 2 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-round3-postcommit.xml` → 1302 pass, 16 skip, 0 fail across 177 files / 128.75s
+
+## [2026-05-27 18:21 UTC] - US-079 PR #178 Bugbot triage round 4 push
+- Triaged Cursor Bugbot's fourth review (commit `3211323`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/named-pipe.ts` L205, "Socket not destroyed on named-pipe connection failure", Low) - **real issue, fixed**. Both named-pipe request paths created a socket and awaited connect before entering the existing `try`/`finally`; if the pipe connection failed before `connect`, the function rejected without destroying the socket. Fix: extracted `connectNamedPipeSocket(socket)` so the one-shot `connect`/`error` listeners clean each other up and the socket is destroyed on pre-connect error before rethrowing.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR**. The shared npipe transport extraction remains a follow-up cross-package refactor, not a correctness blocker for this PR.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: added `connectNamedPipeSocket` and reused it in both named-pipe request paths.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: added regression coverage that a socket receiving `error` before `connect` is destroyed and the original error is rethrown.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 18:33 UTC] - US-079 PR #178 Bugbot triage round 5 push
+- Triaged Cursor Bugbot's fifth review (commit `cd07aa6`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/named-pipe.ts` L338, "Named pipe info errors bypass machine-not-running detection", Medium) - **real issue, fixed**. The named-pipe `info` path wrapped connect failures as `ProviderCapabilityError`, so `makeRuntimeProvider` never entered its `ProviderUnavailableError` machine-not-running branch. Fix: route named-pipe info connect failures through the same transport failure mapper as request/stream, keep the raw connection error in the standard `cause` field, and recognize `ENOENT` in the Podman Desktop machine-not-running pattern set.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: added `namedPipeInfoFailure` and reused it for the `info` catch path; `podmanApiFailure` now puts the raw transport error in `cause` rather than nested in `details`.
+  - `plugins/provider-podman/src/index.ts`: added `ENOENT` to the Podman Desktop machine-not-running detector.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: added deterministic regression coverage that a named-pipe info ENOENT maps through `makeRuntimeProvider` to machine remediation.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → exit 0
+
+## [2026-05-27 18:41 UTC] - US-079 PR #178 Bugbot triage round 6 push
+- Triaged Cursor Bugbot's sixth review (commit `058117d`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L148, "Duplicate ENOENT pattern in machine-not-running detection array", Low) - **real issue, fixed**. Round 5 added `/ENOENT/i` near the end of `MACHINE_NOT_RUNNING_PATTERNS`, but the array already had `/ENOENT/i` as its first pattern. Fix: remove the duplicate later entry and keep the existing first pattern, preserving behavior.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: removed duplicate `/ENOENT/i` entry from `MACHINE_NOT_RUNNING_PATTERNS`.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 18:52 UTC] - US-079 PR #178 Bugbot triage round 7 push
+- Triaged Cursor Bugbot's seventh review (commit `dcc26ba`, 2 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L203, "Exported `discoverPodmanDesktopSockets` is unused in production code", Low) - **real issue, fixed**. `defaultPodmanSocket` now routes macOS/Windows default socket selection through `discoverPodmanDesktopSockets`, keeping discovery as the shared production path instead of a test-only/export-only helper.
+  - New comment (`plugins/provider-podman/src/index.ts` L216, "Machine name resolved unnecessarily before HOME check on macOS", Low) - **real issue, fixed**. `discoverPodmanDesktopSockets` now checks `HOME` before resolving/validating a macOS machine name, so the `/var/run/podman/podman.sock` fallback path does not reject unrelated invalid machine-name env vars when `HOME` is unavailable.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: share default Podman Desktop socket selection through `discoverPodmanDesktopSockets`; check macOS `HOME` before machine-name resolution.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/capabilities.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 19:00 UTC] - US-079 PR #178 Bugbot triage round 8 push
+- Triaged Cursor Bugbot's eighth review (commit `166814a`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/named-pipe.ts` L321, "Request path missing chunked flush at end-of-stream", Low) - **real issue, fixed**. The non-streaming named-pipe request path used `decodeChunkedBody` but did not flush a final partial chunk when the socket closed without the trailing CRLF. Fix: `decodeChunkedBody` now flushes any remaining buffer with `flushChunkedBufferAtEnd` after the async iterable ends, matching the streaming path behavior.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: exported `decodeChunkedBody` for regression coverage and added final-buffer flush.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: added regression coverage that `decodeChunkedBody` yields the final chunk when the trailing CRLF is absent at end-of-stream.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 19:16 UTC] - US-079 PR #178 Bugbot triage round 9 push
+- Triaged Cursor Bugbot's ninth review (commit `46e2605`, 2 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L223, "Windows fallback in `defaultPodmanSocket` is unreachable dead code", Low) - **real issue, fixed**. The Windows path now resolves the selected machine directly via `windowsPodmanDesktopSocket(resolvePodmanDesktopMachine(env))`, removing the unreachable nullish fallback without adding a non-null assertion.
+  - New comment (`plugins/provider-podman/src/index.ts` L48, "Test-only helpers re-exported from public package API", Low) - **real issue, fixed**. Internal chunked-decoder helpers are no longer re-exported from `@lando/provider-podman`; the regression test imports them from `../src/named-pipe.ts`, matching the other named-pipe internals used by the test.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: removed public re-export of internal chunked helpers; removed unreachable Windows fallback.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: import internal chunk helpers directly from source for regression coverage.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts plugins/provider-podman/test/capabilities.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)

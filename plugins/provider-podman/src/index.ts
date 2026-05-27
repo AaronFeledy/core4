@@ -29,7 +29,7 @@ import {
   inspect,
   introspectProviderCapabilities,
   logs,
-  makePodmanApiClient,
+  makePodmanApiClient as makeUnixPodmanApiClient,
   providerStatePath as providerLandoStatePath,
 } from "@lando/provider-lando";
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -42,6 +42,8 @@ import {
   ProviderId,
 } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+
+import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
@@ -75,6 +77,19 @@ export class ProviderLandoConflictError extends ProviderUnavailableError {
   }
 }
 
+export class InvalidPodmanMachineNameError extends ProviderUnavailableError {
+  constructor(machineName: string) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "select",
+      message: `Invalid Podman machine name "${machineName}".`,
+      remediation:
+        "Set LANDO_PODMAN_MACHINE or PODMAN_MACHINE_NAME to a Podman Desktop machine name containing only letters, numbers, dots, underscores, and hyphens, starting with a letter or number.",
+      details: { machineName, pattern: VALID_MACHINE_NAME.source },
+    });
+  }
+}
+
 export interface ResolvePodmanSocketOptions {
   readonly socketPath?: string;
   readonly platform?: HostPlatform;
@@ -94,6 +109,102 @@ const linuxRootlessRuntimeDir = (env: Readonly<Record<string, string | undefined
   return `/run/user/${uid}`;
 };
 
+const DEFAULT_PODMAN_DESKTOP_MACHINE = "podman-machine-default" as const;
+const VALID_MACHINE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/u;
+
+/**
+ * Resolve the Podman Desktop machine name. Precedence:
+ * `LANDO_PODMAN_MACHINE` > `PODMAN_MACHINE_NAME` > `podman-machine-default`.
+ *
+ * The default `podman-machine-default` matches Podman Desktop on macOS/Windows
+ * (and the upstream `podman machine init` default). Overrides allow users with
+ * non-default machine names (e.g. `podman-machine-default-root` for rootful)
+ * to opt in without editing source.
+ */
+export const resolvePodmanDesktopMachine = (env: Readonly<Record<string, string | undefined>>): string => {
+  const candidate = env.LANDO_PODMAN_MACHINE ?? env.PODMAN_MACHINE_NAME;
+  if (candidate === undefined || candidate.length === 0) return DEFAULT_PODMAN_DESKTOP_MACHINE;
+  if (!VALID_MACHINE_NAME.test(candidate)) {
+    throw new InvalidPodmanMachineNameError(candidate);
+  }
+  return candidate;
+};
+
+const MACHINE_NOT_RUNNING_PATTERNS = [
+  /ENOENT/i,
+  /ECONNREFUSED/i,
+  /no such file/i,
+  /connection refused/i,
+  /cannot connect/i,
+  /could not connect/i,
+  /Unable to connect/i,
+  /podman.*not\s+running/i,
+  /machine.*not\s+running/i,
+  /Connect to .* failed/i,
+  /pipe.*not\s+found/i,
+  /pipe not exist/i,
+  /not\s+reachable/i,
+  /socket.*not\s+found/i,
+];
+
+const isLikelyMachineNotRunning = (cause: unknown): boolean => {
+  if (cause === undefined || cause === null) return false;
+  if (typeof cause === "string") return MACHINE_NOT_RUNNING_PATTERNS.some((re) => re.test(cause));
+  if (typeof cause !== "object") return false;
+  const record = cause as Record<string, unknown>;
+  for (const key of ["message", "stderr", "code"]) {
+    const value = record[key];
+    if (typeof value === "string" && MACHINE_NOT_RUNNING_PATTERNS.some((re) => re.test(value))) return true;
+  }
+  if ("cause" in record) return isLikelyMachineNotRunning(record.cause);
+  return false;
+};
+
+const macosPodmanDesktopSocket = (home: string, machineName: string): string =>
+  `${home.replace(/\/+$/u, "")}/.local/share/containers/podman/machine/${machineName}/podman.sock`;
+
+const windowsPodmanDesktopSocket = (machineName: string): string => `npipe://./pipe/${machineName}`;
+
+export interface DiscoverPodmanDesktopSocketsOptions {
+  readonly platform?: HostPlatform;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
+/**
+ * Enumerate Podman Desktop socket candidates for the given platform/env.
+ *
+ * Returns the user-overridden machine first (when LANDO_PODMAN_MACHINE /
+ * PODMAN_MACHINE_NAME is set) and the default `podman-machine-default`
+ * second when those differ, so callers can probe both before erroring.
+ * Linux returns `[]` because the rootless Podman socket lives at
+ * `$XDG_RUNTIME_DIR/podman/podman.sock` and is covered by `resolvePodmanSocket`.
+ */
+export const discoverPodmanDesktopSockets = (
+  options: DiscoverPodmanDesktopSocketsOptions = {},
+): ReadonlyArray<string> => {
+  const platform = options.platform ?? platformFromProcess();
+  const env = options.env ?? process.env;
+  if (platform === "linux") return [];
+
+  if (platform === "darwin") {
+    const home = env.HOME;
+    if (home === undefined || home.length === 0) return [];
+    const overrideMachine = resolvePodmanDesktopMachine(env);
+    const machines: ReadonlyArray<string> =
+      overrideMachine === DEFAULT_PODMAN_DESKTOP_MACHINE
+        ? [DEFAULT_PODMAN_DESKTOP_MACHINE]
+        : [overrideMachine, DEFAULT_PODMAN_DESKTOP_MACHINE];
+    return machines.map((machine) => macosPodmanDesktopSocket(home, machine));
+  }
+
+  const overrideMachine = resolvePodmanDesktopMachine(env);
+  const machines: ReadonlyArray<string> =
+    overrideMachine === DEFAULT_PODMAN_DESKTOP_MACHINE
+      ? [DEFAULT_PODMAN_DESKTOP_MACHINE]
+      : [overrideMachine, DEFAULT_PODMAN_DESKTOP_MACHINE];
+  return machines.map((machine) => windowsPodmanDesktopSocket(machine));
+};
+
 const defaultPodmanSocket = (
   platform: HostPlatform,
   env: Readonly<Record<string, string | undefined>>,
@@ -102,21 +213,16 @@ const defaultPodmanSocket = (
     return `${linuxRootlessRuntimeDir(env)}/podman/podman.sock`;
   }
   if (platform === "darwin") {
-    const home = env.HOME;
-    if (home !== undefined && home.length > 0) {
-      return `${home.replace(/\/+$/u, "")}/.local/share/containers/podman/machine/podman-machine-default/podman.sock`;
-    }
-    return "/var/run/podman/podman.sock";
+    return discoverPodmanDesktopSockets({ platform, env })[0] ?? "/var/run/podman/podman.sock";
   }
-  // Windows / Podman Desktop default.
-  return "npipe://./pipe/podman-machine-default";
+  return windowsPodmanDesktopSocket(resolvePodmanDesktopMachine(env));
 };
 
 /**
  * Resolve the Podman socket path following the discovery precedence:
  *
  * 1. Explicit `socketPath` option.
- * 2. `LANDO_TEST_PODMAN_SOCKET` env (test seam).
+ * 2. `LANDO_TEST_PODMAN_SOCKET` env.
  * 3. `DOCKER_HOST` env override (Podman's libpod is Docker-Engine-API-compatible).
  * 4. Platform default (`$XDG_RUNTIME_DIR/podman/podman.sock` on Linux).
  */
@@ -200,10 +306,31 @@ export class UnsupportedPodmanSocketError extends ProviderUnavailableError {
     super({
       providerId: PROVIDER_ID,
       operation: "select",
-      message: "provider-podman currently supports local Unix Podman sockets only.",
+      message:
+        "provider-podman currently supports local Unix sockets and Windows Podman Desktop named pipes only.",
       remediation:
-        "Set DOCKER_HOST to a unix:// Podman socket (for example unix://$XDG_RUNTIME_DIR/podman/podman.sock) or unset it to use the rootless Linux default.",
+        "Set DOCKER_HOST to a unix:// Podman socket, unset it to use the platform default, or on Windows use the Podman Desktop npipe://./pipe/<machine> socket.",
       details: { socketPath: socketPath.replace(/^([^:]+:\/\/)[^@/]+@/u, "$1<redacted>@") },
+    });
+  }
+}
+
+export class PodmanMachineNotRunningError extends ProviderUnavailableError {
+  constructor(args: {
+    readonly platform: "darwin" | "win32";
+    readonly machineName: string;
+    readonly socketPath: string;
+    readonly cause?: unknown;
+  }) {
+    const startCommand = `podman machine start ${args.machineName}`;
+    const desktopApp = args.platform === "darwin" ? "Podman Desktop on macOS" : "Podman Desktop on Windows";
+    super({
+      providerId: PROVIDER_ID,
+      operation: "machine",
+      message: `Podman machine "${args.machineName}" is not running at "${args.socketPath}".`,
+      remediation: `Open ${desktopApp} and start the "${args.machineName}" machine, or run \`${startCommand}\`. If you use a non-default machine name, set LANDO_PODMAN_MACHINE to the correct name.`,
+      details: { socketPath: args.socketPath, machineName: args.machineName, platform: args.platform },
+      ...(args.cause === undefined ? {} : { cause: args.cause }),
     });
   }
 }
@@ -266,12 +393,24 @@ export const detectProviderLandoConflict = (
 const noConflict = (): Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError> =>
   Effect.void;
 
-const unsupportedSocket = (socketPath: string): UnsupportedPodmanSocketError | undefined => {
-  if (socketPath.includes("://") && !socketPath.startsWith("unix://")) {
+const unsupportedSocket = (
+  platform: HostPlatform,
+  socketPath: string,
+): UnsupportedPodmanSocketError | undefined => {
+  if (
+    socketPath.includes("://") &&
+    !socketPath.startsWith("unix://") &&
+    !(platform === "win32" && socketPath.startsWith("npipe:"))
+  ) {
     return new UnsupportedPodmanSocketError(socketPath);
   }
   return undefined;
 };
+
+export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
+  socketPath.startsWith("npipe:")
+    ? makeNamedPipePodmanApiClient(socketPath)
+    : makeUnixPodmanApiClient(socketPath);
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/u, "");
 
@@ -403,14 +542,35 @@ export const makeRuntimeProvider = (
 ): Effect.Effect<RuntimeProviderShape, ProviderCapabilityError | ProviderUnavailableError> => {
   const plans = new Map<string, AppPlan>();
   const platform = options.platform ?? platformFromProcess();
-  const socketPath = resolvePodmanSocket({
-    ...(options.socketPath === undefined ? {} : { socketPath: options.socketPath }),
-    platform,
-    ...(options.env === undefined ? {} : { env: options.env }),
-  });
-  const unsupportedSocketError = options.podmanApi === undefined ? unsupportedSocket(socketPath) : undefined;
+  const effectiveEnv = options.env ?? process.env;
+  let socketPath: string;
+  try {
+    socketPath = resolvePodmanSocket({
+      ...(options.socketPath === undefined ? {} : { socketPath: options.socketPath }),
+      platform,
+      env: effectiveEnv,
+    });
+  } catch (cause) {
+    if (cause instanceof ProviderUnavailableError) return Effect.fail(cause);
+    throw cause;
+  }
+  const unsupportedSocketError =
+    options.podmanApi === undefined ? unsupportedSocket(platform, socketPath) : undefined;
   if (unsupportedSocketError !== undefined) return Effect.fail(unsupportedSocketError);
   const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
+
+  let desktopMachineName: string | undefined;
+  if (platform === "darwin" || platform === "win32") {
+    // Resolve eagerly so an invalid LANDO_PODMAN_MACHINE surfaces as a typed
+    // ProviderUnavailableError instead of throwing synchronously inside the
+    // Effect.mapError below (which would become a Cause.Die defect).
+    try {
+      desktopMachineName = resolvePodmanDesktopMachine(effectiveEnv);
+    } catch (cause) {
+      if (cause instanceof ProviderUnavailableError) return Effect.fail(cause);
+      throw cause;
+    }
+  }
 
   const conflictCheck =
     options.conflictDetector !== undefined
@@ -419,13 +579,20 @@ export const makeRuntimeProvider = (
         ? noConflict()
         : detectProviderLandoConflict(options.stateDir, socketPath);
 
-  // We only use the lando layer's capability *probe* to confirm the socket is healthy;
-  // the capability values themselves are provider-podman-specific.
   const capabilities = introspectProviderCapabilities(podmanApi, platform).pipe(
     Effect.map(() => podmanCapabilitiesForPlatform(platform)),
     Effect.mapError((cause) => {
-      if (cause instanceof ProviderUnavailableError)
+      if (cause instanceof ProviderUnavailableError) {
+        if ((platform === "darwin" || platform === "win32") && isLikelyMachineNotRunning(cause)) {
+          return new PodmanMachineNotRunningError({
+            platform,
+            machineName: desktopMachineName ?? resolvePodmanDesktopMachine(effectiveEnv),
+            socketPath,
+            cause,
+          });
+        }
         return podmanUnavailable("capabilities", socketPath, cause);
+      }
       return cause;
     }),
   );
@@ -464,7 +631,6 @@ export const makeRuntimeProvider = (
         platform,
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
-        // No managed setup: user already installed Podman.
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0" }),
@@ -578,5 +744,4 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   entry: "./src/index.ts",
 });
 
-export { makePodmanApiClient } from "@lando/provider-lando";
 export type { PodmanApiClient } from "@lando/provider-lando";

@@ -1,0 +1,32 @@
+---
+id: provider-podman-windows
+provider: test
+platforms: [win32]
+timeout: 120000
+tags: [beta, docs, provider-podman, setup, windows, podman-desktop]
+---
+
+<Guide>
+  <Scenario id="windows-podman-desktop-discovery" render={false} reason="Podman Desktop npipe discovery is exercised by plugins/provider-podman/test/capabilities.test.ts; the rendered live path requires a running Podman Desktop machine">
+    <Step name="podman-desktop-socket-discovery">
+      <Variable name="defaultPipe" value="npipe://./pipe/podman-machine-default" display="Podman Desktop default machine named pipe on Windows" />
+      <Variable name="machineOverride" value="LANDO_PODMAN_MACHINE=podman-machine-default-root" display="Override the machine name (e.g. rootful) without editing config" />
+      <Variable name="bindMountPerformance" value="slow" display="WSL2-mediated bind mounts are slow on Windows Podman Desktop" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="windows-podman-desktop-machine-not-running" render={false} reason="Machine-not-running remediation is exercised by plugins/provider-podman/test/desktop.integration.test.ts; the rendered path requires Podman Desktop installed">
+    <Step name="machine-not-running-remediation">
+      <Variable name="errorClass" value="PodmanMachineNotRunningError" display="Tagged subclass of ProviderUnavailableError raised when the Podman Desktop machine pipe is unreachable" />
+      <Variable name="startCommand" value="podman machine start podman-machine-default" display="CLI remediation for a stopped Podman Desktop machine" />
+      <Variable name="desktopAppRemediation" value="Open Podman Desktop on Windows and start the podman-machine-default machine" display="GUI remediation for the same condition" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="windows-live-contract" render={false} reason="The live SDK contract suite for Podman Desktop is gated by LANDO_TEST_PODMAN_DESKTOP_SOCKET and skipped by default">
+    <Step name="live-contract">
+      <Variable name="liveGate" value="LANDO_TEST_PODMAN_DESKTOP_SOCKET=npipe://./pipe/podman-machine-default" display="Opt in to the live Podman Desktop contract suite" />
+      <Variable name="testFile" value="plugins/provider-podman/test/desktop.integration.test.ts" display="Test file containing the gated live scenario" />
+    </Step>
+  </Scenario>
+</Guide>
