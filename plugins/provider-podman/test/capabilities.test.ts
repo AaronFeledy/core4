@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect } from "effect";
 
 import {
+  InvalidPodmanMachineNameError,
   UnsupportedPodmanSocketError,
   discoverPodmanDesktopSockets,
   linuxPodmanCapabilities,
@@ -211,6 +212,15 @@ describe("provider-podman Podman Desktop discovery", () => {
       resolvePodmanDesktopMachine({ LANDO_PODMAN_MACHINE: "lando", PODMAN_MACHINE_NAME: "ignored" }),
     ).toBe("lando");
   });
+
+  test("rejects malformed Podman Desktop machine names with a tagged provider error", () => {
+    expect(() => resolvePodmanDesktopMachine({ LANDO_PODMAN_MACHINE: "bad;name" })).toThrow(
+      InvalidPodmanMachineNameError,
+    );
+    expect(() => resolvePodmanDesktopMachine({ PODMAN_MACHINE_NAME: "../podman" })).toThrow(
+      InvalidPodmanMachineNameError,
+    );
+  });
 });
 
 describe("provider-podman RuntimeProvider layer", () => {
@@ -256,6 +266,21 @@ describe("provider-podman RuntimeProvider layer", () => {
       }),
     );
     expect(createdHosts).toEqual(["/run/user/1000/podman/podman.sock"]);
+  });
+
+  test("constructs the default Windows Podman Desktop API client through the npipe socket", async () => {
+    const createdHosts: Array<string> = [];
+    await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "win32",
+        env: {},
+        podmanApiFactory: (socketPath) => {
+          createdHosts.push(socketPath);
+          return { info: Effect.succeed({}) };
+        },
+      }),
+    );
+    expect(createdHosts).toEqual(["npipe://./pipe/podman-machine-default"]);
   });
 
   test("rejects non-Unix DOCKER_HOST transports before constructing the API client", async () => {

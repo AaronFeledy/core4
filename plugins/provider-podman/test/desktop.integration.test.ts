@@ -314,6 +314,48 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
     }
   });
 
+  test("uses the effective process env machine name in Podman Desktop remediation", async () => {
+    const socketFailure = new ProviderUnavailableError({
+      providerId: "podman",
+      operation: "podman-api",
+      message: "Named pipe not found",
+    });
+    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure) };
+    const original = process.env.LANDO_PODMAN_MACHINE;
+
+    process.env.LANDO_PODMAN_MACHINE = "custom-machine";
+    try {
+      const exit = await Effect.runPromiseExit(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              podmanApi: fakeApi,
+              platform: "win32",
+            }),
+          ),
+        ),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(PodmanMachineNotRunningError);
+          if (failure.value instanceof PodmanMachineNotRunningError) {
+            expect(failure.value.remediation).toContain("custom-machine");
+            expect(failure.value.remediation).not.toContain("podman-machine-default");
+          }
+        }
+      }
+    } finally {
+      if (original === undefined) {
+        Reflect.deleteProperty(process.env, "LANDO_PODMAN_MACHINE");
+      } else {
+        process.env.LANDO_PODMAN_MACHINE = original;
+      }
+    }
+  });
+
   test("Linux capability-probe failure does NOT map to PodmanMachineNotRunningError (no managed VM there)", async () => {
     const socketFailure = new ProviderUnavailableError({
       providerId: "podman",
@@ -346,7 +388,9 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
 });
 
 const liveDesktopSocket = process.env.LANDO_TEST_PODMAN_DESKTOP_SOCKET;
-const liveDesktopTest = liveDesktopSocket !== undefined && liveDesktopSocket.length > 0 ? test : test.skip;
+const liveDesktopPlatform = process.platform === "darwin" || process.platform === "win32";
+const liveDesktopTest =
+  liveDesktopSocket !== undefined && liveDesktopSocket.length > 0 && liveDesktopPlatform ? test : test.skip;
 
 liveDesktopTest(
   "live: Podman Desktop socket reachable via SDK provider contract",

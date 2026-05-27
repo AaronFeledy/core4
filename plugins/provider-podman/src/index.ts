@@ -29,7 +29,7 @@ import {
   inspect,
   introspectProviderCapabilities,
   logs,
-  makePodmanApiClient,
+  makePodmanApiClient as makeUnixPodmanApiClient,
   providerStatePath as providerLandoStatePath,
 } from "@lando/provider-lando";
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -42,6 +42,8 @@ import {
   ProviderId,
 } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+
+import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
@@ -71,6 +73,19 @@ export class ProviderLandoConflictError extends ProviderUnavailableError {
         providerLandoStatePath: args.providerLandoStatePath,
       },
       ...(args.cause === undefined ? {} : { cause: args.cause }),
+    });
+  }
+}
+
+export class InvalidPodmanMachineNameError extends ProviderUnavailableError {
+  constructor(machineName: string) {
+    super({
+      providerId: PROVIDER_ID,
+      operation: "select",
+      message: `Invalid Podman machine name "${machineName}".`,
+      remediation:
+        "Set LANDO_PODMAN_MACHINE or PODMAN_MACHINE_NAME to a Podman Desktop machine name containing only letters, numbers, dots, underscores, and hyphens, starting with a letter or number.",
+      details: { machineName, pattern: VALID_MACHINE_NAME.source },
     });
   }
 }
@@ -110,9 +125,7 @@ export const resolvePodmanDesktopMachine = (env: Readonly<Record<string, string 
   const candidate = env.LANDO_PODMAN_MACHINE ?? env.PODMAN_MACHINE_NAME;
   if (candidate === undefined || candidate.length === 0) return DEFAULT_PODMAN_DESKTOP_MACHINE;
   if (!VALID_MACHINE_NAME.test(candidate)) {
-    throw new Error(
-      `Invalid Podman machine name "${candidate}". Machine names must match ${VALID_MACHINE_NAME.source}.`,
-    );
+    throw new InvalidPodmanMachineNameError(candidate);
   }
   return candidate;
 };
@@ -296,9 +309,10 @@ export class UnsupportedPodmanSocketError extends ProviderUnavailableError {
     super({
       providerId: PROVIDER_ID,
       operation: "select",
-      message: "provider-podman currently supports local Unix Podman sockets only.",
+      message:
+        "provider-podman currently supports local Unix sockets and Windows Podman Desktop named pipes only.",
       remediation:
-        "Set DOCKER_HOST to a unix:// Podman socket (for example unix://$XDG_RUNTIME_DIR/podman/podman.sock) or unset it to use the rootless Linux default.",
+        "Set DOCKER_HOST to a unix:// Podman socket, unset it to use the platform default, or on Windows use the Podman Desktop npipe://./pipe/<machine> socket.",
       details: { socketPath: socketPath.replace(/^([^:]+:\/\/)[^@/]+@/u, "$1<redacted>@") },
     });
   }
@@ -382,12 +396,24 @@ export const detectProviderLandoConflict = (
 const noConflict = (): Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError> =>
   Effect.void;
 
-const unsupportedSocket = (socketPath: string): UnsupportedPodmanSocketError | undefined => {
-  if (socketPath.includes("://") && !socketPath.startsWith("unix://")) {
+const unsupportedSocket = (
+  platform: HostPlatform,
+  socketPath: string,
+): UnsupportedPodmanSocketError | undefined => {
+  if (
+    socketPath.includes("://") &&
+    !socketPath.startsWith("unix://") &&
+    !(platform === "win32" && socketPath.startsWith("npipe:"))
+  ) {
     return new UnsupportedPodmanSocketError(socketPath);
   }
   return undefined;
 };
+
+export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
+  socketPath.startsWith("npipe:")
+    ? makeNamedPipePodmanApiClient(socketPath)
+    : makeUnixPodmanApiClient(socketPath);
 
 const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/u, "");
 
@@ -519,12 +545,20 @@ export const makeRuntimeProvider = (
 ): Effect.Effect<RuntimeProviderShape, ProviderCapabilityError | ProviderUnavailableError> => {
   const plans = new Map<string, AppPlan>();
   const platform = options.platform ?? platformFromProcess();
-  const socketPath = resolvePodmanSocket({
-    ...(options.socketPath === undefined ? {} : { socketPath: options.socketPath }),
-    platform,
-    ...(options.env === undefined ? {} : { env: options.env }),
-  });
-  const unsupportedSocketError = options.podmanApi === undefined ? unsupportedSocket(socketPath) : undefined;
+  const effectiveEnv = options.env ?? process.env;
+  let socketPath: string;
+  try {
+    socketPath = resolvePodmanSocket({
+      ...(options.socketPath === undefined ? {} : { socketPath: options.socketPath }),
+      platform,
+      env: effectiveEnv,
+    });
+  } catch (cause) {
+    if (cause instanceof ProviderUnavailableError) return Effect.fail(cause);
+    throw cause;
+  }
+  const unsupportedSocketError =
+    options.podmanApi === undefined ? unsupportedSocket(platform, socketPath) : undefined;
   if (unsupportedSocketError !== undefined) return Effect.fail(unsupportedSocketError);
   const podmanApi = options.podmanApi ?? (options.podmanApiFactory ?? makePodmanApiClient)(socketPath);
 
@@ -542,7 +576,7 @@ export const makeRuntimeProvider = (
         if ((platform === "darwin" || platform === "win32") && isLikelyMachineNotRunning(cause)) {
           return new PodmanMachineNotRunningError({
             platform,
-            machineName: resolvePodmanDesktopMachineName(options.env ?? {}),
+            machineName: resolvePodmanDesktopMachineName(effectiveEnv),
             socketPath,
             cause,
           });
@@ -701,5 +735,4 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   entry: "./src/index.ts",
 });
 
-export { makePodmanApiClient } from "@lando/provider-lando";
 export type { PodmanApiClient } from "@lando/provider-lando";
