@@ -25,6 +25,12 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import {
+  CAPABILITY_DEFAULT_PROVIDER_ID,
+  readProviderEnvVar,
+  resolveProviderSelection,
+} from "./precedence.ts";
+
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
 const landoCapabilities: ProviderCapabilities = {
@@ -157,14 +163,12 @@ const makeRuntimeProviderRegistry = (
       configService.get("defaultProviderId"),
       toProviderConfig,
     );
-
-    if (defaultProviderId === undefined || defaultProviderId === null) {
-      return yield* Effect.fail(
-        new NoProviderInstalledError({ message: "No default runtime provider is configured." }),
-      );
-    }
-
-    return defaultProviderId;
+    const envProviderId = readProviderEnvVar(process.env);
+    return resolveProviderSelection({
+      ...(envProviderId === undefined ? {} : { env: envProviderId }),
+      ...(defaultProviderId === undefined || defaultProviderId === null ? {} : { config: defaultProviderId }),
+      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+    }).providerId;
   });
 
   const providerFor = (providerId: ProviderId) =>

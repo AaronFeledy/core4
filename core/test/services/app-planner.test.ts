@@ -24,6 +24,7 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  ConfigService,
   PluginRegistry,
   type ServiceTypePlanInput,
   type ServiceTypeShape,
@@ -104,6 +105,28 @@ const planExit = (landofile: LandofileShape, providerCapabilities = providerLand
     Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(PluginRegistryLive),
+    ),
+  );
+
+const configLayer = (defaultProviderId: ProviderId | null) => {
+  const config = { defaultProviderId, telemetry: { enabled: false } };
+  const load = Effect.succeed(config);
+  return Layer.succeed(ConfigService, {
+    load,
+    get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
+  });
+};
+
+const planWithConfig = (
+  landofile: LandofileShape,
+  defaultProviderId: ProviderId | null,
+  providerCapabilities = providerLandoCapabilities,
+) =>
+  Effect.runPromise(
+    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+      Effect.provide(AppPlannerLive),
+      Effect.provide(PluginRegistryLive),
+      Effect.provide(configLayer(defaultProviderId)),
     ),
   );
 
@@ -219,6 +242,44 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("AppPlannerLive", () => {
+  test("uses LANDO_PROVIDER when the Landofile does not set provider", async () => {
+    const previous = process.env.LANDO_PROVIDER;
+    process.env.LANDO_PROVIDER = "docker";
+    try {
+      const appPlan = await plan(landofileFixture);
+      expect(String(appPlan.provider)).toBe("docker");
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      else process.env.LANDO_PROVIDER = previous;
+    }
+  });
+
+  test("uses config defaultProviderId when no Landofile or env provider is set", async () => {
+    const previous = process.env.LANDO_PROVIDER;
+    Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+    try {
+      const appPlan = await planWithConfig(landofileFixture, ProviderId.make("docker"));
+      expect(String(appPlan.provider)).toBe("docker");
+    } finally {
+      if (previous !== undefined) process.env.LANDO_PROVIDER = previous;
+    }
+  });
+
+  test("Landofile provider wins over env and config defaults", async () => {
+    const previous = process.env.LANDO_PROVIDER;
+    process.env.LANDO_PROVIDER = "docker";
+    try {
+      const appPlan = await planWithConfig(
+        { ...landofileFixture, provider: ProviderId.make("podman") },
+        ProviderId.make("lando"),
+      );
+      expect(String(appPlan.provider)).toBe("podman");
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      else process.env.LANDO_PROVIDER = previous;
+    }
+  });
+
   test("reuses the persisted app plan cache until planning inputs change", async () => {
     await withTempCwd(async () => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;

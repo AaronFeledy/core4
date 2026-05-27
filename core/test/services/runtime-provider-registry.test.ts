@@ -53,6 +53,22 @@ const runWithRegistry = <A, E>(
 ) => Effect.runPromise(effect.pipe(Effect.provide(registryLayer(defaultProviderId))));
 
 describe("RuntimeProviderRegistryLive", () => {
+  test("LANDO_PROVIDER overrides the configured default provider", async () => {
+    const previous = process.env.LANDO_PROVIDER;
+    process.env.LANDO_PROVIDER = "docker";
+    try {
+      const provider = await runWithRegistry(
+        "lando",
+        Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.select()),
+      );
+
+      expect(provider.id).toBe("docker");
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_PROVIDER");
+      else process.env.LANDO_PROVIDER = previous;
+    }
+  });
+
   test("selects the configured provider-lando RuntimeProvider", async () => {
     const provider = await runWithRegistry(
       "lando",
