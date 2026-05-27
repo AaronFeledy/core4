@@ -329,3 +329,34 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch after sync: main
 - Stash created: yes (loop-sync-rejected-improvement-20260527T055121Z — entangled story-branch index.ts changes from failed final triage; dropped as moot after merge)
 ---
+
+## [2026-05-27 06:30 UTC] - US-078
+- Shipped `@lando/provider-podman` as an opt-in user-installed Podman `RuntimeProvider` for Linux (with darwin/win32 capability matrix in place for US-079).
+- Files changed:
+  - `plugins/provider-podman/package.json`, `plugin.yaml`, `tsconfig.json`, `src/provider.ts`: new workspace package metadata mirroring `@lando/provider-docker`; depends on `@lando/provider-lando` to reuse the Podman REST API client and bringUp/bringDown/exec/logs/inspect lifecycle helpers.
+  - `plugins/provider-podman/src/index.ts` (new): `resolvePodmanSocket` (precedence: explicit > `LANDO_TEST_PODMAN_SOCKET` > `DOCKER_HOST` (with `unix://` stripped) > `$XDG_RUNTIME_DIR/podman/podman.sock` > `/run/podman/podman.sock`); `podmanCapabilitiesForPlatform` (`native` on linux, `slow` on darwin/win32, `rootless: true`, `sharedCrossAppNetwork: false`); `ProviderLandoConflictError` (tagged subclass of `ProviderUnavailableError`); `detectProviderLandoConflict` (Effect-typed file reader against `<stateDir>/provider-lando/setup-state.json`, normalizes socket comparison by stripping `unix://` and trailing slashes); `makeRuntimeProvider`/`makeProviderLayer`/`provider`/`manifest`. The probe still uses provider-lando's `introspectProviderCapabilities` to confirm the socket is reachable, then overrides the capability map with the podman-specific matrix.
+  - `plugins/provider-podman/test/{capabilities,conflict,contract.integration,import-boundary}.test.ts`: capability matrix shape + bind-mount classification per platform, socket discovery precedence, conflict detection (including normalization edge cases and the `conflictDetector` test seam), SDK contract suite via `@lando/sdk/test#runProviderContract` with a fake Podman API client, and the no-OCLIF/no-core/cli import boundary guard.
+  - `plugins/provider-lando/src/setup.ts`: additively persists `socketPath` in `setup-state.json` when supplied to `setupProviderLando`; existing readers/tests still see the same shape because no `LANDO_TEST_PODMAN_SOCKET` was set in their fixtures.
+  - `core/build.config.ts`: added `@lando/provider-podman` to `bundledPlugins` so it ships with the binary but stays opt-in (registry only resolves it when explicitly selected).
+  - `core/src/plugins/bundled.ts`: regenerated via `bun run codegen:bundled-plugins`.
+  - `core/src/providers/registry.ts`: added a `podman` branch that calls `makePodmanRuntimeProvider({ stateDir })` so conflict detection wires through `<userDataRoot>/providers`.
+  - `core/test/plugins/bundled.test.ts`, `core/test/services/plugin-registry.test.ts`, `core/test/services/runtime-provider-registry.test.ts`: updated bundled-plugin assertions to include provider-podman.
+  - `docs/guides/setup/provider-podman-linux.mdx` (new): required guide coverage with non-rendered scenarios for socket discovery, opt-in selection, and provider-lando conflict diagnostics.
+  - `.github/workflows/ci.yml`, `sdk/test/fixtures/schema-snapshot.json`: auto-regenerated to include the new plugin.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/` → 26 pass, 1 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-lando/` → 97 pass, 8 skip, 0 fail (additive `socketPath` did not regress any existing setup-state assertion)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/services/runtime-provider-registry.test.ts core/test/services/plugin-registry.test.ts core/test/plugins/bundled.test.ts` → 13 pass, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/provider-podman-linux/` → 3 pass, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1254-1259 pass / 6 fail (varies). The remaining failures are the order/parallelism-sensitive flakes already documented in earlier progress notes (`compiled Linux x64 binary`, `docs:scenario author command`, `ci workflow codegen`, `compiled app command aliases`); each passes when re-run in isolation (`core/test/build/compile.test.ts`, `core/test/scripts/docs-scenario.test.ts`, `core/test/build/ci-workflow.test.ts`, `core/test/cli/aliases.test.ts`).
+  - Manual CLI smoke: instantiated `makeRuntimeProvider({ podmanApi: { info: Effect.succeed({}) } })` programmatically, confirmed `id: "podman"`, `displayName: "Podman Runtime Provider (user-installed)"`, `bindMountPerformance: "native"`, conflict path emits `ProviderLandoConflictError` with the `lando setup --provider=...` remediation when `<stateDir>/provider-lando/setup-state.json` records a matching socket.
+- **Learnings for future iterations:**
+  - Opt-in providers in this codebase mean *bundled but non-default*. `RuntimeProviderRegistryLive` only resolves what `PluginRegistry.list` reports; the plugin still needs to be in `core/build.config.ts` to be discoverable. There is no out-of-tree plugin discovery surface yet — that would be a larger plumbing change in a separate story.
+  - The `RuntimeProviderRegistry` does **not** dispatch through plugin Layers automatically. Each new provider id needs a dedicated branch in `core/src/providers/registry.ts` `providerFor`, similar to the existing `lando`/`docker` branches. Until a generic dispatch lands, expect this file to grow one branch per provider id.
+  - `BUNDLED_PLUGINS`-shape assertions show up in three places (`core/test/plugins/bundled.test.ts`, `core/test/services/plugin-registry.test.ts`, `core/test/services/runtime-provider-registry.test.ts`); all three must be updated together whenever the bundled list changes, otherwise the full suite will fail with hard-coded array mismatches.
+  - Tagged subclasses of SDK errors (e.g. `ProviderLandoConflictError extends ProviderUnavailableError`) preserve `instanceof` checks for both classes, so callers in the registry that map `ProviderCapabilityError | ProviderUnavailableError` to a final `ProviderUnavailableError` keep working without special-casing the subclass.
+  - When `provider-podman` reuses provider-lando's lifecycle helpers, the underlying tagged errors still embed `providerId: "lando"`. That is acceptable for US-078 (the user-visible surface is the registry-level error and the inspect snapshot `providerId`, both of which read `podman`); a full identity rewrite would require duplicating the lifecycle and is out of scope.
+---

@@ -50,6 +50,11 @@ export const buildConfig: BuildConfig = {
       contributes: { providers: ["docker"] },
     },
     {
+      name: "@lando/provider-podman",
+      path: "plugins/provider-podman",
+      contributes: { providers: ["podman"] },
+    },
+    {
       name: "@lando/service-lando",
       path: "plugins/service-lando",
       contributes: { serviceTypes: ["node:lts", "postgres"] },

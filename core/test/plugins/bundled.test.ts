@@ -7,6 +7,7 @@ import { Context, Effect, Layer } from "effect";
 import * as loggerPretty from "@lando/logger-pretty";
 import * as providerDocker from "@lando/provider-docker";
 import * as providerLando from "@lando/provider-lando";
+import * as providerPodman from "@lando/provider-podman";
 import * as serviceLando from "@lando/service-lando";
 
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
@@ -15,6 +16,7 @@ import { PluginRegistry, PluginRegistryLive } from "../../src/plugins/registry.t
 const EXPECTED_BUNDLED_PLUGINS = [
   { name: "@lando/provider-lando", layer: providerLando.provider, manifest: providerLando.manifest },
   { name: "@lando/provider-docker", layer: providerDocker.provider, manifest: providerDocker.manifest },
+  { name: "@lando/provider-podman", layer: providerPodman.provider, manifest: providerPodman.manifest },
   { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
   { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
 ];
@@ -24,7 +26,7 @@ const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundl
 
 describe("BUNDLED_PLUGINS", () => {
   test("exports all MVP bundled plugins with real layer and manifest references", () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(4);
+    expect(BUNDLED_PLUGINS).toHaveLength(5);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
     );

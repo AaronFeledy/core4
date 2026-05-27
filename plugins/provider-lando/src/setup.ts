@@ -359,6 +359,7 @@ const persistSetupState = (
     readonly podmanVersion: string;
     readonly runtimeBundleVersion?: string;
     readonly runtimeBundleSha256?: string;
+    readonly socketPath?: string;
   },
 ) =>
   Effect.tryPromise({
@@ -562,6 +563,7 @@ export const setupProviderLando = (
                 ...(bundle === undefined
                   ? {}
                   : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
+                ...(socketPath === undefined ? {} : { socketPath }),
               }),
             );
 

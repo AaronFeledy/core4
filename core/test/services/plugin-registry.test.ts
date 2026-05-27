@@ -8,6 +8,7 @@ import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",
   "@lando/provider-docker",
+  "@lando/provider-podman",
   "@lando/service-lando",
   "@lando/logger-pretty",
 ];

@@ -116,6 +116,6 @@ describe("RuntimeProviderRegistryLive", () => {
       Effect.flatMap(RuntimeProviderRegistry, (registry) => registry.list),
     );
 
-    expect(providers.map(String)).toEqual(["lando", "docker"]);
+    expect(providers.map(String)).toEqual(["lando", "docker", "podman"]);
   });
 });

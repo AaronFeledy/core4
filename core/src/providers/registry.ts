@@ -8,6 +8,7 @@
 import { type Context, Effect, Layer, Stream } from "effect";
 
 import { makeRuntimeProvider as makeLandoRuntimeProvider } from "@lando/provider-lando";
+import { makeRuntimeProvider as makePodmanRuntimeProvider } from "@lando/provider-podman";
 import {
   NoProviderInstalledError,
   ProviderCapabilityError,
@@ -178,7 +179,11 @@ const makeRuntimeProviderRegistry = (
               ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
               ...(eventService === undefined ? {} : { eventService }),
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
-          : providers[providerIdText];
+          : providerIdText === "podman"
+            ? yield* makePodmanRuntimeProvider({
+                ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+              }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
+            : providers[providerIdText];
 
       if (!installed || provider === undefined) {
         return yield* Effect.fail(

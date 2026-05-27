@@ -6,6 +6,7 @@
 # Bundled plugins from BUNDLED_PLUGINS:
 #   - @lando/provider-lando
 #   - @lando/provider-docker
+#   - @lando/provider-podman
 #   - @lando/service-lando
 #   - @lando/logger-pretty
 name: ci

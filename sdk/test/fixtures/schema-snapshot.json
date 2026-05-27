@@ -46,6 +46,20 @@
       "manifest": {
         "api": 4,
         "contributes": {
+          "providers": ["podman"]
+        },
+        "description": "Opt-in user-installed Podman RuntimeProvider implementation.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/provider-podman",
+        "version": "0.0.0"
+      },
+      "name": "@lando/provider-podman"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
           "serviceTypes": [
             "apache",
             "compose",
@@ -80,6 +94,7 @@
       "@lando/logger-pretty",
       "@lando/provider-docker",
       "@lando/provider-lando",
+      "@lando/provider-podman",
       "@lando/service-lando"
     ],
     "sdkSchemas": [
