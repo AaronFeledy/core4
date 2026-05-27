@@ -503,3 +503,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, section markers, development phases, PRDs, story IDs, or story prose.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/ core/test/cli/doctor.test.ts` → exit 0; first full `bun test --reporter=junit --reporter-outfile=/tmp/us079-cleanup-full.xml` run hit the known order-sensitive `core/test/cli/deferred-commands.test.ts` compiled `$bunfs` parity failure, which passed in isolation; rerun `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us079-cleanup-rerun.xml` → 1315 tests, 6410 assertions, 0 failures, 16 skips; `git diff --check` → clean. LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP servers exited with code -2.
 ---
+
+## [2026-05-27 17:03 UTC] - Push
+- Branch: us-079-provider-podman-desktop
+- Push: pushed
+- Commit(s): 3c1bd41 feat: @lando/provider-podman on macOS + Windows via Podman Desktop; 88ec019 fix(provider-podman): support Windows Podman Desktop npipe; 381bac2 docs: record US-079 review fixes; 903000b chore: remove AI slop
+- PR: #178 https://github.com/AaronFeledy/core4/pull/178 (created)
+---
