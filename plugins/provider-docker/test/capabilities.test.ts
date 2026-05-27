@@ -278,4 +278,35 @@ describe("provider-docker capabilities", () => {
       await rm(socketDir, { recursive: true, force: true });
     }
   });
+  test("streams delayed npipe chunked responses over an IPC socket", async () => {
+    const socketDir = await mkdtemp(join(tmpdir(), "lando-provider-docker-npipe-stream-delayed-"));
+    const socketPath = join(socketDir, "docker.sock");
+    const encoder = new TextEncoder();
+    const first = encoder.encode("hello");
+    const second = encoder.encode(" world");
+    const server = createServer((socket) => {
+      socket.once("data", () => {
+        socket.write("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhe");
+        setTimeout(() => socket.write("llo\r\n6\r\n wor"), 10);
+        setTimeout(() => socket.end("ld\r\n0\r\n\r\n"), 20);
+      });
+    });
+
+    try {
+      await listen(server, socketPath);
+      const client = makeDockerApiClient(`npipe:${socketPath}`);
+      if (client.stream === undefined) throw new Error("Expected npipe Docker API client to expose stream");
+      const chunks = await Effect.runPromise(
+        client.stream({ method: "GET", path: "/containers/lando-myapp-web/logs?stdout=true" }).pipe(
+          Stream.runCollect,
+          Effect.map((collected) => Array.from(collected)),
+        ),
+      );
+
+      expect(chunks).toEqual([first, second]);
+    } finally {
+      await close(server);
+      await rm(socketDir, { recursive: true, force: true });
+    }
+  });
 });

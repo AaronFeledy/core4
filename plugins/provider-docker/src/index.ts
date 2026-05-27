@@ -294,6 +294,34 @@ async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<
   }
 }
 
+const chunkSeparator = new TextEncoder().encode("\r\n");
+
+const decodeChunkedBuffer = (
+  buffer: Bytes,
+): { readonly chunks: ReadonlyArray<Bytes>; readonly remainder: Bytes; readonly complete: boolean } => {
+  const chunks: Bytes[] = [];
+  let remaining: Bytes = buffer;
+
+  while (true) {
+    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
+    if (sizeEnd === -1) break;
+
+    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
+    if (!Number.isInteger(size)) break;
+
+    const chunkStart = sizeEnd + chunkSeparator.length;
+    const chunkEnd = chunkStart + size;
+    if (remaining.length < chunkEnd + chunkSeparator.length) break;
+
+    if (size === 0) return { chunks, remainder: new Uint8Array(0) as Bytes, complete: true };
+
+    chunks.push(remaining.slice(chunkStart, chunkEnd));
+    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
+  }
+
+  return { chunks, remainder: remaining, complete: false };
+};
+
 async function* streamNamedPipeRequest(pipePath: string, request: DockerHttpRequest): AsyncGenerator<Bytes> {
   const socket = createConnection({ path: pipePath });
   const body = requestBody(request);
@@ -306,30 +334,50 @@ async function* streamNamedPipeRequest(pipePath: string, request: DockerHttpRequ
 
   try {
     let parsed: ParsedDockerHttpHead | undefined;
+    let chunkedBody = false;
+    let bodyBuffer: Bytes = new Uint8Array(0) as Bytes;
+
     for await (const chunk of socket) {
-      initialChunks.push(chunk);
-      const merged = concatBytes(initialChunks);
-      if (indexOfBytes(merged, headerSeparator) === -1) continue;
-      parsed = parseDockerHttpHead(merged, "docker-api");
-      if (parsed.status < 200 || parsed.status >= 300) {
-        throw unavailable(
-          "docker-api",
-          `Docker API stream request failed with HTTP ${parsed.status}.`,
-          request,
-        );
+      if (parsed === undefined) {
+        initialChunks.push(chunk);
+        const merged = concatBytes(initialChunks);
+        if (indexOfBytes(merged, headerSeparator) === -1) continue;
+        parsed = parseDockerHttpHead(merged, "docker-api");
+        if (parsed.status < 200 || parsed.status >= 300) {
+          throw unavailable(
+            "docker-api",
+            `Docker API stream request failed with HTTP ${parsed.status}.`,
+            request,
+          );
+        }
+        chunkedBody = parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
+        if (chunkedBody) {
+          bodyBuffer = parsed.bodyStart;
+          const decoded = decodeChunkedBuffer(bodyBuffer);
+          for (const bodyChunk of decoded.chunks) yield bodyChunk;
+          bodyBuffer = decoded.remainder;
+          if (decoded.complete) return;
+        } else {
+          if (parsed.bodyStart.length > 0) yield parsed.bodyStart;
+        }
+        continue;
       }
-      const bodyChunks = (async function* () {
-        if (parsed.bodyStart.length > 0) yield parsed.bodyStart;
-        for await (const next of socket) yield next;
-      })();
-      if (parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked") {
-        yield* decodeChunkedBody(bodyChunks);
-      } else {
-        yield* bodyChunks;
+
+      if (chunkedBody) {
+        bodyBuffer = concatBytes([bodyBuffer, chunk]);
+        const decoded = decodeChunkedBuffer(bodyBuffer);
+        for (const bodyChunk of decoded.chunks) yield bodyChunk;
+        bodyBuffer = decoded.remainder;
+        if (decoded.complete) return;
+        continue;
       }
-      return;
+
+      yield chunk;
     }
-    throw internal("docker-api", "Docker API stream response ended before HTTP headers.", request);
+
+    if (parsed === undefined) {
+      throw internal("docker-api", "Docker API stream response ended before HTTP headers.", request);
+    }
   } finally {
     socket.destroy();
   }
