@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { DateTime, Effect, Stream } from "effect";
 
 import {
@@ -26,6 +30,7 @@ const appId = AppId.make("myapp");
 const serviceName = ServiceName.make("web");
 const providerId = ProviderId.make("docker");
 const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-10T18:51:00Z"),
   source: "provider-docker.test",
@@ -184,6 +189,44 @@ const makeFakeApi = () => {
 };
 
 describe("provider-docker RuntimeProvider contract", () => {
+  test("flushes the final buffered chunk when a named-pipe chunked stream closes", async () => {
+    const tempDir = await mkdtemp(path.join(tmpdir(), "provider-docker-npipe-"));
+    const socketPath = path.join(tempDir, "docker.sock");
+    const server = createServer((socket) => {
+      socket.once("data", () => {
+        socket.end(
+          [
+            "HTTP/1.1 200 OK",
+            "Content-Type: text/plain",
+            "Transfer-Encoding: chunked",
+            "",
+            "5\r\nhello",
+          ].join("\r\n"),
+        );
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(socketPath, resolve);
+    });
+
+    try {
+      const client = makeDockerApiClient(`npipe:${socketPath}`);
+      const body = await Effect.runPromise(
+        client.stream({ method: "GET", path: "/logs" }).pipe(
+          Stream.runCollect,
+          Effect.map((chunks) => Array.from(chunks).map((chunk) => textDecoder.decode(chunk))),
+        ),
+      );
+
+      expect(body).toEqual(["hello"]);
+    } finally {
+      server.close();
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("runs the provider contract suite through the Docker Engine API", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(

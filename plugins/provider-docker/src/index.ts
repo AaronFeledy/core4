@@ -322,6 +322,32 @@ const decodeChunkedBuffer = (
   return { chunks, remainder: remaining, complete: false };
 };
 
+const flushChunkedBufferAtEnd = (buffer: Bytes): ReadonlyArray<Bytes> => {
+  const chunks: Bytes[] = [];
+  let remaining: Bytes = buffer;
+
+  while (true) {
+    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
+    if (sizeEnd === -1) break;
+
+    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
+    if (!Number.isInteger(size)) break;
+
+    const chunkStart = sizeEnd + chunkSeparator.length;
+    const chunkEnd = chunkStart + size;
+    if (remaining.length < chunkEnd) break;
+
+    if (size === 0) return chunks;
+
+    chunks.push(remaining.slice(chunkStart, chunkEnd));
+    if (remaining.length < chunkEnd + chunkSeparator.length) break;
+
+    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
+  }
+
+  return chunks;
+};
+
 async function* streamNamedPipeRequest(pipePath: string, request: DockerHttpRequest): AsyncGenerator<Bytes> {
   const socket = createConnection({ path: pipePath });
   const body = requestBody(request);
@@ -377,6 +403,9 @@ async function* streamNamedPipeRequest(pipePath: string, request: DockerHttpRequ
 
     if (parsed === undefined) {
       throw internal("docker-api", "Docker API stream response ended before HTTP headers.", request);
+    }
+    if (chunkedBody && bodyBuffer.length > 0) {
+      for (const bodyChunk of flushChunkedBufferAtEnd(bodyBuffer)) yield bodyChunk;
     }
   } finally {
     socket.destroy();
