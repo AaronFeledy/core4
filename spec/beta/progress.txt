@@ -423,3 +423,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test` → exit 0
   - `git diff --check` → clean
   - `lsp_diagnostics plugins/provider-podman/src/index.ts` attempted; TypeScript LSP exited with code -2, matching the review-step LSP instability already noted.
+
+## [2026-05-27 10:13 CDT] - Sync
+- Previous branch: us-078-provider-podman-linux
+- Previous PR: #176 https://github.com/AaronFeledy/core4/pull/176
+- Action: dispatched leftover push (Case E, 6 commits unpushed, no PR). Ran push+babysit inline. CI required 1 flaky-build re-run and 4 triage rounds: (1) fix test fixture missing socketPath field; (2) Bugbot — fix eventService forwarding, list persisted plans, rememberPlan synchronous mutation; (3) Bugbot — fix rememberPlan Effect deferral; (4) Bugbot — fix forgetPlan eager map delete. All checks SUCCESS on final run, Bugbot found no new issues on latest commit. Merged via squash.
+- Local main updated: yes (b67e500)
+- Branch after sync: main
+- Stash created: no
+---
