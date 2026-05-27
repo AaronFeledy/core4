@@ -608,3 +608,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/capabilities.test.ts` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 19:00 UTC] - US-079 PR #178 Bugbot triage round 8 push
+- Triaged Cursor Bugbot's eighth review (commit `166814a`, 1 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/named-pipe.ts` L321, "Request path missing chunked flush at end-of-stream", Low) - **real issue, fixed**. The non-streaming named-pipe request path used `decodeChunkedBody` but did not flush a final partial chunk when the socket closed without the trailing CRLF. Fix: `decodeChunkedBody` now flushes any remaining buffer with `flushChunkedBufferAtEnd` after the async iterable ends, matching the streaming path behavior.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/named-pipe.ts`: exported `decodeChunkedBody` for regression coverage and added final-buffer flush.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: added regression coverage that `decodeChunkedBody` yields the final chunk when the trailing CRLF is absent at end-of-stream.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
