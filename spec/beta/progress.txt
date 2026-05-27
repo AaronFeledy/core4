@@ -951,3 +951,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes (local main reset to origin/main after the remote squash already contained the prior local progress-log commit; local story branch absent/deleted)
 - Remaining local state, if any: spec/beta/progress.txt has this uncommitted babysit note
 ---
+
+## [2026-05-27 23:46 UTC] - Sync
+- Previous branch: us-082-provider-selection-precedence
+- Previous PR: #181 https://github.com/AaronFeledy/core4/pull/181
+- Action: caught up after prior merge (PR #181 already MERGED, remote branch pruned, local story branch absent)
+- Local main updated: yes (fast-path committed pending progress.txt; main already at origin/main + 1 local progress commit)
+- Branch after sync: main
+- Stash created: no
+---
