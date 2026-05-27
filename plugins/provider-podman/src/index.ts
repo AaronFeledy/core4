@@ -43,9 +43,7 @@ import {
 } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
-import { decodeChunkedBody, flushChunkedBufferAtEnd, makeNamedPipePodmanApiClient } from "./named-pipe.ts";
-
-export { decodeChunkedBody, flushChunkedBufferAtEnd };
+import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
 
 export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
@@ -217,10 +215,7 @@ const defaultPodmanSocket = (
   if (platform === "darwin") {
     return discoverPodmanDesktopSockets({ platform, env })[0] ?? "/var/run/podman/podman.sock";
   }
-  return (
-    discoverPodmanDesktopSockets({ platform, env })[0] ??
-    windowsPodmanDesktopSocket(DEFAULT_PODMAN_DESKTOP_MACHINE)
-  );
+  return windowsPodmanDesktopSocket(resolvePodmanDesktopMachine(env));
 };
 
 /**

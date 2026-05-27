@@ -3,8 +3,13 @@ import { EventEmitter } from "node:events";
 import type { Socket } from "node:net";
 import { Cause, Effect } from "effect";
 
-import { decodeChunkedBody, flushChunkedBufferAtEnd, makeRuntimeProvider } from "@lando/provider-podman";
-import { connectNamedPipeSocket, namedPipeInfoFailure } from "../src/named-pipe.ts";
+import { makeRuntimeProvider } from "@lando/provider-podman";
+import {
+  connectNamedPipeSocket,
+  decodeChunkedBody,
+  flushChunkedBufferAtEnd,
+  namedPipeInfoFailure,
+} from "../src/named-pipe.ts";
 
 describe("provider-podman named-pipe chunk flush", () => {
   test("keeps the final chunk even when the trailing CRLF is missing at end-of-stream", () => {
