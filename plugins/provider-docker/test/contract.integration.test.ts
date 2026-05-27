@@ -298,6 +298,39 @@ describe("provider-docker RuntimeProvider contract", () => {
     ]);
   });
 
+  test("decodes raw Docker log bytes", async () => {
+    const fake = makeFakeApi();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      if (request.path.includes("/logs?")) {
+        return Stream.fromIterable([textEncoder.encode("2026-05-17T12:00:00.000Z raw ready\n")]);
+      }
+      return Stream.empty;
+    };
+
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan();
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const logs = await Effect.runPromise(
+      provider.logs({ app: appId, service: serviceName }, { follow: false }).pipe(
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+      ),
+    );
+
+    expect(logs).toEqual([
+      {
+        service: serviceName,
+        stream: "stdout",
+        line: "raw ready",
+        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+      },
+    ]);
+  });
+
   test("declares the Linux Docker Engine capability matrix", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(

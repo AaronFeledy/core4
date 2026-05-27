@@ -4,7 +4,7 @@
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
  */
-import { DateTime, Effect, Either, Schema, Stream } from "effect";
+import { DateTime, Duration, Effect, Either, Schema, Stream } from "effect";
 
 import {
   AbsolutePath,
@@ -279,13 +279,18 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* requireContract(typeof execResult.stdout === "string", "exec result includes stdout", execResult);
     yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
 
-    const logChunks = yield* provider
-      .logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false })
-      .pipe(
+    const logChunks = yield* Effect.timeoutFail(
+      provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
+        Stream.take(1),
         Stream.runCollect,
         Effect.map((chunks) => Array.from(chunks)),
         Effect.mapError(mapProviderFailure("logs emits structured chunks")),
-      );
+      ),
+      {
+        duration: Duration.seconds(5),
+        onTimeout: () => contractFailure("logs emits at least one chunk", []),
+      },
+    );
     yield* requireContract(logChunks.length > 0, "logs emits at least one chunk", logChunks);
     for (const chunk of logChunks) {
       yield* requireContract(chunk.service === TEST_SERVICE_NAME, "log chunk includes service name", chunk);

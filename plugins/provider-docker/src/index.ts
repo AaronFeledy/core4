@@ -1224,16 +1224,63 @@ const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", lin
     : { service: service.name, stream: streamName, line: match[2] ?? "", timestamp };
 };
 
+type LogsDecoderMode = "unknown" | "framed" | "raw";
+
+const parseTextLines = (
+  service: ServicePlan,
+  streamName: "stdout" | "stderr",
+  text: string,
+): { readonly chunks: ReadonlyArray<LogChunk>; readonly remainder: string } => {
+  const lines = text.split(/\r?\n/u);
+  const remainder = lines.pop() ?? "";
+  return {
+    chunks: lines.filter((line) => line.length > 0).map((line) => parseLogLine(service, streamName, line)),
+    remainder,
+  };
+};
+
 const makeLogsDecoder = (service: ServicePlan) => {
   const decodeFrame = makeAttachDecoder();
-  return (chunk: Uint8Array): ReadonlyArray<LogChunk> =>
-    decodeFrame(chunk).flatMap((frame) =>
+  let mode: LogsDecoderMode = "unknown";
+  let rawBuffer = "";
+
+  const decodeRaw = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
+    mode = "raw";
+    const parsed = parseTextLines(service, "stdout", rawBuffer + textDecoder.decode(bytes));
+    rawBuffer = parsed.remainder;
+    return parsed.chunks;
+  };
+
+  return (chunk: Uint8Array): ReadonlyArray<LogChunk> => {
+    if (mode === "raw") {
+      return decodeRaw(chunk);
+    }
+
+    const firstByte = chunk[0] ?? 0;
+    if (mode === "unknown" && chunk.length > 0 && firstByte !== 1 && firstByte !== 2) {
+      return decodeRaw(chunk);
+    }
+
+    const frames = decodeFrame(chunk);
+    if (chunk.length === 0) {
+      return frames.flatMap((frame) =>
+        textDecoder
+          .decode(frame.chunk)
+          .split(/\r?\n/u)
+          .filter((line) => line.length > 0)
+          .map((line) => parseLogLine(service, frame.kind, line)),
+      );
+    }
+
+    mode = "framed";
+    return frames.flatMap((frame) =>
       textDecoder
         .decode(frame.chunk)
         .split(/\r?\n/u)
         .filter((line) => line.length > 0)
         .map((line) => parseLogLine(service, frame.kind, line)),
     );
+  };
 };
 
 const logs = (
