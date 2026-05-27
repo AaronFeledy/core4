@@ -170,7 +170,11 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
     const arg = argv[index];
     if (arg === undefined) continue;
     if (arg.startsWith("--provider=")) return arg.slice("--provider=".length);
-    if (arg === "--provider") return argv[index + 1];
+    if (arg === "--provider") {
+      const next = argv[index + 1];
+      if (next === undefined || next.startsWith("-")) return undefined;
+      return next;
+    }
   }
   return undefined;
 };
