@@ -35,6 +35,36 @@ export const PLUGIN_NAME = "@lando/provider-docker" as const;
 
 const PROVIDER_ID = "docker";
 const textDecoder = new TextDecoder();
+
+const APPLY_REMEDIATION =
+  "Run `lando destroy` to clean up any partial app state, then retry `lando start`. Run `lando doctor` if the failure persists.";
+
+const REDACTED = "[REDACTED]" as const;
+const SECRET_KEY_PATTERN =
+  /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
+const SECRET_ENV_PATTERN =
+  /\b([A-Z][A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]\}]+)/gu;
+const redactString = (value: string): string =>
+  value.replace(SECRET_ENV_PATTERN, (_, name) => `${String(name)}=${REDACTED}`);
+const redactObject = (value: Record<string, unknown>): Record<string, unknown> => {
+  const out: Record<string, unknown> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (SECRET_KEY_PATTERN.test(key)) {
+      out[key] = REDACTED;
+      continue;
+    }
+    out[key] = redactDetails(raw);
+  }
+  return out;
+};
+const redactDetails = (value: unknown): unknown => {
+  if (value === null || value === undefined) return value;
+  if (Array.isArray(value)) return value.map((item) => redactDetails(item));
+  if (value instanceof Error) return { name: value.name, message: redactString(value.message) };
+  if (typeof value === "object") return redactObject(value as Record<string, unknown>);
+  if (typeof value === "string") return redactString(value);
+  return value;
+};
 type Bytes = Uint8Array<ArrayBufferLike>;
 
 export interface DockerHttpRequest {
@@ -123,13 +153,15 @@ const internal = (operation: string, message: string, details?: unknown, cause?:
     ...(cause === undefined ? {} : { cause }),
   });
 
-const serviceStartFailure = (service: ServicePlan, message: string, details?: unknown) =>
+const serviceStartFailure = (service: ServicePlan, message: string, details?: unknown, cause?: unknown) =>
   new ServiceStartError({
     providerId: PROVIDER_ID,
     operation: "apply",
     service: service.name,
     message,
-    ...(details === undefined ? {} : { details }),
+    remediation: APPLY_REMEDIATION,
+    ...(details === undefined ? {} : { details: redactDetails(details) }),
+    ...(cause === undefined ? {} : { cause }),
   });
 
 const serviceExecFailure = (service: ServicePlan, message: string, details?: unknown) =>
@@ -919,7 +951,7 @@ const createContainer = (api: DockerApiClient, plan: AppPlan, service: ServicePl
     catch: (cause) =>
       cause instanceof ServiceStartError
         ? cause
-        : serviceStartFailure(service, "Failed to build Docker container create payload.", cause),
+        : serviceStartFailure(service, "Failed to build Docker container create payload.", undefined, cause),
   }).pipe(
     Effect.flatMap((body) =>
       request(api, "apply", {
@@ -956,23 +988,75 @@ const startContainer = (api: DockerApiClient, service: ServicePlan, name: string
     ),
   );
 
-const bringUp = (plan: AppPlan, api: DockerApiClient) =>
+const stopContainerSilent = (api: DockerApiClient, name: string): Effect.Effect<void> =>
+  request(api, "destroy", { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
+    Effect.catchAll(() => Effect.void),
+  );
+
+const removeContainerSilent = (api: DockerApiClient, name: string): Effect.Effect<void> =>
+  request(api, "destroy", {
+    method: "DELETE",
+    path: `/containers/${encodeURIComponent(name)}?force=true`,
+  }).pipe(Effect.catchAll(() => Effect.void));
+
+const removeNetworkSilent = (api: DockerApiClient, plan: AppPlan): Effect.Effect<void> =>
+  request(api, "destroy", {
+    method: "DELETE",
+    path: `/networks/${encodeURIComponent(networkName(plan))}`,
+  }).pipe(Effect.catchAll(() => Effect.void));
+
+const removeVolumeSilent = (api: DockerApiClient, name: string): Effect.Effect<void> =>
+  request(api, "destroy", { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }).pipe(
+    Effect.catchAll(() => Effect.void),
+  );
+
+const rollbackPartialApply = (
+  api: DockerApiClient,
+  plan: AppPlan,
+  touched: ReadonlyArray<string>,
+): Effect.Effect<void> =>
   Effect.gen(function* () {
-    yield* ensureNetwork(api, plan);
-    for (const service of Object.values(plan.services)) {
-      const name = containerName(plan, service);
-      const inspected = yield* inspectContainer(api, name);
-      if (!inspected.exists) {
-        yield* createContainer(api, plan, service, name);
-      }
-      if (!inspected.running) {
-        yield* startContainer(api, service, name);
-      }
-    }
-    return { changed: true };
+    yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
+    yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
+    yield* removeNetworkSilent(api, plan);
   });
 
-const bringDown = (plan: AppPlan, api: DockerApiClient) =>
+const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
+  Effect.gen(function* () {
+    yield* ensureNetwork(api, plan);
+    const touched: string[] = [];
+    let changed = false;
+    for (const service of Object.values(plan.services)) {
+      if (signal?.aborted === true) {
+        yield* rollbackPartialApply(api, plan, touched);
+        yield* Effect.fail(serviceStartFailure(service, "Docker bringUp was cancelled."));
+      }
+      const name = containerName(plan, service);
+      touched.push(name);
+      const inspected = yield* inspectContainer(api, name);
+      let serviceChanged = false;
+      if (!inspected.exists) {
+        yield* createContainer(api, plan, service, name).pipe(
+          Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+        );
+        serviceChanged = true;
+      }
+      if (!inspected.running) {
+        yield* startContainer(api, service, name).pipe(
+          Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+        );
+        serviceChanged = true;
+      }
+      changed = changed || serviceChanged;
+    }
+    return { changed };
+  });
+
+interface BringDownOptions {
+  readonly volumes?: boolean;
+}
+
+const bringDown = (plan: AppPlan, api: DockerApiClient, options: BringDownOptions = {}) =>
   Effect.gen(function* () {
     for (const service of Object.values(plan.services).reverse()) {
       const name = containerName(plan, service);
@@ -1025,6 +1109,12 @@ const bringDown = (plan: AppPlan, api: DockerApiClient) =>
             ),
       ),
     );
+    if (options.volumes === true) {
+      for (const store of plan.stores) {
+        if (store.scope === "global") continue;
+        yield* removeVolumeSilent(api, store.name);
+      }
+    }
   });
 
 const inspectService = (
@@ -1331,16 +1421,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,
-        apply: (plan) =>
-          bringUp(plan, dockerApi).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan)))),
+        apply: (plan, applyOptions) =>
+          bringUp(plan, dockerApi, applyOptions.signal).pipe(
+            Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))),
+          ),
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
-        destroy: (target) => {
+        destroy: (target, destroyOptions) => {
           const plan = plans.get(target.app);
           return plan === undefined
             ? Effect.void
-            : bringDown(plan, dockerApi).pipe(Effect.tap(() => Effect.sync(() => plans.delete(target.app))));
+            : bringDown(plan, dockerApi, { volumes: destroyOptions.volumes }).pipe(
+                Effect.tap(() => Effect.sync(() => plans.delete(target.app))),
+              );
         },
         exec: (target, command) => {
           const plan = plans.get(target.app);
