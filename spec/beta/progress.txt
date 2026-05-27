@@ -620,3 +620,16 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 19:16 UTC] - US-079 PR #178 Bugbot triage round 9 push
+- Triaged Cursor Bugbot's ninth review (commit `46e2605`, 2 new + 1 carried-over unresolved):
+  - New comment (`plugins/provider-podman/src/index.ts` L223, "Windows fallback in `defaultPodmanSocket` is unreachable dead code", Low) - **real issue, fixed**. The Windows path now resolves the selected machine directly via `windowsPodmanDesktopSocket(resolvePodmanDesktopMachine(env))`, removing the unreachable nullish fallback without adding a non-null assertion.
+  - New comment (`plugins/provider-podman/src/index.ts` L48, "Test-only helpers re-exported from public package API", Low) - **real issue, fixed**. Internal chunked-decoder helpers are no longer re-exported from `@lando/provider-podman`; the regression test imports them from `../src/named-pipe.ts`, matching the other named-pipe internals used by the test.
+  - Carried-over comment (`plugins/provider-podman/src/named-pipe.ts` whole file, "Named-pipe transport duplicates ~300 lines from provider-docker", Medium) - **still deferred, non-blocking for this PR** as follow-up cross-package refactor work.
+- Files changed:
+  - `plugins/provider-podman/src/index.ts`: removed public re-export of internal chunked helpers; removed unreachable Windows fallback.
+  - `plugins/provider-podman/test/named-pipe.test.ts`: import internal chunk helpers directly from source for regression coverage.
+- Verification (pre-commit):
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts plugins/provider-podman/test/capabilities.test.ts` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
