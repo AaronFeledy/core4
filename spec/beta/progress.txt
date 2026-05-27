@@ -805,3 +805,40 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Merge: merged (squash) → 727f2f9
 - Local main / branch refreshed: yes; remote + local story branch deleted
 ---
+
+## [2026-05-27 23:00 UTC] - US-082
+- Implemented provider selection precedence (`flag > Landofile > env > config > capability-default`) and provider conflict diagnostics in `meta:doctor`.
+- Files changed:
+  - `core/src/providers/precedence.ts` (new): `resolveProviderSelection({flag, landofile, env, config, capabilityDefault})` returns `{providerId, source, inputs}`; `readProviderEnvVar()` parses `LANDO_PROVIDER` distinct from the existing `LANDO_DEFAULT_PROVIDER_ID` config overlay; `CAPABILITY_DEFAULT_PROVIDER_ID = "lando"` is the fail-closed bundled fallback.
+  - `core/src/providers/conflict.ts` (new): `detectProviderConflicts({stateDir, platform, env})` wraps `provider-podman`'s `detectProviderLandoConflict` + `resolvePodmanSocket` so doctor can surface the typed `ProviderLandoConflictError` (remediation `lando setup --provider=…`) without constructing provider-podman.
+  - `core/src/cli/commands/doctor.ts`: `doctor({flagProviderId, landofileProviderId, env, platform})` gathers all five inputs via `ConfigService`, calls the resolver, attaches a `selection` record on the `selected-provider` check, threads `selectionSource` into `context`, and emits a second `provider-conflict` check (status `warn`) with the typed remediation when a lando↔podman socket overlap is detected.
+  - `core/src/cli/oclif/commands/meta/doctor.ts`: declares a `--provider` flag, widens the spec's R param to `ConfigService | RuntimeProviderRegistry`, threads the flag into the new `doctor()` options.
+  - `core/src/cli/oclif/commands/meta/setup.ts`: now resolves the selected provider via `resolveProviderSelection({flag, env: LANDO_PROVIDER, config: defaultProviderId, capabilityDefault})` before calling `registry.select(syntheticPlan)`; spec R param widened to include `ConfigService`.
+  - `core/src/cli/run.ts`: compiled-mode `runDoctor` now parses `--provider` and forwards it through `doctor({flagProviderId})`.
+  - `core/test/providers/precedence.test.ts` (new): every pair of (`flag`, `landofile`, `env`, `config`, `default`) plus all single-input and multi-input combinations; covers `readProviderEnvVar` whitespace/empty/missing semantics.
+  - `core/test/providers/conflict.test.ts` (new): empty stateDir, missing state file, no socketPath, non-matching socket, matching socket (asserts `ProviderLandoConflict` report + `lando setup --provider=` remediation containing both `provider=podman` and `provider=lando`), trailing-slash normalization, malformed state file propagation.
+  - `core/test/cli/doctor.test.ts`: extended with selection-reporting tests for every resolved source (`default`, `config`, `env`, `landofile`, `flag`), plain-text + NDJSON shape assertions, and provider-conflict tests (positive + negative + ndjson + remediation string).
+  - `core/test/cli/setup.test.ts`: existing tests now thread `ConfigService` via `buildSetupLayers`; added precedence integration tests (flag overrides env, env overrides config, config overrides default, default fallback).
+  - `core/test/cli/setup.scenario.test.ts`: added `makeConfigServiceLayer()` to the merged layer for both happy-path and Podman-failure cases.
+  - `core/test/cli/fixtures/meta-doctor.provider-status*.ndjson`: regenerated to carry the new `selection` payload and `selectionSource` context key.
+  - `docs/guides/setup/provider-selection.mdx` (new): records precedence order, doctor reporting surface, and the `lando-podman-socket` conflict remediation as hidden scenarios.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → 4 pre-existing warnings, 0 errors
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/providers/ core/test/cli/doctor.test.ts core/test/cli/setup.test.ts core/test/cli/setup.scenario.test.ts` → 56 pass, 1 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/core' build` → exit 0 (compiled binary ./core/dist/lando)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` (full suite, post-build) → 1374 pass, 16 skip, 0 fail / 1390 tests across 182 files
+  - Manual CLI QA against `./core/dist/lando doctor`:
+    - default: `selectionSource: config`, `selectionInputConfig: lando`, `selectionInputDefault: lando` (no env, no flag)
+    - `LANDO_PROVIDER=podman lando doctor`: resolver routes to provider-podman and fails closed at the capability probe with `ProviderUnavailableError` carrying the Podman-socket remediation — exactly the expected behavior when LANDO_PROVIDER is honored.
+    - `lando doctor --provider=docker`: `selectionSource: flag`, `selectionInputFlag: docker`, provider-docker stub renders capabilities.
+    - With `~/.local/share/lando/providers/provider-lando/setup-state.json` recording the same Podman socket as resolved on Linux: doctor emits a second `provider-conflict: warn` check with the `Choose one provider explicitly. Run \`lando setup --provider=podman\`… or \`lando setup --provider=lando\`…` remediation (command tag `lando setup --provider=`).
+- **Learnings for future iterations:**
+  - `LANDO_PROVIDER` belongs at the `env` precedence slot and stays distinct from `LANDO_DEFAULT_PROVIDER_ID`, which remains a config-layer overlay merged into `ConfigService.defaultProviderId`. Don't conflate the two: tests assert that `readProviderEnvVar` reads only `LANDO_PROVIDER`.
+  - Once `meta:doctor` reads `ConfigService.userDataRoot` to drive conflict detection, every doctor-touching scenario test must merge a `ConfigService` live/stub layer alongside `RuntimeProviderRegistry`; missing it surfaces as `Service not found: @lando/core/ConfigService` at runtime, not at typecheck time, because `Effect.gen` defers service lookup.
+  - The `provider-conflict` check is intentionally rendered with empty `capabilities` and the conflict-specific `conflictKind`/`socketPath` keys in `context` only — plain-text rendering drops those keys today, so any future text-output assertions should target the solution description string rather than context fields.
+  - When regenerating the doctor NDJSON fixtures, set the test `ConfigService.defaultProviderId` to `"lando"` (matching `ConfigServiceLive`'s default merge) so the fixture's `selectionSource` is `"config"` and not `"default"`.
+- Branch: us-082-provider-selection-precedence
+- Commit: 71daa7b feat: provider selection precedence and conflict diagnostics
+---
