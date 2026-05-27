@@ -145,7 +145,6 @@ const MACHINE_NOT_RUNNING_PATTERNS = [
   /Connect to .* failed/i,
   /pipe.*not\s+found/i,
   /pipe not exist/i,
-  /ENOENT/i,
   /not\s+reachable/i,
   /socket.*not\s+found/i,
 ];
