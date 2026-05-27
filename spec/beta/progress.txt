@@ -633,3 +633,34 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-podman/test/named-pipe.test.ts plugins/provider-podman/test/capabilities.test.ts` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run --filter='@lando/provider-podman' typecheck` → exit 0
   - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+
+## [2026-05-27 19:30 UTC] - Sync
+- Previous branch: us-079-provider-podman-desktop
+- Previous PR: #178 https://github.com/AaronFeledy/core4/pull/178
+- Action: caught up after prior merge (PR #178 already MERGED, remote branch pruned)
+- Local main updated: yes (already current with origin/main)
+- Branch after sync: main
+- Stash created: no
+---
+
+## [2026-05-27 20:30 UTC] - US-080
+- Implemented the shared `RuntimeProvider` contract suite plus a matrix-driven runner so `TestRuntimeProvider`, `@lando/provider-lando`, `@lando/provider-docker`, and `@lando/provider-podman` all run the same `@lando/sdk/test` contract across every supported platform.
+- Files changed:
+  - `sdk/src/test/index.ts`: extended `runProviderContract` with `setup` invariants (callable + returns Effect), `getVersions().bundle` optional-string invariant, and (via new in-test schema assertions) coverage for the §5.7 provider-error contract; added new exports `runProviderContractMatrix`, `HostPlatformId`, `SupportedContractCell`, `UnsupportedContractCell`, `ContractMatrixCell`, `ContractMatrixCellResult`, `ContractMatrixReport`, `ContractMatrixOptions`.
+  - `sdk/test/contract/provider.test.ts`: new ContractFailure paths for `setup`/`setup-effect`/`bundle-shape`; accepted cases for absent/string bundle; SDK §5.7 error-class shape checks for `ProviderCapabilityError`, `ProviderUnavailableError`, `NoProviderInstalledError` (including a `Schema.decodeUnknownEither` round-trip that preserves redacted `details`); matrix-runner suite (exports, passed+skipped reporting, supported-cell ContractFailure propagation, required `skipReason`, required `factory`).
+  - `sdk/test/library/exports.test.ts`: asserts `sdkTest.runProviderContractMatrix` is exported alongside `runProviderContract`/`TestRuntimeProvider`.
+  - `plugins/provider-lando/test/contract.integration.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 via the existing fake Podman API client.
+  - `plugins/provider-docker/test/contract.integration.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 via `makeProviderLayer({ platform, env: {}, dockerApi: makeFakeApi().api })`.
+  - `plugins/provider-podman/test/contract.integration.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 via `makeProviderLayer({ podmanApi: makeFakeApi().api, platform, env: {} })`.
+  - `core/test/testing/test-runtime.test.ts`: added a matrix test that runs the contract for linux/darwin/win32 against the re-exported `TestRuntimeProvider`.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (`biome check .` Checked 499 files, no fixes applied)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/provider.test.ts sdk/test/library/exports.test.ts plugins/provider-lando/test/contract.integration.test.ts plugins/provider-docker/test/contract.integration.test.ts plugins/provider-podman/test/contract.integration.test.ts core/test/testing/test-runtime.test.ts` → 49 pass, 4 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us080-full.xml` → 1323 pass, 16 skip, 0 fail (177 files / 134.69s)
+- **Learnings for future iterations:**
+  - `runProviderContract` is the single shared assertion path — extending it with new invariants (setup, bundle, error-shape) automatically lifts coverage for every existing caller, so the four packages only had to add a matrix wrapper rather than duplicate assertions.
+  - The matrix runner's "skipReason required for unsupported cells / factory required for supported cells" contract is intentional: it forces every package to declare its supported set explicitly (no silent platform gaps) and surfaces skipped cells with a reason in the returned `ContractMatrixReport`.
+  - SDK error-shape coverage is best asserted against the `Schema.decodeUnknownEither(ProviderCapabilityError)` round-trip rather than by triggering real provider errors — US-081 owns the provider-side negative-path coverage, so US-080 stays scoped to the SDK-level contract.
+  - When migrating a contract test, route the cell `factory` through the existing fake-client harness (the per-test `makeFakeApi()` closures) so each matrix cell gets an isolated fake; sharing a single fake across cells would leak state between the lifecycle round-trips.
+---
