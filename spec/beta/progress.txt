@@ -1861,3 +1861,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The shared `ServiceConfig` schema permits `framework:` broadly; per-language `ServiceType` implementations decide whether to consume, validate, or ignore it. Documentation rows should describe the ServiceType behavior precisely instead of assuming decoder rejection.
   - README contract tests should cover compatibility edge wording when a docs story explains behavior that intentionally differs by service type.
 ---
+
+## [2026-05-28 14:10 CDT] - Push
+- Branch: us-091-go-framework-preset-docs
+- Push: pushed
+- Commit(s): ca64c4a Clean up service-lando README test;08dbbf6 Fix service-lando README framework wording 6a0fe25 feat: framework-preset coverage extends to Go
+- PR: #191 https://github.com/AaronFeledy/core4/pull/191 (created)
+---
