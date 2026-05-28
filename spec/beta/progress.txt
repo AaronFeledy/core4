@@ -1499,3 +1499,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Triaged Cursor Bugbot feedback on commit `15f026b`: `spec/beta/prd.json` had been serialized with escaped non-ASCII characters, creating a noisy human-unfriendly PRD diff.
 - Fix already pushed in `48f96b4`: restored literal Unicode in `spec/beta/prd.json` while preserving US-088 `passes: true` and the existing story pass states.
 ---
+
+
+## [2026-05-28 09:48 CDT] - Babysit
+- PR: #187 https://github.com/AaronFeledy/core4/pull/187
+- CI outcome: pass (build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks, Cursor Bugbot)
+- Review feedback: fixed (Bugbot ordering feedback fixed in `15f026b`; follow-up PRD Unicode escaping feedback fixed in `48f96b4` and recorded in `282852d`)
+- Triage rounds used: 2
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main`; local story branch deleted; progress log updated with this babysit report
+---
