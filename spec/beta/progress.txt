@@ -1045,3 +1045,30 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `golang:1.22`'s default Cmd is not a long-lived process, so the service plan must supply `command: ["go", "run", "/app/main.go"]` (or similar) to keep the container alive while the HTTP server serves. The default `tail -f /dev/null` keep-alive from `go.ts` is for the planner-driven path where the tooling alias drives one-shot exec; a live HTTP scenario explicitly overrides it.
   - Port publishing in `provider-lando` bringUp maps `endpoint.port` to `HostIp: 127.0.0.1, HostPort: <port>` (see `bring-up.ts` ~line 147), so the host port equals the container port — picking a non-default port (31082 vs the type's default 8080) avoids collisions with whatever else is bound to 8080 on a CI runner.
 - Branch: us-083-go-service-type
+
+## [2026-05-28 01:44 UTC] - US-083 Review
+- Reviewed the latest US-083 live Go HTTP scenario commit (`origin/us-083-go-service-type...HEAD`) with the loop review agents and direct checks.
+- Fixed confirmed review blocker: the provider-integration CI job exported `LANDO_TEST_PODMAN_SOCKET` but did not run `plugins/service-lando/test/*.integration.test.ts`, so the new live Go HTTP scenario would remain skipped outside ad hoc local execution. Added the service-lando integration glob to CI and the CI runbook, and pre-pulls `golang:1.22` for the large image used by the test.
+- Files changed:
+  - `.github/workflows/ci.yml`
+  - `docs/ci-runbook.md`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: service-lando live integration tests were not part of the provider-integration CI command set despite relying on the same Podman socket gate.
+  - Rejected: default Go plugin version drift from upstream Lando docs is not a US-083 blocker because this rewrite PRD explicitly pins Beta support to `go:1.22` and `go:1.23`.
+  - Rejected: changing the Go default command from keep-alive to an opinionated HTTP starter would conflict with the service catalog pattern; the live scenario correctly overrides the command for the minimal HTTP app.
+  - Rejected: the prior host Docker smoke noted in the build progress is not accepted as sandbox-compliant verification evidence; it remains historical context only, and CI now owns the live Podman execution path.
+- Verification run and result:
+  - `.local/bin/lando4-dev --check` → exit 127 (`wsl.exe is not available from this shell`), so live Podman execution could not be run from this host shell.
+  - `env -u LANDO_TEST_PODMAN_SOCKET PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/go.integration.test.ts` → 1 skip, 0 fail (skip gate/compile path).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/go.test.ts plugins/service-lando/test/go.scenario.test.ts plugins/service-lando/test/registration.test.ts` → 29 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 184 tests, 886 assertions, 0 failures, 1 skip (the live Podman test without socket env).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1424 tests, 6803 assertions, 0 failures, 17 skips; a later full-suite rerun hit 2 unrelated transient docs/setup failures, and focused rerun of those files passed (`core/test/scripts/docs-scenario.test.ts core/test/cli/setup.test.ts` → 13 tests, 34 assertions, 0 failures).
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing non-null assertion warnings in provider contract tests.
+  - `git diff --check` → exit 0.
+  - LSP diagnostics for `plugins/service-lando/test/go.integration.test.ts` attempted; TypeScript LSP exited with code -2.
+- **Learnings for future iterations:**
+  - Any new `*.integration.test.ts` outside provider-lando/provider-docker must be explicitly added to the provider-integration CI command list; root `bun test` may skip or not exercise live behavior depending on env, and `test:unit` ignores integration tests entirely.
+  - Progress-log manual smoke tests that use host Docker/Podman are not acceptance evidence for host-impacting Lando/provider behavior; the sandbox or CI provider-integration job must carry that proof.
+---
