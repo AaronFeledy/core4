@@ -1569,3 +1569,39 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): f6dbd85 docs: record US-087 review fixes; e12bbdb Fix Solr review blockers; 3a6fc11 feat: solr service type
 - PR: #188 https://github.com/AaronFeledy/core4/pull/188 (created)
 ---
+
+## [2026-05-28 10:36 CDT] - Babysit
+- PR: #188 https://github.com/AaronFeledy/core4/pull/188
+- CI outcome: pass (build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks, Cursor Bugbot)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main`; local story branch deleted; progress log updated with this babysit report
+---
+
+## [2026-05-28 CDT] - US-089
+- Implemented `opensearch` service type for `@lando/service-lando`: Apache 2.0-licensed OpenSearch fork of Elasticsearch 7.10, mirrored on US-088 with the licensing distinction noted in an exported description constant.
+- Files changed:
+  - `plugins/service-lando/src/services/opensearch.ts` (new): `opensearch2ServiceType` (id `opensearch:2`) + `opensearchServiceType` alias (id `opensearch`); default image `opensearchproject/opensearch:2`; defaults `discovery.type=single-node`, `DISABLE_SECURITY_PLUGIN=true`, `DISABLE_INSTALL_DEMO_CONFIG=true`, `OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m`; HTTP endpoint on port 9200; `http.port` env tracks port overrides; curl `/_cluster/health` command healthcheck (intervals match elasticsearch); data volume mounted at `/usr/share/opensearch/data` as `<app>-opensearch-data`. Exports `OPENSEARCH_SERVICE_DESCRIPTION` documenting the Apache 2.0 vs Elastic License v2 distinction vs Elasticsearch.
+  - `plugins/service-lando/src/index.ts`, `plugins/service-lando/plugin.yaml`: registered `opensearch` and `opensearch:2` in alphabetical order.
+  - `plugins/service-lando/test/opensearch.test.ts` (new): unit tests for default plan, env defaults, image/port overrides, healthcheck command + port tracking, LANDO_* env, user env merge/reserved-key rejection, and licensing distinction in `OPENSEARCH_SERVICE_DESCRIPTION`.
+  - `plugins/service-lando/test/opensearch.scenario.test.ts` (new): exercises `AppPlanner` + `os-cli` tooling alias through `runTooling` for `/_cluster/health` and `/_cat/indices`.
+  - `plugins/service-lando/test/opensearch.integration.test.ts` (new): live Podman boot of OpenSearch 2 gated by `LANDO_TEST_PODMAN_SOCKET`; asserts cluster status is `green` or `yellow` and `/_cat/indices` returns text.
+  - `plugins/service-lando/test/package.test.ts`, `plugins/service-lando/test/registration.test.ts`, `plugins/service-lando/test/env-contract.test.ts`: extend expected service-types list and shared LANDO_* env-contract matrix.
+  - `scripts/build-ci-workflow.ts` + regenerated `.github/workflows/ci.yml`: pre-pull `opensearchproject/opensearch:2` so the live integration test can run in CI.
+  - `sdk/test/fixtures/schema-snapshot.json`: regenerated via `bun run codegen` to include the new ids in the bundled `@lando/service-lando` manifest contributes.
+  - `spec/beta/prd.json`: `US-089.passes` flipped `false` → `true`. (Also carries the prior PR #188 babysit progress entry that was committed on `main` but not yet pushed.)
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with the same 4 pre-existing `inner.api.request!` warnings in provider Docker/Podman tests (unchanged by US-089)
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/opensearch.test.ts plugins/service-lando/test/opensearch.scenario.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 114 pass, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1520 pass, 22 skip, 0 fail across 217 files
+- CLI verification: planned a fixture `name: demoapp; services.search.type: opensearch; port: 19200` through the registry-backed `AppPlanner` (same path the CLI uses). Result confirmed: `type=opensearch`, `artifact=opensearchproject/opensearch:2`, `endpoints=[{port:19200,protocol:tcp,name:search}]`, `storage=[{store:demoapp-opensearch-data,target:/usr/share/opensearch/data}]`, `healthcheck.command=["bash","-c","curl -sf http://localhost:19200/_cluster/health"]`, `LANDO_SERVICE_TYPE=opensearch`, `discovery.type=single-node`, `DISABLE_SECURITY_PLUGIN=true`, `DISABLE_INSTALL_DEMO_CONFIG=true`, `http.port=19200`, `OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m`. The OpenSearch live integration test path mirrors the US-088 fetch loop and is gated on `LANDO_TEST_PODMAN_SOCKET`; CI's pre-pull list now includes the OpenSearch image so the live test can run on `provider-integration-linux-x64`.
+- **Learnings for future iterations:**
+  - PRD-B-02's Guide Coverage table is selective; US-089 opensearch (like US-087 solr) is not required to ship a `docs/guides/services/<name>.mdx`. Only the listed stories (US-084 mongodb, US-086 valkey, US-088 elasticsearch, US-093 static, US-094 compose-passthrough) need guides.
+  - OpenSearch 2 needs both `DISABLE_SECURITY_PLUGIN=true` and `DISABLE_INSTALL_DEMO_CONFIG=true` for a clean local-dev boot without an initial admin password; otherwise the entrypoint stalls on demo config installation and security plugin bootstrap.
+  - The "service description notes the licensing distinction" acceptance criterion has no per-service description surface on `ServiceTypeShape`, so the right pattern is an exported string constant (`OPENSEARCH_SERVICE_DESCRIPTION`) that a unit test pins. This is the cleanest verifiable surface until a per-service description field lands.
+  - Biome's import formatting collapses imports that fit on a single line; multi-line braces for short import lists trigger a lint error. Keep this in mind when writing new test files by hand.
+---

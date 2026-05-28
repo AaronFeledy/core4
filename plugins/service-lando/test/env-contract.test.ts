@@ -13,6 +13,7 @@ import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
+import { opensearchServiceType } from "../src/services/opensearch.ts";
 import { php82ServiceType, php83ServiceType } from "../src/services/php.ts";
 import { postgresServiceType } from "../src/services/postgres.ts";
 import { python312ServiceType } from "../src/services/python.ts";
@@ -195,6 +196,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: elasticsearchServiceType,
     landofileService: { type: "elasticsearch" },
     expectedType: "elasticsearch",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "opensearch",
+    serviceType: opensearchServiceType,
+    landofileService: { type: "opensearch" },
+    expectedType: "opensearch",
     expectsAppPaths: false,
     expectsWebroot: null,
   },

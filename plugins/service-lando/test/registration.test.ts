@@ -65,6 +65,8 @@ describe("@lando/service-lando registration", () => {
       "nginx",
       "node:lts",
       "node:22",
+      "opensearch",
+      "opensearch:2",
       "postgres",
       "php:8.2",
       "php:8.3",

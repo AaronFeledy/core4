@@ -13,6 +13,7 @@ import { mongodbServiceType } from "./services/mongodb.ts";
 import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
+import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
 import { php82ServiceType, php83ServiceType } from "./services/php.ts";
 import { postgresServiceType } from "./services/postgres.ts";
 import { python312ServiceType } from "./services/python.ts";
@@ -34,6 +35,11 @@ export { mongodbServiceType } from "./services/mongodb.ts";
 export { mysqlServiceType } from "./services/mysql.ts";
 export { nginxServiceType } from "./services/nginx.ts";
 export { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
+export {
+  OPENSEARCH_SERVICE_DESCRIPTION,
+  opensearch2ServiceType,
+  opensearchServiceType,
+} from "./services/opensearch.ts";
 export { php82ServiceType, php83ServiceType } from "./services/php.ts";
 export { postgresServiceType } from "./services/postgres.ts";
 export { python312ServiceType } from "./services/python.ts";
@@ -57,6 +63,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
   ["nginx", nginxServiceType],
   ["node:lts", nodeLtsServiceType],
   ["node:22", node22ServiceType],
+  ["opensearch", opensearchServiceType],
+  ["opensearch:2", opensearch2ServiceType],
   ["postgres", postgresServiceType],
   ["php:8.2", php82ServiceType],
   ["php:8.3", php83ServiceType],
@@ -94,6 +102,8 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "nginx",
       "node:lts",
       "node:22",
+      "opensearch",
+      "opensearch:2",
       "postgres",
       "php:8.2",
       "php:8.3",
