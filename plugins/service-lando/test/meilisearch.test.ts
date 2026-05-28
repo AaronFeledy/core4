@@ -76,7 +76,7 @@ describe("meilisearch ServiceType", () => {
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["bash", "-c", "curl -sf http://localhost:7700/health"],
+      command: ["sh", "-c", "curl -sf http://localhost:7700/health"],
       intervalSeconds: 10,
       timeoutSeconds: 5,
       retries: 5,
@@ -87,7 +87,7 @@ describe("meilisearch ServiceType", () => {
   test("healthcheck command tracks the overridden port", () => {
     const plan = planMeiliService({ type: "meilisearch", port: 17700 });
 
-    expect(plan.healthcheck?.command).toEqual(["bash", "-c", "curl -sf http://localhost:17700/health"]);
+    expect(plan.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:17700/health"]);
   });
 
   test("sets LANDO environment variables for service context", () => {

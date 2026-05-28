@@ -72,7 +72,7 @@ export const meilisearch1ServiceType: ServiceTypeShape = {
       })),
       healthcheck: {
         kind: "command",
-        command: ["bash", "-c", `curl -sf http://localhost:${port}/health`],
+        command: ["sh", "-c", `curl -sf http://localhost:${port}/health`],
         intervalSeconds: 10,
         timeoutSeconds: 5,
         retries: 5,

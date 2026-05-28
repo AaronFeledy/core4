@@ -145,7 +145,7 @@ describe("meilisearch service type — scenario: index create + document post + 
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-meilisearch-data");
     expect(search.healthcheck?.kind).toBe("command");
-    expect(search.healthcheck?.command).toEqual(["bash", "-c", "curl -sf http://localhost:7700/health"]);
+    expect(search.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:7700/health"]);
     expect(search.environment.LANDO_SERVICE_TYPE).toBe("meilisearch");
     expect(search.environment.MEILI_MASTER_KEY).toBe("lando");
     expect(search.environment.MEILI_NO_ANALYTICS).toBe("true");
