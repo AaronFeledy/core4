@@ -184,6 +184,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       "          bun test plugins/provider-docker/test/*.integration.test.ts",
     );
+    expect(providerIntegration).toContain(
+      "          bun test plugins/service-lando/test/*.integration.test.ts",
+    );
     expect(providerIntegration).not.toContain(
       "          bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts",
     );
@@ -192,6 +195,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("          podman pull node:22-alpine");
     expect(providerIntegration).toContain("          podman pull postgres:16");
     expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
+    expect(providerIntegration).toContain("          podman pull memcached:1.6");
     expect(providerIntegration).toContain("          docker pull node:22-alpine");
     expect(providerIntegration).toContain("      - name: Teardown Podman");
     expect(providerIntegration).toContain("        if: always()");

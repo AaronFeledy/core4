@@ -12,6 +12,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Stash created: no
 ---
 
+## [2026-05-27 00:00 UTC] - PR #184 triage
+- CI failure: real issue — provider-integration-linux-x64 only pre-pulled node/postgres images, so Podman had to fetch `memcached:1.6` during container create and got HTTP 404.
+- PR comments: not-issue — none at capture time; Cursor Bugbot was still pending, so there was no review feedback to address.
+- Fix: added `podman pull memcached:1.6` to the CI pre-pull step and kept the service-lando live integration step intact.
+
 ## Codebase Patterns
 - `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
 - `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
