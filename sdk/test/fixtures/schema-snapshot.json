@@ -1267,6 +1267,9 @@
                 "required": [],
                 "type": "object"
               },
+              "root": {
+                "type": "string"
+              },
               "routes": {
                 "items": {
                   "additionalProperties": false,

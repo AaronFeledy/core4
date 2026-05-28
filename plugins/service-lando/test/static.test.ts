@@ -60,6 +60,27 @@ describe("static ServiceType", () => {
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy" });
   });
 
+  test("root: dist sets LANDO_WEBROOT to /app/dist and records root in extensions", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { type: "static", root: "dist" } },
+    });
+    const service = landofile.services?.[ServiceName.make("web")];
+    if (service === undefined) throw new Error("web service missing");
+
+    const plan = staticNginxServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.environment.LANDO_WEBROOT).toBe("/app/dist");
+    expect(plan.appMount?.readOnly).toBe(true);
+    expect(plan.endpoints[0]?.port).toBe(80);
+    expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", root: "dist" });
+  });
+
   test("rejects unsupported static server with remediation", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
