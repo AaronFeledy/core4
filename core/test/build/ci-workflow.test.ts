@@ -195,6 +195,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("          podman pull node:22-alpine");
     expect(providerIntegration).toContain("          podman pull postgres:16");
     expect(providerIntegration).toContain("          podman pull postgres:16-alpine");
+    expect(providerIntegration).toContain("          podman pull golang:1.22");
     expect(providerIntegration).toContain("          podman pull memcached:1.6");
     expect(providerIntegration).toContain("          docker pull node:22-alpine");
     expect(providerIntegration).toContain("      - name: Teardown Podman");
