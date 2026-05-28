@@ -1717,3 +1717,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Fix: bumped the SDK contract logs timeout from 5s to 15s in `sdk/src/test/index.ts`. Still well inside the test's 60s overall budget; still fails closed if the stream genuinely never emits.
 - Left 67ea899's plugin-local `makeService` tick change in place: it's inert for live tests but doesn't hurt the fake-API tests that do consume it.
 - Verification: `bun test plugins/provider-docker/test/contract.integration.test.ts` with `DOCKER_HOST=unix:///var/run/docker.sock` → 15 pass, 1 skip, 0 fail; `bun run typecheck` → exit 0; `bun run lint` → exit 0 (4 warnings, pre-existing); `bun test` (full suite) → 1520 pass, 22 skip, 0 fail.
+
+## [2026-05-28 12:50 CDT] - US-089 Cleanup
+- Ran the branch-wide `remove-ai-slops` cleanup after review and before push with the planning-doc comment rules.
+- Cleanup result: cosmetic-only cleanup; no runtime behavior, public API, error handling, service planning, contract assertions, imports, or side effects changed.
+- Files changed:
+  - `plugins/service-lando/test/env-contract.test.ts`: renamed a phase-looking fixture user/home value to neutral fixture data while preserving assertions against the same fixture object.
+  - `plugins/service-lando/test/opensearch.test.ts`: reworded one awkward test title without changing assertions.
+  - `sdk/src/test/index.ts`: removed a misplaced doc comment that described the matrix runner while attached to a type alias.
+- Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with the same 4 pre-existing provider Docker/Podman non-null-assertion warnings; `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/opensearch.test.ts` → 97 pass, 0 fail; full `PATH="$HOME/.bun/bin:$PATH" bun test` → 1519 pass, 22 skip, 1 fail from `core/test/cli/aliases.test.ts` compiled-binary `EACCES`; after rebuilding, `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/aliases.test.ts` → 3 pass, 0 fail. LSP diagnostics were attempted for changed TypeScript files but the TypeScript LSP exited with code -2.
