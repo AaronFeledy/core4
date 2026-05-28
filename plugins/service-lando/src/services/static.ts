@@ -40,7 +40,8 @@ const makeStaticServiceType = (server: SupportedStaticServer): ServiceTypeShape 
     const resolvedServer = validateServer(service.type, server);
     const appName = appNameFor(input);
     const serviceType = `static:${resolvedServer}`;
-    const docRoot = service.root != null ? `/app/${service.root.replace(/^\/+/, "")}` : "/app";
+    const rel = service.root != null ? service.root.replace(/^\/+/, "").replace(/\/+$/, "") : "";
+    const docRoot = rel === "" ? "/app" : `/app/${rel}`;
     const environment = buildLandoEnv({
       serviceName: name,
       serviceType,
