@@ -1,0 +1,38 @@
+---
+id: mongodb
+provider: test
+timeout: 90000
+tags: [beta, docs, mongodb, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="mongodb-demo" display="MongoDB Demo App" />
+      <Variable name="serviceType" value="mongodb" display="MongoDB service type" />
+      <Variable name="defaultImage" value="mongo:7" display="Default Docker image" />
+      <Variable name="defaultPort" value="27017" display="Default port" />
+      <Variable name="defaultUser" value="lando" display="Default root username" />
+      <Variable name="defaultPassword" value="lando" display="Default root password" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="ping">
+      <Run command="lando mongosh --eval &quot;db.runCommand('ping')&quot;" />
+      <Verify stdout={{ regex: "ok.*1" }} />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Image override is exercised by the mongodb unit tests; this scenario documents the user-facing capability">
+    <Step name="note">
+      <Variable name="mongo6Image" value="mongo:6" display="Use mongo:6 by setting image: mongo:6 under services.db" />
+      <Variable name="mongo8Image" value="mongo:8" display="Use mongo:8 by setting image: mongo:8 under services.db" />
+    </Step>
+  </Scenario>
+</Guide>

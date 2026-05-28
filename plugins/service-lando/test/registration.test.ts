@@ -57,6 +57,7 @@ describe("@lando/service-lando registration", () => {
       "go:1.22",
       "go:1.23",
       "mariadb",
+      "mongodb",
       "mysql",
       "nginx",
       "node:lts",
