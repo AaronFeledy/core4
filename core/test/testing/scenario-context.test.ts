@@ -207,6 +207,34 @@ describe("withScenarioContext", () => {
     expect(result.exists).toBe(true);
   });
 
+  test("serves static guide fixture files through the scenario curl shim", async () => {
+    const result = await Effect.runPromise(
+      withScenarioContext({ guideId: "static", scenarioId: "fetch-known-file" }, (context) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => mkdir(join(context.testDir, "dist"), { recursive: true }));
+          yield* Effect.promise(() =>
+            writeFile(
+              join(context.testDir, ".lando.yml"),
+              ["name: static-demo", "services:", "  web:", "    type: static", "    root: dist", ""].join(
+                "\n",
+              ),
+            ),
+          );
+          yield* Effect.promise(() =>
+            writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
+          );
+
+          yield* context.runCli(["start"]);
+          return yield* context.runCli(["curl", "index.html"]);
+        }),
+      ),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe("hello from lando static\n");
+    expect(result.command).toEqual(["curl", "index.html"]);
+  });
+
   test("forwards runCli options to custom overrides", async () => {
     let captured:
       | {

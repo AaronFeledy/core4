@@ -330,6 +330,14 @@ const appendInitAnswers = (
   return [...args, ...Object.entries(answers).map(([name, value]) => `--answer=${name}=${value}`)];
 };
 
+const staticRootFromLandofile = (content: string): string | undefined => {
+  if (!/^\s*type:\s*static(?::\w+)?\s*$/m.test(content)) return undefined;
+  const root = /^\s*root:\s*(\S+)\s*$/m.exec(content)?.[1];
+  return root === undefined || root === "" || root === "/"
+    ? "."
+    : root.replace(/^\/+/, "").replace(/\/+$/, "");
+};
+
 const runScenarioLayerCommand = async (
   args: ReadonlyArray<string>,
   cwd: string,
@@ -337,6 +345,37 @@ const runScenarioLayerCommand = async (
 ): Promise<ScenarioRunResult | undefined> => {
   if (args[0] === "destroy" || args[0] === "app:destroy") {
     return { command: args, stdout: "destroyed\n", stderr: "", exitCode: 0, events: [...events] };
+  }
+  if (args[0] === "curl") {
+    const landofile = Bun.file(join(cwd, ".lando.yml"));
+    if (!(await landofile.exists())) return undefined;
+
+    const root = staticRootFromLandofile(await landofile.text());
+    if (root === undefined) return undefined;
+
+    const requestPath = (args[1] ?? "index.html").replace(/^\/+/, "");
+    if (requestPath.split("/").includes("..")) {
+      return {
+        command: args,
+        stdout: "",
+        stderr: "path traversal is not allowed\n",
+        exitCode: 1,
+        events: [...events],
+      };
+    }
+
+    const file = Bun.file(join(cwd, root, requestPath));
+    if (!(await file.exists())) {
+      return {
+        command: args,
+        stdout: "",
+        stderr: `not found: ${requestPath}\n`,
+        exitCode: 1,
+        events: [...events],
+      };
+    }
+
+    return { command: args, stdout: await file.text(), stderr: "", exitCode: 0, events: [...events] };
   }
   if (args[0] !== "start" && args[0] !== "app:start") return undefined;
 

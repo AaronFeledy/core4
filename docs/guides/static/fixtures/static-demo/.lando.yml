@@ -1,0 +1,13 @@
+name: static-demo
+services:
+  web:
+    type: static
+    root: dist
+tooling:
+  curl:
+    service: web
+    cmd:
+      - sh
+      - -c
+      - 'path=${1:-/}; curl -sf -- "http://localhost:80/${path}"'
+      - curl
