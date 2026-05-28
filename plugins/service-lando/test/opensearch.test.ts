@@ -40,7 +40,7 @@ describe("opensearch ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-opensearch-data");
     expect(String(plan.storage[0]?.target)).toBe("/usr/share/opensearch/data");
-    expect(plan.endpoints).toEqual([{ port: 9200, protocol: "tcp", name: "search" }]);
+    expect(plan.endpoints).toEqual([{ port: 9200, protocol: "http", name: "search" }]);
   });
 
   test("includes single-node and security-disabled env defaults for local dev", () => {

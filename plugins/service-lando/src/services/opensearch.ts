@@ -71,7 +71,7 @@ export const opensearch2ServiceType: ServiceTypeShape = {
           readOnly: false,
         },
       ],
-      endpoints: [{ port, protocol: "tcp", name }],
+      endpoints: [{ port, protocol: "http", name }],
       routes: [],
       dependsOn: (service.dependsOn ?? []).map((dependency) => ({
         service: ServiceName.make(dependency),
