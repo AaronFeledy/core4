@@ -243,6 +243,7 @@ jobs:
           podman pull golang:1.22
           podman pull docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           podman pull memcached:1.6
+          podman pull opensearchproject/opensearch:2
           podman pull solr:9
           podman pull valkey/valkey:8
           docker pull node:22-alpine
