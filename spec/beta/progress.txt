@@ -672,6 +672,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ## [2026-05-28 17:46 CDT] - Babysit
 - PR: #195 https://github.com/AaronFeledy/core4/pull/195
 - CI outcome: pass
-- Review feedback: fixed (Bugbot reported Caddy static command missing `caddy` executable prefix; triage was delegated but no fix was pushed in this babysit step)
-- Merge: deferred (Bugbot issue remains unresolved; merge blocked until a triage fix lands and CI/Bugbot rerun cleanly)
+- Review feedback: fixed? no — Bugbot reported a real Caddy command defect (`file-server` missing `caddy` binary prefix) requiring follow-up.
+- Merge: deferred (Bugbot issue must be fixed and CI/Bugbot rerun before merge)
 ---
