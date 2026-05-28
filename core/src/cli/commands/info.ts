@@ -82,17 +82,19 @@ const statusText = (status: string | undefined): InfoServiceStatus => {
   }
 };
 
-const endpointText = (service: ServicePlan, endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
+const endpointText = (service: ServicePlan, endpoint: EndpointPlan): ReadonlyArray<string> => {
+  if (endpoint.socketPath !== undefined) return [`${endpoint.protocol}:${endpoint.socketPath}`];
+  if (endpoint.port === undefined) return [endpoint.protocol];
   if (service.type === "postgres") {
     const user = service.environment.POSTGRES_USER ?? "lando";
     const database = service.environment.POSTGRES_DB ?? "postgres";
-    return `postgresql://${user}@localhost:${endpoint.port}/${database}`;
+    return [`postgresql://${user}@localhost:${endpoint.port}/${database}`];
   }
   if (service.type === "memcached" && endpoint.protocol === "tcp")
-    return `memcached://localhost:${endpoint.port}`;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
+    return [`memcached://localhost:${endpoint.port}`];
+  if (service.type === "valkey" && endpoint.protocol === "tcp")
+    return [`valkey://localhost:${endpoint.port}`, `redis://localhost:${endpoint.port}`];
+  return [`${endpoint.protocol}://localhost:${endpoint.port}`];
 };
 
 export const renderInfoAppResult = (result: InfoAppResult): string => {
@@ -144,7 +146,9 @@ export const infoApp = (
             status,
             status === "stopped"
               ? []
-              : (runtime.endpoints ?? service.endpoints).map((endpoint) => endpointText(service, endpoint)),
+              : (runtime.endpoints ?? service.endpoints).flatMap((endpoint) =>
+                  endpointText(service, endpoint),
+                ),
           );
         }),
       ),

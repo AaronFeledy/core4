@@ -18,6 +18,7 @@ import { python312ServiceType } from "./services/python.ts";
 import { redisServiceType } from "./services/redis.ts";
 import { ruby33ServiceType } from "./services/ruby.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
+import { valkeyServiceType } from "./services/valkey.ts";
 
 export const PLUGIN_NAME = "@lando/service-lando" as const;
 
@@ -36,6 +37,7 @@ export { python312ServiceType } from "./services/python.ts";
 export { redisServiceType } from "./services/redis.ts";
 export { ruby33ServiceType } from "./services/ruby.ts";
 export { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
+export { valkeyServiceType } from "./services/valkey.ts";
 
 export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<string, ServiceTypeShape>([
   ["apache", apacheServiceType],
@@ -58,6 +60,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
   ["static", staticNginxServiceType],
   ["static:nginx", staticNginxServiceType],
   ["static:caddy", staticCaddyServiceType],
+  ["valkey", valkeyServiceType],
 ]);
 
 export const services = Layer.empty;
@@ -90,6 +93,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "static",
       "static:nginx",
       "static:caddy",
+      "valkey",
     ],
   },
   entry: "./src/index.ts",

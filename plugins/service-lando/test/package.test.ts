@@ -23,6 +23,7 @@ const expectedServiceTypes = [
   "static",
   "static:nginx",
   "static:caddy",
+  "valkey",
 ];
 
 describe("@lando/service-lando package", () => {
