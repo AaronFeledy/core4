@@ -36,7 +36,6 @@ export const memcachedServiceType: ServiceTypeShape = {
       workingDirectory: service.workingDirectory,
       appMount: undefined,
       mounts: [],
-      // Memcached is an in-memory cache; no persistent storage by default.
       storage: [],
       endpoints: [{ port, protocol: "tcp", name }],
       routes: [],
