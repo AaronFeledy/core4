@@ -1913,3 +1913,36 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The §6.9 LANDO_* identity contract pinned in the runner — `LANDO`, `LANDO_APP_NAME`, `LANDO_APP_KIND`, `LANDO_PROJECT`, `LANDO_SERVICE_API`, `LANDO_SERVICE_NAME`, `LANDO_SERVICE_TYPE` — is the structural floor every catalog service must emit. `LANDO_HOST_*` is conditional on host facts and is NOT part of the identity floor.
   - Default-credential redaction is structurally enforceable today even without a plan-level redaction layer: assert (a) credentials live in keyed env vars, (b) credential plaintext does NOT appear in `plan.command`/`plan.entrypoint` argv. The full §6.8/§6.10/§6.12.4 redaction (logs, telemetry, LANDO_INFO, rendered config) needs a publishing-layer redact-token set that is not yet wired and is tracked separately.
 ---
+
+## [2026-05-28 15:08 CDT] - US-092 Review
+- Reviewed build commit `a0db1cf2 feat: matrix-driven service-type contract suite` against `spec/beta/prd-beta-02-service-catalog-full.md` US-092 using `review-work`, explore, librarian, goal/constraint, QA, code-quality, security, and context-mining agents.
+- Fixed confirmed review blockers:
+  - Added provider-capability coverage to `runServiceContract` so service plans now assert endpoint publishing, healthchecks, persistent storage, and bind mounts are compatible with the declared provider capabilities.
+  - Added provider/platform/service-type identity checks to `runServiceContractMatrix` so matrix reports cannot pass a cell whose factory exercises a different provider, platform, or service type.
+  - Changed default-secret argv checks to use secret environment keys and redact matched values from `ContractFailure.details`.
+  - Added contract entries for alias-backed versioned Beta service IDs: `solr:9`, `elasticsearch:8`, `opensearch:2`, and `meilisearch:1`.
+- Files changed:
+  - `sdk/src/test/index.ts`
+  - `sdk/test/contract/service.test.ts`
+  - `plugins/service-lando/test/service-contract.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: capabilities acceptance criterion was untested; runner now validates capability compatibility and tests the failure mode.
+  - Fixed: matrix factory output could disagree with declared provider/platform/service type; runner now fails those mismatches.
+  - Fixed: secret-leak failure details included raw secret material; failure details now redact matched env-derived secret values and tests assert redaction.
+  - Fixed: versioned service IDs contributed by `@lando/service-lando` were missing contract entries; matrix now covers alias and versioned IDs for Solr, Elasticsearch, OpenSearch, and Meilisearch.
+  - Rejected/deferred: full publishing-layer redaction (`ServiceInfo.creds`, `LANDO_INFO`, logs/telemetry/rendered config) as out of scope for US-092; this contract suite now enforces the structural precondition (secret env values do not move into argv) while the publishing-layer redact-token surface remains a separate tracked area.
+  - Rejected: requiring non-`lando` providers in the plugin-side matrix; this story targets new `@lando/service-lando` service types, and no Docker/Podman ServiceType planner path exists for these plugin tests today. The SDK runner remains provider-parametric and enforces every canonical platform per declared provider.
+  - Rejected: MongoDB `LANDO_DB_*` credential env requirement as a blocker for this review; current service implementation emits `MONGO_INITDB_*`, and changing the runtime credential contract is outside a focused review repair for the test-suite story.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/service.test.ts plugins/service-lando/test/service-contract.test.ts` → exit 0 (47 pass, 0 fail, 226 expect() calls observed in focused rerun).
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with the same 4 pre-existing non-null-assertion warnings in provider Docker/Podman contract tests.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --timeout 30000 --reporter=junit --reporter-outfile=/tmp/us092-bun-test.xml` → exit 0 (1591 pass, 23 skip, 0 fail, 9 snapshots, 7560 expect() calls). An earlier full-suite run failed once in `core/test/cli/setup.test.ts` because its nested `bun run build` returned 1; the same test file passed in isolation and the full suite passed on rerun.
+  - `lsp_diagnostics` on changed TypeScript files was attempted; TypeScript LSP exited with code `-2`, so root `typecheck` is the authoritative diagnostic result.
+- **Learnings for future iterations:**
+  - Matrix runners need to assert that cell factories actually exercise the declared cell metadata; otherwise provider/platform dimensions become report labels rather than verified inputs.
+  - Public test helpers that check secret absence must derive secret values from env keys and redact failure details; do not echo literal secrets or full argv in `ContractFailure.details`.
+  - Alias-backed service families can contribute both alias and versioned ServiceType IDs while emitting an unversioned `plan.type`; contract entries should cover both IDs and keep the expected plan type separate.
+---
