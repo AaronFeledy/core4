@@ -1359,3 +1359,5 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 51ef2da feat: valkey service type; 2af3238 docs: record US-086 review
 - PR: #185 https://github.com/AaronFeledy/core4/pull/185 (created)
 ---
+
+- 2026-05-28: Triage provider-integration-linux-x64 logs failure; switched the SDK contract logs check to follow:false so the live Docker contract reads a bounded historical snapshot instead of racing the initial follow stream chunk.
