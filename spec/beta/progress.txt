@@ -12,6 +12,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Stash created: no
 ---
 
+## [2026-05-28 12:05 CDT] - Triage
+- PR: #189 https://github.com/AaronFeledy/core4/pull/189
+- CI outcome: live Docker provider contract failure (`provider-integration-linux-x64`) was not reproducible locally after pulling `node:22-alpine` and rerunning the contract repeatedly
+- Decision: not an actionable code defect in `@lando/provider-docker`; no code change or commit was needed
+- Verification: direct Docker API probe showed framed log bytes, and three consecutive `runProviderContract` runs passed against `/var/run/docker.sock`
+- Next step: watch for a rerun / flaky signal before making further changes
+
+
 ## [2026-05-27 00:00 UTC] - PR #184 triage
 - CI failure: real issue — provider-integration-linux-x64 only pre-pulled node/postgres images, so Podman had to fetch `memcached:1.6` during container create and got HTTP 404.
 - PR comments: not-issue — none at capture time; Cursor Bugbot was still pending, so there was no review feedback to address.
@@ -1636,4 +1644,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Push: pushed
 - Commit(s): 81682e3 Clean up OpenSearch service; 9f54811 Record US-089 review fix; ec424b2 Fix OpenSearch endpoint protocol; 7ce2c03 feat: opensearch service type
 - PR: #189 https://github.com/AaronFeledy/core4/pull/189 (created)
+---
+
+## [2026-05-28 11:48 CDT] - Babysit
+- PR: #189 https://github.com/AaronFeledy/core4/pull/189
+- CI outcome: fail (`provider-integration-linux-x64` failed; all other reported checks including Cursor Bugbot passed)
+- Review feedback: none (no PR comments, latest reviews, or review decision)
+- Triage rounds used: 1
+- Merge: deferred (`provider-integration-linux-x64` failed in the live Docker provider contract path: `logs emits at least one chunk`; triage was delegated, but no fix/new commit was pushed before the delegate went idle)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on `us-089-opensearch-service-type`; PR remains open; `spec/beta/progress.txt` has this local babysit deferral entry
 ---
