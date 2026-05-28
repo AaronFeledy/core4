@@ -23,7 +23,7 @@ today.
 | Type       | Versions     | Supported `framework:` values                                | Notes                                                                                                                       |
 | ---------- | ------------ | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | `php`      | 8.2, 8.3     | `drupal`, `wordpress`, `laravel`, `symfony`, `none`          | webroot + framework-aware nginx/apache rewrites and tooling.                                                                |
-| `node`     | lts, 22      | `none`                                                       | No framework presets; users select their own dev-server `command:`. The `framework:` field is rejected by the service decoder. |
+| `node`     | lts, 22      | `none`                                                       | No framework presets; users select their own dev-server `command:`. The `framework:` field is accepted for schema compatibility and ignored by the ServiceType. |
 | `python`   | 3.12         | `django`, `fastapi`, `flask`, `none`                         | Framework presets drive default port (django/fastapi 8000, flask 5000) and server `command:` hints.                         |
 | `ruby`     | 3.3          | `rails`, `none`                                              | `rails` preset emits `public/` webroot and a `rails server -b 0.0.0.0 -p 3000` default command.                             |
 | `go`       | 1.22, 1.23   | `none`                                                       | Beta defers Echo, Fiber, Gin, Chi, and other Go web frameworks to post-GA; cross-reference `spec/06-services.md` §6.12.1.    |
@@ -42,7 +42,8 @@ GA. `@lando/service-lando` ships a subset of that catalog through Beta:
   (Beta covers the upstream-supported LTS line; additional minors land in
   v4.x without a spec amendment).
 - Go framework presets (Echo, Fiber, Gin, Chi) are deferred to post-GA per
-  §6.12.1 Phase 6 — `go:<version>` accepts only `framework: none` today.
+  §6.12.1 and `spec/ROADMAP.md` Phase 6 — `go:<version>` accepts only
+  `framework: none` today.
 - New canonical service types (Drupal/Laravel/Symfony framework presets
   outside `php:*`) are not added in Beta beyond what Alpha already shipped.
 

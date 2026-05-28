@@ -90,6 +90,15 @@ describe("@lando/service-lando README — framework presets table", () => {
     }
   });
 
+  test("documents Node framework compatibility as ignored rather than rejected", async () => {
+    const table = findFrameworkTable(await readReadme());
+    const nodeRow = findLanguageRow(table, "node");
+
+    expect(nodeRow).toContain("accepted for schema compatibility");
+    expect(nodeRow).toContain("ignored by the ServiceType");
+    expect(nodeRow).not.toContain("rejected");
+  });
+
   test("Beta Go row lists only `none` and defers Echo/Fiber/Gin/Chi to §6.12.1", async () => {
     const table = findFrameworkTable(await readReadme());
     const goRow = findLanguageRow(table, "go");
