@@ -1958,3 +1958,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: real issue — service contract healthcheck command matching used substring port checks, so expected port 80 matched probes against 8080.
 - Fix: tightened SDK test helper command matching to require numeric port boundaries for `/dev/tcp/.../<port>` and `localhost` / `127.0.0.1:<port>` probes, with TCP and HTTP command regression coverage.
 - Verification: `bun run typecheck`, `bun run lint`, `bun test`, focused contract test, and manual SDK surface check passed locally.
+
+## [2026-05-28 15:59 CDT] - Babysit
+- PR: #192 https://github.com/AaronFeledy/core4/pull/192
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot port-substring report addressed in `0321bf6 fix: reject substring healthcheck port matches`; rerun Bugbot passed)
+- Triage rounds used: 1
+- Merge: merged (squash) as `c5a9f11 Add service contract matrix (#192)`
+- Local main / branch refreshed: yes
+- Remaining local state, if any: on `main`; local story branch removed; none after merge-log commit
+---
