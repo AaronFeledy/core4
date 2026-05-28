@@ -1155,3 +1155,23 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - 79aae5a chore: mark US-084 complete and update progress log
 - PR: #183 https://github.com/AaronFeledy/core4/pull/183 (created)
 ---
+
+## [2026-05-27] - US-085
+- Implemented `memcached` ServiceType in `@lando/service-lando` per spec §6.12.1
+- Files changed:
+  - `plugins/service-lando/src/services/memcached.ts`: new `memcachedServiceType` with default image `memcached:1.6`, TCP endpoint on port 11211, command-based TCP healthcheck (`bash -c "exec 3<>/dev/tcp/127.0.0.1/<port>"`), no persistent storage (in-memory cache), and standard LANDO_* env contract
+  - `plugins/service-lando/src/index.ts`: import, export, serviceTypes map, manifest contributes
+  - `plugins/service-lando/plugin.yaml`: added `memcached` to contributes.serviceTypes
+  - `plugins/service-lando/test/memcached.test.ts`: unit tests for plan defaults, overrides, healthcheck, LANDO env, user-env merge/reserved-key rejection
+  - `plugins/service-lando/test/memcached.scenario.test.ts`: AppPlanner scenario + fake-provider tooling routing for `lando memcached-tool stats` and a set+get sequence
+  - `plugins/service-lando/test/registration.test.ts`: added memcached to expected contributes list
+  - `plugins/service-lando/test/package.test.ts`: added memcached to expectedServiceTypes
+  - `sdk/test/fixtures/schema-snapshot.json`: regenerated via `bun run scripts/build-schema-snapshot.ts` to include memcached
+  - `docs/guides/services/memcached.mdx` + `docs/guides/memcached/fixtures/memcached-demo/.lando.yml`: required guide coverage with happy-path, memcached-stats, version-override scenarios
+- Verification: `bun run typecheck` → exit 0; `bun run lint` → 4 pre-existing warnings, no errors; `bun run lint:guides` → "Guide lint passed."; `bun test plugins/service-lando/` → 193 pass, 1 skip, 0 fail; `bun test test/scenarios/generated/guides/memcached` → 3 pass, 0 fail; full suite `bun test` → 1420 pass, 17 skip, 0 fail
+- **Learnings for future iterations:**
+  - Memcached has NO persistent storage (in-memory cache); `storage: []` on the ServicePlan is the correct shape, unlike redis/mongodb/postgres which all declare a data volume.
+  - The TCP-port-probe healthcheck pattern (`bash -c "exec 3<>/dev/tcp/127.0.0.1/<port>"`) used by go/python/ruby works equally well for protocol-light TCP services like memcached — no need to ship the `memcached` binary or a custom probe.
+  - Tooling aliases for non-canonical commands (like `memcached-tool` which is not present in the default `memcached:1.6` image) can be implemented as `sh -c` wrappers using BusyBox-style `nc`; the scenario test exercises the wrapper through the fake provider exec without requiring the binary to exist at planning time.
+  - Running the full `bun test` suite triggers `core/test/scripts/codegen-ci.test.ts`, which re-runs the workflow codegen and writes `.github/workflows/ci.yml`. If `ci.yml` contains hand-edits not reflected in `scripts/build-ci-workflow.ts` (e.g. ad-hoc `podman pull` lines or extra test invocations), the full-suite run will mutate `ci.yml` and the codegen output will diverge from the committed file. Story builds should `git checkout .github/workflows/ci.yml` after running the full suite to keep the commit scoped to the story.
+---
