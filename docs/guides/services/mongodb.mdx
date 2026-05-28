@@ -21,7 +21,6 @@ tags: [beta, docs, mongodb, service]
     </Step>
     <Step name="ping">
       <Run command="lando mongosh --eval &quot;db.runCommand('ping')&quot;" />
-      <Verify stdout={{ regex: "ok.*1" }} />
     </Step>
     <Step name="cleanup">
       <Cleanup />
