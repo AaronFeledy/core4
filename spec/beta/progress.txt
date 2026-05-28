@@ -1020,6 +1020,22 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - A fake-provider tooling scenario is useful for planner/tooling routing, but it must not be recorded as satisfying PRD wording that requires starting a minimal service and probing a live endpoint.
 ---
 
+## [2026-05-28 00:45 UTC] - Push
+- Branch: us-083-go-service-type
+- Push: skipped (US-083 is explicitly incomplete: PRD notes live/minimal Go HTTP scenario acceptance remains missing, so this push step must not push or open a PR)
+- Commit(s): afe5eff docs: record US-083 review status; 7940858 fix: sync service-lando packaged manifest; 3ce3bd6 chore: mark US-083 complete and update progress log; c2e19da feat: go service type
+- PR: none (not created)
+---
+
+## [2026-05-28 00:46 UTC] - Babysit
+- PR: none (no pull request found for branch `us-083-go-service-type`)
+- CI outcome: not checked (no PR located)
+- Review feedback: none checked (no PR located)
+- Triage rounds used: 0
+- Merge: deferred (push step did not create/refresh a PR for the current branch)
+- Local main / branch refreshed: no
+- Remaining local state, if any: current branch `us-083-go-service-type`; existing local modifications in `spec/beta/progress.txt` plus this babysit note
+
 ## [2026-05-28 01:08 UTC] - US-083 Live Go HTTP Scenario
 - Added the live/minimal Go HTTP scenario acceptance that the prior US-083 review left open: `plugins/service-lando/test/go.integration.test.ts` brings up a Go service against a real Podman socket, fetches the HTTP endpoint, and runs `lando go version` through `ProviderExecToolingEngineLive` against the live provider.
 - The test is gated by `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` (matching `plugins/provider-lando/test/bring-up.integration.test.ts` and `core/test/cli/start.scenario.test.ts`) and skipped by default; CI's provider-integration job already exports that env var.
@@ -1090,4 +1106,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - 60c5996 fix: run service-lando integrations in provider CI
   - 4ed5da4 feat: go service type
 - PR: #182 https://github.com/AaronFeledy/core4/pull/182 (existing)
+---
+
+## [2026-05-28 01:59 UTC] - Babysit
+- PR: #182 https://github.com/AaronFeledy/core4/pull/182
+- CI outcome: pass
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash)
+- Local main / branch refreshed: yes (local main rebased onto origin/main after preserving existing local progress-log commit)
+- Remaining local state, if any: local main is ahead of origin/main by one progress-log commit; story branch deleted locally; remote branch deleted by PR merge
 ---
