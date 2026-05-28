@@ -1778,3 +1778,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Document/task indexing is asynchronous in Meilisearch — the integration test polls `/tasks/<taskUid>` until `status=succeeded` before querying, instead of relying on a fixed delay
   - The §6.12.1 catalog row for `meilisearch` is `"Meilisearch + master key, persistent volume"`; the PRD's "§6.6 redaction" reference resolves against §6.10/§6.12.4 in practice (plain-text credentials are redacted in `lando info` unless `--show-secrets`), so we documented the redaction expectation in `MEILISEARCH_SERVICE_DESCRIPTION` and exposed the constant as `MEILISEARCH_DEFAULT_MASTER_KEY` for downstream redactor wiring
 ---
+
+## [2026-05-28 12:49 CDT] - Push
+- Branch: us-090-meilisearch-service-type
+- Push: pushed
+- Commit(s): b8c7d8e feat: meilisearch service type
+- PR: #190 https://github.com/AaronFeledy/core4/pull/190 (created)
+---
