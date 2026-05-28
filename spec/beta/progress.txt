@@ -680,3 +680,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - CI/review issue: GitHub Actions checks passed; Cursor Bugbot's Caddy command report was real because `caddy:2-alpine` needs the `caddy` binary before the `file-server` subcommand.
 - Fix: prefixed the generated Caddy static command with `caddy` and updated the static service expectation.
 ---
+
+## [2026-05-28 18:35 CDT] - Babysit
+- PR: #195 https://github.com/AaronFeledy/core4/pull/195
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Caddy command report addressed in `83f9d58 fix(service-lando): prefix caddy static command`; rerun Bugbot passed)
+- Merge: merged (squash)
+---
