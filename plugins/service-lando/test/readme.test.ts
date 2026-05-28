@@ -10,7 +10,7 @@ import { SUPPORTED_RUBY_FRAMEWORKS, SUPPORTED_RUBY_VERSIONS } from "../src/servi
 
 const README_PATH = fileURLToPath(new URL("../README.md", import.meta.url));
 
-const readReadme = async (): Promise<string> => await readFile(README_PATH, "utf-8");
+const readReadme = (): Promise<string> => readFile(README_PATH, "utf-8");
 
 const findFrameworkTable = (readme: string): string => {
   const lines = readme.split("\n");
