@@ -12,6 +12,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Stash created: no
 ---
 
+## [2026-05-27 00:00 UTC] - PR #184 triage
+- CI failure: real issue — provider-integration-linux-x64 only pre-pulled node/postgres images, so Podman had to fetch `memcached:1.6` during container create and got HTTP 404.
+- PR comments: not-issue — none at capture time; Cursor Bugbot was still pending, so there was no review feedback to address.
+- Fix: added `podman pull memcached:1.6` to the CI pre-pull step and kept the service-lando live integration step intact.
+
 ## Codebase Patterns
 - `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
 - `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
@@ -1155,3 +1160,121 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - 79aae5a chore: mark US-084 complete and update progress log
 - PR: #183 https://github.com/AaronFeledy/core4/pull/183 (created)
 ---
+
+## [2026-05-27] - US-085
+- Implemented `memcached` ServiceType in `@lando/service-lando` per spec §6.12.1
+- Files changed:
+  - `plugins/service-lando/src/services/memcached.ts`: new `memcachedServiceType` with default image `memcached:1.6`, TCP endpoint on port 11211, command-based TCP healthcheck (`bash -c "exec 3<>/dev/tcp/127.0.0.1/<port>"`), no persistent storage (in-memory cache), and standard LANDO_* env contract
+  - `plugins/service-lando/src/index.ts`: import, export, serviceTypes map, manifest contributes
+  - `plugins/service-lando/plugin.yaml`: added `memcached` to contributes.serviceTypes
+  - `plugins/service-lando/test/memcached.test.ts`: unit tests for plan defaults, overrides, healthcheck, LANDO env, user-env merge/reserved-key rejection
+  - `plugins/service-lando/test/memcached.scenario.test.ts`: AppPlanner scenario + fake-provider tooling routing for `lando memcached-tool stats` and a set+get sequence
+  - `plugins/service-lando/test/registration.test.ts`: added memcached to expected contributes list
+  - `plugins/service-lando/test/package.test.ts`: added memcached to expectedServiceTypes
+  - `sdk/test/fixtures/schema-snapshot.json`: regenerated via `bun run scripts/build-schema-snapshot.ts` to include memcached
+  - `docs/guides/services/memcached.mdx` + `docs/guides/memcached/fixtures/memcached-demo/.lando.yml`: required guide coverage with happy-path, memcached-stats, version-override scenarios
+- Verification: `bun run typecheck` → exit 0; `bun run lint` → 4 pre-existing warnings, no errors; `bun run lint:guides` → "Guide lint passed."; `bun test plugins/service-lando/` → 193 pass, 1 skip, 0 fail; `bun test test/scenarios/generated/guides/memcached` → 3 pass, 0 fail; full suite `bun test` → 1420 pass, 17 skip, 0 fail
+- **Learnings for future iterations:**
+  - Memcached has NO persistent storage (in-memory cache); `storage: []` on the ServicePlan is the correct shape, unlike redis/mongodb/postgres which all declare a data volume.
+  - The TCP-port-probe healthcheck pattern (`bash -c "exec 3<>/dev/tcp/127.0.0.1/<port>"`) used by go/python/ruby works equally well for protocol-light TCP services like memcached — no need to ship the `memcached` binary or a custom probe.
+  - Tooling aliases for non-canonical commands (like `memcached-tool` which is not present in the default `memcached:1.6` image) can be implemented as `sh -c` wrappers using BusyBox-style `nc`; the scenario test exercises the wrapper through the fake provider exec without requiring the binary to exist at planning time.
+  - Running the full `bun test` suite triggers `core/test/scripts/codegen-ci.test.ts`, which re-runs the workflow codegen and writes `.github/workflows/ci.yml`. If `ci.yml` contains hand-edits not reflected in `scripts/build-ci-workflow.ts` (e.g. ad-hoc `podman pull` lines or extra test invocations), the full-suite run will mutate `ci.yml` and the codegen output will diverge from the committed file. Story builds should `git checkout .github/workflows/ci.yml` after running the full suite to keep the commit scoped to the story.
+---
+
+## [2026-05-27 22:40 CDT] - US-085 Review
+- Reviewed the US-085 memcached service type implementation against `spec/beta/prd-beta-02-service-catalog-full.md`, `review-work` agents, direct focused tests, and full-suite verification.
+- Fixed confirmed review blockers:
+  - Kept Memcached's default command aligned with overridden internal ports so a `port:` override no longer advertises/checks a port the daemon is not listening on.
+  - Added `memcached://localhost:<port>` rendering for `lando info` while preserving the provider-neutral TCP endpoint plan shape.
+  - Added memcached to the shared service env-contract matrix and added a gated live provider integration test for text-protocol set/get.
+  - Added the documented `memcached-tool` fixture alias and clarified the non-rendered guide note.
+- Files changed:
+  - `plugins/service-lando/src/services/memcached.ts`
+  - `plugins/service-lando/test/memcached.test.ts`
+  - `plugins/service-lando/test/memcached.scenario.test.ts`
+  - `plugins/service-lando/test/memcached.integration.test.ts`
+  - `plugins/service-lando/test/env-contract.test.ts`
+  - `core/src/cli/commands/info.ts`
+  - `core/test/cli/info.scenario.test.ts`
+  - `docs/guides/services/memcached.mdx`
+  - `docs/guides/memcached/fixtures/memcached-demo/.lando.yml`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: `port:` override updated the endpoint/healthcheck but not the default daemon command.
+  - Fixed: `lando info` rendered Memcached as generic `tcp://` instead of the PRD's `memcached://` connection scheme.
+  - Fixed: shared env-contract coverage did not include memcached.
+  - Fixed: provider-integration coverage for live Memcached set/get was missing; added a `LANDO_TEST_PODMAN_SOCKET`-gated integration test.
+  - Fixed: guide mentioned `lando memcached-tool stats` without a fixture alias.
+  - Rejected/deferred: service-type-shipped tooling is specified in §6.11.3 but this codebase's current `ServiceTypeShape` has no tooling contribution field; US-085 keeps the scenario/fixture alias app-authored until that service-type resolution surface lands.
+  - Rejected/deferred: the `EndpointPlan` schema still only allows transport protocols (`tcp`, `http`, etc.); Memcached keeps a TCP plan endpoint and maps to `memcached://` at the `lando info` presentation boundary.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/memcached.test.ts plugins/service-lando/test/memcached.scenario.test.ts plugins/service-lando/test/memcached.integration.test.ts plugins/service-lando/test/env-contract.test.ts core/test/cli/info.scenario.test.ts test/scenarios/generated/guides/memcached` → 89 pass, 1 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings in provider Docker/Podman integration tests.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → Guide lint passed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1425 pass, 18 skip, 0 fail; the run rewrote generated `.github/workflows/ci.yml` / schema snapshot formatting, which was restored to keep this review commit scoped.
+  - LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2; `tsc -b` was clean.
+- **Learnings for future iterations:**
+  - For TCP service types with a configurable internal port, update the service daemon command as well as the endpoint and healthcheck.
+  - The current service-type model cannot contribute tooling tasks directly; tests and guides that need `lando <tool>` aliases must define them in the Landofile fixture until §6.11.3 is implemented.
+  - Transport endpoint plans remain `protocol: "tcp"`; user-facing service schemes such as `memcached://` belong at the `lando info` rendering boundary unless/until the endpoint schema grows a scheme field.
+---
+
+## [2026-05-27 22:58 CDT] - Push
+- Branch: us-085-memcached-service-type
+- Push: pushed
+- Commit(s): e19d9f5 feat: memcached service type; 58d2e45 chore: mark US-085 complete and update progress log; afe8364 fix: repair memcached service behavior; a63bdbb fix: render memcached info endpoint scheme; 17bafd1 docs: clarify memcached guide tooling; cd9f28c docs: record US-085 review fixes; 00c6f1f chore: cleanup service metadata; ce28f22 test: cleanup memcached coverage prose
+- PR: #184 https://github.com/AaronFeledy/core4/pull/184 (created)
+---
+
+## [2026-05-27 22:30 UTC] - PR #184 provider-integration-linux-x64 triage
+- CI failure: real issue; the live Docker contract fixture was a silent keep-alive process, so `runProviderContract` could legitimately see zero log chunks on the live socket.
+- PR comments/reviews: none; Cursor Bugbot passed.
+- Fix: `plugins/provider-docker/test/contract.integration.test.ts` now emits `console.log('lando-contract-ready')` before the keep-alive loop so the live log assertion has a guaranteed chunk.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/test/contract.integration.test.ts` → 13 pass, 2 skip, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (4 warnings, pre-existing non-null assertions in provider-docker/podman tests).
+
+## [2026-05-27 UTC] - PR #184 triage
+- CI failure: real issue; the CI workflow generator template lost `podman pull golang:1.22` from the provider pre-pull list, even though the checked-in workflow still had it, so regeneration could drop the golang image and make the test order-dependent.
+- Fix: restored `podman pull golang:1.22` in `scripts/build-ci-workflow.ts` while keeping the memcached and service-lando integration pre-pulls intact.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-workflow.test.ts` → 8 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bunx biome check scripts/build-ci-workflow.ts` → clean; full `bun run typecheck` and `bun run lint` attempts hit the tool time limit here and did not complete.
+
+## [2026-05-27 23:47 CDT] - Babysit
+- PR: #184 https://github.com/AaronFeledy/core4/pull/184
+- CI outcome: pass (all GitHub Actions checks and Cursor Bugbot check passed on latest HEAD)
+- Review feedback: fixed (Bugbot codegen-template drift addressed with provider CI image pre-pull sync)
+- Triage rounds used: 3
+- Merge: deferred (PR is not mergeable; GitHub reports mergeStateStatus DIRTY / mergeable CONFLICTING against main)
+- Local main / branch refreshed: no
+- Remaining local state, if any: still on us-085-memcached-service-type; progress log updated with deferral note
+---
+
+## [2026-05-28 05:10 UTC] - US-085 rebase onto current main
+- Rebased `us-085-memcached-service-type` onto current `main` (HEAD `02db2fc`, which carries the US-084 `mongodb` ServiceType from PR #183). PR #184 was previously DIRTY/CONFLICTING against main; this rebase resolves the conflicts and brings the branch back to a mergeable state.
+- Conflicts resolved (all bookkeeping "add both" merges, keeping `mariadb` → `memcached` → `mongodb` → `mysql` alphabetical order):
+  - `plugins/service-lando/plugin.yaml`: contributes.serviceTypes list
+  - `plugins/service-lando/src/index.ts`: imports, exports, `serviceTypes` Map, manifest `contributes`
+  - `plugins/service-lando/test/package.test.ts`: `expectedServiceTypes`
+  - `plugins/service-lando/test/registration.test.ts`: expected contributes list
+  - `sdk/test/fixtures/schema-snapshot.json`: bundled plugin manifest contributes
+  - `spec/beta/progress.txt`: preserved US-084 entry from main and US-085 entry from branch chronologically
+- No source code changes to memcached implementation or tests — only collision-avoidance reorderings.
+- Verification on rebased tip:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → 4 pre-existing warnings in `plugins/provider-docker/src/index.ts` (npipe chunked decoder optional-chain hint); 0 errors; no fixes applied
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 209 pass, 2 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/memcached.scenario.test.ts plugins/service-lando/test/memcached.test.ts plugins/service-lando/test/memcached.integration.test.ts` → 11 pass, 1 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1436 pass, 18 skip, 0 fail
+- CLI verification: drove the memcached service plan end-to-end through `bun core/bin/lando.ts info --renderer=json` against `/tmp/lando-memcached-smoke/.lando.yml` declaring `cache: { type: memcached }`. The command surfaced the expected `ProviderConfigError`/`select` envelope (no provider configured in the temp dir), proving the service-type registry resolves `memcached` without hitting an "unsupported service type" rejection. Functional behavior (apply / inspect / tooling routing) is covered by `memcached.scenario.test.ts` against the fake provider.
+- **Learnings for future iterations:**
+  - When a build-step branch sits idle long enough for a sibling story (US-084 mongodb) to land first, the rebase pattern here is mechanical: every conflict was the alphabetical service-list collision (mariadb, memcached, mongodb, mysql) in the same five files. Resolve them once with `git checkout --theirs` is wrong (it drops one of the two contributions); always do "keep both, sort alphabetically" and rerun the schema-snapshot/test-list assertions to catch order regressions.
+  - `git rebase --continue` with `vim` as the editor will hang under non-interactive shells; set `GIT_EDITOR=true` to accept the prepared commit message verbatim.
+  - `spec/beta/progress.txt` is the most likely conflict file across stories because every iteration appends to it. The conflict is always "keep both entries chronologically" — there is no semantic merge needed.
+---
+## [2026-05-28 05:28 UTC] - Push
+- Branch: us-085-memcached-service-type
+- Push: pushed (force-with-lease after remote divergence from prior branch history)
+- Commit(s): a422f4b chore: cleanup; 8b45671 docs: record US-085 rebase onto current main; 98ae55e docs: record PR #184 merge deferral; 0591d39 chore: record PR #184 triage; 84c1932 fix: sync provider CI image pre-pulls; 4349301 fix: restore go image pre-pull in provider CI; 8644a4a fix: pre-pull memcached in provider CI; 37674eb fix: ensure live docker contract emits logs; 17ac9ee docs: record US-085 push; a07e6b3 test: cleanup memcached coverage prose; 41d5c27 chore: cleanup service metadata; b0f06ee docs: record US-085 review fixes; f7b499a docs: clarify memcached guide tooling; 044e672 fix: render memcached info endpoint scheme; bec1bfe fix: repair memcached service behavior; bf35c7c chore: mark US-085 complete and update progress log; 10a5bb2 feat: memcached service type
+- PR: #184 https://github.com/AaronFeledy/core4/pull/184 (existing)
+---
+

@@ -8,6 +8,7 @@ import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
@@ -171,6 +172,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     expectsWebroot: null,
   },
   {
+    id: "memcached",
+    serviceType: memcachedServiceType,
+    landofileService: { type: "memcached" },
+    expectedType: "memcached",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
     id: "compose",
     serviceType: composeServiceType,
     landofileService: { type: "compose", image: "busybox" },
@@ -197,7 +206,7 @@ const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
   });
 };
 
-describe("§6.9 LANDO_* environment contract (every Alpha catalog family)", () => {
+describe("LANDO_* environment contract across catalog service families", () => {
   for (const item of cases) {
     test(`${item.id} emits the basic LANDO_* identity, host, and (where applicable) app-path env`, () => {
       const plan = planFor(item, item.id === "compose" ? "worker" : "web", "myapp");

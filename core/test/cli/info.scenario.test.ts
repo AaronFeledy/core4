@@ -59,13 +59,16 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const servicePlan = (name: "node" | "postgres"): ServicePlan => ({
+const servicePlan = (name: "node" | "postgres" | "memcached"): ServicePlan => ({
   name: ServiceName.make(name),
-  type: name === "node" ? "node:lts" : "postgres",
+  type: name === "node" ? "node:lts" : name,
   provider: providerId,
   primary: name === "node",
-  artifact: { kind: "ref", ref: name === "node" ? "node:22-alpine" : "postgres:16-alpine" },
-  command: name === "node" ? ["node", "server.js"] : ["postgres"],
+  artifact: {
+    kind: "ref",
+    ref: name === "node" ? "node:22-alpine" : name === "postgres" ? "postgres:16-alpine" : "memcached:1.6",
+  },
+  command: name === "node" ? ["node", "server.js"] : name === "postgres" ? ["postgres"] : ["memcached"],
   environment:
     name === "postgres" ? { POSTGRES_USER: "lando", POSTGRES_DB: "appdb", POSTGRES_PASSWORD: "secret" } : {},
   mounts: [],
@@ -82,7 +85,9 @@ const servicePlan = (name: "node" | "postgres"): ServicePlan => ({
   endpoints:
     name === "node"
       ? [{ port: 3000, protocol: "http", name: "http" }]
-      : [{ port: 5432, protocol: "tcp", name: "database" }],
+      : name === "postgres"
+        ? [{ port: 5432, protocol: "tcp", name: "database" }]
+        : [{ port: 11211, protocol: "tcp", name: "cache" }],
   routes: [],
   dependsOn: name === "node" ? [{ service: ServiceName.make("postgres"), condition: "started" }] : [],
   hostAliases: [],
@@ -92,6 +97,7 @@ const servicePlan = (name: "node" | "postgres"): ServicePlan => ({
 
 const node = servicePlan("node");
 const postgres = servicePlan("postgres");
+const memcached = servicePlan("memcached");
 
 const plan: AppPlan = {
   id: AppId.make("test-info"),
@@ -99,7 +105,7 @@ const plan: AppPlan = {
   slug: "test-info",
   root: AbsolutePath.make("/tmp/test-info"),
   provider: providerId,
-  services: { [node.name]: node, [postgres.name]: postgres },
+  services: { [node.name]: node, [postgres.name]: postgres, [memcached.name]: memcached },
   routes: [],
   networks: [],
   stores: [{ name: "test_info_postgres_data", scope: "app" }],
@@ -200,6 +206,7 @@ describe("lando info", () => {
 
     expect(output).toMatch(/node\s+running\s+http:\/\/localhost:3000/);
     expect(output).toMatch(/postgres\s+running\s+postgresql:\/\/lando@localhost:5432\/appdb/);
+    expect(output).toMatch(/memcached\s+running\s+memcached:\/\/localhost:11211/);
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
   });
 
@@ -209,6 +216,7 @@ describe("lando info", () => {
 
     expect(output).toMatch(/node\s+stopped\s+no endpoints/);
     expect(output).toMatch(/postgres\s+stopped\s+no endpoints/);
+    expect(output).toMatch(/memcached\s+stopped\s+no endpoints/);
     expect(output).not.toContain("localhost");
   });
 

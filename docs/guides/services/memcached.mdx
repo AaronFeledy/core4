@@ -1,0 +1,37 @@
+---
+id: memcached
+provider: test
+timeout: 90000
+tags: [beta, docs, memcached, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="memcached-demo" />
+      <Variable name="serviceType" value="memcached" display="Declare type: memcached in your services block" />
+      <Variable name="defaultImage" value="memcached:1.6" display="Default Docker image" />
+      <Variable name="defaultPort" value="11211" display="Default port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="memcached-stats" render={false} reason="The fixture defines memcached-tool as an app tooling alias; run it after start to inspect the live Memcached service">
+    <Step name="stats">
+      <Variable name="statsCommand" value="lando memcached-tool stats" display="Inspect Memcached runtime stats" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a compatible Memcached Docker image when the default image is not sufficient">
+    <Step name="note">
+      <Variable name="bookwormImage" value="memcached:1.6-bookworm" display="Pin a Debian-based image via image: memcached:1.6-bookworm under services.cache" />
+    </Step>
+  </Scenario>
+</Guide>

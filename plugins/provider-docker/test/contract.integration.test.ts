@@ -56,7 +56,7 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: "node:22-alpine" },
-  command: ["node", "-e", "setInterval(() => {}, 1000)"],
+  command: ["node", "-e", "console.log('lando-contract-ready'); setInterval(() => {}, 1000)"],
   environment: {},
   appMount: {
     source: AbsolutePath.make("/tmp/lando-sdk-contract-myapp"),
