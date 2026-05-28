@@ -28,28 +28,28 @@ tags: [beta, docs, static, service]
     </Step>
   </Scenario>
 
-  <Scenario id="root-subdirectory" render={false} reason="Build-output workflows place artifacts under a subdirectory like dist/; setting root: dist makes static serve that directory and exports LANDO_WEBROOT=/app/dist for tooling that reads the doc root from the environment">
+  <Scenario id="root-subdirectory" render={false} reason="Setting `root: dist` serves the build output directory and sets `LANDO_WEBROOT=/app/dist`.">
     <Step name="declare-root">
       <Variable name="rootField" value="root: dist" display="Set root: dist under services.web to serve the dist/ subdirectory of the app" />
       <Variable name="resolvedWebroot" value="/app/dist" display="The container-side LANDO_WEBROOT value derived from root: dist" />
     </Step>
   </Scenario>
 
-  <Scenario id="caddy-variant" render={false} reason="The static service ships a Caddy variant for users who prefer Caddy's automatic file-server defaults over nginx; selecting it is a single declaration change with no other configuration required">
+  <Scenario id="caddy-variant" render={false} reason="The static service also supports a Caddy variant for users who prefer Caddy over nginx.">
     <Step name="declare-caddy">
       <Variable name="caddyType" value="static:caddy" display="Set type: static:caddy under services.web to serve via Caddy instead of nginx" />
       <Variable name="caddyImage" value="caddy:2-alpine" display="Default Docker image for the Caddy variant" />
     </Step>
   </Scenario>
 
-  <Scenario id="fetch-known-file" render={false} reason="The happy path executes lando curl index.html against the fixture; this hidden scenario records the exact command and expected body for source-mapped docs output">
+  <Scenario id="fetch-known-file" render={false} reason="Verifies the fixture responds to `lando curl index.html` with the expected body.">
     <Step name="fetch">
       <Variable name="curlCommand" value="lando curl index.html" display="Fetch a known file from the running static service" />
       <Variable name="expectedBody" value="hello from lando static" display="Substring expected in the response body for the fixture's dist/index.html" />
     </Step>
   </Scenario>
 
-  <Scenario id="version-override" render={false} reason="Use image to pin a specific nginx or Caddy version when the default image is not desired">
+  <Scenario id="version-override" render={false} reason="Use `image` to pin a specific nginx or Caddy version instead of the default image.">
     <Step name="note">
       <Variable name="nginxPin" value="nginx:1.27-alpine" display="Pin nginx 1.27 via image: nginx:1.27-alpine under services.web" />
       <Variable name="caddyPin" value="caddy:2.8-alpine" display="Pin Caddy 2.8 via image: caddy:2.8-alpine under services.web" />
