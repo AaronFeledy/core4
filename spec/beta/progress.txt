@@ -1946,3 +1946,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Public test helpers that check secret absence must derive secret values from env keys and redact failure details; do not echo literal secrets or full argv in `ContractFailure.details`.
   - Alias-backed service families can contribute both alias and versioned ServiceType IDs while emitting an unversioned `plan.type`; contract entries should cover both IDs and keep the expected plan type separate.
 ---
+
+## [2026-05-28 15:29 CDT] - Push
+- Branch: us-092-service-contract-matrix
+- Push: pushed
+- Commit(s): 155ae7c chore: cleanup; fa81026 docs: record US-092 review fixes; b7ff01d fix: tighten service contract matrix review gaps; a0db1cf feat: matrix-driven service-type contract suite
+- PR: #192 https://github.com/AaronFeledy/core4/pull/192 (created)
+---
