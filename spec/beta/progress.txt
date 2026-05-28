@@ -1420,3 +1420,32 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main updated: yes
 - Branch after sync: main
 ---
+
+## [2026-05-28 CDT] - US-088
+- Implemented `elasticsearch` service type for `@lando/service-lando`, including default Elasticsearch 8 image, single-node + security-disabled local-dev defaults, persistent storage, HTTP cluster-health command healthcheck, and an `es-cli` tooling alias exercised in the scenario test.
+- Files changed:
+  - `plugins/service-lando/src/services/elasticsearch.ts` (new): `elasticsearch8ServiceType` (id `elasticsearch:8`) + `elasticsearchServiceType` alias (id `elasticsearch`); defaults `discovery.type=single-node`, `xpack.security.enabled=false`, `ES_JAVA_OPTS=-Xms512m -Xmx512m`; default port 9200 with curl command healthcheck on `/_cluster/health`; data volume mounted at `/usr/share/elasticsearch/data` as `<app>-elasticsearch-data`.
+  - `plugins/service-lando/src/index.ts`: registers both ids in `serviceTypes`, the manifest, and re-exports.
+  - `plugins/service-lando/plugin.yaml`: lists `elasticsearch` and `elasticsearch:8` under `contributes.serviceTypes` (alphabetical).
+  - `plugins/service-lando/test/elasticsearch.test.ts` (new): unit tests for default plan, env defaults, image/port overrides, healthcheck command + port tracking, LANDO_* env, user env merge, reserved-key rejection.
+  - `plugins/service-lando/test/elasticsearch.scenario.test.ts` (new): exercises `AppPlanner` + `es-cli` tooling alias through `runTooling` for `/_cluster/health` and `/_cat/indices`.
+  - `plugins/service-lando/test/elasticsearch.integration.test.ts` (new): live Podman boot of Elasticsearch 8 gated by `LANDO_TEST_PODMAN_SOCKET`; asserts cluster status is `green` or `yellow`.
+  - `plugins/service-lando/test/package.test.ts`, `plugins/service-lando/test/registration.test.ts`: extend the expected `serviceTypes` list (alphabetical insertion of `elasticsearch`, `elasticsearch:8`).
+  - `scripts/build-ci-workflow.ts` + regenerated `.github/workflows/ci.yml`: adds `podman pull elasticsearch:8` to the integration pre-pull step.
+  - `docs/guides/services/elasticsearch.mdx` (new): required guide coverage with `happy-path` (rendered), `cluster-health`, `cat-indices`, `version-override`, and `security-warning` scenarios.
+  - `docs/guides/elasticsearch/fixtures/elasticsearch-demo/.lando.yml` (new): minimal app fixture with `type: elasticsearch` and an `es-cli` curl tooling alias.
+  - `sdk/test/fixtures/schema-snapshot.json` (regenerated): includes the two new ids.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → 0 errors, 4 pre-existing non-null-assertion warnings in provider-docker/provider-podman tests (unrelated)
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 251 pass, 5 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1491 pass, 21 skip, 0 fail
+  - CLI verification: parsed the new fixture with `LandofileShape` and ran `elasticsearch8ServiceType.toServicePlan(...)` end-to-end — healthcheck `/_cluster/health`, endpoint `tcp/9200`, storage `<app>-elasticsearch-data`, env `discovery.type=single-node`, `xpack.security.enabled=false`, `LANDO_SERVICE_TYPE=elasticsearch` all confirmed.
+- **Learnings for future iterations:**
+  - The `serviceTypes` expectation arrays in `plugins/service-lando/test/{package,registration}.test.ts` are in the same alphabetical order as `serviceTypes` in `src/index.ts`; new entries MUST be inserted at the alphabetically-correct position in both source and tests or the package-skeleton/registration tests will fail with a clear `toEqual` diff.
+  - The Guide Coverage table in `spec/beta/prd-beta-02-service-catalog-full.md` is selective: not every service story requires `docs/guides/services/<name>.mdx`. Only the stories explicitly listed in §Guide Coverage (US-084 mongodb, US-086 valkey, US-088 elasticsearch, US-093 static, US-094 compose-passthrough) need a guide file; the others (e.g. US-087 solr, US-089 opensearch) ship without one.
+  - Generated guide scenario tests live under `test/scenarios/generated/guides/<id>/<scenario>.test.ts` and are gitignored; adding a new guide requires running `bun run scripts/build-guide-scenarios.ts` (also invoked by `bun run codegen`) so the suite picks them up locally, but the regenerated files MUST NOT be committed.
+  - The `bun run codegen` pipeline also rewrites `.github/workflows/ci.yml` and `sdk/test/fixtures/schema-snapshot.json`; when a new service-type pulls a new container image, edit `scripts/build-ci-workflow.ts` (not the workflow directly) and re-run codegen so both files stay in sync.
+  - Mirroring the solr healthcheck pattern, Elasticsearch uses a `command` healthcheck (`bash -c curl -sf ...`) rather than an HTTP healthcheck because the §6.6 healthcheck schema in this repo expresses HTTP probes via curl-in-container; copy this pattern for opensearch/meilisearch in subsequent stories.
+---
