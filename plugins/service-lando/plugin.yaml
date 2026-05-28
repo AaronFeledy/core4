@@ -10,9 +10,21 @@ entry: ./src/index.ts
 
 contributes:
   serviceTypes:
+    - "apache"
+    - "compose"
+    - "go:1.22"
+    - "go:1.23"
+    - "mariadb"
+    - "mysql"
+    - "nginx"
     - "node:lts"
     - "node:22"
     - "postgres"
     - "php:8.2"
     - "php:8.3"
     - "python:3.12"
+    - "redis"
+    - "ruby:3.3"
+    - "static"
+    - "static:nginx"
+    - "static:caddy"
