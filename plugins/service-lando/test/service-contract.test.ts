@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
 
-import { type HostPlatform, ProviderId } from "@lando/sdk/schema";
+import { type HostPlatform, type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 import {
   type EndpointExpectation,
@@ -13,16 +13,40 @@ import {
   runServiceContractMatrix,
 } from "@lando/sdk/test";
 
-import { elasticsearchServiceType } from "../src/services/elasticsearch.ts";
+import { elasticsearch8ServiceType, elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
-import { meilisearchServiceType } from "../src/services/meilisearch.ts";
+import { meilisearch1ServiceType, meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mongodbServiceType } from "../src/services/mongodb.ts";
-import { opensearchServiceType } from "../src/services/opensearch.ts";
-import { solrServiceType } from "../src/services/solr.ts";
+import { opensearch2ServiceType, opensearchServiceType } from "../src/services/opensearch.ts";
+import { solr9ServiceType, solrServiceType } from "../src/services/solr.ts";
 import { valkeyServiceType } from "../src/services/valkey.ts";
 
 const LANDO_PROVIDER_ID = ProviderId.make("lando");
+
+const LANDO_PROVIDER_CAPABILITIES: ProviderCapabilities = {
+  artifactBuild: false,
+  artifactPull: false,
+  buildSecrets: false,
+  buildSsh: false,
+  multiServiceApply: true,
+  serviceExec: true,
+  serviceLogs: true,
+  serviceHealth: "lando",
+  hostReachability: "emulated",
+  sharedCrossAppNetwork: true,
+  persistentStorage: true,
+  bindMounts: true,
+  bindMountPerformance: "native",
+  copyMounts: true,
+  hostPortPublish: "proxy",
+  routeProvider: false,
+  tlsCertificates: "lando",
+  rootless: true,
+  privilegedServices: false,
+  composeSpec: "portable",
+  providerExtensions: [],
+};
 const CONTRACT_PLATFORMS: ReadonlyArray<HostPlatform> = ["linux", "darwin", "win32", "wsl"];
 
 interface CatalogContractEntry {
@@ -32,7 +56,7 @@ interface CatalogContractEntry {
   readonly endpoint: EndpointExpectation;
   readonly healthcheck: HealthcheckExpectation;
   readonly defaultCredentialEnvKeys: ReadonlyArray<string>;
-  readonly defaultCredentialSecretValues?: ReadonlyArray<string>;
+  readonly defaultCredentialSecretEnvKeys?: ReadonlyArray<string>;
 }
 
 const CATALOG_CONTRACT_ENTRIES: ReadonlyArray<CatalogContractEntry> = [
@@ -63,7 +87,7 @@ const CATALOG_CONTRACT_ENTRIES: ReadonlyArray<CatalogContractEntry> = [
       "MONGO_INITDB_ROOT_PASSWORD",
       "MONGO_INITDB_DATABASE",
     ],
-    defaultCredentialSecretValues: ["lando"],
+    defaultCredentialSecretEnvKeys: ["MONGO_INITDB_ROOT_PASSWORD"],
   },
   {
     serviceType: memcachedServiceType,
@@ -90,8 +114,24 @@ const CATALOG_CONTRACT_ENTRIES: ReadonlyArray<CatalogContractEntry> = [
     defaultCredentialEnvKeys: [],
   },
   {
+    serviceType: solr9ServiceType,
+    landofileServiceType: "solr:9",
+    expectedPlanType: "solr",
+    endpoint: { port: 8983, protocol: "http" },
+    healthcheck: { kind: "http", port: 8983, path: "/solr/admin/info/system" },
+    defaultCredentialEnvKeys: [],
+  },
+  {
     serviceType: elasticsearchServiceType,
     landofileServiceType: "elasticsearch",
+    expectedPlanType: "elasticsearch",
+    endpoint: { port: 9200, protocol: "tcp" },
+    healthcheck: { kind: "http", port: 9200, path: "/_cluster/health" },
+    defaultCredentialEnvKeys: [],
+  },
+  {
+    serviceType: elasticsearch8ServiceType,
+    landofileServiceType: "elasticsearch:8",
     expectedPlanType: "elasticsearch",
     endpoint: { port: 9200, protocol: "tcp" },
     healthcheck: { kind: "http", port: 9200, path: "/_cluster/health" },
@@ -106,13 +146,30 @@ const CATALOG_CONTRACT_ENTRIES: ReadonlyArray<CatalogContractEntry> = [
     defaultCredentialEnvKeys: [],
   },
   {
+    serviceType: opensearch2ServiceType,
+    landofileServiceType: "opensearch:2",
+    expectedPlanType: "opensearch",
+    endpoint: { port: 9200, protocol: "http" },
+    healthcheck: { kind: "http", port: 9200, path: "/_cluster/health" },
+    defaultCredentialEnvKeys: [],
+  },
+  {
     serviceType: meilisearchServiceType,
     landofileServiceType: "meilisearch",
     expectedPlanType: "meilisearch",
     endpoint: { port: 7700, protocol: "http" },
     healthcheck: { kind: "http", port: 7700, path: "/health" },
     defaultCredentialEnvKeys: ["MEILI_MASTER_KEY"],
-    defaultCredentialSecretValues: ["lando"],
+    defaultCredentialSecretEnvKeys: ["MEILI_MASTER_KEY"],
+  },
+  {
+    serviceType: meilisearch1ServiceType,
+    landofileServiceType: "meilisearch:1",
+    expectedPlanType: "meilisearch",
+    endpoint: { port: 7700, protocol: "http" },
+    healthcheck: { kind: "http", port: 7700, path: "/health" },
+    defaultCredentialEnvKeys: ["MEILI_MASTER_KEY"],
+    defaultCredentialSecretEnvKeys: ["MEILI_MASTER_KEY"],
   },
 ];
 
@@ -121,6 +178,7 @@ const buildContractInput = (entry: CatalogContractEntry, platform: HostPlatform)
   landofileService: { type: entry.landofileServiceType },
   providerId: LANDO_PROVIDER_ID,
   platform,
+  providerCapabilities: LANDO_PROVIDER_CAPABILITIES,
   serviceName: "web",
   appName: "myapp",
   expectations: {
@@ -128,7 +186,7 @@ const buildContractInput = (entry: CatalogContractEntry, platform: HostPlatform)
     endpoints: [entry.endpoint],
     healthcheck: entry.healthcheck,
     defaultCredentialEnvKeys: entry.defaultCredentialEnvKeys,
-    defaultCredentialSecretValues: entry.defaultCredentialSecretValues,
+    defaultCredentialSecretEnvKeys: entry.defaultCredentialSecretEnvKeys,
   },
 });
 
@@ -169,13 +227,17 @@ describe("Beta service catalog × contract suite", () => {
     const ids = CATALOG_CONTRACT_ENTRIES.map((entry) => entry.serviceType.id).sort();
     expect(ids).toEqual([
       "elasticsearch",
+      "elasticsearch:8",
       "go:1.22",
       "go:1.23",
       "meilisearch",
+      "meilisearch:1",
       "memcached",
       "mongodb",
       "opensearch",
+      "opensearch:2",
       "solr",
+      "solr:9",
       "valkey",
     ]);
   });

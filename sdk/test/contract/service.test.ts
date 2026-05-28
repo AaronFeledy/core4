@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect, Schema } from "effect";
 
-import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { type ProviderCapabilities, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceTypePlanInput, ServiceTypeShape } from "@lando/sdk/services";
 import {
   ContractFailure,
@@ -10,6 +10,30 @@ import {
   runServiceContract,
   runServiceContractMatrix,
 } from "@lando/sdk/test";
+
+const TEST_PROVIDER_CAPABILITIES: ProviderCapabilities = {
+  artifactBuild: false,
+  artifactPull: false,
+  buildSecrets: false,
+  buildSsh: false,
+  multiServiceApply: true,
+  serviceExec: true,
+  serviceLogs: true,
+  serviceHealth: "lando",
+  hostReachability: "emulated",
+  sharedCrossAppNetwork: true,
+  persistentStorage: true,
+  bindMounts: true,
+  bindMountPerformance: "native",
+  copyMounts: true,
+  hostPortPublish: "proxy",
+  routeProvider: false,
+  tlsCertificates: "lando",
+  rootless: true,
+  privilegedServices: false,
+  composeSpec: "portable",
+  providerExtensions: [],
+};
 
 const expectServiceContractFailure = async (
   serviceType: ServiceTypeShape,
@@ -24,6 +48,7 @@ const expectServiceContractFailure = async (
       serviceType,
       landofileService: overrides?.landofileService ?? { type: serviceType.id },
       providerId: ProviderId.make("test"),
+      providerCapabilities: TEST_PROVIDER_CAPABILITIES,
       platform: "linux",
       expectations: overrides?.expectations ?? {
         type: serviceType.id,
@@ -53,6 +78,7 @@ describe("runServiceContract", () => {
       serviceType: TestServiceType,
       landofileService: { type: "test" },
       providerId: ProviderId.make("test"),
+      providerCapabilities: TEST_PROVIDER_CAPABILITIES,
       platform: "linux",
       expectations: {
         type: "test",
@@ -96,6 +122,40 @@ describe("runServiceContract", () => {
         defaultCredentialEnvKeys: [],
       },
     });
+  });
+
+  test("fails with ContractFailure when plan.provider does not match providerId", async () => {
+    const wrongProvider = makeMutatedServiceType((plan) => ({
+      ...plan,
+      provider: ProviderId.make("different"),
+    }));
+    await expectServiceContractFailure(wrongProvider, "service plan provider matches the requested provider");
+  });
+
+  test("fails with ContractFailure when provider capabilities do not support endpoints", async () => {
+    const result = await Effect.runPromiseExit(
+      runServiceContract({
+        serviceType: TestServiceType,
+        landofileService: { type: "test" },
+        providerId: ProviderId.make("test"),
+        providerCapabilities: { ...TEST_PROVIDER_CAPABILITIES, hostPortPublish: "none" },
+        platform: "linux",
+        expectations: {
+          type: "test",
+          endpoints: [{ port: 8080, protocol: "tcp" }],
+          healthcheck: { kind: "tcp", port: 8080 },
+          defaultCredentialEnvKeys: [],
+        },
+      }),
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") return;
+    expect(result.cause._tag).toBe("Fail");
+    if (result.cause._tag !== "Fail") return;
+    expect(result.cause.error.assertion).toBe(
+      "service plan endpoint publishing is supported by provider capabilities",
+    );
   });
 
   test("fails with ContractFailure when no endpoints are emitted", async () => {
@@ -165,20 +225,32 @@ describe("runServiceContract", () => {
       command: ["sh", "-c", "echo lando-secret-leak | tee /dev/null"],
       environment: { ...plan.environment, TEST_PASSWORD: "lando-secret-leak" },
     }));
-    await expectServiceContractFailure(
-      withLeakedCred,
-      "service plan default-credential values are not leaked into argv",
-      {
+    const result = await Effect.runPromiseExit(
+      runServiceContract({
+        serviceType: withLeakedCred,
         landofileService: { type: "test" },
+        providerId: ProviderId.make("test"),
+        providerCapabilities: TEST_PROVIDER_CAPABILITIES,
+        platform: "linux",
         expectations: {
           type: "test",
           endpoints: [{ port: 8080, protocol: "tcp" }],
           healthcheck: { kind: "tcp", port: 8080 },
           defaultCredentialEnvKeys: ["TEST_PASSWORD"],
-          defaultCredentialSecretValues: ["lando-secret-leak"],
+          defaultCredentialSecretEnvKeys: ["TEST_PASSWORD"],
         },
-      },
+      }),
     );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag !== "Failure") return;
+    expect(result.cause._tag).toBe("Fail");
+    if (result.cause._tag !== "Fail") return;
+    expect(result.cause.error.assertion).toBe(
+      "service plan default-credential values are not leaked into argv",
+    );
+    expect(JSON.stringify(result.cause.error.details)).not.toContain("lando-secret-leak");
+    expect(JSON.stringify(result.cause.error.details)).toContain("[REDACTED]");
   });
 });
 
@@ -200,6 +272,7 @@ describe("runServiceContractMatrix", () => {
               serviceType: TestServiceType,
               landofileService: { type: "test" },
               providerId: ProviderId.make("test"),
+              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
               platform: "linux",
               expectations: {
                 type: "test",
@@ -255,6 +328,7 @@ describe("runServiceContractMatrix", () => {
               serviceType: TestServiceType,
               landofileService: { type: "test" },
               providerId: ProviderId.make("test"),
+              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
               platform: "linux",
               expectations: {
                 type: "test",
@@ -280,6 +354,43 @@ describe("runServiceContractMatrix", () => {
     );
   });
 
+  test("requires supported factory provider and platform to match the cell", async () => {
+    const exit = await Effect.runPromiseExit(
+      runServiceContractMatrix({
+        serviceTypeId: "test",
+        cells: [
+          {
+            providerId: ProviderId.make("test"),
+            platform: "linux",
+            supported: true,
+            factory: () => ({
+              serviceType: TestServiceType,
+              landofileService: { type: "test" },
+              providerId: ProviderId.make("test"),
+              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
+              platform: "darwin",
+              expectations: {
+                type: "test",
+                endpoints: [{ port: 8080, protocol: "tcp" }],
+                healthcheck: { kind: "tcp", port: 8080 },
+                defaultCredentialEnvKeys: [],
+              },
+            }),
+          },
+          { providerId: ProviderId.make("test"), platform: "darwin", supported: false, skipReason: "n/a" },
+          { providerId: ProviderId.make("test"), platform: "win32", supported: false, skipReason: "n/a" },
+          { providerId: ProviderId.make("test"), platform: "wsl", supported: false, skipReason: "n/a" },
+        ],
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    expect(exit.cause._tag).toBe("Fail");
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error.assertion).toBe("service contract matrix factory platform matches cell platform");
+  });
+
   test("requires an unsupported cell to provide a skip reason", async () => {
     const exit = await Effect.runPromiseExit(
       runServiceContractMatrix({
@@ -293,6 +404,7 @@ describe("runServiceContractMatrix", () => {
               serviceType: TestServiceType,
               landofileService: { type: "test" },
               providerId: ProviderId.make("test"),
+              providerCapabilities: TEST_PROVIDER_CAPABILITIES,
               platform: "linux",
               expectations: {
                 type: "test",

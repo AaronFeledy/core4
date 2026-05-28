@@ -569,16 +569,16 @@ export interface ServiceContractExpectations {
    */
   readonly defaultCredentialEnvKeys: ReadonlyArray<string>;
   /**
-   * Literal credential values that MUST NOT appear inside `plan.command` /
+   * Environment keys whose values MUST NOT appear inside `plan.command` /
    * `plan.entrypoint` argv. Required for any service that bakes a deterministic
    * default credential into `plan.environment` (e.g. `MEILI_MASTER_KEY=lando`,
    * `MONGO_INITDB_ROOT_PASSWORD=lando`) — §6.12.4 marks `password`/`rootPassword`
    * as `secret: true` by default and §6.8 / §6.10 forbid leaking those values
    * into logs, telemetry, `LANDO_INFO`, or rendered config output. The
    * keyed-env-var-only surface is the assertable structural pre-condition for
-   * that redaction contract.
+   * that redaction contract, and failure details redact matched values.
    */
-  readonly defaultCredentialSecretValues?: ReadonlyArray<string>;
+  readonly defaultCredentialSecretEnvKeys?: ReadonlyArray<string>;
 }
 
 /** Single cell the service contract runner exercises. */
@@ -588,6 +588,7 @@ export interface ServiceContractInput {
   readonly landofileService: Record<string, unknown>;
   readonly providerId: ProviderId;
   readonly platform: HostPlatform;
+  readonly providerCapabilities: ProviderCapabilities;
   readonly serviceName?: string;
   readonly appName?: string;
   readonly appRoot?: string;
@@ -660,6 +661,12 @@ const argvJoin = (argv: string | ReadonlyArray<string> | undefined): string => {
 const flattenServicePlanArgv = (plan: ServicePlan): string =>
   `${argvJoin(plan.command)} ${argvJoin(plan.entrypoint)}`;
 
+const redactTokens = (value: string, tokens: ReadonlyArray<string>): string =>
+  tokens.reduce(
+    (redacted, token) => (token.length === 0 ? redacted : redacted.replaceAll(token, "[REDACTED]")),
+    value,
+  );
+
 const matchesHealthcheck = (hc: HealthcheckPlan, expected: HealthcheckExpectation): boolean => {
   if (expected.kind === "tcp") {
     if (hc.kind === "tcp") return hc.port === expected.port;
@@ -705,6 +712,7 @@ export const runServiceContract = (input: ServiceContractInput): Effect.Effect<v
     const appName = input.appName ?? "myapp";
     const appRoot = input.appRoot ?? `/srv/apps/${appName}`;
     const host = SERVICE_CONTRACT_HOST_FACTS[input.platform];
+    const capabilities = Schema.decodeUnknownEither(ProviderCapabilities)(input.providerCapabilities);
 
     yield* requireServiceContract(
       isNonEmptyString(serviceType.id),
@@ -716,6 +724,18 @@ export const runServiceContract = (input: ServiceContractInput): Effect.Effect<v
       "service type toServicePlan is callable",
       typeof serviceType.toServicePlan,
     );
+    yield* requireServiceContract(
+      Either.isRight(capabilities),
+      "service provider capabilities decode",
+      capabilities,
+    );
+    for (const key of CAPABILITY_KEYS) {
+      yield* requireServiceContract(
+        (input.providerCapabilities as Readonly<Record<string, unknown>>)[key] !== undefined,
+        `service provider capability ${String(key)} is populated`,
+        input.providerCapabilities,
+      );
+    }
 
     const decodedLandofile = Schema.decodeUnknownEither(LandofileShape)({
       name: appName,
@@ -771,6 +791,32 @@ export const runServiceContract = (input: ServiceContractInput): Effect.Effect<v
       "service plan type matches expectations",
       { actual: plan.type, expected: input.expectations.type },
     );
+    yield* requireServiceContract(
+      plan.provider === input.providerId,
+      "service plan provider matches the requested provider",
+      { actual: plan.provider, expected: input.providerId },
+    );
+
+    yield* requireServiceContract(
+      plan.endpoints.length === 0 || input.providerCapabilities.hostPortPublish !== "none",
+      "service plan endpoint publishing is supported by provider capabilities",
+      { hostPortPublish: input.providerCapabilities.hostPortPublish, endpoints: plan.endpoints },
+    );
+    yield* requireServiceContract(
+      plan.healthcheck === undefined || input.providerCapabilities.serviceHealth !== "none",
+      "service plan healthchecks are supported by provider capabilities",
+      { serviceHealth: input.providerCapabilities.serviceHealth, healthcheck: plan.healthcheck },
+    );
+    yield* requireServiceContract(
+      plan.storage.length === 0 || input.providerCapabilities.persistentStorage,
+      "service plan persistent storage is supported by provider capabilities",
+      { persistentStorage: input.providerCapabilities.persistentStorage, storage: plan.storage },
+    );
+    yield* requireServiceContract(
+      plan.mounts.length === 0 || input.providerCapabilities.bindMounts,
+      "service plan bind mounts are supported by provider capabilities",
+      { bindMounts: input.providerCapabilities.bindMounts, mounts: plan.mounts },
+    );
 
     yield* requireServiceContract(plan.endpoints.length > 0, "service plan emits at least one endpoint", {
       endpoints: plan.endpoints,
@@ -814,13 +860,20 @@ export const runServiceContract = (input: ServiceContractInput): Effect.Effect<v
       );
     }
 
-    if (input.expectations.defaultCredentialSecretValues !== undefined) {
+    if (input.expectations.defaultCredentialSecretEnvKeys !== undefined) {
       const argv = flattenServicePlanArgv(plan);
-      for (const value of input.expectations.defaultCredentialSecretValues) {
+      const secretValues = input.expectations.defaultCredentialSecretEnvKeys
+        .map((key) => plan.environment[key])
+        .filter((value): value is string => value !== undefined);
+      for (const [index, value] of secretValues.entries()) {
         yield* requireServiceContract(
           value.length === 0 || !argv.includes(value),
           "service plan default-credential values are not leaked into argv",
-          { value, argv },
+          {
+            secretIndex: index,
+            secretEnvKeys: input.expectations.defaultCredentialSecretEnvKeys,
+            argv: redactTokens(argv, secretValues),
+          },
         );
       }
     }
@@ -910,6 +963,21 @@ export const runServiceContractMatrix = (
           cell,
         );
         const contractInput = cell.factory();
+        yield* requireServiceContract(
+          contractInput.providerId === cell.providerId,
+          "service contract matrix factory provider matches cell provider",
+          { cellProviderId: cell.providerId, inputProviderId: contractInput.providerId },
+        );
+        yield* requireServiceContract(
+          contractInput.platform === cell.platform,
+          "service contract matrix factory platform matches cell platform",
+          { cellPlatform: cell.platform, inputPlatform: contractInput.platform },
+        );
+        yield* requireServiceContract(
+          contractInput.serviceType.id === options.serviceTypeId,
+          "service contract matrix factory service type matches matrix service type",
+          { serviceTypeId: options.serviceTypeId, inputServiceTypeId: contractInput.serviceType.id },
+        );
         yield* runServiceContract(contractInput);
         results.push({
           providerId: cell.providerId,
