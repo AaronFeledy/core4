@@ -1562,3 +1562,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Search-engine services that expose HTTP APIs may still need command healthchecks internally, but their `ServicePlan.endpoints` protocol must match the user-facing endpoint scheme expected by PRD-B-02 and `lando info` rendering.
   - Any service-level config that feeds a shell startup command needs an allowlist and/or positional-argument wrapper even when the command executes only inside the service container.
 ---
+
+## [2026-05-28 10:27 CDT] - Push
+- Branch: us-087-solr-service-type
+- Push: pushed
+- Commit(s): f6dbd85 docs: record US-087 review fixes; e12bbdb Fix Solr review blockers; 3a6fc11 feat: solr service type
+- PR: #188 https://github.com/AaronFeledy/core4/pull/188 (created)
+---
