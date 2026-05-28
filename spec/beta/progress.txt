@@ -1664,3 +1664,24 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Fix: tightened the same fixture in `plugins/provider-docker/test/contract.integration.test.ts` to emit a periodic `lando-contract-tick` every 250ms (replacing the no-op `setInterval`). Guarantees Docker's log stream has multiple chunks well within the 5s contract timeout regardless of stdout buffering or runner contention. No SDK contract code touched.
 - Verification: `bun test plugins/provider-docker/test/contract.integration.test.ts` (with DOCKER_HOST) → 15 pass, 1 skip, 0 fail; `bun run typecheck` → exit 0; `bun run lint` → exit 0 (5 warnings, pre-existing non-null assertions); `bun test` (full suite) → 1520 pass, 22 skip, 0 fail.
 - Review feedback: none — no PR comments, no review decision, Cursor Bugbot passed.
+
+## [2026-05-28 12:35 CDT] - Build (verify complete)
+- Branch: us-089-opensearch-service-type — entered in-flight; preserved all branch work, no new code changes.
+- Story state on entry: `passes: true` in `spec/beta/prd.json`; PR #189 OPEN/MERGEABLE; all reported CI checks green except `provider-integration-linux-x64` (live Docker contract flake). A prior triage step had already landed two local-only commits to address that flake — `67ea899 fix: keep live docker contract logs flowing past the 5s timeout` (tightens `plugins/provider-docker/test/contract.integration.test.ts` fixture from a one-shot `console.log('lando-contract-ready')` to an additional 250ms `lando-contract-tick` interval so the SDK 5s `logs emits at least one chunk` contract reliably collects chunks) and `e1fd57f docs: record PR #189 triage`. These commits are not yet on `origin/us-089-opensearch-service-type`; pushing them is a downstream loop step's job.
+- Action: no code edits; only this verification entry. Did not invent work, refactor, or revert any prior commit.
+- Verification (locally, with `PATH="$HOME/.bun/bin:$PATH"`):
+  - `bun run typecheck` → exit 0.
+  - `bun run lint` → exit 0 (5 pre-existing non-null-assertion warnings in provider-docker/provider-podman/service-lando integration tests, unrelated to this story).
+  - `bun run build` → exit 0 (compiled `core/dist/lando` built cleanly, oclif manifest regenerated with 59 commands).
+  - `bun test plugins/service-lando/test/opensearch.test.ts plugins/service-lando/test/opensearch.scenario.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/registration.test.ts plugins/service-lando/test/package.test.ts` → 114 pass, 0 fail.
+  - `bun test` (full suite) → 1519 pass, 22 skip, 1 transient fail: `core/test/cli/setup.test.ts > compiled setup install dir > matches source setup failure output and reports the same compiled install dir as shellenv`, failing only because the in-test `bun run build` raced concurrent test workers on `core/dist/lando` (same parallel-build race documented in the US-088 Review entry). Re-running the file in isolation: `bun test core/test/cli/setup.test.ts` → 8 pass, 0 fail.
+  - Acceptance criteria spot-check against code:
+    - `opensearch:2` ServiceType with HTTP healthcheck on `/_cluster/health` — `plugins/service-lando/src/services/opensearch.ts` `healthcheck.command = ["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`]`.
+    - Service description notes Apache 2.0 vs ELv2/SSPL licensing distinction — `OPENSEARCH_SERVICE_DESCRIPTION` in the same file (`Apache 2.0-licensed fork of Elasticsearch 7.10` … `under Apache 2.0 rather than the Elastic License v2 (ELv2/SSPL)`).
+    - Scenario test mirrors US-088 with OpenSearch endpoint — `plugins/service-lando/test/opensearch.scenario.test.ts` exercises `AppPlanner` + tooling alias end-to-end against the OpenSearch port; passes under `bun test`.
+- Result: US-089 verified complete from the Build step's perspective. `passes: true` left unchanged. No story-code commit created (none needed). This is the only Build-step commit on this branch and contains progress.txt only.
+- **Learnings for future iterations:**
+  - When entering a story branch that is already `passes: true` and only has CI flake noise, the right Build-step action is to verify locally and append a confirmation entry — not to retro-author work or rerun prior steps' tasks.
+  - The full-suite parallel-build race on `core/dist/lando` (ETXTBSY/EACCES) surfaces as a flaky `core/test/cli/setup.test.ts > compiled setup install dir` failure when `bun test` and the in-test `bun run build` contend for the binary. Re-running that one test file in isolation is the established repo workaround (also recorded in the US-088 Review entry).
+  - Git state on a story branch can change under your feet between commands when other loop steps are still operating on the worktree; `git status --short` and `git log --oneline origin/branch..HEAD` should be re-checked just before commit to confirm what is actually pending.
+---
