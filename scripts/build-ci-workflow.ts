@@ -270,6 +270,7 @@ jobs:
           podman pull postgres:16-alpine
           podman pull golang:1.22
           podman pull memcached:1.6
+          podman pull solr:9
           podman pull valkey/valkey:8
           docker pull node:22-alpine
 
