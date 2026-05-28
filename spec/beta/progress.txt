@@ -989,3 +989,33 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch: us-083-go-service-type
 - Commit: c2e19da feat: go service type
 ---
+
+## [2026-05-27 20:24 CDT] - US-083 Review
+- Reviewed the US-083 Go service type implementation against `spec/beta/prd-beta-02-service-catalog-full.md` and the build-step commits (`origin/main...HEAD`).
+- Fixed confirmed review blockers:
+  - Updated the packaged `@lando/service-lando` `plugin.yaml` manifest so installed/package consumers advertise the same service type catalog as the TypeScript manifest, including `go:1.22` and `go:1.23`.
+  - Added package-level test coverage that keeps `plugin.yaml` service type contributions in sync with the exported service catalog.
+  - Corrected `spec/beta/prd.json` so US-083 is not marked passing while its live/minimal Go HTTP scenario acceptance remains uncovered.
+- Files changed:
+  - `plugins/service-lando/plugin.yaml`
+  - `plugins/service-lando/test/package.test.ts`
+  - `spec/beta/prd.json`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: packaged `plugin.yaml` did not advertise `go:1.22` / `go:1.23` and was stale relative to the TypeScript manifest.
+  - Fixed: PRD status was prematurely marked passing despite the missing live/minimal Go HTTP scenario acceptance.
+  - Rejected/deferred: adding and executing the host-impacting live `lando start` Go HTTP scenario is real work, but it requires the `.local/DEV-ENV.md` sandbox/provider workflow and is larger than a safe focused review repair; US-083 is left incomplete until that acceptance is added in a build step.
+  - Rejected/deferred: `golang:1.22` / `golang:1.23` lifecycle support is a Beta image-pin policy concern; the Debian/default-tag `bash` assumption is valid for this implementation, while digest/full-patch pinning should be handled with the service-catalog image policy rather than changed ad hoc here.
+  - Rejected/deferred: `CGO_ENABLED=0` may be too opinionated for some Go projects, but it is user-overridable and was not changed without a specific PRD decision.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/package.test.ts plugins/service-lando/test/go.test.ts plugins/service-lando/test/go.scenario.test.ts plugins/service-lando/test/registration.test.ts plugins/service-lando/test/env-contract.test.ts` → 99 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 183 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing non-null assertion warnings in provider contract tests.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1407 pass, 16 skip, 0 fail across 1423 tests.
+  - A subsequent full-suite rerun hit unrelated compiled-CLI harness failures (`shellenv` build exit 1 and `deferred-commands` `ETXTBSY` on `core/dist/lando`); focused service-lando coverage remained green.
+  - LSP diagnostics: `spec/beta/prd.json` clean; TypeScript LSP for `plugins/service-lando` exited with code -2; YAML LSP is not installed.
+- **Learnings for future iterations:**
+  - Service catalog additions must update both the TypeScript `manifest` in `src/index.ts` and the packaged `plugin.yaml` referenced by `package.json`'s `lando.manifest` field.
+  - A fake-provider tooling scenario is useful for planner/tooling routing, but it must not be recorded as satisfying PRD wording that requires starting a minimal service and probing a live endpoint.
+---
