@@ -18,6 +18,7 @@ import { postgresServiceType } from "../src/services/postgres.ts";
 import { python312ServiceType } from "../src/services/python.ts";
 import { redisServiceType } from "../src/services/redis.ts";
 import { ruby33ServiceType } from "../src/services/ruby.ts";
+import { solrServiceType } from "../src/services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
 import { valkeyServiceType } from "../src/services/valkey.ts";
 
@@ -194,6 +195,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: elasticsearchServiceType,
     landofileService: { type: "elasticsearch" },
     expectedType: "elasticsearch",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "solr",
+    serviceType: solrServiceType,
+    landofileService: { type: "solr" },
+    expectedType: "solr",
     expectsAppPaths: false,
     expectsWebroot: null,
   },

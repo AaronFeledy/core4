@@ -37,7 +37,7 @@ describe("solr ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-solr-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/solr");
-    expect(plan.endpoints).toEqual([{ port: 8983, protocol: "tcp", name: "search" }]);
+    expect(plan.endpoints).toEqual([{ port: 8983, protocol: "http", name: "search" }]);
   });
 
   test("respects image, port, and command overrides", () => {
@@ -89,7 +89,10 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      "precreate-core gettingstarted && exec solr-foreground -p 8983",
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      "lando-solr-precreate",
+      "8983",
+      "gettingstarted",
     ]);
   });
 
@@ -99,15 +102,33 @@ describe("solr ServiceType", () => {
     expect(plan.command).toEqual([
       "bash",
       "-c",
-      "precreate-core core1 && precreate-core core2 && exec solr-foreground -p 8983",
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      "lando-solr-precreate",
+      "8983",
+      "core1",
+      "core2",
     ]);
   });
 
   test("cores command uses the overridden port in solr-foreground invocation", () => {
     const plan = planSolrService({ type: "solr", cores: ["mycore"], port: 18983 });
 
-    expect(plan.command).toEqual(["bash", "-c", "precreate-core mycore && exec solr-foreground -p 18983"]);
+    expect(plan.command).toEqual([
+      "bash",
+      "-c",
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      "lando-solr-precreate",
+      "18983",
+      "mycore",
+    ]);
   });
+
+  test.each([["bad core"], ["bad;core"], ["bad$(core)"], ["bad`core`"], ["bad\ncore"]])(
+    "rejects unsafe core name %p",
+    (core) => {
+      expect(() => planSolrService({ type: "solr", cores: [core] })).toThrow(/Invalid Solr core name/);
+    },
+  );
 
   test("explicit command override is respected even when cores are configured", () => {
     const plan = planSolrService({

@@ -1509,3 +1509,63 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: on `main`; local story branch deleted; progress log updated with this babysit report
 ---
+
+## 2026-05-28 09:51 CDT - Sync
+- Previous branch: us-088-elasticsearch-service-type
+- Previous PR: #187 https://github.com/AaronFeledy/core4/pull/187
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
+
+## 2026-05-28 10:05 CDT - US-087 Verification
+- Story: US-087 solr service type — already implemented and merged via PR #186 (`2fe17274`); PRD entry still had `passes: false`.
+- Branch: us-087-solr-service-type (re-created locally for the passes-flag fix; original was deleted post-merge)
+- Verification on `main` (no code changes required):
+  - All acceptance criteria covered: `solr` ServiceType + curl healthcheck against admin endpoint (`/solr/admin/info/system`), opt-in `cores:` config via precreate-core, scenario test `lando solr-admin status` (`plugins/service-lando/test/solr.scenario.test.ts:171`), package/registration tests list `solr` and `solr:9`.
+  - `bun test plugins/service-lando/test/solr.test.ts plugins/service-lando/test/solr.scenario.test.ts` → 16 pass / 0 fail.
+  - `bun test plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 14 pass / 0 fail.
+  - `bun test` (full suite) → 1495 pass / 21 skip / 0 fail across 214 files.
+  - `bun run typecheck` → exit 0.
+  - `bun run lint` → 4 pre-existing non-null-assertion warnings only (unrelated to US-087).
+- Files changed in this build step:
+  - `spec/beta/prd.json`: `US-087.passes` flipped `false` → `true`.
+  - `spec/beta/progress.txt`: this entry (plus a prior Sync entry left uncommitted on main is carried with this commit).
+- No source code changes — work was already merged. This is the completion-only confirmation path defined by the build step.
+- **Learnings for future iterations:**
+  - When a story is implemented on a branch but its `passes` flag is never flipped, that gap survives the sync/babysit hand-off and surfaces as the next "highest-priority failing" pick. Always include `spec/beta/prd.json` in the story branch's commit alongside the implementation files.
+  - Sync entries appended to `spec/beta/progress.txt` need an owning commit; otherwise they ride along with the next story branch's work as an uncommitted diff on `main`.
+---
+
+## [2026-05-28 10:16 CDT] - US-087 Review
+- Reviewed completion commit `3a6fc117 feat: solr service type` and the previously merged Solr implementation against `spec/beta/prd-beta-02-service-catalog-full.md` US-087 using `review-work`, explore, librarian, QA, security, code-quality, and context-mining agents.
+- Files changed:
+  - `plugins/service-lando/src/services/solr.ts`: changed the Solr endpoint protocol from `tcp` to `http` per PRD-B-02 endpoint scheme rules; validated `cores:` names and passed them as shell positional arguments instead of interpolating raw core names.
+  - `plugins/service-lando/test/solr.test.ts`: updated HTTP endpoint expectations, safe core-command assertions, and unsafe core-name rejection coverage.
+  - `plugins/service-lando/test/solr.scenario.test.ts`: made the `lando solr-admin status` scenario include opt-in core creation and updated HTTP endpoint/safe command assertions.
+  - `plugins/service-lando/test/env-contract.test.ts`: added Solr to the catalog-wide LANDO_* environment contract matrix.
+- `review-work` findings:
+  - Fixed: Solr endpoint emitted `tcp` despite PRD-B-02 requiring HTTP endpoint scheme behavior for Solr.
+  - Fixed: `cores:` values were interpolated directly into a `bash -c` startup command; now core names are allowlisted and passed via quoted positional parameters.
+  - Fixed: scenario coverage split core creation and `lando solr-admin status`; the status scenario now plans `cores: ["gettingstarted"]` and asserts the precreate command.
+  - Fixed: Solr was missing from the shared env-contract matrix.
+  - Rejected/deferred: `/solr/admin/ping` was not restored; PR #186 triage already established it returns 404 without a core, and the current `/solr/admin/info/system` command healthcheck is the accepted admin endpoint substitute for a coreless default service.
+  - Rejected/deferred: no dedicated Solr guide was added; PRD-B-02's Guide Coverage table does not require one for US-087.
+  - Rejected/deferred: no SDK service-contract entry was added; the explicit contract-suite runner work is US-092, while US-087 currently requires service implementation, scenario, tests, typecheck, and lint.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/solr.test.ts plugins/service-lando/test/solr.scenario.test.ts plugins/service-lando/test/solr.integration.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → exit 0 (live Solr integration remains gated/skipped unless `LANDO_TEST_PODMAN_SOCKET` is set).
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → exit 0. A subsequent duplicate full-suite attempt was interrupted by the harness after the prior successful run; no files changed between the successful run and this log entry.
+  - `lsp_diagnostics` on changed TypeScript files could not run because the TypeScript LSP exited with code `-2`; `bun run typecheck` covered type errors.
+- **Learnings for future iterations:**
+  - Search-engine services that expose HTTP APIs may still need command healthchecks internally, but their `ServicePlan.endpoints` protocol must match the user-facing endpoint scheme expected by PRD-B-02 and `lando info` rendering.
+  - Any service-level config that feeds a shell startup command needs an allowlist and/or positional-argument wrapper even when the command executes only inside the service container.
+---
+
+## [2026-05-28 10:27 CDT] - Push
+- Branch: us-087-solr-service-type
+- Push: pushed
+- Commit(s): f6dbd85 docs: record US-087 review fixes; e12bbdb Fix Solr review blockers; 3a6fc11 feat: solr service type
+- PR: #188 https://github.com/AaronFeledy/core4/pull/188 (created)
+---

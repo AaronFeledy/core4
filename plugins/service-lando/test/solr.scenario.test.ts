@@ -138,7 +138,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
 
     expect(search.type).toBe("solr");
     expect(search.artifact).toEqual({ kind: "ref", ref: "solr:9" });
-    expect(search.endpoints).toEqual([{ port: 8983, protocol: "tcp", name: "search" }]);
+    expect(search.endpoints).toEqual([{ port: 8983, protocol: "http", name: "search" }]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-solr-data");
     expect(search.healthcheck?.kind).toBe("command");
@@ -164,15 +164,16 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     const cmd = search.command as string[];
     expect(cmd[0]).toBe("bash");
     expect(cmd[1]).toBe("-c");
-    expect(cmd[2]).toContain("precreate-core gettingstarted");
+    expect(cmd[2]).toContain('precreate-core "$core"');
     expect(cmd[2]).toContain("solr-foreground");
+    expect(cmd).toContain("gettingstarted");
   });
 
   test("`lando solr-admin status` tooling alias routes through provider.exec to the search service", async () => {
     const solrStatusOutput = "Solr is running on port 8983\n";
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
-      services: { search: { type: "solr" } },
+      services: { search: { type: "solr", cores: ["gettingstarted"] } },
       tooling: {
         "solr-admin": {
           service: "search",
@@ -196,6 +197,16 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("search");
     expect(calls[0]?.command).toEqual(["solr", "status"]);
+    const search = appPlan.services[ServiceName.make("search")];
+    if (search === undefined) throw new Error("search service missing");
+    expect(search.command).toEqual([
+      "bash",
+      "-c",
+      'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+      "lando-solr-precreate",
+      "8983",
+      "gettingstarted",
+    ]);
   });
 
   test("`lando solr-admin healthcheck -c gettingstarted` routes through provider.exec", async () => {
