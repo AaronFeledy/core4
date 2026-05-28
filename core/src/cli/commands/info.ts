@@ -92,6 +92,8 @@ const endpointText = (service: ServicePlan, endpoint: EndpointPlan): string => {
     const database = service.environment.POSTGRES_DB ?? "postgres";
     return `postgresql://${user}@localhost:${endpoint.port}/${database}`;
   }
+  if (service.type === "memcached" && endpoint.protocol === "tcp")
+    return `memcached://localhost:${endpoint.port}`;
   return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
