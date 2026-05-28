@@ -1480,3 +1480,17 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Search-engine services with `port:` overrides need to configure the daemon listener as well as the endpoint/healthcheck; for Elasticsearch this is `http.port`.
   - For shell-backed guide tooling aliases, prefer a quoted positional argument wrapper plus `curl --` instead of appending raw `$*`.
 ---
+
+## [2026-05-28 07:41 CDT] - Push
+- Branch: us-088-elasticsearch-service-type
+- Push: pushed
+- Commit(s):
+- d1bb419 Clean up Elasticsearch env contract test
+- 175388a docs: record US-088 review
+- a913337 Update Elasticsearch CI image pre-pull
+- d3741ee Update Elasticsearch guide defaults
+- 6f3f163 Fix Elasticsearch service runtime defaults
+- 6ee5d1d chore: mark US-088 complete and update progress log
+- c0d1f19 feat: Add elasticsearch service type
+- PR: #187 https://github.com/AaronFeledy/core4/pull/187 (created)
+---
