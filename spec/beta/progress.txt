@@ -1805,3 +1805,66 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state: none
 ---
+
+## 2026-05-28 13:18:52 - Sync
+- Previous branch: us-090-meilisearch-service-type
+- Previous PR: #190 https://github.com/AaronFeledy/core4/pull/190
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
+
+## [2026-05-28 13:35 CDT] - US-091
+- Documented Beta framework-preset coverage for `@lando/service-lando` and confirmed the `go` ServiceType ships `framework: "none"` only.
+- Files added:
+  - `plugins/service-lando/README.md`: top-level Framework-presets table with one row per language ServiceType (php/node/python/ruby/go); each row enumerates supported versions and supported `framework:` values; Go row lists only `none`, with an explicit deferral note for Echo, Fiber, Gin, Chi cross-referencing `spec/06-services.md` §6.12.1; plus a "Beta scope vs. §6.12.1" section explaining the §6.12.1 vs Beta subset relationship and the Phase 6 deferral.
+  - `plugins/service-lando/test/readme.test.ts`: bun:test suite that (a) asserts the README exists at the package root, (b) parses the `## Framework presets` section and validates its column headers, (c) for each language ServiceType (php/node/python/ruby/go) walks `SUPPORTED_*_VERSIONS` and `SUPPORTED_*_FRAMEWORKS` from `src/services/*.ts` and asserts every supported version and every framework value (formatted as `` `value` ``) appears in that language's table row, (d) asserts the Go row contains only `none` (no echo/fiber/gin/chi) and the README references §6.12.1, Echo, and Fiber as the deferral cross-reference.
+- Files changed:
+  - `plugins/service-lando/package.json`: added `./README.md` to the published `files` array so the package ships the documentation with the binary bundle.
+- TDD: wrote `readme.test.ts` first, watched 4 tests fail with `ENOENT: no such file or directory, open '.../plugins/service-lando/README.md'`, then created the README and saw 4 pass / 0 fail.
+- Verification:
+  - `bun test plugins/service-lando/test/readme.test.ts` → 4 pass, 0 fail (33 expect() calls)
+  - `bun test plugins/service-lando/` → 302 pass, 7 skip, 0 fail (1391 expect() calls)
+  - `bun run typecheck` → exit 0
+  - `bun run lint` → exit 0 (4 pre-existing non-null-assertion warnings in provider Docker/Podman/service-lando test fixtures, untouched)
+  - `bun test` (full repo) → 1542 pass, 23 skip, 0 fail (7328 expect() calls)
+  - Manual runtime contract check via inline bun driver: `SUPPORTED_GO_FRAMEWORKS` = `["none"]`; `go122ServiceType.toServicePlan` accepts `framework: "none"` and rejects `framework: "echo" | "fiber" | "gin" | "chi"` with the existing `Unsupported Go framework "<value>"` remediation. README and runtime contract are now aligned and assertable from tests.
+- Learnings for future iterations:
+  - Documentation-only stories (`@lando/service-lando` README, recipe READMEs, guide MDX) are still subject to the TDD floor — the failing test is "README missing" / "table row missing", and the GREEN step is the content edit. Test parses the markdown for column headers and per-language rows rather than diffing whole-file snapshots, so adding a new language ServiceType only requires extending the supported-version/framework constants — the readme test automatically requires a matching row.
+  - `package.json#files` for workspace plugins must explicitly list the README; the workspace publish set is allowlisted (not implicit), and dropping the README in `files` would ship the binary bundle without the framework table. Add the README to `files` whenever a new top-level doc lands in `plugins/<name>/`.
+  - The Beta-vs-§6.12.1 mismatch is intentional: §6.12.1 lists `echo`, `fiber`, `none` for Go but Beta ships only `none`. Document the subset relationship in the package README and cite the spec section so future iterations don't "fix" the docs by adding unreleased framework presets.
+---
+
+## [2026-05-28 13:43 CDT] - US-091 Review
+- Reviewed build commit `6a0fe25d feat: framework-preset coverage extends to Go` against `spec/beta/prd-beta-02-service-catalog-full.md` US-091 using `review-work`, explore, librarian, goal/constraint, QA, code-quality, security, and context-mining agents.
+- Fixed confirmed review blocker:
+  - Corrected the new `@lando/service-lando` README Node row. The build-step README said Node's `framework:` field is rejected, but existing runtime/tests accept the shared schema field and ignore it for Node service planning.
+  - Added README test coverage so the Node row cannot regress back to "rejected" wording.
+- Files changed:
+  - `plugins/service-lando/README.md`
+  - `plugins/service-lando/test/readme.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: Node README row contradicted `plugins/service-lando/test/node.test.ts` and `plugins/service-lando/src/services/node.ts`; documented the schema-compatible/ignored behavior instead.
+  - Rejected: npm `README.md` inclusion concern as a blocker; official npm behavior includes root README files by default, and explicitly listing `./README.md` in the package `files` allowlist is safe.
+  - Rejected/deferred: Chi/Fiber wording nuance as a blocker; US-091 only requires Go `none` in Beta plus future-framework deferral, and the README now frames all named Go frameworks as deferred/not supported today.
+  - Rejected: Guide coverage requirement; PRD-B-02 guide coverage is selective and does not list US-091.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/readme.test.ts` → 5 pass, 0 fail, 36 expect() calls.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 303 pass, 7 skip, 0 fail, 1394 expect() calls.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with the same 4 pre-existing non-null-assertion warnings in provider Docker/Podman contract tests.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --timeout 30000` → observed one full-suite pass (1543 pass, 23 skip, 0 fail) and one follow-up full-suite run with transient failures in `core/test/cli/aliases.test.ts` and `core/test/build/biome.test.ts`; both failed files passed when rerun in isolation (`aliases.test.ts` → 3 pass, 0 fail; `biome.test.ts` → 1 pass, 0 fail), consistent with known full-suite concurrency/race noise around generated build/lint artifacts.
+  - `lsp_diagnostics` on `plugins/service-lando/test/readme.test.ts` was attempted but the TypeScript LSP exited with code `-2`; root typecheck was clean.
+- **Learnings for future iterations:**
+  - The shared `ServiceConfig` schema permits `framework:` broadly; per-language `ServiceType` implementations decide whether to consume, validate, or ignore it. Documentation rows should describe the ServiceType behavior precisely instead of assuming decoder rejection.
+  - README contract tests should cover compatibility edge wording when a docs story explains behavior that intentionally differs by service type.
+---
+
+## [2026-05-28 14:10 CDT] - Push
+- Branch: us-091-go-framework-preset-docs
+- Push: pushed
+- Commit(s): ca64c4a Clean up service-lando README test;08dbbf6 Fix service-lando README framework wording 6a0fe25 feat: framework-preset coverage extends to Go
+- PR: #191 https://github.com/AaronFeledy/core4/pull/191 (created)
+---
