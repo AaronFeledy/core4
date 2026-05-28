@@ -1878,3 +1878,83 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state: none
 ---
+
+## 2026-05-28 14:22:48 - Sync
+- Previous branch: us-091-go-framework-preset-docs
+- Previous PR: #191 https://github.com/AaronFeledy/core4/pull/191
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
+
+## [2026-05-28 14:48 CDT] - US-092
+- Shipped the matrix-driven Beta service contract suite in `@lando/sdk/test` and wired every new Beta service type (US-083..090) through it.
+- Files added:
+  - `sdk/test/contract/service.test.ts`: 17 unit tests for the runner — TestServiceType happy path, every clause's `ContractFailure` (id, callable toServicePlan, ServicePlan decode, type match, endpoint emission, expected endpoint port/protocol, healthcheck presence, healthcheck probe match, LANDO_* §6.9 identity keys, declared default-credential env keys, default-credential plaintext absence from argv), plus matrix-runner behaviour (passed/skipped reporting, canonical-platform coverage per provider, mandatory skipReason).
+  - `plugins/service-lando/test/service-contract.test.ts`: 9 catalog entries × 2 tests (single-cell + 4-platform matrix) + 1 catalog-coverage pin = 19 tests covering `go:1.22`, `go:1.23`, `mongodb`, `memcached`, `valkey`, `solr`, `elasticsearch`, `opensearch`, `meilisearch`. Each entry asserts the expected plan type, canonical endpoint port + protocol, healthcheck probe shape (tcp/http kind + port/path), declared default-credential env keys, and default-credential plaintext absence from `plan.command`/`plan.entrypoint` argv. `mongodb` covers `MONGO_INITDB_ROOT_USERNAME/PASSWORD/DATABASE` (default `lando`); `meilisearch` covers `MEILI_MASTER_KEY` (default `lando`).
+- Files changed:
+  - `sdk/src/test/index.ts`: Added the service contract surface — `runServiceContract`, `runServiceContractMatrix`, `TestServiceType`, `ServiceContractInput`, `ServiceContractExpectations`, `EndpointExpectation`, `HealthcheckExpectation`, `SupportedServiceContractCell`, `UnsupportedServiceContractCell`, `ServiceContractMatrixCell`, `ServiceContractMatrixCellResult`, `ServiceContractMatrixReport`, `ServiceContractMatrixOptions`. The runner derives platform-specific host facts (linux/darwin/win32/wsl) and feeds them through `toServicePlan`. Re-uses `ContractFailure` and the existing matrix idioms (per-provider canonical platform coverage, unique cells, supported-cell factory, unsupported-cell skipReason).
+  - `sdk/API_COMPATIBILITY.md`: Listed every new test-helper export under the "Additive Beta test helper exports" section.
+  - `sdk/test/library/exports.test.ts`: Asserted the new service contract helpers are reachable from `@lando/sdk/test`.
+- TDD: RED first — wrote `sdk/test/contract/service.test.ts` against non-existent exports and confirmed `SyntaxError: Export named 'TestServiceType' not found`. GREEN: implemented the runner. `bun test sdk/test/contract/service.test.ts` → 17 pass, 0 fail. Re-applied the same RED→GREEN cycle for the catalog matrix in `plugins/service-lando/test/service-contract.test.ts` (initial RED: solr/elasticsearch/opensearch alias `plan.type` mismatched the versioned IDs I had guessed; corrected to the unversioned alias forms).
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/service.test.ts plugins/service-lando/test/service-contract.test.ts` → 36 pass, 0 fail, 171 expect() calls.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/ plugins/service-lando/` → 454 pass, 7 skip, 0 fail, 2286 expect() calls.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (4 pre-existing non-null-assertion warnings in provider Docker/Podman test fixtures, untouched).
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0 across `@lando/core`, `@lando/sdk`, `@lando/renderer-listr`, `@lando/provider-docker`, `@lando/provider-podman`, `@lando/provider-lando`.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1579 pass, 23 skip, 0 fail, 9 snapshots, 7502 expect() calls across 223 files.
+- Manual driver verification: ran the new SDK runner end-to-end from the plugin test seam (`plugins/service-lando/test/service-contract.test.ts`) — the exact pattern a service-type plugin author uses. 19 plugin-side tests exercise the runner against the real catalog `ServiceTypeShape` exports, covering all 8 new Beta service families × 4 canonical platforms × `lando` provider. Each `Effect.runPromise(runServiceContractMatrix(...))` resolved with `outcome: "passed"` for every cell.
+- **Learnings for future iterations:**
+  - `Schema.decodeUnknownEither(ServicePlan)` cannot re-decode an already-decoded ServicePlan: `metadata.resolvedAt` is a runtime `DateTime` instance, but the `DateTimeUtc` decoder treats input as the ENCODED string form. Use `Schema.is(ServicePlan)` for runtime-shape validation of objects that already passed a decode. Same trap applies to plan-mutation test helpers — mutate in place, cast back, and let the runner's `Schema.is` catch invalid shapes instead of re-decoding the mutated plan.
+  - The catalog alias services (`solr`, `elasticsearch`, `opensearch`, `meilisearch`) delegate to versioned implementations (`solr9ServiceType`, `elasticsearch8ServiceType`, …) but those impls emit unversioned `plan.type` strings (`"solr"`, `"elasticsearch"`, …). Pin the test expectation to the unversioned form, not the alias target's `id`.
+  - `CommandSpec` accepts BOTH `string` and `readonly string[]`. Any helper that flattens argv (e.g. for argv-redaction checks) must handle both. Tests that assert credential plaintext absence from `plan.command`/`plan.entrypoint` need this.
+  - The §6.9 LANDO_* identity contract pinned in the runner — `LANDO`, `LANDO_APP_NAME`, `LANDO_APP_KIND`, `LANDO_PROJECT`, `LANDO_SERVICE_API`, `LANDO_SERVICE_NAME`, `LANDO_SERVICE_TYPE` — is the structural floor every catalog service must emit. `LANDO_HOST_*` is conditional on host facts and is NOT part of the identity floor.
+  - Default-credential redaction is structurally enforceable today even without a plan-level redaction layer: assert (a) credentials live in keyed env vars, (b) credential plaintext does NOT appear in `plan.command`/`plan.entrypoint` argv. The full §6.8/§6.10/§6.12.4 redaction (logs, telemetry, LANDO_INFO, rendered config) needs a publishing-layer redact-token set that is not yet wired and is tracked separately.
+---
+
+## [2026-05-28 15:08 CDT] - US-092 Review
+- Reviewed build commit `a0db1cf2 feat: matrix-driven service-type contract suite` against `spec/beta/prd-beta-02-service-catalog-full.md` US-092 using `review-work`, explore, librarian, goal/constraint, QA, code-quality, security, and context-mining agents.
+- Fixed confirmed review blockers:
+  - Added provider-capability coverage to `runServiceContract` so service plans now assert endpoint publishing, healthchecks, persistent storage, and bind mounts are compatible with the declared provider capabilities.
+  - Added provider/platform/service-type identity checks to `runServiceContractMatrix` so matrix reports cannot pass a cell whose factory exercises a different provider, platform, or service type.
+  - Changed default-secret argv checks to use secret environment keys and redact matched values from `ContractFailure.details`.
+  - Added contract entries for alias-backed versioned Beta service IDs: `solr:9`, `elasticsearch:8`, `opensearch:2`, and `meilisearch:1`.
+- Files changed:
+  - `sdk/src/test/index.ts`
+  - `sdk/test/contract/service.test.ts`
+  - `plugins/service-lando/test/service-contract.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: capabilities acceptance criterion was untested; runner now validates capability compatibility and tests the failure mode.
+  - Fixed: matrix factory output could disagree with declared provider/platform/service type; runner now fails those mismatches.
+  - Fixed: secret-leak failure details included raw secret material; failure details now redact matched env-derived secret values and tests assert redaction.
+  - Fixed: versioned service IDs contributed by `@lando/service-lando` were missing contract entries; matrix now covers alias and versioned IDs for Solr, Elasticsearch, OpenSearch, and Meilisearch.
+  - Rejected/deferred: full publishing-layer redaction (`ServiceInfo.creds`, `LANDO_INFO`, logs/telemetry/rendered config) as out of scope for US-092; this contract suite now enforces the structural precondition (secret env values do not move into argv) while the publishing-layer redact-token surface remains a separate tracked area.
+  - Rejected: requiring non-`lando` providers in the plugin-side matrix; this story targets new `@lando/service-lando` service types, and no Docker/Podman ServiceType planner path exists for these plugin tests today. The SDK runner remains provider-parametric and enforces every canonical platform per declared provider.
+  - Rejected: MongoDB `LANDO_DB_*` credential env requirement as a blocker for this review; current service implementation emits `MONGO_INITDB_*`, and changing the runtime credential contract is outside a focused review repair for the test-suite story.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test sdk/test/contract/service.test.ts plugins/service-lando/test/service-contract.test.ts` → exit 0 (47 pass, 0 fail, 226 expect() calls observed in focused rerun).
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with the same 4 pre-existing non-null-assertion warnings in provider Docker/Podman contract tests.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --timeout 30000 --reporter=junit --reporter-outfile=/tmp/us092-bun-test.xml` → exit 0 (1591 pass, 23 skip, 0 fail, 9 snapshots, 7560 expect() calls). An earlier full-suite run failed once in `core/test/cli/setup.test.ts` because its nested `bun run build` returned 1; the same test file passed in isolation and the full suite passed on rerun.
+  - `lsp_diagnostics` on changed TypeScript files was attempted; TypeScript LSP exited with code `-2`, so root `typecheck` is the authoritative diagnostic result.
+- **Learnings for future iterations:**
+  - Matrix runners need to assert that cell factories actually exercise the declared cell metadata; otherwise provider/platform dimensions become report labels rather than verified inputs.
+  - Public test helpers that check secret absence must derive secret values from env keys and redact failure details; do not echo literal secrets or full argv in `ContractFailure.details`.
+  - Alias-backed service families can contribute both alias and versioned ServiceType IDs while emitting an unversioned `plan.type`; contract entries should cover both IDs and keep the expected plan type separate.
+---
+
+## [2026-05-28 15:29 CDT] - Push
+- Branch: us-092-service-contract-matrix
+- Push: pushed
+- Commit(s): 155ae7c chore: cleanup; fa81026 docs: record US-092 review fixes; b7ff01d fix: tighten service contract matrix review gaps; a0db1cf feat: matrix-driven service-type contract suite
+- PR: #192 https://github.com/AaronFeledy/core4/pull/192 (created)
+---
+
+## [2026-05-28] - PR #192 Bugbot triage
+- Review feedback: real issue — service contract healthcheck command matching used substring port checks, so expected port 80 matched probes against 8080.
+- Fix: tightened SDK test helper command matching to require numeric port boundaries for `/dev/tcp/.../<port>` and `localhost` / `127.0.0.1:<port>` probes, with TCP and HTTP command regression coverage.
+- Verification: `bun run typecheck`, `bun run lint`, `bun test`, focused contract test, and manual SDK surface check passed locally.

@@ -1,6 +1,6 @@
 # SDK compatibility guard
 
-`@lando/sdk` is the stable plugin-author surface. Compatibility tests freeze the MVP schema names and service tag signatures; Alpha additions must remain additive and be listed here.
+`@lando/sdk` is the stable public plugin-author surface. Compatibility tests freeze the currently supported schema names and service tag signatures; Alpha additions must remain additive and be listed here.
 
 ## Additive Alpha schema exports
 
@@ -115,7 +115,20 @@
 - `ContractMatrixCellResult`
 - `ContractMatrixOptions`
 - `ContractMatrixReport`
+- `EndpointExpectation`
+- `HealthcheckExpectation`
 - `HostPlatformId`
+- `ServiceContractExpectations`
+- `ServiceContractInput`
+- `ServiceContractMatrixCell`
+- `ServiceContractMatrixCellResult`
+- `ServiceContractMatrixOptions`
+- `ServiceContractMatrixReport`
 - `SupportedContractCell`
+- `SupportedServiceContractCell`
+- `TestServiceType`
 - `UnsupportedContractCell`
+- `UnsupportedServiceContractCell`
 - `runProviderContractMatrix`
+- `runServiceContract`
+- `runServiceContractMatrix`
