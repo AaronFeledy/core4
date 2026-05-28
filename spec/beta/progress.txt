@@ -1236,4 +1236,4 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ## [2026-05-27 UTC] - PR #184 triage
 - CI failure: real issue; the CI workflow generator template lost `podman pull golang:1.22` from the provider pre-pull list, even though the checked-in workflow still had it, so regeneration could drop the golang image and make the test order-dependent.
 - Fix: restored `podman pull golang:1.22` in `scripts/build-ci-workflow.ts` while keeping the memcached and service-lando integration pre-pulls intact.
-- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-workflow.test.ts` → 8 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (4 pre-existing non-null assertion warnings in provider Docker/Podman integration tests).
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test core/test/build/ci-workflow.test.ts` → 8 pass, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bunx biome check scripts/build-ci-workflow.ts` → clean; full `bun run typecheck` and `bun run lint` attempts hit the tool time limit here and did not complete.
