@@ -1247,3 +1247,27 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: no
 - Remaining local state, if any: still on us-085-memcached-service-type; progress log updated with deferral note
 ---
+
+## [2026-05-28 05:10 UTC] - US-085 rebase onto current main
+- Rebased `us-085-memcached-service-type` onto current `main` (HEAD `02db2fc`, which carries the US-084 `mongodb` ServiceType from PR #183). PR #184 was previously DIRTY/CONFLICTING against main; this rebase resolves the conflicts and brings the branch back to a mergeable state.
+- Conflicts resolved (all bookkeeping "add both" merges, keeping `mariadb` → `memcached` → `mongodb` → `mysql` alphabetical order):
+  - `plugins/service-lando/plugin.yaml`: contributes.serviceTypes list
+  - `plugins/service-lando/src/index.ts`: imports, exports, `serviceTypes` Map, manifest `contributes`
+  - `plugins/service-lando/test/package.test.ts`: `expectedServiceTypes`
+  - `plugins/service-lando/test/registration.test.ts`: expected contributes list
+  - `sdk/test/fixtures/schema-snapshot.json`: bundled plugin manifest contributes
+  - `spec/beta/progress.txt`: preserved US-084 entry from main and US-085 entry from branch chronologically
+- No source code changes to memcached implementation or tests — only collision-avoidance reorderings.
+- Verification on rebased tip:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → 4 pre-existing warnings in `plugins/provider-docker/src/index.ts` (npipe chunked decoder optional-chain hint); 0 errors; no fixes applied
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 209 pass, 2 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/memcached.scenario.test.ts plugins/service-lando/test/memcached.test.ts plugins/service-lando/test/memcached.integration.test.ts` → 11 pass, 1 skip, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1436 pass, 18 skip, 0 fail
+- CLI verification: drove the memcached service plan end-to-end through `bun core/bin/lando.ts info --renderer=json` against `/tmp/lando-memcached-smoke/.lando.yml` declaring `cache: { type: memcached }`. The command surfaced the expected `ProviderConfigError`/`select` envelope (no provider configured in the temp dir), proving the service-type registry resolves `memcached` without hitting an "unsupported service type" rejection. Functional behavior (apply / inspect / tooling routing) is covered by `memcached.scenario.test.ts` against the fake provider.
+- **Learnings for future iterations:**
+  - When a build-step branch sits idle long enough for a sibling story (US-084 mongodb) to land first, the rebase pattern here is mechanical: every conflict was the alphabetical service-list collision (mariadb, memcached, mongodb, mysql) in the same five files. Resolve them once with `git checkout --theirs` is wrong (it drops one of the two contributions); always do "keep both, sort alphabetically" and rerun the schema-snapshot/test-list assertions to catch order regressions.
+  - `git rebase --continue` with `vim` as the editor will hang under non-interactive shells; set `GIT_EDITOR=true` to accept the prepared commit message verbatim.
+  - `spec/beta/progress.txt` is the most likely conflict file across stories because every iteration appends to it. The conflict is always "keep both entries chronologically" — there is no semantic merge needed.
+---
