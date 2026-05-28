@@ -1221,3 +1221,9 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): e19d9f5 feat: memcached service type; 58d2e45 chore: mark US-085 complete and update progress log; afe8364 fix: repair memcached service behavior; a63bdbb fix: render memcached info endpoint scheme; 17bafd1 docs: clarify memcached guide tooling; cd9f28c docs: record US-085 review fixes; 00c6f1f chore: cleanup service metadata; ce28f22 test: cleanup memcached coverage prose
 - PR: #184 https://github.com/AaronFeledy/core4/pull/184 (created)
 ---
+
+## [2026-05-27 22:30 UTC] - PR #184 provider-integration-linux-x64 triage
+- CI failure: real issue; the live Docker contract fixture was a silent keep-alive process, so `runProviderContract` could legitimately see zero log chunks on the live socket.
+- PR comments/reviews: none; Cursor Bugbot passed.
+- Fix: `plugins/provider-docker/test/contract.integration.test.ts` now emits `console.log('lando-contract-ready')` before the keep-alive loop so the live log assertion has a guaranteed chunk.
+- Verification: `PATH="$HOME/.bun/bin:$PATH" bun test plugins/provider-docker/test/contract.integration.test.ts` → 13 pass, 2 skip, 0 fail; `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (4 warnings, pre-existing non-null assertions in provider-docker/podman tests).
