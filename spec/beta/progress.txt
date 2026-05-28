@@ -1146,3 +1146,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - MongoDB credentials use `MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD` / `MONGO_INITDB_DATABASE`; unlike MySQL/MariaDB, the Docker image has a single root-level user concept, so there is no separate app-user/root-user split.
   - Tooling `cmd: "string"` wraps in `sh -c <cmd> <args>` at the engine level; use `cmd: ["binary"]` array form in tests to verify exact argument vectors.
 ---
+
+## [2026-05-28] - Push
+- Branch: us-084-mongodb-service-type
+- Push: pushed
+- Commit(s):
+  - d21a8c8 feat: mongodb service type
+  - 79aae5a chore: mark US-084 complete and update progress log
+- PR: #183 https://github.com/AaronFeledy/core4/pull/183 (created)
+---
