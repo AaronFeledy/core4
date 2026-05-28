@@ -23,7 +23,7 @@ tags: [beta, docs, memcached, service]
     </Step>
   </Scenario>
 
-  <Scenario id="memcached-stats" render={false} reason="memcached-tool requires a running Memcached container; run lando memcached-tool stats after start to verify the service is healthy">
+  <Scenario id="memcached-stats" render={false} reason="The fixture defines memcached-tool as an app tooling alias; run it after start to inspect the live Memcached service">
     <Step name="stats">
       <Variable name="statsCommand" value="lando memcached-tool stats" display="Inspect Memcached runtime stats" />
     </Step>
@@ -31,7 +31,7 @@ tags: [beta, docs, memcached, service]
 
   <Scenario id="version-override" render={false} reason="Image override is exercised by the memcached unit tests; this scenario documents the user-facing capability">
     <Step name="note">
-      <Variable name="alpineImage" value="memcached:1.6-alpine" display="Pin a smaller image via image: memcached:1.6-alpine under services.cache" />
+      <Variable name="bookwormImage" value="memcached:1.6-bookworm" display="Pin a Debian-based image via image: memcached:1.6-bookworm under services.cache" />
     </Step>
   </Scenario>
 </Guide>

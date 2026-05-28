@@ -2,3 +2,11 @@ name: memcached-demo
 services:
   cache:
     type: memcached
+tooling:
+  memcached-tool:
+    service: cache
+    cmd:
+      - sh
+      - -c
+      - printf "%s\\r\\n" "$*" | nc -q 1 127.0.0.1 11211
+      - memcached-tool
