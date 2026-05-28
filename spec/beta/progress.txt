@@ -1449,3 +1449,34 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The `bun run codegen` pipeline also rewrites `.github/workflows/ci.yml` and `sdk/test/fixtures/schema-snapshot.json`; when a new service-type pulls a new container image, edit `scripts/build-ci-workflow.ts` (not the workflow directly) and re-run codegen so both files stay in sync.
   - Mirroring the solr healthcheck pattern, Elasticsearch uses a `command` healthcheck (`bash -c curl -sf ...`) rather than an HTTP healthcheck because the §6.6 healthcheck schema in this repo expresses HTTP probes via curl-in-container; copy this pattern for opensearch/meilisearch in subsequent stories.
 ---
+
+## [2026-05-28 12:06 UTC] - US-088 Review
+- Reviewed build commit `c0d1f19a feat: Add elasticsearch service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-088 using `review-work` plus explore/librarian/code-quality/security/QA/context-mining agents.
+- Files changed:
+  - `plugins/service-lando/src/services/elasticsearch.ts`: switched the default image to the valid official Elastic registry tag `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` and set `http.port` to track `port:` overrides.
+  - `plugins/service-lando/test/elasticsearch.test.ts`, `plugins/service-lando/test/elasticsearch.scenario.test.ts`, `plugins/service-lando/test/elasticsearch.integration.test.ts`, `plugins/service-lando/test/env-contract.test.ts`: updated assertions for the official image/http.port, added live `/_cat/indices` coverage, and added Elasticsearch to the shared LANDO_* env-contract matrix.
+  - `docs/guides/services/elasticsearch.mdx`, `docs/guides/elasticsearch/fixtures/elasticsearch-demo/.lando.yml`: documented the official image and Elastic License v2 distinction; hardened the `es-cli` fixture alias against shell word splitting/argument injection.
+  - `scripts/build-ci-workflow.ts`, `.github/workflows/ci.yml`: pre-pull the official Elastic registry image used by the service default.
+- `review-work` findings:
+  - Fixed: invalid `elasticsearch:8` default/CI image; `docker manifest inspect elasticsearch:8` failed with `no such manifest`, while `docker.elastic.co/elasticsearch/elasticsearch:8.17.0` resolves.
+  - Fixed: `port:` overrides updated the endpoint and healthcheck but not Elasticsearch's own HTTP listener; `http.port` now tracks the planned port.
+  - Fixed: live integration now exercises `/_cat/indices` after cluster health succeeds, so index-operation coverage is not fake-provider-only.
+  - Fixed: Elasticsearch added to the shared `env-contract.test.ts` matrix.
+  - Fixed: guide/fixture now mention Elastic License v2 and use a quoted `curl --` wrapper for the `es-cli` path argument.
+  - Rejected/deferred: `elasticsearch:7` service-type id and index-init config were not added in review; current repo service stories expose major-version alternatives through `image:` overrides until the shared artifact/version-pin surface and index-init schema land, and US-088 acceptance only requires the `elasticsearch` service type plus health/index operations through tooling.
+  - Rejected/deferred: service-type-shipped tooling remains a known §6.11.3 implementation gap; US-088 follows the current fixture-authored tooling alias pattern used by recent service stories.
+- Verification run and result:
+  - `docker manifest inspect docker.elastic.co/elasticsearch/elasticsearch:8.17.0` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/elasticsearch.test.ts plugins/service-lando/test/elasticsearch.scenario.test.ts plugins/service-lando/test/elasticsearch.integration.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 105 pass, 1 skip, 0 fail (live Elasticsearch integration skipped because `LANDO_TEST_PODMAN_SOCKET` is unset).
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing provider Docker/Podman non-null assertion warnings, unrelated to US-088.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → Guide lint passed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run codegen` → regenerated guide scenarios/bundled indexes/schema/CI with no additional tracked diffs beyond the intended CI workflow update.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1495 pass, 21 skip, 0 fail. Two earlier full-suite attempts failed due to concurrent build/test access to `core/dist/lando` (`ETXTBSY`/`EACCES`), then passed after rerunning with no concurrent build process.
+  - `lsp_diagnostics` on changed TypeScript files could not run because the TypeScript LSP exited with code `-2`; `bun run typecheck` covered type errors.
+- **Learnings for future iterations:**
+  - Validate external service default images with `docker manifest inspect` during review, especially when the official registry is not Docker Hub's `library/` namespace.
+  - Search-engine services with `port:` overrides need to configure the daemon listener as well as the endpoint/healthcheck; for Elasticsearch this is `http.port`.
+  - For shell-backed guide tooling aliases, prefer a quoted positional argument wrapper plus `curl --` instead of appending raw `$*`.
+---
