@@ -1019,3 +1019,29 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Service catalog additions must update both the TypeScript `manifest` in `src/index.ts` and the packaged `plugin.yaml` referenced by `package.json`'s `lando.manifest` field.
   - A fake-provider tooling scenario is useful for planner/tooling routing, but it must not be recorded as satisfying PRD wording that requires starting a minimal service and probing a live endpoint.
 ---
+
+## [2026-05-28 01:08 UTC] - US-083 Live Go HTTP Scenario
+- Added the live/minimal Go HTTP scenario acceptance that the prior US-083 review left open: `plugins/service-lando/test/go.integration.test.ts` brings up a Go service against a real Podman socket, fetches the HTTP endpoint, and runs `lando go version` through `ProviderExecToolingEngineLive` against the live provider.
+- The test is gated by `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` (matching `plugins/provider-lando/test/bring-up.integration.test.ts` and `core/test/cli/start.scenario.test.ts`) and skipped by default; CI's provider-integration job already exports that env var.
+- Files changed:
+  - `plugins/service-lando/test/go.integration.test.ts` (new): writes a minimal `main.go` (net/http on :31082) + `go.mod` under a temp bind-mounted appRoot, hand-builds the AppPlan/ServicePlan with `type: "go:1.22"` + `artifact: golang:1.22` + `command: ["go", "run", "/app/main.go"]` (matches the `go.ts` defaults), calls `bringUp(plan, { podmanApi })` via the real `makePodmanApiClient`, polls `http://127.0.0.1:31082` for `lando-go-ok`, then runs `runTooling({ name: "go", args: ["version"] })` through a layer wiring `LandofileService` / `AppPlanner` / `RuntimeProviderRegistry` against the live `RuntimeProvider` from `makeProviderLayer`, asserts `result.stdout` matches `/go version go1\.22/`, and tears down via `bringDown` in `finally`. Timeout 240_000ms to cover image pull + `go run` cold compile.
+  - `spec/beta/prd.json`: US-083 `passes: true` (notes cleared).
+- Manual QA (Docker substitute for Podman, since this host has Docker but no Podman and the WSL `lando4-dev` sandbox is Windows-only):
+  - Wrote the same fixtures (`main.go` + `go.mod`) to `/tmp/lando-go-smoke`
+  - `docker run -d -v /tmp/lando-go-smoke:/app -w /app -e GOFLAGS=-mod=mod -p 127.0.0.1:31082:31082 golang:1.22 go run /app/main.go` → container running
+  - `curl http://127.0.0.1:31082/` → `lando-go-ok` (after 5s compile+start)
+  - `docker exec ... go version` → `go version go1.22.12 linux/amd64` (matches the test regex)
+  - Container state: `running running=true`. Cleaned up.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 (4 pre-existing non-null-assertion warnings unrelated to this story)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 183 pass, 1 skip (the new live test), 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1407 pass, 17 skip, 0 fail (the +1 skip vs the prior step is exactly this story's new gated test)
+  - Test file compiles + skip-gate works without `LANDO_TEST_PODMAN_SOCKET`: `bun test plugins/service-lando/test/go.integration.test.ts` → 1 skip, 0 fail.
+- **Learnings for future iterations:**
+  - Live HTTP-server scenarios for new service types follow the `bring-up.integration.test.ts` pattern (hand-built `ServicePlan`/`AppPlan`, `bringUp(plan, { podmanApi })` via real `makePodmanApiClient`, `fetch("http://127.0.0.1:<port>")`, `bringDown` in `finally`) rather than the `AppPlanner` planning path used in fake-provider scenario tests. The two test files complement each other: scenario test exercises planner → tooling, integration test exercises provider lifecycle → live HTTP.
+  - Live integration tests that route tooling through `ProviderExecToolingEngineLive` need to provide a `RuntimeProviderRegistry.select` that returns the **same** live `RuntimeProvider` instance the bring-up used. Building the provider once via `RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: api })))` and capturing it for both the bring-up call and the tooling layer keeps the container-name/network state consistent.
+  - For `go run` to work inside `golang:1.22` against a bind-mounted source dir, write both `main.go` and a minimal `go.mod` (stdlib-only). `GOFLAGS=-mod=mod` is defensive against the image picking up a stray GOPATH-style layout.
+  - `golang:1.22`'s default Cmd is not a long-lived process, so the service plan must supply `command: ["go", "run", "/app/main.go"]` (or similar) to keep the container alive while the HTTP server serves. The default `tail -f /dev/null` keep-alive from `go.ts` is for the planner-driven path where the tooling alias drives one-shot exec; a live HTTP scenario explicitly overrides it.
+  - Port publishing in `provider-lando` bringUp maps `endpoint.port` to `HostIp: 127.0.0.1, HostPort: <port>` (see `bring-up.ts` ~line 147), so the host port equals the container port — picking a non-default port (31082 vs the type's default 8080) avoids collisions with whatever else is bound to 8080 on a CI runner.
+- Branch: us-083-go-service-type

@@ -163,8 +163,8 @@
         "Lint passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "Review fixed packaged plugin.yaml coverage, but live/minimal Go HTTP scenario remains missing; do not mark complete until that acceptance is covered."
+      "passes": true,
+      "notes": ""
     },
     {
       "id": "US-084",
