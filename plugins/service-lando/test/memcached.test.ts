@@ -11,21 +11,25 @@ const metadata = {
   runtime: 4 as const,
 };
 
+const planMemcachedService = (serviceDefinition: Record<string, unknown>) => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "myapp",
+    services: { cache: serviceDefinition },
+  });
+  const service = landofile.services?.[ServiceName.make("cache")];
+  if (service === undefined) throw new Error("cache service missing");
+
+  return memcachedServiceType.toServicePlan({
+    name: "cache",
+    service,
+    appRoot: "/srv/apps/myapp",
+    metadata,
+  });
+};
+
 describe("memcached ServiceType", () => {
   test("plans a default in-memory Memcached service with a TCP endpoint", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { cache: { type: "memcached" } },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
-    });
+    const plan = planMemcachedService({ type: "memcached" });
 
     expect(plan.type).toBe("memcached");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
@@ -35,25 +39,11 @@ describe("memcached ServiceType", () => {
   });
 
   test("respects image, port, and command overrides", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: {
-        cache: {
-          type: "memcached",
-          image: "memcached:1.6-bookworm",
-          port: 21211,
-          command: ["memcached", "-m", "128"],
-        },
-      },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
+    const plan = planMemcachedService({
+      type: "memcached",
+      image: "memcached:1.6-bookworm",
+      port: 21211,
+      command: ["memcached", "-m", "128"],
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6-bookworm" });
@@ -62,37 +52,13 @@ describe("memcached ServiceType", () => {
   });
 
   test("default command tracks the overridden port", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { cache: { type: "memcached", port: 21211 } },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
-    });
+    const plan = planMemcachedService({ type: "memcached", port: 21211 });
 
     expect(plan.command).toEqual(["memcached", "-p", "21211"]);
   });
 
   test("includes a TCP healthcheck on port 11211", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { cache: { type: "memcached" } },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
-    });
+    const plan = planMemcachedService({ type: "memcached" });
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -105,38 +71,14 @@ describe("memcached ServiceType", () => {
   });
 
   test("TCP healthcheck tracks the overridden port", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { cache: { type: "memcached", port: 21211 } },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
-    });
+    const plan = planMemcachedService({ type: "memcached", port: 21211 });
 
     expect(plan.endpoints[0]?.port).toBe(21211);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/21211"]);
   });
 
   test("sets LANDO environment variables for service context", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: { cache: { type: "memcached" } },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
-    });
+    const plan = planMemcachedService({ type: "memcached" });
 
     expect(plan.environment.LANDO).toBe("ON");
     expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
@@ -145,48 +87,17 @@ describe("memcached ServiceType", () => {
   });
 
   test("user environment variables merge into the plan environment", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: {
-        cache: {
-          type: "memcached",
-          environment: { EXTRA_VAR: "extra" },
-        },
-      },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
-    const plan = memcachedServiceType.toServicePlan({
-      name: "cache",
-      service,
-      appRoot: "/srv/apps/myapp",
-      metadata,
+    const plan = planMemcachedService({
+      type: "memcached",
+      environment: { EXTRA_VAR: "extra" },
     });
 
     expect(plan.environment.EXTRA_VAR).toBe("extra");
   });
 
   test("rejects user environment that targets reserved LANDO_* keys", () => {
-    const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "myapp",
-      services: {
-        cache: {
-          type: "memcached",
-          environment: { LANDO_SERVICE_NAME: "evil" },
-        },
-      },
-    });
-    const service = landofile.services?.[ServiceName.make("cache")];
-    if (service === undefined) throw new Error("cache service missing");
-
     expect(() =>
-      memcachedServiceType.toServicePlan({
-        name: "cache",
-        service,
-        appRoot: "/srv/apps/myapp",
-        metadata,
-      }),
+      planMemcachedService({ type: "memcached", environment: { LANDO_SERVICE_NAME: "evil" } }),
     ).toThrow(/reserved LANDO_\* keys.*LANDO_SERVICE_NAME/);
   });
 });

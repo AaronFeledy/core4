@@ -3,8 +3,6 @@
  *
  * Supports `--deep`, repeated `--filter`, `--path`, `--service`,
  * `--format json|table|yaml`.
- *
- * Bootstrap level: `app`.
  */
 import { Effect } from "effect";
 

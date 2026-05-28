@@ -29,7 +29,7 @@ tags: [beta, docs, memcached, service]
     </Step>
   </Scenario>
 
-  <Scenario id="version-override" render={false} reason="Image override is exercised by the memcached unit tests; this scenario documents the user-facing capability">
+  <Scenario id="version-override" render={false} reason="Use image to pin a compatible Memcached Docker image when the default image is not sufficient">
     <Step name="note">
       <Variable name="bookwormImage" value="memcached:1.6-bookworm" display="Pin a Debian-based image via image: memcached:1.6-bookworm under services.cache" />
     </Step>
