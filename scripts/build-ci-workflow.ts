@@ -268,6 +268,7 @@ jobs:
           podman pull node:22-alpine
           podman pull postgres:16
           podman pull postgres:16-alpine
+          podman pull golang:1.22
           podman pull memcached:1.6
           docker pull node:22-alpine
 
