@@ -71,7 +71,7 @@ describe("static ServiceType", () => {
 
     expect(plan.type).toBe("static:caddy");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "caddy:2-alpine" });
-    expect(plan.command).toEqual(["file-server", "--listen", ":80", "--root", "/app"]);
+    expect(plan.command).toEqual(["caddy", "file-server", "--listen", ":80", "--root", "/app"]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy" });

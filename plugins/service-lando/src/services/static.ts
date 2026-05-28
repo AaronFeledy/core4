@@ -24,7 +24,7 @@ const defaultStaticCommand = (
   port: number,
 ): ReadonlyArray<string> => {
   if (server === "caddy") {
-    return ["file-server", "--listen", `:${port}`, "--root", docRoot];
+    return ["caddy", "file-server", "--listen", `:${port}`, "--root", docRoot];
   }
 
   return [
