@@ -1,0 +1,12 @@
+name: elasticsearch-demo
+services:
+  search:
+    type: elasticsearch
+tooling:
+  es-cli:
+    service: search
+    cmd:
+      - sh
+      - -c
+      - 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"'
+      - es-cli

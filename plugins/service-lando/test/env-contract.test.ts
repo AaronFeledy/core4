@@ -6,6 +6,7 @@ import type { ServiceTypeHostFacts, ServiceTypeShape } from "@lando/sdk/services
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
+import { elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
@@ -189,6 +190,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     expectsWebroot: null,
   },
   {
+    id: "elasticsearch",
+    serviceType: elasticsearchServiceType,
+    landofileService: { type: "elasticsearch" },
+    expectedType: "elasticsearch",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
     id: "compose",
     serviceType: composeServiceType,
     landofileService: { type: "compose", image: "busybox" },
@@ -218,14 +227,15 @@ const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
 describe("LANDO_* environment contract across catalog service families", () => {
   for (const item of cases) {
     test(`${item.id} emits the basic LANDO_* identity, host, and (where applicable) app-path env`, () => {
-      const plan = planFor(item, item.id === "compose" ? "worker" : "web", "myapp");
+      const serviceName = item.id === "compose" ? "worker" : "web";
+      const plan = planFor(item, serviceName, "myapp");
 
       expect(plan.environment.LANDO).toBe("ON");
       expect(plan.environment.LANDO_APP_NAME).toBe("myapp");
       expect(plan.environment.LANDO_APP_KIND).toBe("user");
       expect(plan.environment.LANDO_PROJECT).toBe("myapp");
       expect(plan.environment.LANDO_SERVICE_API).toBe("4");
-      expect(plan.environment.LANDO_SERVICE_NAME).toBe(item.id === "compose" ? "worker" : "web");
+      expect(plan.environment.LANDO_SERVICE_NAME).toBe(serviceName);
       expect(plan.environment.LANDO_SERVICE_TYPE).toBe(item.expectedType);
 
       expect(plan.environment.LANDO_HOST_OS).toBe(host.os);
@@ -274,7 +284,8 @@ describe("LANDO_* environment contract across catalog service families", () => {
     });
 
     test(`${item.id} slugifies app names with whitespace into LANDO_PROJECT`, () => {
-      const plan = planFor(item, item.id === "compose" ? "worker" : "web", "My App");
+      const serviceName = item.id === "compose" ? "worker" : "web";
+      const plan = planFor(item, serviceName, "My App");
       expect(plan.environment.LANDO_APP_NAME).toBe("My App");
       expect(plan.environment.LANDO_PROJECT).toBe("my-app");
     });

@@ -5,6 +5,7 @@ import type { ServiceTypeShape } from "@lando/sdk/services";
 
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
+import { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "./services/go.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
 import { memcachedServiceType } from "./services/memcached.ts";
@@ -25,6 +26,7 @@ export const PLUGIN_NAME = "@lando/service-lando" as const;
 
 export { apacheServiceType } from "./services/apache.ts";
 export { composeServiceType } from "./services/compose.ts";
+export { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 export { go122ServiceType, go123ServiceType } from "./services/go.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
 export { memcachedServiceType } from "./services/memcached.ts";
@@ -44,6 +46,8 @@ export { valkeyServiceType } from "./services/valkey.ts";
 export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<string, ServiceTypeShape>([
   ["apache", apacheServiceType],
   ["compose", composeServiceType],
+  ["elasticsearch", elasticsearchServiceType],
+  ["elasticsearch:8", elasticsearch8ServiceType],
   ["go:1.22", go122ServiceType],
   ["go:1.23", go123ServiceType],
   ["mariadb", mariadbServiceType],
@@ -79,6 +83,8 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     serviceTypes: [
       "apache",
       "compose",
+      "elasticsearch",
+      "elasticsearch:8",
       "go:1.22",
       "go:1.23",
       "mariadb",
