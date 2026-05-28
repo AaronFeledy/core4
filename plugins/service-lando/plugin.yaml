@@ -10,6 +10,8 @@ contributes:
   serviceTypes:
     - "apache"
     - "compose"
+    - "elasticsearch"
+    - "elasticsearch:8"
     - "go:1.22"
     - "go:1.23"
     - "mariadb"
@@ -23,8 +25,6 @@ contributes:
     - "php:8.2"
     - "php:8.3"
     - "python:3.12"
-    - "elasticsearch"
-    - "elasticsearch:8"
     - "redis"
     - "ruby:3.3"
     - "solr"
