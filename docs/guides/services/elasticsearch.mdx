@@ -10,10 +10,11 @@ tags: [beta, docs, elasticsearch, service]
     <Step name="scaffold">
       <UseFixture name="elasticsearch-demo" />
       <Variable name="serviceType" value="elasticsearch" display="Declare type: elasticsearch in your services block" />
-      <Variable name="defaultImage" value="elasticsearch:8" display="Default Docker image" />
+      <Variable name="defaultImage" value="docker.elastic.co/elasticsearch/elasticsearch:8.17.0" display="Default Docker image" />
       <Variable name="defaultPort" value="9200" display="Default HTTP port" />
       <Variable name="discoveryType" value="single-node" display="Default discovery.type for local dev" />
       <Variable name="securityDisabled" value="false" display="Default xpack.security.enabled — disabled for local dev only, not production-suitable" />
+      <Variable name="license" value="Elastic License v2" display="Default image uses Elastic License v2; use OpenSearch when you need Apache 2.0 licensing" />
     </Step>
     <Step name="start">
       <Run command="lando start" />
@@ -40,13 +41,13 @@ tags: [beta, docs, elasticsearch, service]
 
   <Scenario id="version-override" render={false} reason="Use image to pin a specific Elasticsearch version when the default Elasticsearch 8 image is not desired">
     <Step name="note">
-      <Variable name="es7Image" value="elasticsearch:7.17.0" display="Pin Elasticsearch 7 via image: elasticsearch:7.17.0 under services.search" />
+      <Variable name="es7Image" value="docker.elastic.co/elasticsearch/elasticsearch:7.17.0" display="Pin Elasticsearch 7 via image: docker.elastic.co/elasticsearch/elasticsearch:7.17.0 under services.search" />
     </Step>
   </Scenario>
 
   <Scenario id="security-warning" render={false} reason="Defaults disable xpack security so local dev works without certificates; this is documented as not production-suitable">
     <Step name="note">
-      <Variable name="warning" value="xpack.security.enabled=false is for local development only; production deployments must enable security and configure TLS." display="Security defaults warning" />
+      <Variable name="warning" value="xpack.security.enabled=false is for local development only; production deployments must enable security and configure TLS. The default image is Elastic License v2; use OpenSearch when Apache 2.0 licensing is required." display="Security defaults warning" />
     </Step>
   </Scenario>
 </Guide>
