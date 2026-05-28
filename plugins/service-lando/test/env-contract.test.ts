@@ -8,6 +8,7 @@ import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "../src/services/node.ts";
@@ -167,6 +168,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: redisServiceType,
     landofileService: { type: "redis" },
     expectedType: "redis",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "memcached",
+    serviceType: memcachedServiceType,
+    landofileService: { type: "memcached" },
+    expectedType: "memcached",
     expectsAppPaths: false,
     expectsWebroot: null,
   },

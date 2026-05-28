@@ -29,6 +29,7 @@ describe("memcached ServiceType", () => {
 
     expect(plan.type).toBe("memcached");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
+    expect(plan.command).toEqual(["memcached", "-p", "11211"]);
     expect(plan.endpoints).toEqual([{ port: 11211, protocol: "tcp", name: "cache" }]);
     // Memcached is an in-memory cache; no persistent storage by default.
     expect(plan.storage).toEqual([]);
@@ -40,7 +41,7 @@ describe("memcached ServiceType", () => {
       services: {
         cache: {
           type: "memcached",
-          image: "memcached:1.6-alpine",
+          image: "memcached:1.6-bookworm",
           port: 21211,
           command: ["memcached", "-m", "128"],
         },
@@ -56,9 +57,27 @@ describe("memcached ServiceType", () => {
       metadata,
     });
 
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6-alpine" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6-bookworm" });
     expect(plan.endpoints[0]?.port).toBe(21211);
     expect(plan.command).toEqual(["memcached", "-m", "128"]);
+  });
+
+  test("default command tracks the overridden port", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { cache: { type: "memcached", port: 21211 } },
+    });
+    const service = landofile.services?.[ServiceName.make("cache")];
+    if (service === undefined) throw new Error("cache service missing");
+
+    const plan = memcachedServiceType.toServicePlan({
+      name: "cache",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.command).toEqual(["memcached", "-p", "21211"]);
   });
 
   test("includes a TCP healthcheck on port 11211", () => {

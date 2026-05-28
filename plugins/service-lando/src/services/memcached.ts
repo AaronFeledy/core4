@@ -30,7 +30,7 @@ export const memcachedServiceType: ServiceTypeShape = {
       provider,
       primary: service.primary ?? primary,
       artifact: { kind: "ref", ref: service.image ?? DEFAULT_IMAGE },
-      command: service.command,
+      command: service.command ?? ["memcached", "-p", String(port)],
       entrypoint: service.entrypoint,
       environment,
       workingDirectory: service.workingDirectory,

@@ -152,7 +152,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
       tooling: {
         "memcached-tool": {
           service: "cache",
-          cmd: ["sh", "-c", 'echo "$1" | nc -q 1 127.0.0.1 11211', "memcached-tool"],
+          cmd: ["sh", "-c", 'printf "%s\\r\\n" "$*" | nc -q 1 127.0.0.1 11211', "memcached-tool"],
         },
       },
     });
@@ -176,7 +176,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
     expect(calls[0]?.command).toEqual([
       "sh",
       "-c",
-      'echo "$1" | nc -q 1 127.0.0.1 11211',
+      'printf "%s\\r\\n" "$*" | nc -q 1 127.0.0.1 11211',
       "memcached-tool",
       "stats",
     ]);
@@ -189,7 +189,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
       tooling: {
         "memcached-tool": {
           service: "cache",
-          cmd: ["sh", "-c", 'echo "$1" | nc -q 1 127.0.0.1 11211', "memcached-tool"],
+          cmd: ["sh", "-c", 'printf "%s\\r\\n" "$*" | nc -q 1 127.0.0.1 11211', "memcached-tool"],
         },
       },
     });
