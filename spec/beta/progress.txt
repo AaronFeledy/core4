@@ -1793,3 +1793,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Manual CLI-path verification via AppPlanner one-liner: plan resolves `type: meilisearch` to `getmeili/meilisearch:v1.11`, port 7700/http, healthcheck `curl -sf http://localhost:7700/health`, env `MEILI_MASTER_KEY=lando`, `MEILI_NO_ANALYTICS=true`, `MEILI_ENV=development`, `MEILI_HTTP_ADDR=0.0.0.0:7700`, storage `demo-meilisearch-data`→`/meili_data`
 - Marked `passes: true` in `spec/beta/prd.json` for US-090
 ---
+
+## [2026-05-28 13:14 CDT] - Babysit
+- PR: #190 https://github.com/AaronFeledy/core4/pull/190
+- CI outcome: pass (full matrix green; provider-integration-linux-x64 4m26s, Cursor Bugbot pass after fix)
+- Review feedback: Cursor Bugbot flagged High-severity bug — meilisearch healthcheck used `bash -c` but `getmeili/meilisearch:v1.11` is Alpine-based and ships no bash, so the in-container healthcheck would always fail
+  - Verified live against the image: Alpine Linux 3.20.3, `bash` MISSING, `sh`+`curl` present; `docker exec … sh -c curl …` → `{"status":"available"}`; `docker exec … bash -c …` → `exec: bash: not found`
+  - Fix b543b32 switched the healthcheck `command` from `bash -c` → `sh -c` (no bash-specific syntax) and updated unit + scenario test assertions; integration test was unaffected because it exercises `/health` from the host via `fetch()`
+- Triage rounds used: 1 (only Bugbot's first review)
+- Merge: merged (squash) as 8cfb0dc `Add meilisearch service type (#190)`
+- Local main / branch refreshed: yes
+- Remaining local state: none
+---
