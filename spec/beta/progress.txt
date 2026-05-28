@@ -1494,3 +1494,8 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - c0d1f19 feat: Add elasticsearch service type
 - PR: #187 https://github.com/AaronFeledy/core4/pull/187 (created)
 ---
+
+## [2026-05-28 13:22 UTC] - PR #187 Unicode triage
+- Triaged Cursor Bugbot feedback on commit `15f026b`: `spec/beta/prd.json` had been serialized with escaped non-ASCII characters, creating a noisy human-unfriendly PRD diff.
+- Fix already pushed in `48f96b4`: restored literal Unicode in `spec/beta/prd.json` while preserving US-088 `passes: true` and the existing story pass states.
+---
