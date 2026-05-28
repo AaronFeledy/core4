@@ -9,6 +9,7 @@ import { composeServiceType } from "../src/services/compose.ts";
 import { elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
+import { meilisearchServiceType } from "../src/services/meilisearch.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
@@ -204,6 +205,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: opensearchServiceType,
     landofileService: { type: "opensearch" },
     expectedType: "opensearch",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "meilisearch",
+    serviceType: meilisearchServiceType,
+    landofileService: { type: "meilisearch" },
+    expectedType: "meilisearch",
     expectsAppPaths: false,
     expectsWebroot: null,
   },

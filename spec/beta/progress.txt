@@ -1745,3 +1745,36 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state: none
 ---
+
+## 2026-05-28 12:36 CDT - Sync
+- Previous branch: us-089-opensearch-service-type
+- Previous PR: #189 https://github.com/AaronFeledy/core4/pull/189
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
+
+## [2026-05-28] - US-090
+- Implemented `meilisearch` service type for `@lando/service-lando`
+- Files added:
+  - `plugins/service-lando/src/services/meilisearch.ts`: `meilisearchServiceType` + `meilisearch1ServiceType` (alias `meilisearch` → `meilisearch:1`); image `getmeili/meilisearch:v1.11`, port 7700, persistent `/meili_data` volume, `/health` curl healthcheck; default `MEILI_MASTER_KEY=lando` (development-mode dev default, redacted per §6.6/§6.12.4), `MEILI_ENV=development`, `MEILI_NO_ANALYTICS=true`, `MEILI_HTTP_ADDR=0.0.0.0:<port>`
+  - `plugins/service-lando/test/meilisearch.test.ts`: 10 unit tests covering defaults, env, override paths, healthcheck port-tracking, reserved-LANDO_* rejection, service description text
+  - `plugins/service-lando/test/meilisearch.scenario.test.ts`: AppPlanner-resolved plan + 3 tooling-engine scenarios (`lando meili create-index`, `add-document`, `search`) routed through provider.exec
+  - `plugins/service-lando/test/meilisearch.integration.test.ts`: live Podman test (skip unless `LANDO_TEST_PODMAN_SOCKET`) that boots Meilisearch v1, hits `/health`, creates an index, posts a document, waits for the task to succeed, and queries the index
+- Files changed:
+  - `plugins/service-lando/src/index.ts`: import/export new types, register `"meilisearch"` and `"meilisearch:1"` in `serviceTypes` map and manifest contributions
+  - `plugins/service-lando/plugin.yaml`: add `- "meilisearch"` and `- "meilisearch:1"` to `contributes.serviceTypes`
+  - `plugins/service-lando/test/package.test.ts`, `plugins/service-lando/test/registration.test.ts`: extend `expectedServiceTypes`
+  - `plugins/service-lando/test/env-contract.test.ts`: add meilisearch row to the catalog-cases matrix
+  - `sdk/test/fixtures/schema-snapshot.json`: regenerated snapshot includes the two new service types
+  - `.github/workflows/ci.yml`, `scripts/build-ci-workflow.ts`: pre-pull `getmeili/meilisearch:v1.11` in the live provider job so the integration test does not fetch the image during container create
+- Verification:
+  - `bun test plugins/service-lando/`: 298 pass, 7 skip, 0 fail
+  - `bun test` (full repo): 1538 pass, 23 skip, 0 fail
+  - `bun run typecheck`: exit 0
+  - `bun run lint`: exit 0 (4 unrelated pre-existing warnings in provider-docker/provider-podman test fixtures, untouched)
+- Learnings:
+  - Meilisearch requires a 16+ char master key only in `MEILI_ENV=production`; with `MEILI_ENV=development` the short `"lando"` dev default is accepted while still being non-empty so authenticated endpoints can be exercised consistently
+  - Document/task indexing is asynchronous in Meilisearch — the integration test polls `/tasks/<taskUid>` until `status=succeeded` before querying, instead of relying on a fixed delay
+  - The §6.12.1 catalog row for `meilisearch` is `"Meilisearch + master key, persistent volume"`; the PRD's "§6.6 redaction" reference resolves against §6.10/§6.12.4 in practice (plain-text credentials are redacted in `lando info` unless `--show-secrets`), so we documented the redaction expectation in `MEILISEARCH_SERVICE_DESCRIPTION` and exposed the constant as `MEILISEARCH_DEFAULT_MASTER_KEY` for downstream redactor wiring
+---
