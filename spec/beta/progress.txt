@@ -1655,3 +1655,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: no
 - Remaining local state, if any: still on `us-089-opensearch-service-type`; PR remains open; `spec/beta/progress.txt` has this local babysit deferral entry
 ---
+
+## [2026-05-28 11:54 CDT] - PR #189 provider-integration-linux-x64 triage
+- CI failure: real issue, but not caused by US-089 — pre-existing flake in the shared live Docker contract test. The branch touches zero provider-docker / sdk contract code (diff vs main: only `service-lando/opensearch*`, `spec/beta/*`, `schema-snapshot.json`, and one `podman pull opensearchproject/opensearch:2` line in `ci.yml`/`build-ci-workflow.ts`).
+- Failed assertion: `RuntimeProvider contract failed: logs emits at least one chunk` (`sdk/src/test/index.ts:295-298`, 5s `Effect.timeoutFail`). Same assertion has been intermittently failing across recent PRs (Solr, Elasticsearch) and on `main`; the previous fix in 37674eba added a single `console.log('lando-contract-ready')` to the live Docker fixture but that one-shot line can race the 5s timeout on a slow GitHub Actions runner.
+- Reruns: `gh run rerun 26588125725 --failed` failed identically — confirming the flake reproduces under the current CI load, not a transient blip.
+- Local repro: with `DOCKER_HOST=unix:///var/run/docker.sock`, the live socket test passed 5/5 (~2.6s each), so the defect is CI-environment timing, not provider-docker logic.
+- Fix: tightened the same fixture in `plugins/provider-docker/test/contract.integration.test.ts` to emit a periodic `lando-contract-tick` every 250ms (replacing the no-op `setInterval`). Guarantees Docker's log stream has multiple chunks well within the 5s contract timeout regardless of stdout buffering or runner contention. No SDK contract code touched.
+- Verification: `bun test plugins/provider-docker/test/contract.integration.test.ts` (with DOCKER_HOST) → 15 pass, 1 skip, 0 fail; `bun run typecheck` → exit 0; `bun run lint` → exit 0 (5 warnings, pre-existing non-null assertions); `bun test` (full suite) → 1520 pass, 22 skip, 0 fail.
+- Review feedback: none — no PR comments, no review decision, Cursor Bugbot passed.
