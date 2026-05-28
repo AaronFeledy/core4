@@ -1630,3 +1630,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - **Learnings for future iterations:**
   - For HTTP search-engine services, the endpoint protocol controls user-facing URLs; command-based healthchecks do not imply `tcp` endpoint protocol.
 ---
+
+## [2026-05-28 11:14 CDT] - Push
+- Branch: us-089-opensearch-service-type
+- Push: pushed
+- Commit(s): 81682e3 Clean up OpenSearch service; 9f54811 Record US-089 review fix; ec424b2 Fix OpenSearch endpoint protocol; 7ce2c03 feat: opensearch service type
+- PR: #189 https://github.com/AaronFeledy/core4/pull/189 (created)
+---
