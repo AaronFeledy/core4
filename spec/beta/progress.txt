@@ -1402,3 +1402,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - plugins/service-lando/test/registration.test.ts: updated hardcoded list
 - Healthcheck: kind=command (curl -sf http://localhost:8983/solr/admin/ping) — http kind rejected by Alpha planner
 - Tests: 240 pass / 5 skip / 0 fail; typecheck pass; lint pass (4 pre-existing warnings only)
+
+## [2026-05-28 04:08 UTC] - Babysit
+- PR: #186 https://github.com/AaronFeledy/core4/pull/186
+- CI outcome: pass
+- Review feedback: none
+- Triage rounds used: 4 (schema-snapshot stale; solr:9 not in CI pre-pull; admin ping returns 404 without core; cores live test unreliable)
+- Merge: merged (squash)
+- Local main / branch refreshed: yes
+- Remaining local state, if any: none
+---
