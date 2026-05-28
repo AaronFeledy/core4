@@ -1868,3 +1868,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): ca64c4a Clean up service-lando README test;08dbbf6 Fix service-lando README framework wording 6a0fe25 feat: framework-preset coverage extends to Go
 - PR: #191 https://github.com/AaronFeledy/core4/pull/191 (created)
 ---
+
+## [2026-05-28 14:20 CDT] - Babysit
+- PR: #191 https://github.com/AaronFeledy/core4/pull/191
+- CI outcome: pass (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, guide-scenarios-linux-x64, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot all green)
+- Review feedback: none
+- Triage rounds used: 0
+- Merge: merged (squash) as 2789dd9 `Extend Go framework preset coverage (#191)`
+- Local main / branch refreshed: yes
+- Remaining local state: none
+---
