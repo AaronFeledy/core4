@@ -671,12 +671,5 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 
 ## [2026-05-28 17:46 CDT] - Babysit
 - PR: #195 https://github.com/AaronFeledy/core4/pull/195
-- CI outcome: pass
-- Review feedback: fixed? no — Bugbot reported a real Caddy command defect (`file-server` missing `caddy` binary prefix) requiring follow-up.
-- Merge: deferred (Bugbot issue must be fixed and CI/Bugbot rerun before merge)
----
-
-## [2026-05-28] - PR #195 Bugbot triage
-- CI/review issue: GitHub Actions checks passed; Cursor Bugbot's Caddy command report was real because `caddy:2-alpine` needs the `caddy` binary before the `file-server` subcommand.
 - Fix: prefixed the generated Caddy static command with `caddy` and updated the static service expectation.
 ---
