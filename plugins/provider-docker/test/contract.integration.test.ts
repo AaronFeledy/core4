@@ -460,6 +460,40 @@ describe("provider-docker RuntimeProvider contract", () => {
     ]);
   });
 
+  test("decodes split framed Docker log bytes", async () => {
+    const fake = makeFakeApi();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      if (request.path.includes("/logs?")) {
+        const frame = attachFrame(1, "2026-05-17T12:00:00.000Z split ready\n");
+        return Stream.fromIterable([frame.slice(0, 5), frame.slice(5)]);
+      }
+      return Stream.empty;
+    };
+
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan();
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const logs = await Effect.runPromise(
+      provider.logs({ app: appId, service: serviceName }, { follow: false }).pipe(
+        Stream.runCollect,
+        Effect.map((chunks) => Array.from(chunks)),
+      ),
+    );
+
+    expect(logs).toEqual([
+      {
+        service: serviceName,
+        stream: "stdout",
+        line: "split ready",
+        timestamp: new Date("2026-05-17T12:00:00.000Z"),
+      },
+    ]);
+  });
+
   test("declares the Linux Docker Engine capability matrix", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
