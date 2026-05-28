@@ -1214,3 +1214,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The current service-type model cannot contribute tooling tasks directly; tests and guides that need `lando <tool>` aliases must define them in the Landofile fixture until §6.11.3 is implemented.
   - Transport endpoint plans remain `protocol: "tcp"`; user-facing service schemes such as `memcached://` belong at the `lando info` rendering boundary unless/until the endpoint schema grows a scheme field.
 ---
+
+## [2026-05-27 22:58 CDT] - Push
+- Branch: us-085-memcached-service-type
+- Push: pushed
+- Commit(s): e19d9f5 feat: memcached service type; 58d2e45 chore: mark US-085 complete and update progress log; afe8364 fix: repair memcached service behavior; a63bdbb fix: render memcached info endpoint scheme; 17bafd1 docs: clarify memcached guide tooling; cd9f28c docs: record US-085 review fixes; 00c6f1f chore: cleanup service metadata; ce28f22 test: cleanup memcached coverage prose
+- PR: #184 https://github.com/AaronFeledy/core4/pull/184 (created)
+---
