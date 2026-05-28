@@ -32,7 +32,10 @@ describe("elasticsearch ServiceType", () => {
     const plan = planElasticsearchService({ type: "elasticsearch" });
 
     expect(plan.type).toBe("elasticsearch");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "elasticsearch:8" });
+    expect(plan.artifact).toEqual({
+      kind: "ref",
+      ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
+    });
     expect(plan.command).toBeUndefined();
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-elasticsearch-data");
@@ -45,18 +48,23 @@ describe("elasticsearch ServiceType", () => {
 
     expect(plan.environment["discovery.type"]).toBe("single-node");
     expect(plan.environment["xpack.security.enabled"]).toBe("false");
+    expect(plan.environment["http.port"]).toBe("9200");
     expect(plan.environment.ES_JAVA_OPTS).toBe("-Xms512m -Xmx512m");
   });
 
   test("respects image and port overrides", () => {
     const plan = planElasticsearchService({
       type: "elasticsearch",
-      image: "elasticsearch:7.17.0",
+      image: "docker.elastic.co/elasticsearch/elasticsearch:7.17.0",
       port: 19200,
     });
 
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "elasticsearch:7.17.0" });
+    expect(plan.artifact).toEqual({
+      kind: "ref",
+      ref: "docker.elastic.co/elasticsearch/elasticsearch:7.17.0",
+    });
     expect(plan.endpoints[0]?.port).toBe(19200);
+    expect(plan.environment["http.port"]).toBe("19200");
   });
 
   test("includes a curl-based command healthcheck on the cluster health endpoint", () => {

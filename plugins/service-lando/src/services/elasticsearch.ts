@@ -5,7 +5,7 @@ import type { ServiceTypeShape } from "@lando/sdk/services";
 
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
-const DEFAULT_IMAGE = "elasticsearch:8";
+const DEFAULT_IMAGE = "docker.elastic.co/elasticsearch/elasticsearch:8.17.0";
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/elasticsearch/data");
 
@@ -15,6 +15,8 @@ export const elasticsearch8ServiceType: ServiceTypeShape = {
     const { name, service, provider = ProviderId.make("lando"), primary = false, metadata, host } = input;
     const appName = appNameFor(input);
 
+    const port = service.port ?? DEFAULT_PORT;
+
     const environment = buildLandoEnv({
       serviceName: name,
       serviceType: "elasticsearch",
@@ -23,12 +25,11 @@ export const elasticsearch8ServiceType: ServiceTypeShape = {
       extraDefaults: {
         "discovery.type": "single-node",
         "xpack.security.enabled": "false",
+        "http.port": String(port),
         ES_JAVA_OPTS: "-Xms512m -Xmx512m",
       },
       userEnv: service.environment ?? {},
     });
-
-    const port = service.port ?? DEFAULT_PORT;
 
     return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),

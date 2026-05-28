@@ -6,6 +6,7 @@ import type { ServiceTypeHostFacts, ServiceTypeShape } from "@lando/sdk/services
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
+import { elasticsearchServiceType } from "../src/services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { memcachedServiceType } from "../src/services/memcached.ts";
@@ -185,6 +186,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: valkeyServiceType,
     landofileService: { type: "valkey" },
     expectedType: "valkey",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "elasticsearch",
+    serviceType: elasticsearchServiceType,
+    landofileService: { type: "elasticsearch" },
+    expectedType: "elasticsearch",
     expectsAppPaths: false,
     expectsWebroot: null,
   },

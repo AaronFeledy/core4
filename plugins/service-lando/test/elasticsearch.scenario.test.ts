@@ -137,7 +137,10 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     if (search === undefined) throw new Error("search service missing from elasticsearch plan");
 
     expect(search.type).toBe("elasticsearch");
-    expect(search.artifact).toEqual({ kind: "ref", ref: "elasticsearch:8" });
+    expect(search.artifact).toEqual({
+      kind: "ref",
+      ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
+    });
     expect(search.endpoints).toEqual([{ port: 9200, protocol: "tcp", name: "search" }]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-elasticsearch-data");
@@ -150,6 +153,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     expect(search.environment.LANDO_SERVICE_TYPE).toBe("elasticsearch");
     expect(search.environment["discovery.type"]).toBe("single-node");
     expect(search.environment["xpack.security.enabled"]).toBe("false");
+    expect(search.environment["http.port"]).toBe("9200");
   });
 
   test("`lando es-cli /_cluster/health` tooling alias routes through provider.exec to the search service", async () => {
@@ -160,7 +164,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
       tooling: {
         "es-cli": {
           service: "search",
-          cmd: ["sh", "-c", "curl -sf http://localhost:9200$*", "es-cli"],
+          cmd: ["sh", "-c", 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"', "es-cli"],
         },
       },
     });
@@ -182,7 +186,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     expect(calls[0]?.command).toEqual([
       "sh",
       "-c",
-      "curl -sf http://localhost:9200$*",
+      'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"',
       "es-cli",
       "/_cluster/health",
     ]);
@@ -195,7 +199,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
       tooling: {
         "es-cli": {
           service: "search",
-          cmd: ["sh", "-c", "curl -sf http://localhost:9200$*", "es-cli"],
+          cmd: ["sh", "-c", 'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"', "es-cli"],
         },
       },
     });
@@ -214,7 +218,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
     expect(calls[0]?.command).toEqual([
       "sh",
       "-c",
-      "curl -sf http://localhost:9200$*",
+      'path=${1:-/}; curl -sf -- "http://localhost:9200${path}"',
       "es-cli",
       "/_cat/indices",
     ]);

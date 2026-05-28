@@ -91,6 +91,10 @@ describe("elasticsearch service type — live integration: cluster health endpoi
           expect(healthResp.ok).toBe(true);
           const healthBody = (await healthResp.json()) as Record<string, unknown>;
           expect(["green", "yellow"]).toContain(healthBody.status);
+
+          const indicesResp = await fetch(`http://127.0.0.1:${ES_PORT}/_cat/indices`);
+          expect(indicesResp.ok).toBe(true);
+          expect(await indicesResp.text()).toBeString();
         } finally {
           await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
         }
