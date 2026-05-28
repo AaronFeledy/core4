@@ -1,0 +1,4 @@
+name: mongodb-demo
+services:
+  db:
+    type: mongodb
