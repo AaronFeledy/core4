@@ -241,6 +241,7 @@ jobs:
           podman pull postgres:16
           podman pull postgres:16-alpine
           podman pull golang:1.22
+          podman pull elasticsearch:8
           podman pull memcached:1.6
           podman pull solr:9
           podman pull valkey/valkey:8

@@ -1,0 +1,52 @@
+---
+id: elasticsearch
+provider: test
+timeout: 90000
+tags: [beta, docs, elasticsearch, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="elasticsearch-demo" />
+      <Variable name="serviceType" value="elasticsearch" display="Declare type: elasticsearch in your services block" />
+      <Variable name="defaultImage" value="elasticsearch:8" display="Default Docker image" />
+      <Variable name="defaultPort" value="9200" display="Default HTTP port" />
+      <Variable name="discoveryType" value="single-node" display="Default discovery.type for local dev" />
+      <Variable name="securityDisabled" value="false" display="Default xpack.security.enabled — disabled for local dev only, not production-suitable" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cluster-health" render={false} reason="The fixture defines es-cli as an app tooling alias; query /_cluster/health after start to verify the service reports green or yellow">
+    <Step name="health">
+      <Variable name="healthCommand" value="lando es-cli /_cluster/health" display="Query cluster health via the es-cli tooling alias" />
+      <Variable name="expectedStatus" value="green or yellow" display="A healthy single-node Elasticsearch reports green or yellow" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cat-indices" render={false} reason="The fixture defines es-cli as an app tooling alias; list indices via /_cat/indices to confirm the HTTP surface is reachable">
+    <Step name="indices">
+      <Variable name="indicesCommand" value="lando es-cli /_cat/indices" display="List indices via the es-cli tooling alias" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific Elasticsearch version when the default Elasticsearch 8 image is not desired">
+    <Step name="note">
+      <Variable name="es7Image" value="elasticsearch:7.17.0" display="Pin Elasticsearch 7 via image: elasticsearch:7.17.0 under services.search" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="security-warning" render={false} reason="Defaults disable xpack security so local dev works without certificates; this is documented as not production-suitable">
+    <Step name="note">
+      <Variable name="warning" value="xpack.security.enabled=false is for local development only; production deployments must enable security and configure TLS." display="Security defaults warning" />
+    </Step>
+  </Scenario>
+</Guide>

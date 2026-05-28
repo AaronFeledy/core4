@@ -5,6 +5,8 @@ import { Layer } from "effect";
 const expectedServiceTypes = [
   "apache",
   "compose",
+  "elasticsearch",
+  "elasticsearch:8",
   "go:1.22",
   "go:1.23",
   "mariadb",

@@ -23,6 +23,8 @@ contributes:
     - "php:8.2"
     - "php:8.3"
     - "python:3.12"
+    - "elasticsearch"
+    - "elasticsearch:8"
     - "redis"
     - "ruby:3.3"
     - "solr"

@@ -54,6 +54,8 @@ describe("@lando/service-lando registration", () => {
     expect(manifest.contributes.serviceTypes).toEqual([
       "apache",
       "compose",
+      "elasticsearch",
+      "elasticsearch:8",
       "go:1.22",
       "go:1.23",
       "mariadb",
