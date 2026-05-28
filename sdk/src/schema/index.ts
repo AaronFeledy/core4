@@ -551,6 +551,7 @@ export const ServiceConfig = Schema.Struct({
   user: Schema.optional(Schema.String),
   workingDirectory: Schema.optional(PortablePath),
   database: Schema.optional(Schema.String),
+  cores: Schema.optional(Schema.Array(Schema.String)),
   port: Schema.optional(Schema.Number),
   framework: Schema.optional(Schema.String),
   // Accept number/boolean values from YAML auto-typing and coerce to string.

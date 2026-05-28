@@ -20,6 +20,8 @@ const expectedServiceTypes = [
   "python:3.12",
   "redis",
   "ruby:3.3",
+  "solr",
+  "solr:9",
   "static",
   "static:nginx",
   "static:caddy",

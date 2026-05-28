@@ -17,6 +17,7 @@ import { postgresServiceType } from "./services/postgres.ts";
 import { python312ServiceType } from "./services/python.ts";
 import { redisServiceType } from "./services/redis.ts";
 import { ruby33ServiceType } from "./services/ruby.ts";
+import { solr9ServiceType, solrServiceType } from "./services/solr.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
 import { valkeyServiceType } from "./services/valkey.ts";
 
@@ -36,6 +37,7 @@ export { postgresServiceType } from "./services/postgres.ts";
 export { python312ServiceType } from "./services/python.ts";
 export { redisServiceType } from "./services/redis.ts";
 export { ruby33ServiceType } from "./services/ruby.ts";
+export { solr9ServiceType, solrServiceType } from "./services/solr.ts";
 export { staticCaddyServiceType, staticNginxServiceType } from "./services/static.ts";
 export { valkeyServiceType } from "./services/valkey.ts";
 
@@ -57,6 +59,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
   ["python:3.12", python312ServiceType],
   ["redis", redisServiceType],
   ["ruby:3.3", ruby33ServiceType],
+  ["solr", solrServiceType],
+  ["solr:9", solr9ServiceType],
   ["static", staticNginxServiceType],
   ["static:nginx", staticNginxServiceType],
   ["static:caddy", staticCaddyServiceType],
@@ -90,6 +94,8 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "python:3.12",
       "redis",
       "ruby:3.3",
+      "solr",
+      "solr:9",
       "static",
       "static:nginx",
       "static:caddy",
