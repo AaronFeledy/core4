@@ -1509,3 +1509,30 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: on `main`; local story branch deleted; progress log updated with this babysit report
 ---
+
+## 2026-05-28 09:51 CDT - Sync
+- Previous branch: us-088-elasticsearch-service-type
+- Previous PR: #187 https://github.com/AaronFeledy/core4/pull/187
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
+
+## 2026-05-28 10:05 CDT - US-087 Verification
+- Story: US-087 solr service type — already implemented and merged via PR #186 (`2fe17274`); PRD entry still had `passes: false`.
+- Branch: us-087-solr-service-type (re-created locally for the passes-flag fix; original was deleted post-merge)
+- Verification on `main` (no code changes required):
+  - All acceptance criteria covered: `solr` ServiceType + curl healthcheck against admin endpoint (`/solr/admin/info/system`), opt-in `cores:` config via precreate-core, scenario test `lando solr-admin status` (`plugins/service-lando/test/solr.scenario.test.ts:171`), package/registration tests list `solr` and `solr:9`.
+  - `bun test plugins/service-lando/test/solr.test.ts plugins/service-lando/test/solr.scenario.test.ts` → 16 pass / 0 fail.
+  - `bun test plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 14 pass / 0 fail.
+  - `bun test` (full suite) → 1495 pass / 21 skip / 0 fail across 214 files.
+  - `bun run typecheck` → exit 0.
+  - `bun run lint` → 4 pre-existing non-null-assertion warnings only (unrelated to US-087).
+- Files changed in this build step:
+  - `spec/beta/prd.json`: `US-087.passes` flipped `false` → `true`.
+  - `spec/beta/progress.txt`: this entry (plus a prior Sync entry left uncommitted on main is carried with this commit).
+- No source code changes — work was already merged. This is the completion-only confirmation path defined by the build step.
+- **Learnings for future iterations:**
+  - When a story is implemented on a branch but its `passes` flag is never flipped, that gap survives the sync/babysit hand-off and surfaces as the next "highest-priority failing" pick. Always include `spec/beta/prd.json` in the story branch's commit alongside the implementation files.
+  - Sync entries appended to `spec/beta/progress.txt` need an owning commit; otherwise they ride along with the next story branch's work as an uncommitted diff on `main`.
+---
