@@ -8,6 +8,7 @@ import { composeServiceType } from "./services/compose.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 import { go122ServiceType, go123ServiceType } from "./services/go.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
+import { meilisearch1ServiceType, meilisearchServiceType } from "./services/meilisearch.ts";
 import { memcachedServiceType } from "./services/memcached.ts";
 import { mongodbServiceType } from "./services/mongodb.ts";
 import { mysqlServiceType } from "./services/mysql.ts";
@@ -30,6 +31,12 @@ export { composeServiceType } from "./services/compose.ts";
 export { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
 export { go122ServiceType, go123ServiceType } from "./services/go.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
+export {
+  MEILISEARCH_DEFAULT_MASTER_KEY,
+  MEILISEARCH_SERVICE_DESCRIPTION,
+  meilisearch1ServiceType,
+  meilisearchServiceType,
+} from "./services/meilisearch.ts";
 export { memcachedServiceType } from "./services/memcached.ts";
 export { mongodbServiceType } from "./services/mongodb.ts";
 export { mysqlServiceType } from "./services/mysql.ts";
@@ -57,6 +64,8 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
   ["go:1.22", go122ServiceType],
   ["go:1.23", go123ServiceType],
   ["mariadb", mariadbServiceType],
+  ["meilisearch", meilisearchServiceType],
+  ["meilisearch:1", meilisearch1ServiceType],
   ["memcached", memcachedServiceType],
   ["mongodb", mongodbServiceType],
   ["mysql", mysqlServiceType],
@@ -96,6 +105,8 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "go:1.22",
       "go:1.23",
       "mariadb",
+      "meilisearch",
+      "meilisearch:1",
       "memcached",
       "mongodb",
       "mysql",
