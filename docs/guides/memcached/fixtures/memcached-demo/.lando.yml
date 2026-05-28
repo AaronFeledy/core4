@@ -1,0 +1,4 @@
+name: memcached-demo
+services:
+  cache:
+    type: memcached

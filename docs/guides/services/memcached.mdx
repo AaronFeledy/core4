@@ -1,0 +1,37 @@
+---
+id: memcached
+provider: test
+timeout: 90000
+tags: [beta, docs, memcached, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="memcached-demo" />
+      <Variable name="serviceType" value="memcached" display="Declare type: memcached in your services block" />
+      <Variable name="defaultImage" value="memcached:1.6" display="Default Docker image" />
+      <Variable name="defaultPort" value="11211" display="Default port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="memcached-stats" render={false} reason="memcached-tool requires a running Memcached container; run lando memcached-tool stats after start to verify the service is healthy">
+    <Step name="stats">
+      <Variable name="statsCommand" value="lando memcached-tool stats" display="Inspect Memcached runtime stats" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Image override is exercised by the memcached unit tests; this scenario documents the user-facing capability">
+    <Step name="note">
+      <Variable name="alpineImage" value="memcached:1.6-alpine" display="Pin a smaller image via image: memcached:1.6-alpine under services.cache" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -7,6 +7,7 @@ import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
 import { go122ServiceType, go123ServiceType } from "./services/go.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
+import { memcachedServiceType } from "./services/memcached.ts";
 import { mongodbServiceType } from "./services/mongodb.ts";
 import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
@@ -24,6 +25,7 @@ export { apacheServiceType } from "./services/apache.ts";
 export { composeServiceType } from "./services/compose.ts";
 export { go122ServiceType, go123ServiceType } from "./services/go.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
+export { memcachedServiceType } from "./services/memcached.ts";
 export { mongodbServiceType } from "./services/mongodb.ts";
 export { mysqlServiceType } from "./services/mysql.ts";
 export { nginxServiceType } from "./services/nginx.ts";
@@ -41,6 +43,7 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
   ["go:1.22", go122ServiceType],
   ["go:1.23", go123ServiceType],
   ["mariadb", mariadbServiceType],
+  ["memcached", memcachedServiceType],
   ["mongodb", mongodbServiceType],
   ["mysql", mysqlServiceType],
   ["nginx", nginxServiceType],
@@ -72,6 +75,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "go:1.22",
       "go:1.23",
       "mariadb",
+      "memcached",
       "mongodb",
       "mysql",
       "nginx",
