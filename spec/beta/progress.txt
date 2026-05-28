@@ -1175,3 +1175,42 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Tooling aliases for non-canonical commands (like `memcached-tool` which is not present in the default `memcached:1.6` image) can be implemented as `sh -c` wrappers using BusyBox-style `nc`; the scenario test exercises the wrapper through the fake provider exec without requiring the binary to exist at planning time.
   - Running the full `bun test` suite triggers `core/test/scripts/codegen-ci.test.ts`, which re-runs the workflow codegen and writes `.github/workflows/ci.yml`. If `ci.yml` contains hand-edits not reflected in `scripts/build-ci-workflow.ts` (e.g. ad-hoc `podman pull` lines or extra test invocations), the full-suite run will mutate `ci.yml` and the codegen output will diverge from the committed file. Story builds should `git checkout .github/workflows/ci.yml` after running the full suite to keep the commit scoped to the story.
 ---
+
+## [2026-05-27 22:40 CDT] - US-085 Review
+- Reviewed the US-085 memcached service type implementation against `spec/beta/prd-beta-02-service-catalog-full.md`, `review-work` agents, direct focused tests, and full-suite verification.
+- Fixed confirmed review blockers:
+  - Kept Memcached's default command aligned with overridden internal ports so a `port:` override no longer advertises/checks a port the daemon is not listening on.
+  - Added `memcached://localhost:<port>` rendering for `lando info` while preserving the provider-neutral TCP endpoint plan shape.
+  - Added memcached to the shared service env-contract matrix and added a gated live provider integration test for text-protocol set/get.
+  - Added the documented `memcached-tool` fixture alias and clarified the non-rendered guide note.
+- Files changed:
+  - `plugins/service-lando/src/services/memcached.ts`
+  - `plugins/service-lando/test/memcached.test.ts`
+  - `plugins/service-lando/test/memcached.scenario.test.ts`
+  - `plugins/service-lando/test/memcached.integration.test.ts`
+  - `plugins/service-lando/test/env-contract.test.ts`
+  - `core/src/cli/commands/info.ts`
+  - `core/test/cli/info.scenario.test.ts`
+  - `docs/guides/services/memcached.mdx`
+  - `docs/guides/memcached/fixtures/memcached-demo/.lando.yml`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: `port:` override updated the endpoint/healthcheck but not the default daemon command.
+  - Fixed: `lando info` rendered Memcached as generic `tcp://` instead of the PRD's `memcached://` connection scheme.
+  - Fixed: shared env-contract coverage did not include memcached.
+  - Fixed: provider-integration coverage for live Memcached set/get was missing; added a `LANDO_TEST_PODMAN_SOCKET`-gated integration test.
+  - Fixed: guide mentioned `lando memcached-tool stats` without a fixture alias.
+  - Rejected/deferred: service-type-shipped tooling is specified in §6.11.3 but this codebase's current `ServiceTypeShape` has no tooling contribution field; US-085 keeps the scenario/fixture alias app-authored until that service-type resolution surface lands.
+  - Rejected/deferred: the `EndpointPlan` schema still only allows transport protocols (`tcp`, `http`, etc.); Memcached keeps a TCP plan endpoint and maps to `memcached://` at the `lando info` presentation boundary.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/memcached.test.ts plugins/service-lando/test/memcached.scenario.test.ts plugins/service-lando/test/memcached.integration.test.ts plugins/service-lando/test/env-contract.test.ts core/test/cli/info.scenario.test.ts test/scenarios/generated/guides/memcached` → 89 pass, 1 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings in provider Docker/Podman integration tests.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → Guide lint passed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1425 pass, 18 skip, 0 fail; the run rewrote generated `.github/workflows/ci.yml` / schema snapshot formatting, which was restored to keep this review commit scoped.
+  - LSP diagnostics were attempted for changed TypeScript files, but the TypeScript LSP server exited with code -2; `tsc -b` was clean.
+- **Learnings for future iterations:**
+  - For TCP service types with a configurable internal port, update the service daemon command as well as the endpoint and healthcheck.
+  - The current service-type model cannot contribute tooling tasks directly; tests and guides that need `lando <tool>` aliases must define them in the Landofile fixture until §6.11.3 is implemented.
+  - Transport endpoint plans remain `protocol: "tcp"`; user-facing service schemes such as `memcached://` belong at the `lando info` rendering boundary unless/until the endpoint schema grows a scheme field.
+---
