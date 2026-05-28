@@ -239,31 +239,19 @@ const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: ServiceConf
   const authored = service.healthcheck;
   if (authored === undefined) return servicePlan;
   const existing = servicePlan.healthcheck;
+  const command = authored.command ?? existing?.command;
+  const url = authored.url ?? existing?.url;
+  const port = authored.port ?? existing?.port;
+  const startPeriodSeconds = authored.startPeriodSeconds ?? existing?.startPeriodSeconds;
   const merged: ServicePlan["healthcheck"] = {
     kind: authored.kind ?? existing?.kind ?? "command",
     intervalSeconds: authored.intervalSeconds ?? existing?.intervalSeconds ?? 10,
     timeoutSeconds: authored.timeoutSeconds ?? existing?.timeoutSeconds ?? 5,
     retries: authored.retries ?? existing?.retries ?? 5,
-    ...(authored.command !== undefined
-      ? { command: authored.command }
-      : existing?.command !== undefined
-        ? { command: existing.command }
-        : {}),
-    ...(authored.url !== undefined
-      ? { url: authored.url }
-      : existing?.url !== undefined
-        ? { url: existing.url }
-        : {}),
-    ...(authored.port !== undefined
-      ? { port: authored.port }
-      : existing?.port !== undefined
-        ? { port: existing.port }
-        : {}),
-    ...(authored.startPeriodSeconds !== undefined
-      ? { startPeriodSeconds: authored.startPeriodSeconds }
-      : existing?.startPeriodSeconds !== undefined
-        ? { startPeriodSeconds: existing.startPeriodSeconds }
-        : {}),
+    ...(command !== undefined ? { command } : {}),
+    ...(url !== undefined ? { url } : {}),
+    ...(port !== undefined ? { port } : {}),
+    ...(startPeriodSeconds !== undefined ? { startPeriodSeconds } : {}),
   };
   if (merged.kind === "command" && merged.command === undefined) {
     return servicePlan;
@@ -393,11 +381,10 @@ const planApp = (
       const shadowResult = expandExcludesToShadows(appName, name, servicePlan);
       const planWithShadows = shadowResult.servicePlan;
 
+      const appMount = planWithShadows.appMount;
       const servicePlanWithCapabilityRealization: ServicePlan = {
         ...planWithShadows,
-        ...(planWithShadows.appMount === undefined
-          ? {}
-          : { appMount: { ...planWithShadows.appMount, realization } }),
+        ...(appMount === undefined ? {} : { appMount: { ...appMount, realization } }),
         mounts: planWithShadows.mounts.map((mount) =>
           mount.type === "bind" ? { ...mount, realization } : mount,
         ),
