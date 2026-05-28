@@ -6,7 +6,7 @@ tags: [beta, docs, mongodb, service]
 ---
 
 <Guide>
-  <Scenario id="happy-path" render>
+  <Scenario id="happy-path" render={false} reason="mongodb service start requires a configured Landofile with type: mongodb and a running Docker/Podman provider; the service-type contract is covered by mongodb.scenario.test.ts">
     <Step name="scaffold">
       <Variable name="appName" value="mongodb-demo" display="MongoDB Demo App" />
       <Variable name="serviceType" value="mongodb" display="MongoDB service type" />
