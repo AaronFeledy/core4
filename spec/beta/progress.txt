@@ -1072,3 +1072,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Any new `*.integration.test.ts` outside provider-lando/provider-docker must be explicitly added to the provider-integration CI command list; root `bun test` may skip or not exercise live behavior depending on env, and `test:unit` ignores integration tests entirely.
   - Progress-log manual smoke tests that use host Docker/Podman are not acceptance evidence for host-impacting Lando/provider behavior; the sandbox or CI provider-integration job must carry that proof.
 ---
+
+## [2026-05-28 01:51 UTC] - Push
+- Branch: us-083-go-service-type
+- Push: pushed
+- Commit(s): 6e6a590 chore: cleanup go service implementation; 2c0e0b9 refactor: simplify planner cleanup; 60c5996 fix: run service-lando integrations in provider CI; 4ed5da4 feat: go service type; afe5eff docs: record US-083 review status
+- PR: #182 https://github.com/AaronFeledy/core4/pull/182 (existing)
+---
