@@ -10,6 +10,8 @@ describe("@lando/service-lando package", () => {
     expect([...plugin.serviceTypes.keys()]).toEqual([
       "apache",
       "compose",
+      "go:1.22",
+      "go:1.23",
       "mariadb",
       "mysql",
       "nginx",
@@ -34,6 +36,8 @@ describe("@lando/service-lando package", () => {
         serviceTypes: [
           "apache",
           "compose",
+          "go:1.22",
+          "go:1.23",
           "mariadb",
           "mysql",
           "nginx",

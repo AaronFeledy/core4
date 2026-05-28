@@ -5,6 +5,7 @@ import type { ServiceTypeShape } from "@lando/sdk/services";
 
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
+import { go122ServiceType, go123ServiceType } from "./services/go.ts";
 import { mariadbServiceType } from "./services/mariadb.ts";
 import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
@@ -20,6 +21,7 @@ export const PLUGIN_NAME = "@lando/service-lando" as const;
 
 export { apacheServiceType } from "./services/apache.ts";
 export { composeServiceType } from "./services/compose.ts";
+export { go122ServiceType, go123ServiceType } from "./services/go.ts";
 export { mariadbServiceType } from "./services/mariadb.ts";
 export { mysqlServiceType } from "./services/mysql.ts";
 export { nginxServiceType } from "./services/nginx.ts";
@@ -34,6 +36,8 @@ export { staticCaddyServiceType, staticNginxServiceType } from "./services/stati
 export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<string, ServiceTypeShape>([
   ["apache", apacheServiceType],
   ["compose", composeServiceType],
+  ["go:1.22", go122ServiceType],
+  ["go:1.23", go123ServiceType],
   ["mariadb", mariadbServiceType],
   ["mysql", mysqlServiceType],
   ["nginx", nginxServiceType],
@@ -62,6 +66,8 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     serviceTypes: [
       "apache",
       "compose",
+      "go:1.22",
+      "go:1.23",
       "mariadb",
       "mysql",
       "nginx",

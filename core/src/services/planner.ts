@@ -66,6 +66,8 @@ const serviceTypeFor = (name: string, service: ServiceConfig): string => {
   if (image?.startsWith("php:8.3")) return "php:8.3";
   if (image?.startsWith("python:3.12")) return "python:3.12";
   if (image?.startsWith("ruby:3.3")) return "ruby:3.3";
+  if (image?.startsWith("golang:1.22")) return "go:1.22";
+  if (image?.startsWith("golang:1.23")) return "go:1.23";
   return name;
 };
 

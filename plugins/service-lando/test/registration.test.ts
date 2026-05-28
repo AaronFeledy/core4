@@ -54,6 +54,8 @@ describe("@lando/service-lando registration", () => {
     expect(manifest.contributes.serviceTypes).toEqual([
       "apache",
       "compose",
+      "go:1.22",
+      "go:1.23",
       "mariadb",
       "mysql",
       "nginx",
@@ -205,6 +207,44 @@ describe("@lando/service-lando registration", () => {
         services: { [ServiceName.make("web")]: { type: "ruby:3.2" } },
       }),
     ).rejects.toThrow(/Unsupported service type ruby:3\.2.*Supported alternatives:.*ruby:3\.3/);
+  });
+
+  test("AppPlanner resolves go:1.22 and go:1.23 through PluginRegistry with framework=none defaults", async () => {
+    const appPlan = await plan({
+      name: "go-app",
+      runtime: 4,
+      services: {
+        [ServiceName.make("web")]: { type: "go:1.22" },
+        [ServiceName.make("api")]: { type: "go:1.23" },
+      },
+    });
+
+    const web = appPlan.services[ServiceName.make("web")];
+    const api = appPlan.services[ServiceName.make("api")];
+    if (web === undefined || api === undefined) throw new Error("go services missing");
+
+    expect(web.type).toBe("go:1.22");
+    expect(web.environment.LANDO_SERVICE_TYPE).toBe("go:1.22");
+    expect(web.environment.GOPATH).toBe("/go");
+    expect(web.environment.GOCACHE).toBe("/root/.cache/go-build");
+    expect(web.environment.CGO_ENABLED).toBe("0");
+    expect(web.environment.LANDO_APP_ROOT).toBe("/app");
+    expect(web.endpoints[0]?.port).toBe(8080);
+    expect(web.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
+
+    expect(api.type).toBe("go:1.23");
+    expect(api.environment.LANDO_SERVICE_TYPE).toBe("go:1.23");
+    expect(api.endpoints[0]?.port).toBe(8080);
+  });
+
+  test("AppPlanner rejects unsupported Go versions with Go-family remediation", async () => {
+    await expect(
+      plan({
+        name: "go-bad",
+        runtime: 4,
+        services: { [ServiceName.make("web")]: { type: "go:1.21" } },
+      }),
+    ).rejects.toThrow(/Unsupported service type go:1\.21.*Supported alternatives:.*go:1\.22.*go:1\.23/);
   });
 
   test("AppPlanner resolves explicit static:nginx through PluginRegistry as static:nginx alias", async () => {
