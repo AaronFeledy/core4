@@ -1,5 +1,5 @@
 /**
- * @lando/sdk/test — provider contract suite + library API contract suite.
+ * Test helpers for the SDK provider and service contract suites.
  *
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
@@ -504,10 +504,6 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
     ]),
 };
 
-// ────────────────────────────────────────────────────────────────────────────
-// Service-type contract suite
-// ────────────────────────────────────────────────────────────────────────────
-
 const serviceContractFailure = (assertion: string, details?: unknown): ContractFailure =>
   new ContractFailure({
     message: `ServiceType contract failed: ${assertion}`,
@@ -518,7 +514,7 @@ const serviceContractFailure = (assertion: string, details?: unknown): ContractF
 const requireServiceContract = (condition: boolean, assertion: string, details?: unknown) =>
   condition ? Effect.void : Effect.fail(serviceContractFailure(assertion, details));
 
-/** §6.9 mandatory `LANDO_*` identity env keys every catalog service must emit. */
+/** Identity env keys every catalog service must emit. */
 const SERVICE_LANDO_IDENTITY_KEYS: ReadonlyArray<string> = [
   "LANDO",
   "LANDO_APP_NAME",
@@ -569,14 +565,10 @@ export interface ServiceContractExpectations {
    */
   readonly defaultCredentialEnvKeys: ReadonlyArray<string>;
   /**
-   * Environment keys whose values MUST NOT appear inside `plan.command` /
-   * `plan.entrypoint` argv. Required for any service that bakes a deterministic
-   * default credential into `plan.environment` (e.g. `MEILI_MASTER_KEY=lando`,
-   * `MONGO_INITDB_ROOT_PASSWORD=lando`) — §6.12.4 marks `password`/`rootPassword`
-   * as `secret: true` by default and §6.8 / §6.10 forbid leaking those values
-   * into logs, telemetry, `LANDO_INFO`, or rendered config output. The
-   * keyed-env-var-only surface is the assertable structural pre-condition for
-   * that redaction contract, and failure details redact matched values.
+   * Environment keys whose values must not appear inside `plan.command` or
+   * `plan.entrypoint`. Used for services that define deterministic default
+   * credentials in `plan.environment`; the contract checks that the plaintext
+   * values stay out of the rendered argv.
    */
   readonly defaultCredentialSecretEnvKeys?: ReadonlyArray<string>;
 }
@@ -878,10 +870,6 @@ export const runServiceContract = (input: ServiceContractInput): Effect.Effect<v
       }
     }
   });
-
-// ────────────────────────────────────────────────────────────────────────────
-// Service-type contract matrix
-// ────────────────────────────────────────────────────────────────────────────
 
 export interface SupportedServiceContractCell {
   readonly providerId: ProviderId;

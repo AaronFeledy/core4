@@ -1,6 +1,6 @@
 # AGENTS.md — `@lando/sdk`
 
-The SDK is the API-stable surface. Per `spec/ROADMAP.md` Phasing principle 1, anything that ships here is semver-stable from the moment it lands.
+The SDK is the API-stable surface. Anything that ships here is semver-stable from the moment it lands.
 
 ## Layout
 
