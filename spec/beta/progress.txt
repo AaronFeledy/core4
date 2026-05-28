@@ -1126,3 +1126,32 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Branch after sync: main
 - Stash created: no
 ---
+
+## [2026-05-28] - US-084
+- Implemented `mongodb` ServiceType in `@lando/service-lando` per spec §6.12.1
+- Files changed:
+  - `plugins/service-lando/src/services/mongodb.ts`: new `mongodbServiceType` with MONGO_INITDB_ROOT_USERNAME/PASSWORD/DATABASE env defaults, TCP healthcheck on port 27017, persistent `/data/db` volume
+  - `plugins/service-lando/src/index.ts`: import, export, serviceTypes map, manifest contributes
+  - `plugins/service-lando/plugin.yaml`: added `mongodb` to contributes.serviceTypes
+  - `plugins/service-lando/test/mongodb.test.ts`: unit tests for plan defaults, credentials, overrides, healthcheck, LANDO_* env, user-env merge/rejection
+  - `plugins/service-lando/test/mongodb.scenario.test.ts`: AppPlanner scenario + fake-provider tooling routing for `lando mongosh`
+  - `plugins/service-lando/test/registration.test.ts`: added mongodb to expected contributes list
+  - `plugins/service-lando/test/package.test.ts`: added mongodb to expectedServiceTypes
+  - `sdk/test/fixtures/schema-snapshot.json`: regenerated to include mongodb
+  - `docs/guides/services/mongodb.mdx`: required guide per PRD-B-02 guide coverage table
+- Verification: `bun run typecheck` → exit 0; `bun run lint` → 4 pre-existing warnings, no errors; `bun test plugins/service-lando/` → 194 pass, 1 skip, 0 fail; full suite → 1385 pass, 17 skip, 15 fail (all 15 are pre-existing codegen/scenario failures, same set existed on main before this branch)
+- **Learnings for future iterations:**
+  - The `plugin.yaml` and `package.test.ts` `expectedServiceTypes` list must both be updated when adding a new service type — they are checked against the runtime `serviceTypes` Map independently.
+  - The schema snapshot (`sdk/test/fixtures/schema-snapshot.json`) must be regenerated via `bun run scripts/build-schema-snapshot.ts` whenever `plugin.yaml` contributes a new service type; the `schema-snapshot` CI gate catches any drift.
+  - MongoDB credentials use `MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD` / `MONGO_INITDB_DATABASE`; unlike MySQL/MariaDB, the Docker image has a single root-level user concept, so there is no separate app-user/root-user split.
+  - Tooling `cmd: "string"` wraps in `sh -c <cmd> <args>` at the engine level; use `cmd: ["binary"]` array form in tests to verify exact argument vectors.
+---
+
+## [2026-05-28] - Push
+- Branch: us-084-mongodb-service-type
+- Push: pushed
+- Commit(s):
+  - d21a8c8 feat: mongodb service type
+  - 79aae5a chore: mark US-084 complete and update progress log
+- PR: #183 https://github.com/AaronFeledy/core4/pull/183 (created)
+---
