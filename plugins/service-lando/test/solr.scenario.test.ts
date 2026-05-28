@@ -145,7 +145,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
     expect(search.healthcheck?.command).toEqual([
       "bash",
       "-c",
-      "curl -sf http://localhost:8983/solr/admin/ping",
+      "curl -sf http://localhost:8983/solr/admin/info/system",
     ]);
     expect(search.environment.LANDO_SERVICE_TYPE).toBe("solr");
   });

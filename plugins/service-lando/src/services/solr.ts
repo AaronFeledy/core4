@@ -61,7 +61,7 @@ export const solr9ServiceType: ServiceTypeShape = {
       })),
       healthcheck: {
         kind: "command",
-        command: ["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/ping`],
+        command: ["bash", "-c", `curl -sf http://localhost:${port}/solr/admin/info/system`],
         intervalSeconds: 15,
         timeoutSeconds: 10,
         retries: 5,

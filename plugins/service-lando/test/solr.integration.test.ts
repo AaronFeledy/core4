@@ -30,7 +30,7 @@ const waitForSolr = async (port: number, timeoutMs: number): Promise<void> => {
   let lastError: unknown;
   while (Date.now() < deadline) {
     try {
-      const resp = await fetch(`http://127.0.0.1:${port}/solr/admin/ping?wt=json`);
+      const resp = await fetch(`http://127.0.0.1:${port}/solr/admin/info/system?wt=json`);
       if (resp.ok) return;
       lastError = new Error(`HTTP ${resp.status}`);
     } catch (err) {
@@ -38,12 +38,12 @@ const waitForSolr = async (port: number, timeoutMs: number): Promise<void> => {
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
-  throw new Error(`Solr admin ping not ready on port ${port} within ${timeoutMs}ms: ${String(lastError)}`);
+  throw new Error(`Solr system info not ready on port ${port} within ${timeoutMs}ms: ${String(lastError)}`);
 };
 
-describe("solr service type — live integration: HTTP admin ping and core query", () => {
+describe("solr service type — live integration: system info and core query", () => {
   test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
-    "boots Solr 9 and verifies the admin ping endpoint responds OK",
+    "boots Solr 9 and verifies the system info endpoint responds OK",
     async () => {
       const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
       expect(socketPath).toBeTruthy();
@@ -86,10 +86,10 @@ describe("solr service type — live integration: HTTP admin ping and core query
           // Solr takes longer to start than Redis/Memcached; allow 90s.
           await waitForSolr(SOLR_PORT, 90_000);
 
-          const pingResp = await fetch(`http://127.0.0.1:${SOLR_PORT}/solr/admin/ping?wt=json`);
-          expect(pingResp.ok).toBe(true);
-          const pingBody = (await pingResp.json()) as Record<string, unknown>;
-          expect(pingBody.status).toBe("OK");
+          const sysResp = await fetch(`http://127.0.0.1:${SOLR_PORT}/solr/admin/info/system?wt=json`);
+          expect(sysResp.ok).toBe(true);
+          const sysBody = (await sysResp.json()) as Record<string, unknown>;
+          expect(sysBody.responseHeader).toBeTruthy();
         } finally {
           await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api })));
         }

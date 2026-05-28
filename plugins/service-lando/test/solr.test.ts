@@ -60,12 +60,12 @@ describe("solr ServiceType", () => {
     expect(plan.endpoints[0]?.port).toBe(18983);
   });
 
-  test("includes a curl-based command healthcheck on the admin ping endpoint", () => {
+  test("includes a curl-based command healthcheck on the system info endpoint", () => {
     const plan = planSolrService({ type: "solr" });
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
-      command: ["bash", "-c", "curl -sf http://localhost:8983/solr/admin/ping"],
+      command: ["bash", "-c", "curl -sf http://localhost:8983/solr/admin/info/system"],
       intervalSeconds: 15,
       timeoutSeconds: 10,
       retries: 5,
@@ -79,7 +79,7 @@ describe("solr ServiceType", () => {
     expect(plan.healthcheck?.command).toEqual([
       "bash",
       "-c",
-      "curl -sf http://localhost:18983/solr/admin/ping",
+      "curl -sf http://localhost:18983/solr/admin/info/system",
     ]);
   });
 
