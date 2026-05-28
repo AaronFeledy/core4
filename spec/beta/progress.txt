@@ -1365,3 +1365,5 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 
 ## [2026-05-28] - PR #185 third triage
 - Restored the live contract log collection to `follow: true` now that provider-docker framed log buffering is fixed, avoiding an empty immediate Docker history snapshot.
+
+- 2026-05-28: PR #185 provider-integration-linux-x64 fourth triage — made the SDK contract service emit `lando-contract-ready` periodically so the live follow:true Docker logs stream receives a chunk even when the startup log was already consumed or not yet available.
