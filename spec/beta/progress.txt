@@ -1330,3 +1330,25 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The Valkey image speaks RESP (Redis Serialization Protocol), so the live integration test issues raw `PING`/`SET`/`GET` over TCP and parses `+`/`-`/`$` reply types. There is no need for a `valkey-cli` binary on the host; the protocol is stable across Redis/Valkey forks.
   - When adding a service type that needs a different Docker image namespace, the CI workflow generator (`scripts/build-ci-workflow.ts`) needs the new image added to the `podman pull` pre-pull list so the provider-integration job has the image cached before the live test runs.
 ---
+
+## [2026-05-28 08:37 UTC] - US-086 Review
+- Reviewed build commit `51ef2dac feat: valkey service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-086 and the broader service catalog notes.
+- Files changed:
+  - `spec/beta/progress.txt`: appended this review record only.
+- `review-work` findings:
+  - Fixed: none; no confirmed in-scope code defect was found.
+  - Rejected/deferred: service-type-shipped tooling (`§6.11.3`) is still not implemented in the current `ServiceTypeShape`; US-086 keeps the same accepted fixture-authored `tooling:` alias pattern documented during US-085, and `valkey.scenario.test.ts` verifies `lando valkey-cli ping/set/get` routing through provider exec.
+  - Rejected/deferred: PRD-B-02's broad “specific minor and SHA” pin-manifest note conflicts with current service-lando practice for the recent catalog stories (`mongo:7`, `memcached:1.6`, `valkey/valkey:8`) and there is no shipped pin-manifest/codegen surface to update in this branch; keeping the existing image-tag pattern avoids inventing a new pinning mechanism in a single-service review.
+  - Noted: `spec/beta/prd-beta-02-service-catalog-full.md` guide drift paths still list `plugins/service-valkey/**` even though the implementation lives in `plugins/service-lando/**`; this is pre-existing PRD path drift shared by multiple service stories and not a US-086 implementation blocker.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings in provider Docker/Podman contract integration tests (`inner.api.request!` non-null assertions), unchanged by US-086.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → Guide lint passed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/info.scenario.test.ts plugins/service-lando/test/valkey.test.ts plugins/service-lando/test/valkey.scenario.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 104 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/valkey/` → 4 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/valkey.integration.test.ts` → 0 pass, 1 skip, 0 fail (`LANDO_TEST_PODMAN_SOCKET` not set).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1458 pass, 19 skip, 0 fail.
+- **Learnings for future iterations:**
+  - For cache/search catalog stories before the §6.11.3 `ServiceTypeResolution.tooling` surface lands in implementation, `lando <tool>` acceptance remains fixture-authored `tooling:` plus provider-exec scenario coverage rather than service-type-contributed tooling.
+  - The beta PRD's SHA pinning note is ahead of the current `@lando/service-lando` implementation; do not invent per-story digest machinery without first landing the shared pin manifest/codegen path.
+---
