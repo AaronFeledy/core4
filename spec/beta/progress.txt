@@ -1412,3 +1412,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none
 ---
+
+## [2026-05-28 04:12:26] - Sync
+- Previous branch: us-087-solr-service-type
+- Previous PR: #186 https://github.com/AaronFeledy/core4/pull/186
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
