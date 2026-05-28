@@ -280,7 +280,7 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* requireContract(typeof execResult.stderr === "string", "exec result includes stderr", execResult);
 
     const logChunks = yield* Effect.timeoutFail(
-      provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: false, tail: 20 }).pipe(
+      provider.logs({ app: TEST_APP_ID, service: TEST_SERVICE_NAME }, { follow: true, tail: 20 }).pipe(
         Stream.take(1),
         Stream.runCollect,
         Effect.map((chunks) => Array.from(chunks)),

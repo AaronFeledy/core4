@@ -1362,3 +1362,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 
 - 2026-05-28: Triage provider-integration-linux-x64 logs failure; switched the SDK contract logs check to follow:false so the live Docker contract reads a bounded historical snapshot instead of racing the initial follow stream chunk.
 - 2026-05-28: PR #185 provider-integration-linux-x64 second triage — root cause was provider-docker's logs decoder treating framed Docker log bytes as single-chunk data, which dropped output when CI split the first frame across socket chunks. Fixed by buffering framed log bytes across chunks in `plugins/provider-docker/src/index.ts` and added regression coverage for split framed log bytes in `plugins/provider-docker/test/contract.integration.test.ts`. Verification: `bun test plugins/provider-docker/test/contract.integration.test.ts`, `bun test sdk/test/contract/provider.test.ts`, `bun run typecheck`, `bun run lint` (pre-existing warnings only).
+
+## [2026-05-28] - PR #185 third triage
+- Restored the live contract log collection to `follow: true` now that provider-docker framed log buffering is fixed, avoiding an empty immediate Docker history snapshot.
