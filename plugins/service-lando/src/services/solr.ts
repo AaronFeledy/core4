@@ -8,13 +8,29 @@ import { appNameFor, buildLandoEnv } from "./env.ts";
 const DEFAULT_IMAGE = "solr:9";
 const DEFAULT_PORT = 8983;
 const DATA_TARGET = PortablePath.make("/var/solr");
+const CORE_NAME = /^[A-Za-z0-9._-]+$/;
+
+const validateCoreName = (core: string): void => {
+  if (!CORE_NAME.test(core)) {
+    throw new Error(
+      `Invalid Solr core name ${JSON.stringify(core)}. Use only letters, numbers, dots, underscores, and dashes.`,
+    );
+  }
+};
 
 const defaultCommand = (port: number, cores: readonly string[]): string[] => {
   if (cores.length === 0) {
     return ["solr-foreground", "-p", String(port)];
   }
-  const precreates = cores.map((c) => `precreate-core ${c}`).join(" && ");
-  return ["bash", "-c", `${precreates} && exec solr-foreground -p ${port}`];
+  for (const core of cores) validateCoreName(core);
+  return [
+    "bash",
+    "-c",
+    'port="$1"; shift; for core in "$@"; do precreate-core "$core"; done; exec solr-foreground -p "$port"',
+    "lando-solr-precreate",
+    String(port),
+    ...cores,
+  ];
 };
 
 export const solr9ServiceType: ServiceTypeShape = {
@@ -53,7 +69,7 @@ export const solr9ServiceType: ServiceTypeShape = {
           readOnly: false,
         },
       ],
-      endpoints: [{ port, protocol: "tcp", name }],
+      endpoints: [{ port, protocol: "http", name }],
       routes: [],
       dependsOn: (service.dependsOn ?? []).map((dependency) => ({
         service: ServiceName.make(dependency),
