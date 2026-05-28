@@ -193,6 +193,39 @@ describe("runServiceContract", () => {
     });
   });
 
+  test("fails with ContractFailure when TCP command healthcheck only contains the expected port as a substring", async () => {
+    await expectServiceContractFailure(TestServiceType, "service plan healthcheck matches expected probe", {
+      expectations: {
+        type: "test",
+        endpoints: [{ port: 8080, protocol: "tcp" }],
+        healthcheck: { kind: "tcp", port: 80 },
+        defaultCredentialEnvKeys: [],
+      },
+    });
+  });
+
+  test("fails with ContractFailure when HTTP command healthcheck only contains the expected port as a substring", async () => {
+    const withHttpCommand = makeMutatedServiceType((plan) => ({
+      ...plan,
+      healthcheck: {
+        kind: "command",
+        command: ["sh", "-c", "curl -sf http://localhost:8080/health"],
+        intervalSeconds: 10,
+        timeoutSeconds: 5,
+        retries: 5,
+        startPeriodSeconds: 10,
+      },
+    }));
+    await expectServiceContractFailure(withHttpCommand, "service plan healthcheck matches expected probe", {
+      expectations: {
+        type: "test",
+        endpoints: [{ port: 8080, protocol: "tcp" }],
+        healthcheck: { kind: "http", port: 80, path: "/health" },
+        defaultCredentialEnvKeys: [],
+      },
+    });
+  });
+
   test("fails with ContractFailure when a required LANDO_* identity key is missing", async () => {
     const withoutLandoEnv = makeMutatedServiceType((plan) => {
       const { LANDO_SERVICE_TYPE: _omitted, ...rest } = plan.environment;

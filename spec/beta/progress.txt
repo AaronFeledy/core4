@@ -1953,3 +1953,8 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 155ae7c chore: cleanup; fa81026 docs: record US-092 review fixes; b7ff01d fix: tighten service contract matrix review gaps; a0db1cf feat: matrix-driven service-type contract suite
 - PR: #192 https://github.com/AaronFeledy/core4/pull/192 (created)
 ---
+
+## [2026-05-28] - PR #192 Bugbot triage
+- Review feedback: real issue — service contract healthcheck command matching used substring port checks, so expected port 80 matched probes against 8080.
+- Fix: tightened SDK test helper command matching to require numeric port boundaries for `/dev/tcp/.../<port>` and `localhost` / `127.0.0.1:<port>` probes, with TCP and HTTP command regression coverage.
+- Verification: `bun run typecheck`, `bun run lint`, `bun test`, focused contract test, and manual SDK surface check passed locally.

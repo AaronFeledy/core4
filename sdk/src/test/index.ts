@@ -659,18 +659,23 @@ const redactTokens = (value: string, tokens: ReadonlyArray<string>): string =>
     value,
   );
 
+const commandContainsHostPort = (cmd: string, port: number): boolean => {
+  const expectedPort = String(port);
+  return new RegExp(`(?:127\\.0\\.0\\.1|localhost):${expectedPort}(?!\\d)`).test(cmd);
+};
+
+const commandContainsTcpProbePort = (cmd: string, port: number): boolean => {
+  const expectedPort = String(port);
+  return (
+    new RegExp(`/dev/tcp/(?:127\\.0\\.0\\.1|localhost)/${expectedPort}(?!\\d)`).test(cmd) ||
+    commandContainsHostPort(cmd, port)
+  );
+};
+
 const matchesHealthcheck = (hc: HealthcheckPlan, expected: HealthcheckExpectation): boolean => {
   if (expected.kind === "tcp") {
     if (hc.kind === "tcp") return hc.port === expected.port;
-    if (hc.kind === "command") {
-      const cmd = argvJoin(hc.command);
-      return (
-        cmd.includes(`/dev/tcp/127.0.0.1/${expected.port}`) ||
-        cmd.includes(`/dev/tcp/localhost/${expected.port}`) ||
-        cmd.includes(`127.0.0.1:${expected.port}`) ||
-        cmd.includes(`localhost:${expected.port}`)
-      );
-    }
+    if (hc.kind === "command") return commandContainsTcpProbePort(argvJoin(hc.command), expected.port);
     return false;
   }
 
@@ -684,7 +689,7 @@ const matchesHealthcheck = (hc: HealthcheckPlan, expected: HealthcheckExpectatio
   if (hc.kind === "command") {
     const cmd = argvJoin(hc.command);
     const hostToken = cmd.includes("localhost") || cmd.includes("127.0.0.1");
-    const portToken = expected.port === undefined || cmd.includes(`:${expected.port}`);
+    const portToken = expected.port === undefined || commandContainsHostPort(cmd, expected.port);
     return hostToken && portToken && cmd.includes(expected.path);
   }
   return false;
