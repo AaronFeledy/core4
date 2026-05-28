@@ -1685,3 +1685,28 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The full-suite parallel-build race on `core/dist/lando` (ETXTBSY/EACCES) surfaces as a flaky `core/test/cli/setup.test.ts > compiled setup install dir` failure when `bun test` and the in-test `bun run build` contend for the binary. Re-running that one test file in isolation is the established repo workaround (also recorded in the US-088 Review entry).
   - Git state on a story branch can change under your feet between commands when other loop steps are still operating on the worktree; `git status --short` and `git log --oneline origin/branch..HEAD` should be re-checked just before commit to confirm what is actually pending.
 ---
+
+## [2026-05-28 12:08 CDT] - US-089 Review
+- Reviewed current build verification commit `0a53476d Record US-089 build verification` and the branch's existing OpenSearch implementation against `spec/beta/prd-beta-02-service-catalog-full.md` US-089 using `review-work`, explore, librarian, QA, goal/constraint, code-quality, security, and context-mining agents.
+- Fixed confirmed review blocker:
+  - Removed the newly introduced non-null assertion in `plugins/service-lando/test/opensearch.integration.test.ts` by narrowing `LANDO_TEST_PODMAN_SOCKET` before use. This preserves the Podman-gated live integration behavior while satisfying the repo's no-non-null-assertion lint/type-safety rule.
+- Files changed:
+  - `plugins/service-lando/test/opensearch.integration.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: OpenSearch integration test used `process.env.LANDO_TEST_PODMAN_SOCKET!`; branch lint surfaced it as a US-089 warning and repo constraints forbid non-null assertions.
+  - Rejected: adding a dedicated OpenSearch guide; PRD-B-02 guide coverage is selective and does not list US-089.
+  - Rejected/deferred: changing Elasticsearch's existing endpoint protocol/config surface during this review; US-089 is already using the `http` endpoint protocol and this step stays scoped to OpenSearch.
+  - Rejected/deferred: adopting legacy Lando Elasticsearch-only config keys (`portforward`, `mem`, `plugins`, `config.server`) for OpenSearch in this review; the v4 service schema and PRD acceptance for US-089 only require the canonical service type, healthcheck, description, and scenario coverage.
+  - Accepted as context only: official OpenSearch docs confirm `opensearchproject/opensearch`, REST port `9200`, single-node dev mode, and `DISABLE_SECURITY_PLUGIN=true` as test/dev-only; the service description already warns the default local-dev config is not production-suitable.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/opensearch.test.ts plugins/service-lando/test/opensearch.scenario.test.ts plugins/service-lando/test/opensearch.integration.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 114 pass, 1 skip, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing non-null-assertion warnings in provider Docker/Podman contract tests; the OpenSearch warning is fixed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1516 pass, 22 skip, 4 fail from `EACCES` spawning `core/dist/lando` while the full suite/build raced the compiled binary; after rebuilding, `bun test core/test/cli/shellenv.test.ts core/test/cli/deferred-commands.test.ts` → 39 pass, 0 fail. QA agent also reran the full suite with stderr merged and observed 1520 pass, 22 skip, 0 fail.
+  - `lsp_diagnostics` on `plugins/service-lando/test/opensearch.integration.test.ts` could not run because the TypeScript LSP exited with code `-2`; root typecheck was clean.
+- **Learnings for future iterations:**
+  - `test.skipIf(process.env.X)` does not narrow `process.env.X` inside the callback for TypeScript/Biome; explicitly guard env vars before passing them to provider clients.
+  - Official OpenSearch Docker docs align with this story's local-dev defaults: `opensearchproject/opensearch`, REST port `9200`, single-node dev/test mode, and security-disabled test-only mode.
+---
