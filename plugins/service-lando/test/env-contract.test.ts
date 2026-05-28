@@ -206,7 +206,7 @@ const planFor = (item: CatalogCase, serviceName: string, appName: string) => {
   });
 };
 
-describe("§6.9 LANDO_* environment contract (every Alpha catalog family)", () => {
+describe("LANDO_* environment contract across catalog service families", () => {
   for (const item of cases) {
     test(`${item.id} emits the basic LANDO_* identity, host, and (where applicable) app-path env`, () => {
       const plan = planFor(item, item.id === "compose" ? "worker" : "web", "myapp");

@@ -31,7 +31,6 @@ describe("memcached ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
     expect(plan.command).toEqual(["memcached", "-p", "11211"]);
     expect(plan.endpoints).toEqual([{ port: 11211, protocol: "tcp", name: "cache" }]);
-    // Memcached is an in-memory cache; no persistent storage by default.
     expect(plan.storage).toEqual([]);
   });
 
