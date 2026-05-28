@@ -19,6 +19,9 @@ tags: [beta, docs, static, service]
       <Run command="lando start" />
       <Verify event="post-start" />
     </Step>
+    <Step name="fetch">
+      <Verify command="lando curl index.html" expect={{ stdout: { regex: "hello from lando static" } }} />
+    </Step>
     <Step name="cleanup">
       <Cleanup />
       <Run command="lando destroy -y" />
@@ -39,7 +42,7 @@ tags: [beta, docs, static, service]
     </Step>
   </Scenario>
 
-  <Scenario id="fetch-known-file" render={false} reason="The fixture defines curl as an app tooling alias; running lando curl against a file placed under root: confirms the HTTP surface is reachable and serves the expected bytes">
+  <Scenario id="fetch-known-file" render={false} reason="The happy path executes lando curl index.html against the fixture; this hidden scenario records the exact command and expected body for source-mapped docs output">
     <Step name="fetch">
       <Variable name="curlCommand" value="lando curl index.html" display="Fetch a known file from the running static service" />
       <Variable name="expectedBody" value="hello from lando static" display="Substring expected in the response body for the fixture's dist/index.html" />

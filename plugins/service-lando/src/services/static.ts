@@ -16,6 +16,35 @@ const STATIC_SERVER_IMAGES: Record<SupportedStaticServer, string> = {
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
+const nginxRootLiteral = (path: string): string => JSON.stringify(path);
+
+const defaultStaticCommand = (
+  server: SupportedStaticServer,
+  docRoot: string,
+  port: number,
+): ReadonlyArray<string> => {
+  if (server === "caddy") {
+    return ["file-server", "--listen", `:${port}`, "--root", docRoot];
+  }
+
+  return [
+    "sh",
+    "-c",
+    [
+      "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
+      "server {",
+      `  listen ${port};`,
+      "  server_name _;",
+      `  root ${nginxRootLiteral(docRoot)};`,
+      "  index index.html index.htm;",
+      "  location / { try_files $uri $uri/ =404; }",
+      "}",
+      "LANDO_STATIC_NGINX",
+      "exec nginx -g 'daemon off;'",
+    ].join("\n"),
+  ];
+};
+
 const REMEDIATION_SERVER = (requested: string): string =>
   `Set type to one of: ${SUPPORTED_STATIC_SERVERS.map((s) => `static:${s}`).join(", ")} (got static:${requested}).`;
 
@@ -62,7 +91,7 @@ const makeStaticServiceType = (server: SupportedStaticServer): ServiceTypeShape 
         kind: "ref",
         ref: service.image ?? STATIC_SERVER_IMAGES[resolvedServer],
       },
-      command: service.command,
+      command: service.command ?? defaultStaticCommand(resolvedServer, docRoot, endpointPort),
       entrypoint: service.entrypoint,
       environment,
       user: service.user,

@@ -661,3 +661,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `bun run lint` exits 0 even with biome `warning`-severity findings (4 are pre-existing `noNonNullAssertion` warnings in `plugins/provider-podman/test/contract.integration.test.ts`). Treat lint failure as exit-code ≠ 0; don't grep on the warning count.
   - When a previous build step merges a story PR but forgets to flip `passes: true` in `spec/beta/prd.json`, the loop contract's in-flight gate re-routes the next iteration onto the same story (third condition: `passes: false`). Recovery path: reset the recorded branch to `main`, finish the missing acceptance criterion (guide coverage in this case), flip `passes: true`, and commit on the story branch so push/review steps can re-open the surface.
 ---
+
+## [2026-05-28 17:20 CDT] - US-093 Review
+- Reviewed build commit `27e1240 feat: static service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-093 using review-work-style goal, QA, code-quality, security, context-mining, explore, and librarian findings.
+- Fixed confirmed review blockers: static nginx/Caddy plans now start with default server commands that serve `root:` from the mounted app directory, and the static guide happy path now executes `lando curl index.html` against the fixture and asserts the known response body.
+- Review notes (deferred/rejected): PRD drift-gate path still names `plugins/service-static/**`, but the implementation lives in `plugins/service-lando/**`; pre-existing spec-path drift, not introduced by this story.
+- Verification: typecheck passed; lint passed with 4 pre-existing Biome warnings; lint-guides passed; focused static/scenario tests and docs scenario passed; full `bun test` still fails in unrelated compiled-binary/codegen timeout surfaces (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/compile.test.ts`/`core/test/cli/aliases.test.ts`) after this review fix.
+---

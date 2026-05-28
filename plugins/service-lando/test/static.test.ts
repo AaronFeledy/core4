@@ -32,6 +32,22 @@ describe("static ServiceType", () => {
     expect(plan.environment.LANDO_SERVICE_TYPE).toBe("static:nginx");
     expect(plan.appMount?.readOnly).toBe(true);
     expect(plan.mounts[0]?.readOnly).toBe(true);
+    expect(plan.command).toEqual([
+      "sh",
+      "-c",
+      [
+        "cat > /etc/nginx/conf.d/default.conf <<'LANDO_STATIC_NGINX'",
+        "server {",
+        "  listen 80;",
+        "  server_name _;",
+        '  root "/app";',
+        "  index index.html index.htm;",
+        "  location / { try_files $uri $uri/ =404; }",
+        "}",
+        "LANDO_STATIC_NGINX",
+        "exec nginx -g 'daemon off;'",
+      ].join("\n"),
+    ]);
     expect(plan.endpoints[0]?.port).toBe(80);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
@@ -55,6 +71,7 @@ describe("static ServiceType", () => {
 
     expect(plan.type).toBe("static:caddy");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "caddy:2-alpine" });
+    expect(plan.command).toEqual(["file-server", "--listen", ":80", "--root", "/app"]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy" });
@@ -76,6 +93,7 @@ describe("static ServiceType", () => {
     });
 
     expect(plan.environment.LANDO_WEBROOT).toBe("/app/dist");
+    expect(plan.command).toEqual(["sh", "-c", expect.stringContaining('root "/app/dist";')]);
     expect(plan.appMount?.readOnly).toBe(true);
     expect(plan.endpoints[0]?.port).toBe(80);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", root: "dist" });
@@ -99,8 +117,28 @@ describe("static ServiceType", () => {
 
       const expectedWebroot = rootValue.replace(/^\/+/, "").replace(/\/+$/, "") === "" ? "/app" : "/app/dist";
       expect(plan.environment.LANDO_WEBROOT).toBe(expectedWebroot);
+      expect(plan.command).toEqual(["sh", "-c", expect.stringContaining(`root "${expectedWebroot}";`)]);
       expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx", root: rootValue });
     }
+  });
+
+  test("custom static commands are preserved", () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { web: { type: "static", command: ["custom-static-server"], entrypoint: ["/bin/sh", "-c"] } },
+    });
+    const service = landofile.services?.[ServiceName.make("web")];
+    if (service === undefined) throw new Error("web service missing");
+
+    const plan = staticNginxServiceType.toServicePlan({
+      name: "web",
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+    });
+
+    expect(plan.command).toEqual(["custom-static-server"]);
+    expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
   });
 
   test("rejects unsupported static server with remediation", () => {
