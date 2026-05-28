@@ -1735,15 +1735,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - PR: #189 https://github.com/AaronFeledy/core4/pull/189 (existing)
 ---
 
-## [2026-05-28 12:34 CDT] - Babysit
-- PR: #189 https://github.com/AaronFeledy/core4/pull/189
-- CI outcome: pass
-- Review feedback: none
-- Triage rounds used: 0
-- Merge: merged (squash)
-- Local main / branch refreshed: yes
-- Remaining local state, if any: on main; local story branch deleted; progress log has this babysit entry pending commit on main
----
 
 ## [2026-05-28 12:34 CDT] - Babysit
 - PR: #189 https://github.com/AaronFeledy/core4/pull/189
