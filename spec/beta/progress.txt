@@ -1605,3 +1605,28 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The "service description notes the licensing distinction" acceptance criterion has no per-service description surface on `ServiceTypeShape`, so the right pattern is an exported string constant (`OPENSEARCH_SERVICE_DESCRIPTION`) that a unit test pins. This is the cleanest verifiable surface until a per-service description field lands.
   - Biome's import formatting collapses imports that fit on a single line; multi-line braces for short import lists trigger a lint error. Keep this in mind when writing new test files by hand.
 ---
+
+## [2026-05-28 11:00 CDT] - US-089 Review
+- Reviewed build commit `7ce2c034 feat: opensearch service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-089 using `review-work`-style goal, QA, code-quality, security, context-mining agents plus explore/librarian searches.
+- Fixed confirmed review blocker:
+  - Changed the OpenSearch service endpoint protocol from `tcp` to `http` so `lando info` / start output render the user-facing OpenSearch HTTP API as `http://localhost:<port>`, matching PRD-B-02 endpoint scheme rules and the US-087 Solr review learning.
+- Files changed:
+  - `plugins/service-lando/src/services/opensearch.ts`
+  - `plugins/service-lando/test/opensearch.test.ts`
+  - `plugins/service-lando/test/opensearch.scenario.test.ts`
+  - `spec/beta/progress.txt`
+- `review-work` findings:
+  - Fixed: OpenSearch emitted a TCP endpoint despite being an HTTP API service; newer Solr review context established search-engine HTTP APIs should expose `protocol: "http"` while keeping curl command healthchecks internally.
+  - Rejected: adding a dedicated OpenSearch guide; PRD-B-02's Guide Coverage table is selective and does not list US-089, matching the build-step learning.
+  - Rejected/deferred: digest-pinning the OpenSearch CI pre-pull image; mutable tags match existing service-catalog CI pre-pull style and a broader artifact pinning policy would be cross-cutting.
+  - Rejected/deferred: changing Elasticsearch's existing `tcp` endpoint during this review; this step stays scoped to US-089 and records the OpenSearch fix only.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/opensearch.test.ts plugins/service-lando/test/opensearch.scenario.test.ts plugins/service-lando/test/opensearch.integration.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → exit 0.
+  - Manual Bun driver imported `opensearchServiceType`, planned `type: opensearch` with `port: 19200`, and confirmed `endpoint.protocol === "http"`, `http.port=19200`, and the `/_cluster/health` command healthcheck.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing provider Docker/Podman warnings.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test --reporter=junit --reporter-outfile=/tmp/us089-review-full.xml` → 1542 tests, 7183 assertions, 3 failures, 22 skipped; failures were the compiled `$bunfs` parity cases in `core/test/cli/deferred-commands.test.ts`, unrelated to OpenSearch. Reruns of `core/test/cli/deferred-commands.test.ts` and `core/test/build/compile.test.ts` both exited 0.
+  - `lsp_diagnostics` on changed TypeScript files could not run because the TypeScript LSP exited with code `-2`; root typecheck was clean.
+- **Learnings for future iterations:**
+  - For HTTP search-engine services, the endpoint protocol controls user-facing URLs; command-based healthchecks do not imply `tcp` endpoint protocol.
+---
