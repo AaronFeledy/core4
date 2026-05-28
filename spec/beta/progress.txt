@@ -1117,3 +1117,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes (local main rebased onto origin/main after preserving existing local progress-log commit)
 - Remaining local state, if any: local main is ahead of origin/main by one progress-log commit; story branch deleted locally; remote branch deleted by PR merge
 ---
+
+## [2026-05-28] - Sync
+- Previous branch: us-083-go-service-type
+- Previous PR: #182 https://github.com/AaronFeledy/core4/pull/182
+- Action: caught up after prior merge (PR #182 was already MERGED)
+- Local main updated: yes (ff-only; also pushed one pending progress-log commit to origin/main)
+- Branch after sync: main
+- Stash created: no
+---
