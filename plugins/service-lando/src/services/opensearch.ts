@@ -9,18 +9,6 @@ const DEFAULT_IMAGE = "opensearchproject/opensearch:2";
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/opensearch/data");
 
-/**
- * Human-readable description of the `opensearch` service type. OpenSearch is
- * an Apache 2.0-licensed fork of Elasticsearch 7.10 maintained by the
- * OpenSearch Project. It shares the same cluster-health, indices, and search
- * surfaces as Elasticsearch, but ships under Apache 2.0 instead of the
- * Elastic License v2 (SSPL/ELv2) Elasticsearch adopted after 7.10.
- *
- * Use `opensearch` when you need an Apache 2.0 alternative to the
- * `elasticsearch` service type. The default local-dev configuration is
- * single-node with the security plugin disabled and demo-config install
- * skipped; this is NOT production-suitable.
- */
 export const OPENSEARCH_SERVICE_DESCRIPTION =
   "OpenSearch is an Apache 2.0-licensed fork of Elasticsearch 7.10 maintained by " +
   "the OpenSearch Project. It exposes the same cluster-health and indices APIs " +

@@ -48,7 +48,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
   test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
     "boots OpenSearch 2 (single-node, security-disabled) and verifies green/yellow cluster health",
     async () => {
-      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
+      const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET!;
       expect(socketPath).toBeTruthy();
 
       const appRootStr = await mkdtemp(join(tmpdir(), "lando-os-int-"));
