@@ -1271,3 +1271,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `git rebase --continue` with `vim` as the editor will hang under non-interactive shells; set `GIT_EDITOR=true` to accept the prepared commit message verbatim.
   - `spec/beta/progress.txt` is the most likely conflict file across stories because every iteration appends to it. The conflict is always "keep both entries chronologically" — there is no semantic merge needed.
 ---
+## [2026-05-28 05:28 UTC] - Push
+- Branch: us-085-memcached-service-type
+- Push: pushed (force-with-lease after remote divergence from prior branch history)
+- Commit(s): a422f4b chore: cleanup; 8b45671 docs: record US-085 rebase onto current main; 98ae55e docs: record PR #184 merge deferral; 0591d39 chore: record PR #184 triage; 84c1932 fix: sync provider CI image pre-pulls; 4349301 fix: restore go image pre-pull in provider CI; 8644a4a fix: pre-pull memcached in provider CI; 37674eb fix: ensure live docker contract emits logs; 17ac9ee docs: record US-085 push; a07e6b3 test: cleanup memcached coverage prose; 41d5c27 chore: cleanup service metadata; b0f06ee docs: record US-085 review fixes; f7b499a docs: clarify memcached guide tooling; 044e672 fix: render memcached info endpoint scheme; bec1bfe fix: repair memcached service behavior; bf35c7c chore: mark US-085 complete and update progress log; 10a5bb2 feat: memcached service type
+- PR: #184 https://github.com/AaronFeledy/core4/pull/184 (existing)
+---
+
