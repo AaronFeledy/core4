@@ -1079,3 +1079,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): 6e6a590 chore: cleanup go service implementation; 2c0e0b9 refactor: simplify planner cleanup; 60c5996 fix: run service-lando integrations in provider CI; 4ed5da4 feat: go service type; afe5eff docs: record US-083 review status
 - PR: #182 https://github.com/AaronFeledy/core4/pull/182 (existing)
 ---
+
+## [2026-05-28 01:51 UTC] - Push
+- Branch: us-083-go-service-type
+- Push: pushed
+- Commit(s):
+  - 831ecf3 docs: record US-083 push
+  - 6e6a590 chore: cleanup go service implementation
+  - 2c0e0b9 refactor: simplify planner cleanup
+  - 60c5996 fix: run service-lando integrations in provider CI
+  - 4ed5da4 feat: go service type
+- PR: #182 https://github.com/AaronFeledy/core4/pull/182 (existing)
+---
