@@ -31,10 +31,10 @@ const metadata = {
 
 const host: ServiceTypeHostFacts = {
   os: "linux",
-  user: "alpha-tester",
+  user: "lando-user",
   uid: "1000",
   gid: "1000",
-  home: "/home/alpha-tester",
+  home: "/home/lando-user",
 };
 
 interface CatalogCase {

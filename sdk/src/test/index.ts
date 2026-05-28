@@ -337,7 +337,6 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
   });
 
-/** Matrix-driven contract runner — runs `runProviderContract` per supported cell, surfaces skip reasons. */
 export type HostPlatformId = HostPlatform;
 
 export interface SupportedContractCell {

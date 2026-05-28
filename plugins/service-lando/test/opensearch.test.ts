@@ -115,7 +115,7 @@ describe("opensearch ServiceType", () => {
     ).toThrow(/reserved LANDO_\* keys.*LANDO_SERVICE_NAME/);
   });
 
-  test("service description documents the Apache 2.0 vs Elastic License v2 distinction vs Elasticsearch", () => {
+  test("service description documents Apache 2.0 licensing compared to Elasticsearch", () => {
     expect(OPENSEARCH_SERVICE_DESCRIPTION).toMatch(/Apache 2\.0/);
     expect(OPENSEARCH_SERVICE_DESCRIPTION).toMatch(/Elastic License/);
     expect(OPENSEARCH_SERVICE_DESCRIPTION).toMatch(/elasticsearch/i);
