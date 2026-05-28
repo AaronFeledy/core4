@@ -1352,3 +1352,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - For cache/search catalog stories before the §6.11.3 `ServiceTypeResolution.tooling` surface lands in implementation, `lando <tool>` acceptance remains fixture-authored `tooling:` plus provider-exec scenario coverage rather than service-type-contributed tooling.
   - The beta PRD's SHA pinning note is ahead of the current `@lando/service-lando` implementation; do not invent per-story digest machinery without first landing the shared pin manifest/codegen path.
 ---
+
+## [2026-05-28 08:40 UTC] - Push
+- Branch: us-086-valkey-service-type
+- Push: pushed
+- Commit(s): 51ef2da feat: valkey service type; 2af3238 docs: record US-086 review
+- PR: #185 https://github.com/AaronFeledy/core4/pull/185 (created)
+---
