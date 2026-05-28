@@ -1785,3 +1785,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Commit(s): b8c7d8e feat: meilisearch service type
 - PR: #190 https://github.com/AaronFeledy/core4/pull/190 (created)
 ---
+
+## [2026-05-28 13:00 CDT] - US-090 Build verification
+- Verified US-090 meilisearch story complete on existing branch us-090-meilisearch-service-type
+- Pre-existing branch commits: b8c7d8e feat: meilisearch service type; dfae09e docs: record US-090 push
+- Re-ran checks on current HEAD: `bun run typecheck` exit 0; `bun run lint` exit 0; `bun test plugins/service-lando/` 298 pass, 7 skip, 0 fail
+- Manual CLI-path verification via AppPlanner one-liner: plan resolves `type: meilisearch` to `getmeili/meilisearch:v1.11`, port 7700/http, healthcheck `curl -sf http://localhost:7700/health`, env `MEILI_MASTER_KEY=lando`, `MEILI_NO_ANALYTICS=true`, `MEILI_ENV=development`, `MEILI_HTTP_ADDR=0.0.0.0:7700`, storage `demo-meilisearch-data`→`/meili_data`
+- Marked `passes: true` in `spec/beta/prd.json` for US-090
+---
