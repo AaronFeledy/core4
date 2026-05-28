@@ -1385,3 +1385,20 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main updated: yes
 - Branch after sync: main
 ---
+
+## [2026-05-28 03:02 UTC] - US-087
+- Story: US-087 solr service type
+- Branch: us-087-solr-service-type
+- Commit: feat: solr service type (solr:9 with curl healthcheck and opt-in cores)
+- Files changed:
+  - sdk/src/schema/index.ts: added `cores?: string[]` to ServiceConfig
+  - plugins/service-lando/src/services/solr.ts: solr9ServiceType + solrServiceType alias
+  - plugins/service-lando/src/index.ts: registered solr and solr:9
+  - plugins/service-lando/plugin.yaml: added solr, solr:9 to contributes
+  - plugins/service-lando/test/solr.test.ts: 12 unit tests (all pass)
+  - plugins/service-lando/test/solr.scenario.test.ts: 4 scenario tests (all pass)
+  - plugins/service-lando/test/solr.integration.test.ts: 2 live tests (skipped without podman socket)
+  - plugins/service-lando/test/package.test.ts: updated expectedServiceTypes
+  - plugins/service-lando/test/registration.test.ts: updated hardcoded list
+- Healthcheck: kind=command (curl -sf http://localhost:8983/solr/admin/ping) — http kind rejected by Alpha planner
+- Tests: 240 pass / 5 skip / 0 fail; typecheck pass; lint pass (4 pre-existing warnings only)
