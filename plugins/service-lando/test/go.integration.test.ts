@@ -159,11 +159,11 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
           const applied = await Effect.runPromise(bringUp(plan, { podmanApi: api }));
           expect(applied.changed).toBe(true);
 
-          // `go run` performs a one-shot compile before serving; allow generous headroom.
+          // `go run` needs time to compile before it starts serving; allow generous headroom.
           const response = await waitForHttp(`http://127.0.0.1:${GO_PORT}`, 120_000);
           expect(await response.text()).toBe("lando-go-ok");
 
-          // Verify `lando go version` routes through the tooling engine against the live provider.
+          // Verify `lando go version` runs through the tooling path on the live provider.
           const landofile = Schema.decodeUnknownSync(LandofileShape)({
             name: "gointtest",
             services: { web: { type: "go:1.22" } },
@@ -196,7 +196,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
         await rm(appRootStr, { recursive: true, force: true });
       }
     },
-    // Image pull (~850MB) + `go run` cold compile + endpoint poll + exec + teardown.
+    // Image pull (~850MB), `go run` compile, endpoint polling, exec, and teardown can take a while.
     240_000,
   );
 });

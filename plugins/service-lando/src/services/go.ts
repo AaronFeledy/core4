@@ -33,7 +33,7 @@ const REMEDIATION_VERSION = (requested: string): string =>
 const REMEDIATION_FRAMEWORK = (requested: string): string =>
   `Set framework to one of: ${SUPPORTED_GO_FRAMEWORKS.join(", ")} (got ${requested}).`;
 
-const frameworkDefaults = (_framework: SupportedGoFramework): Record<string, string> => ({
+const frameworkDefaults = (): Record<string, string> => ({
   GOPATH: "/go",
   GOCACHE: "/root/.cache/go-build",
   CGO_ENABLED: "0",
@@ -75,7 +75,7 @@ const makeGoServiceType = (version: SupportedGoVersion): ServiceTypeShape => ({
       appName,
       appPaths: { appRoot: "/app", projectMount: "/app" },
       host,
-      extraDefaults: frameworkDefaults(framework),
+      extraDefaults: frameworkDefaults(),
       userEnv: service.environment ?? {},
     });
     const endpointPort = service.port ?? preset.port;
