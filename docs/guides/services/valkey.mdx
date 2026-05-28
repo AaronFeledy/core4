@@ -1,0 +1,48 @@
+---
+id: valkey
+provider: test
+timeout: 90000
+tags: [beta, docs, valkey, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="valkey-demo" />
+      <Variable name="serviceType" value="valkey" display="Declare type: valkey in your services block" />
+      <Variable name="defaultImage" value="valkey/valkey:8" display="Default Docker image" />
+      <Variable name="defaultPort" value="6379" display="Default port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="dual-scheme-endpoint" render={false} reason="lando info advertises both valkey:// (primary) and redis:// (alias) so new and existing client libraries connect without code changes">
+    <Step name="endpoints">
+      <Variable name="primaryScheme" value="valkey://localhost:6379" display="Primary endpoint scheme exposed by lando info" />
+      <Variable name="aliasScheme" value="redis://localhost:6379" display="Redis-compatible alias scheme for existing client libraries" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="valkey-cli" render={false} reason="The fixture defines valkey-cli as an app tooling alias; ping/set/get the running cache from the host">
+    <Step name="ping">
+      <Variable name="pingCommand" value="lando valkey-cli ping" display="Verify the cache is reachable" />
+    </Step>
+    <Step name="set-get">
+      <Variable name="setCommand" value="lando valkey-cli set hello world" display="Store a key" />
+      <Variable name="getCommand" value="lando valkey-cli get hello" display="Read the key back" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific Valkey major version when the default image is not desired">
+    <Step name="note">
+      <Variable name="valkey7Image" value="valkey/valkey:7" display="Pin Valkey 7 via image: valkey/valkey:7 under services.cache" />
+    </Step>
+  </Scenario>
+</Guide>

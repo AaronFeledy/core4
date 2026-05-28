@@ -1330,8 +1330,8 @@ const parseTextLines = (
 };
 
 const makeLogsDecoder = (service: ServicePlan) => {
-  const decodeFrame = makeAttachDecoder();
   let mode: LogsDecoderMode = "unknown";
+  let frameBuffer = new Uint8Array(0);
   let rawBuffer = "";
 
   const decodeRaw = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
@@ -1341,25 +1341,58 @@ const makeLogsDecoder = (service: ServicePlan) => {
     return parsed.chunks;
   };
 
+  const decodeFramed = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
+    const merged = new Uint8Array(frameBuffer.length + bytes.length);
+    merged.set(frameBuffer);
+    merged.set(bytes, frameBuffer.length);
+    frameBuffer = merged;
+    mode = "framed";
+
+    const decoded: LogChunk[] = [];
+    while (frameBuffer.length >= 8) {
+      const streamType = frameBuffer[0] ?? 0;
+      const frameLength =
+        (((frameBuffer[4] ?? 0) << 24) |
+          ((frameBuffer[5] ?? 0) << 16) |
+          ((frameBuffer[6] ?? 0) << 8) |
+          (frameBuffer[7] ?? 0)) >>>
+        0;
+      if (frameBuffer.length < 8 + frameLength) {
+        break;
+      }
+
+      const payload = frameBuffer.slice(8, 8 + frameLength);
+      frameBuffer = frameBuffer.slice(8 + frameLength);
+
+      if (streamType === 1 || streamType === 2) {
+        const streamName = streamType === 1 ? "stdout" : "stderr";
+        for (const line of textDecoder
+          .decode(payload)
+          .split(/\r?\n/u)
+          .filter((entry) => entry.length > 0)) {
+          decoded.push(parseLogLine(service, streamName, line));
+        }
+      }
+    }
+
+    return decoded;
+  };
+
   return (chunk: Uint8Array): ReadonlyArray<LogChunk> => {
     if (mode === "raw") {
       return decodeRaw(chunk);
     }
 
-    const firstByte = chunk[0] ?? 0;
-    if (mode === "unknown" && chunk.length > 0 && firstByte !== 1 && firstByte !== 2) {
+    if (chunk.length === 0) {
+      return [];
+    }
+
+    if (mode === "unknown" && chunk[0] !== 1 && chunk[0] !== 2) {
+      frameBuffer = new Uint8Array(0);
       return decodeRaw(chunk);
     }
 
-    const frames = decodeFrame(chunk);
-    if (chunk.length > 0) mode = "framed";
-    return frames.flatMap((frame) =>
-      textDecoder
-        .decode(frame.chunk)
-        .split(/\r?\n/u)
-        .filter((line) => line.length > 0)
-        .map((line) => parseLogLine(service, frame.kind, line)),
-    );
+    return decodeFramed(chunk);
   };
 };
 

@@ -1,0 +1,9 @@
+name: valkey-demo
+services:
+  cache:
+    type: valkey
+tooling:
+  valkey-cli:
+    service: cache
+    cmd:
+      - valkey-cli

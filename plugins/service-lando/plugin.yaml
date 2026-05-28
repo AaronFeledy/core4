@@ -28,3 +28,4 @@ contributes:
     - "static"
     - "static:nginx"
     - "static:caddy"
+    - "valkey"

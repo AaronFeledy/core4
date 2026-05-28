@@ -59,16 +59,30 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const servicePlan = (name: "node" | "postgres" | "memcached"): ServicePlan => ({
+const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): ServicePlan => ({
   name: ServiceName.make(name),
   type: name === "node" ? "node:lts" : name,
   provider: providerId,
   primary: name === "node",
   artifact: {
     kind: "ref",
-    ref: name === "node" ? "node:22-alpine" : name === "postgres" ? "postgres:16-alpine" : "memcached:1.6",
+    ref:
+      name === "node"
+        ? "node:22-alpine"
+        : name === "postgres"
+          ? "postgres:16-alpine"
+          : name === "memcached"
+            ? "memcached:1.6"
+            : "valkey/valkey:8",
   },
-  command: name === "node" ? ["node", "server.js"] : name === "postgres" ? ["postgres"] : ["memcached"],
+  command:
+    name === "node"
+      ? ["node", "server.js"]
+      : name === "postgres"
+        ? ["postgres"]
+        : name === "memcached"
+          ? ["memcached"]
+          : ["valkey-server"],
   environment:
     name === "postgres" ? { POSTGRES_USER: "lando", POSTGRES_DB: "appdb", POSTGRES_PASSWORD: "secret" } : {},
   mounts: [],
@@ -87,7 +101,9 @@ const servicePlan = (name: "node" | "postgres" | "memcached"): ServicePlan => ({
       ? [{ port: 3000, protocol: "http", name: "http" }]
       : name === "postgres"
         ? [{ port: 5432, protocol: "tcp", name: "database" }]
-        : [{ port: 11211, protocol: "tcp", name: "cache" }],
+        : name === "memcached"
+          ? [{ port: 11211, protocol: "tcp", name: "cache" }]
+          : [{ port: 6379, protocol: "tcp", name: "valkey" }],
   routes: [],
   dependsOn: name === "node" ? [{ service: ServiceName.make("postgres"), condition: "started" }] : [],
   hostAliases: [],
@@ -98,6 +114,7 @@ const servicePlan = (name: "node" | "postgres" | "memcached"): ServicePlan => ({
 const node = servicePlan("node");
 const postgres = servicePlan("postgres");
 const memcached = servicePlan("memcached");
+const valkey = servicePlan("valkey");
 
 const plan: AppPlan = {
   id: AppId.make("test-info"),
@@ -105,7 +122,12 @@ const plan: AppPlan = {
   slug: "test-info",
   root: AbsolutePath.make("/tmp/test-info"),
   provider: providerId,
-  services: { [node.name]: node, [postgres.name]: postgres, [memcached.name]: memcached },
+  services: {
+    [node.name]: node,
+    [postgres.name]: postgres,
+    [memcached.name]: memcached,
+    [valkey.name]: valkey,
+  },
   routes: [],
   networks: [],
   stores: [{ name: "test_info_postgres_data", scope: "app" }],
@@ -207,6 +229,7 @@ describe("lando info", () => {
     expect(output).toMatch(/node\s+running\s+http:\/\/localhost:3000/);
     expect(output).toMatch(/postgres\s+running\s+postgresql:\/\/lando@localhost:5432\/appdb/);
     expect(output).toMatch(/memcached\s+running\s+memcached:\/\/localhost:11211/);
+    expect(output).toMatch(/valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379/);
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
   });
 
@@ -217,6 +240,7 @@ describe("lando info", () => {
     expect(output).toMatch(/node\s+stopped\s+no endpoints/);
     expect(output).toMatch(/postgres\s+stopped\s+no endpoints/);
     expect(output).toMatch(/memcached\s+stopped\s+no endpoints/);
+    expect(output).toMatch(/valkey\s+stopped\s+no endpoints/);
     expect(output).not.toContain("localhost");
   });
 

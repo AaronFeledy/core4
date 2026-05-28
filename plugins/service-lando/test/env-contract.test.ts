@@ -18,6 +18,7 @@ import { python312ServiceType } from "../src/services/python.ts";
 import { redisServiceType } from "../src/services/redis.ts";
 import { ruby33ServiceType } from "../src/services/ruby.ts";
 import { staticCaddyServiceType, staticNginxServiceType } from "../src/services/static.ts";
+import { valkeyServiceType } from "../src/services/valkey.ts";
 
 const metadata = {
   resolvedAt: "2026-05-18T08:00:00Z",
@@ -176,6 +177,14 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: memcachedServiceType,
     landofileService: { type: "memcached" },
     expectedType: "memcached",
+    expectsAppPaths: false,
+    expectsWebroot: null,
+  },
+  {
+    id: "valkey",
+    serviceType: valkeyServiceType,
+    landofileService: { type: "valkey" },
+    expectedType: "valkey",
     expectsAppPaths: false,
     expectsWebroot: null,
   },

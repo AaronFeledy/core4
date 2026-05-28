@@ -80,7 +80,8 @@
             "ruby:3.3",
             "static",
             "static:nginx",
-            "static:caddy"
+            "static:caddy",
+            "valkey"
           ]
         },
         "description": "The opinionated `lando` service base.",

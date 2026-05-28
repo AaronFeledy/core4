@@ -1288,3 +1288,82 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Local main / branch refreshed: yes
 - Remaining local state, if any: none
 ---
+
+## 2026-05-28 00:59:31 - Sync
+- Previous branch: us-085-memcached-service-type
+- Previous PR: #184 https://github.com/AaronFeledy/core4/pull/184
+- Action: caught up after prior merge
+- Local main updated: yes
+- Branch after sync: main
+---
+
+## [2026-05-28 06:15 UTC] - US-086
+- Implemented `valkey` ServiceType in `@lando/service-lando` per spec §6.12.1 with dual-scheme endpoint emission (`valkey://` primary, `redis://` alias).
+- Files changed:
+  - `plugins/service-lando/src/services/valkey.ts`: new `valkeyServiceType` with default image `valkey/valkey:8`, TCP endpoint on port 6379, persistent `/data` volume, command-based TCP healthcheck (`bash -c "exec 3<>/dev/tcp/127.0.0.1/<port>"`), `valkey-server --appendonly yes --port <port>` default command that tracks port overrides, standard LANDO_* env contract.
+  - `plugins/service-lando/src/index.ts`: import, export, serviceTypes map (key `valkey`), manifest contributes.
+  - `plugins/service-lando/plugin.yaml`: added `valkey` to contributes.serviceTypes.
+  - `plugins/service-lando/test/valkey.test.ts`: unit tests for plan defaults, overrides, healthcheck, LANDO env, user-env merge/reserved-key rejection, command port tracking.
+  - `plugins/service-lando/test/valkey.scenario.test.ts`: AppPlanner scenario + fake-provider tooling routing for `lando valkey-cli ping` and a set+get sequence.
+  - `plugins/service-lando/test/valkey.integration.test.ts`: live `LANDO_TEST_PODMAN_SOCKET`-gated RESP ping/set/get against `valkey/valkey:8` with a hand-rolled RESP completion detector covering `+`, `-`, and `$` reply forms.
+  - `plugins/service-lando/test/registration.test.ts`: added `valkey` to expected contributes list.
+  - `plugins/service-lando/test/package.test.ts`: added `valkey` to expectedServiceTypes.
+  - `plugins/service-lando/test/env-contract.test.ts`: added `valkey` to the shared LANDO_* env-contract matrix.
+  - `core/src/cli/commands/info.ts`: changed `endpointText` to return `ReadonlyArray<string>` and switched the call site from `.map` to `.flatMap`; `valkey` over `tcp` emits both `valkey://localhost:<port>` and `redis://localhost:<port>`.
+  - `core/test/cli/info.scenario.test.ts`: extended fixture plan with a `valkey` service and added running/stopped assertions verifying the dual-scheme rendering.
+  - `sdk/test/fixtures/schema-snapshot.json`: regenerated via `bun run scripts/build-schema-snapshot.ts` to include `valkey` in the bundled `@lando/service-lando` manifest contributes.
+  - `scripts/build-ci-workflow.ts` + `.github/workflows/ci.yml`: pre-pull `valkey/valkey:8` alongside the other provider-integration images so the live integration test can run in CI.
+  - `docs/guides/services/valkey.mdx` + `docs/guides/valkey/fixtures/valkey-demo/.lando.yml`: required PRD-B-02 guide coverage with happy-path, dual-scheme-endpoint, valkey-cli (ping/set/get), and version-override scenarios.
+- Verification:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → 4 pre-existing warnings in provider Docker/Podman tests, no errors
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → "Guide lint passed."
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/` → 224 pass, 3 skip, 0 fail (skips: valkey + memcached live integrations gated on `LANDO_TEST_PODMAN_SOCKET`, one mongodb integration gate)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/info.scenario.test.ts plugins/service-lando/test/valkey.test.ts plugins/service-lando/test/valkey.scenario.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 104 pass, 0 fail
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/valkey/` → 4 pass, 0 fail (happy-path, dual-scheme-endpoint, valkey-cli, version-override)
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1458 pass, 18 skip, 0 fail
+- CLI verification: scenario test `info.scenario.test.ts` "prints running services with endpoint URLs as plain text" exercises the full `infoApp()` → `renderInfoAppResult()` path through the real Effect runtime against a fake provider and asserts `valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379`. The compiled `core/bin/lando.ts` info path was also driven against a temp `.lando.yml` declaring `type: valkey`; outside a configured provider sandbox it surfaces the expected `ProviderConfigError` envelope, proving the service-type registry resolves `valkey` without hitting an "unsupported service type" rejection. Functional dual-scheme rendering is covered by the scenario test against the fake provider.
+- **Learnings for future iterations:**
+  - Dual-scheme endpoint emission is a presentation concern, not a planner concern. Switching `endpointText` from `string` to `ReadonlyArray<string>` and the caller from `.map` to `.flatMap` cleanly supports 1-endpoint→N-renderings without changing `EndpointPlan` schema or planner output.
+  - The Valkey default command must explicitly include `--port <port>` so a `port:` override flows into the daemon (the same lesson US-085 learned for memcached's `-p <port>`). The default `valkey-server` argv would otherwise listen on 6379 regardless of the endpoint/healthcheck port.
+  - `valkey/valkey:8` is the Linux Foundation Valkey project's official Docker Hub image; `valkey:8` (no namespace) does not resolve because Docker Hub's `library/` namespace has no valkey entry. Pin the namespaced image and document the override path (`image: valkey/valkey:7`) for users that want Valkey 7.
+  - The Valkey image speaks RESP (Redis Serialization Protocol), so the live integration test issues raw `PING`/`SET`/`GET` over TCP and parses `+`/`-`/`$` reply types. There is no need for a `valkey-cli` binary on the host; the protocol is stable across Redis/Valkey forks.
+  - When adding a service type that needs a different Docker image namespace, the CI workflow generator (`scripts/build-ci-workflow.ts`) needs the new image added to the `podman pull` pre-pull list so the provider-integration job has the image cached before the live test runs.
+---
+
+## [2026-05-28 08:37 UTC] - US-086 Review
+- Reviewed build commit `51ef2dac feat: valkey service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-086 and the broader service catalog notes.
+- Files changed:
+  - `spec/beta/progress.txt`: appended this review record only.
+- `review-work` findings:
+  - Fixed: none; no confirmed in-scope code defect was found.
+  - Rejected/deferred: service-type-shipped tooling (`§6.11.3`) is still not implemented in the current `ServiceTypeShape`; US-086 keeps the same accepted fixture-authored `tooling:` alias pattern documented during US-085, and `valkey.scenario.test.ts` verifies `lando valkey-cli ping/set/get` routing through provider exec.
+  - Rejected/deferred: PRD-B-02's broad “specific minor and SHA” pin-manifest note conflicts with current service-lando practice for the recent catalog stories (`mongo:7`, `memcached:1.6`, `valkey/valkey:8`) and there is no shipped pin-manifest/codegen surface to update in this branch; keeping the existing image-tag pattern avoids inventing a new pinning mechanism in a single-service review.
+  - Noted: `spec/beta/prd-beta-02-service-catalog-full.md` guide drift paths still list `plugins/service-valkey/**` even though the implementation lives in `plugins/service-lando/**`; this is pre-existing PRD path drift shared by multiple service stories and not a US-086 implementation blocker.
+- Verification run and result:
+  - `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with 4 pre-existing warnings in provider Docker/Podman contract integration tests (`inner.api.request!` non-null assertions), unchanged by US-086.
+  - `PATH="$HOME/.bun/bin:$PATH" bun run lint:guides` → Guide lint passed.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/info.scenario.test.ts plugins/service-lando/test/valkey.test.ts plugins/service-lando/test/valkey.scenario.test.ts plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/package.test.ts plugins/service-lando/test/registration.test.ts` → 104 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test test/scenarios/generated/guides/valkey/` → 4 pass, 0 fail.
+  - `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/valkey.integration.test.ts` → 0 pass, 1 skip, 0 fail (`LANDO_TEST_PODMAN_SOCKET` not set).
+  - `PATH="$HOME/.bun/bin:$PATH" bun test` → 1458 pass, 19 skip, 0 fail.
+- **Learnings for future iterations:**
+  - For cache/search catalog stories before the §6.11.3 `ServiceTypeResolution.tooling` surface lands in implementation, `lando <tool>` acceptance remains fixture-authored `tooling:` plus provider-exec scenario coverage rather than service-type-contributed tooling.
+  - The beta PRD's SHA pinning note is ahead of the current `@lando/service-lando` implementation; do not invent per-story digest machinery without first landing the shared pin manifest/codegen path.
+---
+
+## [2026-05-28 08:40 UTC] - Push
+- Branch: us-086-valkey-service-type
+- Push: pushed
+- Commit(s): 51ef2da feat: valkey service type; 2af3238 docs: record US-086 review
+- PR: #185 https://github.com/AaronFeledy/core4/pull/185 (created)
+---
+
+- 2026-05-28: Triage provider-integration-linux-x64 logs failure; switched the SDK contract logs check to follow:false so the live Docker contract reads a bounded historical snapshot instead of racing the initial follow stream chunk.
+- 2026-05-28: PR #185 provider-integration-linux-x64 second triage — root cause was provider-docker's logs decoder treating framed Docker log bytes as single-chunk data, which dropped output when CI split the first frame across socket chunks. Fixed by buffering framed log bytes across chunks in `plugins/provider-docker/src/index.ts` and added regression coverage for split framed log bytes in `plugins/provider-docker/test/contract.integration.test.ts`. Verification: `bun test plugins/provider-docker/test/contract.integration.test.ts`, `bun test sdk/test/contract/provider.test.ts`, `bun run typecheck`, `bun run lint` (pre-existing warnings only).
+
+## [2026-05-28] - PR #185 third triage
+- Restored the live contract log collection to `follow: true` now that provider-docker framed log buffering is fixed, avoiding an empty immediate Docker history snapshot.
+
+- 2026-05-28: PR #185 provider-integration-linux-x64 fourth triage — made the SDK contract service emit `lando-contract-ready` periodically so the live follow:true Docker logs stream receives a chunk even when the startup log was already consumed or not yet available.

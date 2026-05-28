@@ -72,6 +72,7 @@ describe("@lando/service-lando registration", () => {
       "static",
       "static:nginx",
       "static:caddy",
+      "valkey",
     ]);
   });
 
