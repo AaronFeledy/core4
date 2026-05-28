@@ -240,6 +240,7 @@ jobs:
           podman pull node:22-alpine
           podman pull postgres:16
           podman pull postgres:16-alpine
+          podman pull golang:1.22
           docker pull node:22-alpine
 
       - name: Run provider integration tests
@@ -249,6 +250,7 @@ jobs:
           LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
           bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
           bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
+          bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
 
       - name: Teardown Podman
         if: always()

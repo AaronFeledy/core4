@@ -6,6 +6,7 @@ import type { ServiceTypeHostFacts, ServiceTypeShape } from "@lando/sdk/services
 
 import { apacheServiceType } from "../src/services/apache.ts";
 import { composeServiceType } from "../src/services/compose.ts";
+import { go122ServiceType, go123ServiceType } from "../src/services/go.ts";
 import { mariadbServiceType } from "../src/services/mariadb.ts";
 import { mysqlServiceType } from "../src/services/mysql.ts";
 import { nginxServiceType } from "../src/services/nginx.ts";
@@ -56,6 +57,22 @@ const cases: ReadonlyArray<CatalogCase> = [
     expectedType: "nginx",
     expectsAppPaths: true,
     expectsWebroot: "/app",
+  },
+  {
+    id: "go:1.22",
+    serviceType: go122ServiceType,
+    landofileService: { type: "go:1.22" },
+    expectedType: "go:1.22",
+    expectsAppPaths: true,
+    expectsWebroot: null,
+  },
+  {
+    id: "go:1.23",
+    serviceType: go123ServiceType,
+    landofileService: { type: "go:1.23" },
+    expectedType: "go:1.23",
+    expectsAppPaths: true,
+    expectsWebroot: null,
   },
   {
     id: "node:lts",
