@@ -1727,3 +1727,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `sdk/src/test/index.ts`: removed a misplaced doc comment that described the matrix runner while attached to a type alias.
 - Planning-doc leakage scan: no branch-changed source/test comments still cite planning docs, phases, PRDs, story IDs, or section references.
 - Verification: `PATH="$HOME/.bun/bin:$PATH" bun run typecheck` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun run lint` → exit 0 with the same 4 pre-existing provider Docker/Podman non-null-assertion warnings; `PATH="$HOME/.bun/bin:$PATH" bun run build` → exit 0; `PATH="$HOME/.bun/bin:$PATH" bun test plugins/service-lando/test/env-contract.test.ts plugins/service-lando/test/opensearch.test.ts` → 97 pass, 0 fail; full `PATH="$HOME/.bun/bin:$PATH" bun test` → 1519 pass, 22 skip, 1 fail from `core/test/cli/aliases.test.ts` compiled-binary `EACCES`; after rebuilding, `PATH="$HOME/.bun/bin:$PATH" bun test core/test/cli/aliases.test.ts` → 3 pass, 0 fail. LSP diagnostics were attempted for changed TypeScript files but the TypeScript LSP exited with code -2.
+
+## [2026-05-28 13:02 CDT] - Push
+- Branch: us-089-opensearch-service-type
+- Push: pushed
+- Commit(s): 9e628b0 Clean up OpenSearch test slop; 173b9f5 Record US-089 cleanup
+- PR: #189 https://github.com/AaronFeledy/core4/pull/189 (existing)
+---
