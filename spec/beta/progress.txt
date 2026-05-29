@@ -758,3 +758,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `buildFileSyncDoctorCheck` in `doctor.ts` gracefully handles `userDataRoot` being `undefined` (returns "not-installed" check instead of failing), so `lando doctor` never errors on missing config.
   - The doctor NDJSON fixtures must be updated whenever the `DoctorCheck` output changes; slow-bind-mount providers now emit a second `file-sync` check, so `doctor.complete.checks` increased from 1 to 2 and `warned` from 0 to 1 in the windows fixture.
 ---
+
+## [2026-05-29 02:30 CDT] - US-097 follow-up
+- Rewrote `docs/guides/setup/file-sync-mutagen.mdx` to conform to the `GuideFrontmatter` schema (the prior version used `title`/`description` keys that the codegen drift gate rejected). The guide now uses `id`, `provider: test`, `platforms: [darwin, linux, win32]`, `timeout`, and `tags`, with a `<Guide>` body composed of `render={false}` scenarios covering download, idempotent re-run, `--skip-file-sync`, `lando doctor` integration, failure modes, and system-Mutagen-ignored behavior.
+- Verification: typecheck passed; lint passed (4 pre-existing non-null-assertion warnings); `bun test` passed (1730 pass / 0 fail / 23 skip across 250 files); `bun core/bin/lando.ts setup --help` shows `--skip-file-sync` in the OCLIF help text.
+- **Learnings for future iterations:**
+  - `GuideFrontmatter` (sdk/src/docs/guide-frontmatter.ts) rejects unknown keys via `onExcessProperty: "error"`. Allowed keys are exactly: `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated`. No `title`, no `description`. The codegen drift gate (`bun run codegen` → `build-guide-scenarios`) is what surfaces this — it fails the codegen orchestrator test before lint/typecheck do, so MDX guides authored without first checking the schema will fail late in the test suite.
+  - Setup-flow guides documenting cross-platform behavior should declare `platforms: [darwin, linux, win32]` to bind the guide to every host where the surface applies (file-sync only matters on slow-bind-mount providers, but those exist on all three platforms).
+---
