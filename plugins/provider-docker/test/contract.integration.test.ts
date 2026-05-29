@@ -369,7 +369,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(runProviderContract(provider));
 
     expect(provider.capabilities.bindMountPerformance).toBe("native");
-    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
     expect(fake.calls.every((call) => call.path.startsWith("/"))).toBe(true);
@@ -509,7 +509,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(provider.capabilities).toEqual(linuxDockerCapabilities);
     expect(provider.capabilities.bindMountPerformance).not.toBe("slow");
-    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
   });
 
   test("emits a compose document for provider-owned orchestration state", () => {
@@ -553,7 +553,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
 
     expect(provider.capabilities.bindMountPerformance).toBe("slow");
-    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
 
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
     const inspected = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));

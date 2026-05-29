@@ -38,6 +38,7 @@
 - `FileSyncSessionStatus`
 - `FileSyncSessionTarget`
 - `FileSyncSetupOptions`
+- `GlobalServiceContribution`
 - `GuideFrontmatter`
 - `GuideId`
 - `GuideProps`

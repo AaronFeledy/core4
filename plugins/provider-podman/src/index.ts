@@ -262,7 +262,7 @@ export const podmanCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
     serviceLogs: true,
     serviceHealth: "lando",
     hostReachability: "emulated",
-    sharedCrossAppNetwork: false,
+    sharedCrossAppNetwork: true,
     persistentStorage: true,
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),

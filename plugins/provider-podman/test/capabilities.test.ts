@@ -25,6 +25,9 @@ describe("provider-podman capabilities", () => {
     expect(Object.keys(linux).sort()).toEqual(expectedFields);
     expect(Object.keys(macos).sort()).toEqual(expectedFields);
     expect(Object.keys(windows).sort()).toEqual(expectedFields);
+    expect(linux.sharedCrossAppNetwork).toBe(true);
+    expect(macos.sharedCrossAppNetwork).toBe(true);
+    expect(windows.sharedCrossAppNetwork).toBe(true);
   });
 
   test("declares native bind-mount performance on Linux", () => {
@@ -38,6 +41,12 @@ describe("provider-podman capabilities", () => {
     expect(windowsPodmanCapabilities.bindMountPerformance).toBe("slow");
     expect(macosPodmanCapabilities.bindMounts).toBe(true);
     expect(windowsPodmanCapabilities.bindMounts).toBe(true);
+  });
+
+  test("advertises sharedCrossAppNetwork on every supported platform", () => {
+    expect(linuxPodmanCapabilities.sharedCrossAppNetwork).toBe(true);
+    expect(macosPodmanCapabilities.sharedCrossAppNetwork).toBe(true);
+    expect(windowsPodmanCapabilities.sharedCrossAppNetwork).toBe(true);
   });
 
   test("matches platform-keyed exports", () => {

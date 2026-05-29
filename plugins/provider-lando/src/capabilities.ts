@@ -141,7 +141,7 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     serviceLogs: true,
     serviceHealth: "lando",
     hostReachability: "emulated",
-    sharedCrossAppNetwork: false,
+    sharedCrossAppNetwork: true,
     persistentStorage: true,
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),

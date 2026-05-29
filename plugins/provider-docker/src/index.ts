@@ -608,7 +608,7 @@ export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: st
     serviceLogs: true,
     serviceHealth: "lando",
     hostReachability: "emulated",
-    sharedCrossAppNetwork: false,
+    sharedCrossAppNetwork: true,
     persistentStorage: true,
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",

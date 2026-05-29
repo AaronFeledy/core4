@@ -806,6 +806,37 @@ export type GlobalConfig = typeof GlobalConfig.Type;
 
 // Plugin manifest — declared by every plugin's package.json + plugin.yaml.
 
+/**
+ * Plugin-contributed global app service entry.
+ *
+ * Plugins use `globalServices:` to add a service to the global Lando app's
+ * generated `dist` layer. The active provider must satisfy any capabilities
+ * listed in `requires.providerCapabilities`; otherwise the planner drops the
+ * contribution with `GlobalServiceCapabilityError` (§20.8.1).
+ */
+export const GlobalServiceContribution = Schema.Struct({
+  /** Service id inside the global Landofile. MUST be unique across plugins. */
+  id: Schema.String,
+  /** Path to the module that produces the Effect returning a ServiceConfig. */
+  module: Schema.optional(Schema.String),
+  /** Initial enabled state in `global.config.yml` when the plugin is first installed. */
+  enabledByDefault: Schema.optional(Schema.Boolean),
+  /** Provider/global-app dependencies that must be satisfied for materialization. */
+  requires: Schema.optional(
+    Schema.Struct({
+      /** ProviderCapabilities keys the active provider MUST satisfy. */
+      providerCapabilities: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+  /** Other global service ids that cannot coexist with this contribution. */
+  conflicts: Schema.optional(Schema.Array(Schema.String)),
+  /** One-line description surfaced in `meta:global:list` / `info`. */
+  summary: Schema.optional(Schema.String),
+  /** Canonical command ids contributed by the same plugin that operate on this service. */
+  commands: Schema.optional(Schema.Array(Schema.String)),
+});
+export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
+
 /** Contribution surface — keys the plugin contributes to. */
 export const PluginContribution = Schema.Struct({
   /** Service types this plugin registers. */
@@ -828,6 +859,8 @@ export const PluginContribution = Schema.Struct({
   cas: Schema.optional(Schema.Array(Schema.String)),
   /** Built-in commands registered. */
   commands: Schema.optional(Schema.Array(Schema.String)),
+  /** Global-app service contributions (§20.4). */
+  globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
 });
 export type PluginContribution = typeof PluginContribution.Type;
 
@@ -1202,6 +1235,7 @@ const JSON_SCHEMA_REGISTRY = {
   HostPlatform,
   ServiceInfo,
   PluginManifest,
+  GlobalServiceContribution,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
   FileSyncSessionInfo,
@@ -1265,6 +1299,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(ServiceInfo);
     case "PluginManifest":
       return JSONSchema.make(PluginManifest);
+    case "GlobalServiceContribution":
+      return JSONSchema.make(GlobalServiceContribution);
     case "FileSyncEngineCapabilities":
       return JSONSchema.make(FileSyncEngineCapabilities);
     case "FileSyncSessionSpec":
