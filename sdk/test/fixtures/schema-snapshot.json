@@ -4,6 +4,20 @@
       "manifest": {
         "api": 4,
         "contributes": {
+          "fileSyncEngines": ["mutagen"]
+        },
+        "description": "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/file-sync-mutagen",
+        "version": "0.0.0"
+      },
+      "name": "@lando/file-sync-mutagen"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
           "loggers": ["pretty"]
         },
         "description": "Pretty-printed Logger plugin.",
@@ -104,6 +118,7 @@
   "generatedBy": "scripts/build-schema-snapshot.ts",
   "scope": {
     "bundledPluginManifests": [
+      "@lando/file-sync-mutagen",
       "@lando/logger-pretty",
       "@lando/provider-docker",
       "@lando/provider-lando",

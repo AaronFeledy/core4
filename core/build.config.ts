@@ -22,6 +22,7 @@ export interface BundledPluginEntry {
     readonly providers?: ReadonlyArray<string>;
     readonly serviceTypes?: ReadonlyArray<string>;
     readonly loggers?: ReadonlyArray<string>;
+    readonly fileSyncEngines?: ReadonlyArray<string>;
   };
 }
 
@@ -60,6 +61,11 @@ export const buildConfig: BuildConfig = {
       contributes: { serviceTypes: ["node:lts", "postgres"] },
     },
     { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
+    {
+      name: "@lando/file-sync-mutagen",
+      path: "plugins/file-sync-mutagen",
+      contributes: { fileSyncEngines: ["mutagen"] },
+    },
   ],
   bundledRecipes: [
     { id: "node-postgres" },

@@ -9,6 +9,7 @@
 #   - @lando/provider-podman
 #   - @lando/service-lando
 #   - @lando/logger-pretty
+#   - @lando/file-sync-mutagen
 name: ci
 
 on:

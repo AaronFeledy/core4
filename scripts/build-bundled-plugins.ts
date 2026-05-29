@@ -120,10 +120,11 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
 
 const layerExportFor = (
   entry: (typeof buildConfig.bundledPlugins)[number],
-): "provider" | "services" | "logger" => {
+): "provider" | "services" | "logger" | "engine" => {
   if (entry.contributes?.providers !== undefined) return "provider";
   if (entry.contributes?.serviceTypes !== undefined) return "services";
   if (entry.contributes?.loggers !== undefined) return "logger";
+  if (entry.contributes?.fileSyncEngines !== undefined) return "engine";
 
   throw new Error(`Bundled plugin ${entry.name} does not declare a supported layer contribution.`);
 };

@@ -11,6 +11,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-podman",
   "@lando/service-lando",
   "@lando/logger-pretty",
+  "@lando/file-sync-mutagen",
 ];
 
 const runWithPluginRegistry = <A, E>(effect: Effect.Effect<A, E, PluginRegistry>) =>
