@@ -26,15 +26,28 @@ interface ComposeService {
   readonly volumes?: ReadonlyArray<string>;
   readonly tmpfs?: ReadonlyArray<string>;
   readonly depends_on?: Readonly<Record<string, DependsOnEntry>>;
-  readonly networks?: ReadonlyArray<string>;
+  readonly networks?: Readonly<Record<string, { readonly aliases?: ReadonlyArray<string> }>>;
 }
 
 interface ComposeDocument {
   readonly version: "3.9";
   readonly services: Readonly<Record<string, ComposeService>>;
-  readonly networks: Readonly<Record<string, { readonly driver: string }>>;
+  readonly networks: Readonly<
+    Record<string, { readonly driver?: string; readonly external?: boolean; readonly name?: string }>
+  >;
   readonly volumes?: Readonly<Record<string, { readonly driver?: string }>>;
 }
+
+const SHARED_CROSS_APP_NETWORK = "lando_bridge_network";
+
+const appNetworkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+const appNetworkNames = (plan: AppPlan): ReadonlyArray<string> =>
+  plan.networks.length === 0 ? [appNetworkName(plan)] : plan.networks.map((network) => network.name);
+
+const serviceNetworkAliases = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => [
+  `${service.name}.${plan.slug}.internal`,
+];
 
 const composeError = (message: string, details?: unknown) =>
   new ProviderInternalError({
@@ -149,11 +162,13 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
   ...(service.depends_on === undefined || Object.keys(service.depends_on).length === 0
     ? {}
     : { depends_on: service.depends_on }),
-  ...(service.networks === undefined || service.networks.length === 0 ? {} : { networks: service.networks }),
+  ...(service.networks === undefined || Object.keys(service.networks).length === 0
+    ? {}
+    : { networks: service.networks }),
 });
 
 const toComposeDocument = (plan: AppPlan): ComposeDocument => {
-  const networkNames = plan.networks.map((network) => network.name);
+  const networkNames = Array.from(new Set([...appNetworkNames(plan), SHARED_CROSS_APP_NETWORK]));
   const services = Object.fromEntries(
     Object.entries(plan.services).map(([name, service]) => [
       name,
@@ -164,12 +179,23 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         volumes: serviceVolumes(plan, service),
         tmpfs: serviceTmpfs(service),
         depends_on: serviceDependsOn(service),
-        networks: networkNames,
+        networks: Object.fromEntries(
+          networkNames.map((networkName) => [
+            networkName,
+            networkName === SHARED_CROSS_APP_NETWORK ? { aliases: serviceNetworkAliases(plan, service) } : {},
+          ]),
+        ),
       }),
     ]),
   );
   const networks = Object.fromEntries(
-    plan.networks.map((network) => [network.name, { driver: network.driver ?? "bridge" }]),
+    networkNames.map((name) => {
+      if (name === SHARED_CROSS_APP_NETWORK) {
+        return [name, { external: true, name: SHARED_CROSS_APP_NETWORK }];
+      }
+      const planned = plan.networks.find((network) => network.name === name);
+      return [name, { driver: planned?.driver ?? "bridge" }];
+    }),
   );
   const volumes = Object.fromEntries([
     ...plan.stores.map((store): [string, { readonly driver?: string }] => [
@@ -242,13 +268,28 @@ export const renderCompose = (plan: AppPlan): string => {
 
     if (service.networks !== undefined) {
       lines.push("    networks:");
-      writeScalarList(lines, "      ", service.networks);
+      for (const [networkName, network] of Object.entries(service.networks)) {
+        lines.push(`      ${networkName}:`);
+        if (network.aliases !== undefined && network.aliases.length > 0) {
+          lines.push("        aliases:");
+          writeScalarList(lines, "          ", network.aliases);
+        }
+      }
     }
   }
 
   lines.push("networks:");
   for (const [networkName, network] of Object.entries(document.networks)) {
-    lines.push(`  ${networkName}:`, `    driver: ${scalar(network.driver)}`);
+    lines.push(`  ${networkName}:`);
+    if (network.driver !== undefined) {
+      lines.push(`    driver: ${scalar(network.driver)}`);
+    }
+    if (network.external !== undefined) {
+      lines.push(`    external: ${network.external ? "true" : "false"}`);
+    }
+    if (network.name !== undefined) {
+      lines.push(`    name: ${scalar(network.name)}`);
+    }
   }
 
   if (document.volumes !== undefined) {

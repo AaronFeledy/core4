@@ -167,7 +167,7 @@ describe("provider-lando bringDown", () => {
     expect(first.changed).toBe(true);
     expect(second.changed).toBe(false);
     expect(fake.existing.size).toBe(0);
-    expect(fake.networks.size).toBe(0);
+    expect(Array.from(fake.networks)).toEqual(["lando_bridge_network"]);
     expect(fake.volumes.has("bringdownapp_database_data")).toBe(true);
     expect(fake.calls.some((call) => call.method === "DELETE" && call.path.startsWith("/volumes/"))).toBe(
       false,
