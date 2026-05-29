@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -17,6 +17,7 @@ import {
   mutagenAgentBinaryPath,
   mutagenHostBinaryPath,
   mutagenInstalledVersionPath,
+  readInstalledMutagenStatus,
   readInstalledMutagenVersion,
 } from "../src/download.ts";
 
@@ -106,6 +107,8 @@ describe("MUTAGEN_VERSIONS_MANIFEST", () => {
     ];
     for (const entry of allEntries) {
       expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(entry.sha256).not.toMatch(/^0+$/);
+      expect(entry.sizeBytes).toBeGreaterThan(0);
       expect(entry.url).toMatch(/^https:\/\//);
       expect(entry.archiveFilename.length).toBeGreaterThan(0);
       expect(entry.binaryName.length).toBeGreaterThan(0);
@@ -127,9 +130,13 @@ describe("hostPlatformKey", () => {
     expect(hostPlatformKey("darwin", "arm64")).toBe("darwin-arm64");
   });
 
-  test("win32 + any arch → win32-x64", () => {
+  test("win32 + x64 → win32-x64", () => {
     expect(hostPlatformKey("win32", "x64")).toBe("win32-x64");
-    expect(hostPlatformKey("win32", "arm64")).toBe("win32-x64");
+  });
+
+  test("unsupported arch throws a tagged platform error", () => {
+    expect(() => hostPlatformKey("linux", "arm")).toThrow(MutagenBinaryUnsupportedPlatformError);
+    expect(() => hostPlatformKey("win32", "arm64")).toThrow(MutagenBinaryUnsupportedPlatformError);
   });
 });
 
@@ -177,8 +184,8 @@ describe("readInstalledMutagenVersion", () => {
       await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(versionPath), {
         recursive: true,
       });
-      await (await import("node:fs/promises")).writeFile(versionPath, "v0.18.3\n", "utf-8");
-      expect(await readInstalledMutagenVersion(dir)).toBe("v0.18.3");
+      await writeFile(versionPath, "v0.18.1\n", "utf-8");
+      expect(await readInstalledMutagenVersion(dir)).toBe("v0.18.1");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -212,6 +219,64 @@ describe("makeMutagenDownloader().setup()", () => {
 
       const installed = await readInstalledMutagenVersion(dir);
       expect(installed).toBe(TEST_MANIFEST.mutagenVersion);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("installed status requires marker plus host and agent binaries", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    try {
+      const versionPath = mutagenInstalledVersionPath(dir);
+      await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(versionPath), {
+        recursive: true,
+      });
+      await writeFile(versionPath, `${TEST_MANIFEST.mutagenVersion}\n`, "utf-8");
+
+      expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(false);
+
+      await writeFile(mutagenHostBinaryPath(dir, "linux"), FAKE_BINARY_BYTES);
+      for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
+        const agentPath = mutagenAgentBinaryPath(dir, agentKey);
+        await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(agentPath), {
+          recursive: true,
+        });
+        await writeFile(agentPath, FAKE_BINARY_BYTES);
+      }
+
+      expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("marker-only installs are repaired instead of skipped", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    let fetchCalls = 0;
+    const countingFetch: typeof fetch = ((url: RequestInfo | URL): Promise<Response> => {
+      fetchCalls += 1;
+      return fakeFetch()(url);
+    }) as typeof fetch;
+
+    try {
+      const versionPath = mutagenInstalledVersionPath(dir);
+      await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(versionPath), {
+        recursive: true,
+      });
+      await writeFile(versionPath, `${TEST_MANIFEST.mutagenVersion}\n`, "utf-8");
+
+      const downloader = makeMutagenDownloader();
+      await run(
+        downloader.setup({
+          userDataRoot: dir,
+          _testManifest: TEST_MANIFEST,
+          fetchImpl: countingFetch,
+          extractImpl: fakeExtract(),
+        }),
+      );
+
+      expect(fetchCalls).toBeGreaterThan(0);
+      expect(new Uint8Array(await readFile(mutagenHostBinaryPath(dir)))).toEqual(FAKE_BINARY_BYTES);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

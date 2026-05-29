@@ -218,5 +218,6 @@ export {
   mutagenAgentBinaryPath,
   mutagenHostBinaryPath,
   mutagenInstalledVersionPath,
+  readInstalledMutagenStatus,
   readInstalledMutagenVersion,
 } from "./download.ts";

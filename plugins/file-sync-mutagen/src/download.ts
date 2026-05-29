@@ -6,7 +6,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
@@ -65,7 +65,7 @@ const MutagenBinaryEntrySchema = Schema.Struct({
   archiveFilename: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
   binaryName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
   installName: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
-  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThan(0)),
 });
 
 const MutagenVersionsManifestSchema = Schema.Struct({
@@ -128,9 +128,18 @@ const currentHostPlatform = (): HostPlatform => {
 
 /** Map host platform + arch to the manifest host key (e.g. "linux-x64"). */
 export const hostPlatformKey = (platform: HostPlatform, arch: string): string => {
-  if (platform === "darwin") return arch === "arm64" ? "darwin-arm64" : "darwin-x64";
-  if (platform === "linux") return arch === "arm64" ? "linux-arm64" : "linux-x64";
-  return "win32-x64";
+  if (platform === "darwin") {
+    if (arch === "arm64") return "darwin-arm64";
+    if (arch === "x64") return "darwin-x64";
+  }
+  if (platform === "linux") {
+    if (arch === "arm64") return "linux-arm64";
+    if (arch === "x64") return "linux-x64";
+  }
+  if (platform === "win32" && arch === "x64") return "win32-x64";
+  throw new MutagenBinaryUnsupportedPlatformError(
+    `No pinned Mutagen host binary entry for platform "${platform}-${arch}".`,
+  );
 };
 
 // ====  Archive extraction  ====
@@ -215,6 +224,10 @@ export type ExtractImpl = (archiveBytes: Uint8Array, entry: MutagenBinaryEntry) 
 
 export const defaultExtract: ExtractImpl = async (archiveBytes, entry) => {
   if (entry.archiveFilename.endsWith(".tar.gz")) {
+    if (entry.binaryName.startsWith("linux_")) {
+      const agentsArchive = extractBinaryFromTarGz(archiveBytes, "mutagen-agents.tar.gz");
+      return extractBinaryFromTarGz(agentsArchive, entry.binaryName);
+    }
     return extractBinaryFromTarGz(archiveBytes, entry.binaryName);
   }
   if (entry.archiveFilename.endsWith(".zip")) {
@@ -321,6 +334,58 @@ export const readInstalledMutagenVersion = async (userDataRoot: string): Promise
   }
 };
 
+export interface InstalledMutagenStatus {
+  readonly installedVersion?: string;
+  readonly isCurrent: boolean;
+}
+
+const expectedInstallPaths = (
+  userDataRoot: string,
+  manifest: MutagenVersionsManifest,
+  platform: HostPlatform,
+  arch: string,
+): ReadonlyArray<string> => {
+  const hostKey = hostPlatformKey(platform, arch);
+  const hostEntry = manifest.host[hostKey];
+  if (hostEntry === undefined) return [];
+  return [
+    mutagenHostBinaryPath(userDataRoot, platform),
+    ...Object.keys(manifest.agents).map((agentKey) => mutagenAgentBinaryPath(userDataRoot, agentKey)),
+  ];
+};
+
+const fileExistsWithBytes = async (path: string): Promise<boolean> => {
+  try {
+    const info = await stat(path);
+    return info.isFile() && info.size > 0;
+  } catch {
+    return false;
+  }
+};
+
+export const readInstalledMutagenStatus = async (
+  userDataRoot: string,
+  manifest: MutagenVersionsManifest = MUTAGEN_VERSIONS_MANIFEST,
+  platform: HostPlatform = currentHostPlatform(),
+  arch: string = process.arch,
+): Promise<InstalledMutagenStatus> => {
+  const installedVersion = await readInstalledMutagenVersion(userDataRoot);
+  if (installedVersion !== manifest.mutagenVersion) {
+    return { ...(installedVersion === undefined ? {} : { installedVersion }), isCurrent: false };
+  }
+
+  let paths: ReadonlyArray<string>;
+  try {
+    paths = expectedInstallPaths(userDataRoot, manifest, platform, arch);
+  } catch {
+    return { installedVersion, isCurrent: false };
+  }
+  if (paths.length === 0) return { installedVersion, isCurrent: false };
+
+  const valid = await Promise.all(paths.map(fileExistsWithBytes));
+  return { installedVersion, isCurrent: valid.every(Boolean) };
+};
+
 const writeInstalledVersion = (
   userDataRoot: string,
   version: string,
@@ -349,16 +414,24 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
       const extractImpl = options.extractImpl ?? defaultExtract;
       const manifest = options._testManifest ?? MUTAGEN_VERSIONS_MANIFEST;
 
+      const arch = process.arch;
+      const platform = currentHostPlatform();
+      let hostKey: string;
+      try {
+        hostKey = hostPlatformKey(platform, arch);
+      } catch (cause) {
+        yield* Effect.fail(new MutagenBinaryUnsupportedPlatformError(String(cause), cause));
+        return;
+      }
+
       if (!force) {
-        const installed = yield* Effect.promise(() => readInstalledMutagenVersion(userDataRoot));
-        if (installed === manifest.mutagenVersion) {
+        const status = yield* Effect.promise(() =>
+          readInstalledMutagenStatus(userDataRoot, manifest, platform, arch),
+        );
+        if (status.isCurrent) {
           return;
         }
       }
-
-      const arch = process.arch;
-      const platform = currentHostPlatform();
-      const hostKey = hostPlatformKey(platform, arch);
 
       const hostEntry = manifest.host[hostKey];
       if (hostEntry === undefined) {
