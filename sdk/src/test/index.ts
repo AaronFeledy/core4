@@ -1882,18 +1882,27 @@ export const runScannerContract = (scanner: UrlScannerShape): Effect.Effect<void
       scanResult,
     );
 
-    yield* scanner
+    const collisions = yield* scanner
       .detectCollisions([testAppId])
       .pipe(Effect.mapError((d) => scannerContractFailure("detectCollisions resolves", d)));
+
+    yield* requireScannerContract(
+      Array.isArray(collisions),
+      "detectCollisions result is an array",
+      collisions,
+    );
   });
 
 export const makeTestUrlScanner = (): UrlScannerShape & {
   readonly calls: ReadonlyArray<
-    { readonly op: "scan"; readonly appId: AppId } | { readonly op: "detectCollisions" }
+    | { readonly op: "scan"; readonly appId: AppId }
+    | { readonly op: "detectCollisions"; readonly appIds: ReadonlyArray<AppId> }
   >;
 } => {
-  const calls: Array<{ readonly op: "scan"; readonly appId: AppId } | { readonly op: "detectCollisions" }> =
-    [];
+  const calls: Array<
+    | { readonly op: "scan"; readonly appId: AppId }
+    | { readonly op: "detectCollisions"; readonly appIds: ReadonlyArray<AppId> }
+  > = [];
   return {
     id: "test",
     scan: (appId) =>
@@ -1901,9 +1910,9 @@ export const makeTestUrlScanner = (): UrlScannerShape & {
         calls.push({ op: "scan", appId });
         return { appId, endpoints: [] };
       }),
-    detectCollisions: (_appIds) =>
+    detectCollisions: (appIds) =>
       Effect.sync((): ReadonlyArray<PortCollision> => {
-        calls.push({ op: "detectCollisions" });
+        calls.push({ op: "detectCollisions", appIds });
         return [];
       }),
     calls,
