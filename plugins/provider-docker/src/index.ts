@@ -890,7 +890,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
     WorkingDir: service.workingDirectory,
     Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name },
     HostConfig: hostConfig(plan, service),
-    NetworkingConfig: { EndpointsConfig: Object.fromEntries(networkNames(plan).map((name) => [name, {}])) },
+    NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
   };
 };
 
