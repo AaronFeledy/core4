@@ -462,8 +462,11 @@ describe("AppPlannerLive", () => {
     await withTempCwd(async (dir) => {
       const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
 
-      expect(appPlan.fileSync.length).toBeGreaterThan(0);
+      expect(appPlan.fileSync).toHaveLength(1);
       expect(appPlan.fileSync.every((entry) => entry.engineId === "mutagen")).toBe(true);
+      expect(
+        appPlan.fileSync.map((entry) => `${entry.session.service}:${entry.session.mountKey}`).sort(),
+      ).toEqual(["web:app-mount"]);
 
       const webEntry = appPlan.fileSync.find((entry) => entry.session.service === ServiceName.make("web"));
       expect(webEntry).toBeDefined();
