@@ -420,6 +420,19 @@ export const ServicePlan = Schema.Struct({
 });
 export type ServicePlan = typeof ServicePlan.Type;
 
+// Shared file-sync naming and mount-target contract used by the planner and providers.
+export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
+  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+export const sameAppMountTarget = (
+  appMount: ServicePlan["appMount"],
+  mount: ServicePlan["mounts"][number],
+): boolean =>
+  appMount !== undefined &&
+  mount.type === "bind" &&
+  mount.source === appMount.source &&
+  mount.target === appMount.target;
+
 /**
  * One file-sync session entry on an `AppPlan`.
  *

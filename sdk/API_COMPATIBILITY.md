@@ -29,6 +29,8 @@
 - `FileSyncEventChunk`
 - `FileSyncMode`
 - `FileSyncPlan`
+- `fileSyncVolumeName`
+- `sameAppMountTarget`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`

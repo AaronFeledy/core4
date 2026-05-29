@@ -19,6 +19,8 @@ import {
   ServiceName,
   ServicePlan,
   type StorageScope,
+  fileSyncVolumeName,
+  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -139,18 +141,6 @@ const kebab = (raw: string): string => {
 const shortHash = (input: string): string => createHash("sha256").update(input).digest("hex").slice(0, 8);
 
 const appNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
 
 const collectFileSyncEntries = (params: {
   readonly appId: ReturnType<typeof AppId.make>;

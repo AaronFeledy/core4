@@ -2,7 +2,14 @@ import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
 import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
-import { type AppPlan, type AppRef, ProviderId, type ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type AppRef,
+  ProviderId,
+  type ServicePlan,
+  fileSyncVolumeName,
+  sameAppMountTarget,
+} from "@lando/sdk/schema";
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
@@ -137,18 +144,6 @@ const serviceEnv = (service: ServicePlan) =>
   Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
 
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
-
-const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
 
 const hostConfig = (plan: AppPlan, service: ServicePlan) => {
   const portBindings = Object.fromEntries(

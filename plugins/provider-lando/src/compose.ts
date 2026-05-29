@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
 const PROVIDER_ID = "lando";
@@ -65,20 +65,8 @@ const serviceImage = (service: ServicePlan) => {
 
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 
-const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
 const volumeSpec = (source: string, target: string, readOnly: boolean): string =>
   `${source}:${target}${mountSuffix(readOnly)}`;
-
-const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
 
 const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => {
   const appMount =

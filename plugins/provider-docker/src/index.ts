@@ -15,6 +15,8 @@ import {
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
+  fileSyncVolumeName,
+  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
   type CommandSpec,
@@ -811,18 +813,6 @@ const serviceEnv = (service: ServicePlan) =>
   Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
 
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
-
-const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
-  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const sameAppMountTarget = (
-  appMount: ServicePlan["appMount"],
-  mount: ServicePlan["mounts"][number],
-): boolean =>
-  appMount !== undefined &&
-  mount.type === "bind" &&
-  mount.source === appMount.source &&
-  mount.target === appMount.target;
 
 const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
   if (cmd === undefined) return undefined;
