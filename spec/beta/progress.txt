@@ -700,3 +700,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (deferred/rejected): PRD wording says a `compose:` block, but `spec/07-landofile-and-config.md` forbids the wrapper and requires Compose keys directly under the Landofile/service; followed the spec-owned direct-key surface.
 - Verification: typecheck passed; lint passed with pre-existing non-null assertion warnings in provider Docker/Podman tests; full tests passed.
 ---
+
+## [2026-05-28 20:58 CDT] - Babysit
+- PR: #196 https://github.com/AaronFeledy/core4/pull/196
+- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Bugbot remediation-scope reports addressed across `9d13b13`, `15ebf7f`, `242bada`, and `05f568e`; rerun Bugbot passed)
+- Merge: merged (squash) as `6759dcb Implement raw Compose passthrough service (#196)`
+---
