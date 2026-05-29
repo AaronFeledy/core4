@@ -159,7 +159,10 @@ describe("LandofileServiceLive", () => {
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
             expect(error.issues).toContain("services.web.deploy");
+            expect(error.message).toContain("unsupported Compose-subset keys");
+            expect(error.message).toContain("providers.<provider-id>");
             expect(error.message).toContain("spec/07-landofile-and-config.md");
+            expect(error.message).toContain("§7.4");
           }
         }
       }

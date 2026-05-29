@@ -35,7 +35,9 @@ export { LandofileService } from "@lando/sdk/services";
 const LANDOFILE_NAME = ".lando.yml";
 const LANDOFILE_TS_NAME = ".lando.ts";
 const REMEDIATION =
-  "Remove unsupported keys or update the MVP Landofile subset in spec/07-landofile-and-config.md.";
+  "Remove unsupported keys, move provider-native Compose options under providers.<id>, or update the documented Compose subset in spec/07-landofile-and-config.md §7.4.";
+const COMPOSE_ALLOWLIST_REMEDIATION =
+  "Compose compatibility is limited to the documented §7.4 subset in spec/07-landofile-and-config.md; move provider-native keys under providers.<provider-id> or use config translation.";
 
 const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
 
@@ -248,6 +250,8 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
 };
 
+const isServiceKeyIssue = (issue: string): boolean => /^services\.[^.]+\.[^.]+/.test(issue);
+
 const validateLandofile = (
   filePath: string,
   parsed: unknown,
@@ -256,9 +260,12 @@ const validateLandofile = (
   if (Either.isRight(result)) return Effect.succeed(result.right);
 
   const issues = validationIssues(result.left);
+  const hasComposeSubsetIssue = issues.some(isServiceKeyIssue);
+  const remediation = hasComposeSubsetIssue ? COMPOSE_ALLOWLIST_REMEDIATION : REMEDIATION;
+  const scope = hasComposeSubsetIssue ? "unsupported Compose-subset keys" : "unsupported MVP keys";
   return Effect.fail(
     new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. ${REMEDIATION}`,
+      message: `Landofile contains ${scope}: ${issues.join(", ")}. ${remediation}`,
       file: filePath,
       issues,
     }),
