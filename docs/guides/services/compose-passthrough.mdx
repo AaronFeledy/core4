@@ -1,0 +1,54 @@
+---
+id: compose-passthrough
+provider: test
+timeout: 90000
+tags: [beta, docs, compose, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="compose-passthrough-demo" />
+      <Variable name="serviceType" value="compose" display="Declare `type: compose` in your services block" />
+      <Variable name="image" value="traefik/whoami:v1.10" display="Any third-party image outside the canonical service catalog" />
+      <Variable name="defaultPort" value="80" display="Compose port short form uses the container port" />
+      <Variable name="appRootBindTarget" value="/app" display="The app root is mounted at /app by default" />
+      <Variable name="optOut" value="appMount: false" display="Use `appMount: false` to opt out of the default app-root mount" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="probe" render={false} reason="The fixture defines probe as an app tooling alias; `lando probe` curls the HTTP server and prints the response body once the service is up.">
+    <Step name="note">
+      <Variable name="probeCommand" value="lando probe" display="Run the `probe` alias to curl the HTTP surface" />
+      <Variable name="expectedBody" value="Hostname" display="`traefik/whoami` responds with `Hostname: ...`" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="allowlist" render={false} reason="The compose subset rejects unsupported keys and names the offending key in its remediation.">
+    <Step name="note">
+      <Variable name="allowedKeys" value="image, command, entrypoint, user, workingDirectory, environment, ports, volumes, composeBuild, dependsOn, healthcheck, hostnames, appMount, mounts, storage, endpoints, routes, providers" display="Top-level Compose keys accepted by the subset" />
+      <Variable name="remediation" value="Move unsupported provider-specific config under providers.<id> or open an issue to grow the subset." display="Remediation for unsupported keys" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="env-contract" render={false} reason="The passthrough emits the expected `LANDO_*` identity vars and joins the per-app network like other services.">
+    <Step name="note">
+      <Variable name="landoEnv" value="LANDO=ON; LANDO_APP_NAME; LANDO_APP_KIND; LANDO_PROJECT; LANDO_SERVICE_API; LANDO_SERVICE_NAME; LANDO_SERVICE_TYPE=compose; LANDO_APP_ROOT=/app; LANDO_PROJECT_MOUNT=/app" display="`LANDO_*` identity emitted by compose services unless `appMount: false` is set" />
+      <Variable name="network" value="lando-<slug>" display="Per-app network membership" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="opt-out" render={false} reason="Use `appMount: false` when the third-party image must not see the app source.">
+    <Step name="note">
+      <Variable name="optedOutBehavior" value="No appMount, no synthetic /app bind mount, and LANDO_APP_ROOT / LANDO_PROJECT_MOUNT are omitted." display="What changes when appMount: false is set" />
+    </Step>
+  </Scenario>
+</Guide>

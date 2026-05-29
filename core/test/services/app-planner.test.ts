@@ -228,17 +228,13 @@ const planExitWithCustomRegistry = (
 
 const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isFailure(exit)) {
-    const failure = Cause.failureOption(exit.cause);
-    expect(failure._tag).toBe("Some");
-    if (failure._tag !== "Some") {
-      throw new Error("Expected Some failure");
-    }
-
-    return failure.value;
+  if (!Exit.isFailure(exit)) {
+    throw new Error("Expected failure");
   }
 
-  throw new Error("Expected failure");
+  const failure = Cause.failureOption(exit.cause);
+  expect(failure._tag).toBe("Some");
+  return failure.value;
 };
 
 describe("AppPlannerLive", () => {
@@ -480,6 +476,57 @@ describe("AppPlannerLive", () => {
       expect(failure._tag).toBe("LandofileValidationError");
       if (failure instanceof LandofileValidationError) {
         expect(failure.issues).toEqual(["services.cache.type"]);
+      }
+    });
+  });
+
+  test("wraps service type validation failures as LandofileValidationError", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("worker")]: { type: "compose" },
+        },
+      });
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure._tag).toBe("LandofileValidationError");
+        expect(failure.issues).toEqual(["services.worker"]);
+        expect(failure.message).toContain('requires either "image:" or "composeBuild:"');
+      }
+    });
+  });
+
+  test("fails before apply when build artifacts require an unsupported provider capability", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit(
+        {
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("worker")]: {
+              type: "compose",
+              composeBuild: { context: "." },
+            },
+          },
+        },
+        {
+          ...providerLandoCapabilities,
+          artifactBuild: false,
+        },
+      );
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure._tag).toBe("CapabilityError");
+        expect(failure.service).toBe("worker");
+        expect(failure.feature).toBe("artifact build");
+        expect(failure.capability).toBe("artifactBuild");
+        expect(failure.remediation).toContain("pre-built image reference");
       }
     });
   });

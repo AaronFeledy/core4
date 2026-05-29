@@ -980,29 +980,37 @@
                 "type": "number"
               },
               "appMount": {
-                "additionalProperties": false,
-                "properties": {
-                  "excludes": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "includes": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "readOnly": {
+                "anyOf": [
+                  {
+                    "enum": [false],
                     "type": "boolean"
                   },
-                  "target": {
-                    "type": "string"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "excludes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "includes": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["target"],
+                    "type": "object"
                   }
-                },
-                "required": ["target"],
-                "type": "object"
+                ]
               },
               "build": {
                 "additionalProperties": false,

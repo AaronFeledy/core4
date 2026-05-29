@@ -47,7 +47,16 @@ describe("compose ServiceType (raw passthrough)", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-worker-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/worker");
-    expect(plan.mounts).toEqual([]);
+    expect(plan.mounts).toHaveLength(1);
+    expect(plan.mounts[0]).toMatchObject({
+      type: "bind",
+      source: "/srv/apps/myapp",
+      target: "/app",
+      readOnly: false,
+    });
+    expect(plan.appMount).toMatchObject({ source: "/srv/apps/myapp", target: "/app", readOnly: false });
+    expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
+    expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
   });
 
   test("accepts relative bind volumes resolved against appRoot", () => {
@@ -57,6 +66,7 @@ describe("compose ServiceType (raw passthrough)", () => {
         worker: {
           type: "compose",
           image: "alpine:3",
+          appMount: false,
           volumes: ["./config:/etc/worker:ro"],
         },
       },
@@ -219,6 +229,7 @@ describe("compose ServiceType (raw passthrough)", () => {
           db: {
             type: "compose",
             image: "alpine:3",
+            appMount: false,
             volumes: ["~/data:/data"],
           },
         },
@@ -249,6 +260,7 @@ describe("compose ServiceType (raw passthrough)", () => {
           app: {
             type: "compose",
             image: "alpine:3",
+            appMount: false,
             volumes: ["~:/home/app"],
           },
         },
@@ -279,6 +291,7 @@ describe("compose ServiceType (raw passthrough)", () => {
           web: {
             type: "compose",
             image: "alpine:3",
+            appMount: false,
             volumes: ["./data:/data"],
           },
         },
@@ -299,6 +312,91 @@ describe("compose ServiceType (raw passthrough)", () => {
         source: "/srv/apps/myapp/data",
         target: "/data",
         readOnly: false,
+      });
+    });
+  });
+
+  describe("default app-root bind mount and per-service opt-out", () => {
+    test("emits a default app-root bind mount at /app plus LANDO_APP_ROOT/LANDO_PROJECT_MOUNT", () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: { worker: { type: "compose", image: "alpine:3" } },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = composeServiceType.toServicePlan({
+        name: "worker",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      });
+
+      expect(plan.appMount).toMatchObject({
+        source: "/srv/apps/myapp",
+        target: "/app",
+        readOnly: false,
+      });
+      expect(plan.mounts).toHaveLength(1);
+      expect(plan.mounts[0]).toMatchObject({
+        type: "bind",
+        source: "/srv/apps/myapp",
+        target: "/app",
+        readOnly: false,
+      });
+      expect(plan.environment.LANDO_APP_ROOT).toBe("/app");
+      expect(plan.environment.LANDO_PROJECT_MOUNT).toBe("/app");
+    });
+
+    test("appMount: false opts out — no appMount, no synthetic /app bind, no app-path env", () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: { worker: { type: "compose", image: "alpine:3", appMount: false } },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = composeServiceType.toServicePlan({
+        name: "worker",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      });
+
+      expect(plan.appMount).toBeUndefined();
+      expect(plan.mounts).toEqual([]);
+      expect(plan.environment.LANDO_APP_ROOT).toBeUndefined();
+      expect(plan.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
+    });
+
+    test("default app-root bind precedes user volume bind mounts", () => {
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "myapp",
+        services: {
+          worker: {
+            type: "compose",
+            image: "alpine:3",
+            volumes: ["./config:/etc/worker:ro"],
+          },
+        },
+      });
+      const service = landofile.services?.[ServiceName.make("worker")];
+      if (service === undefined) throw new Error("worker service missing");
+
+      const plan = composeServiceType.toServicePlan({
+        name: "worker",
+        service,
+        appRoot: "/srv/apps/myapp",
+        metadata,
+      });
+
+      expect(plan.mounts).toHaveLength(2);
+      expect(plan.mounts[0]).toMatchObject({ source: "/srv/apps/myapp", target: "/app" });
+      expect(plan.mounts[1]).toMatchObject({
+        type: "bind",
+        source: "/srv/apps/myapp/config",
+        target: "/etc/worker",
+        readOnly: true,
       });
     });
   });

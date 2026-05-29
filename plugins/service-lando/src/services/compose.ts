@@ -8,6 +8,8 @@ import type { ServiceTypeShape } from "@lando/sdk/services";
 
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
+const APP_MOUNT_TARGET = PortablePath.make("/app");
+
 type VolumeMount = {
   readonly type: "bind" | "volume" | "tmpfs";
   readonly source?: string;
@@ -109,7 +111,7 @@ export const composeServiceType: ServiceTypeShape = {
           };
 
     const parsedVolumes = (service.volumes ?? []).map((entry) => parseVolumeShortForm(entry, appRoot));
-    const bindMounts = parsedVolumes
+    const volumeBindMounts = parsedVolumes
       .filter((volume) => volume.type === "bind")
       .map((volume) => ({
         type: "bind" as const,
@@ -131,10 +133,35 @@ export const composeServiceType: ServiceTypeShape = {
       return { port: parsed.port, protocol: parsed.protocol, name };
     });
 
+    const optedOutOfAppMount = service.appMount === false;
+    const appMount = optedOutOfAppMount
+      ? undefined
+      : {
+          source: AbsolutePath.make(appRoot),
+          target: APP_MOUNT_TARGET,
+          readOnly: false,
+          excludes: [],
+          includes: [],
+          realization: "passthrough" as const,
+        };
+    const appRootBindMount = optedOutOfAppMount
+      ? []
+      : [
+          {
+            type: "bind" as const,
+            source: appRoot,
+            target: APP_MOUNT_TARGET,
+            readOnly: false,
+            realization: "passthrough" as const,
+          },
+        ];
+    const mounts = [...appRootBindMount, ...volumeBindMounts];
+
     const environment = buildLandoEnv({
       serviceName: name,
       serviceType: "compose",
       appName,
+      ...(optedOutOfAppMount ? {} : { appPaths: { appRoot: "/app", projectMount: "/app" } }),
       host,
       userEnv: service.environment ?? {},
     });
@@ -150,8 +177,8 @@ export const composeServiceType: ServiceTypeShape = {
       environment,
       user: service.user,
       workingDirectory: service.workingDirectory,
-      appMount: undefined,
-      mounts: bindMounts,
+      appMount,
+      mounts,
       storage,
       endpoints,
       routes: [],

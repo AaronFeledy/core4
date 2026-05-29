@@ -1,17 +1,3 @@
-/**
- * `LandofileService` live layer.
- *
- * Discovery behavior:
- * - Walk upward from `process.cwd()` until the first directory containing
- *   `.lando.yml`.
- * - Stop at the filesystem root (`dirname(current) === current`).
- * - Use `Bun.file(...).exists()` directly; no caching.
- *
- * Not implemented yet:
- * - `.lando.stop` sentinel
- * - configurable `discovery.maxDepth`
- * - `FileSystem.readdir` integration and per-CWD caching
- */
 import { dirname, join } from "node:path";
 
 import { Cause, type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
@@ -24,7 +10,7 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { parseLandofile } from "./parser.ts";
@@ -34,8 +20,11 @@ export { LandofileService } from "@lando/sdk/services";
 
 const LANDOFILE_NAME = ".lando.yml";
 const LANDOFILE_TS_NAME = ".lando.ts";
-const REMEDIATION =
-  "Remove unsupported keys or update the MVP Landofile subset in spec/07-landofile-and-config.md.";
+const REMEDIATION = "Remove unsupported keys or update the documented Landofile service schema.";
+const COMPOSE_ALLOWLIST_REMEDIATION =
+  "Compose compatibility is limited to the documented §7.4 subset in spec/07-landofile-and-config.md; move provider-native keys under providers.<provider-id> or use config translation.";
+
+const SERVICE_CONFIG_KEYS = new Set(Object.keys(ServiceConfig.fields));
 
 const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
 
@@ -248,6 +237,40 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
 };
 
+const unsupportedAuthoredServiceKeyTypes = (
+  parsed: unknown,
+): { readonly compose: number; readonly nonCompose: number } => {
+  if (parsed === null || typeof parsed !== "object") return { compose: 0, nonCompose: 0 };
+  const services = (parsed as { readonly services?: unknown }).services;
+  if (services === null || typeof services !== "object") return { compose: 0, nonCompose: 0 };
+
+  let compose = 0;
+  let nonCompose = 0;
+  for (const service of Object.values(services as Record<string, unknown>)) {
+    if (service === null || typeof service !== "object") continue;
+    const serviceRecord = service as Record<string, unknown>;
+    const hasUnsupportedKey = Object.keys(serviceRecord).some((key) => !SERVICE_CONFIG_KEYS.has(key));
+    if (!hasUnsupportedKey) continue;
+    if (serviceRecord.type === "compose") compose++;
+    else nonCompose++;
+  }
+  return { compose, nonCompose };
+};
+
+const validationScope = (parsed: unknown): { readonly scope: string; readonly remediation: string } => {
+  const unsupportedKeyTypes = unsupportedAuthoredServiceKeyTypes(parsed);
+  if (unsupportedKeyTypes.compose > 0 && unsupportedKeyTypes.nonCompose === 0) {
+    return { scope: "unsupported Compose-subset keys", remediation: COMPOSE_ALLOWLIST_REMEDIATION };
+  }
+  if (unsupportedKeyTypes.compose > 0 && unsupportedKeyTypes.nonCompose > 0) {
+    return {
+      scope: "unsupported service keys",
+      remediation: `${REMEDIATION} For type: compose services, ${COMPOSE_ALLOWLIST_REMEDIATION}`,
+    };
+  }
+  return { scope: "unsupported MVP keys", remediation: REMEDIATION };
+};
+
 const validateLandofile = (
   filePath: string,
   parsed: unknown,
@@ -256,9 +279,10 @@ const validateLandofile = (
   if (Either.isRight(result)) return Effect.succeed(result.right);
 
   const issues = validationIssues(result.left);
+  const { scope, remediation } = validationScope(parsed);
   return Effect.fail(
     new LandofileValidationError({
-      message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. ${REMEDIATION}`,
+      message: `Landofile contains ${scope}: ${issues.join(", ")}. ${remediation}`,
       file: filePath,
       issues,
     }),
@@ -323,7 +347,7 @@ type LandofileLoadError =
 
 const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
   Effect.tryPromise({
-    try: async () => await Bun.file(filePath).text(),
+    try: async () => Bun.file(filePath).text(),
     catch: (cause) =>
       new LandofileParseError({
         message: cause instanceof Error ? cause.message : `Failed to read ${filePath}`,
@@ -357,7 +381,7 @@ const loadTsLandofile = (
   );
 
 const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> = Effect.tryPromise({
-  try: async () => await findLandofile(process.cwd()),
+  try: async () => findLandofile(process.cwd()),
   catch: (cause) => {
     if (cause instanceof LandofileNotFoundError) return cause;
     if (cause instanceof LandofileParseError) return cause;

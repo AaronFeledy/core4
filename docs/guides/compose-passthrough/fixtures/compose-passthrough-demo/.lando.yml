@@ -1,0 +1,15 @@
+name: compose-passthrough-demo
+services:
+  whoami:
+    type: compose
+    image: traefik/whoami:v1.10
+    ports:
+      - 80:80
+tooling:
+  probe:
+    service: whoami
+    cmd:
+      - sh
+      - -c
+      - 'curl -sf http://localhost:80/'
+      - probe

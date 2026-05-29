@@ -114,7 +114,7 @@ export type PlanMetadata = typeof PlanMetadata.Type;
 
 /**
  * Provider extension config — non-portable, opt-in provider-specific config
- * preserved through planning. Keys are provider ids; values are arbitrary.
+ * preserved in the schema. Keys are provider ids; values are arbitrary.
  */
 export const ProviderExtensionConfig = Schema.Record({
   key: Schema.String,
@@ -142,7 +142,7 @@ export const ArtifactRef = Schema.Struct({
 export type ArtifactRef = typeof ArtifactRef.Type;
 
 /**
- * Build spec — the planner instructs the provider to build an artifact from
+ * Build spec — describes an artifact build from
  * source.
  */
 export const ArtifactBuildSpec = Schema.Struct({
@@ -299,7 +299,7 @@ export const HealthcheckPlan = Schema.Struct({
 export type HealthcheckPlan = typeof HealthcheckPlan.Type;
 
 /**
- * Certificate plan — leaf certs the planner has reserved for this service.
+ * Certificate plan — leaf certs reserved for this service.
  */
 export const CertificatePlan = Schema.Struct({
   /** Common name. */
@@ -537,7 +537,7 @@ export type BuildBlock = typeof BuildBlock.Type;
 
 /**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
- * Covers the fields currently consumed by the planner and provider layers.
+ * Covers the fields consumed by downstream provider logic.
  */
 export const ServiceConfig = Schema.Struct({
   api: Schema.optional(Schema.Literal(4)),
@@ -579,12 +579,15 @@ export const ServiceConfig = Schema.Struct({
   volumes: Schema.optional(Schema.Array(Schema.String)),
 
   appMount: Schema.optional(
-    Schema.Struct({
-      target: Schema.String,
-      readOnly: Schema.optional(Schema.Boolean),
-      excludes: Schema.optional(Schema.Array(Schema.String)),
-      includes: Schema.optional(Schema.Array(Schema.String)),
-    }),
+    Schema.Union(
+      Schema.Literal(false),
+      Schema.Struct({
+        target: Schema.String,
+        readOnly: Schema.optional(Schema.Boolean),
+        excludes: Schema.optional(Schema.Array(Schema.String)),
+        includes: Schema.optional(Schema.Array(Schema.String)),
+      }),
+    ),
   ),
   mounts: Schema.optional(Schema.Array(MountInput)),
   storage: Schema.optional(Schema.Array(StorageInput)),
@@ -636,23 +639,23 @@ export const ToolingVarPrompt = Schema.Struct({ prompt: Schema.String });
 export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 
 /**
- * ToolingVar — var forms accepted by the current Landofile loader. Unsupported
+ * ToolingVar — var forms accepted by this schema. Unsupported
  * surfaces such as unsafe `{ raw: ... }` interpolation and remote-source vars
- * are rejected by `LandofileService` before schema decode with a tagged
+ * are rejected before schema decode with a tagged
  * `NotImplementedError`.
  */
 export const ToolingVar = Schema.Union(ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt);
 export type ToolingVar = typeof ToolingVar.Type;
 
 /**
- * ToolingTaskShape — Landofile `tooling.<name>` task entry accepted by the
- * current loader.
+ * ToolingTaskShape — Landofile `tooling.<name>` task entry accepted by this
+ * schema.
  *
  * Accepted fields:
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
- * - `cmds:` — sequential command list (strings only in the current loader).
+ * - `cmds:` — sequential command list (strings only in this schema).
  * - `vars:` — accepted `ToolingVar` forms only.
  *
  * Unsupported fields rejected by `LandofileService` with remediation:
@@ -684,7 +687,7 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  * `# `. It supplies the same metadata fields a `tooling:` entry would,
  * but the script body itself is the task body — `cmd:` / `cmds:` /
  * `vars:` are intentionally absent because they live inline in the
- * script.
+ * script body.
  *
  * Accepted fields (matching `ToolingTaskShape`):
  * - `service:` — fixed service target (or `:host` / `:<flag-name>`).
@@ -699,7 +702,7 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  * `engine`) are detected pre-decode (including nested YAML list/object
  * forms like `sources:\n  - …`) and rejected with a tagged
  * `NotImplementedError` carrying `commandId: "landofile.parse"`, the
- * matching `specSection`, and a deferral remediation. Unknown keys
+ * matching schema metadata and targeted remediation. Unknown keys
  * outside that set fall through to the strict schema decode and surface
  * as `BunShellScriptFrontMatterError`.
  */
@@ -712,8 +715,8 @@ export const BunShellScriptFrontMatter = Schema.Struct({
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 
 /**
- * LandofileShape — the authored Landofile accepted by the planner.
- * Deferred for later passes: toolingDefaults:, toolingIncludes:,
+ * LandofileShape — the authored Landofile shape.
+ * Excludes fields not modeled here: toolingDefaults:, toolingIncludes:,
  * commandAliases:, events:, env_file:, keys:, includes:, volumes:, networks:,
  * configs:, secrets:, include:, x-* extensions, plugins:, pluginDirs:.
  */
@@ -749,7 +752,7 @@ export type TelemetryConfig = typeof TelemetryConfig.Type;
  * systemPluginRoot, providers, plugins, pluginDirs, disablePlugins,
  * bindAddress, routing, network, logger, renderer, toolingEngine,
  * commandAliases, pluginConfig, keys, maxKeyWarning, scanner, healthcheck,
- * build, logLevelConsole, experimental, stats) is deferred.
+ * build, logLevelConsole, experimental, stats) is modeled elsewhere.
  */
 export const GlobalConfig = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
@@ -819,9 +822,8 @@ export type ServiceInfo = typeof ServiceInfo.Type;
 // Recipe manifest schema with prompt and post-init action shapes.
 // Unsupported fields (`runs:`, `fetchAllowlist:`, `choicesFrom:`,
 // `editor` prompt type, non-`install` `bun:` verbs) are intentionally absent
-// from the schema and are surfaced as `NotImplementedError` by the loader
-// before strict decode so users see a targeted remediation instead of a
-// generic excess-property error.
+// from the schema and are rejected before strict decode so users see a
+// targeted remediation instead of a generic excess-property error.
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN =
@@ -843,7 +845,7 @@ export const RecipeVersion = Schema.String.pipe(
 );
 export type RecipeVersion = typeof RecipeVersion.Type;
 
-/** Recipe-prompt type supported by the current loader (`editor` is rejected before decode). */
+/** Recipe-prompt type supported by this schema (`editor` is rejected before decode). */
 export const RecipePromptType = Schema.Literal(
   "text",
   "select",
@@ -925,7 +927,7 @@ export const RecipePostInitCommand = Schema.Struct({
 /** Recipe post-init `bun` action — supported verbs only. */
 export const RecipePostInitBun = Schema.Struct({
   type: Schema.Literal("bun"),
-  /** Other verbs are surfaced as NotImplementedError before decode. */
+  /** Other verbs are rejected before decode. */
   verb: Schema.Literal("install"),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
