@@ -1,17 +1,3 @@
-/**
- * `LandofileService` live layer.
- *
- * Discovery behavior:
- * - Walk upward from `process.cwd()` until the first directory containing
- *   `.lando.yml`.
- * - Stop at the filesystem root (`dirname(current) === current`).
- * - Use `Bun.file(...).exists()` directly; no caching.
- *
- * Not implemented yet:
- * - `.lando.stop` sentinel
- * - configurable `discovery.maxDepth`
- * - `FileSystem.readdir` integration and per-CWD caching
- */
 import { dirname, join } from "node:path";
 
 import { Cause, type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
@@ -330,7 +316,7 @@ type LandofileLoadError =
 
 const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
   Effect.tryPromise({
-    try: async () => await Bun.file(filePath).text(),
+    try: async () => Bun.file(filePath).text(),
     catch: (cause) =>
       new LandofileParseError({
         message: cause instanceof Error ? cause.message : `Failed to read ${filePath}`,
@@ -364,7 +350,7 @@ const loadTsLandofile = (
   );
 
 const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> = Effect.tryPromise({
-  try: async () => await findLandofile(process.cwd()),
+  try: async () => findLandofile(process.cwd()),
   catch: (cause) => {
     if (cause instanceof LandofileNotFoundError) return cause;
     if (cause instanceof LandofileParseError) return cause;

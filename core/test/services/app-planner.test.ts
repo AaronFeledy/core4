@@ -228,17 +228,13 @@ const planExitWithCustomRegistry = (
 
 const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   expect(Exit.isFailure(exit)).toBe(true);
-  if (Exit.isFailure(exit)) {
-    const failure = Cause.failureOption(exit.cause);
-    expect(failure._tag).toBe("Some");
-    if (failure._tag !== "Some") {
-      throw new Error("Expected Some failure");
-    }
-
-    return failure.value;
+  if (!Exit.isFailure(exit)) {
+    throw new Error("Expected failure");
   }
 
-  throw new Error("Expected failure");
+  const failure = Cause.failureOption(exit.cause);
+  expect(failure._tag).toBe("Some");
+  return failure.value;
 };
 
 describe("AppPlannerLive", () => {

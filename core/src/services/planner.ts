@@ -37,7 +37,7 @@ import { resolveUserCacheRoot } from "../cache/paths.ts";
 export { AppPlanner } from "@lando/sdk/services";
 
 const GLOBAL_SCOPE_REMEDIATION =
-  "Use scope: app or scope: service. Storage scope: global is deferred until the global app phase.";
+  "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
 
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {
@@ -234,7 +234,6 @@ const expandExcludesToShadows = (
 const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.appMount;
   if (authored === undefined) return servicePlan;
-  // `appMount: false` opts out at the service-type emitter; planner leaves the as-emitted plan.
   if (authored === false) return servicePlan;
   if (servicePlan.appMount === undefined) return servicePlan;
   const merged = {
