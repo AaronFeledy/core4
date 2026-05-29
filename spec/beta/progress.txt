@@ -674,6 +674,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Fix: prefixed the generated Caddy static command with `caddy` and updated the static service expectation.
 ---
 
+## [2026-05-28 18:35 CDT] - Babysit
+- PR: #195 https://github.com/AaronFeledy/core4/pull/195
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Caddy command report addressed in `83f9d58 fix(service-lando): prefix caddy static command`; rerun Bugbot passed)
+- Merge: merged (squash)
+---
+
 ## [2026-05-28 CDT] - US-094
 - Shipped the raw Compose passthrough service end-to-end: `type: compose` now emits a default `/app` app-root bind mount + `LANDO_APP_ROOT` / `LANDO_PROJECT_MOUNT` env, and supports per-service `appMount: false` opt-out for third-party images that must not see the app source. Per-app network membership remains automatic via the planner. Added the `docs/guides/services/compose-passthrough.mdx` guide + `compose-passthrough-demo` fixture for a `traefik/whoami:v1.10` third-party image, and a service-side scenario test that drives a non-canonical image through `AppPlanner` and the tooling-exec seam.
 - Verification: typecheck, lint, tests passed (1618 pass / 0 fail; guide scenarios green).
