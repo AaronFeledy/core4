@@ -890,3 +890,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `provider-docker/test/contract.integration.test.ts` asserts the bundled provider's live `capabilities.sharedCrossAppNetwork` (not just per-platform fixtures), so capability flips MUST touch both the per-platform fixtures (`linuxDockerCapabilities`, etc.) AND the contract integration assertions.
   - Spec §20.8.1 says contributions are "dropped from the dist layer" rather than failing the whole plan — model future global-app planner failures as a result envelope (`{accepted, rejected}`) instead of `Effect.fail`, so doctor warnings and partial-start flows stay possible. The new `validateGlobalServiceContributions` already follows this contract.
 ---
+
+## [2026-05-29 13:48 CDT] - US-107 Review
+- Reviewed the US-107 shared cross-app network implementation against `spec/beta/prd-beta-04-subsystems.md`, the build-step commits, and specialist review findings; fixed the confirmed blocker by having provider-docker and provider-lando/Podman create/join the shared `lando_bridge_network` and attach services with `<service>.<app>.internal` aliases.
+- Review notes (deferred/rejected): Full `meta:global:*` production wiring remains deferred to US-111/PRD-05; this review locked the provider-side network realization required for the advertised capability.
+- Verification: typecheck, lint, focused provider/scenario tests, compiled setup test, and full `bun test` passed.
+- **Learnings for future iterations:** Shared cross-app networks are provider-owned and must survive normal app destroy; app destroy removes only the per-app network while preserving `lando_bridge_network` for the global app and other apps.
+---
