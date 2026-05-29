@@ -461,3 +461,57 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
     remediation: Schema.String,
   },
 ) {}
+
+/**
+ * FileSyncStartError — `FileSyncEngine.createSession`, `setup`, or
+ * `isAvailable` failed (binary missing, daemon unreachable, agent deploy
+ * refused, capability missing, source outside app root, target path
+ * conflict). Payload includes the engine id, the rejected
+ * `FileSyncSessionSpec` shape when applicable (treated as `Unknown` for
+ * redaction at the publishing layer), a remediation pointer, and a debug
+ * `cause`. The PRD-B-03 contract groups every spec §10.6.1 start-side
+ * tagged failure under this single Beta-published tag.
+ */
+export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
+  engineId: Schema.String,
+  message: Schema.String,
+  sessionSpec: Schema.optional(Schema.Unknown),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+/**
+ * FileSyncDriftError — `FileSyncEngine.streamEvents` or a running session
+ * surfaced a content drift / conflict the engine could not silently
+ * reconcile under the requested sync mode. Payload includes the
+ * `FileSyncSessionRef` as a string, the conflicted paths (relative to the
+ * session source after redaction at the publishing layer), an optional
+ * suggested mode upgrade, and a debug `cause`. Maps to spec §10.6.1
+ * `FileSyncConflictError`.
+ */
+export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()("FileSyncDriftError", {
+  engineId: Schema.String,
+  message: Schema.String,
+  sessionRef: Schema.String,
+  conflictedPaths: Schema.Array(Schema.String),
+  suggestedMode: Schema.optional(
+    Schema.Literal("two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"),
+  ),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+/**
+ * FileSyncStopError — `FileSyncEngine.terminateSession` or
+ * `pauseSession`/`resumeSession` finalisation failed. Payload includes the
+ * engine id, the `FileSyncSessionRef` as a string, a remediation pointer
+ * (usually `lando apps poweroff` for daemon clean-up), and a debug
+ * `cause`.
+ */
+export class FileSyncStopError extends Schema.TaggedError<FileSyncStopError>()("FileSyncStopError", {
+  engineId: Schema.String,
+  sessionRef: Schema.String,
+  message: Schema.String,
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}

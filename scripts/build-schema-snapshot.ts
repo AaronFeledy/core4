@@ -45,6 +45,10 @@ const SDK_SCHEMA_NAMES = [
   "HostPlatform",
   "ServiceInfo",
   "PluginManifest",
+  "FileSyncEngineCapabilities",
+  "FileSyncSessionSpec",
+  "FileSyncSessionInfo",
+  "FileSyncEventChunk",
 ] as const satisfies ReadonlyArray<JsonSchemaName>;
 
 const stable = (value: unknown): unknown => {
