@@ -179,12 +179,22 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
   return undefined;
 };
 
+const parseSkipFileSyncFlag = (argv: ReadonlyArray<string>): boolean =>
+  argv.some((arg) => arg === "--skip-file-sync");
+
 const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   const installDir = dirname(process.execPath);
   const provider = parseProviderFlag(argv);
+  const skipFileSync = parseSkipFileSyncFlag(argv);
   const exit = await Effect.runPromiseExit(
     setupSpec
-      .run({ installDir, flags: provider === undefined ? {} : { provider } })
+      .run({
+        installDir,
+        flags: {
+          ...(provider === undefined ? {} : { provider }),
+          ...(skipFileSync ? { "skip-file-sync": true } : {}),
+        },
+      })
       .pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
   );
   if (Exit.isSuccess(exit)) {

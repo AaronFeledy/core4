@@ -1,0 +1,53 @@
+---
+title: "File sync (Mutagen) setup"
+description: "How lando setup downloads and manages the Mutagen host CLI and per-platform agent binaries."
+---
+
+# File sync (Mutagen) setup
+
+Lando uses [Mutagen](https://mutagen.io) to accelerate bind mounts on providers where host-to-VM file I/O is slow (Docker Desktop on macOS and Windows, provider-lando on macOS and Windows). The Mutagen host CLI and per-platform agent binaries are **not** embedded in the `lando` binary; they are downloaded during `lando setup` and live under `<userDataRoot>/bin/`.
+
+## Running setup
+
+```bash
+lando setup
+```
+
+When the selected provider reports `bindMountPerformance: "slow"`, `lando setup` automatically downloads:
+
+- `<userDataRoot>/bin/mutagen` — the Mutagen host CLI
+- `<userDataRoot>/bin/mutagen-agents/mutagen-agent-linux-amd64`
+- `<userDataRoot>/bin/mutagen-agents/mutagen-agent-linux-arm64`
+- `<userDataRoot>/bin/mutagen-agents/mutagen-agent-linux-armv7`
+
+Each binary is SHA-256 verified against the pinned manifest bundled with the `@lando/file-sync-mutagen` plugin. Subsequent runs are idempotent — already-installed binaries at the current pinned version are reused without re-downloading.
+
+On `bindMountPerformance: "native"` providers (Linux native, OrbStack), `lando setup` skips the Mutagen download entirely.
+
+## Deferring the download
+
+Pass `--skip-file-sync` to defer the Mutagen download to first accelerated `app:start`:
+
+```bash
+lando setup --skip-file-sync
+```
+
+## Checking the installed version
+
+```bash
+lando doctor
+```
+
+When the active provider is slow-bind-mount, `lando doctor` includes a `file-sync` check that reports the installed Mutagen version and whether it matches the current pinned version.
+
+## Failure modes
+
+| Error | Remediation |
+|-------|-------------|
+| Network error during download | Check connectivity and proxy/CA config, then rerun `lando setup`. |
+| SHA-256 mismatch | The downloaded archive is corrupt or the CDN served the wrong file. Rerun `lando setup`; report the URL and observed checksum if the error persists. |
+| Unsupported host platform | Only Linux x64/arm64, macOS x64/arm64, and Windows x64 are supported. |
+
+## System Mutagen ignored
+
+Lando ignores any `mutagen` binary on the system `PATH`. It always uses its own copy at `<userDataRoot>/bin/mutagen`. `lando doctor` flags a conflicting system install as a warning but does not block sync.

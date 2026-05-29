@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { Flags } from "@oclif/core";
 import { DateTime, Effect } from "effect";
 
+import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
@@ -42,6 +43,13 @@ const inputProviderFlag = (input: unknown): ProviderId | undefined => {
   if (typeof flags !== "object" || flags === null || !("provider" in flags)) return undefined;
   const provider = (flags as { provider?: unknown }).provider;
   return typeof provider === "string" && provider.length > 0 ? ProviderId.make(provider) : undefined;
+};
+
+const inputSkipFileSync = (input: unknown): boolean => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return false;
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return false;
+  return (flags as Record<string, unknown>)["skip-file-sync"] === true;
 };
 
 const setupProviderPlan = (provider: ProviderId): AppPlan => ({
@@ -89,6 +97,14 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
 
       yield* Effect.scoped(provider.setup({ force: false }));
 
+      if (provider.capabilities.bindMountPerformance === "slow" && !inputSkipFileSync(input)) {
+        const userDataRootRaw = yield* configService.get("userDataRoot");
+        if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
+          const downloader = makeMutagenDownloader();
+          yield* downloader.setup({ userDataRoot: userDataRootRaw });
+        }
+      }
+
       return { providerId: provider.id, installDir: inputInstallDir(input) ?? sourceInstallDir() };
     }),
   render: (result) => {
@@ -117,6 +133,10 @@ export default class SetupCommand extends LandoCommandBase {
     "skip-proxy": Flags.boolean({ default: false }),
     "skip-install-ca": Flags.boolean({ default: false }),
     "skip-shell-integration": Flags.boolean({ default: false }),
+    "skip-file-sync": Flags.boolean({
+      description: "Skip Mutagen binary download; deferred to first accelerated app:start.",
+      default: false,
+    }),
   };
   static override landoSpec: LandoCommandSpec = setupSpec;
   static override bootstrap = setupSpec.bootstrap;
