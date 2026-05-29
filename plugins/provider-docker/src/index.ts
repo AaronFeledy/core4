@@ -1102,9 +1102,12 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         );
         serviceChanged = true;
       }
-      yield* connectSharedNetwork(api, plan, service, name).pipe(
-        Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
-      );
+      const connectEffect = connectSharedNetwork(api, plan, service, name);
+      if (inspected.exists && inspected.running) {
+        yield* connectEffect;
+      } else {
+        yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
+      }
       if (!inspected.running) {
         yield* startContainer(api, service, name).pipe(
           Effect.tapError(() => rollbackPartialApply(api, plan, touched)),

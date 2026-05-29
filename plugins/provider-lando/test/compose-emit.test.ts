@@ -135,7 +135,7 @@ describe("provider-lando Compose emission", () => {
     expect(content).toContain('      POSTGRES_PASSWORD: "lando"\n');
     expect(content).toContain('      - "myapp_database_data:/var/lib/postgresql/data"\n');
     expect(content).toContain("networks:\n");
-    expect(content).toContain("  myapp_default:\n");
+    expect(content).toContain("  lando-myapp:\n");
     expect(content).toContain('    driver: "bridge"\n');
     expect(content).toContain("volumes:\n  myapp_database_data:\n");
   });

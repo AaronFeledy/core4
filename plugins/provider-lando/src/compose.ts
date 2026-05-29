@@ -50,8 +50,7 @@ interface ComposeDocument {
   readonly volumes?: Readonly<Record<string, { readonly driver?: string }>>;
 }
 
-const appNetworkNames = (plan: AppPlan): ReadonlyArray<string> =>
-  plan.networks.length === 0 ? [appNetworkName(plan)] : plan.networks.map((network) => network.name);
+const appNetworkNames = (plan: AppPlan): ReadonlyArray<string> => [appNetworkName(plan)];
 
 const composeError = (message: string, details?: unknown) =>
   new ProviderInternalError({
