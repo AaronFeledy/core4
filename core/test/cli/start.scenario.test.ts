@@ -561,9 +561,12 @@ describe("lando start", () => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
-      destroy: () =>
-        Effect.sync(() => {
-          callLog.push("provider.destroy");
+      destroy: (_target, options) =>
+        Effect.gen(function* () {
+          callLog.push(`destroy:${options.volumes}:${options.removeState ?? false}`);
+          yield* Effect.fail(
+            new ProviderUnavailableError({ providerId: "lando", operation: "destroy", message: "cleanup failed" }),
+          );
         }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
@@ -602,7 +605,7 @@ describe("lando start", () => {
       "create:app-mount",
       "create:mount-1",
       "terminate:session-web-app-mount",
-      "provider.destroy",
+      "destroy:true:true",
     ]);
   });
 });
