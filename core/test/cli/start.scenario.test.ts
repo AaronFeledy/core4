@@ -491,6 +491,119 @@ describe("lando start", () => {
     expect(createdSessions).toEqual([{ mountKey: "app-mount", index: 1 }]);
   });
 
+  test("skips file-sync session creation when the engine reports unavailable", async () => {
+    const planWithFileSync: AppPlan = {
+      ...plan,
+      fileSync: [
+        {
+          engineId: "mutagen",
+          session: {
+            app: { kind: "user", id: plan.id, root: plan.root },
+            service: ServiceName.make("web"),
+            mountKey: "app-mount",
+            source: plan.root,
+            target: {
+              _tag: "volume",
+              name: `${plan.name}-web-app-mount`,
+              path: PortablePath.make("/app"),
+            },
+            mode: "two-way-safe",
+            excludes: [],
+          },
+        },
+      ],
+    };
+    const createCalls: Array<string> = [];
+    const destroyCalls: Array<string> = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "auto",
+        exclusionPatterns: true,
+        conflictReporting: true,
+        progressReporting: true,
+      },
+      isAvailable: Effect.succeed(false),
+      setup: () => Effect.void,
+      createSession: (spec: FileSyncSessionSpec) =>
+        Effect.sync(() => {
+          createCalls.push(spec.mountKey);
+          return `${spec.app.id}-${spec.service}-${spec.mountKey}` as unknown as FileSyncSessionRef;
+        }),
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: () => Effect.void,
+      listSessions: () => Effect.succeed([]),
+      streamEvents: () => Stream.empty,
+    };
+    const provider: RuntimeProviderShape = {
+      id: "lando",
+      displayName: "Lando Runtime Provider",
+      version: "0.0.0",
+      platform: "linux",
+      capabilities,
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      getStatus: Effect.succeed({ running: true }),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "buildArtifact", message: "x" }),
+        ),
+      pullArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({ providerId: "lando", operation: "pullArtifact", message: "x" }),
+        ),
+      removeArtifact: () => Effect.void,
+      apply: () => Effect.succeed({ changed: true }),
+      start: () => Effect.void,
+      stop: () => Effect.void,
+      restart: () => Effect.void,
+      destroy: (_target, options) =>
+        Effect.sync(() => {
+          destroyCalls.push(`${options.volumes}:${options.removeState ?? false}`);
+        }),
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      execStream: () => Stream.die("not used"),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      logs: () => Stream.die("not used"),
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId,
+          status: "running",
+          state: "running",
+          endpoints: [],
+        }),
+      list: () => Effect.succeed([]),
+    };
+    const layer = Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(provider),
+      }),
+      Layer.succeed(EventService, {
+        publish: () => Effect.void,
+        subscribe: () => Effect.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+      }),
+      Layer.succeed(FileSyncEngine, fakeEngine),
+    );
+
+    const result = await Effect.runPromise(startApp().pipe(Effect.provide(layer)));
+
+    expect(createCalls).toEqual([]);
+    expect(destroyCalls).toEqual([]);
+    expect(result.app).toBe("test-start");
+  });
+
   test("terminates already-created file-sync sessions when a later session fails", async () => {
     const planWithFileSync: AppPlan = {
       ...plan,
