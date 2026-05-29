@@ -774,3 +774,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Verification: typecheck passed; lint passed with four pre-existing provider integration non-null warnings; focused Mutagen download/setup/doctor tests passed; generated file-sync-mutagen guide tests passed; full `bun test` still fails on pre-existing codegen/docs-scenario 5s timeouts/SIGTERM and compiled renderer build failure, not on US-097 focused coverage.
 - **Learnings for future iterations:** Mutagen v0.18.x release assets do not publish standalone `mutagen-agents_*` archives; each host archive contains `mutagen-agents.tar.gz`, so Lando's per-agent cache must extract `linux_amd64`, `linux_arm64`, and `linux_arm` from that nested payload.
 ---
+
+## [2026-05-29 07:30 UTC] - US-097 verified complete
+- Returned to the in-flight `us-097-mutagen-download-setup` branch (PR #199, open); the prior turn already landed `98c2edf` (cache shared archives, drop dead capability) plus six earlier commits, and PRD entry was already `passes: true`.
+- No further story code was needed; ran the full repo gate to confirm.
+- Verification: typecheck, lint (4 pre-existing non-null-assertion warnings, 0 errors), and `bun test` (1733 pass / 23 skip / 0 fail across 250 files / 8055 expect() calls) all green.
+- Did not touch unrelated drive-by `request!` cleanups still uncommitted in `plugins/provider-{docker,podman}/test/contract.integration.test.ts` — those addressed lint warnings and are outside US-097 scope, so left them for whoever owns that follow-up.
+---
