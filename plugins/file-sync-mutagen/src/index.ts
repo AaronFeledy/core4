@@ -16,7 +16,9 @@
  *   `conflictReporting: true`, `progressReporting: true`.
  */
 
-import { Effect, Layer, Schema, type Stream } from "effect";
+import path from "node:path";
+
+import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
 import {
@@ -51,9 +53,14 @@ export const mutagenCapabilities: FileSyncEngineCapabilitiesType = {
   progressReporting: true,
 };
 
+const usesWin32Path = (value: string): boolean => /^[a-z]:[\\/]/iu.test(value) || value.startsWith("\\\\");
+
 const sourceIsInsideAppRoot = (spec: FileSyncSessionSpec): boolean => {
-  const root = spec.app.root;
-  return spec.source === root || spec.source.startsWith(`${root}/`);
+  const pathApi = usesWin32Path(spec.app.root) || usesWin32Path(spec.source) ? path.win32 : path.posix;
+  const root = pathApi.normalize(spec.app.root);
+  const source = pathApi.normalize(spec.source);
+  const relative = pathApi.relative(root, source);
+  return relative === "" || (!relative.startsWith("..") && !pathApi.isAbsolute(relative));
 };
 
 const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter): boolean => {
@@ -86,7 +93,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 
   const createSession = (
     spec: FileSyncSessionSpec,
-  ): Effect.Effect<FileSyncSessionRef, FileSyncError, never> =>
+  ): Effect.Effect<FileSyncSessionRef, FileSyncError, Scope.Scope> =>
     Effect.gen(function* () {
       if (!sourceIsInsideAppRoot(spec)) {
         return yield* Effect.fail(
@@ -106,7 +113,7 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
       yield* Effect.addFinalizer(() => client.terminate(name).pipe(Effect.catchAll(() => Effect.void)));
 
       return mutagenSessionRef(spec);
-    }) as unknown as Effect.Effect<FileSyncSessionRef, FileSyncError, never>;
+    });
 
   return {
     id: ENGINE_ID,

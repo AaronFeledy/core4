@@ -145,6 +145,55 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
     expect(client.state.calls.some((c) => c.op === "create")).toBe(false);
   });
 
+  test("createSession rejects lexical traversal outside the app root", async () => {
+    for (const source of [
+      AbsolutePath.make("/srv/apps/myapp/../outside"),
+      AbsolutePath.make("/srv/apps/myapp/sub/../../outside"),
+      AbsolutePath.make("/srv/apps/myapp2"),
+    ]) {
+      const { engine, client } = fakeEngine();
+      const exit = await runScopedExit(engine.createSession(buildSpec({ source })));
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(client.state.calls.some((c) => c.op === "create")).toBe(false);
+    }
+  });
+
+  test("createSession accepts normalized POSIX and Windows children under the app root", async () => {
+    const { engine, client } = fakeEngine();
+    const posixSpec = buildSpec({
+      mountKey: "posix-child",
+      source: AbsolutePath.make("/srv/apps/myapp/src/.."),
+    });
+    const windowsSpec: FileSyncSessionSpec = {
+      ...buildSpec({ mountKey: "windows-child" }),
+      app: { kind: "user", id: AppId.make("winapp"), root: AbsolutePath.make("C:\\Users\\me\\app") },
+      source: AbsolutePath.make("C:\\Users\\me\\app\\src"),
+    };
+
+    await runScoped(
+      Effect.gen(function* () {
+        yield* engine.createSession(posixSpec);
+        yield* engine.createSession(windowsSpec);
+      }),
+    );
+
+    expect(client.state.calls.some((c) => c.op === "create" && c.spec === posixSpec)).toBe(true);
+    expect(client.state.calls.some((c) => c.op === "create" && c.spec === windowsSpec)).toBe(true);
+  });
+
+  test("createSession rejects Windows traversal outside the app root", async () => {
+    const { engine, client } = fakeEngine();
+    const spec: FileSyncSessionSpec = {
+      ...buildSpec({ mountKey: "windows-outside" }),
+      app: { kind: "user", id: AppId.make("winapp"), root: AbsolutePath.make("C:\\Users\\me\\app") },
+      source: AbsolutePath.make("C:\\Users\\me\\app\\..\\outside"),
+    };
+
+    const exit = await runScopedExit(engine.createSession(spec));
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(client.state.calls.some((c) => c.op === "create")).toBe(false);
+  });
+
   test("createSession surfaces FileSyncStartError when the client rejects (sentinel __REJECT__)", async () => {
     const { engine } = fakeEngine();
     const spec = buildSpec({ mountKey: MUTAGEN_FAKE_SENTINELS.rejectMountKey });
