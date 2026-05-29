@@ -6,11 +6,14 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Scope } from "effect";
 
 import type {
   CapabilityError,
   EventError,
+  FileSyncDriftError,
+  FileSyncStartError,
+  FileSyncStopError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -27,6 +30,7 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
+  FileSyncEngine,
   LandofileService,
   type ProviderError,
   RuntimeProviderRegistry,
@@ -56,6 +60,9 @@ export interface StartAppResult {
 
 type StartAppError =
   | EventError
+  | FileSyncDriftError
+  | FileSyncStartError
+  | FileSyncStopError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -205,6 +212,17 @@ export const startApp = (
       failed: 0,
       durationMs: Math.round(performance.now() - applyStart),
     });
+
+    if (plan.fileSync.length > 0) {
+      const engineOption = yield* Effect.serviceOption(FileSyncEngine);
+      if (engineOption._tag === "Some") {
+        const engine = engineOption.value;
+        for (const entry of plan.fileSync) {
+          const sessionScope = yield* Scope.make();
+          yield* engine.createSession(entry.session).pipe(Effect.provideService(Scope.Scope, sessionScope));
+        }
+      }
+    }
 
     yield* events.publish(
       PostAppStartEvent.make({

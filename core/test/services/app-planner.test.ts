@@ -458,6 +458,38 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("emits one mutagen FileSyncPlan entry per service with an accelerated appMount", async () => {
+    await withTempCwd(async (dir) => {
+      const appPlan = await plan(landofileFixture, slowBindMountCapabilities);
+
+      expect(appPlan.fileSync.length).toBeGreaterThan(0);
+      expect(appPlan.fileSync.every((entry) => entry.engineId === "mutagen")).toBe(true);
+
+      const webEntry = appPlan.fileSync.find((entry) => entry.session.service === ServiceName.make("web"));
+      expect(webEntry).toBeDefined();
+      expect(webEntry?.session.app).toEqual({
+        kind: "user",
+        id: appPlan.id,
+        root: AbsolutePath.make(dir),
+      });
+      expect(webEntry?.session.mountKey).toBe("app-mount");
+      expect(webEntry?.session.source).toBe(AbsolutePath.make(dir));
+      expect(webEntry?.session.mode).toBe("two-way-safe");
+      expect(webEntry?.session.target).toEqual({
+        _tag: "volume",
+        name: "myapp-web-app-mount",
+        path: PortablePath.make("/app"),
+      });
+    });
+  });
+
+  test("emits an empty FileSyncPlan list on native bind-mount providers", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(landofileFixture, providerLandoCapabilities);
+      expect(appPlan.fileSync).toEqual([]);
+    });
+  });
+
   test("fails unknown service types with LandofileValidationError", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({

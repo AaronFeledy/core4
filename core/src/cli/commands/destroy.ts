@@ -7,11 +7,14 @@
  *
  * Bootstrap level: `app`.
  */
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Option } from "effect";
 
 import type {
   CapabilityError,
   EventError,
+  FileSyncDriftError,
+  FileSyncStartError,
+  FileSyncStopError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -28,6 +31,7 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
+  FileSyncEngine,
   LandofileService,
   type ProviderError,
   RuntimeProviderRegistry,
@@ -46,6 +50,9 @@ export interface DestroyAppResult {
 
 type DestroyAppError =
   | EventError
+  | FileSyncDriftError
+  | FileSyncStartError
+  | FileSyncStopError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -95,6 +102,17 @@ export const destroyApp = (
         timestamp: now(),
       }),
     );
+
+    if (plan.fileSync.length > 0) {
+      const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
+      if (Option.isSome(maybeEngine)) {
+        const engine = maybeEngine.value;
+        const sessions = yield* engine.listSessions({ app: ref });
+        for (const session of sessions) {
+          yield* engine.terminateSession(session.ref);
+        }
+      }
+    }
 
     yield* provider.destroy({ app: plan.id, plan }, { volumes, removeState: true });
 

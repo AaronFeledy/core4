@@ -68,6 +68,7 @@ const appPlanFixture: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata: {
     resolvedAt: DateTime.unsafeMake("2026-05-20T00:00:00Z"),
     source: "/workspace/fixture-app/.lando.yml",

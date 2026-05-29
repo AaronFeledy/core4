@@ -97,6 +97,7 @@ describe("lando app:cache:refresh", () => {
           routes: [],
           networks: [],
           stores: [],
+          fileSync: [],
           metadata,
           extensions: {},
         };
@@ -161,6 +162,7 @@ describe("lando app:cache:refresh", () => {
           routes: [],
           networks: [],
           stores: [],
+          fileSync: [],
           metadata,
           extensions: {},
         };

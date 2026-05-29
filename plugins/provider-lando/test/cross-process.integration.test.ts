@@ -70,6 +70,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [{ name: "crossprocessapp_database_data", scope: "app" }],
+  fileSync: [],
   metadata,
   extensions: {},
 };

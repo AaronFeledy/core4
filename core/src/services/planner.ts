@@ -8,12 +8,15 @@ import {
   AbsolutePath,
   AppId,
   AppPlan,
+  type FileSyncPlan,
+  type FileSyncSessionSpec,
   type LandofileShape,
   type NetworkPlan,
   PortablePath,
   type ProviderCapabilities,
   type ProviderId,
   type ServiceConfig,
+  ServiceName,
   ServicePlan,
   type StorageScope,
 } from "@lando/sdk/schema";
@@ -136,6 +139,81 @@ const kebab = (raw: string): string => {
 const shortHash = (input: string): string => createHash("sha256").update(input).digest("hex").slice(0, 8);
 
 const appNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
+  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+const collectFileSyncEntries = (params: {
+  readonly appId: ReturnType<typeof AppId.make>;
+  readonly appRoot: string;
+  readonly appName: string;
+  readonly serviceName: string;
+  readonly servicePlan: ServicePlan;
+  readonly engineId: string;
+}): ReadonlyArray<FileSyncPlan> => {
+  const { appId, appRoot, appName, serviceName, servicePlan, engineId } = params;
+  const entries: Array<FileSyncPlan> = [];
+  const app = {
+    kind: "user" as const,
+    id: appId,
+    root: AbsolutePath.make(appRoot),
+  };
+  const branded = ServiceName.make(serviceName);
+  const appMount = servicePlan.appMount;
+  if (appMount !== undefined && appMount.realization === "accelerated") {
+    const session: FileSyncSessionSpec = {
+      app,
+      service: branded,
+      mountKey: "app-mount",
+      source: appMount.source,
+      target: {
+        _tag: "volume",
+        name: fileSyncVolumeName(appName, serviceName, "app-mount"),
+        path: appMount.target,
+      },
+      mode: "two-way-safe",
+      excludes: appMount.excludes,
+    };
+    entries.push({ engineId, session });
+  }
+  for (const [index, mount] of servicePlan.mounts.entries()) {
+    if (mount.type !== "bind" || mount.realization !== "accelerated") continue;
+    const source = mount.source;
+    if (source === undefined) continue;
+    const mountKey = `mount-${index}`;
+    const session: FileSyncSessionSpec = {
+      app,
+      service: branded,
+      mountKey,
+      source: AbsolutePath.make(source),
+      target: {
+        _tag: "volume",
+        name: fileSyncVolumeName(appName, serviceName, mountKey),
+        path: mount.target,
+      },
+      mode: "two-way-safe",
+      excludes: [],
+    };
+    entries.push({ engineId, session });
+  }
+  return entries;
+};
+
+const resolveFileSyncEngineId = (
+  manifests: ReadonlyArray<{
+    readonly contributes?: { readonly fileSyncEngines?: ReadonlyArray<string> | undefined } | undefined;
+  }>,
+): string | undefined => {
+  for (const manifest of manifests) {
+    const ids = manifest.contributes?.fileSyncEngines ?? [];
+    if (ids.includes("mutagen")) return "mutagen";
+  }
+  for (const manifest of manifests) {
+    const id = (manifest.contributes?.fileSyncEngines ?? [])[0];
+    if (id !== undefined) return id;
+  }
+  return undefined;
+};
 
 const joinPathSegments = (target: string, exclude: string): string => {
   const normalizedTarget = target.endsWith("/") ? target.slice(0, -1) : target;
@@ -303,6 +381,7 @@ const planApp = (
   };
   const services: Record<string, unknown> = {};
   const aggregatedStores: Array<{ name: string; scope: StorageScope }> = [];
+  const fileSyncEntries: Array<FileSyncPlan> = [];
   const seenStoreNames = new Set<string>();
 
   const pushStore = (name: string, scope: StorageScope): void => {
@@ -470,6 +549,22 @@ const planApp = (
         const authoredInfo = authored.byStore.get(mount.store);
         pushStore(mount.store, authoredInfo?.scope ?? "service");
       }
+
+      if (providerCapabilities.bindMountPerformance === "slow") {
+        const engineId = resolveFileSyncEngineId(manifests);
+        if (engineId !== undefined) {
+          fileSyncEntries.push(
+            ...collectFileSyncEntries({
+              appId,
+              appRoot,
+              appName,
+              serviceName: name,
+              servicePlan: servicePlanWithCapabilityRealization,
+              engineId,
+            }),
+          );
+        }
+      }
     }
 
     const networks: ReadonlyArray<NetworkPlan> =
@@ -493,6 +588,7 @@ const planApp = (
       routes: [],
       networks,
       stores: aggregatedStores,
+      fileSync: fileSyncEntries,
       metadata,
       extensions: {},
     });

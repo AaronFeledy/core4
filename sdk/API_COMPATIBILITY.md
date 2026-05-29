@@ -28,6 +28,7 @@
 - `FileSyncEngineCapabilities`
 - `FileSyncEventChunk`
 - `FileSyncMode`
+- `FileSyncPlan`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`

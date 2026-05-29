@@ -16,8 +16,20 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
+import type { FileSyncSessionInfo, FileSyncSessionRef } from "@lando/core/schema";
+import {
+  AppPlanner,
+  EventService,
+  FileSyncEngine,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
+import type {
+  AppSelector,
+  DestroyOptions,
+  FileSyncEngineShape,
+  RuntimeProviderShape,
+} from "@lando/sdk/services";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -101,6 +113,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [{ name: "test_stop_database_data", scope: "app" }],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -246,5 +259,140 @@ describe("lando stop", () => {
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
+  });
+
+  test("terminates active file-sync sessions before provider.destroy when fileSync is present", async () => {
+    const existingRef = "session-web-app-mount" as FileSyncSessionRef;
+    const existing: FileSyncSessionInfo = {
+      ref: existingRef,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      service: web.name,
+      mountKey: "app-mount",
+      status: "running",
+      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+    };
+    const callLog: string[] = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Fake Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "none",
+        exclusionPatterns: false,
+        conflictReporting: false,
+        progressReporting: false,
+      },
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      createSession: () => Effect.succeed(existingRef),
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: (ref) =>
+        Effect.sync(() => {
+          callLog.push(`terminate:${String(ref)}`);
+        }),
+      listSessions: () =>
+        Effect.sync(() => {
+          callLog.push("listSessions");
+          return [existing];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const planWithFileSync: AppPlan = {
+      ...plan,
+      fileSync: [
+        {
+          engineId: "mutagen",
+          session: {
+            app: { kind: "user", id: plan.id, root: plan.root },
+            service: web.name,
+            mountKey: "app-mount",
+            source: AbsolutePath.make("/tmp/test-stop"),
+            target: {
+              _tag: "volume",
+              name: "test-stop-web-app-mount",
+              path: PortablePath.make("/app"),
+            },
+            mode: "two-way-safe",
+            excludes: [],
+          },
+        },
+      ],
+    };
+    const fakeProvider: RuntimeProviderShape = {
+      id: "lando",
+      displayName: "Lando Runtime Provider",
+      version: "0.0.0",
+      platform: "linux",
+      capabilities,
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      getStatus: Effect.succeed({ running: true }),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "unavailable",
+          }),
+        ),
+      pullArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "unavailable",
+          }),
+        ),
+      removeArtifact: () => Effect.void,
+      apply: () => Effect.succeed({ changed: false }),
+      start: () => Effect.void,
+      stop: () => Effect.void,
+      restart: () => Effect.void,
+      destroy: () =>
+        Effect.sync(() => {
+          callLog.push("provider.destroy");
+        }),
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      execStream: () => Stream.die("not used"),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      logs: () => Stream.die("not used"),
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId,
+          status: "stopped",
+          state: "stopped",
+          endpoints: [],
+        }),
+      list: () => Effect.succeed([]),
+    };
+    const layer = Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(fakeProvider),
+      }),
+      Layer.succeed(EventService, {
+        publish: () => Effect.void,
+        subscribe: () => Effect.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+      }),
+      Layer.succeed(FileSyncEngine, fakeEngine),
+    );
+
+    await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
+
+    const listIndex = callLog.indexOf("listSessions");
+    const terminateIndex = callLog.indexOf(`terminate:${String(existingRef)}`);
+    const destroyIndex = callLog.indexOf("provider.destroy");
+    expect(listIndex).toBeGreaterThanOrEqual(0);
+    expect(terminateIndex).toBeGreaterThan(listIndex);
+    expect(destroyIndex).toBeGreaterThan(terminateIndex);
   });
 });

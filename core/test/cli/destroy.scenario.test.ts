@@ -101,6 +101,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [{ name: "test_destroy_database_data", scope: "app" }],
+  fileSync: [],
   metadata,
   extensions: {},
 };

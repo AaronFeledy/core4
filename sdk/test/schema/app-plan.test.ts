@@ -65,6 +65,7 @@ const appPlanFixture: typeof AppPlan.Encoded = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata: {
     resolvedAt: DateTime.formatIso(FIXED_RESOLVED_AT),
     source: planMetadataFixture.source,

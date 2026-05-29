@@ -59,6 +59,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata: {
     resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
     source: "shell.scenario.test",
