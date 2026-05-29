@@ -316,7 +316,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     });
   });
 
-  describe("US-094 app-root bind mount and per-service opt-out", () => {
+  describe("default app-root bind mount and per-service opt-out", () => {
     test("emits a default app-root bind mount at /app plus LANDO_APP_ROOT/LANDO_PROJECT_MOUNT", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "myapp",
