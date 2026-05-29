@@ -28,6 +28,7 @@ import type {
 } from "../schema/index.ts";
 
 import type {
+  CaError,
   CacheError,
   CapabilityError,
   ConfigError,
@@ -615,16 +616,31 @@ export class CommandFramework extends Context.Tag("@lando/core/CommandFramework"
   }
 >() {}
 
-/**
- * CertificateAuthority — generate/store dev CA, issue leaf certs.
- *
- * Default: `@lando/ca-mkcert`.
- */
+export interface CaSetupOptions {
+  readonly force: boolean;
+  readonly skipTrustInstall?: boolean;
+}
+
+export interface CertificateSpec {
+  readonly cn: string;
+  readonly sans: ReadonlyArray<string>;
+}
+
+export interface CertificateResult {
+  readonly certPath: string;
+  readonly keyPath: string;
+  readonly caPath: string;
+}
+
+export interface CertificateAuthorityShape {
+  readonly id: string;
+  readonly setup: (options: CaSetupOptions) => Effect.Effect<void, CaError>;
+  readonly issueCert: (spec: CertificateSpec) => Effect.Effect<CertificateResult, CaError>;
+}
+
 export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAuthority")<
   CertificateAuthority,
-  {
-    readonly id: string;
-  }
+  CertificateAuthorityShape
 >() {}
 
 export interface ProxyServiceShape {

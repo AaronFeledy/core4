@@ -1,0 +1,41 @@
+---
+id: certificates-mkcert
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, certs, mkcert, ca]
+---
+
+<Guide>
+  <Scenario id="ca-sdk-contract" render={false} reason="CertificateAuthority SDK contract is exercised by sdk/test/contract/certificate-authority.test.ts against TestCertificateAuthority; the mkcert Live Layer requires the mkcert binary and host trust-store access">
+    <Step name="ca-contract">
+      <Variable name="sdkTag" value="CertificateAuthority" display="Effect Service tag published in @lando/sdk; plugins implement CertificateAuthorityShape" />
+      <Variable name="contractRunner" value="runCaContract" display="Contract runner from @lando/sdk/test validates id, setup, issueCert" />
+      <Variable name="testDouble" value="TestCertificateAuthority / makeTestCertificateAuthority" display="In-memory test double for CertificateAuthority; records calls and returns fake cert paths" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ca-mkcert-download" render={false} reason="mkcert binary download is exercised by unit tests; live download requires network access and platform-specific install paths">
+    <Step name="mkcert-download">
+      <Variable name="pluginName" value="@lando/ca-mkcert" display="Bundled plugin that provides the mkcert-backed CertificateAuthority Live Layer" />
+      <Variable name="setupCommand" value="lando setup" display="Downloads mkcert binary and runs mkcert -install to install the local CA" />
+      <Variable name="optOut" value="lando setup --ca=none" display="Skips CA installation; services use HTTP only" />
+      <Variable name="skipTrustInstall" value="setup({ skipTrustInstall: true })" display="Programmatic opt-out for tests or headless environments" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ca-wildcard-certs" render={false} reason="Wildcard cert issuance requires a running mkcert installation; the issued cert chain test requires the locally-installed root CA to be trusted">
+    <Step name="wildcard-certs">
+      <Variable name="certSpec" value="{ cn: 'myapp.lndo.site', sans: ['*.myapp.lndo.site'] }" display="CertificateSpec for a per-app wildcard cert" />
+      <Variable name="certResult" value="{ certPath, keyPath, caPath }" display="CertificateResult with paths to the issued cert, key, and CA cert" />
+      <Variable name="verificationRef" value="sdk/test/contract/certificate-authority.test.ts" display="Unit tests verify the CA contract against TestCertificateAuthority" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ca-cert-chain-validation" render={false} reason="Cert chain validation against the locally-installed root requires lando setup to have run; the live test is gated behind LANDO_TEST_CA_LIVE=1 (not yet implemented; tracked in US-102 notes)">
+    <Step name="cert-chain">
+      <Variable name="validationApproach" value="openssl verify -CAfile <caPath> <certPath>" display="The issued cert chain must validate against the locally-installed root" />
+      <Variable name="liveGate" value="LANDO_TEST_CA_LIVE=1" display="Live cert chain test gate (reserved for when mkcert binary is available in CI)" />
+    </Step>
+  </Scenario>
+</Guide>
