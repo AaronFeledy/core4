@@ -131,7 +131,7 @@ const startFileSyncSessions = (plan: AppPlan) =>
 
 const rollbackAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
   provider
-    .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
+    .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
     .pipe(Effect.catchAll(() => Effect.void));
 
 export const renderStartAppResult = (result: StartAppResult): string => {
