@@ -1,9 +1,8 @@
 /**
- * `lando meta:setup` — provider, CA, proxy, and shell-integration setup.
+ * `lando meta:setup` prepares the host provider, CA, proxy, and shell integration.
  *
- * Provider selection follows the standard precedence
- * `flag > Landofile > env > config > capability-default`. `meta:setup` does
- * not load a Landofile, so the effective inputs reduce to
+ * Provider selection uses `flag > Landofile > env > config > capability-default`.
+ * This command skips Landofile loading, so the effective inputs are
  * `--provider > LANDO_PROVIDER > config > default`.
  */
 import { fileURLToPath } from "node:url";
@@ -84,7 +83,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const flag = inputProviderFlag(input);
       const env = readProviderEnvVar(process.env);
       const configRaw = yield* configService.get("defaultProviderId");
-      const config = configRaw === undefined || configRaw === null ? undefined : configRaw;
+      const config = configRaw ?? undefined;
 
       const resolution = resolveProviderSelection({
         ...(flag === undefined ? {} : { flag }),

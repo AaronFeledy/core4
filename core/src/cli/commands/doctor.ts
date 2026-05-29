@@ -295,7 +295,7 @@ export const doctor = (
       };
     }
     const provider = yield* registry.select({
-      // The registry only needs `.provider` from this command path.
+      // Narrow registry input to the provider handle on this path.
       provider: resolution.providerId,
     } as never);
     const status = yield* provider.getStatus;

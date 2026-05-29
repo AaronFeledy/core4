@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import {
@@ -181,9 +181,7 @@ describe("readInstalledMutagenVersion", () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
     try {
       const versionPath = mutagenInstalledVersionPath(dir);
-      await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(versionPath), {
-        recursive: true,
-      });
+      await mkdir(dirname(versionPath), { recursive: true });
       await writeFile(versionPath, "v0.18.1\n", "utf-8");
       expect(await readInstalledMutagenVersion(dir)).toBe("v0.18.1");
     } finally {
@@ -228,9 +226,7 @@ describe("makeMutagenDownloader().setup()", () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
     try {
       const versionPath = mutagenInstalledVersionPath(dir);
-      await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(versionPath), {
-        recursive: true,
-      });
+      await mkdir(dirname(versionPath), { recursive: true });
       await writeFile(versionPath, `${TEST_MANIFEST.mutagenVersion}\n`, "utf-8");
 
       expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(false);
@@ -238,9 +234,7 @@ describe("makeMutagenDownloader().setup()", () => {
       await writeFile(mutagenHostBinaryPath(dir, "linux"), FAKE_BINARY_BYTES);
       for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
         const agentPath = mutagenAgentBinaryPath(dir, agentKey);
-        await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(agentPath), {
-          recursive: true,
-        });
+        await mkdir(dirname(agentPath), { recursive: true });
         await writeFile(agentPath, FAKE_BINARY_BYTES);
       }
 
@@ -260,9 +254,7 @@ describe("makeMutagenDownloader().setup()", () => {
 
     try {
       const versionPath = mutagenInstalledVersionPath(dir);
-      await (await import("node:fs/promises")).mkdir((await import("node:path")).dirname(versionPath), {
-        recursive: true,
-      });
+      await mkdir(dirname(versionPath), { recursive: true });
       await writeFile(versionPath, `${TEST_MANIFEST.mutagenVersion}\n`, "utf-8");
 
       const downloader = makeMutagenDownloader();

@@ -1,11 +1,10 @@
 /**
- * `@lando/file-sync-mutagen` is the bundled Mutagen-backed `FileSyncEngine`
- * for accelerated bind mounts on `bindMountPerformance: "slow"` providers
- * (`provider-lando` on macOS, `provider-docker` on macOS / Windows,
- * `provider-podman` on macOS / Windows).
+ * `@lando/file-sync-mutagen` bundles the Mutagen-backed `FileSyncEngine` for
+ * slow bind-mount providers (`provider-lando` on macOS, `provider-docker` on
+ * macOS / Windows, `provider-podman` on macOS / Windows).
  *
- * It provides the engine, Live Layer, deterministic session naming, and
- * the `MutagenClient` seam used by the in-memory fake.
+ * It exports the engine, Live Layer, deterministic session naming, and the
+ * `MutagenClient` seam used by the in-memory fake.
  *
  * Capability matrix is fixed:
  *   `modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]`,
@@ -73,27 +72,27 @@ const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter)
 };
 
 export interface MakeFileSyncEngineOptions {
-  /** Override the underlying Mutagen transport. Tests pass
-   *  `makeFakeMutagenClient()`; the default client fails closed until
-   *  the host-CLI-backed client is available. */
+  /** Override the underlying Mutagen transport. Tests can pass
+   *  `makeFakeMutagenClient()`; the default client fails closed until the
+   *  host-CLI-backed client is available. */
   readonly client?: MutagenClient;
   /**
    * When provided, `setup()` downloads the Mutagen host CLI and agent
-   * binaries to `<userDataRoot>/bin/` using the pinned manifest.
+   * binaries to `<userDataRoot>/bin/` from the pinned manifest.
    * Omit when using a fake client in tests that do not exercise the download path.
    */
   readonly userDataRoot?: string;
   /**
    * Override the binary downloader used by `setup()`. Defaults to
-   * `makeMutagenDownloader()`. Tests can inject a fake downloader.
+   * `makeMutagenDownloader()`, and tests can inject a fake downloader.
    */
   readonly downloader?: MutagenDownloader;
 }
 
 /**
- * Construct the `FileSyncEngine` service. The default (no options) uses
+ * Build the `FileSyncEngine` service. With no options it uses
  * `makeUnavailableMutagenClient()`, which fails closed with the standard
- * "run `lando setup`" remediation. Tests pass a fake client (see
+ * "run `lando setup`" remediation. Tests can pass a fake client (see
  * `makeFakeMutagenClient`) for deterministic in-memory coverage.
  */
 export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): FileSyncEngineShape => {
@@ -162,14 +161,13 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 };
 
 /**
- * Bundled Live Layer. The default uses `makeUnavailableMutagenClient()`
- * so consumers who include the plugin without yet running `lando setup`
- * get an actionable remediation. A later layer can swap in the real
- * Mutagen-host-CLI client.
+ * Bundled Live Layer for consumers that include the plugin before running
+ * `lando setup`. The default client fails closed until a real Mutagen client
+ * is supplied by a later layer.
  */
 export const engine = Layer.succeed(FileSyncEngine, makeFileSyncEngine());
 
-/** Test seam: build the Layer against a caller-supplied client. */
+/** Test seam for building the Layer against a caller-supplied client. */
 export const makeEngineLayer = (options: MakeFileSyncEngineOptions = {}) =>
   Layer.succeed(FileSyncEngine, makeFileSyncEngine(options));
 

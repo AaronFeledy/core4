@@ -9,49 +9,49 @@ tags: [beta, docs, file-sync, mutagen, setup]
 <Guide>
   <Scenario id="mutagen-download-on-setup" render={false} reason="Mutagen host CLI and per-platform agent downloads are exercised by plugins/file-sync-mutagen/test/download.test.ts; the live network path requires the pinned CDN endpoints">
     <Step name="mutagen-download">
-      <Variable name="setupCommand" value="lando setup" display="Slow-bind-mount providers download Mutagen during setup" />
+      <Variable name="setupCommand" value="lando setup" display="Mutagen downloads during setup on slow bind-mount providers" />
       <Variable name="hostCliPath" value="$LANDO_DATA_DIR/bin/mutagen" display="Mutagen host CLI installed under the per-user data root" />
       <Variable name="agentDir" value="$LANDO_DATA_DIR/bin/mutagen-agents/" display="Per-target Mutagen agent binaries (linux-amd64, linux-arm64, linux-armv7)" />
-      <Variable name="manifestPath" value="plugins/file-sync-mutagen/mutagen-versions.json" display="Pinned per §17.9 manifest carries the URL + SHA-256 for every host and agent variant" />
-      <Variable name="checksumSpec" value="§5.8.1" display="SHA-256 verification semantics" />
+      <Variable name="manifestPath" value="plugins/file-sync-mutagen/mutagen-versions.json" display="Pinned manifest provides the URL and SHA-256 for each host and agent variant" />
+      <Variable name="checksumSpec" value="sha256-checksum-verification" display="SHA-256 checksum verification" />
     </Step>
   </Scenario>
 
   <Scenario id="mutagen-idempotent-rerun" render={false} reason="Idempotency is exercised by plugins/file-sync-mutagen/test/download.test.ts; the marker file path is implementation-only">
     <Step name="mutagen-idempotency">
-      <Variable name="markerFile" value="$LANDO_DATA_DIR/bin/.mutagen-installed-version" display="Marker file records the pinned version of the installed Mutagen binaries" />
-      <Variable name="reuseCondition" value="marker matches pinned version" display="Re-runs of lando setup reuse existing binaries without re-downloading" />
-      <Variable name="corruptionRecovery" value="SHA-256 mismatch on disk → re-download" display="A corrupt cache falls through to the download path and replaces the file with verified bytes" />
+      <Variable name="markerFile" value="$LANDO_DATA_DIR/bin/.mutagen-installed-version" display="Marker file stores the pinned version of the installed Mutagen binaries" />
+      <Variable name="reuseCondition" value="marker matches pinned version" display="If the pinned version matches, lando setup reuses the existing binaries" />
+      <Variable name="corruptionRecovery" value="SHA-256 mismatch on disk → re-download" display="If the on-disk checksum mismatches, the file is re-downloaded and replaced" />
     </Step>
   </Scenario>
 
   <Scenario id="mutagen-skip-flag" render={false} reason="The --skip-file-sync flag is exercised by the setup command tests in both OCLIF and compiled-binary paths">
     <Step name="mutagen-skip">
-      <Variable name="flag" value="lando setup --skip-file-sync" display="Defer the Mutagen download to first accelerated app:start" />
-      <Variable name="rationale" value="Useful when running lando setup in an environment without network access" display="When to use --skip-file-sync" />
+      <Variable name="flag" value="lando setup --skip-file-sync" display="Download Mutagen on the first accelerated app:start" />
+      <Variable name="rationale" value="Use when running lando setup without network access" display="When to use --skip-file-sync" />
     </Step>
   </Scenario>
 
   <Scenario id="mutagen-doctor-check" render={false} reason="The file-sync doctor check is exercised by core/test/cli/commands/doctor.test.ts; the rendered NDJSON output requires a slow-bind-mount provider and an installed Mutagen binary">
     <Step name="mutagen-doctor">
-      <Variable name="doctorCommand" value="lando doctor" display="Doctor reports the resolved Mutagen version when bindMountPerformance is slow" />
+      <Variable name="doctorCommand" value="lando doctor" display="Doctor reports the resolved Mutagen version on slow bind mounts" />
       <Variable name="checkName" value="file-sync" display="Doctor check id added by the file-sync-mutagen plugin" />
-      <Variable name="nativeProviders" value="bindMountPerformance: native" display="Native providers (Linux rootless Docker/Podman, OrbStack) skip the file-sync check entirely" />
+      <Variable name="nativeProviders" value="bindMountPerformance: native" display="Native providers like Linux rootless Docker/Podman and OrbStack skip the file-sync check" />
     </Step>
   </Scenario>
 
   <Scenario id="mutagen-failure-modes" render={false} reason="Network, checksum, and unsupported-platform failure modes are exercised by plugins/file-sync-mutagen/test/download.test.ts">
     <Step name="mutagen-failures">
-      <Variable name="networkError" value="FileSyncDownloadError" display="Tagged error raised on network failure; remediation cites connectivity and proxy/CA config" />
-      <Variable name="checksumError" value="FileSyncChecksumError" display="Tagged error raised on SHA-256 mismatch; remediation cites spec §5.8.1" />
+      <Variable name="networkError" value="FileSyncDownloadError" display="Network failures surface as FileSyncDownloadError; remediation cites connectivity and proxy or CA config" />
+      <Variable name="checksumError" value="FileSyncChecksumError" display="Checksum mismatches surface as FileSyncChecksumError" />
       <Variable name="unsupportedPlatformError" value="FileSyncUnsupportedPlatformError" display="Tagged error raised on platforms outside Linux x64/arm64, macOS x64/arm64, and Windows x64" />
     </Step>
   </Scenario>
 
   <Scenario id="mutagen-system-binary-ignored" render={false} reason="Lando always uses its own bundled Mutagen copy; the rendered path requires a system mutagen install on PATH which is environment-specific">
     <Step name="mutagen-system-ignored">
-      <Variable name="pathPreference" value="$LANDO_DATA_DIR/bin/mutagen" display="Lando always uses its own copy; the system PATH is ignored" />
-      <Variable name="doctorBehavior" value="warns but does not block" display="lando doctor flags a conflicting system mutagen install as a warning" />
+      <Variable name="pathPreference" value="$LANDO_DATA_DIR/bin/mutagen" display="Lando uses its bundled Mutagen copy; the system PATH is ignored" />
+      <Variable name="doctorBehavior" value="warns but does not block" display="lando doctor warns about a conflicting system mutagen install" />
     </Step>
   </Scenario>
 </Guide>

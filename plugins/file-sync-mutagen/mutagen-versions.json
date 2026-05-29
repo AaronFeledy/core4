@@ -1,5 +1,4 @@
 {
-  "_comment": "Pinned Mutagen binary manifest for supported host + agent platforms. Archive SHA-256 values come from the upstream v0.18.1 SHA256SUMS release asset.",
   "schemaVersion": 1,
   "mutagenVersion": "v0.18.1",
   "host": {

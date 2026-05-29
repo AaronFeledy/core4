@@ -19,8 +19,6 @@ import manifestData from "../mutagen-versions.json" with { type: "json" };
 
 const ENGINE_ID = "mutagen" as const;
 
-// ====  Error types  ====
-
 export class MutagenBinaryChecksumError extends FileSyncStartError {
   constructor(message: string, cause?: unknown) {
     super({
@@ -57,8 +55,6 @@ export class MutagenBinaryUnsupportedPlatformError extends FileSyncStartError {
   }
 }
 
-// ====  Manifest schema  ====
-
 const MutagenBinaryEntrySchema = Schema.Struct({
   url: Schema.String.pipe(Schema.pattern(/^https:\/\//u)),
   sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
@@ -81,8 +77,6 @@ export type MutagenVersionsManifest = Schema.Schema.Type<typeof MutagenVersionsM
 export const MUTAGEN_VERSIONS_MANIFEST: MutagenVersionsManifest = Schema.decodeUnknownSync(
   MutagenVersionsManifestSchema,
 )(manifestData);
-
-// ====  Path helpers  ====
 
 const safeBinPath = (dir: string, installName: string): string => {
   if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(installName)) {
@@ -115,8 +109,6 @@ export const mutagenAgentBinaryPath = (userDataRoot: string, agentKey: string): 
 export const mutagenInstalledVersionPath = (userDataRoot: string): string =>
   join(userDataRoot, "bin", ".mutagen-installed-version");
 
-// ====  Internal helpers  ====
-
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
 const currentHostPlatform = (): HostPlatform => {
@@ -141,8 +133,6 @@ export const hostPlatformKey = (platform: HostPlatform, arch: string): string =>
     `No pinned Mutagen host binary entry for platform "${platform}-${arch}".`,
   );
 };
-
-// ====  Archive extraction  ====
 
 /**
  * Extract a named binary from a gzip-compressed tar archive.
@@ -236,8 +226,6 @@ export const defaultExtract: ExtractImpl = async (archiveBytes, entry) => {
   throw new Error(`Unsupported archive format for "${entry.archiveFilename}". Expected .tar.gz or .zip.`);
 };
 
-// ====  Single-binary download + install  ====
-
 interface InstallBinaryOptions {
   readonly entry: MutagenBinaryEntry;
   readonly installPath: string;
@@ -249,7 +237,6 @@ const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileS
   Effect.gen(function* () {
     const { entry, installPath, fetchImpl, extractImpl } = options;
 
-    // Download archive
     const archiveBytes = yield* Effect.tryPromise({
       try: async () => {
         const response = await fetchImpl(entry.url);
@@ -262,7 +249,6 @@ const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileS
         new MutagenBinaryDownloadError(`Failed to download Mutagen binary from ${entry.url}.`, cause),
     });
 
-    // SHA-256 verify archive
     const actual = sha256Hex(archiveBytes);
     if (actual !== entry.sha256) {
       yield* Effect.fail(
@@ -274,7 +260,6 @@ const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileS
       return;
     }
 
-    // Extract binary from archive
     const binaryBytes = yield* Effect.tryPromise({
       try: () => extractImpl(archiveBytes, entry),
       catch: (cause) =>
@@ -284,7 +269,6 @@ const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileS
         ),
     });
 
-    // Persist atomically
     yield* Effect.tryPromise({
       try: async () => {
         const dir = dirname(installPath);
@@ -305,8 +289,6 @@ const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileS
         new MutagenBinaryDownloadError(`Failed to persist Mutagen binary at ${installPath}.`, cause),
     });
   });
-
-// ====  Public downloader interface  ====
 
 export interface MutagenSetupOptions {
   readonly userDataRoot: string;
