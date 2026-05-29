@@ -12,10 +12,14 @@ import {
 import {
   type AppPlan,
   type HostPlatform,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
   fileSyncVolumeName,
+  landoAppNetworkName,
+  landoNetworkNames,
+  landoServiceNetworkAliases,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
@@ -136,7 +140,10 @@ interface ExecInspectResponse {
 const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const networkName = landoAppNetworkName;
+const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
+const networkNames = landoNetworkNames;
+const serviceNetworkAliases = landoServiceNetworkAliases;
 
 const unavailable = (operation: string, message: string, details?: unknown) =>
   new ProviderUnavailableError({
@@ -608,7 +615,7 @@ export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: st
     serviceLogs: true,
     serviceHealth: "lando",
     hostReachability: "emulated",
-    sharedCrossAppNetwork: false,
+    sharedCrossAppNetwork: true,
     persistentStorage: true,
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
@@ -898,12 +905,24 @@ export const renderCompose = (plan: AppPlan): string => {
             `      - "127.0.0.1:${endpoint.port}:${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`,
         )
         .join("\n");
-      return [`  ${service.name}:`, `    image: "${image}"`, ports.length === 0 ? "" : `    ports:\n${ports}`]
+      const networks = [
+        "    networks:",
+        `      ${networkName(plan)}:`,
+        `      ${SHARED_CROSS_APP_NETWORK}:`,
+        "        aliases:",
+        ...serviceNetworkAliases(plan, service).map((alias) => `          - "${alias}"`),
+      ].join("\n");
+      return [
+        `  ${service.name}:`,
+        `    image: "${image}"`,
+        ports.length === 0 ? "" : `    ports:\n${ports}`,
+        networks,
+      ]
         .filter((line) => line.length > 0)
         .join("\n");
     })
     .join("\n");
-  return `version: "3.9"\nservices:\n${services}\nnetworks:\n  default:\n    name: "${networkName(plan)}"\n`;
+  return `version: "3.9"\nservices:\n${services}\nnetworks:\n  ${networkName(plan)}:\n    name: "${networkName(plan)}"\n  ${SHARED_CROSS_APP_NETWORK}:\n    name: "${SHARED_CROSS_APP_NETWORK}"\n    external: true\n`;
 };
 
 export const emitCompose = (
@@ -920,11 +939,11 @@ export const emitCompose = (
     catch: (cause) => internal("emitCompose", "Failed to emit Docker compose file.", { app: plan.id }, cause),
   });
 
-const ensureNetwork = (api: DockerApiClient, plan: AppPlan) =>
+const ensureNetwork = (api: DockerApiClient, name: string) =>
   request(api, "apply", {
     method: "POST",
     path: "/networks/create",
-    body: { Name: networkName(plan), Driver: "bridge", CheckDuplicate: true },
+    body: { Name: name, Driver: "bridge", CheckDuplicate: true },
   }).pipe(
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 200 || response.status === 409
@@ -1001,6 +1020,35 @@ const startContainer = (api: DockerApiClient, service: ServicePlan, name: string
     ),
   );
 
+const isAlreadyConnectedResponse = (response: DockerHttpResponse) =>
+  response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
+
+const connectSharedNetwork = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
+  request(api, "apply", {
+    method: "POST",
+    path: `/networks/${encodeURIComponent(SHARED_CROSS_APP_NETWORK)}/connect`,
+    body: {
+      Container: name,
+      EndpointConfig: { Aliases: serviceNetworkAliases(plan, service) },
+    },
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.status === 200 ||
+      response.status === 201 ||
+      response.status === 204 ||
+      response.status === 409 ||
+      isAlreadyConnectedResponse(response)
+        ? Effect.void
+        : Effect.fail(
+            serviceStartFailure(
+              service,
+              `Docker network connect failed with HTTP ${response.status}.`,
+              response,
+            ),
+          ),
+    ),
+  );
+
 const stopContainerSilent = (api: DockerApiClient, name: string): Effect.Effect<void> =>
   request(api, "destroy", { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
     Effect.catchAll(() => Effect.void),
@@ -1036,7 +1084,7 @@ const rollbackPartialApply = (
 
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
-    yield* ensureNetwork(api, plan);
+    yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
     const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {
@@ -1053,6 +1101,12 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
           Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
         );
         serviceChanged = true;
+      }
+      const connectEffect = connectSharedNetwork(api, plan, service, name);
+      if (inspected.exists && inspected.running) {
+        yield* connectEffect;
+      } else {
+        yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
       }
       if (!inspected.running) {
         yield* startContainer(api, service, name).pipe(

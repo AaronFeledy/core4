@@ -45,6 +45,7 @@ const SDK_SCHEMA_NAMES = [
   "HostPlatform",
   "ServiceInfo",
   "PluginManifest",
+  "GlobalServiceContribution",
   "FileSyncEngineCapabilities",
   "FileSyncSessionSpec",
   "FileSyncSessionInfo",

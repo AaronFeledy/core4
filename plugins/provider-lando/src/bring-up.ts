@@ -5,15 +5,24 @@ import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type AppRef,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   ProviderId,
   type ServicePlan,
   fileSyncVolumeName,
+  landoAppNetworkName,
+  landoNetworkNames,
+  landoServiceNetworkAliases,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
 import { redactDetails } from "./redact.ts";
+
+const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
+const appNetworkName = landoAppNetworkName;
+const networkNames = landoNetworkNames;
+const serviceNetworkAliases = landoServiceNetworkAliases;
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
@@ -56,8 +65,6 @@ const appRef = (plan: AppPlan): AppRef => ({
 
 const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -221,24 +228,26 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
     },
     HostConfig: hostConfig(plan, service),
     NetworkingConfig: {
-      EndpointsConfig: {
-        [networkName(plan)]: {},
-      },
+      EndpointsConfig: Object.fromEntries(
+        networkNames(plan).map((name) => [
+          name,
+          name === SHARED_CROSS_APP_NETWORK ? { Aliases: serviceNetworkAliases(plan, service) } : {},
+        ]),
+      ),
     },
   };
 };
 
 const ensureNetwork = (
   api: PodmanApiClient,
-  plan: AppPlan,
-): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
-  const name = networkName(plan);
+  name: string,
+): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
   // Inspect first — skip create if the network already exists (idempotent bringUp).
   return request(api, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
         // Network already exists; nothing to do.
-        return Effect.void;
+        return Effect.succeed(false);
       }
       // Not found (404) or unexpected — attempt create.
       return request(api, {
@@ -247,17 +256,19 @@ const ensureNetwork = (
         body: { Name: name, Driver: "bridge" },
       }).pipe(
         Effect.flatMap((response) =>
-          response.status === 201 || response.status === 200 || response.status === 409
-            ? Effect.void
-            : Effect.fail(
-                new ProviderUnavailableError({
-                  providerId: PROVIDER_ID,
-                  operation: "bringUp.network",
-                  message: `Podman network create failed with HTTP ${response.status}.`,
-                  details: redactDetails({ status: response.status, body: response.body }),
-                  remediation: APPLY_REMEDIATION,
-                }),
-              ),
+          response.status === 201 || response.status === 200
+            ? Effect.succeed(true)
+            : response.status === 409
+              ? Effect.succeed(false)
+              : Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: PROVIDER_ID,
+                    operation: "bringUp.network",
+                    message: `Podman network create failed with HTTP ${response.status}.`,
+                    details: redactDetails({ status: response.status, body: response.body }),
+                    remediation: APPLY_REMEDIATION,
+                  }),
+                ),
         ),
       );
     }),
@@ -333,8 +344,22 @@ const removeContainerSilent = (api: PodmanApiClient, name: string): Effect.Effec
 const removeNetworkSilent = (api: PodmanApiClient, plan: AppPlan): Effect.Effect<void> =>
   request(api, {
     method: "DELETE",
-    path: `/networks/${encodeURIComponent(networkName(plan))}`,
+    path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
   }).pipe(Effect.catchAll(() => Effect.void));
+
+const removeCreatedNetworksSilent = (
+  api: PodmanApiClient,
+  createdNetworks: ReadonlySet<string>,
+): Effect.Effect<void> =>
+  Effect.forEach(
+    createdNetworks,
+    (name) =>
+      request(api, {
+        method: "DELETE",
+        path: `/networks/${encodeURIComponent(name)}`,
+      }).pipe(Effect.catchAll(() => Effect.void)),
+    { discard: true },
+  );
 
 const publish = (
   eventService: BringUpOptions["eventService"],
@@ -417,6 +442,7 @@ const rollbackPartialApply = (
   api: PodmanApiClient,
   plan: AppPlan,
   touched: ReadonlyArray<string>,
+  createdNetworks: ReadonlySet<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     // stop+force-remove every container we touched, then remove the app network.
@@ -425,6 +451,7 @@ const rollbackPartialApply = (
     yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
     yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
     yield* removeNetworkSilent(api, plan);
+    yield* removeCreatedNetworksSilent(api, createdNetworks);
   });
 
 export const bringUp = (
@@ -438,18 +465,23 @@ export const bringUp = (
     }
     const resolvedApi: PodmanApiClient = api;
 
-    yield* ensureNetwork(resolvedApi, plan);
+    const createdNetworks = new Set<string>();
+    for (const name of networkNames(plan)) {
+      if (yield* ensureNetwork(resolvedApi, name)) {
+        createdNetworks.add(name);
+      }
+    }
     const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {
       if (options.signal?.aborted === true) {
-        yield* rollbackPartialApply(resolvedApi, plan, touched);
+        yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
         yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
       }
       const thisName = containerName(plan, service);
       touched.push(thisName);
       const result = yield* startService(resolvedApi, plan, service, options).pipe(
-        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched)),
+        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
       );
       changed = changed || result.changed;
     }

@@ -152,6 +152,7 @@
       "HostPlatform",
       "ServiceInfo",
       "PluginManifest",
+      "GlobalServiceContribution",
       "FileSyncEngineCapabilities",
       "FileSyncSessionSpec",
       "FileSyncSessionInfo",
@@ -1261,6 +1262,51 @@
       "required": [],
       "type": "object"
     },
+    "GlobalServiceContribution": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "conflicts": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "enabledByDefault": {
+          "type": "boolean"
+        },
+        "id": {
+          "type": "string"
+        },
+        "module": {
+          "type": "string"
+        },
+        "requires": {
+          "additionalProperties": false,
+          "properties": {
+            "providerCapabilities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": ["id"],
+      "type": "object"
+    },
     "GuideFrontmatter": {
       "$defs": {
         "DeprecationNotice": {
@@ -2099,6 +2145,53 @@
             "fileSyncEngines": {
               "items": {
                 "type": "string"
+              },
+              "type": "array"
+            },
+            "globalServices": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "commands": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "conflicts": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "enabledByDefault": {
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "module": {
+                    "type": "string"
+                  },
+                  "requires": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "providerCapabilities": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "summary": {
+                    "type": "string"
+                  }
+                },
+                "required": ["id"],
+                "type": "object"
               },
               "type": "array"
             },

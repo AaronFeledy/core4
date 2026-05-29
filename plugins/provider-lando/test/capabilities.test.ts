@@ -26,9 +26,12 @@ describe("provider-lando capabilities", () => {
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(windows.bindMountPerformance).toBe("slow");
+    expect(linux.sharedCrossAppNetwork).toBe(true);
+    expect(macos.sharedCrossAppNetwork).toBe(true);
+    expect(windows.sharedCrossAppNetwork).toBe(true);
   });
 
-  test("declares the Linux MVP ProviderCapabilities through the Live Layer", async () => {
+  test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
     const layer = makeProviderLayer({ platform: "linux", podmanApi: { info: Effect.succeed({}) } });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
@@ -36,7 +39,7 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe(
       mvpProviderCapabilities("linux").bindMountPerformance,
     );
-    expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(true);
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);
     expect(Object.keys(runtimeProvider.capabilities).sort()).toEqual(
       Object.keys(ProviderCapabilities.fields).sort(),

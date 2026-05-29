@@ -118,6 +118,9 @@ const makeFakeApi = () => {
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/networks/lando_bridge_network/connect") {
+          return { status: 200, body: "{}" };
+        }
         if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
@@ -212,6 +215,9 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         calls.push(request);
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
+        }
+        if (request.path === "/networks/lando_bridge_network/connect") {
+          return { status: 200, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           return { status: 204, body: "" };
@@ -369,7 +375,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     await Effect.runPromise(runProviderContract(provider));
 
     expect(provider.capabilities.bindMountPerformance).toBe("native");
-    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(fake.calls.some((call) => call.path === "/networks/lando-myapp")).toBe(true);
     expect(fake.calls.every((call) => call.path.startsWith("/"))).toBe(true);
@@ -414,11 +420,26 @@ describe("provider-docker RuntimeProvider contract", () => {
         Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-0:/cache:ro"],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
+      NetworkingConfig: {
+        EndpointsConfig: {
+          "lando-myapp": {},
+        },
+      },
     });
+    expect(fake.calls.find((call) => call.path === "/networks/lando_bridge_network/connect")?.body).toEqual({
+      Container: "lando-myapp-web",
+      EndpointConfig: { Aliases: ["web.myapp.internal"] },
+    });
+    expect(fake.calls.filter((call) => call.path === "/networks/create").map((call) => call.body)).toEqual([
+      { Name: "lando-myapp", Driver: "bridge", CheckDuplicate: true },
+      { Name: "lando_bridge_network", Driver: "bridge", CheckDuplicate: true },
+    ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/create?name=lando-myapp-web",
+      "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",
@@ -509,7 +530,7 @@ describe("provider-docker RuntimeProvider contract", () => {
 
     expect(provider.capabilities).toEqual(linuxDockerCapabilities);
     expect(provider.capabilities.bindMountPerformance).not.toBe("slow");
-    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
   });
 
   test("emits a compose document for provider-owned orchestration state", () => {
@@ -553,7 +574,7 @@ describe("provider-docker RuntimeProvider contract", () => {
     const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
 
     expect(provider.capabilities.bindMountPerformance).toBe("slow");
-    expect(provider.capabilities.sharedCrossAppNetwork).toBe(false);
+    expect(provider.capabilities.sharedCrossAppNetwork).toBe(true);
 
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
     const inspected = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
@@ -580,8 +601,10 @@ describe("provider-docker RuntimeProvider contract", () => {
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
       "POST /networks/create",
+      "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/create?name=lando-myapp-web",
+      "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",

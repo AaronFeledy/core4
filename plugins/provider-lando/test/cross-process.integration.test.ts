@@ -198,7 +198,7 @@ describe("provider-lando cross-process state", () => {
       await runOnce(providerB.destroy({ app: plan.id }, { volumes: false }));
 
       expect(fake.existing.size).toBe(0);
-      expect(fake.networks.size).toBe(0);
+      expect(Array.from(fake.networks)).toEqual(["lando_bridge_network"]);
       expect(fake.volumes.has("crossprocessapp_database_data")).toBe(true);
       expect(await fileExists(appliedPlanPath(stateDir, plan.id))).toBe(false);
     });

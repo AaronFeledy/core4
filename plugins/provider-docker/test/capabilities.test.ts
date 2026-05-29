@@ -41,6 +41,8 @@ describe("provider-docker capabilities", () => {
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(macos.bindMounts).toBe(true);
+    expect(linux.sharedCrossAppNetwork).toBe(true);
+    expect(macos.sharedCrossAppNetwork).toBe(true);
   });
 
   test("classifies Docker host bind mount performance", () => {
@@ -131,7 +133,7 @@ describe("provider-docker capabilities", () => {
     expect(Object.keys(windows).sort()).toEqual(expectedFields);
     expect(windows.bindMountPerformance).toBe("slow");
     expect(windows.bindMounts).toBe(true);
-    expect(windows.sharedCrossAppNetwork).toBe(false);
+    expect(windows.sharedCrossAppNetwork).toBe(true);
     expect(windows).toEqual(windowsDockerCapabilities);
   });
 

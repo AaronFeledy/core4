@@ -147,6 +147,18 @@ export class CapabilityError extends Schema.TaggedError<CapabilityError>()("Capa
   remediation: Schema.optional(Schema.String),
 }) {}
 
+export class GlobalServiceCapabilityError extends Schema.TaggedError<GlobalServiceCapabilityError>()(
+  "GlobalServiceCapabilityError",
+  {
+    message: Schema.String,
+    id: Schema.String,
+    plugin: Schema.optional(Schema.String),
+    missing: Schema.Array(Schema.String),
+    providerId: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,
