@@ -193,17 +193,33 @@ describe("readInstalledMutagenVersion", () => {
 describe("makeMutagenDownloader().setup()", () => {
   test("installs host binary + all agent binaries and writes version marker", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    let fetchCalls = 0;
+    const countingFetch: typeof fetch = ((url: RequestInfo | URL): Promise<Response> => {
+      fetchCalls += 1;
+      return fakeFetch()(url);
+    }) as typeof fetch;
+    const sharedArchiveEntry = makeEntry("shared", "mutagen", "mutagen");
+    const sharedArchiveManifest: MutagenVersionsManifest = {
+      ...TEST_MANIFEST,
+      host: Object.fromEntries(
+        Object.keys(TEST_MANIFEST.host).map((key) => [key, sharedArchiveEntry]),
+      ) as MutagenVersionsManifest["host"],
+      agents: Object.fromEntries(
+        Object.keys(TEST_MANIFEST.agents).map((key) => [key, sharedArchiveEntry]),
+      ) as MutagenVersionsManifest["agents"],
+    };
     try {
       const downloader = makeMutagenDownloader();
       const exit = await run(
         downloader.setup({
           userDataRoot: dir,
-          _testManifest: TEST_MANIFEST,
-          fetchImpl: fakeFetch(),
+          _testManifest: sharedArchiveManifest,
+          fetchImpl: countingFetch,
           extractImpl: fakeExtract(),
         }),
       );
       expect(exit._tag).toBe("Success");
+      expect(fetchCalls).toBe(1);
 
       const hostBin = mutagenHostBinaryPath(dir);
       const hostBytes = await readFile(hostBin);

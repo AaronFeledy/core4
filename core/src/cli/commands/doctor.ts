@@ -246,7 +246,7 @@ const buildFileSyncDoctorCheck = (
         running: isCurrent,
         ...(installedVersion !== undefined ? { version: installedVersion } : {}),
       },
-      capabilities: { engineId: "mutagen" },
+      capabilities: {},
       context: {
         engineId: "mutagen",
         mutagenVersion: installedVersion ?? "not-installed",

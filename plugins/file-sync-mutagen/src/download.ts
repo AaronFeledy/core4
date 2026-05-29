@@ -395,6 +395,24 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
       const fetchImpl = options.fetchImpl ?? globalThis.fetch;
       const extractImpl = options.extractImpl ?? defaultExtract;
       const manifest = options._testManifest ?? MUTAGEN_VERSIONS_MANIFEST;
+      const archiveCache = new Map<string, Promise<Uint8Array>>();
+
+      const cachedFetch = ((input: Parameters<typeof fetch>[0]): Promise<Response> => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+        const cached = archiveCache.get(url);
+        if (cached !== undefined) {
+          return cached.then((bytes) => new Response(bytes));
+        }
+        const pending = (async () => {
+          const response = await fetchImpl(url);
+          if (!response.ok) {
+            throw new Error(`HTTP ${response.status} ${response.statusText} fetching ${url}`);
+          }
+          return new Uint8Array(await response.arrayBuffer());
+        })();
+        archiveCache.set(url, pending);
+        return pending.then((bytes) => new Response(bytes));
+      }) as typeof fetch;
 
       const arch = process.arch;
       const platform = currentHostPlatform();
@@ -428,7 +446,7 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
       yield* installBinary({
         entry: hostEntry,
         installPath: mutagenHostBinaryPath(userDataRoot, platform),
-        fetchImpl,
+        fetchImpl: cachedFetch,
         extractImpl,
       });
 
@@ -436,7 +454,7 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
         yield* installBinary({
           entry: agentEntry,
           installPath: mutagenAgentBinaryPath(userDataRoot, agentKey),
-          fetchImpl,
+          fetchImpl: cachedFetch,
           extractImpl,
         });
       }

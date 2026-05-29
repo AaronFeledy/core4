@@ -191,12 +191,15 @@ describe("meta:doctor command", () => {
       getStatus: Effect.succeed({ running: false, message: "podman socket unavailable" }),
     };
     const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const lines = ndjson
       .trimEnd()
       .split("\n")
       .map((line) => JSON.parse(line));
     const check = lines[1] as Record<string, unknown>;
+
+    expect(text).not.toContain("engineId: mutagen");
 
     expect(check.status).toBe("warn");
     expect(check.severity).toBe("warn");
@@ -214,7 +217,6 @@ describe("meta:doctor command", () => {
     expect(complete.warned).toBe(1);
     expect(complete.failed).toBe(0);
 
-    const text = renderDoctorResult(result);
     expect(text).toContain("selected-provider: warn");
     expect(text).toContain("severity: warn");
     expect(text).toContain("solution[manual]:");
