@@ -861,3 +861,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - When the AC names a CLI surface (`lando setup --host-proxy=none`), declare it as an OCLIF `Flags.string({ options: [...] })` on the source command and mirror parsing in `core/src/cli/run.ts` per the §8.4.1 dual-dispatch parity rule. Body consumption is optional (matches the `--skip-*` pattern that is also declared but not consumed yet).
   - For the SDK fallback layer, `status()` returning a successful inactive snapshot beats failing — it lets `lando doctor` and similar surfaces render a clean "not configured" state without crashing while `setup()`/`teardown()` still fail closed with an actionable `HostProxyError`.
 ---
+
+
+## [2026-05-29 12:12 CDT] - US-106 Review
+- Reviewed the US-106 HostProxyService contract scaffold against PRD-B-04 and specialist review findings; fixed the opt-out blocker by adding the disabled no-op host-proxy layer and making `lando setup --host-proxy=none` consume that path.
+- Review notes (deferred/rejected): Full per-platform DNS writer Live Layers remain deferred under the US-101..105 subsystem-stub precedent; this review kept the contract/fallback story focused.
+- Review notes (deferred/rejected): Full `bun test` still hit the known compiled-binary setup flake (`core/dist/lando` missing during concurrent suite run); the same compiled setup test passed in isolation.
+- Verification: typecheck passed, lint passed, focused HostProxy/setup tests passed, compiled setup test passed in isolation; full suite has the pre-existing compiled-binary concurrency failure noted above.
+---
