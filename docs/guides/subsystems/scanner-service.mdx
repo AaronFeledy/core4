@@ -1,0 +1,32 @@
+---
+id: scanner-service
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, scanner, endpoint-discovery, port-collision]
+---
+
+<Guide>
+  <Scenario id="scanner-sdk-contract" render={false} reason="UrlScanner SDK contract is exercised by sdk/test/contract/url-scanner.test.ts against TestUrlScanner; the provider-inspect Live Layer requires a running provider and containers">
+    <Step name="scanner-contract">
+      <Variable name="sdkTag" value="UrlScanner" display="Effect Service tag published in @lando/sdk; plugins implement UrlScannerShape" />
+      <Variable name="contractRunner" value="runScannerContract" display="Contract runner from @lando/sdk/test validates id, scan(), and detectCollisions()" />
+      <Variable name="testDouble" value="TestUrlScanner / makeTestUrlScanner" display="In-memory test double; records calls and returns empty endpoints / no collisions" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scanner-endpoint-discovery" render={false} reason="Endpoint discovery combines provider inspect output with proxy routing rules; live scanning requires running containers and a provider socket">
+    <Step name="endpoint-discovery">
+      <Variable name="scanMethod" value="scan(appId: AppId): Effect<ScanResult, ScannerError>" display="Scans all host-facing endpoints for an app; returns reachable URLs and status codes" />
+      <Variable name="landoInfoField" value="ScanResult.endpoints" display="lando info --json includes the scanner output verbatim via ScanResult" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scanner-port-collision" render={false} reason="Port-collision detection compares host ports across multiple apps; live detection requires running containers">
+    <Step name="port-collision">
+      <Variable name="detectMethod" value="detectCollisions(appIds): Effect<PortCollision[], ScannerError | PortCollisionError>" display="Detects host port conflicts across multiple apps" />
+      <Variable name="portCollisionError" value="PortCollisionError" display="Raised when two apps conflict on the same host port — includes port number and all conflicting apps + service ids" />
+      <Variable name="verificationRef" value="sdk/test/contract/url-scanner.test.ts" display="Unit tests verify the UrlScanner contract against TestUrlScanner" />
+    </Step>
+  </Scenario>
+</Guide>

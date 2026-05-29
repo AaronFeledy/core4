@@ -1840,3 +1840,74 @@ export const makeTestHealthcheckRunner = (): HealthcheckRunnerShape & {
 };
 
 export const TestHealthcheckRunner: HealthcheckRunnerShape = makeTestHealthcheckRunner();
+
+import type { PortCollision, ScanResult, UrlScannerShape } from "../services/index.ts";
+
+const scannerContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `UrlScanner contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requireScannerContract = (
+  condition: boolean,
+  assertion: string,
+  details?: unknown,
+): Effect.Effect<void, ContractFailure> =>
+  condition ? Effect.void : Effect.fail(scannerContractFailure(assertion, details));
+
+export const runScannerContract = (scanner: UrlScannerShape): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    yield* requireScannerContract(
+      typeof scanner.id === "string" && scanner.id.length > 0,
+      "id is a non-empty string",
+      scanner.id,
+    );
+
+    const testAppId = AppId.make("contract-test-app");
+
+    const scanResult = yield* scanner
+      .scan(testAppId)
+      .pipe(Effect.mapError((d) => scannerContractFailure("scan resolves", d)));
+
+    yield* requireScannerContract(
+      scanResult.appId === testAppId,
+      "scan result appId matches input",
+      scanResult,
+    );
+    yield* requireScannerContract(
+      Array.isArray(scanResult.endpoints),
+      "scan result has endpoints array",
+      scanResult,
+    );
+
+    yield* scanner
+      .detectCollisions([testAppId])
+      .pipe(Effect.mapError((d) => scannerContractFailure("detectCollisions resolves", d)));
+  });
+
+export const makeTestUrlScanner = (): UrlScannerShape & {
+  readonly calls: ReadonlyArray<
+    { readonly op: "scan"; readonly appId: AppId } | { readonly op: "detectCollisions" }
+  >;
+} => {
+  const calls: Array<{ readonly op: "scan"; readonly appId: AppId } | { readonly op: "detectCollisions" }> =
+    [];
+  return {
+    id: "test",
+    scan: (appId) =>
+      Effect.sync((): ScanResult => {
+        calls.push({ op: "scan", appId });
+        return { appId, endpoints: [] };
+      }),
+    detectCollisions: (_appIds) =>
+      Effect.sync((): ReadonlyArray<PortCollision> => {
+        calls.push({ op: "detectCollisions" });
+        return [];
+      }),
+    calls,
+  };
+};
+
+export const TestUrlScanner: UrlScannerShape = makeTestUrlScanner();
