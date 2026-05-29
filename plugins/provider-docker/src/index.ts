@@ -137,6 +137,14 @@ const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const SHARED_CROSS_APP_NETWORK = "lando_bridge_network";
+
+const networkNames = (plan: AppPlan): ReadonlyArray<string> =>
+  Array.from(new Set([networkName(plan), SHARED_CROSS_APP_NETWORK]));
+
+const serviceNetworkAliases = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => [
+  `${service.name}.${plan.slug}.internal`,
+];
 
 const unavailable = (operation: string, message: string, details?: unknown) =>
   new ProviderUnavailableError({
@@ -883,7 +891,14 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
     WorkingDir: service.workingDirectory,
     Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name },
     HostConfig: hostConfig(plan, service),
-    NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
+    NetworkingConfig: {
+      EndpointsConfig: Object.fromEntries(
+        networkNames(plan).map((name) => [
+          name,
+          name === SHARED_CROSS_APP_NETWORK ? { Aliases: serviceNetworkAliases(plan, service) } : {},
+        ]),
+      ),
+    },
   };
 };
 
@@ -898,12 +913,24 @@ export const renderCompose = (plan: AppPlan): string => {
             `      - "127.0.0.1:${endpoint.port}:${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`,
         )
         .join("\n");
-      return [`  ${service.name}:`, `    image: "${image}"`, ports.length === 0 ? "" : `    ports:\n${ports}`]
+      const networks = [
+        "    networks:",
+        `      ${networkName(plan)}:`,
+        `      ${SHARED_CROSS_APP_NETWORK}:`,
+        "        aliases:",
+        ...serviceNetworkAliases(plan, service).map((alias) => `          - "${alias}"`),
+      ].join("\n");
+      return [
+        `  ${service.name}:`,
+        `    image: "${image}"`,
+        ports.length === 0 ? "" : `    ports:\n${ports}`,
+        networks,
+      ]
         .filter((line) => line.length > 0)
         .join("\n");
     })
     .join("\n");
-  return `version: "3.9"\nservices:\n${services}\nnetworks:\n  default:\n    name: "${networkName(plan)}"\n`;
+  return `version: "3.9"\nservices:\n${services}\nnetworks:\n  ${networkName(plan)}:\n    name: "${networkName(plan)}"\n  ${SHARED_CROSS_APP_NETWORK}:\n    name: "${SHARED_CROSS_APP_NETWORK}"\n    external: true\n`;
 };
 
 export const emitCompose = (
@@ -920,11 +947,11 @@ export const emitCompose = (
     catch: (cause) => internal("emitCompose", "Failed to emit Docker compose file.", { app: plan.id }, cause),
   });
 
-const ensureNetwork = (api: DockerApiClient, plan: AppPlan) =>
+const ensureNetwork = (api: DockerApiClient, name: string) =>
   request(api, "apply", {
     method: "POST",
     path: "/networks/create",
-    body: { Name: networkName(plan), Driver: "bridge", CheckDuplicate: true },
+    body: { Name: name, Driver: "bridge", CheckDuplicate: true },
   }).pipe(
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 200 || response.status === 409
@@ -1036,7 +1063,7 @@ const rollbackPartialApply = (
 
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
-    yield* ensureNetwork(api, plan);
+    yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
     const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {

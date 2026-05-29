@@ -414,8 +414,19 @@ describe("provider-docker RuntimeProvider contract", () => {
         Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-0:/cache:ro"],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
+      NetworkingConfig: {
+        EndpointsConfig: {
+          "lando-myapp": {},
+          lando_bridge_network: { Aliases: ["web.myapp.internal"] },
+        },
+      },
     });
+    expect(fake.calls.filter((call) => call.path === "/networks/create").map((call) => call.body)).toEqual([
+      { Name: "lando-myapp", Driver: "bridge", CheckDuplicate: true },
+      { Name: "lando_bridge_network", Driver: "bridge", CheckDuplicate: true },
+    ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/create?name=lando-myapp-web",
@@ -579,6 +590,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       },
     ]);
     expect(fake.calls.map((call) => `${call.method} ${call.path}`)).toEqual([
+      "POST /networks/create",
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/create?name=lando-myapp-web",
