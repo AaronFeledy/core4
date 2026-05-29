@@ -50,7 +50,7 @@ jobs:
           LANDO_TEST_FILE_SYNC_LIVE: "1"
 
   file-sync-contract-darwin-x64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4

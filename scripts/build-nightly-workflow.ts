@@ -30,7 +30,7 @@ interface NightlyJob {
 const JOBS: ReadonlyArray<NightlyJob> = [
   { id: "file-sync-contract-linux-x64", runsOn: "ubuntu-24.04", platform: "linux-x64" },
   { id: "file-sync-contract-darwin-arm64", runsOn: "macos-15", platform: "darwin-arm64" },
-  { id: "file-sync-contract-darwin-x64", runsOn: "macos-13", platform: "darwin-x64" },
+  { id: "file-sync-contract-darwin-x64", runsOn: "macos-15-intel", platform: "darwin-x64" },
   { id: "file-sync-contract-win32-x64", runsOn: "windows-latest", platform: "win32-x64" },
 ];
 
