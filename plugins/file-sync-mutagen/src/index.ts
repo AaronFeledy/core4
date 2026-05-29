@@ -1,16 +1,13 @@
 /**
- * `@lando/file-sync-mutagen` — bundled Mutagen-backed `FileSyncEngine`
+ * `@lando/file-sync-mutagen` is the bundled Mutagen-backed `FileSyncEngine`
  * for accelerated bind mounts on `bindMountPerformance: "slow"` providers
  * (`provider-lando` on macOS, `provider-docker` on macOS / Windows,
  * `provider-podman` on macOS / Windows).
  *
- * US-096 ships the engine + Live Layer + deterministic session naming +
- * the `MutagenClient` seam against an in-memory fake. US-097 will wire
- * the real Mutagen host CLI download, and US-098 will plumb the engine
- * into `AppPlanner` so users on slow-bind-mount providers pay zero
- * configuration.
+ * It provides the engine, Live Layer, deterministic session naming, and
+ * the `MutagenClient` seam used by the in-memory fake.
  *
- * Capability matrix is fixed per `spec/11-subsystems.md` §10.6.2:
+ * Capability matrix is fixed:
  *   `modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"]`,
  *   `remoteAgentDeployment: "auto"`, `exclusionPatterns: true`,
  *   `conflictReporting: true`, `progressReporting: true`.
@@ -41,9 +38,8 @@ export const ENGINE_ID = "mutagen" as const;
 export const ENGINE_DISPLAY_NAME = "Mutagen" as const;
 
 /**
- * Capability matrix for the bundled Mutagen engine. Per
- * `spec/11-subsystems.md` §10.6.2 this is a fixed declaration; it does
- * not depend on host platform or daemon state.
+ * Capability matrix for the bundled Mutagen engine. This is a fixed
+ * declaration; it does not depend on host platform or daemon state.
  */
 export const mutagenCapabilities: FileSyncEngineCapabilitiesType = {
   modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
@@ -77,8 +73,8 @@ const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter)
 
 export interface MakeFileSyncEngineOptions {
   /** Override the underlying Mutagen transport. Tests pass
-   *  `makeFakeMutagenClient()`; US-097 will wire the real
-   *  host-CLI-backed client here. */
+   *  `makeFakeMutagenClient()`; the default client fails closed until
+   *  the host-CLI-backed client is available. */
   readonly client?: MutagenClient;
 }
 
@@ -148,8 +144,8 @@ export const makeFileSyncEngine = (options: MakeFileSyncEngineOptions = {}): Fil
 /**
  * Bundled Live Layer. The default uses `makeUnavailableMutagenClient()`
  * so consumers who include the plugin without yet running `lando setup`
- * get an actionable remediation. US-097 swaps this for a Layer that
- * builds the real Mutagen-host-CLI client.
+ * get an actionable remediation. A later layer can swap in the real
+ * Mutagen-host-CLI client.
  */
 export const engine = Layer.succeed(FileSyncEngine, makeFileSyncEngine());
 

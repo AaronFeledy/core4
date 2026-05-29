@@ -223,7 +223,6 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
         listed = yield* engine.listSessions({});
         expect(listed.find((info) => info.ref === ref)?.status).toBe("paused");
 
-        // Idempotent pause.
         yield* engine.pauseSession(ref);
         listed = yield* engine.listSessions({});
         expect(listed.find((info) => info.ref === ref)?.status).toBe("paused");
@@ -236,7 +235,6 @@ describe("@lando/file-sync-mutagen engine create / pause / resume / terminate", 
         listed = yield* engine.listSessions({});
         expect(listed.find((info) => info.ref === ref)).toBeUndefined();
 
-        // Idempotent terminate.
         yield* engine.terminateSession(ref);
       }),
     );

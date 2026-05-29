@@ -90,11 +90,8 @@ describe("mutagen session naming", () => {
     const raw = `${spec.app.id}-${spec.service}-${spec.mountKey}`;
     expect(name).toContain(sha12(raw));
 
-    // Same long spec → same name.
     expect(mutagenSessionName(spec)).toBe(name);
 
-    // Different long spec sharing the truncated prefix → different name
-    // (because the hash suffix is derived from the full raw input).
     const otherSpec = baseSpec({ mountKey: `${longMountKey}-zzz` });
     expect(mutagenSessionName(otherSpec)).not.toBe(name);
   });

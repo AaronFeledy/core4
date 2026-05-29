@@ -1,11 +1,10 @@
 /**
- * `MutagenClient` — narrow transport surface that the file-sync-mutagen
- * `FileSyncEngine` consumes. US-097 will land the real implementation that
- * spawns the Mutagen host CLI and talks the Synchronization gRPC API;
- * US-096 (this story) only requires the seam plus an in-memory fake for
- * unit tests and an `unavailable` default that fails closed with the
- * standard "run `lando setup`" remediation so the bundled engine is
- * importable today.
+ * `MutagenClient` is the narrow transport surface consumed by the
+ * file-sync-mutagen `FileSyncEngine`. The concrete implementation will
+ * spawn the Mutagen host CLI and talk the Synchronization gRPC API; this
+ * module currently provides the seam, an in-memory fake for unit tests,
+ * and an `unavailable` default that fails closed with the standard
+ * "run `lando setup`" remediation so the bundled engine remains importable.
  */
 
 import { DateTime, Effect, Stream } from "effect";
@@ -44,7 +43,7 @@ export interface MutagenCreateArgs {
 
 /**
  * Effect-typed transport the engine calls. Methods correspond to the
- * Mutagen `Synchronization` gRPC surface used in §10.6.2:
+ * Mutagen `Synchronization` gRPC surface:
  *
  *   - `version`   — `Daemon.Version`
  *   - `create`    — `Synchronization.Create`
@@ -87,8 +86,8 @@ const unavailableStop = (message: string, sessionRef: string): FileSyncStopError
   });
 
 /**
- * Default client used by the bundled Live Layer until US-097 wires the
- * downloaded host CLI. Every method fails closed with the standard
+ * Default client used by the bundled Live Layer when the Mutagen host CLI
+ * is not yet available. Every method fails closed with the standard
  * "run `lando setup`" remediation so a user who tries to start an app
  * with a slow-bind-mount provider before running setup gets an
  * actionable error, not a missing-binary stack trace.

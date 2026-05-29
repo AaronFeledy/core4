@@ -31,7 +31,7 @@ const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundle
 const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundled-plugins.ts");
 
 describe("BUNDLED_PLUGINS", () => {
-  test("exports all MVP bundled plugins with real layer and manifest references", () => {
+  test("exports all bundled plugins with real layer and manifest references", () => {
     expect(BUNDLED_PLUGINS).toHaveLength(6);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),

@@ -1,10 +1,9 @@
 /**
  * Deterministic Mutagen session naming.
  *
- * Per `spec/beta/prd-beta-03-file-sync-mutagen.md` (Technical
- * Considerations), the naming function lives in this plugin so that the
- * generated session names obey Mutagen's identifier rules (kebab-case,
- * length-bounded) while remaining stable across runs.
+ * This module keeps the naming rules local to the file-sync-mutagen plugin
+ * so generated session names stay within Mutagen's identifier constraints
+ * while remaining stable across runs.
  *
  * Rules:
  *   - Form a base string `${appId}-${serviceId}-${mountKey}`.
@@ -24,11 +23,10 @@ import { createHash } from "node:crypto";
 import { FileSyncSessionRef, type FileSyncSessionSpec } from "@lando/sdk/schema";
 
 /**
- * Upper bound on Mutagen session names. Mutagen's wire format does not
- * publish a strict ceiling, but 60 ASCII chars stays well inside
- * filesystem name limits (POSIX `NAME_MAX` is 255, Windows path segments
- * are capped near 255 with reserved tail budget) and matches the
- * length budget used by the deterministic provider-naming helpers.
+ * Upper bound on Mutagen session names. Mutagen does not publish a strict
+ * ceiling, but 60 ASCII chars stays comfortably within common filesystem
+ * segment limits and matches the deterministic provider-naming budget used
+ * elsewhere.
  */
 export const MUTAGEN_NAME_MAX = 60;
 
@@ -48,8 +46,8 @@ const sanitize = (raw: string): string =>
 /**
  * Build a Mutagen-compatible identifier from an app/service/mount triple.
  * Exposed separately from `mutagenSessionName` so callers that already
- * know the raw segments (e.g. a planner that has not yet built a full
- * `FileSyncSessionSpec`) can request the same name.
+ * know the raw segments can derive the same deterministic name without
+ * constructing a full `FileSyncSessionSpec`.
  */
 export const mutagenSessionNameFromParts = (parts: {
   readonly appId: string;
@@ -73,24 +71,23 @@ export const mutagenSessionNameFromParts = (parts: {
 
 /**
  * Derive the deterministic Mutagen session name for a given
- * `FileSyncSessionSpec`. Always returns a valid Mutagen identifier
- * (kebab-case, length-bounded). Stable across runs for identical inputs.
+ * `FileSyncSessionSpec`. Always returns a valid kebab-case identifier
+ * within the allowed length, and stays stable across runs for identical
+ * inputs.
  */
 export const mutagenSessionName = (spec: FileSyncSessionSpec): string =>
   mutagenSessionNameFromParts({ appId: spec.app.id, service: spec.service, mountKey: spec.mountKey });
 
 /**
  * Convenience wrapper that brands a `mutagenSessionName` as a
- * `FileSyncSessionRef`. Engines use this to register sessions with
- * `listSessions`.
+ * `FileSyncSessionRef` for registration with `listSessions`.
  */
 export const mutagenSessionRef = (spec: FileSyncSessionSpec): FileSyncSessionRef =>
   FileSyncSessionRef.make(mutagenSessionName(spec));
 
 /**
  * `true` iff `name` is a valid Mutagen-compatible session name produced
- * by `mutagenSessionName`. Used by tests and downstream code that
- * receives session names from untrusted (e.g. file-system-restored)
- * sources.
+ * by `mutagenSessionName`. Used by tests and downstream code that receives
+ * session names from untrusted sources.
  */
 export const isValidMutagenSessionName = (name: string): boolean => VALID_NAME.test(name);
