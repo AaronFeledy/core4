@@ -828,3 +828,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: none (Bugbot passed with no findings)
 - Merge: merged (squash)
 ---
+
+## [2026-05-29 09:53 CDT] - Babysit
+- PR: #204 https://github.com/AaronFeledy/core4/pull/204
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium — runCaContract discarded issueCert result without validating certPath/keyPath/caPath; added requireCaContract assertions; rerun Bugbot passed)
+- Merge: merged (squash)
+---
