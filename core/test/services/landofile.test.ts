@@ -200,6 +200,50 @@ describe("LandofileServiceLive", () => {
             expect(error.issues).toContain("services.web.deploy");
             expect(error.message).toContain("unsupported MVP keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
+            expect(error.message).not.toContain("Compose compatibility");
+          }
+        }
+      }
+    });
+  });
+
+  test("reports mixed remediation for compose and non-compose service keys", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "services:",
+          "  web:",
+          "    type: compose",
+          "    image: node:lts",
+          "    deploy:",
+          "      replicas: 3",
+          "  appserver:",
+          "    type: node",
+          "    image: node:lts",
+          "    deploy:",
+          "      replicas: 1",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          const error = failure.value;
+          expect(error).toBeInstanceOf(LandofileValidationError);
+          if (error._tag === "LandofileValidationError") {
+            expect(error.issues).toContain("services.web.deploy");
+            expect(error.issues).toContain("services");
+            expect(error.message).toContain("unsupported service keys");
+            expect(error.message).toContain("For type: compose services");
+            expect(error.message).not.toContain("unsupported Compose-subset keys");
           }
         }
       }

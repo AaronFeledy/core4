@@ -20,10 +20,39 @@ export { LandofileService } from "@lando/sdk/services";
 
 const LANDOFILE_NAME = ".lando.yml";
 const LANDOFILE_TS_NAME = ".lando.ts";
-const REMEDIATION =
-  "Remove unsupported keys, move provider-native Compose options under providers.<id>, or update the documented Compose subset in spec/07-landofile-and-config.md §7.4.";
+const REMEDIATION = "Remove unsupported keys or update the documented Landofile service schema.";
 const COMPOSE_ALLOWLIST_REMEDIATION =
   "Compose compatibility is limited to the documented §7.4 subset in spec/07-landofile-and-config.md; move provider-native keys under providers.<provider-id> or use config translation.";
+
+const SERVICE_CONFIG_KEYS = new Set([
+  "api",
+  "type",
+  "primary",
+  "image",
+  "build",
+  "command",
+  "entrypoint",
+  "user",
+  "workingDirectory",
+  "database",
+  "cores",
+  "port",
+  "framework",
+  "root",
+  "environment",
+  "ports",
+  "volumes",
+  "appMount",
+  "mounts",
+  "storage",
+  "endpoints",
+  "routes",
+  "healthcheck",
+  "hostnames",
+  "dependsOn",
+  "composeBuild",
+  "providers",
+]);
 
 const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
 
@@ -252,6 +281,52 @@ const isComposeServiceKeyIssue = (issue: string, parsed: unknown): boolean => {
   );
 };
 
+const unsupportedAuthoredServiceKeyTypes = (
+  parsed: unknown,
+): { readonly compose: number; readonly nonCompose: number } => {
+  if (parsed === null || typeof parsed !== "object") return { compose: 0, nonCompose: 0 };
+  const services = (parsed as { readonly services?: unknown }).services;
+  if (services === null || typeof services !== "object") return { compose: 0, nonCompose: 0 };
+
+  let compose = 0;
+  let nonCompose = 0;
+  for (const service of Object.values(services as Record<string, unknown>)) {
+    if (service === null || typeof service !== "object") continue;
+    const serviceRecord = service as Record<string, unknown>;
+    const hasUnsupportedKey = Object.keys(serviceRecord).some((key) => !SERVICE_CONFIG_KEYS.has(key));
+    if (!hasUnsupportedKey) continue;
+    if (serviceRecord.type === "compose") compose++;
+    else nonCompose++;
+  }
+  return { compose, nonCompose };
+};
+
+const validationScope = (
+  issues: ReadonlyArray<string>,
+  parsed: unknown,
+): { readonly scope: string; readonly remediation: string } => {
+  const unsupportedKeyTypes = unsupportedAuthoredServiceKeyTypes(parsed);
+  if (unsupportedKeyTypes.compose > 0 && unsupportedKeyTypes.nonCompose === 0) {
+    return { scope: "unsupported Compose-subset keys", remediation: COMPOSE_ALLOWLIST_REMEDIATION };
+  }
+  if (unsupportedKeyTypes.compose > 0 && unsupportedKeyTypes.nonCompose > 0) {
+    return {
+      scope: "unsupported service keys",
+      remediation: `${REMEDIATION} For type: compose services, ${COMPOSE_ALLOWLIST_REMEDIATION}`,
+    };
+  }
+
+  const composeIssueCount = issues.filter((issue) => isComposeServiceKeyIssue(issue, parsed)).length;
+  if (composeIssueCount === 0) return { scope: "unsupported MVP keys", remediation: REMEDIATION };
+  if (composeIssueCount === issues.length) {
+    return { scope: "unsupported Compose-subset keys", remediation: COMPOSE_ALLOWLIST_REMEDIATION };
+  }
+  return {
+    scope: "unsupported service keys",
+    remediation: `${REMEDIATION} For type: compose services, ${COMPOSE_ALLOWLIST_REMEDIATION}`,
+  };
+};
+
 const validateLandofile = (
   filePath: string,
   parsed: unknown,
@@ -260,9 +335,7 @@ const validateLandofile = (
   if (Either.isRight(result)) return Effect.succeed(result.right);
 
   const issues = validationIssues(result.left);
-  const hasComposeSubsetIssue = issues.some((issue) => isComposeServiceKeyIssue(issue, parsed));
-  const remediation = hasComposeSubsetIssue ? COMPOSE_ALLOWLIST_REMEDIATION : REMEDIATION;
-  const scope = hasComposeSubsetIssue ? "unsupported Compose-subset keys" : "unsupported MVP keys";
+  const { scope, remediation } = validationScope(issues, parsed);
   return Effect.fail(
     new LandofileValidationError({
       message: `Landofile contains ${scope}: ${issues.join(", ")}. ${remediation}`,
