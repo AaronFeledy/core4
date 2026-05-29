@@ -429,8 +429,11 @@ export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 export const landoAppNetworkName = (plan: Pick<AppPlan, "slug">): string =>
   `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-export const landoNetworkNames = (plan: Pick<AppPlan, "slug">): ReadonlyArray<string> =>
-  Array.from(new Set([landoAppNetworkName(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
+export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networks">): ReadonlyArray<string> =>
+  plan.networks.length === 0 ? [landoAppNetworkName(plan)] : plan.networks.map((network) => network.name);
+
+export const landoNetworkNames = (plan: Pick<AppPlan, "slug" | "networks">): ReadonlyArray<string> =>
+  Array.from(new Set([...landoAppNetworkNames(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
 
 export const landoServiceNetworkAliases = (
   plan: Pick<AppPlan, "slug">,

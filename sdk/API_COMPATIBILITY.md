@@ -31,6 +31,7 @@
 - `FileSyncPlan`
 - `fileSyncVolumeName`
 - `landoAppNetworkName`
+- `landoAppNetworkNames`
 - `landoNetworkNames`
 - `landoServiceNetworkAliases`
 - `sameAppMountTarget`
