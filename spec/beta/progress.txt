@@ -914,3 +914,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The fake's `curl` is not a real CLI command and the real CLI does not surface its internal EventService events into `ScenarioContext.events`; both are why the canned shim must remain for current guides.
   - The `e2e` runner resolves the compiled binary from `core/dist/lando` but honors `LANDO_SCENARIO_E2E_BINARY` for tests, and returns an exit-127 result (not a thrown error) when the binary is absent.
 ---
+
+## [2026-05-29 17:10 CDT] - US-176 Review fixes (agent2)
+- Addressed review findings on the scenario runCli seam (`core/src/testing/scenario-context.ts`):
+  - The `e2e` runner now advances the working directory into the app created by a successful `init`/`apps:init`, matching the in-process runner. Extracted the shared `advanceWorkingDirectoryAfterInit` helper so both paths chdir consistently; without this, an e2e guide chaining `init` → a later command ran in the parent dir and missed the generated `.lando.yml`.
+  - The in-process `scenario` runner now guards against non-allowlisted commands (allowlist: `init`/`apps:init`, plus the hardcoded `version`). Unsupported commands return a catchable exit-1 result pointing at `ScenarioContextFactory.e2e` instead of letting source-mode OCLIF `process.exit` kill the test runner.
+  - Documented on `ScenarioContext.events` that only `testOnlyFake` populates it (the real/e2e runners do not bridge EventService), so event assertions are not silently empty under the real runners.
+  - Removed the dead `emitStartEvent` parameter from `invokeRealCli` (the fake path always short-circuits `start` through `runScenarioLayerCommand`, so the branch was unreachable).
+- Verification: `@lando/core` typecheck clean, lint clean, engine unit suite 20 pass / 0 fail (added 2 tests: scenario allowlist guard, e2e init-cwd advance).
+---

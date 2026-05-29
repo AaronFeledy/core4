@@ -68,6 +68,9 @@ export interface ScenarioContext {
     options?: ScenarioRunOptions,
   ) => Effect.Effect<ScenarioRunResult, unknown>;
   readonly shell: (command: string) => Effect.Effect<never, NotImplementedError>;
+  // Only the `testOnlyFake` runner records events here. The `scenario` and `e2e`
+  // runners do not bridge the real EventService, so this stays empty under them —
+  // event-based assertions are meaningful only with `testOnlyFake`.
   readonly events: ReadonlyArray<LandoEvent>;
   readonly transcript: ScenarioTranscript;
   readonly fixtures: ScenarioFixtures;
@@ -425,13 +428,26 @@ const versionResult = (args: ReadonlyArray<string>, events: LandoEvent[]): Scena
   events: [...events],
 });
 
+// `init` creates the app under a `<name>` subdirectory; advance the scenario cwd
+// into it so later commands find the generated `.lando.yml`. Shared by both runners.
+const advanceWorkingDirectoryAfterInit = (
+  args: ReadonlyArray<string>,
+  options: ScenarioRunOptions | undefined,
+  exitCode: number,
+  cwd: string,
+  setWorkingDirectory: (path: string) => void,
+): void => {
+  if ((args[0] !== "init" && args[0] !== "apps:init") || exitCode !== 0) return;
+  const appName = stringFlagValue(args, "name") ?? options?.answers?.name;
+  if (appName !== undefined && appName !== "") setWorkingDirectory(join(cwd, appName));
+};
+
 const invokeRealCli = async (
   args: ReadonlyArray<string>,
   options: ScenarioRunOptions | undefined,
   events: LandoEvent[],
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
-  emitStartEvent: boolean,
 ): Promise<ScenarioRunResult> => {
   const previousCwd = process.cwd();
   const previousExitCode = process.exitCode;
@@ -447,13 +463,7 @@ const invokeRealCli = async (
     const stdoutText = stdout.content();
     const stderrText = stderr.content();
     const exitCode = typeof process.exitCode === "number" ? process.exitCode : 0;
-    if ((args[0] === "init" || args[0] === "apps:init") && exitCode === 0) {
-      const appName = stringFlagValue(args, "name") ?? options?.answers?.name;
-      if (appName !== undefined && appName !== "") setWorkingDirectory(join(cwd, appName));
-    }
-    if (emitStartEvent && (args[0] === "start" || args[0] === "app:start") && exitCode === 0) {
-      events.push({ _tag: "post-start" } as LandoEvent);
-    }
+    advanceWorkingDirectoryAfterInit(args, options, exitCode, cwd, setWorkingDirectory);
 
     const result = {
       command: args,
@@ -486,8 +496,25 @@ const createTestOnlyFakeRunCli =
       const scenarioLayerResult = await runScenarioLayerCommand(args, getWorkingDirectory(), events);
       if (scenarioLayerResult !== undefined) return scenarioLayerResult;
 
-      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory, true);
+      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory);
     });
+
+// Source-mode OCLIF calls `process.exit` on any erroring command, which would
+// terminate the surrounding test runner. The in-process scenario runner is
+// therefore restricted to commands that succeed; everything else must run
+// through the compiled binary via `ScenarioContextFactory.e2e`.
+const SCENARIO_INPROCESS_COMMANDS: ReadonlySet<string> = new Set(["init", "apps:init"]);
+
+const unsupportedInProcessResult = (
+  args: ReadonlyArray<string>,
+  events: LandoEvent[],
+): ScenarioRunResult => ({
+  command: args,
+  stdout: "",
+  stderr: `command "${args[0] ?? ""}" is not supported by the in-process scenario runner because source-mode OCLIF calls process.exit on errors and would kill the test runner; use ScenarioContextFactory.e2e to run it against the compiled binary\n`,
+  exitCode: 1,
+  events: [...events],
+});
 
 const createScenarioRunCli =
   (
@@ -499,15 +526,22 @@ const createScenarioRunCli =
     Effect.tryPromise(async () => {
       const args = appendInitAnswers(parseCommand(command), options?.answers);
       if (isVersionCommand(args)) return versionResult(args, events);
+      if (args[0] === undefined || !SCENARIO_INPROCESS_COMMANDS.has(args[0])) {
+        return unsupportedInProcessResult(args, events);
+      }
 
-      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory, false);
+      return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory);
     });
 
 const compiledBinaryPath = (): string =>
   process.env.LANDO_SCENARIO_E2E_BINARY ?? fileURLToPath(new URL("../../dist/lando", import.meta.url));
 
 const createE2eRunCli =
-  (events: LandoEvent[], getWorkingDirectory: () => string): ScenarioContext["runCli"] =>
+  (
+    events: LandoEvent[],
+    getWorkingDirectory: () => string,
+    setWorkingDirectory: (path: string) => void,
+  ): ScenarioContext["runCli"] =>
   (command, options) =>
     Effect.tryPromise(async () => {
       const args = appendInitAnswers(parseCommand(command), options?.answers);
@@ -522,9 +556,10 @@ const createE2eRunCli =
         } satisfies ScenarioRunResult;
       }
 
+      const cwd = getWorkingDirectory();
       const proc = Bun.spawn({
         cmd: [binary, ...args],
-        cwd: getWorkingDirectory(),
+        cwd,
         stdout: "pipe",
         stderr: "pipe",
       });
@@ -533,6 +568,7 @@ const createE2eRunCli =
         new Response(proc.stdout).text(),
         new Response(proc.stderr).text(),
       ]);
+      advanceWorkingDirectoryAfterInit(args, options, exitCode, cwd, setWorkingDirectory);
 
       const result = {
         command: args,
@@ -551,7 +587,7 @@ const selectRunner = (
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
 ): ScenarioContext["runCli"] => {
-  if (runnerKind === "e2e") return createE2eRunCli(events, getWorkingDirectory);
+  if (runnerKind === "e2e") return createE2eRunCli(events, getWorkingDirectory, setWorkingDirectory);
   if (runnerKind === "scenario")
     return createScenarioRunCli(events, getWorkingDirectory, setWorkingDirectory);
   return createTestOnlyFakeRunCli(events, getWorkingDirectory, setWorkingDirectory);

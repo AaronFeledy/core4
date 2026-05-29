@@ -473,6 +473,63 @@ describe("ScenarioContextFactory", () => {
     expect(result.created).toBe(true);
   });
 
+  test("scenario layer refuses commands outside the in-process allowlist instead of exiting", async () => {
+    const result = await Effect.runPromise(
+      ScenarioContextFactory.scenario({ guideId: "node-postgres", scenarioId: "guarded" }, (context) =>
+        context.runCli(["start"]),
+      ),
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("ScenarioContextFactory.e2e");
+    expect(result.command).toEqual(["start"]);
+  });
+
+  test("e2e layer advances the working directory into the app created by init", async () => {
+    const stubDir = await mkdtemp(join(tmpdir(), "lando-e2e-initcwd-"));
+    const stub = join(stubDir, "lando-stub.sh");
+    await writeFile(
+      stub,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "init" ] || [ "$1" = "apps:init" ]; then',
+        '  name=""',
+        '  for arg in "$@"; do',
+        '    case "$arg" in',
+        '      --answer=name=*) name="${arg#--answer=name=}" ;;',
+        '      --name=*) name="${arg#--name=}" ;;',
+        "    esac",
+        "  done",
+        '  mkdir -p "$name"',
+        "  exit 0",
+        "fi",
+        "pwd",
+        "exit 0",
+        "",
+      ].join("\n"),
+    );
+    await Bun.spawn(["chmod", "+x", stub]).exited;
+    const previous = process.env.LANDO_SCENARIO_E2E_BINARY;
+    process.env.LANDO_SCENARIO_E2E_BINARY = stub;
+    try {
+      const result = await Effect.runPromise(
+        ScenarioContextFactory.e2e({ guideId: "node-postgres", scenarioId: "e2e-initcwd" }, (context) =>
+          Effect.gen(function* () {
+            const init = yield* context.runCli(["init"], { answers: { name: "e2e-app" } });
+            const where = yield* context.runCli(["whereami"]);
+            return { init, where };
+          }),
+        ),
+      );
+      expect(result.init.exitCode).toBe(0);
+      expect(result.where.stdout.trim().endsWith(join("e2e-app"))).toBe(true);
+    } finally {
+      process.env.LANDO_SCENARIO_E2E_BINARY = previous;
+      await rm(stubDir, { recursive: true, force: true });
+    }
+  });
+
   test("e2e layer spawns the compiled binary and captures stdout/stderr/exit", async () => {
     const stub = join(await mkdtemp(join(tmpdir(), "lando-e2e-stub-")), "lando-stub.sh");
     await writeFile(
