@@ -579,12 +579,15 @@ export const ServiceConfig = Schema.Struct({
   volumes: Schema.optional(Schema.Array(Schema.String)),
 
   appMount: Schema.optional(
-    Schema.Struct({
-      target: Schema.String,
-      readOnly: Schema.optional(Schema.Boolean),
-      excludes: Schema.optional(Schema.Array(Schema.String)),
-      includes: Schema.optional(Schema.Array(Schema.String)),
-    }),
+    Schema.Union(
+      Schema.Literal(false),
+      Schema.Struct({
+        target: Schema.String,
+        readOnly: Schema.optional(Schema.Boolean),
+        excludes: Schema.optional(Schema.Array(Schema.String)),
+        includes: Schema.optional(Schema.Array(Schema.String)),
+      }),
+    ),
   ),
   mounts: Schema.optional(Schema.Array(MountInput)),
   storage: Schema.optional(Schema.Array(StorageInput)),

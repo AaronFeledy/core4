@@ -102,4 +102,39 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
       docker: { restart: "unless-stopped" },
     });
   });
+
+  test("default compose plan emits app-root bind mount and per-app network membership", async () => {
+    const plan = await planFor(composeLandofile, "lando");
+    const worker = plan.services[ServiceName.make("worker")];
+
+    expect(worker?.appMount).toMatchObject({ target: "/app", readOnly: false });
+    expect(worker?.mounts.some((m) => m.type === "bind" && String(m.target) === "/app")).toBe(true);
+    expect(worker?.environment.LANDO_APP_ROOT).toBe("/app");
+    expect(worker?.environment.LANDO_PROJECT_MOUNT).toBe("/app");
+
+    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+  });
+
+  test("appMount: false opts out — no appMount, no synthetic /app bind", async () => {
+    const optedOut: LandofileShape = {
+      ...composeLandofile,
+      services: {
+        [ServiceName.make("worker")]: {
+          type: "compose",
+          image: "ghcr.io/example/worker:latest",
+          appMount: false,
+          ports: ["9000:9000"],
+        },
+      },
+    };
+    const plan = await planFor(optedOut, "lando");
+    const worker = plan.services[ServiceName.make("worker")];
+
+    expect(worker?.appMount).toBeUndefined();
+    expect(worker?.mounts).toEqual([]);
+    expect(worker?.environment.LANDO_APP_ROOT).toBeUndefined();
+    expect(worker?.environment.LANDO_PROJECT_MOUNT).toBeUndefined();
+
+    expect(plan.networks).toEqual([{ name: "lando-composeapp", shared: false, driver: "bridge" }]);
+  });
 });

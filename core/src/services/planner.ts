@@ -224,6 +224,8 @@ const expandExcludesToShadows = (
 const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.appMount;
   if (authored === undefined) return servicePlan;
+  // `appMount: false` opts out at the service-type emitter; planner leaves the as-emitted plan.
+  if (authored === false) return servicePlan;
   if (servicePlan.appMount === undefined) return servicePlan;
   const merged = {
     ...servicePlan.appMount,

@@ -673,3 +673,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - PR: #195 https://github.com/AaronFeledy/core4/pull/195
 - Fix: prefixed the generated Caddy static command with `caddy` and updated the static service expectation.
 ---
+
+## [2026-05-28 CDT] - US-094
+- Shipped the raw Compose passthrough service end-to-end: `type: compose` now emits a default `/app` app-root bind mount + `LANDO_APP_ROOT` / `LANDO_PROJECT_MOUNT` env, and supports per-service `appMount: false` opt-out for third-party images that must not see the app source. Per-app network membership remains automatic via the planner. Added the `docs/guides/services/compose-passthrough.mdx` guide + `compose-passthrough-demo` fixture for a `traefik/whoami:v1.10` third-party image, and a service-side scenario test that drives a non-canonical image through `AppPlanner` and the tooling-exec seam.
+- Verification: typecheck, lint, tests passed (1618 pass / 0 fail; guide scenarios green).
+- **Learnings for future iterations:**
+  - The §7.4 per-service opt-out for the app-root bind mount lives on `ServiceConfig.appMount` as a `Union(Literal(false), Struct)`. The planner's `applyAuthoredAppMount` short-circuits on `false`; the *service-type* emitter is what decides whether to skip the synthetic `/app` bind mount and the app-path env. Other service types (nginx, apache, …) still emit their defaults if a user passes `appMount: false` — extending the opt-out to them is out of scope for US-094 and would require per-service-type acknowledgement of the flag.
+  - The scenario-test layer in `core/src/testing/scenario-context.ts` only knows three CLI verbs out of the box: `start`, `destroy`, and `curl` (with a static-service special case that reads the Landofile's `root:`). For compose-passthrough's third-party probe (`traefik/whoami`), the rendered happy-path can't actually `curl` the image — keep that step as `render={false}` (matching the elasticsearch/opensearch/meilisearch pattern) and verify the surface in a service-side `*.scenario.test.ts` that drives the tooling-exec layer directly. Anything beyond `start` / `destroy` / `curl` in a `render` scenario will fail with `command <verb> not found`.
+  - `bun run codegen` regenerates `oclif.manifest.json`, `ci.yml`, `release.yml`, `bundled-recipes.ts`, and `schema-snapshot.json`. After a schema-shape change anywhere under `sdk/src/schema/`, `bun run codegen:schema-snapshot` is the minimal targeted regen; the workflow + manifest regens are noise unless those inputs changed too.
+  - `appNetworkName(slug)` formats per-app networks as `lando-<slug>`, NOT `<slug>-default`. Compose-passthrough planner tests that assert network membership must match `{ name: "lando-<slug>", shared: false, driver: "bridge" }`.
+---

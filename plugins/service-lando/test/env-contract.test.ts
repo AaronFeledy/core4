@@ -229,7 +229,7 @@ const cases: ReadonlyArray<CatalogCase> = [
     serviceType: composeServiceType,
     landofileService: { type: "compose", image: "busybox" },
     expectedType: "compose",
-    expectsAppPaths: false,
+    expectsAppPaths: true,
     expectsWebroot: null,
   },
 ];
