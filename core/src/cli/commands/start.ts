@@ -26,7 +26,7 @@ import type {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
@@ -97,6 +97,36 @@ const READY_STATES = new Set(["running", "ready"]);
 const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
+
+const startFileSyncSessions = (plan: AppPlan) =>
+  Effect.gen(function* () {
+    if (plan.fileSync.length === 0) return;
+    const engineOption = yield* Effect.serviceOption(FileSyncEngine);
+    if (engineOption._tag === "None") return;
+
+    const engine = engineOption.value;
+    const createdRefs: Array<FileSyncSessionRef> = [];
+    yield* Effect.forEach(
+      plan.fileSync,
+      (entry) =>
+        Effect.gen(function* () {
+          const sessionScope = yield* Scope.make();
+          const ref = yield* engine
+            .createSession(entry.session)
+            .pipe(Effect.provideService(Scope.Scope, sessionScope));
+          createdRefs.push(ref);
+        }),
+      { discard: true },
+    ).pipe(
+      Effect.catchAll((error) =>
+        Effect.forEach(
+          createdRefs.reverse(),
+          (ref) => engine.terminateSession(ref).pipe(Effect.catchAll(() => Effect.void)),
+          { discard: true },
+        ).pipe(Effect.flatMap(() => Effect.fail(error))),
+      ),
+    );
+  });
 
 export const renderStartAppResult = (result: StartAppResult): string => {
   const services = result.servicesStarted
@@ -213,16 +243,7 @@ export const startApp = (
       durationMs: Math.round(performance.now() - applyStart),
     });
 
-    if (plan.fileSync.length > 0) {
-      const engineOption = yield* Effect.serviceOption(FileSyncEngine);
-      if (engineOption._tag === "Some") {
-        const engine = engineOption.value;
-        for (const entry of plan.fileSync) {
-          const sessionScope = yield* Scope.make();
-          yield* engine.createSession(entry.session).pipe(Effect.provideService(Scope.Scope, sessionScope));
-        }
-      }
-    }
+    yield* startFileSyncSessions(plan);
 
     yield* events.publish(
       PostAppStartEvent.make({

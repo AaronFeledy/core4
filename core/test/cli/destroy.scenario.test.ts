@@ -10,14 +10,27 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  type FileSyncSessionInfo,
+  type FileSyncSessionRef,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
-import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  AppPlanner,
+  EventService,
+  FileSyncEngine,
+  LandofileService,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
+import type {
+  AppSelector,
+  DestroyOptions,
+  FileSyncEngineShape,
+  RuntimeProviderShape,
+} from "@lando/sdk/services";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -253,5 +266,54 @@ describe("lando destroy", () => {
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
+  });
+
+  test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
+    const existingRef = "session-web-app-mount" as FileSyncSessionRef;
+    const existing: FileSyncSessionInfo = {
+      ref: existingRef,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      service: web.name,
+      mountKey: "app-mount",
+      status: "running",
+      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+    };
+    const callLog: string[] = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Fake Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "none",
+        exclusionPatterns: false,
+        conflictReporting: false,
+        progressReporting: false,
+      },
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      createSession: () => Effect.succeed(existingRef),
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: (ref) =>
+        Effect.sync(() => {
+          callLog.push(`terminate:${String(ref)}`);
+        }),
+      listSessions: () =>
+        Effect.sync(() => {
+          callLog.push("listSessions");
+          return [existing];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const harness = makeDestroyLayer();
+    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+
+    await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
+
+    const listIndex = callLog.indexOf("listSessions");
+    const terminateIndex = callLog.indexOf(`terminate:${String(existingRef)}`);
+    expect(listIndex).toBeGreaterThanOrEqual(0);
+    expect(terminateIndex).toBeGreaterThan(listIndex);
+    expect(harness.destroyCalls).toHaveLength(1);
   });
 });

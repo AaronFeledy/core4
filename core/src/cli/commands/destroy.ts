@@ -79,6 +79,18 @@ export const renderDestroyAppResult = (result: DestroyAppResult): string => {
   return `destroyed: ${result.app} - ${services} (${trailer})`;
 };
 
+const terminateFileSyncSessions = (app: AppRef) =>
+  Effect.gen(function* () {
+    const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
+    if (Option.isNone(maybeEngine)) return;
+
+    const engine = maybeEngine.value;
+    const sessions = yield* engine.listSessions({ app });
+    for (const session of sessions) {
+      yield* engine.terminateSession(session.ref);
+    }
+  });
+
 export const destroyApp = (
   options: DestroyAppOptions = {},
 ): Effect.Effect<DestroyAppResult, DestroyAppError, DestroyAppServices> =>
@@ -103,16 +115,7 @@ export const destroyApp = (
       }),
     );
 
-    if (plan.fileSync.length > 0) {
-      const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
-      if (Option.isSome(maybeEngine)) {
-        const engine = maybeEngine.value;
-        const sessions = yield* engine.listSessions({ app: ref });
-        for (const session of sessions) {
-          yield* engine.terminateSession(session.ref);
-        }
-      }
-    }
+    yield* terminateFileSyncSessions(ref);
 
     yield* provider.destroy({ app: plan.id, plan }, { volumes, removeState: true });
 

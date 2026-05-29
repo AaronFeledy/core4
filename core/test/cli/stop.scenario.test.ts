@@ -261,7 +261,7 @@ describe("lando stop", () => {
     });
   });
 
-  test("terminates active file-sync sessions before provider.destroy when fileSync is present", async () => {
+  test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
     const existingRef = "session-web-app-mount" as FileSyncSessionRef;
     const existing: FileSyncSessionInfo = {
       ref: existingRef,
@@ -297,27 +297,6 @@ describe("lando stop", () => {
           return [existing];
         }),
       streamEvents: () => Stream.empty,
-    };
-    const planWithFileSync: AppPlan = {
-      ...plan,
-      fileSync: [
-        {
-          engineId: "mutagen",
-          session: {
-            app: { kind: "user", id: plan.id, root: plan.root },
-            service: web.name,
-            mountKey: "app-mount",
-            source: AbsolutePath.make("/tmp/test-stop"),
-            target: {
-              _tag: "volume",
-              name: "test-stop-web-app-mount",
-              path: PortablePath.make("/app"),
-            },
-            mode: "two-way-safe",
-            excludes: [],
-          },
-        },
-      ],
     };
     const fakeProvider: RuntimeProviderShape = {
       id: "lando",
@@ -371,7 +350,7 @@ describe("lando stop", () => {
     };
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),

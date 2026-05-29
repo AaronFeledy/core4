@@ -75,6 +75,18 @@ export const renderStopAppResult = (result: StopAppResult): string => {
   return `stopped: ${result.app} - ${services}`;
 };
 
+const terminateFileSyncSessions = (app: AppRef) =>
+  Effect.gen(function* () {
+    const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
+    if (Option.isNone(maybeEngine)) return;
+
+    const engine = maybeEngine.value;
+    const existing = yield* engine.listSessions({ app });
+    for (const info of existing) {
+      yield* engine.terminateSession(info.ref);
+    }
+  });
+
 export const stopApp = (
   _options: StopAppOptions = {},
 ): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
@@ -112,16 +124,7 @@ export const stopApp = (
       );
     }
 
-    if (plan.fileSync.length > 0) {
-      const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
-      if (Option.isSome(maybeEngine)) {
-        const engine = maybeEngine.value;
-        const existing = yield* engine.listSessions({ app: ref });
-        for (const info of existing) {
-          yield* engine.terminateSession(info.ref);
-        }
-      }
-    }
+    yield* terminateFileSyncSessions(ref);
 
     yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
 
