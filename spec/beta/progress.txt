@@ -931,3 +931,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The host's `~/.lando/config.yml` may contain a JSON-style empty object (`{}`), which the minimal hand-rolled YAML parser in `core/src/services/config.ts` rejects with `Malformed YAML at line 1` before any command runs. To exercise CLI commands that bootstrap `ConfigService` on this host, set `LANDO_USER_CONF_ROOT` to a temp dir with a `key: value`-style `config.yml` (e.g. `defaultProviderId: lando`). `XDG_CONFIG_HOME`/`XDG_CACHE_HOME` do NOT redirect the config root — only `LANDO_USER_CONF_ROOT` (or `$HOME/.lando`) does.
   - When two CLI command modules in `core/src/cli/commands/` need the same pure text renderer, export it from the module that owns the type (here `doctor.ts` owns `DoctorSolution`) and import it; there is no circular dependency because `doctor.ts` does not import `doctor-subsystems.ts`.
 ---
+
+## [2026-05-29 18:29 CDT] - US-108 Review
+- Reviewed the US-108 doctor subsystem implementation against `spec/beta/prd-beta-04-subsystems.md`, the build-step range (`origin/main...HEAD`), and specialist review findings.
+- Fixed confirmed review blocker: wired the combined `lando doctor` report into the JSON renderer path so source and compiled command dispatch can emit one NDJSON stream containing both the selected-provider check and every subsystem check.
+- Review notes (deferred/rejected): broader DoctorService/plugin-contributed checks and live subsystem status APIs remain outside US-108; current story scope is the provider-bootstrap doctor report and subsystem records.
+- Verification: typecheck, lint, tests passed.
+---
