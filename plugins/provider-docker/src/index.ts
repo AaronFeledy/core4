@@ -1031,7 +1031,11 @@ const connectSharedNetwork = (api: DockerApiClient, plan: AppPlan, service: Serv
     },
   }).pipe(
     Effect.flatMap((response) =>
-      response.status === 200 || response.status === 201 || response.status === 204 || response.status === 409
+      response.status === 200 ||
+      response.status === 201 ||
+      response.status === 204 ||
+      response.status === 403 ||
+      response.status === 409
         ? Effect.void
         : Effect.fail(
             serviceStartFailure(
