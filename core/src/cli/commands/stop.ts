@@ -8,6 +8,9 @@ import { DateTime, Effect } from "effect";
 import type {
   CapabilityError,
   EventError,
+  FileSyncDriftError,
+  FileSyncStartError,
+  FileSyncStopError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -34,6 +37,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { terminateFileSyncSessions } from "../file-sync.ts";
+
 // biome-ignore lint/suspicious/noEmptyInterface: fields land with implementation
 export interface StopAppOptions {}
 
@@ -44,6 +49,9 @@ export interface StopAppResult {
 
 type StopAppError =
   | EventError
+  | FileSyncDriftError
+  | FileSyncStartError
+  | FileSyncStopError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -104,6 +112,8 @@ export const stopApp = (
         }),
       );
     }
+
+    yield* terminateFileSyncSessions(ref);
 
     yield* provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
 

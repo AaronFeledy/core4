@@ -88,6 +88,7 @@ const makePlan = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
 });

@@ -15,6 +15,8 @@ import {
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
+  fileSyncVolumeName,
+  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
   type CommandSpec,
@@ -826,7 +828,7 @@ const normalizeEntrypoint = (
   return [...entrypoint];
 };
 
-const hostConfig = (service: ServicePlan) => {
+const hostConfig = (plan: AppPlan, service: ServicePlan) => {
   const portBindings = Object.fromEntries(
     service.endpoints
       .filter((endpoint) => endpoint.port !== undefined)
@@ -839,13 +841,24 @@ const hostConfig = (service: ServicePlan) => {
   const appMounts =
     service.appMount === undefined
       ? []
-      : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
-  const binds = service.mounts.flatMap((mount) => {
+      : [
+          `${
+            service.appMount.realization === "accelerated"
+              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
+              : service.appMount.source
+          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
+        ];
+  const binds = service.mounts.flatMap((mount, index) => {
     if (mount.type !== "bind") return [];
+    if (sameAppMountTarget(service.appMount, mount)) return [];
     if (mount.source === undefined) {
       throw serviceStartFailure(service, "provider-docker bind mounts require a source.", { mount });
     }
-    return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+    const source =
+      mount.realization === "accelerated"
+        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
+        : mount.source;
+    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
   const allBinds = Array.from(new Set([...appMounts, ...binds]));
 
@@ -869,7 +882,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
     Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name },
-    HostConfig: hostConfig(service),
+    HostConfig: hostConfig(plan, service),
     NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
   };
 };

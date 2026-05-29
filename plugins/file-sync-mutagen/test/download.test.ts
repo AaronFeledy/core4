@@ -221,6 +221,32 @@ const failingFetch = (): typeof fetch =>
     throw new Error("network unreachable");
   }) as typeof fetch;
 
+const withProcessArch = async <T>(arch: string, fn: () => Promise<T>): Promise<T> => {
+  const original = Object.getOwnPropertyDescriptor(process, "arch");
+  if (original === undefined) {
+    throw new Error("missing process.arch descriptor");
+  }
+  Object.defineProperty(process, "arch", { ...original, value: arch });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, "arch", original);
+  }
+};
+
+const withProcessPlatform = async <T>(platform: NodeJS.Platform, fn: () => Promise<T>): Promise<T> => {
+  const original = Object.getOwnPropertyDescriptor(process, "platform");
+  if (original === undefined) {
+    throw new Error("missing process.platform descriptor");
+  }
+  Object.defineProperty(process, "platform", { ...original, value: platform });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, "platform", original);
+  }
+};
+
 describe("MUTAGEN_VERSIONS_MANIFEST", () => {
   test("schema version is 1 and mutagenVersion is non-empty", () => {
     expect(MUTAGEN_VERSIONS_MANIFEST.schemaVersion).toBe(1);
@@ -387,6 +413,82 @@ describe("ZIP extraction", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("win32 host zip downloads tar.gz agent archives separately", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    const hostArchiveBytes = new Uint8Array([0x11, 0x22, 0x33]);
+    const agentArchiveBytes = new Uint8Array([0x44, 0x55, 0x66]);
+    const hostBinaryBytes = new Uint8Array([0xaa, 0xbb]);
+    const agentBinaryBytes = new Uint8Array([0xcc, 0xdd]);
+    const hostEntry: MutagenBinaryEntry = {
+      url: "https://example.test/mutagen_windows_amd64_v0.18.1.zip",
+      sha256: sha256(hostArchiveBytes),
+      archiveFilename: "mutagen_windows_amd64_v0.18.1.zip",
+      binaryName: "mutagen.exe",
+      installName: "mutagen.exe",
+      sizeBytes: hostArchiveBytes.byteLength,
+    };
+    const agentEntry: MutagenBinaryEntry = {
+      url: "https://example.test/mutagen_linux_amd64_v0.18.1.tar.gz",
+      sha256: sha256(agentArchiveBytes),
+      archiveFilename: "mutagen_linux_amd64_v0.18.1.tar.gz",
+      binaryName: "linux_amd64",
+      installName: "mutagen-agent-linux-amd64",
+      sizeBytes: agentArchiveBytes.byteLength,
+    };
+    const manifest: MutagenVersionsManifest = {
+      schemaVersion: 1,
+      mutagenVersion: "v0.99.0-test",
+      host: { "win32-x64": hostEntry },
+      agents: { "linux-amd64": agentEntry },
+    };
+    let fetchCalls = 0;
+    const selectiveFetch: typeof fetch = ((input: RequestInfo | URL): Promise<Response> => {
+      fetchCalls += 1;
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === hostEntry.url) {
+        return Promise.resolve(new Response(hostArchiveBytes, { status: 200, statusText: "OK" }));
+      }
+      if (url === agentEntry.url) {
+        return Promise.resolve(new Response(agentArchiveBytes, { status: 200, statusText: "OK" }));
+      }
+      return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
+    }) as typeof fetch;
+    const extractImpl = async (archiveBytes: Uint8Array, entry: MutagenBinaryEntry): Promise<Uint8Array> => {
+      if (entry.archiveFilename.endsWith(".zip")) {
+        expect(archiveBytes).toEqual(hostArchiveBytes);
+        return hostBinaryBytes;
+      }
+      if (entry.archiveFilename.endsWith(".tar.gz")) {
+        expect(archiveBytes).toEqual(agentArchiveBytes);
+        return agentBinaryBytes;
+      }
+      throw new Error(`unexpected archive ${entry.archiveFilename}`);
+    };
+
+    try {
+      await withProcessPlatform("win32", async () => {
+        const downloader = makeMutagenDownloader();
+        const exit = await run(
+          downloader.setup({
+            userDataRoot: dir,
+            _testManifest: manifest,
+            fetchImpl: selectiveFetch,
+            extractImpl,
+          }),
+        );
+        expect(exit._tag).toBe("Success");
+      });
+
+      expect(fetchCalls).toBe(2);
+      expect(new Uint8Array(await readFile(mutagenHostBinaryPath(dir, "win32")))).toEqual(hostBinaryBytes);
+      expect(new Uint8Array(await readFile(mutagenAgentBinaryPath(dir, "linux-amd64")))).toEqual(
+        agentBinaryBytes,
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("makeMutagenDownloader().setup()", () => {
@@ -482,6 +584,45 @@ describe("makeMutagenDownloader().setup()", () => {
 
       await writeFile(mutagenAgentBinaryPath(dir, "linux-amd64"), new Uint8Array([0x00, 0x01]));
       expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("arm64 hosts reuse the host archive for Linux agents", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    let fetchCalls = 0;
+    const hostUrl = TEST_MANIFEST.host["linux-arm64"].url;
+    const selectiveFetch: typeof fetch = ((input: RequestInfo | URL): Promise<Response> => {
+      fetchCalls += 1;
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url !== hostUrl) {
+        return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
+      }
+      return Promise.resolve(new Response(FAKE_ARCHIVE_BYTES, { status: 200, statusText: "OK" }));
+    }) as typeof fetch;
+
+    try {
+      await withProcessArch("arm64", async () => {
+        const downloader = makeMutagenDownloader();
+        const exit = await run(
+          downloader.setup({
+            userDataRoot: dir,
+            _testManifest: TEST_MANIFEST,
+            fetchImpl: selectiveFetch,
+            extractImpl: fakeExtract(),
+          }),
+        );
+        expect(exit._tag).toBe("Success");
+      });
+
+      expect(fetchCalls).toBe(1);
+      expect(new Uint8Array(await readFile(mutagenHostBinaryPath(dir)))).toEqual(FAKE_BINARY_BYTES);
+      for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
+        expect(new Uint8Array(await readFile(mutagenAgentBinaryPath(dir, agentKey)))).toEqual(
+          FAKE_BINARY_BYTES,
+        );
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

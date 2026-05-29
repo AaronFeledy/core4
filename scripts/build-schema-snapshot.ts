@@ -49,6 +49,7 @@ const SDK_SCHEMA_NAMES = [
   "FileSyncSessionSpec",
   "FileSyncSessionInfo",
   "FileSyncEventChunk",
+  "FileSyncPlan",
 ] as const satisfies ReadonlyArray<JsonSchemaName>;
 
 const stable = (value: unknown): unknown => {

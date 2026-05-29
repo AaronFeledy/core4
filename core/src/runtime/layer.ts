@@ -33,6 +33,8 @@ import {
   type ToolingEngine,
 } from "@lando/sdk/services";
 
+import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
+
 import { CacheServiceLive } from "../cache/service.ts";
 import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
@@ -255,6 +257,7 @@ const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
     AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive))),
     ProviderExecToolingEngineLive,
+    FileSyncEngineLive,
   );
 
 const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {

@@ -71,6 +71,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [{ name: "applied_state_db", scope: "app" }],
+  fileSync: [],
   metadata,
   extensions: {},
 };

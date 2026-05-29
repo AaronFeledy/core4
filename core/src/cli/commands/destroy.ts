@@ -12,6 +12,9 @@ import { DateTime, Effect } from "effect";
 import type {
   CapabilityError,
   EventError,
+  FileSyncDriftError,
+  FileSyncStartError,
+  FileSyncStopError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -33,6 +36,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { terminateFileSyncSessions } from "../file-sync.ts";
+
 export interface DestroyAppOptions {
   readonly volumes?: boolean;
   readonly yes?: boolean;
@@ -46,6 +51,9 @@ export interface DestroyAppResult {
 
 type DestroyAppError =
   | EventError
+  | FileSyncDriftError
+  | FileSyncStartError
+  | FileSyncStopError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -95,6 +103,8 @@ export const destroyApp = (
         timestamp: now(),
       }),
     );
+
+    yield* terminateFileSyncSessions(ref);
 
     yield* provider.destroy({ app: plan.id, plan }, { volumes, removeState: true });
 

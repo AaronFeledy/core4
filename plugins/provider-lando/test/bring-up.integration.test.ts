@@ -202,7 +202,7 @@ describe("provider-lando bringUp", () => {
     expect(nodeCreateBody?.HostConfig?.Binds).toEqual([`${appRoot}:/app`]);
   });
 
-  test("realizes accelerated appMount and bind mounts as native Podman binds", async () => {
+  test("realizes accelerated appMount and bind mounts as file-sync volumes", async () => {
     const fake = makeFakeApi();
     const acceleratedAppRoot = AbsolutePath.make("/tmp/lando-accel-app");
     const acceleratedNode: ServicePlan = {
@@ -239,8 +239,8 @@ describe("provider-lando bringUp", () => {
     );
     const body = create?.body as CreateContainerBody | undefined;
     expect(body?.HostConfig?.Binds).toEqual([
-      `${acceleratedAppRoot}:/app`,
-      "/tmp/lando-accel-cache:/cache:ro",
+      "BringUp-App-node-app-mount:/app",
+      "BringUp-App-node-mount-0:/cache:ro",
     ]);
   });
 
@@ -480,7 +480,7 @@ describe("provider-lando bringUp", () => {
       }
     },
     // Real Podman create/start/inspect via curl-per-call easily exceeds Bun's
-    // default 5s test timeout; allow enough headroom for image-resident MVP
+    // default 5s test timeout; allow enough headroom for image-resident
     // services (Node + Postgres) plus stop/delete cleanup.
     60_000,
   );

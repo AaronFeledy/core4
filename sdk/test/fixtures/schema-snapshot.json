@@ -155,7 +155,8 @@
       "FileSyncEngineCapabilities",
       "FileSyncSessionSpec",
       "FileSyncSessionInfo",
-      "FileSyncEventChunk"
+      "FileSyncEventChunk",
+      "FileSyncPlan"
     ]
   },
   "sdkSchemas": {
@@ -168,6 +169,100 @@
         "DateTimeUtc": {
           "description": "a string to be decoded into a DateTime.Utc",
           "type": "string"
+        },
+        "FileSyncSessionSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "excludes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
+              "type": "string"
+            },
+            "mountKey": {
+              "type": "string"
+            },
+            "permissions": {
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string"
+                },
+                "owner": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "service": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["volume"],
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "name", "path"],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["service"],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "service", "path"],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
+          "type": "object"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -181,6 +276,22 @@
           "properties": {},
           "required": [],
           "type": "object"
+        },
+        "fileSync": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "engineId": {
+                "type": "string"
+              },
+              "session": {
+                "$ref": "#/$defs/FileSyncSessionSpec"
+              }
+            },
+            "required": ["engineId", "session"],
+            "type": "object"
+          },
+          "type": "array"
         },
         "id": {
           "type": "string"
@@ -669,6 +780,7 @@
         "routes",
         "networks",
         "stores",
+        "fileSync",
         "metadata",
         "extensions"
       ],
@@ -859,6 +971,116 @@
           "type": "object"
         }
       ]
+    },
+    "FileSyncPlan": {
+      "$defs": {
+        "FileSyncSessionSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["user", "global", "scratch"],
+                  "type": "string"
+                },
+                "root": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id", "root"],
+              "type": "object"
+            },
+            "excludes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
+              "type": "string"
+            },
+            "mountKey": {
+              "type": "string"
+            },
+            "permissions": {
+              "additionalProperties": false,
+              "properties": {
+                "mode": {
+                  "type": "string"
+                },
+                "owner": {
+                  "type": "string"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "service": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "target": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["volume"],
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "name", "path"],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "_tag": {
+                      "enum": ["service"],
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "service": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["_tag", "service", "path"],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "engineId": {
+          "type": "string"
+        },
+        "session": {
+          "$ref": "#/$defs/FileSyncSessionSpec"
+        }
+      },
+      "required": ["engineId", "session"],
+      "type": "object"
     },
     "FileSyncSessionInfo": {
       "$defs": {

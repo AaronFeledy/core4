@@ -411,7 +411,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       Cmd: ["sh", "-lc", "npm start"],
       Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
-        Binds: ["/tmp/lando-sdk-contract-myapp:/app", "/tmp/lando-sdk-cache:/cache:ro"],
+        Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-0:/cache:ro"],
         PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
       },
     });

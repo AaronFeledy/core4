@@ -103,6 +103,7 @@ const makeTestAppPlan = (providerId: ProviderId): AppPlan => {
     routes: [],
     networks: [],
     stores: [],
+    fileSync: [],
     metadata: planMetadata,
     extensions: {},
   };

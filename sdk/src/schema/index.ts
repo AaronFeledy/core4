@@ -420,6 +420,38 @@ export const ServicePlan = Schema.Struct({
 });
 export type ServicePlan = typeof ServicePlan.Type;
 
+// Shared file-sync naming and mount-target contract used by the planner and providers.
+export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
+  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+export const sameAppMountTarget = (
+  appMount: ServicePlan["appMount"],
+  mount: ServicePlan["mounts"][number],
+): boolean =>
+  appMount !== undefined &&
+  mount.type === "bind" &&
+  mount.source === appMount.source &&
+  mount.target === appMount.target;
+
+/**
+ * One file-sync session entry on an `AppPlan`.
+ *
+ * Emitted by `AppPlanner` when the selected provider declares
+ * `bindMountPerformance: "slow"` and a service has at least one accelerated
+ * mount. `engineId` names the `FileSyncEngine` plugin id (e.g. `"mutagen"`)
+ * that should realize the session; `session` is the per-mount spec the
+ * engine hands to `createSession` at app start.
+ */
+export const FileSyncPlan = Schema.Struct({
+  engineId: Schema.String,
+  session: Schema.suspend(
+    (): Schema.Schema<FileSyncSessionSpec, typeof FileSyncSessionSpec.Encoded> => FileSyncSessionSpec,
+  ).annotations({
+    identifier: "FileSyncSessionSpec",
+  }),
+});
+export type FileSyncPlan = typeof FileSyncPlan.Type;
+
 export const AppPlan = Schema.Struct({
   id: AppId,
   name: Schema.String,
@@ -430,6 +462,12 @@ export const AppPlan = Schema.Struct({
   routes: Schema.Array(RoutePlan),
   networks: Schema.Array(NetworkPlan),
   stores: Schema.Array(DataStorePlan),
+  /**
+   * File-sync sessions auto-selected by the planner for accelerated mounts.
+   * Empty when no file sync is needed (native bind-mount providers, or no
+   * accelerated mounts on a slow provider).
+   */
+  fileSync: Schema.Array(FileSyncPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
 });
@@ -1168,6 +1206,7 @@ const JSON_SCHEMA_REGISTRY = {
   FileSyncSessionSpec,
   FileSyncSessionInfo,
   FileSyncEventChunk,
+  FileSyncPlan,
 } as const;
 
 export type JsonSchemaName = keyof typeof JSON_SCHEMA_REGISTRY;
@@ -1234,5 +1273,7 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(FileSyncSessionInfo);
     case "FileSyncEventChunk":
       return JSONSchema.make(FileSyncEventChunk);
+    case "FileSyncPlan":
+      return JSONSchema.make(FileSyncPlan);
   }
 };

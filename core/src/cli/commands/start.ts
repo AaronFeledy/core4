@@ -6,11 +6,14 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Scope } from "effect";
 
 import type {
   CapabilityError,
   EventError,
+  FileSyncDriftError,
+  FileSyncStartError,
+  FileSyncStopError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -23,13 +26,15 @@ import type {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
+  FileSyncEngine,
   LandofileService,
   type ProviderError,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import {
@@ -56,6 +61,9 @@ export interface StartAppResult {
 
 type StartAppError =
   | EventError
+  | FileSyncDriftError
+  | FileSyncStartError
+  | FileSyncStopError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -90,6 +98,43 @@ const READY_STATES = new Set(["running", "ready"]);
 const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
+
+const startFileSyncSessions = (plan: AppPlan) =>
+  Effect.gen(function* () {
+    if (plan.fileSync.length === 0) return;
+    const engineOption = yield* Effect.serviceOption(FileSyncEngine);
+    if (engineOption._tag === "None") return;
+
+    const engine = engineOption.value;
+    if (!(yield* engine.isAvailable)) return;
+
+    const createdRefs: Array<FileSyncSessionRef> = [];
+    yield* Effect.forEach(
+      plan.fileSync,
+      (entry) =>
+        Effect.gen(function* () {
+          const sessionScope = yield* Scope.make();
+          const ref = yield* engine
+            .createSession(entry.session)
+            .pipe(Effect.provideService(Scope.Scope, sessionScope));
+          createdRefs.push(ref);
+        }),
+      { discard: true },
+    ).pipe(
+      Effect.catchAll((error) =>
+        Effect.forEach(
+          createdRefs.reverse(),
+          (ref) => engine.terminateSession(ref).pipe(Effect.catchAll(() => Effect.void)),
+          { discard: true },
+        ).pipe(Effect.flatMap(() => Effect.fail(error))),
+      ),
+    );
+  });
+
+const rollbackAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
+  provider
+    .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
+    .pipe(Effect.catchAll(() => Effect.void));
 
 export const renderStartAppResult = (result: StartAppResult): string => {
   const services = result.servicesStarted
@@ -205,6 +250,8 @@ export const startApp = (
       failed: 0,
       durationMs: Math.round(performance.now() - applyStart),
     });
+
+    yield* startFileSyncSessions(plan).pipe(Effect.tapError(() => rollbackAppliedApp(provider, plan)));
 
     yield* events.publish(
       PostAppStartEvent.make({

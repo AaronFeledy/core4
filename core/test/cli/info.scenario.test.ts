@@ -131,6 +131,7 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [{ name: "test_info_postgres_data", scope: "app" }],
+  fileSync: [],
   metadata,
   extensions: {},
 };

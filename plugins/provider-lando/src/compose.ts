@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
 const PROVIDER_ID = "lando";
@@ -65,16 +65,29 @@ const serviceImage = (service: ServicePlan) => {
 
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 
-const serviceVolumes = (service: ServicePlan): ReadonlyArray<string> => {
+const volumeSpec = (source: string, target: string, readOnly: boolean): string =>
+  `${source}:${target}${mountSuffix(readOnly)}`;
+
+const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => {
   const appMount =
     service.appMount === undefined
       ? []
-      : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
-  const mounts = service.mounts.flatMap((mount) => {
+      : [
+          volumeSpec(
+            service.appMount.realization === "accelerated"
+              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
+              : service.appMount.source,
+            service.appMount.target,
+            service.appMount.readOnly,
+          ),
+        ];
+  const mounts = service.mounts.flatMap((mount, index) => {
     if (mount.type === "tmpfs") {
       // tmpfs mounts are emitted under the service-level `tmpfs:` key, not `volumes:`.
       return [];
     }
+
+    if (mount.type === "bind" && sameAppMountTarget(service.appMount, mount)) return [];
 
     if (mount.source === undefined) {
       throw composeError("Compose bind and volume mounts require a source.", {
@@ -83,7 +96,15 @@ const serviceVolumes = (service: ServicePlan): ReadonlyArray<string> => {
       });
     }
 
-    return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+    return [
+      volumeSpec(
+        mount.type === "bind" && mount.realization === "accelerated"
+          ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
+          : mount.source,
+        mount.target,
+        mount.readOnly,
+      ),
+    ];
   });
   const storage = service.storage.map(
     (storeMount) => `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`,
@@ -140,7 +161,7 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         image: serviceImage(service),
         ports: servicePorts(service),
         environment: service.environment,
-        volumes: serviceVolumes(service),
+        volumes: serviceVolumes(plan, service),
         tmpfs: serviceTmpfs(service),
         depends_on: serviceDependsOn(service),
         networks: networkNames,
@@ -150,9 +171,16 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
   const networks = Object.fromEntries(
     plan.networks.map((network) => [network.name, { driver: network.driver ?? "bridge" }]),
   );
-  const volumes = Object.fromEntries(
-    plan.stores.map((store) => [store.name, store.driver === undefined ? {} : { driver: store.driver }]),
-  );
+  const volumes = Object.fromEntries([
+    ...plan.stores.map((store): [string, { readonly driver?: string }] => [
+      store.name,
+      store.driver === undefined ? {} : { driver: store.driver },
+    ]),
+    ...(plan.fileSync ?? []).flatMap(
+      (entry): ReadonlyArray<[string, { readonly driver?: string }]> =>
+        entry.session.target._tag === "volume" ? [[entry.session.target.name, {}]] : [],
+    ),
+  ]);
 
   return {
     version: "3.9",

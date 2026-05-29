@@ -279,38 +279,41 @@ export const defaultExtract: ExtractImpl = async (archiveBytes, entry) => {
 };
 
 interface InstallBinaryOptions {
+  readonly archiveBytes: Uint8Array;
   readonly entry: MutagenBinaryEntry;
   readonly installPath: string;
-  readonly fetchImpl: typeof fetch;
   readonly extractImpl: ExtractImpl;
 }
 
-const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileSyncStartError> =>
-  Effect.gen(function* () {
-    const { entry, installPath, fetchImpl, extractImpl } = options;
-
-    const archiveBytes = yield* Effect.tryPromise({
-      try: async () => {
-        const response = await fetchImpl(entry.url);
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status} ${response.statusText} fetching ${entry.url}`);
-        }
-        return new Uint8Array(await response.arrayBuffer());
-      },
-      catch: (cause) =>
-        new MutagenBinaryDownloadError(`Failed to download Mutagen binary from ${entry.url}.`, cause),
-    });
-
-    const actual = sha256Hex(archiveBytes);
-    if (actual !== entry.sha256) {
-      yield* Effect.fail(
-        new MutagenBinaryChecksumError(
+const downloadVerifiedArchive = (
+  entry: MutagenBinaryEntry,
+  fetchImpl: typeof fetch,
+): Effect.Effect<Uint8Array, FileSyncStartError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const response = await fetchImpl(entry.url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} ${response.statusText} fetching ${entry.url}`);
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      const actual = sha256Hex(bytes);
+      if (actual !== entry.sha256) {
+        throw new MutagenBinaryChecksumError(
           `Mutagen archive checksum mismatch for ${entry.archiveFilename}: expected ${entry.sha256}, got ${actual}.`,
           { url: entry.url, expected: entry.sha256, actual },
-        ),
-      );
-      return;
-    }
+        );
+      }
+      return bytes;
+    },
+    catch: (cause) =>
+      cause instanceof MutagenBinaryChecksumError
+        ? cause
+        : new MutagenBinaryDownloadError(`Failed to download Mutagen binary from ${entry.url}.`, cause),
+  });
+
+const installBinaryFromArchive = (options: InstallBinaryOptions): Effect.Effect<void, FileSyncStartError> =>
+  Effect.gen(function* () {
+    const { archiveBytes, entry, installPath, extractImpl } = options;
 
     const binaryBytes = yield* Effect.tryPromise({
       try: () => extractImpl(archiveBytes, entry),
@@ -459,24 +462,6 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
       const fetchImpl = options.fetchImpl ?? globalThis.fetch;
       const extractImpl = options.extractImpl ?? defaultExtract;
       const manifest = options._testManifest ?? MUTAGEN_VERSIONS_MANIFEST;
-      const archiveCache = new Map<string, Promise<Uint8Array>>();
-
-      const cachedFetch = ((input: Parameters<typeof fetch>[0]): Promise<Response> => {
-        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
-        const cached = archiveCache.get(url);
-        if (cached !== undefined) {
-          return cached.then((bytes) => new Response(bytes));
-        }
-        const pending = (async () => {
-          const response = await fetchImpl(url);
-          if (!response.ok) {
-            throw new Error(`HTTP ${response.status} ${response.statusText} fetching ${url}`);
-          }
-          return new Uint8Array(await response.arrayBuffer());
-        })();
-        archiveCache.set(url, pending);
-        return pending.then((bytes) => new Response(bytes));
-      }) as typeof fetch;
 
       const arch = process.arch;
       const platform = currentHostPlatform();
@@ -507,18 +492,25 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
         return;
       }
 
-      yield* installBinary({
+      // Linux/macOS host archives include the agent payload, so one verified
+      // host download can supply both the CLI and the agents. Windows host zips
+      // do not, so fetch each pinned agent archive separately there.
+      const hostArchiveBytes = yield* downloadVerifiedArchive(hostEntry, fetchImpl);
+
+      yield* installBinaryFromArchive({
+        archiveBytes: hostArchiveBytes,
         entry: hostEntry,
         installPath: mutagenHostBinaryPath(userDataRoot, platform),
-        fetchImpl: cachedFetch,
         extractImpl,
       });
 
       for (const [agentKey, agentEntry] of Object.entries(manifest.agents)) {
-        yield* installBinary({
+        const agentArchiveBytes =
+          platform === "win32" ? yield* downloadVerifiedArchive(agentEntry, fetchImpl) : hostArchiveBytes;
+        yield* installBinaryFromArchive({
+          archiveBytes: agentArchiveBytes,
           entry: agentEntry,
           installPath: mutagenAgentBinaryPath(userDataRoot, agentKey),
-          fetchImpl: cachedFetch,
           extractImpl,
         });
       }
