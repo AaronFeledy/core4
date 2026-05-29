@@ -807,3 +807,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: fixed (Bugbot findings addressed across Mutagen archive selection, shared file-sync planning helpers, stop/destroy cleanup failure tolerance, start rollback cleanup, planner engine-id hoisting, and unavailable-engine start no-op behavior; rerun Bugbot passed)
 - Merge: merged (squash)
 ---
+
+## [2026-05-29 07:31 CDT] - Babysit
+- PR: #201 https://github.com/AaronFeledy/core4/pull/201
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium finding — service-type framework presets __pycache__/​.bundle lost when user provides appMount.excludes; fixed by running mergeDefaultExcludes before applyAuthoredAppMount and changing applyAuthoredAppMount to extend rather than replace existing excludes; rerun Bugbot passed)
+- Merge: merged (squash)
+---
