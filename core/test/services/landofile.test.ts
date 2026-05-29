@@ -249,6 +249,34 @@ describe("LandofileServiceLive", () => {
       }
     });
   });
+
+  test("reports generic MVP remediation for compose service type errors", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        ["name: myapp", "services:", "  web:", "    type: compose", "    image: 123", ""].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          const error = failure.value;
+          expect(error).toBeInstanceOf(LandofileValidationError);
+          if (error._tag === "LandofileValidationError") {
+            expect(error.issues).toContain("services.web.image");
+            expect(error.message).toContain("unsupported MVP keys");
+            expect(error.message).not.toContain("unsupported Compose-subset keys");
+            expect(error.message).not.toContain("Compose compatibility");
+          }
+        }
+      }
+    });
+  });
 });
 
 describe("LandofileServiceLive — numeric/boolean environment values", () => {

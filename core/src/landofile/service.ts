@@ -265,22 +265,6 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
 };
 
-const isComposeServiceKeyIssue = (issue: string, parsed: unknown): boolean => {
-  const match = /^services\.([^.]+)\.[^.]+/.exec(issue);
-  if (match === null) return false;
-  const serviceName = match[1];
-  if (serviceName === undefined) return false;
-  if (parsed === null || typeof parsed !== "object") return false;
-  const services = (parsed as { readonly services?: unknown }).services;
-  if (services === null || typeof services !== "object") return false;
-  const service = (services as Record<string, unknown>)[serviceName];
-  return (
-    service !== null &&
-    typeof service === "object" &&
-    (service as { readonly type?: unknown }).type === "compose"
-  );
-};
-
 const unsupportedAuthoredServiceKeyTypes = (
   parsed: unknown,
 ): { readonly compose: number; readonly nonCompose: number } => {
@@ -301,10 +285,7 @@ const unsupportedAuthoredServiceKeyTypes = (
   return { compose, nonCompose };
 };
 
-const validationScope = (
-  issues: ReadonlyArray<string>,
-  parsed: unknown,
-): { readonly scope: string; readonly remediation: string } => {
+const validationScope = (parsed: unknown): { readonly scope: string; readonly remediation: string } => {
   const unsupportedKeyTypes = unsupportedAuthoredServiceKeyTypes(parsed);
   if (unsupportedKeyTypes.compose > 0 && unsupportedKeyTypes.nonCompose === 0) {
     return { scope: "unsupported Compose-subset keys", remediation: COMPOSE_ALLOWLIST_REMEDIATION };
@@ -315,16 +296,7 @@ const validationScope = (
       remediation: `${REMEDIATION} For type: compose services, ${COMPOSE_ALLOWLIST_REMEDIATION}`,
     };
   }
-
-  const composeIssueCount = issues.filter((issue) => isComposeServiceKeyIssue(issue, parsed)).length;
-  if (composeIssueCount === 0) return { scope: "unsupported MVP keys", remediation: REMEDIATION };
-  if (composeIssueCount === issues.length) {
-    return { scope: "unsupported Compose-subset keys", remediation: COMPOSE_ALLOWLIST_REMEDIATION };
-  }
-  return {
-    scope: "unsupported service keys",
-    remediation: `${REMEDIATION} For type: compose services, ${COMPOSE_ALLOWLIST_REMEDIATION}`,
-  };
+  return { scope: "unsupported MVP keys", remediation: REMEDIATION };
 };
 
 const validateLandofile = (
@@ -335,7 +307,7 @@ const validateLandofile = (
   if (Either.isRight(result)) return Effect.succeed(result.right);
 
   const issues = validationIssues(result.left);
-  const { scope, remediation } = validationScope(issues, parsed);
+  const { scope, remediation } = validationScope(parsed);
   return Effect.fail(
     new LandofileValidationError({
       message: `Landofile contains ${scope}: ${issues.join(", ")}. ${remediation}`,
