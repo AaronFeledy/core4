@@ -1,9 +1,10 @@
 /**
  * Subsystem diagnostics for `lando doctor`.
  *
- * Aggregates the status of every §11 subsystem (proxy, certificate authority,
- * SSH agent, healthcheck engine, endpoint scanner, host DNS proxy) into the
- * §10.9 `{ status, severity, context, solution }` diagnostic record shape.
+ * Aggregates the status of each subsystem used by `lando doctor` (proxy,
+ * certificate authority, SSH agent, healthcheck engine, endpoint scanner,
+ * host DNS proxy) into a diagnostic record with `status`, `severity`,
+ * `context`, and `solution` fields.
  *
  * The checks are read-only and never bootstrap an app: each subsystem is probed
  * through its published Effect service tag, which is satisfied by the bundled
@@ -31,7 +32,8 @@ import { SshServiceUnavailableLive } from "../../subsystems/ssh/api.ts";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
 
 /**
- * A single subsystem diagnostic in the §10.9 record shape.
+ * A single subsystem diagnostic entry with `name`, `status`, `severity`,
+ * `context`, and `solutions` fields.
  */
 export interface DoctorSubsystemCheck {
   readonly name: string;

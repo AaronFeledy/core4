@@ -126,8 +126,11 @@ const branded = (value: string | undefined): ProviderId | undefined => {
   return ProviderId.make(trimmed);
 };
 
-const platformFromProcess = (): HostPlatform =>
-  process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
+const platformFromProcess = (): HostPlatform => {
+  if (process.platform === "linux") return "linux";
+  if (process.platform === "darwin") return "darwin";
+  return "win32";
+};
 
 const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSelectionRecord => ({
   providerId: String(resolution.providerId),
@@ -197,7 +200,7 @@ const gatherSelectionInputs = (
     const flag = branded(options.flagProviderId);
     const landofile = branded(options.landofileProviderId);
     const env = readProviderEnvVar(options.env ?? process.env);
-    const config = configProvider === undefined || configProvider === null ? undefined : configProvider;
+    const config = configProvider ?? undefined;
     return {
       ...(flag === undefined ? {} : { flag }),
       ...(landofile === undefined ? {} : { landofile }),
@@ -295,7 +298,6 @@ export const doctor = (
       };
     }
     const provider = yield* registry.select({
-      // Narrow registry input to the provider handle on this path.
       provider: resolution.providerId,
     } as never);
     const status = yield* provider.getStatus;

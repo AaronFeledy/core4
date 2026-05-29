@@ -60,10 +60,7 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.context.loopback).toBe("127.0.0.1");
   });
 
-  test("does not require app bootstrap — runs with only the six subsystem layers", async () => {
-    // The effect is provided ONLY the subsystem layers (no ConfigService, no
-    // AppPlanner, no app context). If it required app bootstrap this would not
-    // typecheck or would fail at runtime with a missing-service defect.
+  test("runs with only the six subsystem layers", async () => {
     const result = await Effect.runPromise(
       subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
     );

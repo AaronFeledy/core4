@@ -71,7 +71,6 @@ describe("meta:doctor combined report", () => {
 
   test("does not require app bootstrap — runs with only ConfigService + RuntimeProviderRegistry", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
-    // No AppPlanner / app layer is provided; the combined report must still run.
     const report = await run(provider);
     expect(report.subsystems.checks.length).toBe(6);
   });

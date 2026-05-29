@@ -1,13 +1,8 @@
 /**
  * Combined `lando doctor` report.
  *
- * Aggregates the provider diagnostics (`doctor`) with the per-subsystem
- * diagnostics (`subsystemDoctor`) so a single `lando doctor` run reports every
- * subsystem's status alongside the selected provider. The subsystem layer
- * dependencies are satisfied internally with the bundled default Live Layers,
- * so the combined report keeps the same `ConfigService | RuntimeProviderRegistry`
- * requirement (and the same `provider` bootstrap level) as the provider-only
- * `doctor` — it never requires app bootstrap.
+ * Merges provider and subsystem diagnostics into a single report without
+ * requiring app bootstrap.
  */
 import { Effect } from "effect";
 
