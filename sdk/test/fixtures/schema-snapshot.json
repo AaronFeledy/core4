@@ -749,10 +749,13 @@
           "type": "boolean"
         },
         "modes": {
+          "description": "an array of at least 1 item(s)",
           "items": {
             "enum": ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
             "type": "string"
           },
+          "minItems": 1,
+          "title": "minItems(1)",
           "type": "array"
         },
         "progressReporting": {
@@ -783,6 +786,10 @@
               "type": "string"
             },
             "completed": {
+              "description": "a number between 0 and 1",
+              "maximum": 1,
+              "minimum": 0,
+              "title": "between(0, 1)",
               "type": "number"
             },
             "message": {

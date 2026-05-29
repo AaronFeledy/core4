@@ -1011,7 +1011,7 @@ export type FileSyncMode = typeof FileSyncMode.Type;
  */
 export const FileSyncEngineCapabilities = Schema.Struct({
   /** Supported sync modes; at least one MUST be declared. */
-  modes: Schema.Array(FileSyncMode),
+  modes: Schema.Array(FileSyncMode).pipe(Schema.minItems(1)),
   /**
    * `auto`: engine deploys its in-container agent on first session start
    * via `RuntimeProvider.run`. `preinstalled`: engine assumes the agent
@@ -1127,7 +1127,7 @@ export const FileSyncEventChunk = Schema.Union(
     sessionRef: FileSyncSessionRef,
     phase: Schema.Literal("initial-scan", "staging", "transitioning", "watching"),
     /** 0..1 inclusive when known; otherwise omit. */
-    completed: Schema.optional(Schema.Number),
+    completed: Schema.optional(Schema.Number.pipe(Schema.between(0, 1))),
     message: Schema.optional(Schema.String),
   }),
   Schema.TaggedStruct("conflict", {

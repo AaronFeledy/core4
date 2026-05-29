@@ -5,6 +5,7 @@ import { Either, JSONSchema, Schema } from "effect";
 import {
   type AppRef,
   FileSyncEngineCapabilities,
+  FileSyncEventChunk,
   FileSyncSessionFilter,
   FileSyncSessionInfo,
   FileSyncSessionRef,
@@ -49,6 +50,18 @@ describe("FileSyncEngineCapabilities (§10.6.1)", () => {
       exclusionPatterns: false,
       conflictReporting: false,
       progressReporting: false,
+    });
+
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("rejects an empty mode list", () => {
+    const decoded = Schema.decodeUnknownEither(FileSyncEngineCapabilities)({
+      modes: [],
+      remoteAgentDeployment: "auto",
+      exclusionPatterns: true,
+      conflictReporting: true,
+      progressReporting: true,
     });
 
     expect(Either.isLeft(decoded)).toBe(true);
@@ -218,5 +231,49 @@ describe("FileSyncSetupOptions", () => {
     if (Either.isRight(decoded)) {
       expect(decoded.right.force).toBe(false);
     }
+  });
+});
+
+describe("FileSyncEventChunk", () => {
+  test("decodes progress, conflict, and info chunks", () => {
+    expect(
+      Either.isRight(
+        Schema.decodeUnknownEither(FileSyncEventChunk)({
+          _tag: "progress",
+          sessionRef: "myapp-web-app-root",
+          phase: "watching",
+          completed: 0.5,
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      Either.isRight(
+        Schema.decodeUnknownEither(FileSyncEventChunk)({
+          _tag: "conflict",
+          sessionRef: "myapp-web-app-root",
+          conflictedPaths: ["README.md"],
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      Either.isRight(
+        Schema.decodeUnknownEither(FileSyncEventChunk)({
+          _tag: "info",
+          sessionRef: "myapp-web-app-root",
+          message: "ready",
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  test("rejects out-of-range progress completion", () => {
+    const decoded = Schema.decodeUnknownEither(FileSyncEventChunk)({
+      _tag: "progress",
+      sessionRef: "myapp-web-app-root",
+      phase: "watching",
+      completed: 1.5,
+    });
+
+    expect(Either.isLeft(decoded)).toBe(true);
   });
 });
