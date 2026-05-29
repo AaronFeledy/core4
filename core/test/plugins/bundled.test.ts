@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 
+import * as fileSyncMutagen from "@lando/file-sync-mutagen";
 import * as loggerPretty from "@lando/logger-pretty";
 import * as providerDocker from "@lando/provider-docker";
 import * as providerLando from "@lando/provider-lando";
@@ -19,6 +20,11 @@ const EXPECTED_BUNDLED_PLUGINS = [
   { name: "@lando/provider-podman", layer: providerPodman.provider, manifest: providerPodman.manifest },
   { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
   { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
+  {
+    name: "@lando/file-sync-mutagen",
+    layer: fileSyncMutagen.engine,
+    manifest: fileSyncMutagen.manifest,
+  },
 ];
 
 const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundled.ts");
@@ -26,7 +32,7 @@ const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundl
 
 describe("BUNDLED_PLUGINS", () => {
   test("exports all MVP bundled plugins with real layer and manifest references", () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(5);
+    expect(BUNDLED_PLUGINS).toHaveLength(6);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
     );

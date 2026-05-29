@@ -42,6 +42,14 @@
         "effect": "^3.21.2",
       },
     },
+    "plugins/file-sync-mutagen": {
+      "name": "@lando/file-sync-mutagen",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "plugins/logger-pretty": {
       "name": "@lando/logger-pretty",
       "version": "0.0.0",
@@ -252,6 +260,8 @@
     "@lando/ca-mkcert": ["@lando/ca-mkcert@workspace:plugins/ca-mkcert"],
 
     "@lando/core": ["@lando/core@workspace:core"],
+
+    "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
 
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 

@@ -17,6 +17,7 @@ import type { Layer } from "effect";
 import type { PluginManifest } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import * as plugin5 from "@lando/file-sync-mutagen";
 import * as plugin4 from "@lando/logger-pretty";
 import * as plugin1 from "@lando/provider-docker";
 import * as plugin0 from "@lando/provider-lando";
@@ -79,5 +80,11 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     layer: plugin4.logger,
     manifest: plugin4.manifest,
     ...serviceTypesFrom({ ...plugin4 }),
+  },
+  {
+    name: "@lando/file-sync-mutagen",
+    layer: plugin5.engine,
+    manifest: plugin5.manifest,
+    ...serviceTypesFrom({ ...plugin5 }),
   },
 ];

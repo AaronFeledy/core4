@@ -1,0 +1,16 @@
+# @lando/file-sync-mutagen — Mutagen-backed FileSyncEngine.
+
+name: "@lando/file-sync-mutagen"
+version: "0.0.0"
+api: 4
+description: "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers."
+enabled: true
+updateable: true
+entry: ./src/index.ts
+
+contributes:
+  fileSyncEngines:
+    - mutagen
+
+requires:
+  "@lando/core": "^4.0.0"

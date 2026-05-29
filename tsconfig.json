@@ -11,6 +11,7 @@
     { "path": "./plugins/proxy-traefik" },
     { "path": "./plugins/ca-mkcert" },
     { "path": "./plugins/logger-pretty" },
-    { "path": "./plugins/renderer-listr" }
+    { "path": "./plugins/renderer-listr" },
+    { "path": "./plugins/file-sync-mutagen" }
   ]
 }
