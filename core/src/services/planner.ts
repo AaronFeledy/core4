@@ -112,6 +112,16 @@ const missingCapability = (
 const serviceBindRemediation = (serviceName: string) =>
   `Choose a provider with bind mount support or remove bind mounts from service ${serviceName}.`;
 
+const serviceArtifactBuildRemediation = (serviceName: string) =>
+  `Choose a provider with artifact build support or replace the build artifact for service ${serviceName} with a pre-built image reference.`;
+
+const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) =>
+  new LandofileValidationError({
+    message: cause instanceof Error ? cause.message : `Invalid service ${serviceName}.`,
+    file: `${appRoot}/.lando.yml`,
+    issues: [`services.${serviceName}`],
+  });
+
 const bindRealization = (providerCapabilities: ProviderCapabilities) =>
   providerCapabilities.bindMountPerformance === "slow" ? "accelerated" : "passthrough";
 
@@ -358,15 +368,19 @@ const planApp = (
           ),
         );
 
-      const rawPlan = serviceType.toServicePlan({
-        name,
-        service,
-        appRoot,
-        appName,
-        provider,
-        primary: name === "web",
-        metadata,
-        host,
+      const rawPlan = yield* Effect.try({
+        try: () =>
+          serviceType.toServicePlan({
+            name,
+            service,
+            appRoot,
+            appName,
+            provider,
+            primary: name === "web",
+            metadata,
+            host,
+          }),
+        catch: (cause) => servicePlanError(appRoot, name, cause),
       });
       const servicePlan = applyAuthoredHealthcheck(applyAuthoredAppMount(rawPlan, service), service);
 
@@ -376,6 +390,18 @@ const planApp = (
       ) {
         yield* Effect.fail(
           missingCapability(provider, name, "bind mount", "bindMounts", serviceBindRemediation(name)),
+        );
+      }
+
+      if (servicePlan.artifact?.kind === "build" && !providerCapabilities.artifactBuild) {
+        yield* Effect.fail(
+          missingCapability(
+            provider,
+            name,
+            "artifact build",
+            "artifactBuild",
+            serviceArtifactBuildRemediation(name),
+          ),
         );
       }
 

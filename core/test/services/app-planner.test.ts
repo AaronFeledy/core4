@@ -484,6 +484,57 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("wraps service type validation failures as LandofileValidationError", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("worker")]: { type: "compose" },
+        },
+      });
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure._tag).toBe("LandofileValidationError");
+        expect(failure.issues).toEqual(["services.worker"]);
+        expect(failure.message).toContain('requires either "image:" or "composeBuild:"');
+      }
+    });
+  });
+
+  test("fails before apply when build artifacts require an unsupported provider capability", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit(
+        {
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("worker")]: {
+              type: "compose",
+              composeBuild: { context: "." },
+            },
+          },
+        },
+        {
+          ...providerLandoCapabilities,
+          artifactBuild: false,
+        },
+      );
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure._tag).toBe("CapabilityError");
+        expect(failure.service).toBe("worker");
+        expect(failure.feature).toBe("artifact build");
+        expect(failure.capability).toBe("artifactBuild");
+        expect(failure.remediation).toContain("pre-built image reference");
+      }
+    });
+  });
+
   test("fails before apply when a planned service requires an unsupported provider capability", async () => {
     await withTempCwd(async () => {
       const exit = await planExit(landofileFixture, {
