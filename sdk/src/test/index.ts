@@ -1765,3 +1765,78 @@ export const makeTestSshService = (): SshServiceShape & {
 };
 
 export const TestSshService: SshServiceShape = makeTestSshService();
+
+import type { HealthcheckResult, HealthcheckRunError, HealthcheckRunnerShape } from "../services/index.ts";
+
+const healthcheckContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `HealthcheckRunner contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requireHealthcheckContract = (
+  condition: boolean,
+  assertion: string,
+  details?: unknown,
+): Effect.Effect<void, ContractFailure> =>
+  condition ? Effect.void : Effect.fail(healthcheckContractFailure(assertion, details));
+
+export const runHealthcheckContract = (
+  runner: HealthcheckRunnerShape,
+): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    yield* requireHealthcheckContract(
+      typeof runner.id === "string" && runner.id.length > 0,
+      "id is a non-empty string",
+      runner.id,
+    );
+
+    const testPlan: HealthcheckPlan = {
+      kind: "command",
+      command: ["sh", "-c", "exit 0"],
+      intervalSeconds: 5,
+      timeoutSeconds: 30,
+      retries: 3,
+    };
+
+    const result = yield* runner
+      .run(testPlan, AppId.make("contract-test-app"), ServiceName.make("web"))
+      .pipe(Effect.mapError((d: HealthcheckRunError) => healthcheckContractFailure("run resolves", d)));
+
+    yield* requireHealthcheckContract(
+      typeof result.healthy === "boolean",
+      "run result has boolean healthy",
+      result,
+    );
+    yield* requireHealthcheckContract(
+      typeof result.attempts === "number" && result.attempts > 0,
+      "run result has positive attempts",
+      result,
+    );
+  });
+
+export const makeTestHealthcheckRunner = (): HealthcheckRunnerShape & {
+  readonly calls: ReadonlyArray<{
+    readonly plan: HealthcheckPlan;
+    readonly appId: AppId;
+    readonly service: ServiceName;
+  }>;
+} => {
+  const calls: Array<{
+    readonly plan: HealthcheckPlan;
+    readonly appId: AppId;
+    readonly service: ServiceName;
+  }> = [];
+  return {
+    id: "test",
+    run: (plan, appId, service) =>
+      Effect.sync((): HealthcheckResult => {
+        calls.push({ plan, appId, service });
+        return { healthy: true, service, attempts: 1 };
+      }),
+    calls,
+  };
+};
+
+export const TestHealthcheckRunner: HealthcheckRunnerShape = makeTestHealthcheckRunner();

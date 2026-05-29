@@ -1,0 +1,33 @@
+---
+id: healthcheck-runner
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, healthcheck, provider-exec]
+---
+
+<Guide>
+  <Scenario id="healthcheck-sdk-contract" render={false} reason="HealthcheckRunner SDK contract is exercised by sdk/test/contract/healthcheck-runner.test.ts against TestHealthcheckRunner; the provider-exec Live Layer requires a running provider and container">
+    <Step name="healthcheck-contract">
+      <Variable name="sdkTag" value="HealthcheckRunner" display="Effect Service tag published in @lando/sdk; plugins implement HealthcheckRunnerShape" />
+      <Variable name="contractRunner" value="runHealthcheckContract" display="Contract runner from @lando/sdk/test validates id and run() resolves with HealthcheckResult" />
+      <Variable name="testDouble" value="TestHealthcheckRunner / makeTestHealthcheckRunner" display="In-memory test double; records run calls and returns healthy=true" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="healthcheck-probe-types" render={false} reason="HealthcheckPlan supports cmd/tcp/http probes; live probe execution requires a running container via provider-exec">
+    <Step name="probe-types">
+      <Variable name="cmdProbe" value="kind: command — runs inside the container via RuntimeProvider.exec" display="Command probe: healthcheck via a shell command inside the container" />
+      <Variable name="tcpProbe" value="kind: tcp — TCP port reachability from inside the per-app network" display="TCP probe: checks that the service port accepts connections" />
+      <Variable name="httpProbe" value="kind: http — HTTP URL reachability from inside the per-app network" display="HTTP probe: checks that the service URL returns a 2xx response" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="healthcheck-timeout-error" render={false} reason="HealthcheckTimeoutError is raised when healthcheck fails within timeout; live timeout test requires a running container">
+    <Step name="timeout-error">
+      <Variable name="errorTag" value="HealthcheckTimeoutError" display="Raised when healthcheck fails within timeout — includes service, probe, and lastStatus" />
+      <Variable name="errorTag2" value="HealthcheckError" display="Raised for other healthcheck failures (e.g. provider-exec unavailable)" />
+      <Variable name="verificationRef" value="sdk/test/contract/healthcheck-runner.test.ts" display="Unit tests verify the HealthcheckRunner contract against TestHealthcheckRunner" />
+    </Step>
+  </Scenario>
+</Guide>
