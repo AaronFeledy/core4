@@ -7,28 +7,28 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
 ---
 
 <Guide>
-  <Scenario id="doctor-subsystem-records" render={false} reason="The subsystem diagnostics are exercised by core/test/cli/doctor-subsystems.test.ts against the bundled default Live Layers; the production subsystem layers require the global app and a running provider">
+  <Scenario id="doctor-subsystem-records" render={false} reason="The subsystem diagnostics run against the bundled default Live Layers; the production subsystem layers require the global app and a running provider">
     <Step name="subsystem-records">
       <Variable name="command" value="lando doctor" display="Aggregates the selected-provider diagnostics with one check per subsystem" />
-      <Variable name="subsystems" value="proxy, certs, ssh, healthcheck, scanner, host-proxy" display="Every §11 subsystem reports a status alongside the selected provider" />
-      <Variable name="recordShape" value="{ status, severity, context, solutions }" display="Each subsystem check uses the §10.9 diagnostic record shape" />
+      <Variable name="subsystems" value="proxy, certs, ssh, healthcheck, scanner, host-proxy" display="Each subsystem reports a status alongside the selected provider" />
+      <Variable name="recordShape" value="{ status, severity, context, solutions }" display="Each subsystem check uses the diagnostic record shape" />
       <Variable name="statusValues" value="pass | warn | fail" display="Subsystem status; severity is one of info | warn | error" />
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-subsystem-remediation" render={false} reason="In Beta the bundled subsystem layers are the fallback/disabled stubs, so each not-ready subsystem reports a warn with a manual remediation; the live layers land with the global app (US-111/US-114) and @lando/ca-mkcert (US-102)">
+  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers are fallback stubs, so each not-ready subsystem reports a warn with a manual remediation; the live layers ship with the global app and @lando/ca-mkcert">
     <Step name="subsystem-remediation">
       <Variable name="proxyRemediation" value="Run `lando setup` and start the global app to enable Traefik routing." display="proxy subsystem remediation when the HTTPS reverse proxy is not available" />
       <Variable name="certsRemediation" value="Run `lando setup` to install and trust the dev CA." display="certs subsystem remediation when the certificate authority is not installed" />
-      <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="host-proxy structured status context when DNS resolution is not active" />
-      <Variable name="solutionKind" value="manual" display="Beta subsystem remediations are manual solutions; the suggested command is `lando setup`" />
+      <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="host-proxy structured status context when DNS resolution is inactive" />
+      <Variable name="solutionKind" value="manual" display="Subsystem remediations are manual; the suggested command is `lando setup`" />
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-no-app-bootstrap" render={false} reason="Doctor bootstraps at the provider level and never loads an app; subsystem checks require only the six subsystem service tags, verified by core/test/cli/doctor-subsystems.test.ts and core/test/cli/doctor-report.test.ts">
+  <Scenario id="doctor-no-app-bootstrap" render={false} reason="Doctor bootstraps at the provider level and never loads an app; subsystem checks require only the six subsystem service tags">
     <Step name="no-app-bootstrap">
-      <Variable name="bootstrapLevel" value="provider" display="meta:doctor bootstrap level; doctor never requires app bootstrap unless --app is passed" />
-      <Variable name="subsystemRequirements" value="ProxyService, CertificateAuthority, SshService, HealthcheckRunner, UrlScanner, HostProxyService" display="The only requirements of the subsystem diagnostics — no AppPlanner or app context" />
+      <Variable name="bootstrapLevel" value="provider" display="Doctor bootstraps at the provider level; it never requires app bootstrap unless --app is passed" />
+      <Variable name="subsystemRequirements" value="ProxyService, CertificateAuthority, SshService, HealthcheckRunner, UrlScanner, HostProxyService" display="The subsystem diagnostics require only the six subsystem service tags — no AppPlanner or app context" />
       <Variable name="ndjsonFixture" value="core/test/cli/fixtures/meta-doctor.subsystems.ndjson" display="JSON renderer snapshot covering every subsystem and the failing-state remediations" />
     </Step>
   </Scenario>

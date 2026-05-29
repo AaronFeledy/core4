@@ -1,16 +1,14 @@
 /**
  * Subsystem diagnostics for `lando doctor`.
  *
- * Aggregates the status of each subsystem used by `lando doctor` (proxy,
- * certificate authority, SSH agent, healthcheck engine, endpoint scanner,
- * host DNS proxy) into a diagnostic record with `status`, `severity`,
- * `context`, and `solution` fields.
+ * Aggregates the status of each `lando doctor` subsystem (proxy, certificate
+ * authority, SSH agent, healthcheck engine, endpoint scanner, host DNS proxy)
+ * into a diagnostic record with `status`, `severity`, `context`, and `solution`
+ * fields.
  *
  * The checks are read-only and never bootstrap an app: each subsystem is probed
- * through its published Effect service tag, which is satisfied by the bundled
- * default Live Layers (the fallback/disabled stubs until the global app + bundled
- * plugins wire the production layers). Probing reads a subsystem's identity (and,
- * for the host proxy, its structured status) without mutating host state.
+ * through its published Effect service tag, and the bundled fallback/disabled
+ * Live Layers provide the identity/status data without mutating host state.
  */
 import { Effect, Layer } from "effect";
 
@@ -33,8 +31,8 @@ import { renderSolution } from "./doctor.ts";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
 
 /**
- * A single subsystem diagnostic entry with `name`, `status`, `severity`,
- * `context`, and `solutions` fields.
+ * A subsystem diagnostic entry with `name`, `status`, `severity`, `context`,
+ * and `solutions` fields.
  */
 export interface DoctorSubsystemCheck {
   readonly name: string;
@@ -49,9 +47,9 @@ export interface SubsystemDoctorResult {
 }
 
 /**
- * Default Live Layers used to probe subsystem status from `lando doctor`. These
- * are the bundled fallback/disabled stubs; none of them require app bootstrap,
- * a running provider, or any other ambient service.
+ * Default Live Layers used to probe subsystem status from `lando doctor`.
+ * These bundled fallback/disabled stubs do not require app bootstrap or any
+ * other ambient service.
  */
 export const DefaultSubsystemDoctorLayer: Layer.Layer<
   ProxyService | CertificateAuthority | SshService | HealthcheckRunner | UrlScanner | HostProxyService
@@ -129,8 +127,7 @@ const HOST_PROXY_INACTIVE_REMEDIATION =
   "Hostname resolution for *.lndo.site is not active. Run `lando setup` to configure host DNS (or `lando setup --host-proxy=none` to manage DNS yourself).";
 
 /**
- * Build the subsystem diagnostics. Requires only the six subsystem service tags;
- * never bootstraps an app or a running provider.
+ * Build the subsystem diagnostics using only the six subsystem service tags.
  */
 export const subsystemDoctor = (): Effect.Effect<
   SubsystemDoctorResult,

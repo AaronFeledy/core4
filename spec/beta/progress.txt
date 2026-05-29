@@ -938,3 +938,4 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (deferred/rejected): broader DoctorService/plugin-contributed checks and live subsystem status APIs remain outside US-108; current story scope is the provider-bootstrap doctor report and subsystem records.
 - Verification: typecheck, lint, tests passed.
 ---
+

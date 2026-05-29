@@ -158,9 +158,10 @@ const conflictCheck = (
   platform: HostPlatform,
   selection?: DoctorSelectionRecord,
 ): DoctorCheck => {
+  const providerKind = providerKindFor(providerId);
   const context: Record<string, string> = {
     providerId,
-    providerKind: providerKindFor(providerId),
+    providerKind,
     providerVersion,
     runtimeStatus: "conflict",
     platform,
@@ -180,7 +181,7 @@ const conflictCheck = (
     providerId,
     providerName,
     providerVersion,
-    providerKind: providerKindFor(providerId),
+    providerKind,
     runtimeStatus: "conflict",
     runtime: { running: false, message: conflict.message },
     capabilities: {},
