@@ -138,7 +138,19 @@ const serviceEnv = (service: ServicePlan) =>
 
 const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 
-const hostConfig = (service: ServicePlan) => {
+const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
+  `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+const sameAppMountTarget = (
+  appMount: ServicePlan["appMount"],
+  mount: ServicePlan["mounts"][number],
+): boolean =>
+  appMount !== undefined &&
+  mount.type === "bind" &&
+  mount.source === appMount.source &&
+  mount.target === appMount.target;
+
+const hostConfig = (plan: AppPlan, service: ServicePlan) => {
   const portBindings = Object.fromEntries(
     service.endpoints
       .filter((endpoint) => endpoint.port !== undefined)
@@ -148,20 +160,29 @@ const hostConfig = (service: ServicePlan) => {
       ]),
   );
 
-  const isRealizableBind = (realization: "passthrough" | "accelerated") =>
-    realization === "passthrough" || realization === "accelerated";
   const appMounts =
-    service.appMount === undefined || !isRealizableBind(service.appMount.realization)
+    service.appMount === undefined
       ? []
-      : [`${service.appMount.source}:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`];
-  const binds = service.mounts.flatMap((mount) => {
-    if (mount.type !== "bind" || !isRealizableBind(mount.realization)) return [];
+      : [
+          `${
+            service.appMount.realization === "accelerated"
+              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
+              : service.appMount.source
+          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
+        ];
+  const binds = service.mounts.flatMap((mount, index) => {
+    if (mount.type !== "bind") return [];
+    if (sameAppMountTarget(service.appMount, mount)) return [];
     if (mount.source === undefined) {
       throw podmanFailure(service, "bringUp.mount", "provider-lando bind mounts require a source.", {
         mount,
       });
     }
-    return [`${mount.source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+    const source =
+      mount.realization === "accelerated"
+        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
+        : mount.source;
+    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
   const allBinds = Array.from(new Set([...appMounts, ...binds]));
 
@@ -203,7 +224,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
       "dev.lando.app": plan.id,
       "dev.lando.service": service.name,
     },
-    HostConfig: hostConfig(service),
+    HostConfig: hostConfig(plan, service),
     NetworkingConfig: {
       EndpointsConfig: {
         [networkName(plan)]: {},
