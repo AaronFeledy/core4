@@ -261,6 +261,107 @@ describe("lando stop", () => {
     });
   });
 
+  test("skips file-sync cleanup when the engine is unavailable and still stops the app", async () => {
+    const callLog: string[] = [];
+    const unavailableEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Fake Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "none",
+        exclusionPatterns: false,
+        conflictReporting: false,
+        progressReporting: false,
+      },
+      isAvailable: Effect.succeed(false),
+      setup: () => Effect.void,
+      createSession: () => Effect.void,
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: () =>
+        Effect.sync(() => {
+          callLog.push("terminate");
+        }),
+      listSessions: () =>
+        Effect.sync(() => {
+          callLog.push("listSessions");
+          return [];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const fakeProvider: RuntimeProviderShape = {
+      id: "lando",
+      displayName: "Lando Runtime Provider",
+      version: "0.0.0",
+      platform: "linux",
+      capabilities,
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      getStatus: Effect.succeed({ running: true }),
+      getVersions: Effect.succeed({ provider: "0.0.0" }),
+      buildArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "buildArtifact",
+            message: "unavailable",
+          }),
+        ),
+      pullArtifact: () =>
+        Effect.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "pullArtifact",
+            message: "unavailable",
+          }),
+        ),
+      removeArtifact: () => Effect.void,
+      apply: () => Effect.succeed({ changed: false }),
+      start: () => Effect.void,
+      stop: () => Effect.void,
+      restart: () => Effect.void,
+      destroy: () =>
+        Effect.sync(() => {
+          callLog.push("provider.destroy");
+        }),
+      exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      execStream: () => Stream.die("not used"),
+      run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      logs: () => Stream.die("not used"),
+      inspect: (target) =>
+        Effect.succeed({
+          app: plan.id,
+          service: target.service,
+          providerId,
+          status: "stopped",
+          state: "stopped",
+          endpoints: [],
+        }),
+      list: () => Effect.succeed([]),
+    };
+    const layer = Layer.mergeAll(
+      Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+      Layer.succeed(RuntimeProviderRegistry, {
+        list: Effect.succeed([providerId]),
+        capabilities: Effect.succeed(capabilities),
+        select: () => Effect.succeed(fakeProvider),
+      }),
+      Layer.succeed(EventService, {
+        publish: () => Effect.void,
+        subscribe: () => Effect.die("not used"),
+        subscribeQueue: Effect.die("not used"),
+        waitFor: () => Effect.die("not used"),
+      }),
+      Layer.succeed(FileSyncEngine, unavailableEngine),
+    );
+
+    const result = await Effect.runPromise(stopApp().pipe(Effect.provide(layer)));
+    expect(result.app).toBe("test-stop");
+    expect(callLog).not.toContain("listSessions");
+    expect(callLog).toContain("provider.destroy");
+  });
+
   test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
     const existingRef = "session-web-app-mount" as FileSyncSessionRef;
     const existing: FileSyncSessionInfo = {

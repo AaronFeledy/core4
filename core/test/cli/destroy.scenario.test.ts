@@ -268,6 +268,43 @@ describe("lando destroy", () => {
     });
   });
 
+  test("skips file-sync cleanup when the engine is unavailable and still destroys the app", async () => {
+    const callLog: string[] = [];
+    const unavailableEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Fake Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "none",
+        exclusionPatterns: false,
+        conflictReporting: false,
+        progressReporting: false,
+      },
+      isAvailable: Effect.succeed(false),
+      setup: () => Effect.void,
+      createSession: () => Effect.void,
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: () =>
+        Effect.sync(() => {
+          callLog.push("terminate");
+        }),
+      listSessions: () =>
+        Effect.sync(() => {
+          callLog.push("listSessions");
+          return [];
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const harness = makeDestroyLayer();
+    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, unavailableEngine));
+
+    const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
+    expect(result.app).toBe("test-destroy");
+    expect(callLog).not.toContain("listSessions");
+    expect(harness.destroyCalls).toHaveLength(1);
+  });
+
   test("terminates active file-sync sessions before provider.destroy even when the current plan has none", async () => {
     const existingRef = "session-web-app-mount" as FileSyncSessionRef;
     const existing: FileSyncSessionInfo = {

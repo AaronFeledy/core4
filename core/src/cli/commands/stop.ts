@@ -81,6 +81,8 @@ const terminateFileSyncSessions = (app: AppRef) =>
     if (Option.isNone(maybeEngine)) return;
 
     const engine = maybeEngine.value;
+    if (!(yield* engine.isAvailable)) return;
+
     const existing = yield* engine.listSessions({ app });
     for (const info of existing) {
       yield* engine.terminateSession(info.ref);

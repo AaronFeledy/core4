@@ -492,8 +492,9 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
         return;
       }
 
-      // Each host archive contains mutagen-agents.tar.gz, so one verified
-      // host download can supply both the host CLI and every Linux agent.
+      // Linux/macOS host archives include the agent payload, so one verified
+      // host download can supply both the CLI and the agents. Windows host zips
+      // do not, so fetch each pinned agent archive separately there.
       const hostArchiveBytes = yield* downloadVerifiedArchive(hostEntry, fetchImpl);
 
       yield* installBinaryFromArchive({
@@ -504,8 +505,10 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
       });
 
       for (const [agentKey, agentEntry] of Object.entries(manifest.agents)) {
+        const agentArchiveBytes =
+          platform === "win32" ? yield* downloadVerifiedArchive(agentEntry, fetchImpl) : hostArchiveBytes;
         yield* installBinaryFromArchive({
-          archiveBytes: hostArchiveBytes,
+          archiveBytes: agentArchiveBytes,
           entry: agentEntry,
           installPath: mutagenAgentBinaryPath(userDataRoot, agentKey),
           extractImpl,
