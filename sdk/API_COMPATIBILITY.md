@@ -118,6 +118,7 @@
 - `Renderer`
 - `SchemaValidator`
 - `SecretStore`
+- `SshService`
 - `Telemetry`
 - `ToolingEngine`
 - `UpdateService`

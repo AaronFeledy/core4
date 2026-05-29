@@ -30,3 +30,22 @@
  */
 
 export const SSH_AGENT_FEATURE_ID = "lando.ssh-agent" as const;
+
+import { Effect, Layer } from "effect";
+
+import { SshError } from "@lando/sdk/errors";
+import { SshService } from "@lando/sdk/services";
+
+export { SshService };
+
+const SSH_UNAVAILABLE_ID = "unavailable" as const;
+const SSH_UNAVAILABLE_MESSAGE =
+  "SshService requires the SSH sidecar. Run `lando setup` to install the SSH sidecar (available in Beta with US-103 full implementation).";
+
+export const SshServiceUnavailableLive = Layer.succeed(SshService, {
+  id: SSH_UNAVAILABLE_ID,
+  setup: (_opts) =>
+    Effect.fail(new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: SSH_UNAVAILABLE_ID })),
+  getAgentSocket: (_appId) =>
+    Effect.fail(new SshError({ message: SSH_UNAVAILABLE_MESSAGE, sshId: SSH_UNAVAILABLE_ID })),
+});

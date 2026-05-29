@@ -62,6 +62,7 @@ import type {
   ServiceNotFoundError,
   ServiceStartError,
   ShellExecError,
+  SshError,
   ToolingExecError,
 } from "../errors/index.ts";
 
@@ -654,6 +655,23 @@ export class ProxyService extends Context.Tag("@lando/core/ProxyService")<
   ProxyService,
   ProxyServiceShape
 >() {}
+
+export interface SshSetupOptions {
+  readonly force: boolean;
+}
+
+export interface SshAgentSocket {
+  readonly socketPath: string;
+  readonly appId: AppId;
+}
+
+export interface SshServiceShape {
+  readonly id: string;
+  readonly setup: (options: SshSetupOptions) => Effect.Effect<void, SshError>;
+  readonly getAgentSocket: (appId: AppId) => Effect.Effect<SshAgentSocket, SshError>;
+}
+
+export class SshService extends Context.Tag("@lando/core/SshService")<SshService, SshServiceShape>() {}
 
 /**
  * HealthcheckRunner — execute a HealthcheckPlan and report status.
