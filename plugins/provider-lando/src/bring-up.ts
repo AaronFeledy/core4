@@ -5,21 +5,24 @@ import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type AppRef,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   ProviderId,
   type ServicePlan,
   fileSyncVolumeName,
+  landoAppNetworkName,
+  landoNetworkNames,
+  landoServiceNetworkAliases,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
 import { redactDetails } from "./redact.ts";
-import {
-  SHARED_CROSS_APP_NETWORK,
-  appNetworkName,
-  networkNames,
-  serviceNetworkAliases,
-} from "./shared-network.ts";
+
+const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
+const appNetworkName = landoAppNetworkName;
+const networkNames = landoNetworkNames;
+const serviceNetworkAliases = landoServiceNetworkAliases;
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);

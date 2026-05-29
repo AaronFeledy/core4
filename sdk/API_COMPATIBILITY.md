@@ -30,6 +30,9 @@
 - `FileSyncMode`
 - `FileSyncPlan`
 - `fileSyncVolumeName`
+- `landoAppNetworkName`
+- `landoNetworkNames`
+- `landoServiceNetworkAliases`
 - `sameAppMountTarget`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
@@ -47,6 +50,7 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `LANDO_SHARED_CROSS_APP_NETWORK`
 - `MatcherAnyOf`
 - `MatcherNot`
 - `MatcherPartialObject`

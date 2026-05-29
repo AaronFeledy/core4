@@ -1,10 +1,20 @@
 import { Effect } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  LANDO_SHARED_CROSS_APP_NETWORK,
+  type ServicePlan,
+  fileSyncVolumeName,
+  landoAppNetworkName,
+  landoServiceNetworkAliases,
+  sameAppMountTarget,
+} from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
-import { SHARED_CROSS_APP_NETWORK, appNetworkName, serviceNetworkAliases } from "./shared-network.ts";
+const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
+const appNetworkName = landoAppNetworkName;
+const serviceNetworkAliases = landoServiceNetworkAliases;
 
 const PROVIDER_ID = "lando";
 

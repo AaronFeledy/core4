@@ -12,10 +12,14 @@ import {
 import {
   type AppPlan,
   type HostPlatform,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
   fileSyncVolumeName,
+  landoAppNetworkName,
+  landoNetworkNames,
+  landoServiceNetworkAliases,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
@@ -136,15 +140,10 @@ interface ExecInspectResponse {
 const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-const SHARED_CROSS_APP_NETWORK = "lando_bridge_network";
-
-const networkNames = (plan: AppPlan): ReadonlyArray<string> =>
-  Array.from(new Set([networkName(plan), SHARED_CROSS_APP_NETWORK]));
-
-const serviceNetworkAliases = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => [
-  `${service.name}.${plan.slug}.internal`,
-];
+const networkName = landoAppNetworkName;
+const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
+const networkNames = landoNetworkNames;
+const serviceNetworkAliases = landoServiceNetworkAliases;
 
 const unavailable = (operation: string, message: string, details?: unknown) =>
   new ProviderUnavailableError({
@@ -1021,6 +1020,9 @@ const startContainer = (api: DockerApiClient, service: ServicePlan, name: string
     ),
   );
 
+const isAlreadyConnectedResponse = (response: DockerHttpResponse) =>
+  response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
+
 const connectSharedNetwork = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
   request(api, "apply", {
     method: "POST",
@@ -1034,8 +1036,8 @@ const connectSharedNetwork = (api: DockerApiClient, plan: AppPlan, service: Serv
       response.status === 200 ||
       response.status === 201 ||
       response.status === 204 ||
-      response.status === 403 ||
-      response.status === 409
+      response.status === 409 ||
+      isAlreadyConnectedResponse(response)
         ? Effect.void
         : Effect.fail(
             serviceStartFailure(

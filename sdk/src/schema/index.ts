@@ -424,6 +424,19 @@ export type ServicePlan = typeof ServicePlan.Type;
 export const fileSyncVolumeName = (appName: string, serviceName: string, mountKey: string): string =>
   `${appName}-${serviceName}-${mountKey}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
+export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
+
+export const landoAppNetworkName = (plan: Pick<AppPlan, "slug">): string =>
+  `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+
+export const landoNetworkNames = (plan: Pick<AppPlan, "slug">): ReadonlyArray<string> =>
+  Array.from(new Set([landoAppNetworkName(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
+
+export const landoServiceNetworkAliases = (
+  plan: Pick<AppPlan, "slug">,
+  service: Pick<ServicePlan, "name">,
+): ReadonlyArray<string> => [`${service.name}.${plan.slug}.internal`];
+
 export const sameAppMountTarget = (
   appMount: ServicePlan["appMount"],
   mount: ServicePlan["mounts"][number],
