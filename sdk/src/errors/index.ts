@@ -291,6 +291,12 @@ export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptO
   },
 ) {}
 
+export class SshError extends Schema.TaggedError<SshError>()("SshError", {
+  message: Schema.String,
+  sshId: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 /**
  * BunShellScriptFrontMatterError — raised when a `.bun.sh` script-backed
  * tooling task has a missing or malformed YAML front-matter

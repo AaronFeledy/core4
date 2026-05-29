@@ -1,0 +1,33 @@
+---
+id: ssh-sidecar
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, ssh, sidecar]
+---
+
+<Guide>
+  <Scenario id="ssh-sdk-contract" render={false} reason="SshService SDK contract is exercised by sdk/test/contract/ssh-service.test.ts against TestSshService; the sidecar Live Layer requires a running SSH agent sidecar container">
+    <Step name="ssh-contract">
+      <Variable name="sdkTag" value="SshService" display="Effect Service tag published in @lando/sdk; plugins implement SshServiceShape" />
+      <Variable name="contractRunner" value="runSshServiceContract" display="Contract runner from @lando/sdk/test validates id, setup, getAgentSocket" />
+      <Variable name="testDouble" value="TestSshService / makeTestSshService" display="In-memory test double for SshService; records calls and returns fake socket paths" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ssh-sidecar-design" render={false} reason="Sidecar forwarding of the SSH agent Unix socket requires a running sidecar container; the live path exercises opt-in via sshAgent:true and provider-exec TTY wrapping">
+    <Step name="sidecar-design">
+      <Variable name="optIn" value="sshAgent: true (per service in Landofile)" display="Services opt in to SSH agent forwarding via sshAgent: true" />
+      <Variable name="socketPath" value="SshAgentSocket.socketPath" display="Unix socket path forwarded into the app network by the sidecar" />
+      <Variable name="featureId" value="lando.ssh-agent" display="SSH_AGENT_FEATURE_ID — the service feature identifier contributed by @lando/service-lando" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ssh-composer-scenario" render={false} reason="lando composer install against a fake private package server with SSH-agent auth requires a real SSH agent, sidecar container, and Composer binary; the contract is covered by sdk/test/contract/ssh-service.test.ts">
+    <Step name="composer-scenario">
+      <Variable name="scenarioDescription" value="lando composer install against a fake private git server with SSH-agent auth" display="Scenario test that asserts composer install succeeds with SSH-agent forwarding" />
+      <Variable name="verificationRef" value="sdk/test/contract/ssh-service.test.ts" display="Unit tests verify the SshService contract against TestSshService" />
+      <Variable name="liveGate" value="LANDO_TEST_SSH_LIVE=1" display="Live sidecar test gate (reserved for when SSH sidecar is available in CI)" />
+    </Step>
+  </Scenario>
+</Guide>

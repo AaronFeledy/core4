@@ -1701,3 +1701,67 @@ export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
 };
 
 export const TestCertificateAuthority: CertificateAuthorityShape = makeTestCertificateAuthority();
+
+import type { SshAgentSocket, SshServiceShape, SshSetupOptions } from "../services/index.ts";
+
+const sshContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({ message: `SshService contract failed: ${assertion}`, assertion, details });
+
+const requireSshContract = (
+  condition: boolean,
+  assertion: string,
+  details?: unknown,
+): Effect.Effect<void, ContractFailure> =>
+  condition ? Effect.void : Effect.fail(sshContractFailure(assertion, details));
+
+export const runSshServiceContract = (ssh: SshServiceShape): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    yield* requireSshContract(
+      typeof ssh.id === "string" && ssh.id.length > 0,
+      "id is a non-empty string",
+      ssh.id,
+    );
+
+    yield* ssh.setup({ force: false }).pipe(Effect.mapError((d) => sshContractFailure("setup resolves", d)));
+
+    const socketResult = yield* ssh
+      .getAgentSocket(AppId.make("contract-test-app"))
+      .pipe(Effect.mapError((d) => sshContractFailure("getAgentSocket resolves", d)));
+
+    yield* requireSshContract(
+      typeof socketResult.socketPath === "string" && socketResult.socketPath.length > 0,
+      "getAgentSocket result has non-empty socketPath",
+      socketResult,
+    );
+
+    yield* ssh
+      .setup({ force: true })
+      .pipe(Effect.mapError((d) => sshContractFailure("setup with force:true resolves", d)));
+  });
+
+export const makeTestSshService = (): SshServiceShape & {
+  readonly calls: ReadonlyArray<
+    | { readonly op: "setup"; readonly opts: SshSetupOptions }
+    | { readonly op: "getAgentSocket"; readonly appId: AppId }
+  >;
+} => {
+  const calls: Array<
+    | { readonly op: "setup"; readonly opts: SshSetupOptions }
+    | { readonly op: "getAgentSocket"; readonly appId: AppId }
+  > = [];
+  return {
+    id: "test",
+    setup: (opts) =>
+      Effect.sync(() => {
+        (calls as Array<{ op: "setup"; opts: SshSetupOptions }>).push({ op: "setup", opts });
+      }),
+    getAgentSocket: (appId) =>
+      Effect.sync((): SshAgentSocket => {
+        (calls as Array<{ op: "getAgentSocket"; appId: AppId }>).push({ op: "getAgentSocket", appId });
+        return { socketPath: `/tmp/test-ssh/${String(appId)}.sock`, appId };
+      }),
+    calls,
+  };
+};
+
+export const TestSshService: SshServiceShape = makeTestSshService();
