@@ -20,23 +20,23 @@ tags: [beta, docs, subsystems, host-proxy, dns, lndo-site]
       <Variable name="macosMechanism" value="etc-resolver" display="macOS Live Layer writes /etc/resolver/<baseDomain> drop-in — no /etc/hosts edit" />
       <Variable name="linuxMechanism" value="etc-hosts" display="Linux Live Layer writes a managed /etc/hosts block (or a systemd-resolved drop-in)" />
       <Variable name="windowsMechanism" value="hosts-file" display="Windows Live Layer writes the HOSTS file under System32\\drivers\\etc" />
-      <Variable name="defaultBaseDomain" value="lndo.site" display="Default base domain; matches the proxy subsystem (US-101) and route plan defaults" />
+      <Variable name="defaultBaseDomain" value="lndo.site" display="Default base domain; matches the proxy subsystem and route plan defaults" />
       <Variable name="defaultLoopback" value="127.0.0.1" display="Default loopback address used for *.lndo.site resolution" />
     </Step>
   </Scenario>
 
-  <Scenario id="host-proxy-setup-time-gate" render={false} reason="Privileged operations require sudo/UAC and only run inside `lando setup` — not during `lando start`">
+  <Scenario id="host-proxy-setup-time-gate" render={false} reason="Privileged operations require sudo/UAC and run only inside `lando setup`, not during `lando start`">
     <Step name="setup-time-gate">
-      <Variable name="setupMethod" value="setup({ mode, baseDomain?, loopback?, force? })" display="Privileged DNS write — only invoked from `lando setup`, never from `lando start`" />
-      <Variable name="privilegeBoundary" value="lando setup" display="sudo/UAC prompt happens here; `lando start` MUST NOT trigger privilege prompts" />
+      <Variable name="setupMethod" value="setup({ mode, baseDomain?, loopback?, force? })" display="Privileged DNS write invoked from `lando setup`, never from `lando start`" />
+      <Variable name="privilegeBoundary" value="lando setup" display="sudo/UAC prompt happens here; `lando start` must not trigger privilege prompts" />
       <Variable name="hostProxyError" value="HostProxyError" display="Tagged error raised when setup/status/teardown cannot reach the host DNS mechanism" />
     </Step>
   </Scenario>
 
   <Scenario id="host-proxy-opt-out" render={false} reason="The --host-proxy=none opt-out lets users managing their own DNS skip the privileged write; the disabled layer no-ops without touching the host">
     <Step name="opt-out">
-      <Variable name="optOutFlag" value="lando setup --host-proxy=none" display="Opt-out for users who manage their own DNS (corporate split-DNS, dnsmasq, hand-rolled /etc/hosts entries)" />
-      <Variable name="disabledLayer" value="HostProxyServiceDisabledLive" display="Layer used when --host-proxy=none — setup()/teardown() succeed as no-ops, status() reports mode='none', mechanism='skipped'" />
+      <Variable name="optOutFlag" value="lando setup --host-proxy=none" display="Opt-out for users who manage their own DNS (corporate split-DNS, dnsmasq, custom /etc/hosts entries)" />
+      <Variable name="disabledLayer" value="HostProxyServiceDisabledLive" display="Layer used when --host-proxy=none; setup()/teardown() succeed as no-ops, status() reports mode='none', mechanism='skipped'" />
       <Variable name="verificationRef" value="sdk/test/contract/host-proxy-service.test.ts" display="Unit tests verify the HostProxyService contract against TestHostProxyService, including the mode='none' opt-out path" />
     </Step>
   </Scenario>
