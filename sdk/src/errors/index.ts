@@ -463,14 +463,13 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
 ) {}
 
 /**
- * FileSyncStartError — `FileSyncEngine.createSession`, `setup`, or
- * `isAvailable` failed (binary missing, daemon unreachable, agent deploy
- * refused, capability missing, source outside app root, target path
- * conflict). Payload includes the engine id, the rejected
- * `FileSyncSessionSpec` shape when applicable (treated as `Unknown` for
- * redaction at the publishing layer), a remediation pointer, and a debug
- * `cause`. The PRD-B-03 contract groups every spec §10.6.1 start-side
- * tagged failure under this single Beta-published tag.
+ * FileSyncStartError — emitted when `FileSyncEngine.createSession`, `setup`,
+ * or `isAvailable` fails. Typical causes include a missing binary, an
+ * unreachable daemon, a refused agent deploy, a missing capability,
+ * source paths outside the app root, or a target path conflict. Payload
+ * includes the engine id, the rejected `FileSyncSessionSpec` shape when
+ * applicable (kept as `Unknown` for publishing redaction), a remediation
+ * pointer, and a debug `cause`.
  */
 export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
   engineId: Schema.String,
@@ -481,13 +480,12 @@ export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()
 }) {}
 
 /**
- * FileSyncDriftError — `FileSyncEngine.streamEvents` or a running session
- * surfaced a content drift / conflict the engine could not silently
- * reconcile under the requested sync mode. Payload includes the
- * `FileSyncSessionRef` as a string, the conflicted paths (relative to the
- * session source after redaction at the publishing layer), an optional
- * suggested mode upgrade, and a debug `cause`. Maps to spec §10.6.1
- * `FileSyncConflictError`.
+ * FileSyncDriftError — emitted when `FileSyncEngine.streamEvents` or a
+ * running session surfaces content drift or a conflict that cannot be
+ * reconciled automatically under the requested sync mode. Payload
+ * includes the `FileSyncSessionRef` as a string, the conflicted paths
+ * (relative to the session source after publishing-layer redaction), an
+ * optional suggested mode upgrade, and a debug `cause`.
  */
 export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()("FileSyncDriftError", {
   engineId: Schema.String,

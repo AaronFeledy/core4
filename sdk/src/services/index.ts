@@ -690,8 +690,8 @@ export class SecretStore extends Context.Tag("@lando/core/SecretStore")<
 >() {}
 
 /**
- * FileSyncEngineShape — the lifecycle surface every `FileSyncEngine` plugin
- * implements. Spec source: §10.6.1.
+ * FileSyncEngineShape — lifecycle surface every `FileSyncEngine` plugin
+ * implements.
  *
  * Engines are session-stateful: one session per accelerated `MountPlan`
  * per started app. `createSession` is `Scope`-acquired so app stop and

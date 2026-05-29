@@ -20,9 +20,9 @@ const APP_REF: AppRef = {
 
 const buildSpec = (mountKey: string) => ({
   app: APP_REF,
-  service: "web" as never, // ServiceName brand
+  service: "web" as never,
   mountKey,
-  source: "/srv/apps/myapp" as never, // AbsolutePath brand
+  source: "/srv/apps/myapp" as never,
   target: { _tag: "volume" as const, name: `lando-sync-${mountKey}`, path: "/app" as never },
   mode: "two-way-safe" as const,
   excludes: ["node_modules"],
@@ -165,7 +165,6 @@ describe("FileSyncEngine contract", () => {
 
   test("error semantics: createSession failure surfaces FileSyncStartError", async () => {
     const engine = TestFileSyncEngine;
-    // Use the rejected sentinel mountKey baked into TestFileSyncEngine.
     const rejected = { ...buildSpec("reject-me"), mountKey: "__REJECT__" as never };
 
     const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
