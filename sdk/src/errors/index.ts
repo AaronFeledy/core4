@@ -1,6 +1,8 @@
 /** Tagged error exports for the SDK. */
 import { Schema } from "effect";
 
+import { FileSyncMode } from "../schema/file-sync.ts";
+
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
   path: Schema.optional(Schema.String),
@@ -461,3 +463,53 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
     remediation: Schema.String,
   },
 ) {}
+
+/**
+ * FileSyncStartError — emitted when `FileSyncEngine.createSession`, `setup`,
+ * or `isAvailable` fails. Typical causes include a missing binary, an
+ * unreachable daemon, a refused agent deploy, a missing capability,
+ * source paths outside the app root, or a target path conflict. Payload
+ * includes the engine id, the rejected `FileSyncSessionSpec` shape when
+ * applicable (kept as `Unknown` for publishing redaction), a remediation
+ * pointer, and a debug `cause`.
+ */
+export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
+  engineId: Schema.String,
+  message: Schema.String,
+  sessionSpec: Schema.optional(Schema.Unknown),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+/**
+ * FileSyncDriftError — emitted when `FileSyncEngine.streamEvents` or a
+ * running session surfaces content drift or a conflict that cannot be
+ * reconciled automatically under the requested sync mode. Payload
+ * includes the `FileSyncSessionRef` as a string, the conflicted paths
+ * (relative to the session source after publishing-layer redaction), an
+ * optional suggested mode upgrade, and a debug `cause`.
+ */
+export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()("FileSyncDriftError", {
+  engineId: Schema.String,
+  message: Schema.String,
+  sessionRef: Schema.String,
+  conflictedPaths: Schema.Array(Schema.String),
+  suggestedMode: Schema.optional(FileSyncMode),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+/**
+ * FileSyncStopError — `FileSyncEngine.terminateSession` or
+ * `pauseSession`/`resumeSession` finalisation failed. Payload includes the
+ * engine id, the `FileSyncSessionRef` as a string, a remediation pointer
+ * (usually `lando apps poweroff` for daemon clean-up), and a debug
+ * `cause`.
+ */
+export class FileSyncStopError extends Schema.TaggedError<FileSyncStopError>()("FileSyncStopError", {
+  engineId: Schema.String,
+  sessionRef: Schema.String,
+  message: Schema.String,
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
