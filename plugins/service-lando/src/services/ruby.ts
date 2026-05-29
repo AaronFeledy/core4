@@ -111,7 +111,7 @@ const makeRubyServiceType = (version: SupportedRubyVersion): ServiceTypeShape =>
         source: AbsolutePath.make(appRoot),
         target: APP_MOUNT_TARGET,
         readOnly: false,
-        excludes: [],
+        excludes: [".bundle"],
         includes: [],
         realization: "passthrough",
       },

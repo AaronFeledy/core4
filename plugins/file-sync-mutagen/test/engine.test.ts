@@ -368,4 +368,24 @@ describe("@lando/file-sync-mutagen fake state surfaces metadata", () => {
       }),
     );
   });
+
+  test("createSession passes spec.excludes verbatim to the client create call", async () => {
+    const { engine, client } = fakeEngine();
+    const excludes = ["node_modules", "vendor", ".git", "tmp"];
+    const spec: FileSyncSessionSpec = {
+      app: { kind: "user", id: AppId.make("myapp"), root: APP_ROOT },
+      service: ServiceName.make("web"),
+      mountKey: "app-mount",
+      source: APP_ROOT,
+      target: { _tag: "volume", name: "lando-sync-app-mount", path: "/app" as never },
+      mode: "two-way-safe",
+      excludes,
+    };
+    await runScoped(engine.createSession(spec));
+    const createCall = client.state.calls.find((c) => c.op === "create");
+    expect(createCall).toBeDefined();
+    if (createCall?.op === "create") {
+      expect(createCall.spec.excludes).toEqual(excludes);
+    }
+  });
 });

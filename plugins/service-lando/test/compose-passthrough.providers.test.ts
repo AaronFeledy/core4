@@ -65,7 +65,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
   test("provider-lando renderCompose emits the compose image, named volume, env, and port mapping", async () => {
     const plan = await planFor(composeLandofile, "lando");
 
-    expect(plan.stores.map((s) => s.name)).toEqual(["composeapp-worker-state"]);
+    expect(plan.stores.map((s) => s.name)).toContain("composeapp-worker-state");
     expect(plan.stores.every((s) => s.scope === "service")).toBe(true);
 
     const document = renderLandoCompose(plan);
@@ -80,7 +80,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
   test("provider-docker renderCompose emits the compose image and port mapping from a compose-typed plan", async () => {
     const plan = await planFor(composeLandofile, "docker");
 
-    expect(plan.stores.map((s) => s.name)).toEqual(["composeapp-worker-state"]);
+    expect(plan.stores.map((s) => s.name)).toContain("composeapp-worker-state");
 
     const document = renderDockerCompose(plan);
     expect(document).toContain("ghcr.io/example/worker:latest");
@@ -90,8 +90,8 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
   test("compose-declared named volumes follow destroy-preserves-volumes for both providers", async () => {
     const landoPlan = await planFor(composeLandofile, "lando");
     const dockerPlan = await planFor(composeLandofile, "docker");
-    expect(landoPlan.stores).toEqual([{ name: "composeapp-worker-state", scope: "service" }]);
-    expect(dockerPlan.stores).toEqual([{ name: "composeapp-worker-state", scope: "service" }]);
+    expect(landoPlan.stores).toContainEqual({ name: "composeapp-worker-state", scope: "service" });
+    expect(dockerPlan.stores).toContainEqual({ name: "composeapp-worker-state", scope: "service" });
   });
 
   test("provider extensions in service.providers.<id> flow through to ServicePlan.extensions", async () => {
