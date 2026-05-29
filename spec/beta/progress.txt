@@ -870,12 +870,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Verification: typecheck passed, lint passed, focused HostProxy/setup tests passed, compiled setup test passed in isolation; full suite has the pre-existing compiled-binary concurrency failure noted above.
 ---
 
-## [2026-05-29 12:53 CDT] - Babysit
-- PR: #208 https://github.com/AaronFeledy/core4/pull/208
-- CI outcome: pass
-- Review feedback: fixed (removed unused exported HostProxyServiceUnavailableLive layer; rerun Bugbot passed)
-- Merge: merged (squash)
----
 
 ## [2026-05-29 12:53 CDT] - Babysit
 - PR: #208 https://github.com/AaronFeledy/core4/pull/208
