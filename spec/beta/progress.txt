@@ -800,3 +800,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Verification: typecheck passed; lint passed; build passed; focused planner/start/stop/destroy/provider tests passed; full `bun test` still fails in unrelated docs-scenario stderr-string matching / compiled-build concurrency surfaces outside US-098 focused coverage.
 - **Learnings for future iterations:** An accelerated mount is a provider contract, not only a `FileSyncPlan`: providers must mount the same named volume that the file-sync engine targets, and app-root duplicate bind entries from service defaults must not create a second sync session for `/app`.
 ---
+
+## [2026-05-29 06:36 CDT] - Babysit
+- PR: #200 https://github.com/AaronFeledy/core4/pull/200
+- CI outcome: pass
+- Review feedback: fixed (Bugbot findings addressed across Mutagen archive selection, shared file-sync planning helpers, stop/destroy cleanup failure tolerance, start rollback cleanup, planner engine-id hoisting, and unavailable-engine start no-op behavior; rerun Bugbot passed)
+- Merge: merged (squash)
+---
