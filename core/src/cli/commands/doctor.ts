@@ -26,7 +26,7 @@ import {
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
 
-type DoctorError =
+export type DoctorError =
   | ConfigError
   | NoProviderInstalledError
   | ProviderConfigError

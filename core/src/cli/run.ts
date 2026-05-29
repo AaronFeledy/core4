@@ -15,7 +15,7 @@ import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
-import { doctor, renderDoctorResult } from "./commands/doctor.ts";
+import { doctorReport, renderDoctorReport } from "./commands/doctor-report.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
@@ -432,12 +432,12 @@ const runAppCacheRefresh = async (): Promise<void> => {
 const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const flagProvider = parseProviderFlag(argv);
   const exit = await Effect.runPromiseExit(
-    doctor(flagProvider === undefined ? {} : { flagProviderId: flagProvider }).pipe(
+    doctorReport(flagProvider === undefined ? {} : { flagProviderId: flagProvider }).pipe(
       Effect.provide(makeLandoRuntime({ bootstrap: "provider" })),
     ),
   );
   if (Exit.isSuccess(exit)) {
-    console.log(renderDoctorResult(exit.value));
+    console.log(renderDoctorReport(exit.value));
     return;
   }
   const failure = Cause.failureOption(exit.cause);

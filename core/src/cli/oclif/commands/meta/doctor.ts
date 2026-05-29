@@ -2,12 +2,8 @@ import { Flags } from "@oclif/core";
 
 import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import {
-  type DoctorOptions,
-  type DoctorResult,
-  doctor,
-  renderDoctorResult,
-} from "../../../commands/doctor.ts";
+import { type DoctorReport, doctorReport, renderDoctorReport } from "../../../commands/doctor-report.ts";
+import type { DoctorOptions } from "../../../commands/doctor.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -24,7 +20,7 @@ const inputDoctorOptions = (input: unknown): DoctorOptions => {
 };
 
 export const metaDoctorSpec: LandoCommandSpec<
-  DoctorResult,
+  DoctorReport,
   unknown,
   ConfigService | RuntimeProviderRegistry
 > = {
@@ -33,8 +29,8 @@ export const metaDoctorSpec: LandoCommandSpec<
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "provider",
-  run: (input) => doctor(inputDoctorOptions(input)),
-  render: (result) => renderDoctorResult(result as DoctorResult),
+  run: (input) => doctorReport(inputDoctorOptions(input)),
+  render: (result) => renderDoctorReport(result as DoctorReport),
 };
 
 export default class MetaDoctorCommand extends LandoCommandBase {
