@@ -380,7 +380,7 @@ const renderCapabilityValue = (value: unknown): string => {
   return String(value);
 };
 
-const renderSolution = (solution: DoctorSolution): string => {
+export const renderSolution = (solution: DoctorSolution): string => {
   const command = solution.command === undefined ? "" : ` (${solution.command})`;
   return `solution[${solution.kind}]: ${solution.description}${command}`;
 };

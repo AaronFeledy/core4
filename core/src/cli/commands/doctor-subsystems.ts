@@ -29,6 +29,7 @@ import { HostProxyServiceDisabledLive } from "../../subsystems/host-proxy/api.ts
 import { ProxyServiceUnavailableLive } from "../../subsystems/proxy/api.ts";
 import { UrlScannerUnavailableLive } from "../../subsystems/scanner/api.ts";
 import { SshServiceUnavailableLive } from "../../subsystems/ssh/api.ts";
+import { renderSolution } from "./doctor.ts";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
 
 /**
@@ -186,11 +187,6 @@ export const subsystemDoctor = (): Effect.Effect<
       ],
     };
   });
-
-const renderSolution = (solution: DoctorSolution): string => {
-  const command = solution.command === undefined ? "" : ` (${solution.command})`;
-  return `solution[${solution.kind}]: ${solution.description}${command}`;
-};
 
 const renderCheck = (check: DoctorSubsystemCheck): ReadonlyArray<string> => {
   const lines = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];
