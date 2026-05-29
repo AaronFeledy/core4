@@ -20,6 +20,7 @@ import type {
   ProviderCapabilities,
   ProviderId,
   RecipeManifest,
+  RoutePlan,
   ServiceConfig,
   ServiceInfo,
   ServiceName,
@@ -52,6 +53,7 @@ import type {
   ProviderConfigError,
   ProviderInternalError,
   ProviderUnavailableError,
+  ProxyError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
@@ -625,16 +627,16 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
   }
 >() {}
 
-/**
- * ProxyService — realize RoutePlans into running ingress.
- *
- * Default: `@lando/proxy-traefik`.
- */
+export interface ProxyServiceShape {
+  readonly id: string;
+  readonly setup: () => Effect.Effect<void, ProxyError>;
+  readonly applyRoutes: (routes: ReadonlyArray<RoutePlan>, appId: AppId) => Effect.Effect<void, ProxyError>;
+  readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+}
+
 export class ProxyService extends Context.Tag("@lando/core/ProxyService")<
   ProxyService,
-  {
-    readonly id: string;
-  }
+  ProxyServiceShape
 >() {}
 
 /**
