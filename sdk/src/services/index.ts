@@ -13,6 +13,7 @@ import type {
   FileSyncSessionSpec,
   FileSyncSetupOptions,
   GlobalConfig,
+  HealthcheckPlan,
   HostPlatform,
   LandofileShape,
   PlanMetadata,
@@ -39,6 +40,8 @@ import type {
   FileSyncDriftError,
   FileSyncStartError,
   FileSyncStopError,
+  HealthcheckError,
+  HealthcheckTimeoutError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -673,14 +676,27 @@ export interface SshServiceShape {
 
 export class SshService extends Context.Tag("@lando/core/SshService")<SshService, SshServiceShape>() {}
 
-/**
- * HealthcheckRunner — execute a HealthcheckPlan and report status.
- */
+export interface HealthcheckResult {
+  readonly healthy: boolean;
+  readonly service: ServiceName;
+  readonly attempts: number;
+  readonly lastStatus?: string;
+}
+
+export type HealthcheckRunError = HealthcheckTimeoutError | HealthcheckError;
+
+export interface HealthcheckRunnerShape {
+  readonly id: string;
+  readonly run: (
+    plan: HealthcheckPlan,
+    appId: AppId,
+    service: ServiceName,
+  ) => Effect.Effect<HealthcheckResult, HealthcheckRunError>;
+}
+
 export class HealthcheckRunner extends Context.Tag("@lando/core/HealthcheckRunner")<
   HealthcheckRunner,
-  {
-    readonly id: string;
-  }
+  HealthcheckRunnerShape
 >() {}
 
 /**
