@@ -891,14 +891,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
     WorkingDir: service.workingDirectory,
     Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name },
     HostConfig: hostConfig(plan, service),
-    NetworkingConfig: {
-      EndpointsConfig: Object.fromEntries(
-        networkNames(plan).map((name) => [
-          name,
-          name === SHARED_CROSS_APP_NETWORK ? { Aliases: serviceNetworkAliases(plan, service) } : {},
-        ]),
-      ),
-    },
+    NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
   };
 };
 
@@ -1028,6 +1021,28 @@ const startContainer = (api: DockerApiClient, service: ServicePlan, name: string
     ),
   );
 
+const connectSharedNetwork = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
+  request(api, "apply", {
+    method: "POST",
+    path: `/networks/${encodeURIComponent(SHARED_CROSS_APP_NETWORK)}/connect`,
+    body: {
+      Container: name,
+      EndpointConfig: { Aliases: serviceNetworkAliases(plan, service) },
+    },
+  }).pipe(
+    Effect.flatMap((response) =>
+      response.status === 200 || response.status === 201 || response.status === 204 || response.status === 409
+        ? Effect.void
+        : Effect.fail(
+            serviceStartFailure(
+              service,
+              `Docker network connect failed with HTTP ${response.status}.`,
+              response,
+            ),
+          ),
+    ),
+  );
+
 const stopContainerSilent = (api: DockerApiClient, name: string): Effect.Effect<void> =>
   request(api, "destroy", { method: "POST", path: `/containers/${encodeURIComponent(name)}/stop` }).pipe(
     Effect.catchAll(() => Effect.void),
@@ -1081,6 +1096,9 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         );
         serviceChanged = true;
       }
+      yield* connectSharedNetwork(api, plan, service, name).pipe(
+        Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+      );
       if (!inspected.running) {
         yield* startContainer(api, service, name).pipe(
           Effect.tapError(() => rollbackPartialApply(api, plan, touched)),

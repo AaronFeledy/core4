@@ -4,6 +4,8 @@ import { ProviderInternalError } from "@lando/sdk/errors";
 import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
+import { SHARED_CROSS_APP_NETWORK, appNetworkName, serviceNetworkAliases } from "./shared-network.ts";
+
 const PROVIDER_ID = "lando";
 
 export interface EmitComposeOptions {
@@ -38,16 +40,8 @@ interface ComposeDocument {
   readonly volumes?: Readonly<Record<string, { readonly driver?: string }>>;
 }
 
-const SHARED_CROSS_APP_NETWORK = "lando_bridge_network";
-
-const appNetworkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
 const appNetworkNames = (plan: AppPlan): ReadonlyArray<string> =>
   plan.networks.length === 0 ? [appNetworkName(plan)] : plan.networks.map((network) => network.name);
-
-const serviceNetworkAliases = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => [
-  `${service.name}.${plan.slug}.internal`,
-];
 
 const composeError = (message: string, details?: unknown) =>
   new ProviderInternalError({

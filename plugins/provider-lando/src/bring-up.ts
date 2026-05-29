@@ -14,6 +14,12 @@ import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
 import { redactDetails } from "./redact.ts";
+import {
+  SHARED_CROSS_APP_NETWORK,
+  appNetworkName,
+  networkNames,
+  serviceNetworkAliases,
+} from "./shared-network.ts";
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
@@ -56,16 +62,6 @@ const appRef = (plan: AppPlan): AppRef => ({
 
 const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-
-const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
-const SHARED_CROSS_APP_NETWORK = "lando_bridge_network";
-
-const networkNames = (plan: AppPlan): ReadonlyArray<string> =>
-  Array.from(new Set([networkName(plan), SHARED_CROSS_APP_NETWORK]));
-
-const serviceNetworkAliases = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => [
-  `${service.name}.${plan.slug}.internal`,
-];
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -242,13 +238,13 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
 const ensureNetwork = (
   api: PodmanApiClient,
   name: string,
-): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
+): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
   // Inspect first — skip create if the network already exists (idempotent bringUp).
   return request(api, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
         // Network already exists; nothing to do.
-        return Effect.void;
+        return Effect.succeed(false);
       }
       // Not found (404) or unexpected — attempt create.
       return request(api, {
@@ -257,17 +253,19 @@ const ensureNetwork = (
         body: { Name: name, Driver: "bridge" },
       }).pipe(
         Effect.flatMap((response) =>
-          response.status === 201 || response.status === 200 || response.status === 409
-            ? Effect.void
-            : Effect.fail(
-                new ProviderUnavailableError({
-                  providerId: PROVIDER_ID,
-                  operation: "bringUp.network",
-                  message: `Podman network create failed with HTTP ${response.status}.`,
-                  details: redactDetails({ status: response.status, body: response.body }),
-                  remediation: APPLY_REMEDIATION,
-                }),
-              ),
+          response.status === 201 || response.status === 200
+            ? Effect.succeed(true)
+            : response.status === 409
+              ? Effect.succeed(false)
+              : Effect.fail(
+                  new ProviderUnavailableError({
+                    providerId: PROVIDER_ID,
+                    operation: "bringUp.network",
+                    message: `Podman network create failed with HTTP ${response.status}.`,
+                    details: redactDetails({ status: response.status, body: response.body }),
+                    remediation: APPLY_REMEDIATION,
+                  }),
+                ),
         ),
       );
     }),
@@ -343,7 +341,7 @@ const removeContainerSilent = (api: PodmanApiClient, name: string): Effect.Effec
 const removeNetworkSilent = (api: PodmanApiClient, plan: AppPlan): Effect.Effect<void> =>
   request(api, {
     method: "DELETE",
-    path: `/networks/${encodeURIComponent(networkName(plan))}`,
+    path: `/networks/${encodeURIComponent(appNetworkName(plan))}`,
   }).pipe(Effect.catchAll(() => Effect.void));
 
 const removeCreatedNetworksSilent = (
@@ -465,12 +463,11 @@ export const bringUp = (
     const resolvedApi: PodmanApiClient = api;
 
     const createdNetworks = new Set<string>();
-    yield* Effect.forEach(
-      networkNames(plan),
-      (name) =>
-        ensureNetwork(resolvedApi, name).pipe(Effect.tap(() => Effect.sync(() => createdNetworks.add(name)))),
-      { discard: true },
-    );
+    for (const name of networkNames(plan)) {
+      if (yield* ensureNetwork(resolvedApi, name)) {
+        createdNetworks.add(name);
+      }
+    }
     const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {

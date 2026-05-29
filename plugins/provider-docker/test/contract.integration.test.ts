@@ -118,6 +118,9 @@ const makeFakeApi = () => {
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
         }
+        if (request.path === "/networks/lando_bridge_network/connect") {
+          return { status: 200, body: "{}" };
+        }
         if (request.path === "/networks/lando-myapp" && request.method === "DELETE") {
           return { status: 204, body: "" };
         }
@@ -212,6 +215,9 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         calls.push(request);
         if (request.path === "/networks/create") {
           return { status: 201, body: "{}" };
+        }
+        if (request.path === "/networks/lando_bridge_network/connect") {
+          return { status: 200, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           return { status: 204, body: "" };
@@ -417,9 +423,12 @@ describe("provider-docker RuntimeProvider contract", () => {
       NetworkingConfig: {
         EndpointsConfig: {
           "lando-myapp": {},
-          lando_bridge_network: { Aliases: ["web.myapp.internal"] },
         },
       },
+    });
+    expect(fake.calls.find((call) => call.path === "/networks/lando_bridge_network/connect")?.body).toEqual({
+      Container: "lando-myapp-web",
+      EndpointConfig: { Aliases: ["web.myapp.internal"] },
     });
     expect(fake.calls.filter((call) => call.path === "/networks/create").map((call) => call.body)).toEqual([
       { Name: "lando-myapp", Driver: "bridge", CheckDuplicate: true },
@@ -430,6 +439,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/create?name=lando-myapp-web",
+      "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",
@@ -594,6 +604,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       "POST /networks/create",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/create?name=lando-myapp-web",
+      "POST /networks/lando_bridge_network/connect",
       "POST /containers/lando-myapp-web/start",
       "GET /containers/lando-myapp-web/json",
       "POST /containers/lando-myapp-web/exec",
