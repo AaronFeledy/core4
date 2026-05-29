@@ -897,3 +897,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Verification: typecheck, lint, focused provider/scenario tests, compiled setup test, and full `bun test` passed.
 - **Learnings for future iterations:** Shared cross-app networks are provider-owned and must survive normal app destroy; app destroy removes only the per-app network while preserving `lando_bridge_network` for the global app and other apps.
 ---
+
+## [2026-05-29 16:05 CDT] - Babysit
+- PR: #209 https://github.com/AaronFeledy/core4/pull/209
+- CI outcome: pass (triaged provider-integration-linux-x64 Docker HTTP 400 regressions and reran to green; final run passed static checks, build, guide scenarios, provider integration, schema snapshot, library API, recipes, and Bugbot)
+- Review feedback: fixed (Bugbot findings around rollback of pre-existing networks/containers, shared constants drift, Docker shared-network idempotency, Docker create-vs-connect network mismatch, missing aliases, and Lando compose helper/driver lookup were addressed)
+- Merge: merged (squash)
+---
