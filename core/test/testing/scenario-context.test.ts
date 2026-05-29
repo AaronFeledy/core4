@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Cause, Effect, Schema } from "effect";
 
 import { GuideFixtureNotFoundError, GuideFixtureSymlinkError, NotImplementedError } from "@lando/core/errors";
-import { ScenarioContext, withScenarioContext } from "@lando/core/testing";
+import { ScenarioContext, ScenarioContextFactory, withScenarioContext } from "@lando/core/testing";
 import { Transcript } from "@lando/sdk/docs/components";
 
 const withTempCwd = async <A>(body: (root: string) => Promise<A>): Promise<A> => {
@@ -416,5 +416,169 @@ describe("withScenarioContext", () => {
     expect(
       error instanceof GuideFixtureSymlinkError ? error.path.endsWith(join("symlinked", "link.txt")) : false,
     ).toBe(true);
+  });
+});
+
+describe("ScenarioContextFactory", () => {
+  test("testOnlyFake preserves the canned start/curl scenario shim", async () => {
+    const result = await Effect.runPromise(
+      ScenarioContextFactory.testOnlyFake({ guideId: "static", scenarioId: "fake-shim" }, (context) =>
+        Effect.gen(function* () {
+          expect(context.layer).toBe("scenario");
+          yield* Effect.promise(() => mkdir(join(context.testDir, "dist"), { recursive: true }));
+          yield* Effect.promise(() =>
+            writeFile(
+              join(context.testDir, ".lando.yml"),
+              ["name: static-demo", "services:", "  web:", "    type: static", "    root: dist", ""].join(
+                "\n",
+              ),
+            ),
+          );
+          yield* Effect.promise(() =>
+            writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
+          );
+
+          const started = yield* context.runCli(["start"]);
+          const fetched = yield* context.runCli(["curl", "index.html"]);
+          return { started, fetched, events: context.events };
+        }),
+      ),
+    );
+
+    expect(result.started.stdout).toBe("ready\n");
+    expect(result.events).toContainEqual({ _tag: "post-start" });
+    expect(result.fetched.stdout).toBe("hello from lando static\n");
+    expect(result.fetched.exitCode).toBe(0);
+  });
+
+  test("scenario layer routes runCli through the real @lando/core/cli seam", async () => {
+    const result = await Effect.runPromise(
+      ScenarioContextFactory.scenario({ guideId: "node-postgres", scenarioId: "real-seam" }, (context) =>
+        Effect.gen(function* () {
+          expect(context.layer).toBe("scenario");
+          const version = yield* context.runCli(["version"]);
+          const init = yield* context.runCli(["init", "--full", "--no-interactive"], {
+            answers: { name: "seam-app" },
+          });
+          const created = yield* Effect.promise(() =>
+            Bun.file(join(context.testDir, "seam-app", ".lando.yml")).exists(),
+          );
+          return { version, init, created };
+        }),
+      ),
+    );
+
+    expect(result.version.stdout).toContain("0.0.0");
+    expect(result.init.exitCode).toBe(0);
+    expect(result.created).toBe(true);
+  });
+
+  test("scenario layer refuses commands outside the in-process allowlist instead of exiting", async () => {
+    const result = await Effect.runPromise(
+      ScenarioContextFactory.scenario({ guideId: "node-postgres", scenarioId: "guarded" }, (context) =>
+        context.runCli(["start"]),
+      ),
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("ScenarioContextFactory.e2e");
+    expect(result.command).toEqual(["start"]);
+  });
+
+  test("e2e layer advances the working directory into the app created by init", async () => {
+    const stubDir = await mkdtemp(join(tmpdir(), "lando-e2e-initcwd-"));
+    const stub = join(stubDir, "lando-stub.sh");
+    await writeFile(
+      stub,
+      [
+        "#!/bin/sh",
+        'if [ "$1" = "init" ] || [ "$1" = "apps:init" ]; then',
+        '  name=""',
+        '  for arg in "$@"; do',
+        '    case "$arg" in',
+        '      --answer=name=*) name="${arg#--answer=name=}" ;;',
+        '      --name=*) name="${arg#--name=}" ;;',
+        "    esac",
+        "  done",
+        '  mkdir -p "$name"',
+        "  exit 0",
+        "fi",
+        "pwd",
+        "exit 0",
+        "",
+      ].join("\n"),
+    );
+    await Bun.spawn(["chmod", "+x", stub]).exited;
+    const previous = process.env.LANDO_SCENARIO_E2E_BINARY;
+    process.env.LANDO_SCENARIO_E2E_BINARY = stub;
+    try {
+      const result = await Effect.runPromise(
+        ScenarioContextFactory.e2e({ guideId: "node-postgres", scenarioId: "e2e-initcwd" }, (context) =>
+          Effect.gen(function* () {
+            const init = yield* context.runCli(["init"], { answers: { name: "e2e-app" } });
+            const where = yield* context.runCli(["whereami"]);
+            return { init, where };
+          }),
+        ),
+      );
+      expect(result.init.exitCode).toBe(0);
+      expect(result.where.stdout.trim().endsWith(join("e2e-app"))).toBe(true);
+    } finally {
+      process.env.LANDO_SCENARIO_E2E_BINARY = previous;
+      await rm(stubDir, { recursive: true, force: true });
+    }
+  });
+
+  test("e2e layer spawns the compiled binary and captures stdout/stderr/exit", async () => {
+    const stub = join(await mkdtemp(join(tmpdir(), "lando-e2e-stub-")), "lando-stub.sh");
+    await writeFile(
+      stub,
+      ["#!/bin/sh", 'echo "stub-stdout $@"', 'echo "stub-stderr" 1>&2', "exit 7", ""].join("\n"),
+    );
+    await Bun.spawn(["chmod", "+x", stub]).exited;
+    const previous = process.env.LANDO_SCENARIO_E2E_BINARY;
+    process.env.LANDO_SCENARIO_E2E_BINARY = stub;
+    try {
+      const result = await Effect.runPromise(
+        ScenarioContextFactory.e2e({ guideId: "node-postgres", scenarioId: "e2e-stub" }, (context) =>
+          Effect.gen(function* () {
+            expect(context.layer).toBe("e2e");
+            return yield* context.runCli(["version", "--json"]);
+          }),
+        ),
+      );
+      expect(result.stdout).toContain("stub-stdout version --json");
+      expect(result.stderr).toContain("stub-stderr");
+      expect(result.exitCode).toBe(7);
+    } finally {
+      process.env.LANDO_SCENARIO_E2E_BINARY = previous;
+      await rm(join(stub, ".."), { recursive: true, force: true });
+    }
+  });
+
+  test("e2e layer reports a missing compiled binary as a 127 exit result", async () => {
+    const previous = process.env.LANDO_SCENARIO_E2E_BINARY;
+    process.env.LANDO_SCENARIO_E2E_BINARY = join(tmpdir(), "definitely-not-a-lando-binary-xyz");
+    try {
+      const result = await Effect.runPromise(
+        ScenarioContextFactory.e2e({ guideId: "node-postgres", scenarioId: "e2e-missing" }, (context) =>
+          context.runCli(["version"]),
+        ),
+      );
+      expect(result.exitCode).toBe(127);
+      expect(result.stderr).toContain("not found");
+    } finally {
+      process.env.LANDO_SCENARIO_E2E_BINARY = previous;
+    }
+  });
+
+  test("withScenarioContext stays on the scenario layer with fake behavior for generated guides", async () => {
+    const layer = await Effect.runPromise(
+      withScenarioContext({ guideId: "node-postgres", scenarioId: "compat" }, (context) =>
+        Effect.succeed(context.layer),
+      ),
+    );
+    expect(layer).toBe("scenario");
   });
 });
