@@ -877,3 +877,16 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: fixed (Bugbot Low — removed unused exported HostProxyServiceUnavailableLive layer; rerun Bugbot passed)
 - Merge: merged (squash)
 ---
+
+## [2026-05-29 CDT] - US-107
+- Flipped `sharedCrossAppNetwork: true` on every supported platform across `@lando/provider-lando`, `@lando/provider-docker`, and `@lando/provider-podman`; `meta:doctor` now surfaces the capability for the active provider.
+- Added the `globalServices:` plugin-contribution surface to `PluginContribution` and the typed `GlobalServiceContribution` schema in `@lando/sdk/schema`, with the corresponding `GlobalServiceCapabilityError` tagged error in `@lando/sdk/errors`.
+- Introduced `validateGlobalServiceContributions` in `@lando/core/services/global-services` — the pure planner gate that the upcoming `GlobalAppService` (US-111) and `DoctorService` (US-108) will call to drop contributions whose `requires.providerCapabilities` are unsatisfied, with actionable provider-selection remediation.
+- Updated the SDK additive-schema compatibility list, regenerated the schema snapshot, and tightened the three provider capability tests to lock the new flag.
+- Verification: typecheck, lint, full `bun test` (1827 pass / 23 skip / 0 fail) all green; `meta:doctor --renderer=json` against a clean HOME prints `sharedCrossAppNetwork: true` for `provider-lando`.
+- **Learnings for future iterations:**
+  - When a Schema.Struct field is added to a public sdk schema (here `PluginContribution.globalServices`), the SDK backward-compat surface test (`sdk/test/library/sdk-backward-compatibility.test.ts`) and `sdk/API_COMPATIBILITY.md` must be updated together — the test diffs the documented list against the live exports.
+  - `AppPlannerLive` needs `PluginRegistryLive` to be provided as a SEPARATE layer (`Effect.provide(AppPlannerLive); Effect.provide(PluginRegistryLive)`) — `Layer.merge(AppPlannerLive, PluginRegistryLive)` does not satisfy the dependency because merge only combines, it does not resolve "X requires Y".
+  - `provider-docker/test/contract.integration.test.ts` asserts the bundled provider's live `capabilities.sharedCrossAppNetwork` (not just per-platform fixtures), so capability flips MUST touch both the per-platform fixtures (`linuxDockerCapabilities`, etc.) AND the contract integration assertions.
+  - Spec §20.8.1 says contributions are "dropped from the dist layer" rather than failing the whole plan — model future global-app planner failures as a result envelope (`{accepted, rejected}`) instead of `Effect.fail`, so doctor warnings and partial-start flows stay possible. The new `validateGlobalServiceContributions` already follows this contract.
+---
