@@ -426,7 +426,7 @@ const rollbackPartialApply = (
   Effect.gen(function* () {
     // stop+force-remove every container we touched, then remove the app network.
     // stop/DELETE are idempotent on 404 so this is safe for never-created
-    // containers. Volumes are preserved on rollback per spec destroy-default contract.
+    // containers. Volumes are preserved so rollback does not discard persistent data.
     yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
     yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
     yield* removeNetworkSilent(api, plan);

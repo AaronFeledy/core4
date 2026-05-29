@@ -480,7 +480,7 @@ describe("provider-lando bringUp", () => {
       }
     },
     // Real Podman create/start/inspect via curl-per-call easily exceeds Bun's
-    // default 5s test timeout; allow enough headroom for image-resident MVP
+    // default 5s test timeout; allow enough headroom for image-resident
     // services (Node + Postgres) plus stop/delete cleanup.
     60_000,
   );
