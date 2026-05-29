@@ -5,7 +5,7 @@ import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
-import { ProviderUnavailableError } from "@lando/core/errors";
+import { FileSyncStopError, ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -302,6 +302,73 @@ describe("lando destroy", () => {
     const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
     expect(result.app).toBe("test-destroy");
     expect(callLog).not.toContain("listSessions");
+    expect(harness.destroyCalls).toHaveLength(1);
+  });
+
+  test("continues provider cleanup when file-sync session termination fails", async () => {
+    const existingRefs: ReadonlyArray<FileSyncSessionRef> = [
+      "session-web-app-mount",
+      "session-web-cache-mount",
+    ];
+    const existing: ReadonlyArray<FileSyncSessionInfo> = existingRefs.map((ref, index) => ({
+      ref,
+      app: { kind: "user", id: plan.id, root: plan.root },
+      service: web.name,
+      mountKey: index === 0 ? "app-mount" : "cache-mount",
+      status: "running",
+      lastUpdatedAt: DateTime.unsafeMake("2026-05-29T00:00:00Z"),
+    }));
+    const callLog: string[] = [];
+    const fakeEngine: FileSyncEngineShape = {
+      id: "mutagen",
+      displayName: "Fake Mutagen",
+      capabilities: {
+        modes: ["two-way-safe"],
+        remoteAgentDeployment: "none",
+        exclusionPatterns: false,
+        conflictReporting: false,
+        progressReporting: false,
+      },
+      isAvailable: Effect.succeed(true),
+      setup: () => Effect.void,
+      createSession: () => Effect.void,
+      pauseSession: () => Effect.void,
+      resumeSession: () => Effect.void,
+      terminateSession: (ref) =>
+        Effect.sync(() => {
+          callLog.push(`terminate:${String(ref)}`);
+          return ref === existingRefs[0];
+        }).pipe(
+          Effect.flatMap((shouldFail) =>
+            shouldFail
+              ? Effect.fail(
+                  new FileSyncStopError({
+                    engineId: "mutagen",
+                    sessionRef: String(ref),
+                    message: "daemon unavailable",
+                  }),
+                )
+              : Effect.void,
+          ),
+        ),
+      listSessions: () =>
+        Effect.sync(() => {
+          callLog.push("listSessions");
+          return existing;
+        }),
+      streamEvents: () => Stream.empty,
+    };
+    const harness = makeDestroyLayer();
+    const layer = Layer.mergeAll(harness.layer, Layer.succeed(FileSyncEngine, fakeEngine));
+
+    const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(layer)));
+
+    expect(result.app).toBe("test-destroy");
+    expect(callLog).toEqual([
+      "listSessions",
+      `terminate:${String(existingRefs[0])}`,
+      `terminate:${String(existingRefs[1])}`,
+    ]);
     expect(harness.destroyCalls).toHaveLength(1);
   });
 

@@ -89,7 +89,7 @@ const terminateFileSyncSessions = (app: AppRef) =>
 
     const sessions = yield* engine.listSessions({ app });
     for (const session of sessions) {
-      yield* engine.terminateSession(session.ref);
+      yield* engine.terminateSession(session.ref).pipe(Effect.catchAll(() => Effect.void));
     }
   });
 
