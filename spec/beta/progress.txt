@@ -683,3 +683,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - `bun run codegen` regenerates `oclif.manifest.json`, `ci.yml`, `release.yml`, `bundled-recipes.ts`, and `schema-snapshot.json`. After a schema-shape change anywhere under `sdk/src/schema/`, `bun run codegen:schema-snapshot` is the minimal targeted regen; the workflow + manifest regens are noise unless those inputs changed too.
   - `appNetworkName(slug)` formats per-app networks as `lando-<slug>`, NOT `<slug>-default`. Compose-passthrough planner tests that assert network membership must match `{ name: "lando-<slug>", shared: false, driver: "bridge" }`.
 ---
+
+## [2026-05-28 19:20 CDT] - US-094 Review
+- Reviewed the US-094 raw Compose passthrough implementation against `spec/beta/prd-beta-02-service-catalog-full.md`, the build-step commit, direct checks, and specialist findings.
+- Fixed confirmed review blockers:
+  - Compose-subset schema rejections now name the §7.4 Compose subset and point provider-native keys to `providers.<provider-id>` / config translation remediation instead of the stale MVP-only message.
+  - Service-type planning failures are wrapped as tagged `LandofileValidationError`s instead of escaping as plain thrown errors.
+  - `composeBuild` plans now fail before apply when the selected provider lacks `artifactBuild`, with remediation to choose a build-capable provider or use a pre-built image.
+- Review notes (deferred/rejected): PRD wording says a `compose:` block, but `spec/07-landofile-and-config.md` forbids the wrapper and requires Compose keys directly under the Landofile/service; followed the spec-owned direct-key surface.
+- Verification: typecheck passed; lint passed with pre-existing non-null assertion warnings in provider Docker/Podman tests; full tests passed.
+---
