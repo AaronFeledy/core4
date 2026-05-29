@@ -15,7 +15,7 @@ import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
-import { doctorReport, renderDoctorReport } from "./commands/doctor-report.ts";
+import { doctorReport, renderDoctorReport, renderDoctorReportAsNdjson } from "./commands/doctor-report.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
@@ -437,7 +437,9 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
     ),
   );
   if (Exit.isSuccess(exit)) {
-    console.log(renderDoctorReport(exit.value));
+    console.log(
+      activeRendererMode === "json" ? renderDoctorReportAsNdjson(exit.value) : renderDoctorReport(exit.value),
+    );
     return;
   }
   const failure = Cause.failureOption(exit.cause);

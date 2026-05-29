@@ -2,20 +2,20 @@ import { Flags } from "@oclif/core";
 
 import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { type DoctorReport, doctorReport, renderDoctorReport } from "../../../commands/doctor-report.ts";
+import {
+  type DoctorReport,
+  doctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+} from "../../../commands/doctor-report.ts";
 import type { DoctorOptions } from "../../../commands/doctor.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
-  if (!("flags" in input)) return {};
-  const flags = (input as { flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null) return {};
-  const provider =
-    "provider" in flags && typeof (flags as { provider?: unknown }).provider === "string"
-      ? (flags as { provider: string }).provider
-      : undefined;
+  const flags = (input as { flags?: { provider?: unknown } }).flags;
+  const provider = typeof flags?.provider === "string" ? flags.provider : undefined;
   return provider === undefined || provider.length === 0 ? {} : { flagProviderId: provider };
 };
 
@@ -30,7 +30,11 @@ export const metaDoctorSpec: LandoCommandSpec<
   topLevelAlias: true,
   bootstrap: "provider",
   run: (input) => doctorReport(inputDoctorOptions(input)),
-  render: (result) => renderDoctorReport(result as DoctorReport),
+  render: (result, input) => {
+    const report = result as DoctorReport;
+    const rendererMode = (input as { readonly rendererMode?: unknown } | undefined)?.rendererMode;
+    return rendererMode === "json" ? renderDoctorReportAsNdjson(report) : renderDoctorReport(report);
+  },
 };
 
 export default class MetaDoctorCommand extends LandoCommandBase {

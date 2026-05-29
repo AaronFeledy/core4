@@ -5,7 +5,13 @@ import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 
-import { type DoctorReport, doctorReport, renderDoctorReport } from "../../src/cli/commands/doctor-report.ts";
+import {
+  type DoctorReport,
+  doctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+} from "../../src/cli/commands/doctor-report.ts";
+import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   list: Effect.succeed([ProviderId.make(provider.id)]),
@@ -73,5 +79,44 @@ describe("meta:doctor combined report", () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
     expect(report.subsystems.checks.length).toBe(6);
+  });
+
+  test("combined ndjson renderer emits provider and subsystem checks in one stream", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await run(provider);
+    const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
+    const lines = ndjson
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+    expect(lines[0]).toEqual({ _tag: "doctor.start", timestamp: "1970-01-01T00:00:00.000Z" });
+    expect(lines.slice(1, -1).map((line) => line.name)).toEqual([
+      "selected-provider",
+      "proxy",
+      "certs",
+      "ssh",
+      "healthcheck",
+      "scanner",
+      "host-proxy",
+    ]);
+    expect(lines.at(-1)).toEqual({
+      _tag: "doctor.complete",
+      timestamp: "1970-01-01T00:00:00.000Z",
+      checks: 7,
+      failed: 0,
+      warned: 6,
+    });
+  });
+
+  test("meta:doctor render path honors json renderer mode for the combined report", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await run(provider);
+    const rendered = metaDoctorSpec.render?.(report, { rendererMode: "json" });
+
+    expect(rendered).toStartWith('{"_tag":"doctor.start"');
+    expect(rendered).toContain('"name":"selected-provider"');
+    expect(rendered).toContain('"name":"host-proxy"');
+    expect(rendered).toContain('"checks":7');
   });
 });
