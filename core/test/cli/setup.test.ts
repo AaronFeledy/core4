@@ -6,11 +6,12 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
-import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
+import { ConfigService, HostProxyService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
 const makeConfigService = (
   overrides: Partial<GlobalConfig> = {},
@@ -140,6 +141,48 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(
       'setup complete: Lando runtime (podman)\nLANDO_INSTALL_DIR="/opt/lando"',
     );
+  });
+
+  test("host-proxy none uses the disabled no-op layer", async () => {
+    let setupCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const result = await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { "host-proxy": "none" } })
+        .pipe(Effect.provide(buildSetupLayers(registry))),
+    );
+    const status = await Effect.runPromise(
+      Effect.gen(function* () {
+        const hostProxy = yield* HostProxyService;
+        yield* hostProxy.setup({ mode: "none" });
+        return yield* hostProxy.status();
+      }).pipe(Effect.provide(HostProxyServiceDisabledLive)),
+    );
+
+    expect(setupCalls).toBe(1);
+    expect(setupSpec.render?.(result)).toBe(
+      'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
+    );
+    expect(status).toEqual({
+      active: false,
+      mode: "none",
+      mechanism: "skipped",
+      baseDomain: "lndo.site",
+      loopback: "127.0.0.1",
+    });
   });
 
   test("invokes provider-lando setup with fake bundle and Podman API clients", async () => {

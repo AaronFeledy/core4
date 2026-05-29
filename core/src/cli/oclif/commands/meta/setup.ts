@@ -19,6 +19,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../../../providers/precedence.ts";
+import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -49,6 +50,13 @@ const inputSkipFileSync = (input: unknown): boolean => {
   const flags = (input as { flags?: unknown }).flags;
   if (typeof flags !== "object" || flags === null) return false;
   return (flags as Record<string, unknown>)["skip-file-sync"] === true;
+};
+
+const inputHostProxyMode = (input: unknown): "auto" | "none" => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return "auto";
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return "auto";
+  return (flags as Record<string, unknown>)["host-proxy"] === "none" ? "none" : "auto";
 };
 
 const setupProviderPlan = (provider: ProviderId): AppPlan => ({
@@ -96,6 +104,10 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
 
       yield* Effect.scoped(provider.setup({ force: false }));
+
+      if (inputHostProxyMode(input) === "none") {
+        yield* HostProxyServiceDisabled.setup({ mode: "none" });
+      }
 
       if (provider.capabilities.bindMountPerformance === "slow" && !inputSkipFileSync(input)) {
         const userDataRootRaw = yield* configService.get("userDataRoot");
