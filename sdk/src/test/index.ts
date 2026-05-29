@@ -1387,7 +1387,30 @@ interface TestFileSyncEngineState {
   readonly sessions: Map<string, FileSyncSessionInfo>;
 }
 
-const TEST_FILE_SYNC_STATE: TestFileSyncEngineState = { sessions: new Map() };
+const TEST_FILE_SYNC_STATE = Symbol("TestFileSyncEngineState");
+
+interface TestFileSyncEngineStateCarrier {
+  [TEST_FILE_SYNC_STATE]?: TestFileSyncEngineState;
+}
+
+const testFileSyncEngineState = (engine: TestFileSyncEngineStateCarrier): TestFileSyncEngineState => {
+  let state = engine[TEST_FILE_SYNC_STATE];
+  if (state === undefined) {
+    Object.defineProperty(engine, TEST_FILE_SYNC_STATE, {
+      value: { sessions: new Map() },
+      configurable: false,
+      enumerable: false,
+      writable: false,
+    });
+    state = engine[TEST_FILE_SYNC_STATE];
+  }
+
+  if (state === undefined) {
+    throw new Error("failed to initialize test file sync engine state");
+  }
+
+  return state;
+};
 
 const TEST_FILE_SYNC_CAPABILITIES: FileSyncEngineCapabilities = {
   modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
@@ -1423,7 +1446,7 @@ const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter)
  * - `streamEvents("__CONFLICT__")` → `FileSyncDriftError`
  * - `terminateSession("__STOP_FAIL__")` → `FileSyncStopError`
  */
-export const TestFileSyncEngine: FileSyncEngineShape = {
+export const TestFileSyncEngine: FileSyncEngineShape & TestFileSyncEngineStateCarrier = {
   id: "test",
   displayName: "Test File Sync Engine",
   capabilities: TEST_FILE_SYNC_CAPABILITIES,
@@ -1431,8 +1454,10 @@ export const TestFileSyncEngine: FileSyncEngineShape = {
   isAvailable: Effect.succeed(true),
   setup: (_options: FileSyncSetupOptions) => Effect.void,
 
-  createSession: (spec: FileSyncSessionSpec) =>
-    Effect.gen(function* () {
+  createSession(this: TestFileSyncEngineStateCarrier, spec: FileSyncSessionSpec) {
+    const state = testFileSyncEngineState(this);
+
+    return Effect.gen(function* () {
       if (spec.mountKey === "__REJECT__") {
         return yield* Effect.fail(
           new FileSyncStartError({
@@ -1461,30 +1486,36 @@ export const TestFileSyncEngine: FileSyncEngineShape = {
         status: "running",
         lastUpdatedAt: DateTime.unsafeMake("2026-05-28T00:00:00Z"),
       };
-      TEST_FILE_SYNC_STATE.sessions.set(ref, info);
+      state.sessions.set(ref, info);
       yield* Effect.addFinalizer(() =>
         Effect.sync(() => {
-          TEST_FILE_SYNC_STATE.sessions.delete(ref);
+          state.sessions.delete(ref);
         }),
       );
       return ref;
-    }),
+    });
+  },
 
-  pauseSession: (ref: FileSyncSessionRef) =>
-    Effect.sync(() => {
-      const current = TEST_FILE_SYNC_STATE.sessions.get(ref);
+  pauseSession(this: TestFileSyncEngineStateCarrier, ref: FileSyncSessionRef) {
+    const state = testFileSyncEngineState(this);
+    return Effect.sync(() => {
+      const current = state.sessions.get(ref);
       if (current === undefined) return;
-      TEST_FILE_SYNC_STATE.sessions.set(ref, { ...current, status: "paused" });
-    }),
+      state.sessions.set(ref, { ...current, status: "paused" });
+    });
+  },
 
-  resumeSession: (ref: FileSyncSessionRef) =>
-    Effect.sync(() => {
-      const current = TEST_FILE_SYNC_STATE.sessions.get(ref);
+  resumeSession(this: TestFileSyncEngineStateCarrier, ref: FileSyncSessionRef) {
+    const state = testFileSyncEngineState(this);
+    return Effect.sync(() => {
+      const current = state.sessions.get(ref);
       if (current === undefined) return;
-      TEST_FILE_SYNC_STATE.sessions.set(ref, { ...current, status: "running" });
-    }),
+      state.sessions.set(ref, { ...current, status: "running" });
+    });
+  },
 
-  terminateSession: (ref: FileSyncSessionRef) => {
+  terminateSession(this: TestFileSyncEngineStateCarrier, ref: FileSyncSessionRef) {
+    const state = testFileSyncEngineState(this);
     if (ref === "__STOP_FAIL__") {
       return Effect.fail(
         new FileSyncStopError({
@@ -1496,14 +1527,16 @@ export const TestFileSyncEngine: FileSyncEngineShape = {
     }
 
     return Effect.sync(() => {
-      TEST_FILE_SYNC_STATE.sessions.delete(ref);
+      state.sessions.delete(ref);
     });
   },
 
-  listSessions: (filter: FileSyncSessionFilter) =>
-    Effect.sync(() =>
-      Array.from(TEST_FILE_SYNC_STATE.sessions.values()).filter((info) => filterMatches(info, filter)),
-    ),
+  listSessions(this: TestFileSyncEngineStateCarrier, filter: FileSyncSessionFilter) {
+    const state = testFileSyncEngineState(this);
+    return Effect.sync(() =>
+      Array.from(state.sessions.values()).filter((info) => filterMatches(info, filter)),
+    );
+  },
 
   streamEvents: (ref: FileSyncSessionRef): Stream.Stream<FileSyncEventChunk, FileSyncError> => {
     if (ref === "__CONFLICT__") {

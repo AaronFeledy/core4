@@ -28,6 +28,9 @@ const buildSpec = (mountKey: string) => ({
   excludes: ["node_modules"],
 });
 
+const freshTestFileSyncEngine = (): typeof TestFileSyncEngine =>
+  ({ ...TestFileSyncEngine }) as typeof TestFileSyncEngine;
+
 const expectContractFailure = async (engine: typeof TestFileSyncEngine, assertion: string): Promise<void> => {
   const result = await Effect.runPromiseExit(runFileSyncEngineContract(engine));
 
@@ -42,13 +45,13 @@ const expectContractFailure = async (engine: typeof TestFileSyncEngine, assertio
 
 describe("FileSyncEngine contract", () => {
   test("exports a runnable Effect contract helper", async () => {
-    const contract = runFileSyncEngineContract(TestFileSyncEngine);
+    const contract = runFileSyncEngineContract(freshTestFileSyncEngine());
     expect(Effect.isEffect(contract)).toBe(true);
     await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
   });
 
   test("TestFileSyncEngine satisfies the FileSyncEngine service shape", () => {
-    const engine: typeof FileSyncEngine.Service = TestFileSyncEngine;
+    const engine: typeof FileSyncEngine.Service = freshTestFileSyncEngine();
     expect(engine.id).toBe("test");
     expect(typeof engine.createSession).toBe("function");
     expect(typeof engine.pauseSession).toBe("function");
@@ -73,7 +76,7 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("TestFileSyncEngine reports correct status round-trip (start -> running, pause -> paused, resume -> running, terminate -> removed)", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const spec = buildSpec("status-trip");
 
     await Effect.runPromise(
@@ -100,7 +103,7 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("idempotency: terminateSession is safe to call twice and pauseSession is safe to call twice", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const spec = buildSpec("idempotent");
 
     await Effect.runPromise(
@@ -119,7 +122,7 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("scope finalization removes an unterminated TestFileSyncEngine session", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const spec = buildSpec("scope-finalizer");
 
     const ref = await Effect.runPromise(Effect.scoped(engine.createSession(spec)));
@@ -128,43 +131,52 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("contract helper rejects engines that do not map outside-root sources to FileSyncStartError", async () => {
-    const engine = {
-      ...TestFileSyncEngine,
-      createSession: (spec: ReturnType<typeof buildSpec>) =>
-        spec.source === "/etc"
+    const engine = freshTestFileSyncEngine();
+    const createSession = engine.createSession;
+    const broken = {
+      ...engine,
+      createSession(this: typeof TestFileSyncEngine, spec: ReturnType<typeof buildSpec>) {
+        return spec.source === "/etc"
           ? Effect.fail(new FileSyncStopError({ engineId: "test", sessionRef: "x", message: "wrong" }))
-          : TestFileSyncEngine.createSession(spec),
+          : createSession.call(this, spec);
+      },
     } as typeof TestFileSyncEngine;
 
-    await expectContractFailure(engine, "outside-root source fails with FileSyncStartError");
+    await expectContractFailure(broken, "outside-root source fails with FileSyncStartError");
   });
 
   test("contract helper rejects engines that do not map conflict streams to FileSyncDriftError", async () => {
-    const engine = {
-      ...TestFileSyncEngine,
-      streamEvents: (ref: FileSyncSessionRef) =>
-        ref === "__CONFLICT__"
+    const engine = freshTestFileSyncEngine();
+    const streamEvents = engine.streamEvents;
+    const broken = {
+      ...engine,
+      streamEvents(this: typeof TestFileSyncEngine, ref: FileSyncSessionRef) {
+        return ref === "__CONFLICT__"
           ? Stream.fail(new FileSyncStartError({ engineId: "test", message: "wrong" }))
-          : TestFileSyncEngine.streamEvents(ref),
+          : streamEvents.call(this, ref);
+      },
     } as typeof TestFileSyncEngine;
 
-    await expectContractFailure(engine, "conflict event stream fails with FileSyncDriftError");
+    await expectContractFailure(broken, "conflict event stream fails with FileSyncDriftError");
   });
 
   test("contract helper rejects engines that do not map stop failures to FileSyncStopError", async () => {
-    const engine = {
-      ...TestFileSyncEngine,
-      terminateSession: (ref: FileSyncSessionRef) =>
-        ref === "__STOP_FAIL__"
+    const engine = freshTestFileSyncEngine();
+    const terminateSession = engine.terminateSession;
+    const broken = {
+      ...engine,
+      terminateSession(this: typeof TestFileSyncEngine, ref: FileSyncSessionRef) {
+        return ref === "__STOP_FAIL__"
           ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "wrong" }))
-          : TestFileSyncEngine.terminateSession(ref),
+          : terminateSession.call(this, ref);
+      },
     } as typeof TestFileSyncEngine;
 
-    await expectContractFailure(engine, "stop failure fails with FileSyncStopError");
+    await expectContractFailure(broken, "stop failure fails with FileSyncStopError");
   });
 
   test("error semantics: createSession failure surfaces FileSyncStartError", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const rejected = { ...buildSpec("reject-me"), mountKey: "__REJECT__" as never };
 
     const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
@@ -176,7 +188,7 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("error semantics: outside-root source surfaces FileSyncStartError", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const rejected = { ...buildSpec("outside-root"), source: "/etc" as never };
 
     const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
@@ -188,7 +200,7 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("error semantics: streamEvents emits a FileSyncDriftError for the test conflict ref", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const exit = await Effect.runPromiseExit(
       Stream.runCollect(engine.streamEvents(FileSyncSessionRef.make("__CONFLICT__"))),
     );
@@ -200,7 +212,7 @@ describe("FileSyncEngine contract", () => {
   });
 
   test("error semantics: terminateSession on the failure sentinel ref surfaces FileSyncStopError", async () => {
-    const engine = TestFileSyncEngine;
+    const engine = freshTestFileSyncEngine();
     const exit = await Effect.runPromiseExit(
       engine.terminateSession(FileSyncSessionRef.make("__STOP_FAIL__")),
     );
@@ -251,7 +263,7 @@ describe("runFileSyncEngineContractMatrix", () => {
           {
             platform: "linux" as const,
             supported: true,
-            factory: () => Effect.succeed(TestFileSyncEngine),
+            factory: () => Effect.succeed(freshTestFileSyncEngine()),
           },
           { platform: "darwin" as const, supported: false, skipReason: "not yet supported" },
           { platform: "win32" as const, supported: false, skipReason: "not yet supported" },
@@ -278,7 +290,7 @@ describe("runFileSyncEngineContractMatrix", () => {
           {
             platform: "linux" as const,
             supported: true,
-            factory: () => Effect.succeed(TestFileSyncEngine),
+            factory: () => Effect.succeed(freshTestFileSyncEngine()),
           },
           { platform: "darwin" as const, supported: false, skipReason: "not supported" },
           { platform: "win32" as const, supported: false, skipReason: "not supported" },
@@ -301,7 +313,7 @@ describe("runFileSyncEngineContractMatrix", () => {
           {
             platform: "linux" as const,
             supported: true,
-            factory: () => Effect.succeed(TestFileSyncEngine),
+            factory: () => Effect.succeed(freshTestFileSyncEngine()),
           },
           { platform: "darwin" as const, supported: false } as unknown as {
             platform: "darwin";
