@@ -236,7 +236,21 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
 };
 
-const isServiceKeyIssue = (issue: string): boolean => /^services\.[^.]+\.[^.]+/.test(issue);
+const isComposeServiceKeyIssue = (issue: string, parsed: unknown): boolean => {
+  const match = /^services\.([^.]+)\.[^.]+/.exec(issue);
+  if (match === null) return false;
+  const serviceName = match[1];
+  if (serviceName === undefined) return false;
+  if (parsed === null || typeof parsed !== "object") return false;
+  const services = (parsed as { readonly services?: unknown }).services;
+  if (services === null || typeof services !== "object") return false;
+  const service = (services as Record<string, unknown>)[serviceName];
+  return (
+    service !== null &&
+    typeof service === "object" &&
+    (service as { readonly type?: unknown }).type === "compose"
+  );
+};
 
 const validateLandofile = (
   filePath: string,
@@ -246,7 +260,7 @@ const validateLandofile = (
   if (Either.isRight(result)) return Effect.succeed(result.right);
 
   const issues = validationIssues(result.left);
-  const hasComposeSubsetIssue = issues.some(isServiceKeyIssue);
+  const hasComposeSubsetIssue = issues.some((issue) => isComposeServiceKeyIssue(issue, parsed));
   const remediation = hasComposeSubsetIssue ? COMPOSE_ALLOWLIST_REMEDIATION : REMEDIATION;
   const scope = hasComposeSubsetIssue ? "unsupported Compose-subset keys" : "unsupported MVP keys";
   return Effect.fail(

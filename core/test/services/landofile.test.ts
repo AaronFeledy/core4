@@ -140,6 +140,7 @@ describe("LandofileServiceLive", () => {
           "name: myapp",
           "services:",
           "  web:",
+          "    type: compose",
           "    image: node:lts",
           "    deploy:",
           "      replicas: 3",
@@ -163,6 +164,42 @@ describe("LandofileServiceLive", () => {
             expect(error.message).toContain("providers.<provider-id>");
             expect(error.message).toContain("spec/07-landofile-and-config.md");
             expect(error.message).toContain("§7.4");
+          }
+        }
+      }
+    });
+  });
+
+  test("reports generic MVP remediation for non-compose service keys", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "services:",
+          "  web:",
+          "    type: node",
+          "    image: node:lts",
+          "    deploy:",
+          "      replicas: 3",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          const error = failure.value;
+          expect(error).toBeInstanceOf(LandofileValidationError);
+          if (error._tag === "LandofileValidationError") {
+            expect(error.issues).toContain("services.web.deploy");
+            expect(error.message).toContain("unsupported MVP keys");
+            expect(error.message).not.toContain("unsupported Compose-subset keys");
           }
         }
       }
