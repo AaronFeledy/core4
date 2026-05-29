@@ -3,275 +3,46 @@
 Source PRDs: spec/beta/prd-beta-{00..13}-*.md
 Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-binary-build-and-release.md (§17)
 
-## [2026-05-28 12:05 CDT] - Triage
-- PR: #189 https://github.com/AaronFeledy/core4/pull/189
-- CI outcome: live Docker provider contract failure (`provider-integration-linux-x64`) was not reproducible locally after pulling `node:22-alpine` and rerunning the contract repeatedly
-- Decision: not an actionable code defect in `@lando/provider-docker`; no code change or commit was needed
-- Next step: watch for a rerun / flaky signal before making further changes
-
 ## Codebase Patterns
 - `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
-- `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
+- `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function plus the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
 - Windows Podman machine lifecycle is structurally identical to macOS (`ensureWindowsPodmanMachine` mirrors `ensureMacOSPodmanMachine`); the separation exists for future divergence (e.g. WSL-specific machine flags).
 - Host-mutating live tests should gate on both the expected platform and an exact opt-in env value (`process.platform !== "win32" || process.env.GATE_VAR !== "1"`) so accidental truthy values do not run provider setup on the wrong host.
+- `runProviderContract` is the single shared assertion path for provider contracts; extending it lifts coverage for every matrix caller automatically.
+- `RuntimeProviderRegistry` does not dispatch through plugin Layers automatically — each new provider id needs a dedicated branch in `core/src/providers/registry.ts` `providerFor`.
+- `BUNDLED_PLUGINS`-shape assertions appear in three places (`core/test/plugins/bundled.test.ts`, `core/test/services/plugin-registry.test.ts`, `core/test/services/runtime-provider-registry.test.ts`); update all three together when the bundled list changes.
+- Adding a service type updates five test surfaces in `plugins/service-lando/test/` plus schema-snapshot; edit CI pre-pulls via `scripts/build-ci-workflow.ts`, not the workflow directly.
+- `GuideFrontmatter` rejects unknown keys — allowed keys are exactly `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated` (no `title`/`description`).
+- Per spec §20.8.1, global-service contribution failures should return a `{accepted, rejected}` envelope rather than failing the whole plan.
 
-## [2026-05-26] - US-074
-- Implemented Windows VM lifecycle for `@lando/provider-lando`
-- **Learnings for future iterations:**
-  - The 9 pre-existing test failures in the full suite (`ProcessRunnerLive`, `compiled` binary tests, `codegen`) are environment failures (`bun` not on PATH in the test runner) — not regressions; safe to ignore in this env.
-  - Windows and macOS machine runners share the same `PodmanMachineRunner` interface; only the `ensureXxx` orchestration functions differ per platform.
-  - `ProviderCapabilities.bindMounts` should be `true` for Windows because WSL2 supports bind mounts; `bindMountPerformance: "slow"` reflects the VM-mediated cross-boundary overhead.
----
+## [2026-05-26 .. 2026-05-27] - Provider matrix (US-074–US-082)
 
-## [2026-05-26 21:39 UTC] - US-074 Review
-- Reviewed the US-074 Windows provider-lando lifecycle implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits (`f75b1987..HEAD`).
-- Fixed confirmed review blockers:
-  - Threaded the resolved host platform through `makeSystemPodmanMachineRunner()` / `runMachineCommand()` so real Windows Podman stderr maps to `WindowsMachinePrerequisiteError` instead of generic or macOS remediation.
-  - Added system-runner stderr coverage for Hyper-V / WSL2 / Virtual Machine Platform prerequisite output.
-  - Tightened the Windows live test gate to `process.platform === "win32"` plus `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1`.
-  - Added the required US-074 guide coverage file at `docs/guides/setup/provider-lando-windows.mdx`.
----
+Merged PRs #172–#181. Shipped full Windows/macOS/Linux provider coverage across `@lando/provider-lando`, `@lando/provider-docker`, and `@lando/provider-podman`, plus shared contract infrastructure and provider selection.
 
-## [2026-05-26 22:01 UTC] - Push
-- PR: #172 https://github.com/AaronFeledy/core4/pull/172 (created)
----
+**US-074** — Windows Podman VM lifecycle for `@lando/provider-lando` (Hyper-V/WSL2 prerequisite errors, Windows live-test gate, setup guide). Review: threaded resolved host platform through machine runners so Windows stderr maps to `WindowsMachinePrerequisiteError`.
 
-## [2026-05-26 22:14 UTC] - PR #172 static-checks triage
-- CI failure: real issue; OCLIF command discovery treated `core/src/cli/oclif/commands/deferred-stub.ts` as a command id and emitted `Warning: Error` (`command deferred-stub not found`) on stderr during source-mode CLI startup.
-- Fix: moved the deferred-stub helper out of the OCLIF commands discovery tree and updated stub command imports; kept the init scenario stderr assertion intact.
----
+**US-075** — Pinned runtime-bundle manifest and idempotent SHA-256 downloader for provider-lando. Review: wired default downloader into `makeRuntimeProvider`, fail-closed unsupported platforms, hardened cache paths.
 
-## [2026-05-26 22:44 UTC] - Babysit
-- PR: #172 https://github.com/AaronFeledy/core4/pull/172
-- CI outcome: pass
-- Review feedback: fixed (static-checks OCLIF deferred-stub discovery warning repaired; no review comments)
-- Merge: merged (squash)
----
+**US-076** — Windows capability surface in `meta:doctor` (bundle version absent before setup is expected).
 
-## [2026-05-26 18:30 CDT] - US-075
-- Implemented pinned runtime-bundle manifest and idempotent default downloader for `@lando/provider-lando` across Linux, macOS, and Windows.
-- Verification: typecheck, lint, tests passed.
-- **Learnings for future iterations:**
-  - The static `RUNTIME_BUNDLE_MANIFEST` ships placeholder SHA-256 values, so any caller-driven test that goes through `makeDefaultRuntimeBundleDownloader` can only exercise the failure branches. Test the happy/idempotent paths through `makeRuntimeBundleDownloader({entry, …})`, which accepts a caller-supplied entry whose SHA-256 is known. Apply this seam-injection pattern whenever a downloader needs deterministic SHA fixtures alongside a production-pinned manifest.
-  - `import data from "../runtime-bundle-versions.json" with { type: "json" }` works under the workspace's `resolveJsonModule: true` + `verbatimModuleSyntax: true` setup; the JSON file does not need to be listed in the tsconfig `include` because the import itself drags the resolution.
-  - The idempotency contract is "on-disk SHA matches pinned SHA → reuse, no fetch". A corrupted cache (SHA mismatch) MUST fall through to the download path; tests should assert this by pre-writing junk bytes and then observing both that fetch was invoked AND that the cache file is replaced with the verified bytes.
-  - When introducing a new tagged subclass of `ProviderUnavailableError`, name + remediation are the contract for the spec, not the parent tag — keep the parent for catch-all error handling but assert the subclass via `instanceof` in tests.
----
+**US-077** — Windows Docker Desktop for `@lando/provider-docker` via real named-pipe HTTP transport (not Unix-socket reuse). Review replaced fake npipe path; follow-up fixed chunked named-pipe stream flush on socket close.
 
-## [2026-05-26 18:59 CDT] - US-075 Review
-- Reviewed the US-075 runtime-bundle implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commit (`HEAD`).
-- Fixed confirmed review blockers:
-  - Wired `makeRuntimeProvider({ stateDir })` to construct the default pinned-manifest runtime-bundle downloader when no explicit test/downstream downloader is supplied, so normal `lando setup` exercises the bundle download/checksum path.
-  - Made host-platform defaulting fail closed for unsupported `process.platform` values instead of silently treating every non-Linux/non-macOS host as Windows.
-  - Hardened runtime-bundle cache paths by rejecting non-basename manifest filenames and using a unique temp file for verified bundle persistence.
----
+**US-078** — `@lando/provider-podman` as bundled opt-in Linux provider. Review: `lando setup --provider=podman` wired through OCLIF and compiled dispatcher, rootless socket default, fail-closed conflict-state parsing, persisted applied plans under `provider-podman/apps`.
 
-## [2026-05-27 00:31 UTC] - Push
-- PR: #173 https://github.com/AaronFeledy/core4/pull/173 (created)
----
+**US-079** — Podman Desktop coverage for macOS + Windows. Review: Windows named-pipe API client, invalid machine name errors, effective env for remediation. Bugbot/triage: npipe stream flush parity with provider-docker.
 
-## [2026-05-27 00:39 UTC] - Babysit
-- PR: #173 https://github.com/AaronFeledy/core4/pull/173
-- CI outcome: pass
-- Review feedback: none
-- Merge: merged (squash)
----
+**US-080** — Shared `RuntimeProvider` contract suite + matrix-driven runner across all four providers. Review: contract now executes `exec`/`logs`, requires all `HostPlatform` cells declared, lists additive SDK test exports in `API_COMPATIBILITY.md`. PR #179 triage: live log decoders handle both attach-framed and raw streams; contract waits for one log chunk with bounded timeout.
 
-## [2026-05-27 01:00 UTC] - US-076
-- Implemented Windows capability surface in `meta:doctor` for `@lando/provider-lando`
-- **Learnings for future iterations:**
-  - `ProviderVersions` in `sdk/src/services/index.ts` is a plain TS interface (not a Schema, not a Context.Tag shape); adding optional fields is additive and does not need listing in `sdk/API_COMPATIBILITY.md`
-  - Bundle version is only available after `setupProviderLando` completes; cold `doctor()` calls (before `lando setup` runs) will have `bundleVersion` absent from context — that is expected and the doctor renders correctly either way
-  - The `orderContextKeys` known-order list controls the NDJSON context field order; keep it in sync with new context fields added in `doctor()`
----
+**US-081** — Partial-failure rollback + `AbortSignal` for `@lando/provider-docker` (provider-lando already had it); accurate idempotent `changed` tracking in `bringUp`.
 
-## [2026-05-27 01:13 UTC] - Push
-- PR: #174 https://github.com/AaronFeledy/core4/pull/174 (created)
----
+**US-082** — Provider selection precedence (`flag > Landofile > env > config > capability-default`) and conflict diagnostics in `meta:doctor`. Review: registry default honors precedence chain, app planning encodes resolved provider, doctor pre-detects socket conflicts before provider construction.
 
-## [2026-05-27 01:25 UTC] - Babysit
-- PR: #174 https://github.com/AaronFeledy/core4/pull/174
-- CI outcome: pass (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, guide-scenarios-linux-x64, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot — all SUCCESS)
-- Review feedback: none
-- Merge: merged (squash)
----
+**PR #172 triage** — Moved deferred-stub helper out of OCLIF command discovery tree (eliminated `command deferred-stub not found` stderr warning).
 
-## [2026-05-26 21:35 CDT] - US-077
-- Implemented Windows Docker Desktop support for `@lando/provider-docker`
-- Verification: typecheck, lint, tests passed.
-- **Learnings for future iterations:**
-  - The existing `isVmMediatedDockerHost(platform, dockerHost)` already short-circuits win32 to `bindMountPerformance: "slow"`, so `dockerCapabilitiesForHost("win32", ...)` already covers the capability surface — no helper changes were needed, only a named export (`windowsDockerCapabilities`) at parity with `linuxDockerCapabilities` / `macosDockerCapabilities`.
-  - `npipe://./pipe/docker_engine` is processed by reusing `makeUnixDockerApiClient(npipeSocketPath(host))`. Stripping just `npipe:` yields `//./pipe/docker_engine`, which curl `--unix-socket` accepts on Windows; this avoids a second curl-based runtime branch.
-  - The Windows live test gate must combine `process.platform === "win32"` with the env-var pair (US-074 pattern) — gating on env alone would let CI export `DOCKER_HOST` for the Linux suite and unintentionally run Windows-only assertions on Linux.
-  - `LANDO_TEST_WINDOWS_DOCKER_SOCKET` is win32-only: ordering it before `LANDO_TEST_DOCKER_SOCKET` is what gives a Windows host a stable test-runner override without disturbing the existing generic Linux/macOS test seam.
----
-
-## [2026-05-27 03:35 UTC] - US-077 Review
-- Reviewed the US-077 provider-docker Windows Docker Desktop implementation against `spec/beta/prd-beta-01-provider-matrix.md`, repo context, and the build-step commit (`HEAD` before review fix).
-- Fixed confirmed review blocker:
-  - Replaced the default `npipe://./pipe/docker_engine` branch's Unix-socket curl reuse with a real IPC/named-pipe HTTP transport, including Docker Desktop URI normalization to `\\.\pipe\docker_engine` and request/stream coverage through a local IPC socket.
----
-
-## [2026-05-27 04:32 UTC] - Push
-- PR: #175 https://github.com/AaronFeledy/core4/pull/175 (created, updated with npipe stream flush fix)
----
-
-## [2026-05-27] - PR #175 triage
-- Patched `plugins/provider-docker/src/index.ts` so chunked named-pipe streams flush a final buffered chunk even if the socket closes before the trailing CRLF arrives.
-- Added a socket-backed regression test in `plugins/provider-docker/test/contract.integration.test.ts` that exercises the named-pipe chunked stream path with an unterminated final chunk.
-
-## [2026-05-27 06:30 UTC] - US-078
-- Shipped `@lando/provider-podman` as an opt-in user-installed Podman `RuntimeProvider` for Linux (with darwin/win32 capability matrix in place for US-079).
-- Verification: typecheck, lint, tests passed.
-- **Learnings for future iterations:**
-  - Opt-in providers in this codebase mean *bundled but non-default*. `RuntimeProviderRegistryLive` only resolves what `PluginRegistry.list` reports; the plugin still needs to be in `core/build.config.ts` to be discoverable. There is no out-of-tree plugin discovery surface yet — that would be a larger plumbing change in a separate story.
-  - The `RuntimeProviderRegistry` does **not** dispatch through plugin Layers automatically. Each new provider id needs a dedicated branch in `core/src/providers/registry.ts` `providerFor`, similar to the existing `lando`/`docker` branches. Until a generic dispatch lands, expect this file to grow one branch per provider id.
-  - `BUNDLED_PLUGINS`-shape assertions show up in three places (`core/test/plugins/bundled.test.ts`, `core/test/services/plugin-registry.test.ts`, `core/test/services/runtime-provider-registry.test.ts`); all three must be updated together whenever the bundled list changes, otherwise the full suite will fail with hard-coded array mismatches.
-  - Tagged subclasses of SDK errors (e.g. `ProviderLandoConflictError extends ProviderUnavailableError`) preserve `instanceof` checks for both classes, so callers in the registry that map `ProviderCapabilityError | ProviderUnavailableError` to a final `ProviderUnavailableError` keep working without special-casing the subclass.
-  - When `provider-podman` reuses provider-lando's lifecycle helpers, the underlying tagged errors still embed `providerId: "lando"`. That is acceptable for US-078 (the user-visible surface is the registry-level error and the inspect snapshot `providerId`, both of which read `podman`); a full identity rewrite would require duplicating the lifecycle and is out of scope.
----
-
-## [2026-05-27 02:11 CDT] - US-078 Review
-- Reviewed the US-078 `@lando/provider-podman` Linux opt-in provider implementation against `spec/beta/prd-beta-01-provider-matrix.md`, the HEAD build-step commit, direct checks, and specialist `review-work` findings.
-- Fixed confirmed review blockers:
-  - Wired `lando setup --provider=podman` through the source OCLIF setup command and the compiled dispatcher so the documented opt-in/remediation path selects the requested provider instead of the configured default.
-  - Added root typecheck coverage for `plugins/provider-podman` by adding the package to the root `tsconfig.json` references.
-  - Hardened provider-podman socket handling to default to rootless `/run/user/$UID/podman/podman.sock` when `XDG_RUNTIME_DIR` is unavailable and to reject non-Unix `DOCKER_HOST` transports before constructing the Unix-socket API client.
-  - Made provider-lando conflict-state parsing fail closed on malformed/non-string state instead of treating unreadable/corrupt setup state as no conflict.
-  - Persisted provider-podman applied plans under `provider-podman/apps` so follow-up CLI invocations can inspect/exec/logs/destroy without an in-memory plan.
----
-
-## [2026-05-27 11:50 CDT] - US-079
-- Implemented `@lando/provider-podman` Podman Desktop coverage for macOS + Windows.
-- Verification: typecheck, lint, tests passed.
-- **Learnings for future iterations:**
-  - `RuntimeProviderShape` is on the SDK compat lock (`sdk/test/library/sdk-backward-compatibility.test.ts`); any new field — even optional — fails the frozen-signature equality check. Surface presentation-only distinctions like `providerKind` in the consuming `core/` CLI command (mapped by provider id) instead of widening the SDK service tag.
-  - Provider-lando's bringUp lifecycle inspect (`GET /containers/<name>/json`) decides whether to call `POST /containers/create?name=...`; a fake API that always returns `200` for `/json` makes `create` look like dead code in tests. Track the `existing` set in your fake and return `404` for unknown containers so apply tests actually exercise the create path.
-  - `/exec/<id>/json` ends with `/json` and will collide with the container-inspect handler if the latter only matches by `.endsWith("/json")`. Always gate the container-inspect branch with `.startsWith("/containers/")` (or order the exec handler first) when assembling Podman REST API fakes.
-  - When mapping low-level Podman API connection failures (`ENOENT`, `ECONNREFUSED`, "named pipe not found", "system cannot find the path") to a Podman Desktop "machine not running" error, walk the error chain (`message`, `stderr`, `code`, `cause`) — the typed `ProviderUnavailableError` from `provider-lando` carries the real cause one level deeper.
-
-## [2026-05-27 11:31 CDT] - US-079 Review
-- Reviewed the US-079 `@lando/provider-podman` Podman Desktop implementation against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commit (`HEAD`).
-- Fixed confirmed review blockers:
-  - Added a Windows named-pipe Podman API client path and routed exported/default `makePodmanApiClient()` through it for `npipe:` sockets, so the Windows Podman Desktop default is no longer fake-client-only.
-  - Allowed provider-podman's default Windows `npipe://./pipe/podman-machine-default` path while preserving fail-closed rejection for unsupported non-Unix/non-npipe transports.
-  - Converted malformed Podman Desktop machine names into a tagged `InvalidPodmanMachineNameError` and added rejection coverage.
-  - Used the effective process environment for Podman Desktop machine-not-running remediation, so env-selected machines do not report `podman-machine-default` incorrectly.
-  - Tightened the live Podman Desktop contract gate to require macOS/Windows in addition to `LANDO_TEST_PODMAN_DESKTOP_SOCKET`.
-
-## [2026-05-27 17:03 UTC] - Push
-- PR: #178 https://github.com/AaronFeledy/core4/pull/178 (created)
----
-
-## [2026-05-27 17:20 UTC] - US-079 Bugbot triage
-- Fixed the two remaining low-severity Cursor Bugbot findings in `plugins/provider-podman/src/index.ts`:
-  - removed the unused `resolvePodmanDesktopMachineName` alias export and updated the remaining callsite to use `resolvePodmanDesktopMachine` directly
-  - tightened the machine-not-running pattern set by dropping the broad `/named pipe/i` matcher
----
-
-## [2026-05-27 17:45 UTC] - US-079 npipe regression fix
-- Fixed the Windows Podman Desktop named-pipe stream flush path so a complete final chunk is not dropped when the socket closes before the terminal CRLF is buffered.
----
-
-## [2026-05-27 17:36 UTC] - US-079 PR #178 Bugbot triage (rounds 2–9)
-- Triaged Cursor Bugbot review rounds on PR #178: typed Podman Desktop machine resolution, Linux gating for desktop env vars, named-pipe socket lifecycle and chunked-body flush, machine-not-running detection, duplicate pattern cleanup, and production socket discovery wiring.
-- Deferred cross-package named-pipe transport deduplication (follow-up refactor).
-- Verification: typecheck, lint, provider-podman tests passed.
-
-## [2026-05-27 20:30 UTC] - US-080
-- Implemented the shared `RuntimeProvider` contract suite plus a matrix-driven runner so `TestRuntimeProvider`, `@lando/provider-lando`, `@lando/provider-docker`, and `@lando/provider-podman` all run the same `@lando/sdk/test` contract across every supported platform.
-- Verification: typecheck, lint, tests passed.
-- **Learnings for future iterations:**
-  - `runProviderContract` is the single shared assertion path — extending it with new invariants (setup, bundle, error-shape) automatically lifts coverage for every existing caller, so the four packages only had to add a matrix wrapper rather than duplicate assertions.
-  - The matrix runner's "skipReason required for unsupported cells / factory required for supported cells" contract is intentional: it forces every package to declare its supported set explicitly (no silent platform gaps) and surfaces skipped cells with a reason in the returned `ContractMatrixReport`.
-  - SDK error-shape coverage is best asserted against the `Schema.decodeUnknownEither(ProviderCapabilityError)` round-trip rather than by triggering real provider errors — US-081 owns the provider-side negative-path coverage, so US-080 stays scoped to the SDK-level contract.
-  - When migrating a contract test, route the cell `factory` through the existing fake-client harness (the per-test `makeFakeApi()` closures) so each matrix cell gets an isolated fake; sharing a single fake across cells would leak state between the lifecycle round-trips.
----
-
-## [2026-05-27 14:58 CDT] - US-080 Review
-- Reviewed the US-080 shared provider contract suite against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits (`origin/main...HEAD`).
-- Fixed confirmed review blockers:
-  - `runProviderContract` now actually executes `exec` and consumes `logs` for the contract fixture instead of only checking Effect/Stream shapes.
-  - `runProviderContractMatrix` now requires every canonical `HostPlatform` cell (`linux`, `darwin`, `win32`, `wsl`) to be declared and asserts each supported cell returns a provider whose `platform` matches the cell.
-  - Provider contract matrix tests now declare unsupported `wsl` cells with reasons; `provider-lando` and `TestRuntimeProvider` factories now build platform-matching providers.
-  - Podman-backed fake APIs now cover exec/log streams so the stronger shared contract exercises the lifecycle path uniformly.
-  - Listed the additive `@lando/sdk/test` matrix exports in `sdk/API_COMPATIBILITY.md`.
----
-
-## [2026-05-27 20:11 UTC] - Push
-- PR: #179 https://github.com/AaronFeledy/core4/pull/179 (created)
----
-
-## [2026-05-27] - PR #179 provider-integration triage
-- CI failure: real issue; `provider-integration-linux-x64` failed because the shared live fixture must emit a service log line and live provider-lando Podman logs can arrive as raw timestamped text, while the decoder only emitted Docker attach-framed chunks and therefore produced `[]` for the shared contract assertion.
-- Review feedback: no PR comments or reviews to address (`reviewDecision` empty; Cursor Bugbot passed).
-- Fix: the SDK contract fixture now writes a startup log line, provider-lando and provider-docker logs now decode both attach-framed and raw log streams, fake-client coverage exercises raw log bytes, and the shared contract waits for one followed log chunk with a bounded timeout to avoid live-container startup races.
----
-
-## [2026-05-27 21:20 UTC] - PR #179 Babysit
-- PR: #179 https://github.com/AaronFeledy/core4/pull/179
-- Result: merged to `main` via squash merge as `47cf895 Strengthen shared provider contract suite (#179)`.
-- Final pre-merge checks: all required GitHub Actions checks passed (`static-checks`, `schema-snapshot`, `bundled-codegen`, `library-api-tests`, `recipe-tests`, `guide-scenarios-linux-x64`, `build-linux-x64`, `provider-integration-linux-x64`) and Cursor Bugbot passed.
-- Review/Bugbot status: Cursor Bugbot's two review threads were resolved before merge (`provider-lando` empty-chunk raw-log decoder mode lock; `provider-docker` duplicated frame processing branch). No blocking human reviews or PR comments remained.
-- Local branch state after merge: repository on `main`, synced with `origin/main`; remote story branch was deleted by `gh pr merge --delete-branch`.
-- Verification during babysit/triage: focused provider log tests, `bun run typecheck`, `bun run lint`, and full `bun test` all passed after the Bugbot fixes.
----
-
-## [2026-05-27 21:41 UTC] - US-081
-- Added partial-failure rollback + AbortSignal support to `@lando/provider-docker` (provider-lando already had it)
-- **Learnings for future iterations:**
-  - `provider-docker`'s `bringUp` was always-`changed: true`; updated to accurate idempotent tracking (same as provider-lando pattern)
-  - AbortSignal timing in synchronous fake APIs: wrap the first `/start` response with `Effect.tap(() => Effect.sync(() => controller.abort()))` to trigger cancellation mid-iteration
-  - `biome check --fix` handles import ordering, `noNonNullAssertion`, and `useLiteralKeys` in one pass; run it before manual lint review
----
-
-## [2026-05-27 22:05 UTC] - Push + Babysit
-- PR: #180 https://github.com/AaronFeledy/core4/pull/180 (created)
-- CI outcome: all checks SUCCESS or NEUTRAL (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, guide-scenarios-linux-x64, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot NEUTRAL)
-- Merge: merged (squash) → 727f2f9
----
-
-## [2026-05-27 23:00 UTC] - US-082
-- Implemented provider selection precedence (`flag > Landofile > env > config > capability-default`) and provider conflict diagnostics in `meta:doctor`.
-- Verification: typecheck, lint, tests passed.
-- **Learnings for future iterations:**
-  - `LANDO_PROVIDER` belongs at the `env` precedence slot and stays distinct from `LANDO_DEFAULT_PROVIDER_ID`, which remains a config-layer overlay merged into `ConfigService.defaultProviderId`. Don't conflate the two: tests assert that `readProviderEnvVar` reads only `LANDO_PROVIDER`.
-  - Once `meta:doctor` reads `ConfigService.userDataRoot` to drive conflict detection, every doctor-touching scenario test must merge a `ConfigService` live/stub layer alongside `RuntimeProviderRegistry`; missing it surfaces as `Service not found: @lando/core/ConfigService` at runtime, not at typecheck time, because `Effect.gen` defers service lookup.
-  - The `provider-conflict` check is intentionally rendered with empty `capabilities` and the conflict-specific `conflictKind`/`socketPath` keys in `context` only — plain-text rendering drops those keys today, so any future text-output assertions should target the solution description string rather than context fields.
-  - When regenerating the doctor NDJSON fixtures, set the test `ConfigService.defaultProviderId` to `"lando"` (matching `ConfigServiceLive`'s default merge) so the fixture's `selectionSource` is `"config"` and not `"default"`.
----
-
-## [2026-05-27 18:11 CDT] - US-082 Review
-- Reviewed US-082 provider selection precedence and conflict diagnostics against `spec/beta/prd-beta-01-provider-matrix.md` and the build-step commits on `us-082-provider-selection-precedence`.
-- Fixed confirmed review blockers:
-  - Made runtime provider registry default selection honor `LANDO_PROVIDER > config > capability default` when no planned app provider is supplied.
-  - Made app planning encode the resolved `Landofile provider: > LANDO_PROVIDER > config > capability default` provider instead of always defaulting providerless apps to `lando`.
-  - Made `meta:doctor` pre-detect provider-lando/provider-podman socket conflicts before constructing provider-podman, so it emits a structured `provider-conflict` check instead of failing during provider selection.
-  - Made the structured conflict solution command executable (`lando setup --provider=podman`) while preserving the remediation text that names both alternatives.
----
-
-## [2026-05-27 18:32 CDT] - Push
-  - f17cf6e chore: cleanup
-  - b53eb1c docs: record US-082 review fixes
-  - 400bb71 fix: emit podman conflict doctor check before selection
-  - a9c0541 fix: apply provider precedence to app planning
-  - 97cf413 chore: mark US-082 complete and update progress log
-  - d92891a chore: mark US-082 complete and update progress log
-  - 71daa7b feat: provider selection precedence and conflict diagnostics
-  - 20d44e7 docs: record PR #180 merge babysit
-- PR: #181 https://github.com/AaronFeledy/core4/pull/181 (created)
----
-
-## [2026-05-27 23:43 UTC] - Babysit
-- PR: #181 https://github.com/AaronFeledy/core4/pull/181
-- CI outcome: pass
-- Review feedback: none
-- Merge: merged (squash)
 ---
 
 ## [2026-05-27 19:25 CDT] - US-083
 - Shipped the `go` service type (versions 1.22 and 1.23) from `@lando/service-lando` per spec §6.12.1.
-- Verification: typecheck, lint, tests passed.
 - **Learnings for future iterations:**
   - Adding a service type updates **five** test surfaces in `plugins/service-lando/test/`, not just the per-type unit file: `package.test.ts` (registered-types + manifest snapshots), `registration.test.ts` (manifest expected list + AppPlanner family-resolution + family-remediation), `env-contract.test.ts` (catalog cases array), `discovery.test.ts` (only `PLUGIN_NAME` check, no update needed), plus the new `<type>.test.ts` and optional `<type>.scenario.test.ts`. The `sdk/test/fixtures/schema-snapshot.json` is auto-regenerated by the schema-snapshot test and must be committed.
   - Go's official Docker image is `golang:<version>` (Debian-bookworm based, includes bash) rather than `<lang>:<version>-slim`. Use that as the default ref instead of `golang:<version>-alpine` — the alpine variant lacks `bash`, which would break the §6.6 `bash -c "exec 3<>/dev/tcp/..."` TCP healthcheck shared by every other Lando language service. The `-bookworm` / `-bullseye` slim variants are post-GA tuning.
@@ -281,54 +52,24 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-27 20:24 CDT] - US-083 Review
-- Reviewed the US-083 Go service type implementation against `spec/beta/prd-beta-02-service-catalog-full.md` and the build-step commits (`origin/main...HEAD`).
 - Fixed confirmed review blockers:
   - Updated the packaged `@lando/service-lando` `plugin.yaml` manifest so installed/package consumers advertise the same service type catalog as the TypeScript manifest, including `go:1.22` and `go:1.23`.
   - Added package-level test coverage that keeps `plugin.yaml` service type contributions in sync with the exported service catalog.
   - Corrected `spec/beta/prd.json` so US-083 is not marked passing while its live/minimal Go HTTP scenario acceptance remains uncovered.
 ---
 
-## [2026-05-28 00:45 UTC] - Push
-- PR: none (not created)
----
-
-## [2026-05-28 00:46 UTC] - Babysit
-- PR: none (no pull request found for branch `us-083-go-service-type`)
-- CI outcome: not checked (no PR located)
-- Review feedback: none checked (no PR located)
-- Merge: deferred (push step did not create/refresh a PR for the current branch)
-
 ## [2026-05-28 01:08 UTC] - US-083 Live Go HTTP Scenario
-- Added the live/minimal Go HTTP scenario acceptance that the prior US-083 review left open: `plugins/service-lando/test/go.integration.test.ts` brings up a Go service against a real Podman socket, fetches the HTTP endpoint, and runs `lando go version` through `ProviderExecToolingEngineLive` against the live provider.
-- The test is gated by `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` (matching `plugins/provider-lando/test/bring-up.integration.test.ts` and `core/test/cli/start.scenario.test.ts`) and skipped by default; CI's provider-integration job already exports that env var.
-- Manual QA (Docker substitute for Podman, since this host has Docker but no Podman and the WSL `lando4-dev` sandbox is Windows-only):
-  - Wrote the same fixtures (`main.go` + `go.mod`) to `/tmp/lando-go-smoke`
-  - `docker run -d -v /tmp/lando-go-smoke:/app -w /app -e GOFLAGS=-mod=mod -p 127.0.0.1:31082:31082 golang:1.22 go run /app/main.go` → container running
-  - `curl http://127.0.0.1:31082/` → `lando-go-ok` (after 5s compile+start)
-  - `docker exec ... go version` → `go version go1.22.12 linux/amd64` (matches the test regex)
-  - Container state: `running running=true`. Cleaned up.
-- Verification: typecheck, lint, tests passed.
+- Added the live/minimal Go HTTP scenario acceptance that the prior US-083 review left open: brings up a Go service against a real Podman socket, fetches the HTTP endpoint, and runs `lando go version` through `ProviderExecToolingEngineLive` against the live provider.
+- The test is gated by `test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)` and skipped by default; CI's provider-integration job already exports that env var.
 - **Learnings for future iterations:**
   - Live HTTP-server scenarios for new service types follow the `bring-up.integration.test.ts` pattern (hand-built `ServicePlan`/`AppPlan`, `bringUp(plan, { podmanApi })` via real `makePodmanApiClient`, `fetch("http://127.0.0.1:<port>")`, `bringDown` in `finally`) rather than the `AppPlanner` planning path used in fake-provider scenario tests. The two test files complement each other: scenario test exercises planner → tooling, integration test exercises provider lifecycle → live HTTP.
   - Live integration tests that route tooling through `ProviderExecToolingEngineLive` need to provide a `RuntimeProviderRegistry.select` that returns the **same** live `RuntimeProvider` instance the bring-up used. Building the provider once via `RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: api })))` and capturing it for both the bring-up call and the tooling layer keeps the container-name/network state consistent.
   - For `go run` to work inside `golang:1.22` against a bind-mounted source dir, write both `main.go` and a minimal `go.mod` (stdlib-only). `GOFLAGS=-mod=mod` is defensive against the image picking up a stray GOPATH-style layout.
   - `golang:1.22`'s default Cmd is not a long-lived process, so the service plan must supply `command: ["go", "run", "/app/main.go"]` (or similar) to keep the container alive while the HTTP server serves. The default `tail -f /dev/null` keep-alive from `go.ts` is for the planner-driven path where the tooling alias drives one-shot exec; a live HTTP scenario explicitly overrides it.
-  - Port publishing in `provider-lando` bringUp maps `endpoint.port` to `HostIp: 127.0.0.1, HostPort: <port>` (see `bring-up.ts` ~line 147), so the host port equals the container port — picking a non-default port (31082 vs the type's default 8080) avoids collisions with whatever else is bound to 8080 on a CI runner.
+  - Port publishing in `provider-lando` bringUp maps `endpoint.port` to `HostIp: 127.0.0.1, HostPort: <port>`, so the host port equals the container port — picking a non-default port (31082 vs the type's default 8080) avoids collisions with whatever else is bound to 8080 on a CI runner.
 
 ## [2026-05-28 01:44 UTC] - US-083 Review
-- Reviewed the latest US-083 live Go HTTP scenario commit (`origin/us-083-go-service-type...HEAD`) with the loop review agents and direct checks.
 - Fixed confirmed review blocker: the provider-integration CI job exported `LANDO_TEST_PODMAN_SOCKET` but did not run `plugins/service-lando/test/*.integration.test.ts`, so the new live Go HTTP scenario would remain skipped outside ad hoc local execution. Added the service-lando integration glob to CI and the CI runbook, and pre-pulls `golang:1.22` for the large image used by the test.
----
-
-## [2026-05-28 01:51 UTC] - Push
-- PR: #182 https://github.com/AaronFeledy/core4/pull/182 (existing)
----
-
-## [2026-05-28 01:59 UTC] - Babysit
-- PR: #182 https://github.com/AaronFeledy/core4/pull/182
-- CI outcome: pass
-- Review feedback: none
-- Merge: merged (squash)
 ---
 
 ## [2026-05-28] - US-084
@@ -338,10 +79,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The schema snapshot (`sdk/test/fixtures/schema-snapshot.json`) must be regenerated via `bun run scripts/build-schema-snapshot.ts` whenever `plugin.yaml` contributes a new service type; the `schema-snapshot` CI gate catches any drift.
   - MongoDB credentials use `MONGO_INITDB_ROOT_USERNAME` / `MONGO_INITDB_ROOT_PASSWORD` / `MONGO_INITDB_DATABASE`; unlike MySQL/MariaDB, the Docker image has a single root-level user concept, so there is no separate app-user/root-user split.
   - Tooling `cmd: "string"` wraps in `sh -c <cmd> <args>` at the engine level; use `cmd: ["binary"]` array form in tests to verify exact argument vectors.
----
-
-## [2026-05-28] - Push
-- PR: #183 https://github.com/AaronFeledy/core4/pull/183 (created)
 ---
 
 ## [2026-05-27] - US-085
@@ -354,7 +91,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-27 22:40 CDT] - US-085 Review
-- Reviewed the US-085 memcached service type implementation against `spec/beta/prd-beta-02-service-catalog-full.md`, `review-work` agents, direct focused tests, and full-suite verification.
 - Fixed confirmed review blockers:
   - Kept Memcached's default command aligned with overridden internal ports so a `port:` override no longer advertises/checks a port the daemon is not listening on.
   - Added `memcached://localhost:<port>` rendering for `lando info` while preserving the provider-neutral TCP endpoint plan shape.
@@ -362,45 +98,21 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Added the documented `memcached-tool` fixture alias and clarified the non-rendered guide note.
 ---
 
-## [2026-05-27 22:58 CDT] - Push
-- PR: #184 https://github.com/AaronFeledy/core4/pull/184 (created)
----
-
 ## [2026-05-27] - PR #184 triage
 - CI failures (real issues): Podman fetched `memcached:1.6` at runtime because pre-pull was missing (HTTP 404); live Docker contract fixture emitted no log chunks; CI workflow template dropped provider image pre-pulls including `memcached:1.6` and `golang:1.22`. Fixed pre-pulls in `scripts/build-ci-workflow.ts` and contract fixture startup logging.
 ---
 
-## [2026-05-27 23:47 CDT] - Babysit
-- PR: #184 https://github.com/AaronFeledy/core4/pull/184
-- CI outcome: pass (all GitHub Actions checks and Cursor Bugbot check passed on latest HEAD)
-- Review feedback: fixed (Bugbot codegen-template drift addressed with provider CI image pre-pull sync)
-- Merge: deferred (PR is not mergeable; GitHub reports mergeStateStatus DIRTY / mergeable CONFLICTING against main)
----
-
 ## [2026-05-28 05:10 UTC] - US-085 rebase onto current main
-- Rebased `us-085-memcached-service-type` onto current `main` (HEAD `02db2fc`, which carries the US-084 `mongodb` ServiceType from PR #183). PR #184 was previously DIRTY/CONFLICTING against main; this rebase resolves the conflicts and brings the branch back to a mergeable state.
+- Rebased `us-085-memcached-service-type` onto current `main` (which carries the US-084 `mongodb` ServiceType from PR #183). PR #184 was previously DIRTY/CONFLICTING against main; this rebase resolves the conflicts and brings the branch back to a mergeable state.
 - Conflicts resolved with "add both, sort alphabetically" across service-catalog registration surfaces (no memcached implementation changes).
-- Verification: typecheck, lint, guides, service-lando and full tests passed.
 - **Learnings for future iterations:**
   - When a build-step branch sits idle long enough for a sibling story (US-084 mongodb) to land first, the rebase pattern here is mechanical: every conflict was the alphabetical service-list collision (mariadb, memcached, mongodb, mysql) in the same five files. Resolve them once with `git checkout --theirs` is wrong (it drops one of the two contributions); always do "keep both, sort alphabetically" and rerun the schema-snapshot/test-list assertions to catch order regressions.
   - `git rebase --continue` with `vim` as the editor will hang under non-interactive shells; set `GIT_EDITOR=true` to accept the prepared commit message verbatim.
   - `spec/beta/progress.txt` is the most likely conflict file across stories because every iteration appends to it. The conflict is always "keep both entries chronologically" — there is no semantic merge needed.
 
-## [2026-05-28 05:28 UTC] - Push
-- PR: #184 https://github.com/AaronFeledy/core4/pull/184 (existing)
----
-
-## [2026-05-28 05:58 UTC] - Babysit
-- PR: #184 https://github.com/AaronFeledy/core4/pull/184
-- CI outcome: pass
-- Review feedback: fixed (prior Cursor Bugbot thread resolved; rerun cleared transient `build-linux-x64` artifact upload stall)
-- Merge: merged (squash)
----
-
 ## [2026-05-28 06:15 UTC] - US-086
 - Implemented `valkey` ServiceType in `@lando/service-lando` per spec §6.12.1 with dual-scheme endpoint emission (`valkey://` primary, `redis://` alias).
-- Verification: typecheck, lint, tests passed.
-- CLI verification: scenario test `info.scenario.test.ts` "prints running services with endpoint URLs as plain text" exercises the full `infoApp()` → `renderInfoAppResult()` path through the real Effect runtime against a fake provider and asserts `valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379`. The compiled `core/bin/lando.ts` info path was also driven against a temp `.lando.yml` declaring `type: valkey`; outside a configured provider sandbox it surfaces the expected `ProviderConfigError` envelope, proving the service-type registry resolves `valkey` without hitting an "unsupported service type" rejection. Functional dual-scheme rendering is covered by the scenario test against the fake provider.
+- CLI verification: scenario test exercises the full `infoApp()` → `renderInfoAppResult()` path and asserts dual-scheme rendering; compiled info path against a temp `.lando.yml` declaring `type: valkey` surfaces the expected `ProviderConfigError` envelope outside a configured provider sandbox, proving the service-type registry resolves `valkey` without hitting an "unsupported service type" rejection.
 - **Learnings for future iterations:**
   - Dual-scheme endpoint emission is a presentation concern, not a planner concern. Switching `endpointText` from `string` to `ReadonlyArray<string>` and the caller from `.map` to `.flatMap` cleanly supports 1-endpoint→N-renderings without changing `EndpointPlan` schema or planner output.
   - The Valkey default command must explicitly include `--port <port>` so a `port:` override flows into the daemon (the same lesson US-085 learned for memcached's `-p <port>`). The default `valkey-server` argv would otherwise listen on 6379 regardless of the endpoint/healthcheck port.
@@ -409,44 +121,17 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - When adding a service type that needs a different Docker image namespace, the CI workflow generator (`scripts/build-ci-workflow.ts`) needs the new image added to the `podman pull` pre-pull list so the provider-integration job has the image cached before the live test runs.
 ---
 
-## [2026-05-28 08:37 UTC] - US-086 Review
-- Reviewed build commit `51ef2dac feat: valkey service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-086 and the broader service catalog notes.
----
-
-## [2026-05-28 08:40 UTC] - Push
-- PR: #185 https://github.com/AaronFeledy/core4/pull/185 (created)
----
-
-- 2026-05-28: Triage provider-integration-linux-x64 logs failure; switched the SDK contract logs check to follow:false so the live Docker contract reads a bounded historical snapshot instead of racing the initial follow stream chunk.
-- 2026-05-28: PR #185 provider-integration-linux-x64 second triage — root cause was provider-docker's logs decoder treating framed Docker log bytes as single-chunk data, which dropped output when CI split the first frame across socket chunks. Fixed by buffering framed log bytes across chunks in `plugins/provider-docker/src/index.ts` and added regression coverage for split framed log bytes in `plugins/provider-docker/test/contract.integration.test.ts`. Verification: `bun test plugins/provider-docker/test/contract.integration.test.ts`, `bun test sdk/test/contract/provider.test.ts`, `bun run typecheck`, `bun run lint` (pre-existing warnings only).
-
-## [2026-05-28] - PR #185 third triage
-- Restored the live contract log collection to `follow: true` now that provider-docker framed log buffering is fixed, avoiding an empty immediate Docker history snapshot.
-
-- 2026-05-28: PR #185 provider-integration-linux-x64 fourth triage — made the SDK contract service emit `lando-contract-ready` periodically so the live follow:true Docker logs stream receives a chunk even when the startup log was already consumed or not yet available.
-
-## [2026-05-28 07:45 UTC] - Babysit
-- PR: #185 https://github.com/AaronFeledy/core4/pull/185
-- CI outcome: pass
-- Review feedback: fixed (provider-integration-linux-x64 live Docker logs contract failures fixed; no review comments)
-- Merge: merged (squash)
+## [2026-05-28] - PR #185 provider-integration triage
+- Live Docker contract logs failure: first tried `follow:false` to read bounded history; root cause was provider-docker's logs decoder treating framed Docker log bytes as single-chunk data when CI split the first frame across socket chunks. Fixed by buffering framed log bytes across chunks.
+- Restored `follow:true` after buffering fix; made the SDK contract service emit `lando-contract-ready` periodically so the live follow stream receives a chunk even when the startup log was already consumed or not yet available.
 ---
 
 ## [2026-05-28 03:02 UTC] - US-087
 - Story: US-087 solr service type
 - Healthcheck: kind=command (curl -sf http://localhost:8983/solr/admin/ping) — http kind rejected by Alpha planner
-- Tests: 240 pass / 5 skip / 0 fail; typecheck pass; lint pass (4 pre-existing warnings only)
-
-## [2026-05-28 04:08 UTC] - Babysit
-- PR: #186 https://github.com/AaronFeledy/core4/pull/186
-- CI outcome: pass
-- Review feedback: none
-- Merge: merged (squash)
----
 
 ## [2026-05-28 CDT] - US-088
 - Implemented `elasticsearch` service type for `@lando/service-lando`, including default Elasticsearch 8 image, single-node + security-disabled local-dev defaults, persistent storage, HTTP cluster-health command healthcheck, and an `es-cli` tooling alias exercised in the scenario test.
-- Verification: typecheck, lint, tests passed.
 - **Learnings for future iterations:**
   - The `serviceTypes` expectation arrays in `plugins/service-lando/test/{package,registration}.test.ts` are in the same alphabetical order as `serviceTypes` in `src/index.ts`; new entries MUST be inserted at the alphabetically-correct position in both source and tests or the package-skeleton/registration tests will fail with a clear `toEqual` diff.
   - The Guide Coverage table in `spec/beta/prd-beta-02-service-catalog-full.md` is selective: not every service story requires `docs/guides/services/<name>.mdx`. Only the stories explicitly listed in §Guide Coverage (US-084 mongodb, US-086 valkey, US-088 elasticsearch, US-093 static, US-094 compose-passthrough) need a guide file; the others (e.g. US-087 solr, US-089 opensearch) ship without one.
@@ -455,131 +140,51 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Mirroring the solr healthcheck pattern, Elasticsearch uses a `command` healthcheck (`bash -c curl -sf ...`) rather than an HTTP healthcheck because the §6.6 healthcheck schema in this repo expresses HTTP probes via curl-in-container; copy this pattern for opensearch/meilisearch in subsequent stories.
 ---
 
-## [2026-05-28 12:06 UTC] - US-088 Review
-- Reviewed build commit `c0d1f19a feat: Add elasticsearch service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-088 using `review-work` plus explore/librarian/code-quality/security/QA/context-mining agents.
----
-
-## [2026-05-28 07:41 CDT] - Push
-- d1bb419 Clean up Elasticsearch env contract test
-- 175388a docs: record US-088 review
-- a913337 Update Elasticsearch CI image pre-pull
-- d3741ee Update Elasticsearch guide defaults
-- 6f3f163 Fix Elasticsearch service runtime defaults
-- 6ee5d1d chore: mark US-088 complete and update progress log
-- c0d1f19 feat: Add elasticsearch service type
-- PR: #187 https://github.com/AaronFeledy/core4/pull/187 (created)
----
-
-## [2026-05-28 13:22 UTC] - PR #187 Unicode triage
-- Triaged Cursor Bugbot feedback on commit `15f026b`: `spec/beta/prd.json` had been serialized with escaped non-ASCII characters, creating a noisy human-unfriendly PRD diff.
-- Fix already pushed in `48f96b4`: restored literal Unicode in `spec/beta/prd.json` while preserving US-088 `passes: true` and the existing story pass states.
----
-
-## [2026-05-28 09:48 CDT] - Babysit
-- PR: #187 https://github.com/AaronFeledy/core4/pull/187
-- CI outcome: pass (build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks, Cursor Bugbot)
-- Review feedback: fixed (Bugbot ordering feedback fixed in `15f026b`; follow-up PRD Unicode escaping feedback fixed in `48f96b4` and recorded in `282852d`)
-- Merge: merged (squash)
----
-
 ## [2026-05-28] - US-087
 - Solr service type was already merged in PR #186; marked US-087 complete in `prd.json` after verification on `main`.
 ---
 
-## [2026-05-28 10:27 CDT] - Push
-- PR: #188 https://github.com/AaronFeledy/core4/pull/188 (created)
----
-
-## [2026-05-28 10:36 CDT] - Babysit
-- PR: #188 https://github.com/AaronFeledy/core4/pull/188
-- CI outcome: pass (build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks, Cursor Bugbot)
-- Review feedback: none
-- Merge: merged (squash)
----
-
 ## [2026-05-28 CDT] - US-089
 - Implemented `opensearch` service type for `@lando/service-lando`: Apache 2.0-licensed OpenSearch fork of Elasticsearch 7.10, mirrored on US-088 with the licensing distinction noted in an exported description constant.
-- Verification: typecheck, lint, tests passed.
-- CLI verification: planned a fixture `name: demoapp; services.search.type: opensearch; port: 19200` through the registry-backed `AppPlanner` (same path the CLI uses). Result confirmed: `type=opensearch`, `artifact=opensearchproject/opensearch:2`, `endpoints=[{port:19200,protocol:tcp,name:search}]`, `storage=[{store:demoapp-opensearch-data,target:/usr/share/opensearch/data}]`, `healthcheck.command=["bash","-c","curl -sf http://localhost:19200/_cluster/health"]`, `LANDO_SERVICE_TYPE=opensearch`, `discovery.type=single-node`, `DISABLE_SECURITY_PLUGIN=true`, `DISABLE_INSTALL_DEMO_CONFIG=true`, `http.port=19200`, `OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m`. The OpenSearch live integration test path mirrors the US-088 fetch loop and is gated on `LANDO_TEST_PODMAN_SOCKET`; CI's pre-pull list now includes the OpenSearch image so the live test can run on `provider-integration-linux-x64`.
+- CLI verification: planned a fixture through the registry-backed `AppPlanner` (same path the CLI uses). Confirmed type, artifact, endpoints, storage, healthcheck, env vars, and single-node/security-disabled defaults. Live integration test gated on `LANDO_TEST_PODMAN_SOCKET`; CI pre-pull list includes the OpenSearch image.
 - **Learnings for future iterations:**
   - PRD-B-02's Guide Coverage table is selective; US-089 opensearch (like US-087 solr) is not required to ship a `docs/guides/services/<name>.mdx`. Only the listed stories (US-084 mongodb, US-086 valkey, US-088 elasticsearch, US-093 static, US-094 compose-passthrough) need guides.
   - OpenSearch 2 needs both `DISABLE_SECURITY_PLUGIN=true` and `DISABLE_INSTALL_DEMO_CONFIG=true` for a clean local-dev boot without an initial admin password; otherwise the entrypoint stalls on demo config installation and security plugin bootstrap.
   - The "service description notes the licensing distinction" acceptance criterion has no per-service description surface on `ServiceTypeShape`, so the right pattern is an exported string constant (`OPENSEARCH_SERVICE_DESCRIPTION`) that a unit test pins. This is the cleanest verifiable surface until a per-service description field lands.
-  - Biome's import formatting collapses imports that fit on a single line; multi-line braces for short import lists trigger a lint error. Keep this in mind when writing new test files by hand.
 ---
 
 ## [2026-05-28 11:00 CDT] - US-089 Review
-- Reviewed build commit `7ce2c034 feat: opensearch service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-089 using `review-work`-style goal, QA, code-quality, security, context-mining agents plus explore/librarian searches.
 - Fixed confirmed review blocker:
   - Changed the OpenSearch service endpoint protocol from `tcp` to `http` so `lando info` / start output render the user-facing OpenSearch HTTP API as `http://localhost:<port>`, matching PRD-B-02 endpoint scheme rules and the US-087 Solr review learning.
 ---
 
-## [2026-05-28 11:14 CDT] - Push
-- PR: #189 https://github.com/AaronFeledy/core4/pull/189 (created)
----
-
-## [2026-05-28 11:48 CDT] - Babysit
-- PR: #189 https://github.com/AaronFeledy/core4/pull/189
-- CI outcome: fail (`provider-integration-linux-x64` failed; all other reported checks including Cursor Bugbot passed)
-- Review feedback: none (no PR comments, latest reviews, or review decision)
-- Merge: deferred (`provider-integration-linux-x64` failed in the live Docker provider contract path: `logs emits at least one chunk`; triage was delegated, but no fix/new commit was pushed before the delegate went idle)
----
-
-## [2026-05-28 11:54 CDT] - PR #189 provider-integration-linux-x64 triage
-- CI failure: real issue, but not caused by US-089 — pre-existing flake in the shared live Docker contract test. The branch touches zero provider-docker / sdk contract code (diff vs main: only `service-lando/opensearch*`, `spec/beta/*`, `schema-snapshot.json`, and one `podman pull opensearchproject/opensearch:2` line in `ci.yml`/`build-ci-workflow.ts`).
-- Failed assertion: `RuntimeProvider contract failed: logs emits at least one chunk` (`sdk/src/test/index.ts:295-298`, 5s `Effect.timeoutFail`). Same assertion has been intermittently failing across recent PRs (Solr, Elasticsearch) and on `main`; the previous fix in 37674eba added a single `console.log('lando-contract-ready')` to the live Docker fixture but that one-shot line can race the 5s timeout on a slow GitHub Actions runner.
-- Reruns: `gh run rerun 26588125725 --failed` failed identically — confirming the flake reproduces under the current CI load, not a transient blip.
-- Local repro: with `DOCKER_HOST=unix:///var/run/docker.sock`, the live socket test passed 5/5 (~2.6s each), so the defect is CI-environment timing, not provider-docker logic.
-- Fix: tightened the same fixture in `plugins/provider-docker/test/contract.integration.test.ts` to emit a periodic `lando-contract-tick` every 250ms (replacing the no-op `setInterval`). Guarantees Docker's log stream has multiple chunks well within the 5s contract timeout regardless of stdout buffering or runner contention. No SDK contract code touched.
-- Review feedback: none — no PR comments, no review decision, Cursor Bugbot passed.
+## [2026-05-28 12:08 CDT] - PR #189 provider-integration-linux-x64 triage
+- CI failure: pre-existing flake in the shared live Docker contract test (`logs emits at least one chunk`), not caused by US-089. Same assertion intermittently failing across recent PRs; one-shot `lando-contract-ready` can race the 5s timeout on a slow GitHub Actions runner.
+- First fix attempt targeted the wrong fixture (plugin-local `makeService` is only used by fake-API tests; live Docker Engine socket test uses SDK-internal `makeTestServicePlan`). SDK fixture already emits periodically — provider-lando live podman run on the same fixture passed.
+- Real cause: SDK contract's 5s `Effect.timeoutFail` on `provider.logs` is too tight for the live Docker Engine path on a contended runner (apply+inspect+exec consume 5-7s before logs subscribes).
+- Fix: bumped the SDK contract logs timeout from 5s to 15s. Still well inside the test's 60s overall budget; still fails closed if the stream genuinely never emits.
 
 ## [2026-05-28 12:08 CDT] - US-089 Review
-- Reviewed current build verification commit `0a53476d Record US-089 build verification` and the branch's existing OpenSearch implementation against `spec/beta/prd-beta-02-service-catalog-full.md` US-089 using `review-work`, explore, librarian, QA, goal/constraint, code-quality, security, and context-mining agents.
 - Fixed confirmed review blocker:
-  - Removed the newly introduced non-null assertion in `plugins/service-lando/test/opensearch.integration.test.ts` by narrowing `LANDO_TEST_PODMAN_SOCKET` before use. This preserves the Podman-gated live integration behavior while satisfying the repo's no-non-null-assertion lint/type-safety rule.
----
-
-## [2026-05-28 12:08 CDT] - PR #189 provider-integration-linux-x64 triage (correction)
-- Prior fix (67ea899) targeted the wrong fixture: the live Docker Engine socket test calls `runProviderContract(provider)` which uses the SDK-internal `makeTestServicePlan` in `sdk/src/test/index.ts:62`, not the plugin-local `makeService` I edited in `plugins/provider-docker/test/contract.integration.test.ts`. The plugin helper is only used by the fake-API tests, so the periodic-tick change was inert. Verified by inspecting the CI diagnostics from run 26589264448 (`/tmp/ci-diag-189/journalctl.log`): the parallel provider-lando live podman run on the same fixture emitted `lando-contract-ready` every second and passed, proving the SDK fixture already emits periodically.
-- Real cause: the SDK contract's 5s `Effect.timeoutFail` on `provider.logs` is too tight for the live Docker Engine path on a contended `ubuntu-24.04` GitHub Actions runner (apply+inspect+exec consume 5-7s before logs even subscribes; the failed test wall times of 6.5s, 12.4s, and 10.6s all show the logs subscription racing the 5s window). The defect is not in US-089 — the branch touches zero provider-docker, SDK contract, or Docker-path code.
-- Fix: bumped the SDK contract logs timeout from 5s to 15s in `sdk/src/test/index.ts`. Still well inside the test's 60s overall budget; still fails closed if the stream genuinely never emits.
-- Left 67ea899's plugin-local `makeService` tick change in place: it's inert for live tests but doesn't hurt the fake-API tests that do consume it.
-## [2026-05-28 13:02 CDT] - Push
-- PR: #189 https://github.com/AaronFeledy/core4/pull/189 (existing)
----
-
-## [2026-05-28 12:34 CDT] - Babysit
-- PR: #189 https://github.com/AaronFeledy/core4/pull/189
-- CI outcome: pass
-- Review feedback: none
-- Merge: merged (squash)
+  - Removed the newly introduced non-null assertion in the OpenSearch integration test by narrowing `LANDO_TEST_PODMAN_SOCKET` before use.
 ---
 
 ## [2026-05-28] - US-090
 - Implemented `meilisearch` service type for `@lando/service-lando`
-- Verification: typecheck, lint, tests passed.
 - Learnings:
   - Meilisearch requires a 16+ char master key only in `MEILI_ENV=production`; with `MEILI_ENV=development` the short `"lando"` dev default is accepted while still being non-empty so authenticated endpoints can be exercised consistently
   - Document/task indexing is asynchronous in Meilisearch — the integration test polls `/tasks/<taskUid>` until `status=succeeded` before querying, instead of relying on a fixed delay
   - The §6.12.1 catalog row for `meilisearch` is `"Meilisearch + master key, persistent volume"`; the PRD's "§6.6 redaction" reference resolves against §6.10/§6.12.4 in practice (plain-text credentials are redacted in `lando info` unless `--show-secrets`), so we documented the redaction expectation in `MEILISEARCH_SERVICE_DESCRIPTION` and exposed the constant as `MEILISEARCH_DEFAULT_MASTER_KEY` for downstream redactor wiring
 ---
 
-## [2026-05-28 12:49 CDT] - Push
-- PR: #190 https://github.com/AaronFeledy/core4/pull/190 (created)
----
-
-## [2026-05-28 13:14 CDT] - Babysit
-- PR: #190 https://github.com/AaronFeledy/core4/pull/190
-- CI outcome: pass (full matrix green; provider-integration-linux-x64 4m26s, Cursor Bugbot pass after fix)
-- Review feedback: Cursor Bugbot flagged High-severity bug — meilisearch healthcheck used `bash -c` but `getmeili/meilisearch:v1.11` is Alpine-based and ships no bash, so the in-container healthcheck would always fail
-  - Verified live against the image: Alpine Linux 3.20.3, `bash` MISSING, `sh`+`curl` present; `docker exec … sh -c curl …` → `{"status":"available"}`; `docker exec … bash -c …` → `exec: bash: not found`
-  - Fix b543b32 switched the healthcheck `command` from `bash -c` → `sh -c` (no bash-specific syntax) and updated unit + scenario test assertions; integration test was unaffected because it exercises `/health` from the host via `fetch()`
-- Merge: merged (squash) as 8cfb0dc `Add meilisearch service type (#190)`
+## [2026-05-28 13:14 CDT] - Babysit PR #190
+- Cursor Bugbot flagged High-severity bug — meilisearch healthcheck used `bash -c` but `getmeili/meilisearch:v1.11` is Alpine-based and ships no bash, so the in-container healthcheck would always fail
+- Verified live against the image: Alpine Linux 3.20.3, `bash` MISSING, `sh`+`curl` present
+- Fix: switched the healthcheck `command` from `bash -c` → `sh -c` (no bash-specific syntax) and updated unit + scenario test assertions; integration test was unaffected because it exercises `/health` from the host via `fetch()`
 ---
 
 ## [2026-05-28 13:35 CDT] - US-091
 - Documented Beta framework-preset coverage for `@lando/service-lando` and confirmed the `go` ServiceType ships `framework: "none"` only.
-- Verification: typecheck, lint, tests passed.
 - Learnings for future iterations:
   - Documentation-only stories (`@lando/service-lando` README, recipe READMEs, guide MDX) are still subject to the TDD floor — the failing test is "README missing" / "table row missing", and the GREEN step is the content edit. Test parses the markdown for column headers and per-language rows rather than diffing whole-file snapshots, so adding a new language ServiceType only requires extending the supported-version/framework constants — the readme test automatically requires a matching row.
   - `package.json#files` for workspace plugins must explicitly list the README; the workspace publish set is allowlisted (not implicit), and dropping the README in `files` would ship the binary bundle without the framework table. Add the README to `files` whenever a new top-level doc lands in `plugins/<name>/`.
@@ -587,27 +192,14 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-28 13:43 CDT] - US-091 Review
-- Reviewed build commit `6a0fe25d feat: framework-preset coverage extends to Go` against `spec/beta/prd-beta-02-service-catalog-full.md` US-091 using `review-work`, explore, librarian, goal/constraint, QA, code-quality, security, and context-mining agents.
 - Fixed confirmed review blocker:
   - Corrected the new `@lando/service-lando` README Node row. The build-step README said Node's `framework:` field is rejected, but existing runtime/tests accept the shared schema field and ignore it for Node service planning.
   - Added README test coverage so the Node row cannot regress back to "rejected" wording.
 ---
 
-## [2026-05-28 14:10 CDT] - Push
-- PR: #191 https://github.com/AaronFeledy/core4/pull/191 (created)
----
-
-## [2026-05-28 14:20 CDT] - Babysit
-- PR: #191 https://github.com/AaronFeledy/core4/pull/191
-- CI outcome: pass (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, guide-scenarios-linux-x64, build-linux-x64, provider-integration-linux-x64, Cursor Bugbot all green)
-- Review feedback: none
-- Merge: merged (squash) as 2789dd9 `Extend Go framework preset coverage (#191)`
----
-
 ## [2026-05-28 14:48 CDT] - US-092
 - Shipped the matrix-driven Beta service contract suite in `@lando/sdk/test` and wired every new Beta service type (US-083..090) through it.
-- Verification: typecheck, lint, tests passed.
-- Manual driver verification: ran the new SDK runner end-to-end from the plugin test seam (`plugins/service-lando/test/service-contract.test.ts`) — the exact pattern a service-type plugin author uses. 19 plugin-side tests exercise the runner against the real catalog `ServiceTypeShape` exports, covering all 8 new Beta service families × 4 canonical platforms × `lando` provider. Each `Effect.runPromise(runServiceContractMatrix(...))` resolved with `outcome: "passed"` for every cell.
+- Manual driver verification: ran the new SDK runner end-to-end from the plugin test seam — 19 plugin-side tests exercise the runner against the real catalog `ServiceTypeShape` exports, covering all 8 new Beta service families × 4 canonical platforms × `lando` provider. Each `Effect.runPromise(runServiceContractMatrix(...))` resolved with `outcome: "passed"` for every cell.
 - **Learnings for future iterations:**
   - `Schema.decodeUnknownEither(ServicePlan)` cannot re-decode an already-decoded ServicePlan: `metadata.resolvedAt` is a runtime `DateTime` instance, but the `DateTimeUtc` decoder treats input as the ENCODED string form. Use `Schema.is(ServicePlan)` for runtime-shape validation of objects that already passed a decode. Same trap applies to plan-mutation test helpers — mutate in place, cast back, and let the runner's `Schema.is` catch invalid shapes instead of re-decoding the mutated plan.
   - The catalog alias services (`solr`, `elasticsearch`, `opensearch`, `meilisearch`) delegate to versioned implementations (`solr9ServiceType`, `elasticsearch8ServiceType`, …) but those impls emit unversioned `plan.type` strings (`"solr"`, `"elasticsearch"`, …). Pin the test expectation to the unversioned form, not the alias target's `id`.
@@ -617,7 +209,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-28 15:08 CDT] - US-092 Review
-- Reviewed build commit `a0db1cf2 feat: matrix-driven service-type contract suite` against `spec/beta/prd-beta-02-service-catalog-full.md` US-092 using `review-work`, explore, librarian, goal/constraint, QA, code-quality, security, and context-mining agents.
 - Fixed confirmed review blockers:
   - Added provider-capability coverage to `runServiceContract` so service plans now assert endpoint publishing, healthchecks, persistent storage, and bind mounts are compatible with the declared provider capabilities.
   - Added provider/platform/service-type identity checks to `runServiceContractMatrix` so matrix reports cannot pass a cell whose factory exercises a different provider, platform, or service type.
@@ -625,65 +216,34 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Added contract entries for alias-backed versioned Beta service IDs: `solr:9`, `elasticsearch:8`, `opensearch:2`, and `meilisearch:1`.
 ---
 
-## [2026-05-28 15:29 CDT] - Push
-- PR: #192 https://github.com/AaronFeledy/core4/pull/192 (created)
----
-
 ## [2026-05-28] - PR #192 Bugbot triage
-- Review feedback: real issue — service contract healthcheck command matching used substring port checks, so expected port 80 matched probes against 8080.
+- Service contract healthcheck command matching used substring port checks, so expected port 80 matched probes against 8080.
 - Fix: tightened SDK test helper command matching to require numeric port boundaries for `/dev/tcp/.../<port>` and `localhost` / `127.0.0.1:<port>` probes, with TCP and HTTP command regression coverage.
-
 ---
 
-## [2026-05-28 15:59 CDT] - Babysit
-- PR: #192 https://github.com/AaronFeledy/core4/pull/192
-- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
-- Review feedback: fixed (Bugbot port-substring report addressed in `0321bf6 fix: reject substring healthcheck port matches`; rerun Bugbot passed)
-- Merge: merged (squash) as `c5a9f11 Add service contract matrix (#192)`
----
-
-## [2026-05-28 16:37 CDT] - Babysit
-- PR: #193 https://github.com/AaronFeledy/core4/pull/193
-- CI outcome: pass (Cursor Bugbot neutral, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
-- Triage rounds used: 1 (schema-snapshot failed on first push; added `sdk/test/fixtures/schema-snapshot.json` regeneration commit)
-- Review feedback: none (Bugbot neutral — no issues flagged)
-- Merge: merged (squash) as `d2248aa Add static service type with root: subdirectory support (#193)`
-- Local main / branch refreshed: yes
-- Remaining local state, if any: on `main`; local story branch removed; none after merge-log commit
+## [2026-05-28 16:37 CDT] - Babysit PR #193
+- Schema-snapshot failed on first push; added schema-snapshot regeneration commit. Merged as static service type with root: subdirectory support.
 ---
 
 ## [2026-05-28 17:30 CDT] - US-093
 - Shipped the missing `docs/guides/services/static.mdx` guide and its `static-demo` fixture (with a `dist/index.html` artifact and a `curl` tooling alias) so the §Guide Coverage row for US-093 is finally satisfied; the underlying `static`/`static:caddy` service-type implementation was already on `main` via PR #193 + #194 follow-up.
-- Verification: typecheck, lint, tests passed (5 generated `guides/static/*` scenarios + the existing `static.test.ts` and `static.scenario.test.ts` all green; full suite reproducibly green, the only flakes are pre-existing compiled-binary / tsbuildinfo environment tests already documented in earlier entries).
 - **Learnings for future iterations:**
   - Guide fixture lookup is keyed on guide frontmatter `id`, NOT the source path. A guide at `docs/guides/services/<id>.mdx` still resolves `<UseFixture name="X" />` from `docs/guides/<id>/fixtures/X/`. Authoring a "services" guide therefore needs the mdx under `docs/guides/services/` and the sibling fixture directory at top-level `docs/guides/<id>/fixtures/`.
   - Generated guide-scenario tests under `test/scenarios/generated/guides/**` are `.gitignore`d; CI regenerates them via `bun run codegen`. Do not stage them — only the source `.mdx` + fixture, plus `spec/beta/prd.json` + progress, belong in a guide-coverage commit.
-  - `bun run lint` exits 0 even with biome `warning`-severity findings (4 are pre-existing `noNonNullAssertion` warnings in `plugins/provider-podman/test/contract.integration.test.ts`). Treat lint failure as exit-code ≠ 0; don't grep on the warning count.
   - When a previous build step merges a story PR but forgets to flip `passes: true` in `spec/beta/prd.json`, the loop contract's in-flight gate re-routes the next iteration onto the same story (third condition: `passes: false`). Recovery path: reset the recorded branch to `main`, finish the missing acceptance criterion (guide coverage in this case), flip `passes: true`, and commit on the story branch so push/review steps can re-open the surface.
 ---
 
 ## [2026-05-28 17:20 CDT] - US-093 Review
-- Reviewed build commit `27e1240 feat: static service type` against `spec/beta/prd-beta-02-service-catalog-full.md` US-093 using review-work-style goal, QA, code-quality, security, context-mining, explore, and librarian findings.
 - Fixed confirmed review blockers: static nginx/Caddy plans now start with default server commands that serve `root:` from the mounted app directory, and the static guide happy path now executes `lando curl index.html` against the fixture and asserts the known response body.
 - Review notes (deferred/rejected): PRD drift-gate path still names `plugins/service-static/**`, but the implementation lives in `plugins/service-lando/**`; pre-existing spec-path drift, not introduced by this story.
-- Verification: typecheck passed; lint passed with 4 pre-existing Biome warnings; lint-guides passed; focused static/scenario tests and docs scenario passed; full `bun test` still fails in unrelated compiled-binary/codegen timeout surfaces (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/compile.test.ts`/`core/test/cli/aliases.test.ts`) after this review fix.
 ---
 
-## [2026-05-28 17:46 CDT] - Babysit
-- PR: #195 https://github.com/AaronFeledy/core4/pull/195
+## [2026-05-28 17:46 CDT] - Babysit PR #195
 - Fix: prefixed the generated Caddy static command with `caddy` and updated the static service expectation.
----
-
-## [2026-05-28 18:35 CDT] - Babysit
-- PR: #195 https://github.com/AaronFeledy/core4/pull/195
-- CI outcome: pass
-- Review feedback: fixed (Bugbot Caddy command report addressed in `83f9d58 fix(service-lando): prefix caddy static command`; rerun Bugbot passed)
-- Merge: merged (squash)
 ---
 
 ## [2026-05-28 CDT] - US-094
 - Shipped the raw Compose passthrough service end-to-end: `type: compose` now emits a default `/app` app-root bind mount + `LANDO_APP_ROOT` / `LANDO_PROJECT_MOUNT` env, and supports per-service `appMount: false` opt-out for third-party images that must not see the app source. Per-app network membership remains automatic via the planner. Added the `docs/guides/services/compose-passthrough.mdx` guide + `compose-passthrough-demo` fixture for a `traefik/whoami:v1.10` third-party image, and a service-side scenario test that drives a non-canonical image through `AppPlanner` and the tooling-exec seam.
-- Verification: typecheck, lint, tests passed (1618 pass / 0 fail; guide scenarios green).
 - **Learnings for future iterations:**
   - The §7.4 per-service opt-out for the app-root bind mount lives on `ServiceConfig.appMount` as a `Union(Literal(false), Struct)`. The planner's `applyAuthoredAppMount` short-circuits on `false`; the *service-type* emitter is what decides whether to skip the synthetic `/app` bind mount and the app-path env. Other service types (nginx, apache, …) still emit their defaults if a user passes `appMount: false` — extending the opt-out to them is out of scope for US-094 and would require per-service-type acknowledgement of the flag.
   - The scenario-test layer in `core/src/testing/scenario-context.ts` only knows three CLI verbs out of the box: `start`, `destroy`, and `curl` (with a static-service special case that reads the Landofile's `root:`). For compose-passthrough's third-party probe (`traefik/whoami`), the rendered happy-path can't actually `curl` the image — keep that step as `render={false}` (matching the elasticsearch/opensearch/meilisearch pattern) and verify the surface in a service-side `*.scenario.test.ts` that drives the tooling-exec layer directly. Anything beyond `start` / `destroy` / `curl` in a `render` scenario will fail with `command <verb> not found`.
@@ -692,25 +252,15 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-28 19:20 CDT] - US-094 Review
-- Reviewed the US-094 raw Compose passthrough implementation against `spec/beta/prd-beta-02-service-catalog-full.md`, the build-step commit, direct checks, and specialist findings.
 - Fixed confirmed review blockers:
   - Compose-subset schema rejections now name the §7.4 Compose subset and point provider-native keys to `providers.<provider-id>` / config translation remediation instead of the stale MVP-only message.
   - Service-type planning failures are wrapped as tagged `LandofileValidationError`s instead of escaping as plain thrown errors.
   - `composeBuild` plans now fail before apply when the selected provider lacks `artifactBuild`, with remediation to choose a build-capable provider or use a pre-built image.
 - Review notes (deferred/rejected): PRD wording says a `compose:` block, but `spec/07-landofile-and-config.md` forbids the wrapper and requires Compose keys directly under the Landofile/service; followed the spec-owned direct-key surface.
-- Verification: typecheck passed; lint passed with pre-existing non-null assertion warnings in provider Docker/Podman tests; full tests passed.
----
-
-## [2026-05-28 20:58 CDT] - Babysit
-- PR: #196 https://github.com/AaronFeledy/core4/pull/196
-- CI outcome: pass (Cursor Bugbot, build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
-- Review feedback: fixed (Bugbot remediation-scope reports addressed across `9d13b13`, `15ebf7f`, `242bada`, and `05f568e`; rerun Bugbot passed)
-- Merge: merged (squash) as `6759dcb Implement raw Compose passthrough service (#196)`
 ---
 
 ## [2026-05-28 21:25 CDT] - US-095
 - Published the `FileSyncEngine` Effect Service tag, schemas, and tagged error trio (`FileSyncStartError`, `FileSyncDriftError`, `FileSyncStopError`) from `@lando/sdk`, plus a matching contract suite stub (`runFileSyncEngineContract` + `runFileSyncEngineContractMatrix` + `TestFileSyncEngine`) in `@lando/sdk/test`. The contract exercises start / pause / resume / stop / status round-trips, pause+terminate idempotency, and the documented tagged-error surfaces via three sentinel inputs (`mountKey: "__REJECT__"`, sessionRef `"__CONFLICT__"`, sessionRef `"__STOP_FAIL__"`). `FileSyncEngineCapabilities`, `FileSyncSessionSpec`, `FileSyncSessionInfo`, and `FileSyncEventChunk` are registered in the public schema snapshot.
-- Verification: typecheck, lint, tests passed (1662 pass / 0 fail; sdk 176 pass; schema-snapshot drift gate idempotent).
 - **Learnings for future iterations:**
   - The `sdk-backward-compatibility` test only treats the "Additive Alpha schema exports" / "Additive Alpha service tags" headings in `sdk/API_COMPATIBILITY.md` as the doc surface. Anything additive — even brand-new Beta-era schemas — must land under those headings, not under "Additive Beta…", or the test fails listing every new export as undocumented. Add new `@lando/sdk/test` helpers to the "Additive Beta test helper exports" heading (that one is not asserted by the backward-compat test today).
   - Per spec §13.2 the schema snapshot gate requires schemas the registry actually exposes: editing `JSON_SCHEMA_REGISTRY` in `sdk/src/schema/index.ts` is only half — `scripts/build-schema-snapshot.ts` has its own `SDK_SCHEMA_NAMES` allowlist and `getJsonSchema` is a switch (every new case must be added). All three need to stay in sync, otherwise `bun run codegen:schema-snapshot` will silently omit the new schemas from the snapshot.
@@ -719,22 +269,16 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-28 21:42 CDT] - US-095 Review
-- Reviewed the US-095 `FileSyncEngine` SDK contract against `spec/beta/prd-beta-03-file-sync-mutagen.md`, direct verification, and specialist findings.
 - Fixed confirmed review blockers: the exported contract runner now keeps lifecycle assertions inside the `createSession` scope, asserts scope-finalized sessions are removed, and verifies start/drift/stop tagged-error semantics including outside-app-root source rejection.
 - Review notes (deferred/rejected): runtime lifecycle event bridging and Mutagen Live Layer behavior remain US-096/US-100 scope; public error redaction is handled at the future publishing layer rather than by stripping SDK debug fields here.
-- Verification: typecheck passed; lint passed with 4 pre-existing no-non-null-assertion warnings in provider contract tests; build passed; SDK tests passed; full `bun test` still fails in the pre-existing compiled CLI build/ETXTBSY surface outside US-095.
 ---
 
-## [2026-05-28 22:38 CDT] - Babysit
-- PR: #197 https://github.com/AaronFeledy/core4/pull/197
-- CI outcome: pass
-- Review feedback: fixed (Bugbot duplicate FileSyncMode schema and shared TestFileSyncEngine state reports addressed; rerun Bugbot passed)
-- Merge: merged (squash)
+## [2026-05-28 22:38 CDT] - Babysit PR #197
+- Bugbot: duplicate FileSyncMode schema and shared TestFileSyncEngine state reports addressed.
 ---
 
 ## [2026-05-28 22:55 CDT] - US-096
 - Shipped the bundled `@lando/file-sync-mutagen` plugin: a `FileSyncEngine` Live Layer with the fixed §10.6.2 capability matrix (`modes` × 4, `remoteAgentDeployment: "auto"`, exclusion + conflict + progress reporting), a deterministic `mutagenSessionName(spec)` helper that emits Mutagen-compatible kebab-case identifiers (length-bounded with a SHA-256 truncation suffix), and a narrow `MutagenClient` transport seam with an in-memory fake plus an `unavailable` default that fails closed with a `lando setup` remediation. The Live Layer is wired into `BUNDLED_PLUGINS` via a new `fileSyncEngines` contribution kind in `core/build.config.ts` and a corresponding `engine` layer-export branch in `scripts/build-bundled-plugins.ts`.
-- Verification: typecheck, lint, tests passed (1700 pass / 0 fail / 23 skip across 243 files; plugin-side 30 pass covering create/pause/resume/terminate + status polling + scope-finalizer cleanup + SDK contract round-trip). Codegen drift gate stable: `bundled.ts`, `schema-snapshot.json`, `oclif.manifest.json`, `ci.yml`, `release.yml` all regenerated and idempotent.
 - **Learnings for future iterations:**
   - The bundled-plugin codegen (`scripts/build-bundled-plugins.ts` + `core/build.config.ts`) reads contribution kind to pick the per-plugin Layer export name: `providers` → `provider`, `serviceTypes` → `services`, `loggers` → `logger`, `fileSyncEngines` → `engine`. Adding a new contribution kind requires touching both the `BundledPluginEntry.contributes` type AND the `layerExportFor` switch, in lockstep; the generator's drift gate catches mismatches but only after `bun run codegen` runs.
   - `Effect.scoped` on `createSession` immediately closes the scope on resolution — so any test that asserts in-memory client state after `await runScoped(engine.createSession(spec))` will see the post-terminate state, not the live session. Move every "session is registered" assertion *inside* the `Effect.gen` body that the scoped runner consumes; assertions after the await are only valid for verifying the finalizer ran.
@@ -743,15 +287,12 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-28 23:18 CDT] - US-096 Review
-- Reviewed the bundled `@lando/file-sync-mutagen` Live Layer against `spec/beta/prd-beta-03-file-sync-mutagen.md`, specialist findings, and direct verification.
 - Fixed confirmed review blocker: source/app-root containment now normalizes POSIX and Windows paths segment-wise before creating a Mutagen session, so traversal and sibling-prefix sources fail before reaching the client while valid child paths still work.
 - Review notes (deferred/rejected): Mutagen host CLI download, doctor output, planner auto-selection, ignore-rule translation, and live platform matrix remain US-097..US-100 scope; plugin manifest `defaultFor` metadata is deferred until the SDK contribution schema grows beyond string ids.
-- Verification: typecheck passed; lint passed with four pre-existing provider integration non-null warnings; focused file-sync/bundled tests passed; full `bun test` is still unstable around compiled-binary/codegen harness state, but the compiled setup regression passed after rebuilding `core/dist/lando`.
 ---
 
 ## [2026-05-29 00:55 CDT] - US-097
-- Shipped Mutagen host CLI + agent binary download for `lando setup`. Added `mutagen-versions.json` (pinned v0.18.3 manifest: 5 host entries + 3 agent entries), `plugins/file-sync-mutagen/src/download.ts` with `makeMutagenDownloader()` (SHA-256 verified, idempotent via `.mutagen-installed-version` marker, `_testManifest` injectable for tests), wired the engine `setup()` method to call the downloader when `userDataRoot` is provided, added `--skip-file-sync` flag to `lando setup` (both OCLIF and compiled-binary path via `run.ts`), and added a `file-sync` check to `lando doctor` that reports the installed Mutagen version when the active provider has `bindMountPerformance: "slow"`. Updated the doctor NDJSON fixture for slow-bind-mount Windows. Created `docs/guides/setup/file-sync-mutagen.mdx` guide.
-- Verification: typecheck passed; lint passed (4 pre-existing warnings, no new errors); 447 tests pass / 0 fail / 2 skip across 55 files (including 21 new download.test.ts cases covering idempotency, force-re-download, network error, checksum mismatch, unsupported platform, HTTP 404).
+- Shipped Mutagen host CLI + agent binary download for `lando setup`. Added pinned manifest, `makeMutagenDownloader()` (SHA-256 verified, idempotent via `.mutagen-installed-version` marker, `_testManifest` injectable for tests), wired the engine `setup()` method to call the downloader when `userDataRoot` is provided, added `--skip-file-sync` flag to `lando setup` (both OCLIF and compiled-binary path via `run.ts`), and added a `file-sync` check to `lando doctor` that reports the installed Mutagen version when the active provider has `bindMountPerformance: "slow"`. Updated the doctor NDJSON fixture for slow-bind-mount Windows. Created `docs/guides/setup/file-sync-mutagen.mdx` guide.
 - **Learnings for future iterations:**
   - `makeMutagenDownloader()` takes `_testManifest` in `MutagenSetupOptions` to override the compile-time manifest SHA-256s — the same `fetchImpl`/`extractImpl` injection pattern used by `makeRuntimeBundleDownloader` in provider-lando.
   - The `extractBinaryFromTarGz` implementation is a minimal buffer-based tar reader (gunzip + 512-byte block walk); extraction is fully injectable via `extractImpl` so unit tests never need real archive bytes.
@@ -761,30 +302,20 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 
 ## [2026-05-29 02:30 CDT] - US-097 follow-up
 - Rewrote `docs/guides/setup/file-sync-mutagen.mdx` to conform to the `GuideFrontmatter` schema (the prior version used `title`/`description` keys that the codegen drift gate rejected). The guide now uses `id`, `provider: test`, `platforms: [darwin, linux, win32]`, `timeout`, and `tags`, with a `<Guide>` body composed of `render={false}` scenarios covering download, idempotent re-run, `--skip-file-sync`, `lando doctor` integration, failure modes, and system-Mutagen-ignored behavior.
-- Verification: typecheck passed; lint passed (4 pre-existing non-null-assertion warnings); `bun test` passed (1730 pass / 0 fail / 23 skip across 250 files); `bun core/bin/lando.ts setup --help` shows `--skip-file-sync` in the OCLIF help text.
 - **Learnings for future iterations:**
-  - `GuideFrontmatter` (sdk/src/docs/guide-frontmatter.ts) rejects unknown keys via `onExcessProperty: "error"`. Allowed keys are exactly: `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated`. No `title`, no `description`. The codegen drift gate (`bun run codegen` → `build-guide-scenarios`) is what surfaces this — it fails the codegen orchestrator test before lint/typecheck do, so MDX guides authored without first checking the schema will fail late in the test suite.
+  - `GuideFrontmatter` rejects unknown keys via `onExcessProperty: "error"`. Allowed keys are exactly: `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated`. No `title`, no `description`. The codegen drift gate (`bun run codegen` → `build-guide-scenarios`) is what surfaces this — it fails the codegen orchestrator test before lint/typecheck do, so MDX guides authored without first checking the schema will fail late in the test suite.
   - Setup-flow guides documenting cross-platform behavior should declare `platforms: [darwin, linux, win32]` to bind the guide to every host where the surface applies (file-sync only matters on slow-bind-mount providers, but those exist on all three platforms).
 ---
 
 ## [2026-05-29 01:44 CDT] - US-097 Review
-- Reviewed the US-097 Mutagen setup implementation against `spec/beta/prd-beta-03-file-sync-mutagen.md`, specialist review findings, direct verification, and upstream Mutagen release assets.
 - Fixed confirmed review blockers: replaced the placeholder/nonexistent v0.18.3 manifest with real v0.18.1 upstream SHA-256/size pins, extracted per-target Linux agents from the upstream `mutagen-agents.tar.gz` payload, made idempotent setup require the marker plus non-empty host/agent binaries, made `lando doctor` use that validated install status, and changed unsupported host architecture resolution to fail closed.
 - Review notes (deferred/rejected): corporate proxy/custom CA transport wiring is still deferred to the future shared network stack because this story only added the downloader seam and no existing proxy-aware fetch service exists to inject here.
-- Verification: typecheck passed; lint passed with four pre-existing provider integration non-null warnings; focused Mutagen download/setup/doctor tests passed; generated file-sync-mutagen guide tests passed; full `bun test` still fails on pre-existing codegen/docs-scenario 5s timeouts/SIGTERM and compiled renderer build failure, not on US-097 focused coverage.
 - **Learnings for future iterations:** Mutagen v0.18.x release assets do not publish standalone `mutagen-agents_*` archives; each host archive contains `mutagen-agents.tar.gz`, so Lando's per-agent cache must extract `linux_amd64`, `linux_arm64`, and `linux_arm` from that nested payload.
----
-
-## [2026-05-29 07:30 UTC] - US-097 verified complete
-- Returned to the in-flight `us-097-mutagen-download-setup` branch (PR #199, open); the prior turn already landed `98c2edf` (cache shared archives, drop dead capability) plus six earlier commits, and PRD entry was already `passes: true`.
-- No further story code was needed; ran the full repo gate to confirm.
-- Verification: typecheck, lint (4 pre-existing non-null-assertion warnings, 0 errors), and `bun test` (1733 pass / 23 skip / 0 fail across 250 files / 8055 expect() calls) all green.
-- Did not touch unrelated drive-by `request!` cleanups still uncommitted in `plugins/provider-{docker,podman}/test/contract.integration.test.ts` — those addressed lint warnings and are outside US-097 scope, so left them for whoever owns that follow-up.
 ---
 
 ## [2026-05-29 04:30 CDT] - US-098
 - Wired auto-selected file sync into the lando lifecycle. `AppPlanner` now emits a `FileSyncPlan` per service whose accelerated mounts need engine-mediated sync; SDK adds the new `FileSyncPlan` schema plus an `AppPlan.fileSync` slot through the snapshot/registry gate. `lando start` creates one session per FileSyncPlan entry between `provider.apply` and `post-app-start`; `lando stop`/`destroy` enumerate active sessions and terminate them before `provider.destroy`. The bundled `@lando/file-sync-mutagen` Live Layer is now merged into the `app` runtime bootstrap.
-- Verification: typecheck, lint, tests passed (1740 pass / 23 skip / 0 fail across 250 files). Manual QA via in-process planner call confirmed a `bindMountPerformance: "slow"` provider produces fileSync entries with `engineId: "mutagen"`, deterministic volume targets (`<app>-<service>-app-mount`), and `mode: "two-way-safe"`, while a `native` provider produces an empty `fileSync` list.
+- Manual QA via in-process planner call confirmed a `bindMountPerformance: "slow"` provider produces fileSync entries with `engineId: "mutagen"`, deterministic volume targets (`<app>-<service>-app-mount`), and `mode: "two-way-safe"`, while a `native` provider produces an empty `fileSync` list.
 - **Learnings for future iterations:**
   - `AppPlan` is the single source of truth used by every provider's `persistAppliedPlan`, the binary cache encoder, and every scenario test. Adding a required field to it surfaces breakage in three unrelated layers at once (provider plugin tests, SDK schema tests, binary cache tests). The minimum-pain pattern is to land the schema + planner + commands in one commit AND patch every AppPlan literal in the test corpus with `fileSync: []` AND regenerate `core/test/cache/fixtures/binary-cache/app-plan-v1.bin` (no codegen script ships for this fixture — use an inline `bun -e` invocation that calls `writeCachedAppPlan` against the new struct).
   - `Schema.suspend((): Schema.Schema<T, T.Encoded> => …).annotations({ identifier: "T" })` is the right shape for a forward reference in `sdk/src/schema/index.ts`. The `identifier` annotation is non-optional — `JSONSchema.make` rejects un-annotated suspends with `Missing annotation`.
@@ -794,60 +325,29 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-29 04:21 CDT] - US-098 Review
-- Reviewed the US-098 planner/lifecycle file-sync implementation against `spec/beta/prd-beta-03-file-sync-mutagen.md`, review-work findings, specialist context, and direct focused QA.
 - Fixed confirmed review blockers: duplicate app-root file-sync planning is now suppressed, accelerated provider mounts now use the planned file-sync named volumes instead of slow host binds, `start` rolls back sessions created before a later file-sync failure, and `stop`/`destroy` terminate existing app sessions even when the current plan no longer includes file sync.
 - Review notes (deferred/rejected): `BuildOrchestrator` wording in the PRD is treated as the command lifecycle boundary in current source-mode dispatch; setup auto-acquisition after `--skip-file-sync`, cache-backed session reconciliation, stable hash-based mount keys, and live Mutagen coverage remain later-file-sync story scope.
-- Verification: typecheck passed; lint passed; build passed; focused planner/start/stop/destroy/provider tests passed; full `bun test` still fails in unrelated docs-scenario stderr-string matching / compiled-build concurrency surfaces outside US-098 focused coverage.
 - **Learnings for future iterations:** An accelerated mount is a provider contract, not only a `FileSyncPlan`: providers must mount the same named volume that the file-sync engine targets, and app-root duplicate bind entries from service defaults must not create a second sync session for `/app`.
 ---
 
-## [2026-05-29 06:36 CDT] - Babysit
-- PR: #200 https://github.com/AaronFeledy/core4/pull/200
-- CI outcome: pass
-- Review feedback: fixed (Bugbot findings addressed across Mutagen archive selection, shared file-sync planning helpers, stop/destroy cleanup failure tolerance, start rollback cleanup, planner engine-id hoisting, and unavailable-engine start no-op behavior; rerun Bugbot passed)
-- Merge: merged (squash)
+## [2026-05-29 06:36 CDT] - Babysit PR #200
+- Bugbot findings addressed across Mutagen archive selection, shared file-sync planning helpers, stop/destroy cleanup failure tolerance, start rollback cleanup, planner engine-id hoisting, and unavailable-engine start no-op behavior.
 ---
 
-## [2026-05-29 07:31 CDT] - Babysit
-- PR: #201 https://github.com/AaronFeledy/core4/pull/201
-- CI outcome: pass
-- Review feedback: fixed (Bugbot Medium finding — service-type framework presets __pycache__/​.bundle lost when user provides appMount.excludes; fixed by running mergeDefaultExcludes before applyAuthoredAppMount and changing applyAuthoredAppMount to extend rather than replace existing excludes; rerun Bugbot passed)
-- Merge: merged (squash)
+## [2026-05-29 07:31 CDT] - Babysit PR #201
+- Bugbot Medium finding — service-type framework presets __pycache__/`.bundle` lost when user provides appMount.excludes; fixed by running mergeDefaultExcludes before applyAuthoredAppMount and changing applyAuthoredAppMount to extend rather than replace existing excludes.
 ---
 
-## [2026-05-29 08:32 CDT] - Babysit
-- PR: #202 https://github.com/AaronFeledy/core4/pull/202
-- CI outcome: pass (initial run failed: nightly.yml broke the "only ci.yml + release.yml" workflow-count test; fixed. Bugbot High finding: macos-13 runner retired; replaced with macos-15-intel; rerun Bugbot passed)
-- Review feedback: fixed
-- Merge: merged (squash)
+## [2026-05-29 08:32 CDT] - Babysit PR #202
+- Nightly workflow broke the "only ci.yml + release.yml" workflow-count test; fixed. Bugbot High finding: macos-13 runner retired; replaced with macos-15-intel.
 ---
 
-## [2026-05-29 09:14 CDT] - Babysit
-- PR: #203 https://github.com/AaronFeledy/core4/pull/203
-- CI outcome: pass
-- Review feedback: none (Bugbot passed with no findings)
-- Merge: merged (squash)
+## [2026-05-29 09:53 CDT] - Babysit PR #204
+- Bugbot Medium — runCaContract discarded issueCert result without validating certPath/keyPath/caPath; added requireCaContract assertions.
 ---
 
-## [2026-05-29 09:53 CDT] - Babysit
-- PR: #204 https://github.com/AaronFeledy/core4/pull/204
-- CI outcome: pass
-- Review feedback: fixed (Bugbot Medium — runCaContract discarded issueCert result without validating certPath/keyPath/caPath; added requireCaContract assertions; rerun Bugbot passed)
-- Merge: merged (squash)
----
-
-## [2026-05-29 10:27 CDT] - Babysit
-- PR: #205 https://github.com/AaronFeledy/core4/pull/205
-- CI outcome: pass (initial run failed library-api-tests — SshService not listed in sdk/API_COMPATIBILITY.md; added entry, rerun passed)
-- Review feedback: none (Bugbot passed with no findings)
-- Merge: merged (squash)
----
-
-## [2026-05-29 10:54 CDT] - Babysit
-- PR: #206 https://github.com/AaronFeledy/core4/pull/206
-- CI outcome: pass
-- Review feedback: none (Bugbot passed with no findings)
-- Merge: merged (squash)
+## [2026-05-29 10:27 CDT] - Babysit PR #205
+- library-api-tests failed — SshService not listed in sdk/API_COMPATIBILITY.md; added entry.
 ---
 
 ## [2026-05-29 11:56 CDT] - US-106
@@ -855,27 +355,19 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Added a fail-closed core fallback layer plus a no-op `HostProxyServiceDisabledLive` for the `--host-proxy=none` opt-out path; per-platform Live Layers (etc-resolver on macOS, /etc/hosts block on Linux, HOSTS-file writer on Windows) remain a downstream story.
 - Surfaced the opt-out at the CLI: `lando setup --host-proxy=auto|none` parses (with OCLIF validation) in both the source-mode command and the compiled-binary dispatcher.
 - Wrote the SDK contract test, the docs subsystems guide for host-proxy, and updated `sdk/API_COMPATIBILITY.md` so `HostProxyService` is locked in the additive Alpha service tag list.
-- Verification: typecheck passed, lint passed, all SDK contract tests + setup CLI tests passed. Two compiled-binary tests intermittently flake on `ETXTBSY` when run concurrently with their own `bun run build`; both pass reliably when re-run in isolation (same pre-existing environment quirk noted for US-074).
 - **Learnings for future iterations:**
   - The Beta subsystem contract-publishing precedent (PR #207 / US-105) is: SDK contract + error + test helpers + contract test + core fail-closed `Unavailable` layer + docs guide + API_COMPATIBILITY entry, with no runtime/layer wiring required. Live per-platform layers and runtime composition land in later subsystem stories.
   - When the AC names a CLI surface (`lando setup --host-proxy=none`), declare it as an OCLIF `Flags.string({ options: [...] })` on the source command and mirror parsing in `core/src/cli/run.ts` per the §8.4.1 dual-dispatch parity rule. Body consumption is optional (matches the `--skip-*` pattern that is also declared but not consumed yet).
   - For the SDK fallback layer, `status()` returning a successful inactive snapshot beats failing — it lets `lando doctor` and similar surfaces render a clean "not configured" state without crashing while `setup()`/`teardown()` still fail closed with an actionable `HostProxyError`.
 ---
 
-
 ## [2026-05-29 12:12 CDT] - US-106 Review
-- Reviewed the US-106 HostProxyService contract scaffold against PRD-B-04 and specialist review findings; fixed the opt-out blocker by adding the disabled no-op host-proxy layer and making `lando setup --host-proxy=none` consume that path.
+- Fixed the opt-out blocker by adding the disabled no-op host-proxy layer and making `lando setup --host-proxy=none` consume that path.
 - Review notes (deferred/rejected): Full per-platform DNS writer Live Layers remain deferred under the US-101..105 subsystem-stub precedent; this review kept the contract/fallback story focused.
-- Review notes (deferred/rejected): Full `bun test` still hit the known compiled-binary setup flake (`core/dist/lando` missing during concurrent suite run); the same compiled setup test passed in isolation.
-- Verification: typecheck passed, lint passed, focused HostProxy/setup tests passed, compiled setup test passed in isolation; full suite has the pre-existing compiled-binary concurrency failure noted above.
 ---
 
-
-## [2026-05-29 12:53 CDT] - Babysit
-- PR: #208 https://github.com/AaronFeledy/core4/pull/208
-- CI outcome: pass
-- Review feedback: fixed (Bugbot Low — removed unused exported HostProxyServiceUnavailableLive layer; rerun Bugbot passed)
-- Merge: merged (squash)
+## [2026-05-29 12:53 CDT] - Babysit PR #208
+- Bugbot Low — removed unused exported HostProxyServiceUnavailableLive layer.
 ---
 
 ## [2026-05-29 CDT] - US-107
@@ -883,7 +375,6 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Added the `globalServices:` plugin-contribution surface to `PluginContribution` and the typed `GlobalServiceContribution` schema in `@lando/sdk/schema`, with the corresponding `GlobalServiceCapabilityError` tagged error in `@lando/sdk/errors`.
 - Introduced `validateGlobalServiceContributions` in `@lando/core/services/global-services` — the pure planner gate that the upcoming `GlobalAppService` (US-111) and `DoctorService` (US-108) will call to drop contributions whose `requires.providerCapabilities` are unsatisfied, with actionable provider-selection remediation.
 - Updated the SDK additive-schema compatibility list, regenerated the schema snapshot, and tightened the three provider capability tests to lock the new flag.
-- Verification: typecheck, lint, full `bun test` (1827 pass / 23 skip / 0 fail) all green; `meta:doctor --renderer=json` against a clean HOME prints `sharedCrossAppNetwork: true` for `provider-lando`.
 - **Learnings for future iterations:**
   - When a Schema.Struct field is added to a public sdk schema (here `PluginContribution.globalServices`), the SDK backward-compat surface test (`sdk/test/library/sdk-backward-compatibility.test.ts`) and `sdk/API_COMPATIBILITY.md` must be updated together — the test diffs the documented list against the live exports.
   - `AppPlannerLive` needs `PluginRegistryLive` to be provided as a SEPARATE layer (`Effect.provide(AppPlannerLive); Effect.provide(PluginRegistryLive)`) — `Layer.merge(AppPlannerLive, PluginRegistryLive)` does not satisfy the dependency because merge only combines, it does not resolve "X requires Y".
@@ -892,8 +383,7 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 ---
 
 ## [2026-05-29 13:48 CDT] - US-107 Review
-- Reviewed the US-107 shared cross-app network implementation against `spec/beta/prd-beta-04-subsystems.md`, the build-step commits, and specialist review findings; fixed the confirmed blocker by having provider-docker and provider-lando/Podman create/join the shared `lando_bridge_network` and attach services with `<service>.<app>.internal` aliases.
+- Fixed the confirmed blocker by having provider-docker and provider-lando/Podman create/join the shared `lando_bridge_network` and attach services with `<service>.<app>.internal` aliases.
 - Review notes (deferred/rejected): Full `meta:global:*` production wiring remains deferred to US-111/PRD-05; this review locked the provider-side network realization required for the advertised capability.
-- Verification: typecheck, lint, focused provider/scenario tests, compiled setup test, and full `bun test` passed.
 - **Learnings for future iterations:** Shared cross-app networks are provider-owned and must survive normal app destroy; app destroy removes only the per-app network while preserving `lando_bridge_network` for the global app and other apps.
 ---
