@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "mutagenVersion": "v0.18.1",
+  "host": {
+    "darwin-x64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_darwin_amd64_v0.18.1.tar.gz",
+      "sha256": "7d06f7d8fcfe90bc7e55cc834a2f2f20c2e0af9ea9bc35911fc4341ad56a9bbf",
+      "archiveFilename": "mutagen_darwin_amd64_v0.18.1.tar.gz",
+      "binaryName": "mutagen",
+      "installName": "mutagen",
+      "sizeBytes": 102340208
+    },
+    "darwin-arm64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_darwin_arm64_v0.18.1.tar.gz",
+      "sha256": "6f810416d9e5fc4fd5e18431146f8b3c5a2056ba5a24f76c1e66da86eb3257e2",
+      "archiveFilename": "mutagen_darwin_arm64_v0.18.1.tar.gz",
+      "binaryName": "mutagen",
+      "installName": "mutagen",
+      "sizeBytes": 101929802
+    },
+    "linux-x64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_amd64_v0.18.1.tar.gz",
+      "sha256": "7735286c778cc438418209f24d03a64f3a0151c8065ef0fe079cfaf093af6f8f",
+      "archiveFilename": "mutagen_linux_amd64_v0.18.1.tar.gz",
+      "binaryName": "mutagen",
+      "installName": "mutagen",
+      "sizeBytes": 102172827
+    },
+    "linux-arm64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_arm64_v0.18.1.tar.gz",
+      "sha256": "bcba735aebf8cbc11da9b3742118a665599ac697fa06bc5751cac8dcd540db8a",
+      "archiveFilename": "mutagen_linux_arm64_v0.18.1.tar.gz",
+      "binaryName": "mutagen",
+      "installName": "mutagen",
+      "sizeBytes": 101769445
+    },
+    "win32-x64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_windows_amd64_v0.18.1.zip",
+      "sha256": "76f8223d5e6b607efdd9516473669ae5492e4f142887352d59bc6934d1f07a2d",
+      "archiveFilename": "mutagen_windows_amd64_v0.18.1.zip",
+      "binaryName": "mutagen.exe",
+      "installName": "mutagen.exe",
+      "sizeBytes": 102206512
+    }
+  },
+  "agents": {
+    "linux-amd64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_amd64_v0.18.1.tar.gz",
+      "sha256": "7735286c778cc438418209f24d03a64f3a0151c8065ef0fe079cfaf093af6f8f",
+      "archiveFilename": "mutagen_linux_amd64_v0.18.1.tar.gz",
+      "binaryName": "linux_amd64",
+      "installName": "mutagen-agent-linux-amd64",
+      "sizeBytes": 102172827
+    },
+    "linux-arm64": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_amd64_v0.18.1.tar.gz",
+      "sha256": "7735286c778cc438418209f24d03a64f3a0151c8065ef0fe079cfaf093af6f8f",
+      "archiveFilename": "mutagen_linux_amd64_v0.18.1.tar.gz",
+      "binaryName": "linux_arm64",
+      "installName": "mutagen-agent-linux-arm64",
+      "sizeBytes": 102172827
+    },
+    "linux-armv7": {
+      "url": "https://github.com/mutagen-io/mutagen/releases/download/v0.18.1/mutagen_linux_amd64_v0.18.1.tar.gz",
+      "sha256": "7735286c778cc438418209f24d03a64f3a0151c8065ef0fe079cfaf093af6f8f",
+      "archiveFilename": "mutagen_linux_amd64_v0.18.1.tar.gz",
+      "binaryName": "linux_arm",
+      "installName": "mutagen-agent-linux-armv7",
+      "sizeBytes": 102172827
+    }
+  }
+}

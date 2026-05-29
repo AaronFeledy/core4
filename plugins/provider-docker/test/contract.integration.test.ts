@@ -703,15 +703,19 @@ describe("provider-docker RuntimeProvider contract", () => {
     const wrappedApi: DockerApiClient = {
       info: inner.api.info,
       request: (req) => {
+        const request = inner.api.request;
+        if (request === undefined) {
+          throw new Error("expected request handler");
+        }
         if (req.path.endsWith("/start")) {
           startCallCount++;
-          const result = inner.api.request!(req);
+          const result = request(req);
           if (startCallCount === 1) {
             return result.pipe(Effect.tap(() => Effect.sync(() => controller.abort())));
           }
           return result;
         }
-        return inner.api.request!(req);
+        return request(req);
       },
       stream: inner.api.stream,
     };

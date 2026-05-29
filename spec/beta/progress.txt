@@ -748,3 +748,36 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (deferred/rejected): Mutagen host CLI download, doctor output, planner auto-selection, ignore-rule translation, and live platform matrix remain US-097..US-100 scope; plugin manifest `defaultFor` metadata is deferred until the SDK contribution schema grows beyond string ids.
 - Verification: typecheck passed; lint passed with four pre-existing provider integration non-null warnings; focused file-sync/bundled tests passed; full `bun test` is still unstable around compiled-binary/codegen harness state, but the compiled setup regression passed after rebuilding `core/dist/lando`.
 ---
+
+## [2026-05-29 00:55 CDT] - US-097
+- Shipped Mutagen host CLI + agent binary download for `lando setup`. Added `mutagen-versions.json` (pinned v0.18.3 manifest: 5 host entries + 3 agent entries), `plugins/file-sync-mutagen/src/download.ts` with `makeMutagenDownloader()` (SHA-256 verified, idempotent via `.mutagen-installed-version` marker, `_testManifest` injectable for tests), wired the engine `setup()` method to call the downloader when `userDataRoot` is provided, added `--skip-file-sync` flag to `lando setup` (both OCLIF and compiled-binary path via `run.ts`), and added a `file-sync` check to `lando doctor` that reports the installed Mutagen version when the active provider has `bindMountPerformance: "slow"`. Updated the doctor NDJSON fixture for slow-bind-mount Windows. Created `docs/guides/setup/file-sync-mutagen.mdx` guide.
+- Verification: typecheck passed; lint passed (4 pre-existing warnings, no new errors); 447 tests pass / 0 fail / 2 skip across 55 files (including 21 new download.test.ts cases covering idempotency, force-re-download, network error, checksum mismatch, unsupported platform, HTTP 404).
+- **Learnings for future iterations:**
+  - `makeMutagenDownloader()` takes `_testManifest` in `MutagenSetupOptions` to override the compile-time manifest SHA-256s — the same `fetchImpl`/`extractImpl` injection pattern used by `makeRuntimeBundleDownloader` in provider-lando.
+  - The `extractBinaryFromTarGz` implementation is a minimal buffer-based tar reader (gunzip + 512-byte block walk); extraction is fully injectable via `extractImpl` so unit tests never need real archive bytes.
+  - `buildFileSyncDoctorCheck` in `doctor.ts` gracefully handles `userDataRoot` being `undefined` (returns "not-installed" check instead of failing), so `lando doctor` never errors on missing config.
+  - The doctor NDJSON fixtures must be updated whenever the `DoctorCheck` output changes; slow-bind-mount providers now emit a second `file-sync` check, so `doctor.complete.checks` increased from 1 to 2 and `warned` from 0 to 1 in the windows fixture.
+---
+
+## [2026-05-29 02:30 CDT] - US-097 follow-up
+- Rewrote `docs/guides/setup/file-sync-mutagen.mdx` to conform to the `GuideFrontmatter` schema (the prior version used `title`/`description` keys that the codegen drift gate rejected). The guide now uses `id`, `provider: test`, `platforms: [darwin, linux, win32]`, `timeout`, and `tags`, with a `<Guide>` body composed of `render={false}` scenarios covering download, idempotent re-run, `--skip-file-sync`, `lando doctor` integration, failure modes, and system-Mutagen-ignored behavior.
+- Verification: typecheck passed; lint passed (4 pre-existing non-null-assertion warnings); `bun test` passed (1730 pass / 0 fail / 23 skip across 250 files); `bun core/bin/lando.ts setup --help` shows `--skip-file-sync` in the OCLIF help text.
+- **Learnings for future iterations:**
+  - `GuideFrontmatter` (sdk/src/docs/guide-frontmatter.ts) rejects unknown keys via `onExcessProperty: "error"`. Allowed keys are exactly: `id`, `defaultLayer`, `provider`, `timeout`, `platforms`, `tags`, `skip`, `deprecated`. No `title`, no `description`. The codegen drift gate (`bun run codegen` → `build-guide-scenarios`) is what surfaces this — it fails the codegen orchestrator test before lint/typecheck do, so MDX guides authored without first checking the schema will fail late in the test suite.
+  - Setup-flow guides documenting cross-platform behavior should declare `platforms: [darwin, linux, win32]` to bind the guide to every host where the surface applies (file-sync only matters on slow-bind-mount providers, but those exist on all three platforms).
+---
+
+## [2026-05-29 01:44 CDT] - US-097 Review
+- Reviewed the US-097 Mutagen setup implementation against `spec/beta/prd-beta-03-file-sync-mutagen.md`, specialist review findings, direct verification, and upstream Mutagen release assets.
+- Fixed confirmed review blockers: replaced the placeholder/nonexistent v0.18.3 manifest with real v0.18.1 upstream SHA-256/size pins, extracted per-target Linux agents from the upstream `mutagen-agents.tar.gz` payload, made idempotent setup require the marker plus non-empty host/agent binaries, made `lando doctor` use that validated install status, and changed unsupported host architecture resolution to fail closed.
+- Review notes (deferred/rejected): corporate proxy/custom CA transport wiring is still deferred to the future shared network stack because this story only added the downloader seam and no existing proxy-aware fetch service exists to inject here.
+- Verification: typecheck passed; lint passed with four pre-existing provider integration non-null warnings; focused Mutagen download/setup/doctor tests passed; generated file-sync-mutagen guide tests passed; full `bun test` still fails on pre-existing codegen/docs-scenario 5s timeouts/SIGTERM and compiled renderer build failure, not on US-097 focused coverage.
+- **Learnings for future iterations:** Mutagen v0.18.x release assets do not publish standalone `mutagen-agents_*` archives; each host archive contains `mutagen-agents.tar.gz`, so Lando's per-agent cache must extract `linux_amd64`, `linux_arm64`, and `linux_arm` from that nested payload.
+---
+
+## [2026-05-29 07:30 UTC] - US-097 verified complete
+- Returned to the in-flight `us-097-mutagen-download-setup` branch (PR #199, open); the prior turn already landed `98c2edf` (cache shared archives, drop dead capability) plus six earlier commits, and PRD entry was already `passes: true`.
+- No further story code was needed; ran the full repo gate to confirm.
+- Verification: typecheck, lint (4 pre-existing non-null-assertion warnings, 0 errors), and `bun test` (1733 pass / 23 skip / 0 fail across 250 files / 8055 expect() calls) all green.
+- Did not touch unrelated drive-by `request!` cleanups still uncommitted in `plugins/provider-{docker,podman}/test/contract.integration.test.ts` — those addressed lint warnings and are outside US-097 scope, so left them for whoever owns that follow-up.
+---

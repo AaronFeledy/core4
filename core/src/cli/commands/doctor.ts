@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { MUTAGEN_VERSIONS_MANIFEST, readInstalledMutagenStatus } from "@lando/file-sync-mutagen";
 import type { ProviderLandoStateError } from "@lando/provider-podman";
 import type {
   ConfigError,
@@ -215,6 +216,55 @@ const resolveStateDir = (
     return `${userDataRoot}/providers`;
   });
 
+const buildFileSyncDoctorCheck = (
+  provider: { readonly id: string; readonly displayName: string; readonly version: string },
+  userDataRoot: string | undefined,
+  selection?: DoctorSelectionRecord,
+): Effect.Effect<DoctorCheck, never> =>
+  Effect.gen(function* () {
+    const installStatus =
+      userDataRoot === undefined
+        ? undefined
+        : yield* Effect.promise(() => readInstalledMutagenStatus(userDataRoot));
+    const installedVersion = installStatus?.installedVersion;
+
+    const expectedVersion = MUTAGEN_VERSIONS_MANIFEST.mutagenVersion;
+    const isCurrent = installStatus?.isCurrent === true;
+    const checkStatus: DoctorStatus = isCurrent ? "pass" : "warn";
+    const kind = providerKindFor(provider.id);
+
+    return {
+      name: "file-sync",
+      status: checkStatus,
+      severity: (isCurrent ? "info" : "warn") as DoctorSeverity,
+      providerId: provider.id,
+      providerName: provider.displayName,
+      providerVersion: provider.version,
+      providerKind: kind,
+      runtimeStatus: installedVersion === undefined ? "not-installed" : "installed",
+      runtime: {
+        running: isCurrent,
+        ...(installedVersion !== undefined ? { version: installedVersion } : {}),
+      },
+      capabilities: {},
+      context: {
+        engineId: "mutagen",
+        mutagenVersion: installedVersion ?? "not-installed",
+        expectedVersion,
+      },
+      solutions: isCurrent
+        ? []
+        : [
+            {
+              kind: "manual" as const,
+              description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
+              command: "lando setup",
+            },
+          ],
+      ...(selection === undefined ? {} : { selection }),
+    } satisfies DoctorCheck;
+  });
+
 export const doctor = (
   options: DoctorOptions = {},
 ): Effect.Effect<DoctorResult, DoctorError, ConfigService | RuntimeProviderRegistry> =>
@@ -245,7 +295,7 @@ export const doctor = (
       };
     }
     const provider = yield* registry.select({
-      // The registry only needs `.provider` from this command path.
+      // Narrow registry input to the provider handle on this path.
       provider: resolution.providerId,
     } as never);
     const status = yield* provider.getStatus;
@@ -306,7 +356,20 @@ export const doctor = (
       ),
     );
 
-    return { checks: [primaryCheck, ...conflictChecks] };
+    const fileSyncChecks: ReadonlyArray<DoctorCheck> =
+      provider.capabilities.bindMountPerformance === "slow"
+        ? yield* Effect.gen(function* () {
+            const userDataRootRaw = yield* configService
+              .get("userDataRoot")
+              .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+            const userDataRoot =
+              typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+            const check = yield* buildFileSyncDoctorCheck(provider, userDataRoot, selection);
+            return [check] as ReadonlyArray<DoctorCheck>;
+          })
+        : [];
+
+    return { checks: [primaryCheck, ...conflictChecks, ...fileSyncChecks] };
   });
 
 const renderCapabilityValue = (value: unknown): string => {
