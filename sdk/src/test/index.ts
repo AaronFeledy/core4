@@ -1618,3 +1618,86 @@ export const makeTestProxyService = (): ProxyServiceShape & {
 };
 
 export const TestProxyService: ProxyServiceShape = makeTestProxyService();
+
+import type {
+  CaSetupOptions,
+  CertificateAuthorityShape,
+  CertificateResult,
+  CertificateSpec,
+} from "../services/index.ts";
+
+const caContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({ message: `CertificateAuthority contract failed: ${assertion}`, assertion, details });
+
+const requireCaContract = (
+  condition: boolean,
+  assertion: string,
+  details?: unknown,
+): Effect.Effect<void, ContractFailure> =>
+  condition ? Effect.void : Effect.fail(caContractFailure(assertion, details));
+
+export const runCaContract = (ca: CertificateAuthorityShape): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    yield* requireCaContract(
+      typeof ca.id === "string" && ca.id.length > 0,
+      "id is a non-empty string",
+      ca.id,
+    );
+
+    yield* ca.setup({ force: false }).pipe(Effect.mapError((d) => caContractFailure("setup resolves", d)));
+
+    const certResult = yield* ca
+      .issueCert({ cn: "test.lndo.site", sans: ["*.test.lndo.site"] })
+      .pipe(Effect.mapError((d) => caContractFailure("issueCert resolves", d)));
+
+    yield* requireCaContract(
+      typeof certResult.certPath === "string" && certResult.certPath.length > 0,
+      "issueCert result has non-empty certPath",
+      certResult,
+    );
+    yield* requireCaContract(
+      typeof certResult.keyPath === "string" && certResult.keyPath.length > 0,
+      "issueCert result has non-empty keyPath",
+      certResult,
+    );
+    yield* requireCaContract(
+      typeof certResult.caPath === "string" && certResult.caPath.length > 0,
+      "issueCert result has non-empty caPath",
+      certResult,
+    );
+
+    yield* ca
+      .setup({ force: false, skipTrustInstall: true })
+      .pipe(Effect.mapError((d) => caContractFailure("setup with skipTrustInstall resolves", d)));
+  });
+
+export const makeTestCertificateAuthority = (): CertificateAuthorityShape & {
+  readonly calls: ReadonlyArray<
+    | { readonly op: "setup"; readonly opts: CaSetupOptions }
+    | { readonly op: "issueCert"; readonly spec: CertificateSpec }
+  >;
+} => {
+  const calls: Array<
+    | { readonly op: "setup"; readonly opts: CaSetupOptions }
+    | { readonly op: "issueCert"; readonly spec: CertificateSpec }
+  > = [];
+  return {
+    id: "test",
+    setup: (opts) =>
+      Effect.sync(() => {
+        (calls as Array<{ op: "setup"; opts: CaSetupOptions }>).push({ op: "setup", opts });
+      }),
+    issueCert: (spec) =>
+      Effect.sync((): CertificateResult => {
+        (calls as Array<{ op: "issueCert"; spec: CertificateSpec }>).push({ op: "issueCert", spec });
+        return {
+          certPath: `/tmp/test-certs/${spec.cn}.crt`,
+          keyPath: `/tmp/test-certs/${spec.cn}.key`,
+          caPath: "/tmp/test-certs/ca.crt",
+        };
+      }),
+    calls,
+  };
+};
+
+export const TestCertificateAuthority: CertificateAuthorityShape = makeTestCertificateAuthority();
