@@ -33,8 +33,8 @@ import {
   FileSyncEngine,
   LandofileService,
   type ProviderError,
-  type RuntimeProviderShape,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import {
@@ -130,9 +130,9 @@ const startFileSyncSessions = (plan: AppPlan) =>
   });
 
 const rollbackAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
-  provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false }).pipe(
-    Effect.catchAll(() => Effect.void),
-  );
+  provider
+    .destroy({ app: plan.id, plan }, { volumes: false, removeState: false })
+    .pipe(Effect.catchAll(() => Effect.void));
 
 export const renderStartAppResult = (result: StartAppResult): string => {
   const services = result.servicesStarted
@@ -249,9 +249,7 @@ export const startApp = (
       durationMs: Math.round(performance.now() - applyStart),
     });
 
-    yield* startFileSyncSessions(plan).pipe(
-      Effect.tapError(() => rollbackAppliedApp(provider, plan)),
-    );
+    yield* startFileSyncSessions(plan).pipe(Effect.tapError(() => rollbackAppliedApp(provider, plan)));
 
     yield* events.publish(
       PostAppStartEvent.make({
