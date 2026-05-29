@@ -36,6 +36,137 @@ const FAKE_ARCHIVE_BYTES = new Uint8Array([0xde, 0xad, 0xbe, 0xef, 0x01, 0x02, 0
 const FAKE_ARCHIVE_SHA = sha256(FAKE_ARCHIVE_BYTES);
 const FAKE_BINARY_BYTES = new Uint8Array([0xff, 0x01, 0x02, 0x03]);
 
+const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
+
+const textBytes = (value: string): Uint8Array => new TextEncoder().encode(value);
+
+const concatBytes = (...chunks: Array<Uint8Array>): Uint8Array => {
+  const size = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+  const out = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+};
+
+const u16 = (value: number): Uint8Array => {
+  const bytes = new Uint8Array(2);
+  new DataView(bytes.buffer).setUint16(0, value, true);
+  return bytes;
+};
+
+const u32 = (value: number): Uint8Array => {
+  const bytes = new Uint8Array(4);
+  new DataView(bytes.buffer).setUint32(0, value, true);
+  return bytes;
+};
+
+const CRC32_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let bit = 0; bit < 8; bit++) {
+      c = (c & 1) !== 0 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    }
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+const crc32 = (bytes: Uint8Array): number => {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc = CRC32_TABLE[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+  }
+  return ~crc >>> 0;
+};
+
+const makeStoredZipArchive = (
+  entries: ReadonlyArray<{
+    readonly name: string;
+    readonly bytes: Uint8Array;
+    readonly withDescriptor?: boolean;
+  }>,
+): Uint8Array => {
+  const locals: Uint8Array[] = [];
+  const centrals: Uint8Array[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = textBytes(entry.name);
+    const crc = crc32(entry.bytes);
+    const withDescriptor = entry.withDescriptor ?? false;
+    const header = concatBytes(
+      u32(ZIP_LOCAL_FILE_HEADER_SIGNATURE),
+      u16(20),
+      u16(withDescriptor ? 0x08 : 0),
+      u16(0),
+      u16(0),
+      u16(0),
+      u32(withDescriptor ? 0 : crc),
+      u32(withDescriptor ? 0 : entry.bytes.byteLength),
+      u32(withDescriptor ? 0 : entry.bytes.byteLength),
+      u16(name.byteLength),
+      u16(0),
+      name,
+    );
+    locals.push(header, entry.bytes);
+    if (withDescriptor) {
+      locals.push(
+        concatBytes(
+          u32(ZIP_DATA_DESCRIPTOR_SIGNATURE),
+          u32(crc),
+          u32(entry.bytes.byteLength),
+          u32(entry.bytes.byteLength),
+        ),
+      );
+    }
+
+    centrals.push(
+      concatBytes(
+        u32(ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE),
+        u16(20),
+        u16(20),
+        u16(withDescriptor ? 0x08 : 0),
+        u16(0),
+        u16(0),
+        u16(0),
+        u32(crc),
+        u32(entry.bytes.byteLength),
+        u32(entry.bytes.byteLength),
+        u16(name.byteLength),
+        u16(0),
+        u16(0),
+        u16(0),
+        u16(0),
+        u32(0),
+        u32(offset),
+        name,
+      ),
+    );
+
+    offset += header.byteLength + entry.bytes.byteLength + (withDescriptor ? 16 : 0);
+  }
+
+  const centralDirectory = concatBytes(...centrals);
+  const eocd = concatBytes(
+    u32(ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE),
+    u16(0),
+    u16(0),
+    u16(entries.length),
+    u16(entries.length),
+    u32(centralDirectory.byteLength),
+    u32(offset),
+    u16(0),
+  );
+  return concatBytes(...locals, centralDirectory, eocd);
+};
+
 const makeEntry = (
   key: string,
   binaryName: string,
@@ -78,6 +209,12 @@ const fakeFetch = (): typeof fetch =>
 
 const fakeExtract = (): typeof import("../src/download.ts").defaultExtract =>
   (async (_archiveBytes, _entry) => FAKE_BINARY_BYTES) as never;
+
+const writeInstalledBinary = async (path: string, bytes: Uint8Array): Promise<void> => {
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, bytes);
+  await writeFile(`${path}.sha256`, `${sha256(bytes)}\n`, "utf-8");
+};
 
 const failingFetch = (): typeof fetch =>
   (() => {
@@ -190,6 +327,68 @@ describe("readInstalledMutagenVersion", () => {
   });
 });
 
+describe("ZIP extraction", () => {
+  test("extracts entries after one that uses a data descriptor", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    const archiveBytes = makeStoredZipArchive([
+      { name: "mutagen", bytes: textBytes("host-binary"), withDescriptor: true },
+      { name: "mutagen-agent-linux-amd64", bytes: textBytes("agent-binary") },
+    ]);
+    const archiveSha = sha256(archiveBytes);
+    const sharedZipEntry = {
+      url: "https://example.test/mutagen-shared.zip",
+      sha256: archiveSha,
+      archiveFilename: "mutagen-shared.zip",
+      binaryName: "mutagen",
+      installName: "mutagen",
+      sizeBytes: archiveBytes.byteLength,
+    } satisfies MutagenBinaryEntry;
+
+    const zipManifest: MutagenVersionsManifest = {
+      schemaVersion: 1,
+      mutagenVersion: "v0.99.0-test",
+      host: {
+        "linux-x64": sharedZipEntry,
+      },
+      agents: {
+        "linux-amd64": {
+          ...sharedZipEntry,
+          binaryName: "mutagen-agent-linux-amd64",
+          installName: "mutagen-agent-linux-amd64",
+        },
+      },
+    };
+
+    const zippedFetch: typeof fetch = ((input: RequestInfo | URL): Promise<Response> => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url !== sharedZipEntry.url) {
+        return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
+      }
+      return Promise.resolve(new Response(archiveBytes, { status: 200, statusText: "OK" }));
+    }) as typeof fetch;
+
+    try {
+      const downloader = makeMutagenDownloader();
+      const exit = await run(
+        downloader.setup({
+          userDataRoot: dir,
+          _testManifest: zipManifest,
+          fetchImpl: zippedFetch,
+        }),
+      );
+      expect(exit._tag).toBe("Success");
+      expect(new Uint8Array(await readFile(mutagenHostBinaryPath(dir, "linux")))).toEqual(
+        textBytes("host-binary"),
+      );
+      expect(new Uint8Array(await readFile(mutagenAgentBinaryPath(dir, "linux-amd64")))).toEqual(
+        textBytes("agent-binary"),
+      );
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("makeMutagenDownloader().setup()", () => {
   test("installs host binary + all agent binaries and writes version marker", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
@@ -224,6 +423,7 @@ describe("makeMutagenDownloader().setup()", () => {
       const hostBin = mutagenHostBinaryPath(dir);
       const hostBytes = await readFile(hostBin);
       expect(new Uint8Array(hostBytes)).toEqual(FAKE_BINARY_BYTES);
+      expect(await readFile(`${hostBin}.sha256`, "utf-8")).toBe(`${sha256(FAKE_BINARY_BYTES)}\n`);
 
       for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
         const agentBin = mutagenAgentBinaryPath(dir, agentKey);
@@ -254,7 +454,34 @@ describe("makeMutagenDownloader().setup()", () => {
         await writeFile(agentPath, FAKE_BINARY_BYTES);
       }
 
+      expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(false);
+
+      await writeInstalledBinary(mutagenHostBinaryPath(dir, "linux"), FAKE_BINARY_BYTES);
+      for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
+        await writeInstalledBinary(mutagenAgentBinaryPath(dir, agentKey), FAKE_BINARY_BYTES);
+      }
+
       expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("installed status rejects binaries that no longer match their recorded fingerprints", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    try {
+      const versionPath = mutagenInstalledVersionPath(dir);
+      await mkdir(dirname(versionPath), { recursive: true });
+      await writeFile(versionPath, `${TEST_MANIFEST.mutagenVersion}\n`, "utf-8");
+
+      await writeInstalledBinary(mutagenHostBinaryPath(dir, "linux"), FAKE_BINARY_BYTES);
+      for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
+        await writeInstalledBinary(mutagenAgentBinaryPath(dir, agentKey), FAKE_BINARY_BYTES);
+      }
+      expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(true);
+
+      await writeFile(mutagenAgentBinaryPath(dir, "linux-amd64"), new Uint8Array([0x00, 0x01]));
+      expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

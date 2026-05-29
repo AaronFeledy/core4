@@ -168,24 +168,75 @@ const extractBinaryFromTarGz = (archiveBytes: Uint8Array, binaryName: string): U
 /**
  * Extract a named binary from a ZIP archive.
  *
- * Scans local file headers from the beginning of the ZIP stream
- * (no central directory walk needed for flat archives).
+ * Uses the central directory to recover sizes for entries that set the
+ * data-descriptor flag (bit 3), which leaves the local header sizes at 0.
  */
+interface ZipCentralDirectoryEntry {
+  readonly flags: number;
+  readonly compression: number;
+  readonly compressedSize: number;
+  readonly uncompressedSize: number;
+}
+
+const ZIP_LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
+const ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
+const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
+const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
+
+const readZipCentralDirectory = (archiveBytes: Uint8Array): Map<number, ZipCentralDirectoryEntry> => {
+  const view = new DataView(archiveBytes.buffer, archiveBytes.byteOffset, archiveBytes.byteLength);
+  for (let pos = archiveBytes.length - 22; pos >= 0; pos--) {
+    if (view.getUint32(pos, true) !== ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE) continue;
+    const centralDirectoryOffset = view.getUint32(pos + 16, true);
+    const centralDirectorySize = view.getUint32(pos + 12, true);
+    const centralDirectoryEnd = centralDirectoryOffset + centralDirectorySize;
+    const entries = new Map<number, ZipCentralDirectoryEntry>();
+    let cdPos = centralDirectoryOffset;
+    while (cdPos + 46 <= centralDirectoryEnd) {
+      if (view.getUint32(cdPos, true) !== ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE) break;
+      const flags = view.getUint16(cdPos + 8, true);
+      const compression = view.getUint16(cdPos + 10, true);
+      const compressedSize = view.getUint32(cdPos + 20, true);
+      const uncompressedSize = view.getUint32(cdPos + 24, true);
+      const filenameLen = view.getUint16(cdPos + 28, true);
+      const extraLen = view.getUint16(cdPos + 30, true);
+      const commentLen = view.getUint16(cdPos + 32, true);
+      const localHeaderOffset = view.getUint32(cdPos + 42, true);
+      entries.set(localHeaderOffset, { flags, compression, compressedSize, uncompressedSize });
+      cdPos += 46 + filenameLen + extraLen + commentLen;
+    }
+    return entries;
+  }
+  return new Map();
+};
+
+const zipDataDescriptorLength = (archiveBytes: Uint8Array, descriptorOffset: number): number => {
+  const view = new DataView(archiveBytes.buffer, archiveBytes.byteOffset, archiveBytes.byteLength);
+  if (descriptorOffset + 4 > archiveBytes.length) return 12;
+  return view.getUint32(descriptorOffset, true) === ZIP_DATA_DESCRIPTOR_SIGNATURE ? 16 : 12;
+};
+
 const extractBinaryFromZip = (archiveBytes: Uint8Array, binaryName: string): Uint8Array => {
   const view = new DataView(archiveBytes.buffer, archiveBytes.byteOffset, archiveBytes.byteLength);
+  const centralDirectory = readZipCentralDirectory(archiveBytes);
   let pos = 0;
   while (pos + 30 <= archiveBytes.length) {
     const sig = view.getUint32(pos, true);
-    if (sig !== 0x04034b50) break; // end of local file entries
-    const flags = view.getUint16(pos + 6, true);
-    const compression = view.getUint16(pos + 8, true);
-    const compressedSize = view.getUint32(pos + 18, true);
-    const uncompressedSize = view.getUint32(pos + 22, true);
+    if (sig !== ZIP_LOCAL_FILE_HEADER_SIGNATURE) break; // end of local file entries
+    const headerFlags = view.getUint16(pos + 6, true);
+    const headerCompression = view.getUint16(pos + 8, true);
+    const headerCompressedSize = view.getUint32(pos + 18, true);
+    const headerUncompressedSize = view.getUint32(pos + 22, true);
     const filenameLen = view.getUint16(pos + 26, true);
     const extraLen = view.getUint16(pos + 28, true);
     const filenameBuf = archiveBytes.subarray(pos + 30, pos + 30 + filenameLen);
     const filename = new TextDecoder("utf-8").decode(filenameBuf);
     const dataOffset = pos + 30 + filenameLen + extraLen;
+    const indexed = centralDirectory.get(pos);
+    const flags = indexed?.flags ?? headerFlags;
+    const compression = indexed?.compression ?? headerCompression;
+    const compressedSize = indexed?.compressedSize ?? headerCompressedSize;
+    const uncompressedSize = indexed?.uncompressedSize ?? headerUncompressedSize;
     if (basename(filename) === binaryName) {
       if (compression === 0) {
         // stored (no compression)
@@ -199,8 +250,9 @@ const extractBinaryFromZip = (archiveBytes: Uint8Array, binaryName: string): Uin
       }
       throw new Error(`Unsupported ZIP compression method ${compression} for "${filename}".`);
     }
-    pos = dataOffset + compressedSize;
-    if ((flags & 0x08) !== 0) pos += 16;
+    const descriptorLength =
+      (flags & 0x08) !== 0 ? zipDataDescriptorLength(archiveBytes, dataOffset + compressedSize) : 0;
+    pos = dataOffset + compressedSize + descriptorLength;
   }
   throw new Error(`Binary "${binaryName}" not found in ZIP archive.`);
 };
@@ -280,6 +332,7 @@ const installBinary = (options: InstallBinaryOptions): Effect.Effect<void, FileS
             await chmod(tmpPath, 0o755);
           }
           await rename(tmpPath, installPath);
+          await writeInstalledBinaryFingerprint(installPath, binaryBytes);
         } catch (cause) {
           await rm(tmpPath, { force: true });
           throw cause;
@@ -336,10 +389,21 @@ const expectedInstallPaths = (
   ];
 };
 
-const fileExistsWithBytes = async (path: string): Promise<boolean> => {
+const mutagenBinarySha256Path = (path: string): string => `${path}.sha256`;
+
+const writeInstalledBinaryFingerprint = async (path: string, bytes: Uint8Array): Promise<void> => {
+  await writeFile(mutagenBinarySha256Path(path), `${sha256Hex(bytes)}\n`, "utf-8");
+};
+
+const fileMatchesRecordedFingerprint = async (path: string): Promise<boolean> => {
   try {
     const info = await stat(path);
-    return info.isFile() && info.size > 0;
+    if (!info.isFile() || info.size === 0) return false;
+    const [binaryBytes, recorded] = await Promise.all([
+      readFile(path),
+      readFile(mutagenBinarySha256Path(path), "utf-8"),
+    ]);
+    return sha256Hex(binaryBytes) === recorded.trim();
   } catch {
     return false;
   }
@@ -364,7 +428,7 @@ export const readInstalledMutagenStatus = async (
   }
   if (paths.length === 0) return { installedVersion, isCurrent: false };
 
-  const valid = await Promise.all(paths.map(fileExistsWithBytes));
+  const valid = await Promise.all(paths.map(fileMatchesRecordedFingerprint));
   return { installedVersion, isCurrent: valid.every(Boolean) };
 };
 
