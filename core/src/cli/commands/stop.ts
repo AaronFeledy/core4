@@ -3,7 +3,7 @@
  *
  * Bootstrap level: `app`.
  */
-import { DateTime, Effect, Option } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type {
   CapabilityError,
@@ -32,11 +32,12 @@ import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
-  FileSyncEngine,
   LandofileService,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+
+import { terminateFileSyncSessions } from "../file-sync.ts";
 
 // biome-ignore lint/suspicious/noEmptyInterface: fields land with implementation
 export interface StopAppOptions {}
@@ -74,20 +75,6 @@ export const renderStopAppResult = (result: StopAppResult): string => {
   const services = result.servicesStopped.length === 0 ? "no services" : result.servicesStopped.join(", ");
   return `stopped: ${result.app} - ${services}`;
 };
-
-const terminateFileSyncSessions = (app: AppRef) =>
-  Effect.gen(function* () {
-    const maybeEngine = yield* Effect.serviceOption(FileSyncEngine);
-    if (Option.isNone(maybeEngine)) return;
-
-    const engine = maybeEngine.value;
-    if (!(yield* engine.isAvailable)) return;
-
-    const existing = yield* engine.listSessions({ app }).pipe(Effect.catchAll(() => Effect.succeed([])));
-    for (const info of existing) {
-      yield* engine.terminateSession(info.ref).pipe(Effect.catchAll(() => Effect.void));
-    }
-  });
 
 export const stopApp = (
   _options: StopAppOptions = {},
