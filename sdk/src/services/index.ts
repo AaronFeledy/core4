@@ -51,6 +51,7 @@ import type {
   NotImplementedError,
   PluginLoadError,
   PluginManifestError,
+  PortCollisionError,
   ProcessExecError,
   ProcessTimeoutError,
   ProviderCapabilityError,
@@ -61,6 +62,7 @@ import type {
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
+  ScannerError,
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
@@ -699,15 +701,32 @@ export class HealthcheckRunner extends Context.Tag("@lando/core/HealthcheckRunne
   HealthcheckRunnerShape
 >() {}
 
-/**
- * UrlScanner — probe URLs after start.
- */
-export class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<
-  UrlScanner,
-  {
-    readonly id: string;
-  }
->() {}
+export interface ScanEndpoint {
+  readonly service: ServiceName;
+  readonly url: string;
+  readonly reachable: boolean;
+  readonly statusCode?: number;
+}
+
+export interface ScanResult {
+  readonly appId: AppId;
+  readonly endpoints: ReadonlyArray<ScanEndpoint>;
+}
+
+export interface PortCollision {
+  readonly port: number;
+  readonly apps: ReadonlyArray<{ readonly appId: AppId; readonly service: ServiceName }>;
+}
+
+export interface UrlScannerShape {
+  readonly id: string;
+  readonly scan: (appId: AppId) => Effect.Effect<ScanResult, ScannerError>;
+  readonly detectCollisions: (
+    appIds: ReadonlyArray<AppId>,
+  ) => Effect.Effect<ReadonlyArray<PortCollision>, ScannerError | PortCollisionError>;
+}
+
+export class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<UrlScanner, UrlScannerShape>() {}
 
 /**
  * PluginSource — resolve and fetch a plugin spec.
