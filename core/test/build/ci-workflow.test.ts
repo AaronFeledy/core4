@@ -39,7 +39,7 @@ describe("ci workflow", () => {
       .map((entry) => entry.name)
       .sort();
 
-    expect(activeWorkflowFiles).toEqual(["ci.yml", "release.yml"]);
+    expect(activeWorkflowFiles).toEqual(["ci.yml", "nightly.yml", "release.yml"]);
   });
 
   test("runs static checks for pushes and pull requests to main", async () => {
