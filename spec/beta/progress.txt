@@ -717,3 +717,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - For a contract-only SDK publication (no CLI surface, no runtime layer), the "real-surface artifact" required by the ultrawork TDD floor is the snapshot drift gate output (`core/test/build/schema-snapshot.test.ts`) plus the contract test suite running against the in-tree `TestFileSyncEngine`. The contract suite IS the user-facing artifact for plugin authors — there is no separate `lando` command to drive end-to-end.
   - `FileSyncSessionRef` is a branded string (opaque to the planner); the test-engine encoding `${appId}-${service}-${mountKey}` is illustrative only. Future plugins (US-096 Mutagen) are free to pick a different encoding as long as the brand round-trip holds.
 ---
+
+## [2026-05-28 21:42 CDT] - US-095 Review
+- Reviewed the US-095 `FileSyncEngine` SDK contract against `spec/beta/prd-beta-03-file-sync-mutagen.md`, direct verification, and specialist findings.
+- Fixed confirmed review blockers: the exported contract runner now keeps lifecycle assertions inside the `createSession` scope, asserts scope-finalized sessions are removed, and verifies start/drift/stop tagged-error semantics including outside-app-root source rejection.
+- Review notes (deferred/rejected): runtime lifecycle event bridging and Mutagen Live Layer behavior remain US-096/US-100 scope; public error redaction is handled at the future publishing layer rather than by stripping SDK debug fields here.
+- Verification: typecheck passed; lint passed with 4 pre-existing no-non-null-assertion warnings in provider contract tests; build passed; SDK tests passed; full `bun test` still fails in the pre-existing compiled CLI build/ETXTBSY surface outside US-095.
+---
