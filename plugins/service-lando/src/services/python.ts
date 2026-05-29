@@ -117,7 +117,7 @@ const makePythonServiceType = (version: SupportedPythonVersion): ServiceTypeShap
         source: AbsolutePath.make(appRoot),
         target: APP_MOUNT_TARGET,
         readOnly: false,
-        excludes: [],
+        excludes: ["__pycache__"],
         includes: [],
         realization: "passthrough",
       },

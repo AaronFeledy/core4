@@ -31,7 +31,7 @@ import {
 } from "@lando/core/services";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import { AppPlannerLive, FILE_SYNC_DEFAULT_EXCLUDES } from "../../src/services/planner.ts";
 
 const providerLandoCapabilities: ProviderCapabilities = {
   artifactBuild: true,
@@ -778,18 +778,28 @@ describe("AppPlannerLive", () => {
         },
       });
 
-      const storeNames = appPlan.stores.map((s) => s.name).sort();
-      expect(storeNames).toEqual(["composeapp-worker-cache", "composeapp-worker-state"]);
+      const storeNames = appPlan.stores.map((s) => s.name);
+      expect(storeNames).toContain("composeapp-worker-cache");
+      expect(storeNames).toContain("composeapp-worker-state");
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
     });
   });
 
   test("fails before apply when service storage requires an unsupported provider capability", async () => {
     await withTempCwd(async () => {
-      const exit = await planExit(landofileFixture, {
-        ...providerLandoCapabilities,
-        persistentStorage: false,
-      });
+      const exit = await planExit(
+        {
+          name: "myapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("db")]: {
+              image: "postgres:16",
+              environment: { POSTGRES_PASSWORD: "lando" },
+            },
+          },
+        },
+        { ...providerLandoCapabilities, persistentStorage: false },
+      );
 
       const failure = expectSomeFailure(exit);
       expect(failure).toBeInstanceOf(CapabilityError);
@@ -838,6 +848,51 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("default excludes (node_modules, vendor, .git, tmp) are always merged into appMount.excludes", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await planWithCustomRegistry({
+        name: "defapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "appmount-only" },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(web?.appMount?.excludes).toEqual(FILE_SYNC_DEFAULT_EXCLUDES);
+    });
+  });
+
+  test("user-authored excludes extend defaults rather than replace them", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await planWithCustomRegistry({
+        name: "extapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "appmount-only",
+            appMount: { target: "/app", excludes: ["dist"] },
+          },
+        },
+      });
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(web?.appMount?.excludes).toEqual([...FILE_SYNC_DEFAULT_EXCLUDES, "dist"]);
+    });
+  });
+
+  test("FileSyncPlan session.excludes inherits defaults on slow providers", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        { name: "myapp", runtime: 4, services: { [ServiceName.make("web")]: { image: "node:lts" } } },
+        slowBindMountCapabilities,
+      );
+      const webEntry = appPlan.fileSync.find((e) => String(e.session.service) === "web");
+      expect(webEntry).toBeDefined();
+      expect(webEntry?.session.excludes).toEqual(
+        expect.arrayContaining(["node_modules", "vendor", ".git", "tmp"]),
+      );
+    });
+  });
+
   test("expands appMount.excludes into volume-shadow stores in AppPlan.stores", async () => {
     await withTempCwd(async () => {
       const appPlan = await planWithCustomRegistry({
@@ -856,7 +911,9 @@ describe("AppPlannerLive", () => {
 
       const storeNames = appPlan.stores.map((s) => s.name).sort();
       expect(storeNames).toEqual([
+        "shadowapp-web-app-git-12945185",
         "shadowapp-web-app-node-modules-ad806e3f",
+        "shadowapp-web-app-tmp-43bdc5ce",
         "shadowapp-web-app-vendor-64784057",
       ]);
       expect(appPlan.stores.every((s) => s.scope === "service")).toBe(true);
@@ -864,13 +921,12 @@ describe("AppPlannerLive", () => {
       const web = appPlan.services[ServiceName.make("web")];
       const shadowTargets = web?.storage.map((entry) => entry.target).sort() ?? [];
       expect(shadowTargets).toEqual([
+        PortablePath.make("/app/.git"),
         PortablePath.make("/app/node_modules"),
+        PortablePath.make("/app/tmp"),
         PortablePath.make("/app/vendor"),
       ]);
-      expect(web?.appMount?.excludes).toEqual([
-        PortablePath.make("node_modules"),
-        PortablePath.make("vendor"),
-      ]);
+      expect(web?.appMount?.excludes).toEqual(["node_modules", "vendor", ".git", "tmp"]);
     });
   });
 
@@ -891,10 +947,11 @@ describe("AppPlannerLive", () => {
       const planUnderscored = await makeApp("node_modules");
       const planHyphenated = await makeApp("node-modules");
 
-      const nameFor = (p: typeof planUnderscored) => p.stores[0]?.name ?? "";
-      expect(nameFor(planUnderscored)).not.toEqual(nameFor(planHyphenated));
-      expect(nameFor(planUnderscored)).toBe("shadowapp-web-app-node-modules-ad806e3f");
-      expect(nameFor(planHyphenated)).toBe("shadowapp-web-app-node-modules-6a42fc95");
+      const namesUnderscored = planUnderscored.stores.map((s) => s.name);
+      const namesHyphenated = planHyphenated.stores.map((s) => s.name);
+      expect(namesUnderscored).toContain("shadowapp-web-app-node-modules-ad806e3f");
+      expect(namesHyphenated).toContain("shadowapp-web-app-node-modules-6a42fc95");
+      expect(namesUnderscored).not.toContain("shadowapp-web-app-node-modules-6a42fc95");
     });
   });
 

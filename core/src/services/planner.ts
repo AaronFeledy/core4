@@ -130,6 +130,27 @@ const servicePlanError = (appRoot: string, serviceName: string, cause: unknown) 
 const bindRealization = (providerCapabilities: ProviderCapabilities) =>
   providerCapabilities.bindMountPerformance === "slow" ? "accelerated" : "passthrough";
 
+/**
+ * Universal default excludes merged into every service's `appMount.excludes`.
+ * Service types may contribute additional framework-aware presets on top of
+ * these (e.g. `__pycache__` for Python, `.bundle` for Ruby).
+ */
+export const FILE_SYNC_DEFAULT_EXCLUDES: ReadonlyArray<string> = ["node_modules", "vendor", ".git", "tmp"];
+
+const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
+  const appMount = servicePlan.appMount;
+  if (appMount === undefined) return servicePlan;
+  const seen = new Set<string>();
+  const merged: Array<string> = [];
+  for (const e of [...FILE_SYNC_DEFAULT_EXCLUDES, ...(appMount.excludes ?? [])]) {
+    if (!seen.has(e)) {
+      seen.add(e);
+      merged.push(e);
+    }
+  }
+  return { ...servicePlan, appMount: { ...appMount, excludes: merged } };
+};
+
 const kebab = (raw: string): string => {
   const ascii = raw
     .toLowerCase()
@@ -462,7 +483,10 @@ const planApp = (
           }),
         catch: (cause) => servicePlanError(appRoot, name, cause),
       });
-      const servicePlan = applyAuthoredHealthcheck(applyAuthoredAppMount(rawPlan, service), service);
+      const servicePlan = applyAuthoredHealthcheck(
+        mergeDefaultExcludes(applyAuthoredAppMount(rawPlan, service)),
+        service,
+      );
 
       if (
         (servicePlan.appMount !== undefined || servicePlan.mounts.some((mount) => mount.type === "bind")) &&

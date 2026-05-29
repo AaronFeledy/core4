@@ -1,0 +1,41 @@
+---
+id: file-sync-excludes
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, file-sync, excludes, setup]
+---
+
+<Guide>
+  <Scenario id="file-sync-default-excludes" render={false} reason="Default excludes are verified by core/test/services/app-planner.test.ts (default excludes always merged) and plugins/file-sync-mutagen/test/engine.test.ts (createSession passes spec.excludes verbatim to the client)">
+    <Step name="default-excludes">
+      <Variable name="defaults" value="node_modules, vendor, .git, tmp" display="Paths excluded from file sync by default on every service" />
+      <Variable name="volumeShadow" value="Docker named volume mounted over the excluded path" display="Volume-shadow strategy: an empty named volume shadows each excluded directory so it is never bind-mounted or synced" />
+      <Variable name="mutagenIgnore" value="spec.excludes passed as Mutagen ignore rules" display="Mutagen-ignore strategy: excluded paths are passed to the FileSyncEngine as session-level ignore rules" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="file-sync-user-excludes" render={false} reason="User-authored excludes extending defaults are verified by core/test/services/app-planner.test.ts (user-authored excludes extend defaults rather than replace them)">
+    <Step name="user-excludes">
+      <Variable name="landofileKey" value="services.web.appMount.excludes" display="Landofile key for per-service exclude patterns" />
+      <Variable name="mergeRule" value="user patterns appended after defaults, duplicates removed" display="User excludes are merged on top of FILE_SYNC_DEFAULT_EXCLUDES; they do not replace them" />
+      <Variable name="includesOverride" value="services.web.appMount.includes" display="Adding a path to includes prevents it from being shadowed or ignored even if it appears in excludes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="file-sync-framework-presets" render={false} reason="Framework-aware presets contributed by service types are verified by core/test/services/app-planner.test.ts (default excludes always merged); Python __pycache__ and Ruby .bundle additions are covered by service-type unit tests">
+    <Step name="framework-presets">
+      <Variable name="pythonPreset" value="__pycache__" display="Python service type contributes __pycache__ as a framework-aware preset" />
+      <Variable name="rubyPreset" value=".bundle" display="Ruby service type contributes .bundle as a framework-aware preset" />
+      <Variable name="mergeOrder" value="FILE_SYNC_DEFAULT_EXCLUDES → service-type presets → user excludes" display="Merge order: global defaults first, then framework presets, then user-authored excludes; all deduplicated" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="file-sync-excludes-not-synced" render={false} reason="Confirmed by planner unit tests: shadow volumes overlay the excluded paths so they are never accessible via the bind mount or synced by Mutagen; live file-propagation test requires real containers and a slow-bind-mount provider">
+    <Step name="excluded-paths-not-synced">
+      <Variable name="shadowVolume" value="lando-<app>-<service>-<kebab-path>-<hash>" display="Named volume created for each excluded path; overlaid on the bind mount target so host files are never read" />
+      <Variable name="mutagenIgnoreRule" value="FileSyncSessionSpec.excludes forwarded to FileSyncEngine.createSession" display="The same exclude list is passed to the engine so Mutagen does not attempt to sync those paths" />
+      <Variable name="verificationRef" value="core/test/services/app-planner.test.ts, plugins/file-sync-mutagen/test/engine.test.ts" display="Unit tests that verify the exclude-not-synced contract" />
+    </Step>
+  </Scenario>
+</Guide>
