@@ -6,14 +6,14 @@ import {
   LANDO_SHARED_CROSS_APP_NETWORK,
   type ServicePlan,
   fileSyncVolumeName,
-  landoAppNetworkName,
+  landoAppNetworkNames,
   landoServiceNetworkAliases,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
 const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
-const appNetworkName = landoAppNetworkName;
+const appNetworkNames = landoAppNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 
 const PROVIDER_ID = "lando";
@@ -49,8 +49,6 @@ interface ComposeDocument {
   >;
   readonly volumes?: Readonly<Record<string, { readonly driver?: string }>>;
 }
-
-const appNetworkNames = (plan: AppPlan): ReadonlyArray<string> => [appNetworkName(plan)];
 
 const composeError = (message: string, details?: unknown) =>
   new ProviderInternalError({
@@ -196,7 +194,7 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
       if (name === SHARED_CROSS_APP_NETWORK) {
         return [name, { external: true, name: SHARED_CROSS_APP_NETWORK }];
       }
-      const planned = plan.networks.find((network) => network.name === name);
+      const planned = plan.networks.find((network) => network.shared === false);
       return [name, { driver: planned?.driver ?? "bridge" }];
     }),
   );
