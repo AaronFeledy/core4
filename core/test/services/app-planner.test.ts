@@ -493,6 +493,83 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("resolves the file-sync engine id once per plan for all slow bind-mount services", async () => {
+    await withTempCwd(async () => {
+      let fileSyncEngineIdReads = 0;
+      const serviceType: ServiceTypeShape = {
+        id: "accelerated-appmount",
+        toServicePlan: ({
+          name,
+          appRoot,
+          provider = ProviderId.make("lando"),
+          primary = false,
+          metadata,
+        }: ServiceTypePlanInput) =>
+          Schema.decodeUnknownSync(ServicePlan)({
+            name: ServiceName.make(name),
+            type: "accelerated-appmount",
+            provider,
+            primary,
+            artifact: { kind: "ref", ref: "accelerated-appmount:latest" },
+            environment: {},
+            workingDirectory: PortablePath.make("/app"),
+            appMount: {
+              source: AbsolutePath.make(appRoot),
+              target: PortablePath.make("/app"),
+              readOnly: false,
+              excludes: [],
+              includes: [],
+              realization: "passthrough",
+            },
+            mounts: [],
+            storage: [],
+            endpoints: [],
+            routes: [],
+            dependsOn: [],
+            hostAliases: [],
+            metadata,
+            extensions: {},
+          }),
+      };
+      const registry = {
+        list: Effect.succeed([
+          {
+            name: PluginName.make("@lando/slow-bind"),
+            version: "1.0.0",
+            api: 4 as const,
+            contributes: {
+              serviceTypes: [serviceType.id],
+              get fileSyncEngines() {
+                fileSyncEngineIdReads += 1;
+                return ["mutagen"];
+              },
+            },
+          } as unknown as PluginManifest,
+        ]),
+        load: () => Effect.die("not needed"),
+        loadServiceType: () => Effect.succeed(serviceType),
+      };
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            {
+              name: "slow-sync-app",
+              runtime: 4,
+              services: {
+                [ServiceName.make("web")]: { type: "accelerated-appmount" },
+                [ServiceName.make("api")]: { type: "accelerated-appmount" },
+              },
+            },
+            slowBindMountCapabilities,
+          ),
+        ).pipe(Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.succeed(PluginRegistry, registry))))),
+      );
+
+      expect(fileSyncEngineIdReads).toBe(2);
+      expect(appPlan.fileSync).toHaveLength(2);
+    });
+  });
+
   test("fails unknown service types with LandofileValidationError", async () => {
     await withTempCwd(async () => {
       const exit = await planExit({
