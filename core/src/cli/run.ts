@@ -182,10 +182,28 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
 const parseSkipFileSyncFlag = (argv: ReadonlyArray<string>): boolean =>
   argv.some((arg) => arg === "--skip-file-sync");
 
+const parseHostProxyFlag = (argv: ReadonlyArray<string>): "auto" | "none" | undefined => {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === undefined) continue;
+    if (arg.startsWith("--host-proxy=")) {
+      const value = arg.slice("--host-proxy=".length);
+      return value === "none" ? "none" : value === "auto" ? "auto" : undefined;
+    }
+    if (arg === "--host-proxy") {
+      const next = argv[i + 1];
+      if (next === undefined || next.startsWith("-")) return undefined;
+      return next === "none" ? "none" : next === "auto" ? "auto" : undefined;
+    }
+  }
+  return undefined;
+};
+
 const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   const installDir = dirname(process.execPath);
   const provider = parseProviderFlag(argv);
   const skipFileSync = parseSkipFileSyncFlag(argv);
+  const hostProxy = parseHostProxyFlag(argv);
   const exit = await Effect.runPromiseExit(
     setupSpec
       .run({
@@ -193,6 +211,7 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
         flags: {
           ...(provider === undefined ? {} : { provider }),
           ...(skipFileSync ? { "skip-file-sync": true } : {}),
+          ...(hostProxy === undefined ? {} : { "host-proxy": hostProxy }),
         },
       })
       .pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),

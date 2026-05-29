@@ -137,6 +137,12 @@ export default class SetupCommand extends LandoCommandBase {
       description: "Skip Mutagen binary download; deferred to first accelerated app:start.",
       default: false,
     }),
+    "host-proxy": Flags.string({
+      description:
+        "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",
+      options: ["auto", "none"],
+      default: "auto",
+    }),
   };
   static override landoSpec: LandoCommandSpec = setupSpec;
   static override bootstrap = setupSpec.bootstrap;

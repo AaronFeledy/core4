@@ -118,6 +118,7 @@
 - `Renderer`
 - `SchemaValidator`
 - `SecretStore`
+- `HostProxyService`
 - `SshService`
 - `Telemetry`
 - `ToolingEngine`

@@ -42,6 +42,7 @@ import type {
   FileSyncStopError,
   HealthcheckError,
   HealthcheckTimeoutError,
+  HostProxyError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -727,6 +728,53 @@ export interface UrlScannerShape {
 }
 
 export class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<UrlScanner, UrlScannerShape>() {}
+
+/**
+ * `HostProxyService` resolves `*.<base-domain>` (default `lndo.site`) to a
+ * loopback address so users do not have to edit `/etc/hosts` themselves.
+ *
+ * Default Live Layers per platform:
+ * - macOS: write `/etc/resolver/<base-domain>` (no `/etc/hosts` edit)
+ * - Linux: write `/etc/hosts` block or `systemd-resolved` drop-in
+ * - Windows: write the HOSTS file
+ *
+ * Privileged operations happen at `lando setup` time only (gated behind a
+ * sudo/UAC prompt). They MUST NOT run inline during `lando start`.
+ *
+ * Users who manage their own DNS can opt out by running
+ * `lando setup --host-proxy=none`, which selects the `none` mode and reports
+ * an inactive `HostProxyStatus`.
+ */
+export type HostProxyMode = "auto" | "none";
+
+export type HostProxyMechanism = "etc-hosts" | "etc-resolver" | "hosts-file" | "skipped" | "none";
+
+export interface HostProxySetupOptions {
+  readonly mode: HostProxyMode;
+  readonly baseDomain?: string;
+  readonly loopback?: string;
+  readonly force?: boolean;
+}
+
+export interface HostProxyStatus {
+  readonly active: boolean;
+  readonly mode: HostProxyMode;
+  readonly mechanism: HostProxyMechanism;
+  readonly baseDomain: string;
+  readonly loopback: string;
+}
+
+export interface HostProxyServiceShape {
+  readonly id: string;
+  readonly setup: (options: HostProxySetupOptions) => Effect.Effect<void, HostProxyError>;
+  readonly status: () => Effect.Effect<HostProxyStatus, HostProxyError>;
+  readonly teardown: () => Effect.Effect<void, HostProxyError>;
+}
+
+export class HostProxyService extends Context.Tag("@lando/core/HostProxyService")<
+  HostProxyService,
+  HostProxyServiceShape
+>() {}
 
 /**
  * PluginSource — resolve and fetch a plugin spec.

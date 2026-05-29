@@ -1920,3 +1920,142 @@ export const makeTestUrlScanner = (): UrlScannerShape & {
 };
 
 export const TestUrlScanner: UrlScannerShape = makeTestUrlScanner();
+
+import type {
+  HostProxyMechanism,
+  HostProxyServiceShape,
+  HostProxySetupOptions,
+  HostProxyStatus,
+} from "../services/index.ts";
+
+const HOST_PROXY_DEFAULT_BASE_DOMAIN = "lndo.site";
+const HOST_PROXY_DEFAULT_LOOPBACK = "127.0.0.1";
+
+const hostProxyContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `HostProxyService contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requireHostProxyContract = (
+  condition: boolean,
+  assertion: string,
+  details?: unknown,
+): Effect.Effect<void, ContractFailure> =>
+  condition ? Effect.void : Effect.fail(hostProxyContractFailure(assertion, details));
+
+export const runHostProxyContract = (service: HostProxyServiceShape): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    yield* requireHostProxyContract(
+      typeof service.id === "string" && service.id.length > 0,
+      "id is a non-empty string",
+      service.id,
+    );
+
+    yield* service
+      .setup({ mode: "auto" })
+      .pipe(Effect.mapError((d) => hostProxyContractFailure("setup({ mode: 'auto' }) resolves", d)));
+
+    const activeStatus = yield* service
+      .status()
+      .pipe(Effect.mapError((d) => hostProxyContractFailure("status() resolves after setup", d)));
+
+    yield* requireHostProxyContract(
+      typeof activeStatus.active === "boolean",
+      "status.active is a boolean",
+      activeStatus,
+    );
+    yield* requireHostProxyContract(
+      activeStatus.mode === "auto" || activeStatus.mode === "none",
+      "status.mode is auto or none",
+      activeStatus,
+    );
+    yield* requireHostProxyContract(
+      typeof activeStatus.baseDomain === "string" && activeStatus.baseDomain.length > 0,
+      "status.baseDomain is a non-empty string",
+      activeStatus,
+    );
+    yield* requireHostProxyContract(
+      typeof activeStatus.loopback === "string" && activeStatus.loopback.length > 0,
+      "status.loopback is a non-empty string",
+      activeStatus,
+    );
+
+    yield* service
+      .setup({ mode: "none" })
+      .pipe(Effect.mapError((d) => hostProxyContractFailure("setup({ mode: 'none' }) resolves", d)));
+
+    const noneStatus = yield* service
+      .status()
+      .pipe(Effect.mapError((d) => hostProxyContractFailure("status() resolves after opt-out", d)));
+
+    yield* requireHostProxyContract(
+      noneStatus.mode === "none" && noneStatus.active === false,
+      "status reports mode='none' and inactive after opt-out",
+      noneStatus,
+    );
+
+    yield* service
+      .teardown()
+      .pipe(Effect.mapError((d) => hostProxyContractFailure("teardown() resolves", d)));
+  });
+
+export const makeTestHostProxyService = (): HostProxyServiceShape & {
+  readonly calls: ReadonlyArray<
+    | { readonly op: "setup"; readonly options: HostProxySetupOptions }
+    | { readonly op: "status" }
+    | { readonly op: "teardown" }
+  >;
+} => {
+  const calls: Array<
+    | { readonly op: "setup"; readonly options: HostProxySetupOptions }
+    | { readonly op: "status" }
+    | { readonly op: "teardown" }
+  > = [];
+
+  let current: HostProxyStatus = {
+    active: false,
+    mode: "auto",
+    mechanism: "none",
+    baseDomain: HOST_PROXY_DEFAULT_BASE_DOMAIN,
+    loopback: HOST_PROXY_DEFAULT_LOOPBACK,
+  };
+
+  const pickMechanism = (mode: HostProxySetupOptions["mode"]): HostProxyMechanism =>
+    mode === "none" ? "skipped" : "etc-hosts";
+
+  return {
+    id: "test",
+    setup: (options) =>
+      Effect.sync(() => {
+        calls.push({ op: "setup", options });
+        current = {
+          active: options.mode !== "none",
+          mode: options.mode,
+          mechanism: pickMechanism(options.mode),
+          baseDomain: options.baseDomain ?? HOST_PROXY_DEFAULT_BASE_DOMAIN,
+          loopback: options.loopback ?? HOST_PROXY_DEFAULT_LOOPBACK,
+        };
+      }),
+    status: () =>
+      Effect.sync((): HostProxyStatus => {
+        calls.push({ op: "status" });
+        return current;
+      }),
+    teardown: () =>
+      Effect.sync(() => {
+        calls.push({ op: "teardown" });
+        current = {
+          active: false,
+          mode: current.mode,
+          mechanism: "none",
+          baseDomain: current.baseDomain,
+          loopback: current.loopback,
+        };
+      }),
+    calls,
+  };
+};
+
+export const TestHostProxyService: HostProxyServiceShape = makeTestHostProxyService();
