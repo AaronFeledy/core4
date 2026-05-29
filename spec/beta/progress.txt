@@ -748,3 +748,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (deferred/rejected): Mutagen host CLI download, doctor output, planner auto-selection, ignore-rule translation, and live platform matrix remain US-097..US-100 scope; plugin manifest `defaultFor` metadata is deferred until the SDK contribution schema grows beyond string ids.
 - Verification: typecheck passed; lint passed with four pre-existing provider integration non-null warnings; focused file-sync/bundled tests passed; full `bun test` is still unstable around compiled-binary/codegen harness state, but the compiled setup regression passed after rebuilding `core/dist/lando`.
 ---
+
+## [2026-05-29 00:55 CDT] - US-097
+- Shipped Mutagen host CLI + agent binary download for `lando setup`. Added `mutagen-versions.json` (pinned v0.18.3 manifest: 5 host entries + 3 agent entries), `plugins/file-sync-mutagen/src/download.ts` with `makeMutagenDownloader()` (SHA-256 verified, idempotent via `.mutagen-installed-version` marker, `_testManifest` injectable for tests), wired the engine `setup()` method to call the downloader when `userDataRoot` is provided, added `--skip-file-sync` flag to `lando setup` (both OCLIF and compiled-binary path via `run.ts`), and added a `file-sync` check to `lando doctor` that reports the installed Mutagen version when the active provider has `bindMountPerformance: "slow"`. Updated the doctor NDJSON fixture for slow-bind-mount Windows. Created `docs/guides/setup/file-sync-mutagen.mdx` guide.
+- Verification: typecheck passed; lint passed (4 pre-existing warnings, no new errors); 447 tests pass / 0 fail / 2 skip across 55 files (including 21 new download.test.ts cases covering idempotency, force-re-download, network error, checksum mismatch, unsupported platform, HTTP 404).
+- **Learnings for future iterations:**
+  - `makeMutagenDownloader()` takes `_testManifest` in `MutagenSetupOptions` to override the compile-time manifest SHA-256s — the same `fetchImpl`/`extractImpl` injection pattern used by `makeRuntimeBundleDownloader` in provider-lando.
+  - The `extractBinaryFromTarGz` implementation is a minimal buffer-based tar reader (gunzip + 512-byte block walk); extraction is fully injectable via `extractImpl` so unit tests never need real archive bytes.
+  - `buildFileSyncDoctorCheck` in `doctor.ts` gracefully handles `userDataRoot` being `undefined` (returns "not-installed" check instead of failing), so `lando doctor` never errors on missing config.
+  - The doctor NDJSON fixtures must be updated whenever the `DoctorCheck` output changes; slow-bind-mount providers now emit a second `file-sync` check, so `doctor.complete.checks` increased from 1 to 2 and `warned` from 0 to 1 in the windows fixture.
+---
