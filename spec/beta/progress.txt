@@ -835,3 +835,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: fixed (Bugbot Medium — runCaContract discarded issueCert result without validating certPath/keyPath/caPath; added requireCaContract assertions; rerun Bugbot passed)
 - Merge: merged (squash)
 ---
+
+## [2026-05-29 10:27 CDT] - Babysit
+- PR: #205 https://github.com/AaronFeledy/core4/pull/205
+- CI outcome: pass (initial run failed library-api-tests — SshService not listed in sdk/API_COMPATIBILITY.md; added entry, rerun passed)
+- Review feedback: none (Bugbot passed with no findings)
+- Merge: merged (squash)
+---
