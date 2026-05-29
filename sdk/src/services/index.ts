@@ -601,8 +601,6 @@ export class ToolingEngine extends Context.Tag("@lando/core/ToolingEngine")<
 
 /**
  * SchemaValidator — validate Landofile/manifest data. Default: Effect Schema.
- *
- * Not user-swappable in v4.0; the interface exists for future extensibility.
  */
 export class SchemaValidator extends Context.Tag("@lando/core/SchemaValidator")<
   SchemaValidator,
@@ -733,7 +731,7 @@ export class UrlScanner extends Context.Tag("@lando/core/UrlScanner")<UrlScanner
  * `HostProxyService` resolves `*.<base-domain>` (default `lndo.site`) to a
  * loopback address so users do not have to edit `/etc/hosts` themselves.
  *
- * Default Live Layers per platform:
+ * Default platform behavior:
  * - macOS: write `/etc/resolver/<base-domain>` (no `/etc/hosts` edit)
  * - Linux: write `/etc/hosts` block or `systemd-resolved` drop-in
  * - Windows: write the HOSTS file

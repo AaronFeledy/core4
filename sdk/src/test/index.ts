@@ -680,7 +680,6 @@ const matchesHealthcheck = (hc: HealthcheckPlan, expected: HealthcheckExpectatio
     return false;
   }
 
-  // expected.kind === "http"
   if (hc.kind === "http") {
     if (expected.port !== undefined && hc.port !== undefined && hc.port !== expected.port) {
       return false;
