@@ -724,3 +724,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (deferred/rejected): runtime lifecycle event bridging and Mutagen Live Layer behavior remain US-096/US-100 scope; public error redaction is handled at the future publishing layer rather than by stripping SDK debug fields here.
 - Verification: typecheck passed; lint passed with 4 pre-existing no-non-null-assertion warnings in provider contract tests; build passed; SDK tests passed; full `bun test` still fails in the pre-existing compiled CLI build/ETXTBSY surface outside US-095.
 ---
+
+## [2026-05-28 22:38 CDT] - Babysit
+- PR: #197 https://github.com/AaronFeledy/core4/pull/197
+- CI outcome: pass
+- Review feedback: fixed (Bugbot duplicate FileSyncMode schema and shared TestFileSyncEngine state reports addressed; rerun Bugbot passed)
+- Merge: merged (squash)
+---
