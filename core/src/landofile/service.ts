@@ -10,7 +10,7 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import { parseLandofile } from "./parser.ts";
@@ -24,35 +24,7 @@ const REMEDIATION = "Remove unsupported keys or update the documented Landofile 
 const COMPOSE_ALLOWLIST_REMEDIATION =
   "Compose compatibility is limited to the documented §7.4 subset in spec/07-landofile-and-config.md; move provider-native keys under providers.<provider-id> or use config translation.";
 
-const SERVICE_CONFIG_KEYS = new Set([
-  "api",
-  "type",
-  "primary",
-  "image",
-  "build",
-  "command",
-  "entrypoint",
-  "user",
-  "workingDirectory",
-  "database",
-  "cores",
-  "port",
-  "framework",
-  "root",
-  "environment",
-  "ports",
-  "volumes",
-  "appMount",
-  "mounts",
-  "storage",
-  "endpoints",
-  "routes",
-  "healthcheck",
-  "hostnames",
-  "dependsOn",
-  "composeBuild",
-  "providers",
-]);
+const SERVICE_CONFIG_KEYS = new Set(Object.keys(ServiceConfig.fields));
 
 const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
 
