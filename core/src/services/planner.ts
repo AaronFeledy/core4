@@ -15,6 +15,7 @@ import {
   PortablePath,
   type ProviderCapabilities,
   type ProviderId,
+  type RoutePlan,
   type ServiceConfig,
   ServiceName,
   ServicePlan,
@@ -136,6 +137,8 @@ const bindRealization = (providerCapabilities: ProviderCapabilities) =>
  * these (e.g. `__pycache__` for Python, `.bundle` for Ruby).
  */
 export const FILE_SYNC_DEFAULT_EXCLUDES: ReadonlyArray<string> = ["node_modules", "vendor", ".git", "tmp"];
+
+export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 
 const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
   const appMount = servicePlan.appMount;
@@ -407,6 +410,7 @@ const planApp = (
   const services: Record<string, unknown> = {};
   const aggregatedStores: Array<{ name: string; scope: StorageScope }> = [];
   const fileSyncEntries: Array<FileSyncPlan> = [];
+  const aggregatedRoutes: Array<RoutePlan> = [];
   const seenStoreNames = new Set<string>();
 
   const pushStore = (name: string, scope: StorageScope): void => {
@@ -592,6 +596,17 @@ const planApp = (
           }),
         );
       }
+
+      for (const ep of servicePlanWithCapabilityRealization.endpoints) {
+        if (ep.protocol !== "http" && ep.protocol !== "https") continue;
+        const endpointRef: string | number | undefined = ep.name !== undefined ? ep.name : ep.port;
+        aggregatedRoutes.push({
+          hostname: `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}`,
+          scheme: "https",
+          service: ServiceName.make(name),
+          ...(endpointRef !== undefined ? { endpoint: endpointRef } : {}),
+        });
+      }
     }
 
     const networks: ReadonlyArray<NetworkPlan> =
@@ -612,7 +627,7 @@ const planApp = (
       root: AbsolutePath.make(appRoot),
       provider,
       services,
-      routes: [],
+      routes: aggregatedRoutes,
       networks,
       stores: aggregatedStores,
       fileSync: fileSyncEntries,

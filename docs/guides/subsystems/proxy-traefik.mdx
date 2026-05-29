@@ -1,0 +1,40 @@
+---
+id: proxy-traefik
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, subsystems, proxy, traefik]
+---
+
+<Guide>
+  <Scenario id="proxy-sdk-contract" render={false} reason="ProxyService SDK contract is exercised by sdk/test/contract/proxy-service.test.ts against TestProxyService; the Traefik Live Layer requires the global app (US-111) and running containers">
+    <Step name="proxy-contract">
+      <Variable name="sdkTag" value="ProxyService" display="Effect Service tag published in @lando/sdk; plugins implement ProxyServiceShape" />
+      <Variable name="contractRunner" value="runProxyServiceContract" display="Contract runner from @lando/sdk/test validates id, setup, applyRoutes, removeRoutes" />
+      <Variable name="testDouble" value="TestProxyService / makeTestProxyService" display="In-memory test double for ProxyService; tracks routes by appId" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="proxy-route-derivation" render={false} reason="Route auto-derivation from service endpoints is exercised by core/test/services/app-planner.test.ts; live Traefik routing requires the global app">
+    <Step name="route-derivation">
+      <Variable name="defaultDomain" value="lndo.site" display="Default proxy domain; produces hostnames like web.myapp.lndo.site" />
+      <Variable name="derivationRule" value="HTTP/HTTPS service endpoints → RoutePlan (hostname=service.app.lndo.site, scheme=https)" display="Planner auto-derives routes from service endpoints — no proxy: Landofile block required" />
+      <Variable name="appPlanField" value="AppPlan.routes: RoutePlan[]" display="Planner populates AppPlan.routes with derived route plans" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="proxy-unavailable-layer" render={false} reason="ProxyServiceUnavailableLive stub is exercised by unit tests; Traefik Live Layer requires the global app (US-111, US-114) which is deferred to a later Beta story">
+    <Step name="unavailable-layer">
+      <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="Fails closed with remediation until global app (US-111) provides the Traefik service" />
+      <Variable name="liveLayerPRD" value="US-111 GlobalAppService + US-114 bundled Traefik global service" display="Full Traefik Live Layer wired via globalServices: lands in US-111 / US-114" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="proxy-no-port-conflict" render={false} reason="Two apps with overlapping default ports resolve via Traefik hostname routing — verified at the AppPlan level by planner unit tests; live Traefik routing requires the global app and running containers">
+    <Step name="no-port-conflict">
+      <Variable name="app1Route" value="web.app1.lndo.site → app1 web service port 3000" display="App1 Traefik route auto-derived from its HTTP endpoint" />
+      <Variable name="app2Route" value="web.app2.lndo.site → app2 web service port 3000" display="App2 Traefik route auto-derived from its HTTP endpoint; distinct hostname, no host-port conflict" />
+      <Variable name="verificationRef" value="core/test/services/app-planner.test.ts" display="Planner tests verify two apps produce distinct non-conflicting RoutePlans" />
+    </Step>
+  </Scenario>
+</Guide>
