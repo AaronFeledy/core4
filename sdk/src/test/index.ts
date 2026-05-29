@@ -1646,9 +1646,25 @@ export const runCaContract = (ca: CertificateAuthorityShape): Effect.Effect<void
 
     yield* ca.setup({ force: false }).pipe(Effect.mapError((d) => caContractFailure("setup resolves", d)));
 
-    yield* ca
+    const certResult = yield* ca
       .issueCert({ cn: "test.lndo.site", sans: ["*.test.lndo.site"] })
       .pipe(Effect.mapError((d) => caContractFailure("issueCert resolves", d)));
+
+    yield* requireCaContract(
+      typeof certResult.certPath === "string" && certResult.certPath.length > 0,
+      "issueCert result has non-empty certPath",
+      certResult,
+    );
+    yield* requireCaContract(
+      typeof certResult.keyPath === "string" && certResult.keyPath.length > 0,
+      "issueCert result has non-empty keyPath",
+      certResult,
+    );
+    yield* requireCaContract(
+      typeof certResult.caPath === "string" && certResult.caPath.length > 0,
+      "issueCert result has non-empty caPath",
+      certResult,
+    );
 
     yield* ca
       .setup({ force: false, skipTrustInstall: true })
