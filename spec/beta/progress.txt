@@ -849,3 +849,23 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: none (Bugbot passed with no findings)
 - Merge: merged (squash)
 ---
+
+## [2026-05-29 11:56 CDT] - US-106
+- Published the `HostProxyService` contract in `@lando/sdk`: tag, shape, error class, `HostProxyMode`/`HostProxyMechanism` types, and test helpers (`runHostProxyContract`, `makeTestHostProxyService`, `TestHostProxyService`).
+- Added a fail-closed core fallback layer plus a no-op `HostProxyServiceDisabledLive` for the `--host-proxy=none` opt-out path; per-platform Live Layers (etc-resolver on macOS, /etc/hosts block on Linux, HOSTS-file writer on Windows) remain a downstream story.
+- Surfaced the opt-out at the CLI: `lando setup --host-proxy=auto|none` parses (with OCLIF validation) in both the source-mode command and the compiled-binary dispatcher.
+- Wrote the SDK contract test, the docs subsystems guide for host-proxy, and updated `sdk/API_COMPATIBILITY.md` so `HostProxyService` is locked in the additive Alpha service tag list.
+- Verification: typecheck passed, lint passed, all SDK contract tests + setup CLI tests passed. Two compiled-binary tests intermittently flake on `ETXTBSY` when run concurrently with their own `bun run build`; both pass reliably when re-run in isolation (same pre-existing environment quirk noted for US-074).
+- **Learnings for future iterations:**
+  - The Beta subsystem contract-publishing precedent (PR #207 / US-105) is: SDK contract + error + test helpers + contract test + core fail-closed `Unavailable` layer + docs guide + API_COMPATIBILITY entry, with no runtime/layer wiring required. Live per-platform layers and runtime composition land in later subsystem stories.
+  - When the AC names a CLI surface (`lando setup --host-proxy=none`), declare it as an OCLIF `Flags.string({ options: [...] })` on the source command and mirror parsing in `core/src/cli/run.ts` per the §8.4.1 dual-dispatch parity rule. Body consumption is optional (matches the `--skip-*` pattern that is also declared but not consumed yet).
+  - For the SDK fallback layer, `status()` returning a successful inactive snapshot beats failing — it lets `lando doctor` and similar surfaces render a clean "not configured" state without crashing while `setup()`/`teardown()` still fail closed with an actionable `HostProxyError`.
+---
+
+
+## [2026-05-29 12:12 CDT] - US-106 Review
+- Reviewed the US-106 HostProxyService contract scaffold against PRD-B-04 and specialist review findings; fixed the opt-out blocker by adding the disabled no-op host-proxy layer and making `lando setup --host-proxy=none` consume that path.
+- Review notes (deferred/rejected): Full per-platform DNS writer Live Layers remain deferred under the US-101..105 subsystem-stub precedent; this review kept the contract/fallback story focused.
+- Review notes (deferred/rejected): Full `bun test` still hit the known compiled-binary setup flake (`core/dist/lando` missing during concurrent suite run); the same compiled setup test passed in isolation.
+- Verification: typecheck passed, lint passed, focused HostProxy/setup tests passed, compiled setup test passed in isolation; full suite has the pre-existing compiled-binary concurrency failure noted above.
+---

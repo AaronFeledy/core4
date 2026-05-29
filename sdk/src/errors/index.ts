@@ -272,13 +272,6 @@ export class ShellExecError extends Schema.TaggedError<ShellExecError>()("ShellE
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-/**
- * ShellScriptOutsideRootError — raised when a host-shell script path
- * resolves outside every permitted base directory. The host `ToolingEngine`
- * (and any other code that loads `.bun.sh` / shell-shaped scripts from
- * the filesystem) MUST refuse paths whose realpath escapes the app root
- * (or the user-config-root recipe cache).
- */
 export class ShellScriptOutsideRootError extends Schema.TaggedError<ShellScriptOutsideRootError>()(
   "ShellScriptOutsideRootError",
   {
@@ -325,14 +318,6 @@ export class SshError extends Schema.TaggedError<SshError>()("SshError", {
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-/**
- * BunShellScriptFrontMatterError — raised when a `.bun.sh` script-backed
- * tooling task has a missing or malformed YAML front-matter
- * block. The front-matter MUST be the first contiguous comment block at
- * the top of the file wrapped in `# ---` markers and uniformly prefixed
- * with `# `; it MUST validate against the `BunShellScriptFrontMatter`
- * schema published from `@lando/sdk`.
- */
 export class BunShellScriptFrontMatterError extends Schema.TaggedError<BunShellScriptFrontMatterError>()(
   "BunShellScriptFrontMatterError",
   {
@@ -344,11 +329,6 @@ export class BunShellScriptFrontMatterError extends Schema.TaggedError<BunShellS
   },
 ) {}
 
-/**
- * BunShellScriptEmptyError — raised when a `.bun.sh` script-backed
- * tooling task is an empty file. Empty scripts cannot be
- * compiled into a task.
- */
 export class BunShellScriptEmptyError extends Schema.TaggedError<BunShellScriptEmptyError>()(
   "BunShellScriptEmptyError",
   {
@@ -460,6 +440,12 @@ export class CaError extends Schema.TaggedError<CaError>()("CaError", {
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class HostProxyError extends Schema.TaggedError<HostProxyError>()("HostProxyError", {
+  message: Schema.String,
+  hostProxyId: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class LandoRuntimeBootstrapError extends Schema.TaggedError<LandoRuntimeBootstrapError>()(
   "LandoRuntimeBootstrapError",
   {
@@ -483,11 +469,6 @@ export class NotImplementedError extends Schema.TaggedError<NotImplementedError>
   remediation: Schema.String,
 }) {}
 
-/**
- * RendererSelectionError — raised before command execution when a
- * renderer value is supplied that is not supported by the current CLI
- * configuration.
- */
 export class RendererSelectionError extends Schema.TaggedError<RendererSelectionError>()(
   "RendererSelectionError",
   {
@@ -498,15 +479,6 @@ export class RendererSelectionError extends Schema.TaggedError<RendererSelection
   },
 ) {}
 
-/**
- * FileSyncStartError — emitted when `FileSyncEngine.createSession`, `setup`,
- * or `isAvailable` fails. Typical causes include a missing binary, an
- * unreachable daemon, a refused agent deploy, a missing capability,
- * source paths outside the app root, or a target path conflict. Payload
- * includes the engine id, the rejected `FileSyncSessionSpec` shape when
- * applicable (kept as `Unknown` for publishing redaction), a remediation
- * pointer, and a debug `cause`.
- */
 export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()("FileSyncStartError", {
   engineId: Schema.String,
   message: Schema.String,
@@ -515,14 +487,6 @@ export class FileSyncStartError extends Schema.TaggedError<FileSyncStartError>()
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-/**
- * FileSyncDriftError — emitted when `FileSyncEngine.streamEvents` or a
- * running session surfaces content drift or a conflict that cannot be
- * reconciled automatically under the requested sync mode. Payload
- * includes the `FileSyncSessionRef` as a string, the conflicted paths
- * (relative to the session source after publishing-layer redaction), an
- * optional suggested mode upgrade, and a debug `cause`.
- */
 export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()("FileSyncDriftError", {
   engineId: Schema.String,
   message: Schema.String,
@@ -533,13 +497,6 @@ export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
-/**
- * FileSyncStopError — `FileSyncEngine.terminateSession` or
- * `pauseSession`/`resumeSession` finalisation failed. Payload includes the
- * engine id, the `FileSyncSessionRef` as a string, a remediation pointer
- * (usually `lando apps poweroff` for daemon clean-up), and a debug
- * `cause`.
- */
 export class FileSyncStopError extends Schema.TaggedError<FileSyncStopError>()("FileSyncStopError", {
   engineId: Schema.String,
   sessionRef: Schema.String,

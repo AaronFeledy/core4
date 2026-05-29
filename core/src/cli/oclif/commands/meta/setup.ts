@@ -19,6 +19,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../../../providers/precedence.ts";
+import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -49,6 +50,13 @@ const inputSkipFileSync = (input: unknown): boolean => {
   const flags = (input as { flags?: unknown }).flags;
   if (typeof flags !== "object" || flags === null) return false;
   return (flags as Record<string, unknown>)["skip-file-sync"] === true;
+};
+
+const inputHostProxyMode = (input: unknown): "auto" | "none" => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return "auto";
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return "auto";
+  return (flags as Record<string, unknown>)["host-proxy"] === "none" ? "none" : "auto";
 };
 
 const setupProviderPlan = (provider: ProviderId): AppPlan => ({
@@ -97,6 +105,10 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
 
       yield* Effect.scoped(provider.setup({ force: false }));
 
+      if (inputHostProxyMode(input) === "none") {
+        yield* HostProxyServiceDisabled.setup({ mode: "none" });
+      }
+
       if (provider.capabilities.bindMountPerformance === "slow" && !inputSkipFileSync(input)) {
         const userDataRootRaw = yield* configService.get("userDataRoot");
         if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
@@ -136,6 +148,12 @@ export default class SetupCommand extends LandoCommandBase {
     "skip-file-sync": Flags.boolean({
       description: "Skip Mutagen binary download; deferred to first accelerated app:start.",
       default: false,
+    }),
+    "host-proxy": Flags.string({
+      description:
+        "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",
+      options: ["auto", "none"],
+      default: "auto",
     }),
   };
   static override landoSpec: LandoCommandSpec = setupSpec;
