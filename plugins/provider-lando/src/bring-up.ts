@@ -58,6 +58,14 @@ const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const networkName = (plan: AppPlan) => `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const SHARED_CROSS_APP_NETWORK = "lando_bridge_network";
+
+const networkNames = (plan: AppPlan): ReadonlyArray<string> =>
+  Array.from(new Set([networkName(plan), SHARED_CROSS_APP_NETWORK]));
+
+const serviceNetworkAliases = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => [
+  `${service.name}.${plan.slug}.internal`,
+];
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -221,18 +229,20 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
     },
     HostConfig: hostConfig(plan, service),
     NetworkingConfig: {
-      EndpointsConfig: {
-        [networkName(plan)]: {},
-      },
+      EndpointsConfig: Object.fromEntries(
+        networkNames(plan).map((name) => [
+          name,
+          name === SHARED_CROSS_APP_NETWORK ? { Aliases: serviceNetworkAliases(plan, service) } : {},
+        ]),
+      ),
     },
   };
 };
 
 const ensureNetwork = (
   api: PodmanApiClient,
-  plan: AppPlan,
+  name: string,
 ): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> => {
-  const name = networkName(plan);
   // Inspect first — skip create if the network already exists (idempotent bringUp).
   return request(api, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
@@ -336,6 +346,20 @@ const removeNetworkSilent = (api: PodmanApiClient, plan: AppPlan): Effect.Effect
     path: `/networks/${encodeURIComponent(networkName(plan))}`,
   }).pipe(Effect.catchAll(() => Effect.void));
 
+const removeCreatedNetworksSilent = (
+  api: PodmanApiClient,
+  createdNetworks: ReadonlySet<string>,
+): Effect.Effect<void> =>
+  Effect.forEach(
+    createdNetworks,
+    (name) =>
+      request(api, {
+        method: "DELETE",
+        path: `/networks/${encodeURIComponent(name)}`,
+      }).pipe(Effect.catchAll(() => Effect.void)),
+    { discard: true },
+  );
+
 const publish = (
   eventService: BringUpOptions["eventService"],
   event: Parameters<EventPublisher["publish"]>[0],
@@ -417,6 +441,7 @@ const rollbackPartialApply = (
   api: PodmanApiClient,
   plan: AppPlan,
   touched: ReadonlyArray<string>,
+  createdNetworks: ReadonlySet<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
     // stop+force-remove every container we touched, then remove the app network.
@@ -425,6 +450,7 @@ const rollbackPartialApply = (
     yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
     yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
     yield* removeNetworkSilent(api, plan);
+    yield* removeCreatedNetworksSilent(api, createdNetworks);
   });
 
 export const bringUp = (
@@ -438,18 +464,24 @@ export const bringUp = (
     }
     const resolvedApi: PodmanApiClient = api;
 
-    yield* ensureNetwork(resolvedApi, plan);
+    const createdNetworks = new Set<string>();
+    yield* Effect.forEach(
+      networkNames(plan),
+      (name) =>
+        ensureNetwork(resolvedApi, name).pipe(Effect.tap(() => Effect.sync(() => createdNetworks.add(name)))),
+      { discard: true },
+    );
     const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {
       if (options.signal?.aborted === true) {
-        yield* rollbackPartialApply(resolvedApi, plan, touched);
+        yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
         yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
       }
       const thisName = containerName(plan, service);
       touched.push(thisName);
       const result = yield* startService(resolvedApi, plan, service, options).pipe(
-        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched)),
+        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
       );
       changed = changed || result.changed;
     }

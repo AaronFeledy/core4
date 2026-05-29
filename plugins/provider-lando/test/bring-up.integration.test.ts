@@ -83,6 +83,9 @@ interface CreateContainerBody {
   readonly HostConfig?: {
     readonly Binds?: ReadonlyArray<string>;
   };
+  readonly NetworkingConfig?: {
+    readonly EndpointsConfig?: Readonly<Record<string, { readonly Aliases?: ReadonlyArray<string> }>>;
+  };
 }
 
 interface FakeApiHooks {
@@ -200,6 +203,19 @@ describe("provider-lando bringUp", () => {
     const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
     expect(nodeCreateBody?.Cmd).toEqual(nodeCommand);
     expect(nodeCreateBody?.HostConfig?.Binds).toEqual([`${appRoot}:/app`]);
+    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
+      "lando-bringupapp": {},
+      lando_bridge_network: { Aliases: ["node.bringupapp.internal"] },
+    });
+    expect(
+      fake.calls
+        .filter((call) => call.path === "/networks/create")
+        .slice(0, 2)
+        .map((call) => call.body),
+    ).toEqual([
+      { Name: "lando-bringupapp", Driver: "bridge" },
+      { Name: "lando_bridge_network", Driver: "bridge" },
+    ]);
   });
 
   test("realizes accelerated appMount and bind mounts as file-sync volumes", async () => {
