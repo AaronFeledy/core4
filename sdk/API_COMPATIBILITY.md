@@ -51,6 +51,7 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `InspectProps`
 - `LANDO_SHARED_CROSS_APP_NETWORK`
 - `MatcherAnyOf`
 - `MatcherNot`
@@ -102,6 +103,7 @@
 - `TranscriptCleanupFrame`
 - `TranscriptFixtureFrame`
 - `TranscriptFrame`
+- `TranscriptInspectFrame`
 - `TranscriptRunFrame`
 - `TranscriptVerifyFrame`
 - `UseFixtureProps`

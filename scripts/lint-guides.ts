@@ -27,6 +27,7 @@ const ALPHA_2_COMPONENTS = new Set([
   "Cleanup",
   "Variable",
   "UseFixture",
+  "Inspect",
 ]);
 
 // This script enforces only the core guide rules implemented below.

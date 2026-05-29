@@ -57,11 +57,23 @@ export const TranscriptCleanupFrame = Schema.Struct({
 });
 export type TranscriptCleanupFrame = typeof TranscriptCleanupFrame.Type;
 
+export const TranscriptInspectFrame = Schema.Struct({
+  kind: Schema.Literal("inspect"),
+  target: Schema.Literal("file", "json", "events", "output"),
+  value: Schema.Unknown,
+}).annotations({
+  identifier: "TranscriptInspectFrame",
+  title: "Transcript Inspect Frame",
+  description: "Internal guide scenario transcript frame for a captured inspection.",
+});
+export type TranscriptInspectFrame = typeof TranscriptInspectFrame.Type;
+
 export const TranscriptFrame = Schema.Union(
   TranscriptRunFrame,
   TranscriptVerifyFrame,
   TranscriptFixtureFrame,
   TranscriptCleanupFrame,
+  TranscriptInspectFrame,
 ).annotations({
   identifier: "TranscriptFrame",
   title: "Transcript Frame",

@@ -129,6 +129,56 @@ describe("withScenarioContext", () => {
     ]);
   });
 
+  test("inspect captures file, json, events, and output without asserting or failing", async () => {
+    const result = await withTempCwd(async (root) => {
+      const transcriptPath = join(root, "dist", "transcripts", "guides", "static", "inspect-capture.json");
+      const frames = await Effect.runPromise(
+        withScenarioContext({ guideId: "static", scenarioId: "inspect-capture" }, (context) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() => writeFile(join(context.testDir, "notes.txt"), "hello inspect\n"));
+            yield* Effect.promise(() =>
+              writeFile(join(context.testDir, "config.json"), JSON.stringify({ name: "demo" })),
+            );
+            yield* Effect.promise(() =>
+              writeFile(
+                join(context.testDir, ".lando.yml"),
+                ["name: static-demo", "services:", "  web:", "    type: static", "    root: .", ""].join(
+                  "\n",
+                ),
+              ),
+            );
+
+            yield* context.runCli(["version"]);
+            yield* context.inspect({ output: true });
+            yield* context.runCli(["start"]);
+            yield* context.inspect({ events: true });
+            yield* context.inspect({ file: "notes.txt" });
+            yield* context.inspect({ json: "config.json" });
+            yield* context.inspect({ file: "missing.txt" });
+
+            return context.transcript.frames;
+          }),
+        ),
+      );
+      const transcript = JSON.parse(await readFile(transcriptPath, "utf8")) as Record<string, unknown>;
+      return { frames, transcript };
+    });
+
+    const inspectFrames = result.frames.filter((frame) => frame.kind === "inspect");
+    expect(inspectFrames).toEqual([
+      { kind: "inspect", target: "output", value: "0.0.0\n" },
+      { kind: "inspect", target: "events", value: [{ _tag: "post-start" }] },
+      { kind: "inspect", target: "file", value: "hello inspect\n" },
+      { kind: "inspect", target: "json", value: { name: "demo" } },
+      { kind: "inspect", target: "file", value: null },
+    ]);
+    expect(Schema.decodeUnknownSync(Transcript)(result.transcript)).toMatchObject({
+      guideId: "static",
+      scenarioId: "inspect-capture",
+      exitStatus: "pass",
+    });
+  });
+
   test("writes a redacted failure transcript before removing testDir", async () => {
     const result = await withTempCwd(async (root) => {
       const transcriptPath = join(
