@@ -221,6 +221,19 @@ const failingFetch = (): typeof fetch =>
     throw new Error("network unreachable");
   }) as typeof fetch;
 
+const withProcessArch = async <T>(arch: string, fn: () => Promise<T>): Promise<T> => {
+  const original = Object.getOwnPropertyDescriptor(process, "arch");
+  if (original === undefined) {
+    throw new Error("missing process.arch descriptor");
+  }
+  Object.defineProperty(process, "arch", { ...original, value: arch });
+  try {
+    return await fn();
+  } finally {
+    Object.defineProperty(process, "arch", original);
+  }
+};
+
 describe("MUTAGEN_VERSIONS_MANIFEST", () => {
   test("schema version is 1 and mutagenVersion is non-empty", () => {
     expect(MUTAGEN_VERSIONS_MANIFEST.schemaVersion).toBe(1);
@@ -482,6 +495,45 @@ describe("makeMutagenDownloader().setup()", () => {
 
       await writeFile(mutagenAgentBinaryPath(dir, "linux-amd64"), new Uint8Array([0x00, 0x01]));
       expect((await readInstalledMutagenStatus(dir, TEST_MANIFEST, "linux", "x64")).isCurrent).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("arm64 hosts reuse the host archive for Linux agents", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
+    let fetchCalls = 0;
+    const hostUrl = TEST_MANIFEST.host["linux-arm64"].url;
+    const selectiveFetch: typeof fetch = ((input: RequestInfo | URL): Promise<Response> => {
+      fetchCalls += 1;
+      const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      if (url !== hostUrl) {
+        return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
+      }
+      return Promise.resolve(new Response(FAKE_ARCHIVE_BYTES, { status: 200, statusText: "OK" }));
+    }) as typeof fetch;
+
+    try {
+      await withProcessArch("arm64", async () => {
+        const downloader = makeMutagenDownloader();
+        const exit = await run(
+          downloader.setup({
+            userDataRoot: dir,
+            _testManifest: TEST_MANIFEST,
+            fetchImpl: selectiveFetch,
+            extractImpl: fakeExtract(),
+          }),
+        );
+        expect(exit._tag).toBe("Success");
+      });
+
+      expect(fetchCalls).toBe(1);
+      expect(new Uint8Array(await readFile(mutagenHostBinaryPath(dir)))).toEqual(FAKE_BINARY_BYTES);
+      for (const agentKey of Object.keys(TEST_MANIFEST.agents)) {
+        expect(new Uint8Array(await readFile(mutagenAgentBinaryPath(dir, agentKey)))).toEqual(
+          FAKE_BINARY_BYTES,
+        );
+      }
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
