@@ -75,8 +75,8 @@ const planUserApp = (capabilities: ProviderCapabilities): Promise<AppPlan> => {
   );
 };
 
-describe("US-107: sharedCrossAppNetwork capability + provider-side wiring", () => {
-  test("provider-lando, provider-docker and provider-podman advertise sharedCrossAppNetwork on every supported platform", () => {
+describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
+  test("providers advertise sharedCrossAppNetwork on every supported platform", () => {
     for (const platform of ["linux", "darwin", "win32"] as const) {
       expect(providerLandoCapabilitiesForPlatform(platform).sharedCrossAppNetwork).toBe(true);
       expect(dockerCapabilitiesForPlatform(platform).sharedCrossAppNetwork).toBe(true);
@@ -84,7 +84,7 @@ describe("US-107: sharedCrossAppNetwork capability + provider-side wiring", () =
     }
   });
 
-  test("planner accepts the global Traefik contribution when the provider advertises sharedCrossAppNetwork", () => {
+  test("accepts the global Traefik contribution when the provider advertises sharedCrossAppNetwork", () => {
     const result = validateGlobalServiceContributions({
       manifests: [traefikGlobalManifest],
       providerCapabilities: baseCapabilities({ sharedCrossAppNetwork: true }),
@@ -97,7 +97,7 @@ describe("US-107: sharedCrossAppNetwork capability + provider-side wiring", () =
     expect(result.accepted[0]?.plugin).toBe("@lando/proxy-traefik");
   });
 
-  test("planner drops the global Traefik contribution with an actionable GlobalServiceCapabilityError when sharedCrossAppNetwork is false", () => {
+  test("rejects the global Traefik contribution with a GlobalServiceCapabilityError when sharedCrossAppNetwork is false", () => {
     const result = validateGlobalServiceContributions({
       manifests: [traefikGlobalManifest],
       providerCapabilities: baseCapabilities({ sharedCrossAppNetwork: false }),
@@ -118,7 +118,7 @@ describe("US-107: sharedCrossAppNetwork capability + provider-side wiring", () =
     expect(error.remediation).toContain("provider");
   });
 
-  test("a per-app web service plan against a sharedCrossAppNetwork-capable provider exposes the route the global Traefik routes through", async () => {
+  test("a per-app web service plan on a sharedCrossAppNetwork-capable provider exposes the route Traefik routes through", async () => {
     const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: true }));
     const web = plan.services[ServiceName.make("web")];
     if (web === undefined) throw new Error("web service missing from plan");

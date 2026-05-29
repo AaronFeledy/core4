@@ -812,7 +812,7 @@ export type GlobalConfig = typeof GlobalConfig.Type;
  * Plugins use `globalServices:` to add a service to the global Lando app's
  * generated `dist` layer. The active provider must satisfy any capabilities
  * listed in `requires.providerCapabilities`; otherwise the planner drops the
- * contribution with `GlobalServiceCapabilityError` (§20.8.1).
+ * contribution with `GlobalServiceCapabilityError`.
  */
 export const GlobalServiceContribution = Schema.Struct({
   /** Service id inside the global Landofile. MUST be unique across plugins. */
@@ -859,7 +859,7 @@ export const PluginContribution = Schema.Struct({
   cas: Schema.optional(Schema.Array(Schema.String)),
   /** Built-in commands registered. */
   commands: Schema.optional(Schema.Array(Schema.String)),
-  /** Global-app service contributions (§20.4). */
+  /** Global-app service contributions added by plugins. */
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
 });
 export type PluginContribution = typeof PluginContribution.Type;

@@ -31,7 +31,7 @@ describe("provider-lando capabilities", () => {
     expect(windows.sharedCrossAppNetwork).toBe(true);
   });
 
-  test("declares the Linux MVP ProviderCapabilities through the Live Layer", async () => {
+  test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
     const layer = makeProviderLayer({ platform: "linux", podmanApi: { info: Effect.succeed({}) } });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
