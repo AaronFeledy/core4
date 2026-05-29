@@ -76,39 +76,109 @@ describe("FileSyncEngine contract", () => {
     const engine = TestFileSyncEngine;
     const spec = buildSpec("status-trip");
 
-    const ref = await Effect.runPromise(Effect.scoped(engine.createSession(spec)));
-    let listing = await Effect.runPromise(engine.listSessions({}));
-    expect(listing.find((s) => s.ref === ref)?.status).toBe("running");
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const ref = yield* engine.createSession(spec);
+          let listing = yield* engine.listSessions({});
+          expect(listing.find((s) => s.ref === ref)?.status).toBe("running");
 
-    await Effect.runPromise(engine.pauseSession(ref));
-    listing = await Effect.runPromise(engine.listSessions({}));
-    expect(listing.find((s) => s.ref === ref)?.status).toBe("paused");
+          yield* engine.pauseSession(ref);
+          listing = yield* engine.listSessions({});
+          expect(listing.find((s) => s.ref === ref)?.status).toBe("paused");
 
-    await Effect.runPromise(engine.resumeSession(ref));
-    listing = await Effect.runPromise(engine.listSessions({}));
-    expect(listing.find((s) => s.ref === ref)?.status).toBe("running");
+          yield* engine.resumeSession(ref);
+          listing = yield* engine.listSessions({});
+          expect(listing.find((s) => s.ref === ref)?.status).toBe("running");
 
-    await Effect.runPromise(engine.terminateSession(ref));
-    listing = await Effect.runPromise(engine.listSessions({}));
-    expect(listing.find((s) => s.ref === ref)).toBeUndefined();
+          yield* engine.terminateSession(ref);
+          listing = yield* engine.listSessions({});
+          expect(listing.find((s) => s.ref === ref)).toBeUndefined();
+        }),
+      ),
+    );
   });
 
   test("idempotency: terminateSession is safe to call twice and pauseSession is safe to call twice", async () => {
     const engine = TestFileSyncEngine;
     const spec = buildSpec("idempotent");
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const ref = yield* engine.createSession(spec);
+
+          yield* engine.pauseSession(ref);
+          yield* engine.pauseSession(ref);
+
+          yield* engine.terminateSession(ref);
+          yield* engine.terminateSession(ref);
+        }),
+      ),
+    );
+  });
+
+  test("scope finalization removes an unterminated TestFileSyncEngine session", async () => {
+    const engine = TestFileSyncEngine;
+    const spec = buildSpec("scope-finalizer");
+
     const ref = await Effect.runPromise(Effect.scoped(engine.createSession(spec)));
+    const listing = await Effect.runPromise(engine.listSessions({}));
+    expect(listing.find((s) => s.ref === ref)).toBeUndefined();
+  });
 
-    await Effect.runPromise(engine.pauseSession(ref));
-    await expect(Effect.runPromise(engine.pauseSession(ref))).resolves.toBeUndefined();
+  test("contract helper rejects engines that do not map outside-root sources to FileSyncStartError", async () => {
+    const engine = {
+      ...TestFileSyncEngine,
+      createSession: (spec: ReturnType<typeof buildSpec>) =>
+        spec.source === "/etc"
+          ? Effect.fail(new FileSyncStopError({ engineId: "test", sessionRef: "x", message: "wrong" }))
+          : TestFileSyncEngine.createSession(spec),
+    } as typeof TestFileSyncEngine;
 
-    await Effect.runPromise(engine.terminateSession(ref));
-    await expect(Effect.runPromise(engine.terminateSession(ref))).resolves.toBeUndefined();
+    await expectContractFailure(engine, "outside-root source fails with FileSyncStartError");
+  });
+
+  test("contract helper rejects engines that do not map conflict streams to FileSyncDriftError", async () => {
+    const engine = {
+      ...TestFileSyncEngine,
+      streamEvents: (ref: FileSyncSessionRef) =>
+        ref === "__CONFLICT__"
+          ? Stream.fail(new FileSyncStartError({ engineId: "test", message: "wrong" }))
+          : TestFileSyncEngine.streamEvents(ref),
+    } as typeof TestFileSyncEngine;
+
+    await expectContractFailure(engine, "conflict event stream fails with FileSyncDriftError");
+  });
+
+  test("contract helper rejects engines that do not map stop failures to FileSyncStopError", async () => {
+    const engine = {
+      ...TestFileSyncEngine,
+      terminateSession: (ref: FileSyncSessionRef) =>
+        ref === "__STOP_FAIL__"
+          ? Effect.fail(new FileSyncStartError({ engineId: "test", message: "wrong" }))
+          : TestFileSyncEngine.terminateSession(ref),
+    } as typeof TestFileSyncEngine;
+
+    await expectContractFailure(engine, "stop failure fails with FileSyncStopError");
   });
 
   test("error semantics: createSession failure surfaces FileSyncStartError", async () => {
     const engine = TestFileSyncEngine;
     // Use the rejected sentinel mountKey baked into TestFileSyncEngine.
     const rejected = { ...buildSpec("reject-me"), mountKey: "__REJECT__" as never };
+
+    const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") return;
+    if (exit.cause._tag !== "Fail") return;
+    expect(exit.cause.error).toBeInstanceOf(FileSyncStartError);
+    expect(exit.cause.error._tag).toBe("FileSyncStartError");
+  });
+
+  test("error semantics: outside-root source surfaces FileSyncStartError", async () => {
+    const engine = TestFileSyncEngine;
+    const rejected = { ...buildSpec("outside-root"), source: "/etc" as never };
 
     const exit = await Effect.runPromiseExit(Effect.scoped(engine.createSession(rejected)));
     expect(exit._tag).toBe("Failure");

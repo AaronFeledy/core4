@@ -1044,6 +1044,29 @@ const buildFileSyncContractSpec = (mountKey: string): FileSyncSessionSpec => ({
   excludes: ["node_modules"],
 });
 
+const buildOutsideRootFileSyncContractSpec = (): FileSyncSessionSpec => ({
+  ...buildFileSyncContractSpec("outside-root"),
+  source: AbsolutePath.make("/etc"),
+});
+
+const sourceIsInsideAppRoot = (spec: FileSyncSessionSpec): boolean => {
+  const root = spec.app.root;
+  return spec.source === root || spec.source.startsWith(`${root}/`);
+};
+
+const requireFileSyncTaggedFailure = <A>(
+  effect: Effect.Effect<A, FileSyncError>,
+  tag: FileSyncError["_tag"],
+  assertion: string,
+): Effect.Effect<void, ContractFailure> =>
+  Effect.either(effect).pipe(
+    Effect.flatMap((result) =>
+      Either.isLeft(result) && result.left._tag === tag
+        ? Effect.void
+        : Effect.fail(fileSyncContractFailure(assertion, result)),
+    ),
+  );
+
 /**
  * Run the `FileSyncEngine` contract assertions. Validates identity,
  * capability decode, lifecycle method types, the create/pause/resume/
@@ -1119,108 +1142,153 @@ export const runFileSyncEngineContract = (
       ),
     );
 
-    const lifecycleSpec = buildFileSyncContractSpec("lifecycle");
+    yield* Effect.scoped(
+      Effect.gen(function* () {
+        const lifecycleSpec = buildFileSyncContractSpec("lifecycle");
+        const ref = yield* engine
+          .createSession(lifecycleSpec)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("createSession resolves for the contract fixture", details as unknown),
+            ),
+          );
+        yield* requireFileSyncContract(
+          isNonEmptyString(ref),
+          "createSession returns a non-empty FileSyncSessionRef",
+          ref,
+        );
 
-    const lifecycleRef = yield* Effect.scoped(engine.createSession(lifecycleSpec)).pipe(
-      Effect.mapError((details: FileSyncError) =>
-        fileSyncContractFailure("createSession resolves for the contract fixture", details as unknown),
-      ),
-    );
-    yield* requireFileSyncContract(
-      isNonEmptyString(lifecycleRef),
-      "createSession returns a non-empty FileSyncSessionRef",
-      lifecycleRef,
+        const listed = yield* engine
+          .listSessions({})
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("listSessions resolves", details as unknown),
+            ),
+          );
+        yield* requireFileSyncContract(Array.isArray(listed), "listSessions returns an array", listed);
+        yield* requireFileSyncContract(
+          listed.find((info: FileSyncSessionInfo) => info.ref === ref)?.status === "running",
+          "newly created session reports status = running",
+          { listed, ref },
+        );
+
+        yield* engine
+          .pauseSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("pauseSession resolves", details as unknown),
+            ),
+          );
+        const afterPause = yield* engine
+          .listSessions({})
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("listSessions resolves after pause", details as unknown),
+            ),
+          );
+        yield* requireFileSyncContract(
+          afterPause.find((info: FileSyncSessionInfo) => info.ref === ref)?.status === "paused",
+          "paused session reports status = paused",
+          { listed: afterPause, ref },
+        );
+
+        yield* engine
+          .pauseSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("pauseSession is idempotent", details as unknown),
+            ),
+          );
+
+        yield* engine
+          .resumeSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("resumeSession resolves", details as unknown),
+            ),
+          );
+        const afterResume = yield* engine
+          .listSessions({})
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("listSessions resolves after resume", details as unknown),
+            ),
+          );
+        yield* requireFileSyncContract(
+          afterResume.find((info: FileSyncSessionInfo) => info.ref === ref)?.status === "running",
+          "resumed session reports status = running",
+          { listed: afterResume, ref },
+        );
+
+        yield* engine
+          .terminateSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("terminateSession resolves", details as unknown),
+            ),
+          );
+        const afterTerminate = yield* engine
+          .listSessions({})
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("listSessions resolves after terminate", details as unknown),
+            ),
+          );
+        yield* requireFileSyncContract(
+          afterTerminate.find((info: FileSyncSessionInfo) => info.ref === ref) === undefined,
+          "terminated session is removed from listSessions",
+          { listed: afterTerminate, ref },
+        );
+
+        yield* engine
+          .terminateSession(ref)
+          .pipe(
+            Effect.mapError((details: FileSyncError) =>
+              fileSyncContractFailure("terminateSession is idempotent", details as unknown),
+            ),
+          );
+
+        return ref;
+      }),
     );
 
-    const listed = yield* engine
+    const scopeFinalizedRef = yield* Effect.scoped(
+      engine
+        .createSession(buildFileSyncContractSpec("scope-finalizer"))
+        .pipe(
+          Effect.mapError((details: FileSyncError) =>
+            fileSyncContractFailure("createSession registers a scope finalizer", details as unknown),
+          ),
+        ),
+    );
+    const afterScope = yield* engine
       .listSessions({})
       .pipe(
         Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("listSessions resolves", details as unknown),
-        ),
-      );
-    yield* requireFileSyncContract(Array.isArray(listed), "listSessions returns an array", listed);
-    yield* requireFileSyncContract(
-      listed.find((info: FileSyncSessionInfo) => info.ref === lifecycleRef)?.status === "running",
-      "newly created session reports status = running",
-      { listed, ref: lifecycleRef },
-    );
-
-    yield* engine
-      .pauseSession(lifecycleRef)
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("pauseSession resolves", details as unknown),
-        ),
-      );
-    const afterPause = yield* engine
-      .listSessions({})
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("listSessions resolves after pause", details as unknown),
+          fileSyncContractFailure("listSessions resolves after scope finalization", details as unknown),
         ),
       );
     yield* requireFileSyncContract(
-      afterPause.find((info: FileSyncSessionInfo) => info.ref === lifecycleRef)?.status === "paused",
-      "paused session reports status = paused",
-      { listed: afterPause, ref: lifecycleRef },
+      afterScope.find((info: FileSyncSessionInfo) => info.ref === scopeFinalizedRef) === undefined,
+      "session is removed after createSession scope finalizes",
+      { listed: afterScope, ref: scopeFinalizedRef },
     );
 
-    yield* engine
-      .pauseSession(lifecycleRef)
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("pauseSession is idempotent", details as unknown),
-        ),
-      );
-
-    yield* engine
-      .resumeSession(lifecycleRef)
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("resumeSession resolves", details as unknown),
-        ),
-      );
-    const afterResume = yield* engine
-      .listSessions({})
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("listSessions resolves after resume", details as unknown),
-        ),
-      );
-    yield* requireFileSyncContract(
-      afterResume.find((info: FileSyncSessionInfo) => info.ref === lifecycleRef)?.status === "running",
-      "resumed session reports status = running",
-      { listed: afterResume, ref: lifecycleRef },
+    yield* requireFileSyncTaggedFailure(
+      Effect.scoped(engine.createSession(buildOutsideRootFileSyncContractSpec())),
+      "FileSyncStartError",
+      "outside-root source fails with FileSyncStartError",
     );
-
-    yield* engine
-      .terminateSession(lifecycleRef)
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("terminateSession resolves", details as unknown),
-        ),
-      );
-    const afterTerminate = yield* engine
-      .listSessions({})
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("listSessions resolves after terminate", details as unknown),
-        ),
-      );
-    yield* requireFileSyncContract(
-      afterTerminate.find((info: FileSyncSessionInfo) => info.ref === lifecycleRef) === undefined,
-      "terminated session is removed from listSessions",
-      { listed: afterTerminate, ref: lifecycleRef },
+    yield* requireFileSyncTaggedFailure(
+      Stream.runCollect(engine.streamEvents(FileSyncSessionRef.make("__CONFLICT__"))),
+      "FileSyncDriftError",
+      "conflict event stream fails with FileSyncDriftError",
     );
-
-    yield* engine
-      .terminateSession(lifecycleRef)
-      .pipe(
-        Effect.mapError((details: FileSyncError) =>
-          fileSyncContractFailure("terminateSession is idempotent", details as unknown),
-        ),
-      );
+    yield* requireFileSyncTaggedFailure(
+      engine.terminateSession(FileSyncSessionRef.make("__STOP_FAIL__")),
+      "FileSyncStopError",
+      "stop failure fails with FileSyncStopError",
+    );
   });
 
 export interface SupportedFileSyncContractCell {
@@ -1333,7 +1401,12 @@ const sessionRefFor = (spec: FileSyncSessionSpec): FileSyncSessionRef =>
   FileSyncSessionRef.make(`${spec.app.id}-${spec.service}-${spec.mountKey}`);
 
 const filterMatches = (info: FileSyncSessionInfo, filter: FileSyncSessionFilter): boolean => {
-  if (filter.app !== undefined && info.app.id !== filter.app.id) return false;
+  if (
+    filter.app !== undefined &&
+    (info.app.kind !== filter.app.kind || info.app.id !== filter.app.id || info.app.root !== filter.app.root)
+  ) {
+    return false;
+  }
   if (filter.service !== undefined && info.service !== filter.service) return false;
   if (filter.mountKey !== undefined && info.mountKey !== filter.mountKey) return false;
   return true;
@@ -1359,12 +1432,21 @@ export const TestFileSyncEngine: FileSyncEngineShape = {
   setup: (_options: FileSyncSetupOptions) => Effect.void,
 
   createSession: (spec: FileSyncSessionSpec) =>
-    Effect.suspend(() => {
+    Effect.gen(function* () {
       if (spec.mountKey === "__REJECT__") {
-        return Effect.fail(
+        return yield* Effect.fail(
           new FileSyncStartError({
             engineId: "test",
             message: "Test rejection sentinel triggered",
+            sessionSpec: spec,
+          }),
+        );
+      }
+      if (!sourceIsInsideAppRoot(spec)) {
+        return yield* Effect.fail(
+          new FileSyncStartError({
+            engineId: "test",
+            message: "Source must resolve inside the app root",
             sessionSpec: spec,
           }),
         );
@@ -1380,7 +1462,12 @@ export const TestFileSyncEngine: FileSyncEngineShape = {
         lastUpdatedAt: DateTime.unsafeMake("2026-05-28T00:00:00Z"),
       };
       TEST_FILE_SYNC_STATE.sessions.set(ref, info);
-      return Effect.succeed(ref);
+      yield* Effect.addFinalizer(() =>
+        Effect.sync(() => {
+          TEST_FILE_SYNC_STATE.sessions.delete(ref);
+        }),
+      );
+      return ref;
     }),
 
   pauseSession: (ref: FileSyncSessionRef) =>
