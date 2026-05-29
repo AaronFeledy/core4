@@ -561,7 +561,10 @@ describe("lando start", () => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
-      destroy: () => Effect.void,
+      destroy: () =>
+        Effect.sync(() => {
+          callLog.push("provider.destroy");
+        }),
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),
       run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -595,6 +598,11 @@ describe("lando start", () => {
     );
 
     await expect(startApp().pipe(Effect.provide(layer), Effect.runPromise)).rejects.toThrow("sync failed");
-    expect(callLog).toEqual(["create:app-mount", "create:mount-1", "terminate:session-web-app-mount"]);
+    expect(callLog).toEqual([
+      "create:app-mount",
+      "create:mount-1",
+      "terminate:session-web-app-mount",
+      "provider.destroy",
+    ]);
   });
 });

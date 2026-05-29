@@ -414,6 +414,8 @@ const planApp = (
           }),
       ),
     );
+    const fileSyncEngineId =
+      providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
@@ -550,20 +552,17 @@ const planApp = (
         pushStore(mount.store, authoredInfo?.scope ?? "service");
       }
 
-      if (providerCapabilities.bindMountPerformance === "slow") {
-        const engineId = resolveFileSyncEngineId(manifests);
-        if (engineId !== undefined) {
-          fileSyncEntries.push(
-            ...collectFileSyncEntries({
-              appId,
-              appRoot,
-              appName,
-              serviceName: name,
-              servicePlan: servicePlanWithCapabilityRealization,
-              engineId,
-            }),
-          );
-        }
+      if (fileSyncEngineId !== undefined) {
+        fileSyncEntries.push(
+          ...collectFileSyncEntries({
+            appId,
+            appRoot,
+            appName,
+            serviceName: name,
+            servicePlan: servicePlanWithCapabilityRealization,
+            engineId: fileSyncEngineId,
+          }),
+        );
       }
     }
 
