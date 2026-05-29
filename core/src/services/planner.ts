@@ -334,13 +334,17 @@ const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig)
   const authored = service.appMount;
   if (authored === undefined) return servicePlan;
   if (authored === false) return servicePlan;
-  if (servicePlan.appMount === undefined) return servicePlan;
+  const existingMount = servicePlan.appMount;
+  if (existingMount === undefined) return servicePlan;
   const merged = {
-    ...servicePlan.appMount,
+    ...existingMount,
     target: PortablePath.make(authored.target),
-    readOnly: authored.readOnly ?? servicePlan.appMount.readOnly,
-    excludes: authored.excludes ?? servicePlan.appMount.excludes,
-    includes: authored.includes ?? servicePlan.appMount.includes,
+    readOnly: authored.readOnly ?? existingMount.readOnly,
+    excludes:
+      authored.excludes !== undefined
+        ? [...existingMount.excludes, ...authored.excludes.filter((e) => !existingMount.excludes.includes(e))]
+        : existingMount.excludes,
+    includes: authored.includes ?? existingMount.includes,
   };
   return { ...servicePlan, appMount: merged };
 };
@@ -484,7 +488,7 @@ const planApp = (
         catch: (cause) => servicePlanError(appRoot, name, cause),
       });
       const servicePlan = applyAuthoredHealthcheck(
-        mergeDefaultExcludes(applyAuthoredAppMount(rawPlan, service)),
+        applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service),
         service,
       );
 

@@ -879,6 +879,29 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("service-type framework presets are preserved when user provides additional excludes", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        {
+          name: "pyapp",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: {
+              image: "python:3.12",
+              appMount: { target: "/app", excludes: ["dist"] },
+            },
+          },
+        },
+        providerLandoCapabilities,
+      );
+      const web = appPlan.services[ServiceName.make("web")];
+      expect(web?.appMount?.excludes).toEqual(
+        expect.arrayContaining([...FILE_SYNC_DEFAULT_EXCLUDES, "__pycache__", "dist"]),
+      );
+      expect(web?.appMount?.excludes).toContain("__pycache__");
+    });
+  });
+
   test("FileSyncPlan session.excludes inherits defaults on slow providers", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(
