@@ -1,6 +1,8 @@
 /** Public Effect schemas for SDK contracts. */
 import { JSONSchema, Schema } from "effect";
 
+import { FileSyncMode as FileSyncModeSchema } from "./file-sync.ts";
+
 export {
   DeprecationNotice,
   DeprecationSeverity,
@@ -9,6 +11,8 @@ export {
   decodeGuideFrontmatter,
   decodeGuideFrontmatterEither,
 } from "../docs/guide-frontmatter.ts";
+export * from "./file-sync.ts";
+
 export {
   CleanupProps,
   GuideProps,
@@ -994,15 +998,6 @@ export type TemplateRenderContext = typeof TemplateRenderContext.Type;
 export const FileSyncSessionRef = Schema.String.pipe(Schema.brand("FileSyncSessionRef"));
 export type FileSyncSessionRef = typeof FileSyncSessionRef.Type;
 
-/** Sync direction and conflict-resolution mode. */
-export const FileSyncMode = Schema.Literal(
-  "two-way-safe",
-  "two-way-resolved",
-  "one-way-safe",
-  "one-way-replica",
-);
-export type FileSyncMode = typeof FileSyncMode.Type;
-
 /**
  * Engine capability matrix declared at registration time. Used by
  * `AppPlanner` to verify a `MountPlan`'s requested `mode` is supported
@@ -1010,7 +1005,7 @@ export type FileSyncMode = typeof FileSyncMode.Type;
  */
 export const FileSyncEngineCapabilities = Schema.Struct({
   /** Supported sync modes; at least one MUST be declared. */
-  modes: Schema.Array(FileSyncMode).pipe(Schema.minItems(1)),
+  modes: Schema.Array(FileSyncModeSchema).pipe(Schema.minItems(1)),
   /**
    * `auto`: engine deploys its in-container agent on first session start
    * via `RuntimeProvider.run`. `preinstalled`: engine assumes the agent
@@ -1074,7 +1069,7 @@ export const FileSyncSessionSpec = Schema.Struct({
   /** Where the synced bytes should appear. */
   target: FileSyncSessionTarget,
   /** Requested sync mode; engines MAY upgrade per `FileSyncDriftError.suggestedMode`. */
-  mode: FileSyncMode,
+  mode: FileSyncModeSchema,
   /** Engine-honored exclude patterns from the service config. */
   excludes: Schema.Array(Schema.String),
   /** Optional ownership / mode overrides applied on the target side. */

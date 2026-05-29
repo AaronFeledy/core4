@@ -1,6 +1,8 @@
 /** Tagged error exports for the SDK. */
 import { Schema } from "effect";
 
+import { FileSyncMode } from "../schema/file-sync.ts";
+
 export class ConfigError extends Schema.TaggedError<ConfigError>()("ConfigError", {
   message: Schema.String,
   path: Schema.optional(Schema.String),
@@ -492,9 +494,7 @@ export class FileSyncDriftError extends Schema.TaggedError<FileSyncDriftError>()
   message: Schema.String,
   sessionRef: Schema.String,
   conflictedPaths: Schema.Array(Schema.String),
-  suggestedMode: Schema.optional(
-    Schema.Literal("two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"),
-  ),
+  suggestedMode: Schema.optional(FileSyncMode),
   remediation: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}
