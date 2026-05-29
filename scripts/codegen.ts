@@ -48,6 +48,11 @@ const generators: ReadonlyArray<Generator> = [
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-release-workflow.ts`],
     cwd: REPO_ROOT,
   },
+  {
+    id: "nightly-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-nightly-workflow.ts`],
+    cwd: REPO_ROOT,
+  },
 ] satisfies ReadonlyArray<Generator>;
 
 const run = async (cmd: Array<string>, cwd: string): Promise<void> => {
