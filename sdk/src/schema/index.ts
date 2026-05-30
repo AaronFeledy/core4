@@ -350,7 +350,7 @@ export type NetworkPlan = typeof NetworkPlan.Type;
 
 /**
  * Per-app bridge network — the isolated network every service in an app joins
- * so intra-app service-name DNS (`<service>`) resolves (§10.1).
+ * so intra-app service-name DNS (`<service>`) resolves.
  */
 export const PerAppBridgePlan = Schema.Struct({
   /** Provider-visible per-app network name (e.g. `lando-<slug>`). */
@@ -363,7 +363,7 @@ export type PerAppBridgePlan = typeof PerAppBridgePlan.Type;
 /**
  * Shared cross-app network membership — how an app attaches to the
  * provider-owned shared network so sibling apps and global services (e.g. the
- * global Traefik proxy) can reach it via `<service>.<app>.internal` (§10.1).
+ * global Traefik proxy) can reach it via `<service>.<app>.internal`.
  *
  * The shared network is owned by the global app: app destroy removes the
  * per-app bridge but leaves the shared network in place.
@@ -381,8 +381,8 @@ export const SharedNetworkMembershipPlan = Schema.Struct({
 export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Type;
 
 /**
- * Networking plan — the per-app networking *intent* (§10.1). Core defines the
- * intent; the `RuntimeProvider` realizes it: a per-app bridge network plus
+ * Networking plan — the per-app networking *intent*. Core defines the intent;
+ * the `RuntimeProvider` realizes it: a per-app bridge network plus
  * optional membership in the provider-owned shared cross-app network.
  *
  * `sharedNetworkMembership` is present when the selected provider advertises
@@ -482,8 +482,8 @@ const serviceCrossAppAliases = (slug: string, serviceName: string): ReadonlyArra
 ];
 
 /**
- * Build the typed per-app `NetworkingPlan` (§10.1): a per-app bridge network
- * plus shared cross-app membership when the selected provider supports
+ * Build the typed per-app `NetworkingPlan`: a per-app bridge network plus
+ * shared cross-app membership when the selected provider supports
  * `sharedCrossAppNetwork`. The planner emits this; providers consume it.
  */
 export const landoNetworkingPlan = (input: {
@@ -574,7 +574,7 @@ export const AppPlan = Schema.Struct({
   routes: Schema.Array(RoutePlan),
   networks: Schema.Array(NetworkPlan),
   /**
-   * Typed per-app networking intent (§10.1): the per-app bridge plus optional
+   * Typed per-app networking intent: the per-app bridge plus optional
    * shared cross-app network membership. Populated by the planner; omitted for
    * service-less apps and legacy/hand-built plans (providers then fall back to
    * slug-derived network names).

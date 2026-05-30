@@ -242,14 +242,11 @@ const ensureNetwork = (
   api: PodmanApiClient,
   name: string,
 ): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
-  // Inspect first — skip create if the network already exists (idempotent bringUp).
   return request(api, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
-        // Network already exists; nothing to do.
         return Effect.succeed(false);
       }
-      // Not found (404) or unexpected — attempt create.
       return request(api, {
         method: "POST",
         path: "/networks/create",
@@ -445,7 +442,6 @@ const rollbackPartialApply = (
   createdNetworks: ReadonlySet<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    // stop+force-remove every container we touched, then remove the app network.
     // stop/DELETE are idempotent on 404 so this is safe for never-created
     // containers. Volumes are preserved so rollback does not discard persistent data.
     yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
