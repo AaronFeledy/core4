@@ -43,7 +43,7 @@ const expectTaggedDiagnosticForFailure = (
   expect(diagnostic.solution.description.length).toBeGreaterThan(0);
 };
 
-describe("US-110 subsystem failure-recovery classification", () => {
+describe("subsystem failure-recovery classification", () => {
   test("classifies proxy/ssh as automatic and certs/host-proxy/healthcheck/scanner as manual", async () => {
     const result = await runDefault(false);
     const byName = new Map(result.checks.map((check) => [check.name, check] as const));
@@ -86,7 +86,7 @@ describe("US-110 subsystem failure-recovery classification", () => {
   });
 });
 
-describe("US-110 each subsystem failure path produces a tagged error with severity + solution", () => {
+describe("each subsystem failure path produces a tagged error with severity + solution", () => {
   test("classifySubsystemFailure returns severity + solution for every subsystem", () => {
     for (const name of [...AUTOMATIC_SUBSYSTEMS, ...MANUAL_SUBSYSTEMS]) {
       const classified = classifySubsystemFailure(name);
@@ -139,7 +139,7 @@ describe("US-110 each subsystem failure path produces a tagged error with severi
   });
 });
 
-describe("US-110 meta:doctor --fix recovery", () => {
+describe("doctor --fix recovery", () => {
   test("--fix attempts setup for degraded automatic subsystems and reports a failed outcome against the bundled stubs", async () => {
     const result = await runDefault(true);
     for (const name of AUTOMATIC_SUBSYSTEMS) {
@@ -147,7 +147,6 @@ describe("US-110 meta:doctor --fix recovery", () => {
       expect(check?.context.fixOutcome).toBe("failed");
       expect(check?.context.fixExitCode).toBe("1");
       expect(check?.context.fixError?.length).toBeGreaterThan(0);
-      // failed automatic fix falls back to a manual remediation
       const solution = check?.solutions[0];
       expect(solution?.kind).toBe("manual");
       expect(solution?.command).toBe("lando setup");

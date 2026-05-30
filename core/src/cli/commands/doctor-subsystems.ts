@@ -74,9 +74,9 @@ export interface SubsystemDoctorOptions {
 
 /**
  * A `lando doctor` subsystem failure mapped to a tagged diagnostic that carries
- * the §10.9 `severity` and `solution`. This wraps a subsystem's tagged failure
- * (e.g. `ProxyError`, `CaError`) without modifying the compatibility-locked SDK
- * error classes.
+ * the diagnostic `severity` and `solution`. This wraps a subsystem's tagged
+ * failure (e.g. `ProxyError`, `CaError`) without modifying the
+ * compatibility-locked SDK error classes.
  */
 export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFailure")<{
   readonly subsystem: string;
@@ -204,8 +204,8 @@ const degradedSolution = (spec: SubsystemSpec): DoctorSolution =>
     : manualSetupSolution(spec.manualRemediation);
 
 /**
- * Map a subsystem's failure path to a tagged diagnostic carrying §10.9
- * `severity` and `solution`. Returns `undefined` for an unknown subsystem name.
+ * Map a subsystem's failure path to a tagged diagnostic carrying `severity`
+ * and `solution`. Returns `undefined` for an unknown subsystem name.
  */
 export const classifySubsystemFailure = (
   subsystem: string,
