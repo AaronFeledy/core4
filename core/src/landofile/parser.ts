@@ -108,10 +108,46 @@ const stripComment = (line: string): string => {
   return beforeColon + valuePrefix + valuePart.replace(/\s+#.*$/, "");
 };
 
+const splitInlineArray = (value: string): ReadonlyArray<string> => {
+  const parts: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote: "'" | '"' | undefined;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote !== undefined) {
+      if (quote === '"' && char === "\\") {
+        index += 1;
+      } else if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "[") {
+      depth += 1;
+      continue;
+    }
+    if (char === "]") {
+      depth -= 1;
+      continue;
+    }
+    if (char === "," && depth === 0) {
+      parts.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(value.slice(start));
+  return parts;
+};
+
 const parseInlineArray = (value: string, filePath: string, line: number): ReadonlyArray<unknown> => {
   const inner = value.slice(1, -1).trim();
   if (inner === "") return [];
-  return inner.split(",").map((part) => parseScalar(part.trim(), filePath, line));
+  return splitInlineArray(inner).map((part) => parseScalar(part.trim(), filePath, line));
 };
 
 const unescapeDoubleQuotedScalar = (value: string): string =>

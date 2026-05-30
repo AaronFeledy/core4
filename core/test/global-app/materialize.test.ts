@@ -205,6 +205,28 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist round-trips provider nested arrays with comma scalars", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          providers: {
+            docker: { matrix: [["hello, world", "foo"]] },
+          },
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain('        - ["hello, world","foo"]');
+      expect(parsed.services?.web?.providers).toEqual({
+        docker: { matrix: [["hello, world", "foo"]] },
+      });
+    });
+  });
+
   test("regenerateDist quotes list scalars that look like map entries", async () => {
     await withTempRoots(async (dataRoot) => {
       const services: Record<string, ServiceConfig> = {
