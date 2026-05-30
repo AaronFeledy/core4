@@ -43,11 +43,53 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("accepts a guide with a <Hidden> block carrying a reason", async () => {
+    expect(await lintFixture("hidden-green")).toEqual([]);
+  });
+
+  test("reports <Hidden> blocks missing a reason", async () => {
+    expect(await lintFixture("hidden-missing-reason")).toEqual([
+      "core/test/lint/guides/hidden-missing-reason.mdx:9:5: guide.hidden.reason: <Hidden> requires a `reason` of at least 8 characters per §19.10.",
+    ]);
+  });
+
   test("reports duplicate Step names within one scenario", async () => {
     const diagnostics = await lintFixture("duplicate-step");
 
     expect(diagnostics).toEqual([
       'core/test/lint/guides/duplicate-step.mdx:11:5: guide.step.duplicate-name: Duplicate <Step name="run">.',
+    ]);
+  });
+
+  test("reports duplicate Step names between hidden and visible steps", () => {
+    const sourcePath = "core/test/lint/guides/duplicate-hidden-step.mdx";
+    const diagnostics = lintGuideContent(
+      sourcePath,
+      [
+        "---",
+        "id: duplicate-hidden-step",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="reader-path">',
+        '    <Hidden reason="seed deterministic fixtures">',
+        '      <Step name="run">',
+        '        <Run command="version" />',
+        "      </Step>",
+        "    </Hidden>",
+        '    <Step name="run">',
+        '      <Run command="status" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    ).diagnostics.map(formatGuideLintDiagnostic);
+
+    expect(diagnostics).toEqual([
+      'core/test/lint/guides/duplicate-hidden-step.mdx:14:5: guide.step.duplicate-name: Duplicate <Step name="run">.',
     ]);
   });
 
