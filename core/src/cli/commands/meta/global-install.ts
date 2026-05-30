@@ -4,9 +4,19 @@ import {
   GlobalAppError,
   type GlobalDistConflictError,
   type GlobalLandofilePathConflictError,
+  type GlobalServiceCollisionError,
+  type NoProviderInstalledError,
+  type PluginManifestError,
+  type ProviderConfigError,
+  type ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import type { GlobalAppPaths, GlobalDistResult } from "@lando/sdk/services";
-import { GlobalAppService } from "@lando/sdk/services";
+import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+
+import {
+  defaultGlobalServiceModuleLoader,
+  materializeGlobalServices,
+} from "../../../services/global-services.ts";
 
 export interface GlobalInstallOptions {
   readonly plugin?: string;
@@ -30,8 +40,15 @@ export const globalInstall = (
   options: GlobalInstallOptions = {},
 ): Effect.Effect<
   GlobalInstallResult,
-  GlobalAppError | GlobalDistConflictError | GlobalLandofilePathConflictError,
-  GlobalAppService
+  | GlobalAppError
+  | GlobalDistConflictError
+  | GlobalLandofilePathConflictError
+  | GlobalServiceCollisionError
+  | NoProviderInstalledError
+  | PluginManifestError
+  | ProviderConfigError
+  | ProviderUnavailableError,
+  GlobalAppService | PluginRegistry | RuntimeProviderRegistry
 > =>
   Effect.gen(function* () {
     if (options.plugin !== undefined && options.plugin !== "") {
@@ -39,9 +56,20 @@ export const globalInstall = (
     }
 
     const globalApp = yield* GlobalAppService;
+    const pluginRegistry = yield* PluginRegistry;
+    const registry = yield* RuntimeProviderRegistry;
+    const manifests = yield* pluginRegistry.list;
+    const provider = yield* registry.select(undefined);
+    const services = yield* materializeGlobalServices({
+      manifests,
+      providerCapabilities: provider.capabilities,
+      providerId: provider.id,
+      loadServiceConfig: defaultGlobalServiceModuleLoader.load,
+    });
+
     yield* Effect.scoped(globalApp.ensureRoot);
     const user = yield* globalApp.ensureUserLandofile;
-    const dist = yield* globalApp.regenerateDist({});
+    const dist = yield* globalApp.regenerateDist({ services });
     const paths = yield* globalApp.paths;
 
     return {

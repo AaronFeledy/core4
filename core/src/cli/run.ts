@@ -10,7 +10,7 @@ import {
   NotImplementedError,
   RendererSelectionError,
 } from "@lando/sdk/errors";
-import type { GlobalAppService } from "@lando/sdk/services";
+import type { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
@@ -790,7 +790,7 @@ const runMetaGlobalInstall = async (argv: ReadonlyArray<string>): Promise<void> 
     globalInstall(plugin === undefined ? {} : { plugin }).pipe(
       Effect.provide(
         makeLandoRuntime({ bootstrap: "global" }) as Layer.Layer<
-          GlobalAppService,
+          GlobalAppService | PluginRegistry | RuntimeProviderRegistry,
           LandoRuntimeBootstrapError
         >,
       ),
