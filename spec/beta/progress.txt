@@ -1179,3 +1179,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: fixed (Bugbot surfaced two real <Hidden>-feature consistency gaps — unconditional hidden steps were omitted from docs:scenario plan/debug output, and the duplicate-step-name guide lint skipped hidden-nested steps; both fixed to include hidden steps with regression coverage)
 - Merge: merged (squash) — resolved a spec/beta/progress.txt metadata conflict on merge of origin/main (#218/#219); product/prd.json auto-merged cleanly
 ---
+
+## [2026-05-30 18:25 CDT] - Babysit
+- PR: #221 https://github.com/AaronFeledy/core4/pull/221
+- CI outcome: pass (all GitHub Actions checks SUCCESS; Cursor Bugbot SUCCESS)
+- Review feedback: fixed (initial `provider-integration-linux-x64` failure was a real PR-local defect — the new `global-traefik-live.integration.test.ts` published the nginx backend on privileged host port 80, causing Podman HTTP 500 on container start; moved the backend to unprivileged port 31081 while preserving Host-header Traefik routing over the shared cross-app network)
+- Merge: merged (squash) — resolved a spec/beta/progress.txt conflict on merge of origin/main (#220); prd.json auto-merged (US-114 + main's US-179 both retain passes:true); full gate re-verified green (typecheck, lint, `bun test` 1976 pass / 0 fail)
+---
