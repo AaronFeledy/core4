@@ -80,6 +80,7 @@ const MVP_COMMAND_IDS = new Set([
   "apps:poweroff",
   "meta:bun",
   "meta:config",
+  "meta:global:install",
   "meta:doctor",
   "meta:plugin:add",
   "meta:plugin:remove",

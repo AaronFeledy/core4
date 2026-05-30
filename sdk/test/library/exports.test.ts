@@ -77,6 +77,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GuideHiddenScenarioReasonError).toBeDefined();
     expect(errors.AppIdReservedError).toBeDefined();
     expect(errors.GlobalAppError).toBeDefined();
+    expect(errors.GlobalDistConflictError).toBeDefined();
+    expect(errors.GlobalLandofilePathConflictError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {

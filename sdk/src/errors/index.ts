@@ -180,6 +180,27 @@ export class GlobalAppError extends Schema.TaggedError<GlobalAppError>()("Global
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class GlobalDistConflictError extends Schema.TaggedError<GlobalDistConflictError>()(
+  "GlobalDistConflictError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    reason: Schema.Literal("foreign-file", "manual-edit"),
+    remediation: Schema.String,
+  },
+) {}
+
+export class GlobalLandofilePathConflictError extends Schema.TaggedError<GlobalLandofilePathConflictError>()(
+  "GlobalLandofilePathConflictError",
+  {
+    message: Schema.String,
+    path: Schema.String,
+    expected: Schema.Literal("file", "directory"),
+    actual: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,

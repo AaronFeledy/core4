@@ -108,11 +108,55 @@ const stripComment = (line: string): string => {
   return beforeColon + valuePrefix + valuePart.replace(/\s+#.*$/, "");
 };
 
+const splitInlineArray = (value: string): ReadonlyArray<string> => {
+  const parts: string[] = [];
+  let start = 0;
+  let depth = 0;
+  let quote: "'" | '"' | undefined;
+  for (let index = 0; index < value.length; index += 1) {
+    const char = value[index];
+    if (quote !== undefined) {
+      if (quote === '"' && char === "\\") {
+        index += 1;
+      } else if (char === quote) {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      continue;
+    }
+    if (char === "[") {
+      depth += 1;
+      continue;
+    }
+    if (char === "]") {
+      depth -= 1;
+      continue;
+    }
+    if (char === "," && depth === 0) {
+      parts.push(value.slice(start, index));
+      start = index + 1;
+    }
+  }
+  parts.push(value.slice(start));
+  return parts;
+};
+
 const parseInlineArray = (value: string, filePath: string, line: number): ReadonlyArray<unknown> => {
   const inner = value.slice(1, -1).trim();
   if (inner === "") return [];
-  return inner.split(",").map((part) => parseScalar(part.trim(), filePath, line));
+  return splitInlineArray(inner).map((part) => parseScalar(part.trim(), filePath, line));
 };
+
+const unescapeDoubleQuotedScalar = (value: string): string =>
+  value.replace(/\\([\\"nrt])/g, (_, escaped: string) => {
+    if (escaped === "n") return "\n";
+    if (escaped === "r") return "\r";
+    if (escaped === "t") return "\t";
+    return escaped;
+  });
 
 const parseScalar = (value: string, filePath: string, line: number): unknown => {
   if (value.includes("${")) {
@@ -127,12 +171,16 @@ const parseScalar = (value: string, filePath: string, line: number): unknown => 
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) return parseInlineArray(trimmed, filePath, line);
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    // The flow-empty map `{}` is the only inline object the Landofile emitter
+    // produces (for empty records, which have no block sequence-item form).
+    // Round-trip it while populated inline objects stay rejected.
+    if (trimmed.slice(1, -1).trim() === "") return {};
     throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
   }
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
