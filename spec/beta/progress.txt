@@ -1146,3 +1146,8 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Shipping a default global service changes `meta:global:install`'s observable output: the global app now materializes `traefik` by default (when the provider advertises `sharedCrossAppNetwork`), so the prior "Global services: none" assertion in `global-install.test.ts` becomes "Global services: traefik". This is the expected new default, not a regression.
   - A Traefik global proxy should use the FILE provider (dynamic config written by the container start command via a heredoc), not the Docker provider: the Docker provider needs socket access and is provider-specific, which breaks Podman/lando parity and bypasses Lando's provider-neutral plan model. The `compose` service type (`type: "compose"` + `image:`) is the right shape for a raw upstream image like Traefik — `type: "lando"` would fail planning since no `lando` service type is registered.
 ---
+
+## [2026-05-30] - US-114 verified complete
+- Story verified complete on branch `us-114-bundled-traefik-global-service` (no new code). The bundled `traefik` global service, `bundledFirstGlobalServiceLoader` seam, and live routing scenario from commit `feat: bundled Traefik global service` already satisfy every US-114 acceptance criterion.
+- Verification: typecheck, lint, and full `bun test` (1968 pass / 24 skip / 0 fail) passed; tree clean after codegen idempotency check. CLI output verified via `core/test/cli/global-install.test.ts` (asserts `Global services: traefik`, dist `traefik:v3.3`, dashboard router). Raw `lando global:install` on a provider-less host correctly surfaces the gated `ProviderConfigError` envelope (expected — default install selects a provider before materializing).
+---
