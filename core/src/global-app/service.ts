@@ -46,7 +46,7 @@ const formatScalar = (value: string | number | boolean | null): string => {
     value === "" ||
     /^\s|\s$/.test(value) ||
     /[#[\]\{\}\n\r\t]/.test(value) ||
-    /^[A-Za-z_][A-Za-z0-9_-]*:\s/.test(value) ||
+    /^[A-Za-z_][A-Za-z0-9_-]*:(?:\s|$)/.test(value) ||
     value === "null" ||
     value === "true" ||
     value === "false" ||

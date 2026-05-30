@@ -167,10 +167,16 @@ describe("GlobalAppService Landofile materialization", () => {
 
       await runWithGlobalApp(materializeDist(services));
       const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
 
       expect(content).toContain('      MULTILINE: "line one\\nline two"');
       expect(content).toContain('      RETURN: "left\\rright"');
       expect(content).toContain('      TAB: "left\\tright"');
+      expect(parsed.services?.web?.environment).toEqual({
+        MULTILINE: "line one\nline two",
+        RETURN: "left\rright",
+        TAB: "left\tright",
+      });
     });
   });
 
@@ -179,8 +185,8 @@ describe("GlobalAppService Landofile materialization", () => {
       const services: Record<string, ServiceConfig> = {
         web: {
           type: "node",
-          cores: ["type: node"],
-          volumes: ["source: target"],
+          cores: ["type: node", "app:"],
+          volumes: ["source: target", "cache:"],
         },
       };
 
@@ -190,8 +196,10 @@ describe("GlobalAppService Landofile materialization", () => {
 
       expect(content).toContain("      - 'type: node'");
       expect(content).toContain("      - 'source: target'");
-      expect(parsed.services?.web?.cores).toEqual(["type: node"]);
-      expect(parsed.services?.web?.volumes).toEqual(["source: target"]);
+      expect(content).toContain("      - 'app:'");
+      expect(content).toContain("      - 'cache:'");
+      expect(parsed.services?.web?.cores).toEqual(["type: node", "app:"]);
+      expect(parsed.services?.web?.volumes).toEqual(["source: target", "cache:"]);
     });
   });
 
