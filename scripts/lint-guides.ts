@@ -28,6 +28,8 @@ const ALPHA_2_COMPONENTS = new Set([
   "Variable",
   "UseFixture",
   "Inspect",
+  "Tabs",
+  "Tab",
 ]);
 
 // This script enforces only the core guide rules implemented below.
@@ -260,6 +262,59 @@ const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<Gu
   });
 };
 
+const lintTabs = (
+  sourcePath: string,
+  root: MdxNode,
+  frontmatter: Record<string, unknown>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  const declaredAxis = Object.hasOwn(frontmatter, "tabs") || Object.hasOwn(frontmatter, "axes");
+  const declaredValues = Array.isArray(frontmatter.tabs)
+    ? frontmatter.tabs.filter((value): value is string => typeof value === "string")
+    : undefined;
+  walkElements(root, (node) => {
+    if (node.name !== "Tabs") return;
+    if (!declaredAxis) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.tabs.missing-axis",
+          "<Tabs> requires a `tabs:` or `axes:` axis declaration in frontmatter.",
+        ),
+      );
+      return;
+    }
+    const seen = new Set<string>();
+    for (const tab of elementChildren(node).filter((child) => child.name === "Tab")) {
+      const name = propsOf(tab).name;
+      if (typeof name !== "string") continue;
+      if (seen.has(name)) {
+        diagnostics.push(
+          diagnostic(
+            sourcePath,
+            tab,
+            "guide.tabs.duplicate-id",
+            `Duplicate <Tab name="${name}"> within a <Tabs> block.`,
+          ),
+        );
+        continue;
+      }
+      seen.add(name);
+      if (declaredValues !== undefined && !declaredValues.includes(name)) {
+        diagnostics.push(
+          diagnostic(
+            sourcePath,
+            tab,
+            "guide.tabs.missing-axis",
+            `<Tab name="${name}"> is not a declared \`tabs:\` value.`,
+          ),
+        );
+      }
+    }
+  });
+};
+
 const scenarioRenders = (scenario: MdxNode): boolean => propsOf(scenario).render !== false;
 
 const lintDiataxis = (
@@ -290,6 +345,7 @@ export const lintGuideContent = (sourcePath: string, content: string): GuideLint
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
+  lintTabs(sourcePath, root, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
   return { diagnostics };
 };

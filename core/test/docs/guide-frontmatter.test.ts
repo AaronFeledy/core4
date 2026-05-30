@@ -43,7 +43,19 @@ describe("GuideFrontmatter", () => {
     expect(decoded.left.message).toContain("lowercase kebab-case");
   });
 
-  test.each(["tabs", "axes", "variants"] as const)("rejects Beta-only `%s` with remediation", (key) => {
+  test("accepts single-axis `tabs:` value declarations", () => {
+    const decoded = expectRight({ id: "node-postgres", tabs: ["linux", "macos"] });
+    expect(decoded.tabs).toEqual(["linux", "macos"]);
+    expect(Schema.decodeUnknownSync(CoreGuideFrontmatter)(decoded)).toEqual(decoded);
+  });
+
+  test("rejects empty, duplicate, or non-kebab `tabs:` values", () => {
+    expect(decode({ id: "node-postgres", tabs: [] })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", tabs: ["linux", "linux"] })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", tabs: ["Linux"] })._tag).toBe("Left");
+  });
+
+  test.each(["axes", "variants"] as const)("rejects Beta-only `%s` with remediation", (key) => {
     const decoded = decode({ id: "node-postgres", [key]: [] });
     expect(decoded._tag).toBe("Left");
     if (Either.isRight(decoded)) return;

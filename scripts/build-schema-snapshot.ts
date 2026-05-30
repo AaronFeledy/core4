@@ -30,6 +30,8 @@ const SDK_SCHEMA_NAMES = [
   "VariableProps",
   "HiddenProps",
   "InspectProps",
+  "TabsProps",
+  "TabProps",
   "UseFixtureProps",
   "MatcherSchema",
   "Transcript",

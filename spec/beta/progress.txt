@@ -19,6 +19,7 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Adding any new export to `@lando/sdk/schema` (schemas AND helper functions) requires adding it to the `Additive Alpha schema exports` list in `sdk/API_COMPATIBILITY.md`; the `sdk-backward-compatibility` test diffs live exports vs that list. Adding a field to a snapshotted schema (e.g. `AppPlan`) also requires `bun run codegen:schema-snapshot`.
 - Adding a new executable-guide component touches five registration points: SDK `sdk/src/docs/components/props.ts` (prop schema + `decode*Either` helper + the `BETA_COMPONENTS` allowlist consulted by `assertAlpha2Component`), `scripts/build-guide-scenarios.ts` (the `GuideStepComponent` union + `parseStepComponent` + `renderStepComponent`), the `scripts/lint-guides.ts` component allowlist, the SDK schema registry in `sdk/src/schema/index.ts` (export/import/`JSON_SCHEMA_REGISTRY`/`getJsonSchema`), and `SDK_SCHEMA_NAMES` in `scripts/build-schema-snapshot.ts`; finish with `bun run codegen:schema-snapshot` and add the new export name to `sdk/API_COMPATIBILITY.md`.
 - Any new scenario transcript frame kind must be added to the `TranscriptFrame` union in `sdk/src/docs/transcript.ts`; `persistTranscript` runs `Schema.encodeSync(Transcript)` at scenario teardown and throws on an unknown frame kind.
+- Executable-guide scenarios fan out into one generated test file per axis variant. `tabs:` frontmatter declares the single implicit `default` axis's ordered values; `variantsOf()` in `scripts/build-guide-scenarios.ts` turns those into per-scenario variant files named `<scenario-id>.<value>.test.ts` with a `// @variant: default=<value>` header. A scenario body is an ordered `Step | TabsBlock`; `<Tabs>`/`<Tab name>` live inside `<Scenario>` and each tab carries its own `<Step>`s. `resolveVariantSteps()` computes the block step-name union in source order (first occurrence wins) and emits `test.skip(<step>, …)` for union steps a variant's tab omits. A guide with `tabs:` but no `<Tabs>` block still fans every scenario into N identical variants. Multi-axis `axes:`/`variants:` remain frontmatter-rejected (deferred); add new keys to `findDeferredGuideFrontmatter` only when their codegen lands.
 
 ## [2026-05-26] - US-074
 - Implemented Windows VM lifecycle for `@lando/provider-lando`
@@ -1007,4 +1008,13 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - CI outcome: pass
 - Review feedback: fixed (merge conflict with main in spec/beta/progress.txt resolved, keeping both US-109 and US-175 entries; checks re-ran green)
 - Merge: merged (squash)
+---
+
+## [2026-05-29 21:14 CDT] - US-177 (agent2)
+- Added `<Tabs>`/`<Tab>` axis-selection vocabulary for executable guides: published `TabsProps`/`TabProps` schemas, accepted single-axis `tabs:` frontmatter (implicit `default` axis), and taught `build-guide-scenarios` to fan each scenario into one generated test per declared tab value with `// @variant: default=<value>` headers and §-spec coverage-gap `test.skip` for steps a tab omits. `lint:guides` now flags `<Tabs>`/`<Tab>` used without a declared axis, tab names outside the declared values, and duplicate tab ids.
+- Verification: typecheck, lint, tests passed. Pre-existing `core/test/library/*-export` failures (workspace-symlink + fast-check packing in the /tmp clone) reproduce identically on clean main and are unrelated.
+- **Learnings for future iterations:**
+  - Single-axis `tabs:` is sugar over the implicit `default` axis; multi-axis `axes:` + per-cell `variants:` (US-178) stay frontmatter-rejected until their codegen lands. The variant fan-out + coverage-gap skip engine is the seam US-178 generalizes to the Cartesian product.
+  - Enabling a deferred frontmatter key requires updating its paired "still throws" codegen fixture (`beta-only/beta.mdx` now uses `axes:`) and the `assertAlpha2Component` rejection vs acceptance test lists in tandem.
+  - Adding/altering a `GuideFrontmatter` field changes its JSON Schema, so rerun `bun run codegen:schema-snapshot` after frontmatter edits, not only after component-prop edits.
 ---

@@ -28,6 +28,8 @@ export {
   RunProps,
   ScenarioProps,
   StepProps,
+  TabProps,
+  TabsProps,
   UseFixtureProps,
   VariableProps,
   VerifyProps,
@@ -50,6 +52,8 @@ import {
   RunProps,
   ScenarioProps,
   StepProps,
+  TabProps,
+  TabsProps,
   UseFixtureProps,
   VariableProps,
   VerifyProps,
@@ -1342,6 +1346,8 @@ const JSON_SCHEMA_REGISTRY = {
   VariableProps,
   HiddenProps,
   InspectProps,
+  TabsProps,
+  TabProps,
   UseFixtureProps,
   MatcherSchema,
   Transcript,
@@ -1394,6 +1400,10 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(HiddenProps);
     case "InspectProps":
       return JSONSchema.make(InspectProps);
+    case "TabsProps":
+      return JSONSchema.make(TabsProps);
+    case "TabProps":
+      return JSONSchema.make(TabProps);
     case "UseFixtureProps":
       return JSONSchema.make(UseFixtureProps);
     case "MatcherSchema":

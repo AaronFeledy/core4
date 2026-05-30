@@ -55,8 +55,36 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("beta-component");
 
     expect(diagnostics[0]).toBe(
-      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Tabs> is not supported in Alpha 2. <Tabs> ships in Phase 3 Beta — see spec/ROADMAP.md.",
+      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Skip> is not supported in Alpha 2. <Skip> ships in Phase 3 Beta — see spec/ROADMAP.md.",
     );
+  });
+
+  test("accepts a guide declaring single-axis tabs", async () => {
+    expect(await lintFixture("tabs-green")).toEqual([]);
+  });
+
+  test("reports <Tabs> usage without a declared axis", async () => {
+    const diagnostics = await lintFixture("tabs-missing-axis");
+
+    expect(diagnostics).toEqual([
+      "core/test/lint/guides/tabs-missing-axis.mdx:8:5: guide.tabs.missing-axis: <Tabs> requires a `tabs:` or `axes:` axis declaration in frontmatter.",
+    ]);
+  });
+
+  test("reports <Tab> names that are not a declared axis value", async () => {
+    const diagnostics = await lintFixture("tabs-unknown-value");
+
+    expect(diagnostics).toEqual([
+      'core/test/lint/guides/tabs-unknown-value.mdx:10:7: guide.tabs.missing-axis: <Tab name="windows"> is not a declared `tabs:` value.',
+    ]);
+  });
+
+  test("reports duplicate <Tab> names within one block", async () => {
+    const diagnostics = await lintFixture("tabs-duplicate");
+
+    expect(diagnostics).toEqual([
+      'core/test/lint/guides/tabs-duplicate.mdx:15:7: guide.tabs.duplicate-id: Duplicate <Tab name="linux"> within a <Tabs> block.',
+    ]);
   });
 
   test("reports inline Beta-only components anywhere in prose", async () => {
