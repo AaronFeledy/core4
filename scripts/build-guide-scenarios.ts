@@ -275,11 +275,18 @@ const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps>): str
 
 const renderCleanupFinalizers = (steps: ReadonlyArray<GuideStepNode>, sourcePath: string): string =>
   steps
-    .flatMap((step) => step.components.filter((component) => component.kind === "Cleanup"))
-    .map(
-      (component) =>
-        `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));`,
+    .flatMap((step) =>
+      step.components
+        .filter((component) => component.kind === "Cleanup")
+        .map((component) => ({ component, hidden: step.hidden })),
     )
+    .map(({ component, hidden }) => {
+      // Hidden-origin cleanup finalizers run at teardown where hiddenDepth is 0, so
+      // re-enter context.hidden to keep their frame suppressed per §17/§19.3.
+      const append = `context.transcript.append({ kind: "cleanup", command: [], exit: 0 })`;
+      const finalizer = hidden ? `context.hidden(${append})` : append;
+      return `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => ${finalizer});`;
+    })
     .join("\n");
 
 const renderRun = (

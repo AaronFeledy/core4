@@ -389,6 +389,60 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("suppresses cleanup frames for <Cleanup> authored inside <Hidden>", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-hidden-cleanup-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/hidden-cleanup.mdx"),
+        [
+          "---",
+          "id: hidden-cleanup-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="seeded">',
+          '    <Hidden reason="seed deterministic state invisibly">',
+          '      <Step name="seed">',
+          '        <Run command="version" />',
+          "        <Cleanup />",
+          "      </Step>",
+          "    </Hidden>",
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "      <Cleanup />",
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual(["test/scenarios/generated/guides/hidden-cleanup-guide/seeded.test.ts"]);
+      const generated = await Bun.file(join(root, written[0] ?? "")).text();
+      expect(generated).toContain(
+        'yield* Effect.addFinalizer(() => context.hidden(context.transcript.append({ kind: "cleanup", command: [], exit: 0 })));',
+      );
+      expect(generated).toContain(
+        'yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));',
+      );
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", join(root, written[0] ?? "")],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("generated scenario TypeScript runs against ScenarioContext", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-run-"));
     try {
