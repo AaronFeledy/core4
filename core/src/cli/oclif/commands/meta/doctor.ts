@@ -12,11 +12,15 @@ import type { DoctorOptions } from "../../../commands/doctor.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-const inputDoctorOptions = (input: unknown): DoctorOptions => {
+export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { flags?: { provider?: unknown } }).flags;
+  const flags = (input as { flags?: { provider?: unknown; fix?: unknown } }).flags;
   const provider = typeof flags?.provider === "string" ? flags.provider : undefined;
-  return provider === undefined || provider.length === 0 ? {} : { flagProviderId: provider };
+  const fix = flags?.fix === true;
+  return {
+    ...(provider === undefined || provider.length === 0 ? {} : { flagProviderId: provider }),
+    ...(fix ? { fix: true } : {}),
+  };
 };
 
 export const metaDoctorSpec: LandoCommandSpec<
@@ -43,6 +47,10 @@ export default class MetaDoctorCommand extends LandoCommandBase {
   static override flags = {
     provider: Flags.string({
       description: "Report what would be selected if `--provider=…` were used (e.g. lando, docker, podman).",
+    }),
+    fix: Flags.boolean({
+      description: "Re-run the setup step of each degraded subsystem whose recovery is safe to automate.",
+      default: false,
     }),
   };
   static override landoSpec: LandoCommandSpec = metaDoctorSpec;

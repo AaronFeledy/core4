@@ -182,6 +182,8 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
 const parseSkipFileSyncFlag = (argv: ReadonlyArray<string>): boolean =>
   argv.some((arg) => arg === "--skip-file-sync");
 
+const parseFixFlag = (argv: ReadonlyArray<string>): boolean => argv.some((arg) => arg === "--fix");
+
 type ParsedHostProxyFlag = "auto" | "none" | "invalid" | undefined;
 
 const parseHostProxyFlag = (argv: ReadonlyArray<string>): ParsedHostProxyFlag => {
@@ -431,10 +433,12 @@ const runAppCacheRefresh = async (): Promise<void> => {
 
 const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const flagProvider = parseProviderFlag(argv);
+  const fix = parseFixFlag(argv);
   const exit = await Effect.runPromiseExit(
-    doctorReport(flagProvider === undefined ? {} : { flagProviderId: flagProvider }).pipe(
-      Effect.provide(makeLandoRuntime({ bootstrap: "provider" })),
-    ),
+    doctorReport({
+      ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
+      ...(fix ? { fix: true } : {}),
+    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
   );
   if (Exit.isSuccess(exit)) {
     console.log(

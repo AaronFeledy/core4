@@ -107,6 +107,11 @@ export interface DoctorOptions {
    * provider-conflict check. Defaults to the active host's platform.
    */
   readonly platform?: HostPlatform | undefined;
+  /**
+   * When `true`, `lando doctor --fix` re-runs the setup step of each degraded
+   * subsystem whose recovery is safe to automate. Defaults to `false`.
+   */
+  readonly fix?: boolean | undefined;
 }
 
 const CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<

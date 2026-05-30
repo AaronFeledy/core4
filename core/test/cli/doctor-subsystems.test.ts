@@ -34,7 +34,7 @@ describe("meta:doctor subsystem checks", () => {
     }
   });
 
-  test("covers at least one failing-state check carrying a manual remediation", async () => {
+  test("covers a failing-state check per subsystem with a recovery-classified solution", async () => {
     const result = await runDefault();
     const failing = result.checks.filter((check) => check.status !== "pass");
 
@@ -42,10 +42,18 @@ describe("meta:doctor subsystem checks", () => {
     for (const check of failing) {
       expect(check.solutions.length).toBeGreaterThanOrEqual(1);
       const solution = check.solutions[0];
-      expect(solution?.kind).toBe("manual");
       expect(solution?.description.length).toBeGreaterThan(0);
-      expect(solution?.command).toBe("lando setup");
+      if (check.recovery === "automatic") {
+        expect(solution?.kind).toBe("automatic");
+        expect(solution?.command).toBe("lando doctor --fix");
+      } else {
+        expect(solution?.kind).toBe("manual");
+        expect(solution?.command).toBe("lando setup");
+      }
     }
+    const manual = failing.filter((check) => check.recovery === "manual");
+    expect(manual.length).toBeGreaterThanOrEqual(1);
+    expect(manual.every((check) => check.solutions[0]?.command === "lando setup")).toBe(true);
   });
 
   test("host-proxy check surfaces structured DNS status context", async () => {

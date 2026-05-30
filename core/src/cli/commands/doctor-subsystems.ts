@@ -3,14 +3,22 @@
  *
  * Aggregates the status of each `lando doctor` subsystem (proxy, certificate
  * authority, SSH agent, healthcheck engine, endpoint scanner, host DNS proxy)
- * into a diagnostic record with `status`, `severity`, `context`, and `solution`
- * fields.
+ * into a diagnostic record with `status`, `severity`, `recovery`, `context`,
+ * and `solution` fields.
  *
- * The checks are read-only and never bootstrap an app: each subsystem is probed
- * through its published Effect service tag, and the bundled fallback/disabled
- * Live Layers provide the identity/status data without mutating host state.
+ * The checks are read-only by default: each subsystem is probed through its
+ * published Effect service tag, and the bundled fallback/disabled Live Layers
+ * provide the identity/status data without mutating host state.
+ *
+ * When `--fix` is requested, a degraded subsystem whose recovery is classified
+ * `automatic` (non-privileged, exposes a re-runnable `setup()` step) has its
+ * setup step re-run in-process; the attempt outcome is reported as
+ * command-shaped metadata. Subsystems classified `manual` — privileged
+ * operations (CA trust-store install, host DNS writes) or subsystems with no
+ * `setup()` recovery step — are never auto-run and always fall back to a manual
+ * remediation, matching the no-silent-elevation rule for diagnostics.
  */
-import { Effect, Layer } from "effect";
+import { Data, Effect, Either, Layer } from "effect";
 
 import {
   CertificateAuthority,
@@ -32,13 +40,21 @@ import { renderSolution } from "./doctor.ts";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
 
 /**
- * A subsystem diagnostic entry with `name`, `status`, `severity`, `context`,
- * and `solutions` fields.
+ * Whether a degraded subsystem can be recovered automatically by re-running its
+ * `setup()` step (`automatic`) or requires a manual remediation because the
+ * recovery is privileged or no in-process setup step exists (`manual`).
+ */
+export type SubsystemRecovery = "automatic" | "manual";
+
+/**
+ * A subsystem diagnostic entry with `name`, `status`, `severity`, `recovery`,
+ * `context`, and `solutions` fields.
  */
 export interface DoctorSubsystemCheck {
   readonly name: string;
   readonly status: DoctorStatus;
   readonly severity: DoctorSeverity;
+  readonly recovery: SubsystemRecovery;
   readonly context: Readonly<Record<string, string>>;
   readonly solutions: ReadonlyArray<DoctorSolution>;
 }
@@ -46,6 +62,27 @@ export interface DoctorSubsystemCheck {
 export interface SubsystemDoctorResult {
   readonly checks: ReadonlyArray<DoctorSubsystemCheck>;
 }
+
+export interface SubsystemDoctorOptions {
+  /**
+   * Re-run the setup step of degraded subsystems whose recovery is classified
+   * `automatic`. Privileged / no-setup subsystems are never auto-run.
+   */
+  readonly fix?: boolean;
+}
+
+/**
+ * A `lando doctor` subsystem failure mapped to a tagged diagnostic that carries
+ * the §10.9 `severity` and `solution`. This wraps a subsystem's tagged failure
+ * (e.g. `ProxyError`, `CaError`) without modifying the compatibility-locked SDK
+ * error classes.
+ */
+export class DoctorSubsystemFailure extends Data.TaggedError("DoctorSubsystemFailure")<{
+  readonly subsystem: string;
+  readonly severity: DoctorSeverity;
+  readonly solution: DoctorSolution;
+  readonly cause?: unknown;
+}> {}
 
 /**
  * Default Live Layers used to probe subsystem status from `lando doctor`.
@@ -69,73 +106,286 @@ export const DefaultSubsystemDoctorLayer: Layer.Layer<
  */
 const NOT_READY_SUBSYSTEM_IDS: ReadonlySet<string> = new Set(["unavailable", "disabled"]);
 
-const setupSolution = (description: string): DoctorSolution => ({
+const manualSetupSolution = (description: string): DoctorSolution => ({
   kind: "manual",
   description,
   command: "lando setup",
 });
 
-interface ReadinessSpec {
+const automaticFixSolution = (description: string): DoctorSolution => ({
+  kind: "automatic",
+  description,
+  command: "lando doctor --fix",
+});
+
+interface SubsystemSpec {
   readonly name: string;
-  readonly remediation: string;
+  readonly recovery: SubsystemRecovery;
+  /**
+   * Remediation shown for `manual` subsystems and as the fallback when an
+   * `automatic` recovery attempt fails.
+   */
+  readonly manualRemediation: string;
+  /**
+   * Remediation advertised for a degraded `automatic` subsystem in read-only
+   * mode (before `--fix` is run).
+   */
+  readonly automaticRemediation?: string;
 }
 
-const readinessCheck = (spec: ReadinessSpec, serviceId: string): DoctorSubsystemCheck => {
-  const ready = !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
-  return {
-    name: spec.name,
-    status: ready ? "pass" : "warn",
-    severity: ready ? "info" : "warn",
-    context: {
-      subsystem: spec.name,
-      subsystemId: serviceId,
-      ready: String(ready),
-    },
-    solutions: ready ? [] : [setupSolution(spec.remediation)],
-  };
-};
-
-const PROXY_SPEC: ReadinessSpec = {
+const PROXY_SPEC: SubsystemSpec = {
   name: "proxy",
-  remediation:
+  recovery: "automatic",
+  automaticRemediation:
+    "The HTTPS reverse proxy is not running. Run `lando doctor --fix` to re-provision Traefik routing through the global app.",
+  manualRemediation:
     "The HTTPS reverse proxy is not available yet. Run `lando setup` and start the global app to enable Traefik routing.",
 };
 
-const CERTS_SPEC: ReadinessSpec = {
+const CERTS_SPEC: SubsystemSpec = {
   name: "certs",
-  remediation:
+  recovery: "manual",
+  manualRemediation:
     "The local certificate authority is not installed. Run `lando setup` to install and trust the dev CA.",
 };
 
-const SSH_SPEC: ReadinessSpec = {
+const SSH_SPEC: SubsystemSpec = {
   name: "ssh",
-  remediation: "The SSH agent sidecar is not available. Run `lando setup` to provision SSH agent forwarding.",
+  recovery: "automatic",
+  automaticRemediation:
+    "The SSH agent sidecar is not available. Run `lando doctor --fix` to re-provision SSH agent forwarding.",
+  manualRemediation:
+    "The SSH agent sidecar is not available. Run `lando setup` to provision SSH agent forwarding.",
 };
 
-const HEALTHCHECK_SPEC: ReadinessSpec = {
+const HEALTHCHECK_SPEC: SubsystemSpec = {
   name: "healthcheck",
-  remediation:
+  recovery: "manual",
+  manualRemediation:
     "The healthcheck engine is not ready. Run `lando setup` to provision the runtime provider it depends on.",
 };
 
-const SCANNER_SPEC: ReadinessSpec = {
+const SCANNER_SPEC: SubsystemSpec = {
   name: "scanner",
-  remediation:
+  recovery: "manual",
+  manualRemediation:
     "The endpoint scanner is not ready. Run `lando setup` to provision the runtime provider it depends on.",
 };
 
-const HOST_PROXY_INACTIVE_REMEDIATION =
-  "Hostname resolution for *.lndo.site is not active. Run `lando setup` to configure host DNS (or `lando setup --host-proxy=none` to manage DNS yourself).";
+const HOST_PROXY_SPEC: SubsystemSpec = {
+  name: "host-proxy",
+  recovery: "manual",
+  manualRemediation:
+    "Hostname resolution for *.lndo.site is not active. Run `lando setup` to configure host DNS (or `lando setup --host-proxy=none` to manage DNS yourself).",
+};
+
+const SUBSYSTEM_SPECS: ReadonlyArray<SubsystemSpec> = [
+  PROXY_SPEC,
+  CERTS_SPEC,
+  SSH_SPEC,
+  HEALTHCHECK_SPEC,
+  SCANNER_SPEC,
+  HOST_PROXY_SPEC,
+];
+
+const SPEC_BY_NAME: ReadonlyMap<string, SubsystemSpec> = new Map(
+  SUBSYSTEM_SPECS.map((spec) => [spec.name, spec] as const),
+);
+
+/**
+ * The solution advertised for a degraded subsystem in read-only mode:
+ * `automatic` subsystems point at `lando doctor --fix`; `manual` subsystems
+ * point at `lando setup`.
+ */
+const degradedSolution = (spec: SubsystemSpec): DoctorSolution =>
+  spec.recovery === "automatic" && spec.automaticRemediation !== undefined
+    ? automaticFixSolution(spec.automaticRemediation)
+    : manualSetupSolution(spec.manualRemediation);
+
+/**
+ * Map a subsystem's failure path to a tagged diagnostic carrying §10.9
+ * `severity` and `solution`. Returns `undefined` for an unknown subsystem name.
+ */
+export const classifySubsystemFailure = (
+  subsystem: string,
+  cause?: unknown,
+): DoctorSubsystemFailure | undefined => {
+  const spec = SPEC_BY_NAME.get(subsystem);
+  if (spec === undefined) return undefined;
+  return new DoctorSubsystemFailure({
+    subsystem,
+    severity: "warn",
+    solution: degradedSolution(spec),
+    ...(cause === undefined ? {} : { cause }),
+  });
+};
+
+/**
+ * Public alias for `classifySubsystemFailure` that always returns a diagnostic
+ * for the six known subsystems.
+ */
+export const subsystemFailureDiagnostic = (subsystem: string, cause?: unknown): DoctorSubsystemFailure => {
+  const diagnostic = classifySubsystemFailure(subsystem, cause);
+  if (diagnostic !== undefined) return diagnostic;
+  return new DoctorSubsystemFailure({
+    subsystem,
+    severity: "warn",
+    solution: manualSetupSolution(
+      `The ${subsystem} subsystem is not available. Run \`lando setup\` to provision it.`,
+    ),
+    ...(cause === undefined ? {} : { cause }),
+  });
+};
+
+const errorMessage = (cause: unknown): string => {
+  if (typeof cause === "object" && cause !== null && "message" in cause) {
+    const message = (cause as { readonly message?: unknown }).message;
+    if (typeof message === "string" && message.length > 0) return message;
+  }
+  return String(cause);
+};
+
+const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck => ({
+  name: spec.name,
+  status: "pass",
+  severity: "info",
+  recovery: spec.recovery,
+  context,
+  solutions: [],
+});
+
+/**
+ * Build a degraded subsystem check, applying `--fix` recovery semantics:
+ * `automatic` subsystems re-run `setup()` (success → recovered, failure →
+ * manual fallback); `manual` subsystems are never auto-run.
+ */
+const buildDegradedCheck = (
+  spec: SubsystemSpec,
+  baseContext: Record<string, string>,
+  fix: boolean,
+  runSetup?: () => Effect.Effect<void, unknown>,
+): Effect.Effect<DoctorSubsystemCheck, never> =>
+  Effect.gen(function* () {
+    if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
+      const fixCommand = `${spec.name}.setup`;
+      const result = yield* Effect.either(runSetup());
+      if (Either.isRight(result)) {
+        return passCheck(spec, {
+          ...baseContext,
+          fixOutcome: "recovered",
+          fixCommand,
+          fixExitCode: "0",
+        });
+      }
+      return {
+        name: spec.name,
+        status: "warn",
+        severity: "warn",
+        recovery: spec.recovery,
+        context: {
+          ...baseContext,
+          fixOutcome: "failed",
+          fixCommand,
+          fixExitCode: "1",
+          fixError: errorMessage(result.left),
+        },
+        solutions: [manualSetupSolution(spec.manualRemediation)],
+      };
+    }
+
+    if (fix) {
+      return {
+        name: spec.name,
+        status: "warn",
+        severity: "warn",
+        recovery: spec.recovery,
+        context: { ...baseContext, fixOutcome: "skipped-manual" },
+        solutions: [manualSetupSolution(spec.manualRemediation)],
+      };
+    }
+
+    return {
+      name: spec.name,
+      status: "warn",
+      severity: "warn",
+      recovery: spec.recovery,
+      context: baseContext,
+      solutions: [degradedSolution(spec)],
+    };
+  });
+
+/**
+ * Probe an identity-based subsystem (ready iff its service id is not a
+ * fallback/disabled stub).
+ */
+const buildIdCheck = (
+  spec: SubsystemSpec,
+  serviceId: string,
+  fix: boolean,
+  runSetup?: () => Effect.Effect<void, unknown>,
+): Effect.Effect<DoctorSubsystemCheck, never> => {
+  const ready = !NOT_READY_SUBSYSTEM_IDS.has(serviceId);
+  const baseContext: Record<string, string> = {
+    subsystem: spec.name,
+    subsystemId: serviceId,
+    ready: String(ready),
+  };
+  if (ready) return Effect.succeed(passCheck(spec, baseContext));
+  return buildDegradedCheck(spec, baseContext, fix, runSetup);
+};
+
+/**
+ * Probe the host DNS proxy via its `status()` method. Host-proxy recovery is
+ * always `manual` because the DNS writes are privileged.
+ */
+const buildHostProxyCheck = (
+  hostProxy: typeof HostProxyService.Service,
+  fix: boolean,
+): Effect.Effect<DoctorSubsystemCheck, never> =>
+  Effect.gen(function* () {
+    const status = yield* Effect.either(hostProxy.status());
+    if (Either.isRight(status) && status.right.active) {
+      const value = status.right;
+      return passCheck(HOST_PROXY_SPEC, {
+        subsystem: "host-proxy",
+        subsystemId: hostProxy.id,
+        active: String(value.active),
+        mode: value.mode,
+        mechanism: value.mechanism,
+        baseDomain: value.baseDomain,
+        loopback: value.loopback,
+      });
+    }
+    const baseContext: Record<string, string> = Either.isRight(status)
+      ? {
+          subsystem: "host-proxy",
+          subsystemId: hostProxy.id,
+          active: String(status.right.active),
+          mode: status.right.mode,
+          mechanism: status.right.mechanism,
+          baseDomain: status.right.baseDomain,
+          loopback: status.right.loopback,
+        }
+      : {
+          subsystem: "host-proxy",
+          subsystemId: hostProxy.id,
+          active: "false",
+        };
+    return yield* buildDegradedCheck(HOST_PROXY_SPEC, baseContext, fix);
+  });
 
 /**
  * Build the subsystem diagnostics using only the six subsystem service tags.
  */
-export const subsystemDoctor = (): Effect.Effect<
+export const subsystemDoctor = (
+  options: SubsystemDoctorOptions = {},
+): Effect.Effect<
   SubsystemDoctorResult,
   never,
   ProxyService | CertificateAuthority | SshService | HealthcheckRunner | UrlScanner | HostProxyService
 > =>
   Effect.gen(function* () {
+    const fix = options.fix === true;
     const proxy = yield* ProxyService;
     const ca = yield* CertificateAuthority;
     const ssh = yield* SshService;
@@ -143,46 +393,15 @@ export const subsystemDoctor = (): Effect.Effect<
     const scanner = yield* UrlScanner;
     const hostProxy = yield* HostProxyService;
 
-    const hostProxyStatus = yield* hostProxy.status().pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-
-    const hostProxyCheck: DoctorSubsystemCheck =
-      hostProxyStatus === undefined
-        ? {
-            name: "host-proxy",
-            status: "warn",
-            severity: "warn",
-            context: {
-              subsystem: "host-proxy",
-              subsystemId: hostProxy.id,
-              active: "false",
-            },
-            solutions: [setupSolution(HOST_PROXY_INACTIVE_REMEDIATION)],
-          }
-        : {
-            name: "host-proxy",
-            status: hostProxyStatus.active ? "pass" : "warn",
-            severity: hostProxyStatus.active ? "info" : "warn",
-            context: {
-              subsystem: "host-proxy",
-              subsystemId: hostProxy.id,
-              active: String(hostProxyStatus.active),
-              mode: hostProxyStatus.mode,
-              mechanism: hostProxyStatus.mechanism,
-              baseDomain: hostProxyStatus.baseDomain,
-              loopback: hostProxyStatus.loopback,
-            },
-            solutions: hostProxyStatus.active ? [] : [setupSolution(HOST_PROXY_INACTIVE_REMEDIATION)],
-          };
+    const proxyCheck = yield* buildIdCheck(PROXY_SPEC, proxy.id, fix, () => proxy.setup());
+    const certsCheck = yield* buildIdCheck(CERTS_SPEC, ca.id, fix);
+    const sshCheck = yield* buildIdCheck(SSH_SPEC, ssh.id, fix, () => ssh.setup({ force: false }));
+    const healthcheckCheck = yield* buildIdCheck(HEALTHCHECK_SPEC, healthcheck.id, fix);
+    const scannerCheck = yield* buildIdCheck(SCANNER_SPEC, scanner.id, fix);
+    const hostProxyCheck = yield* buildHostProxyCheck(hostProxy, fix);
 
     return {
-      checks: [
-        readinessCheck(PROXY_SPEC, proxy.id),
-        readinessCheck(CERTS_SPEC, ca.id),
-        readinessCheck(SSH_SPEC, ssh.id),
-        readinessCheck(HEALTHCHECK_SPEC, healthcheck.id),
-        readinessCheck(SCANNER_SPEC, scanner.id),
-        hostProxyCheck,
-      ],
+      checks: [proxyCheck, certsCheck, sshCheck, healthcheckCheck, scannerCheck, hostProxyCheck],
     };
   });
 
@@ -210,6 +429,10 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "mechanism",
   "baseDomain",
   "loopback",
+  "fixOutcome",
+  "fixCommand",
+  "fixExitCode",
+  "fixError",
 ];
 
 const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
@@ -220,6 +443,7 @@ const checkEventPayload = (check: DoctorSubsystemCheck): Record<string, unknown>
   name: check.name,
   status: check.status,
   severity: check.severity,
+  recovery: check.recovery,
   context: orderContextKeys(check.context),
   solutions: check.solutions.map((solution) => ({
     kind: solution.kind,
