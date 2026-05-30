@@ -20,6 +20,7 @@ import {
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
+  landoSharedNetworkName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
@@ -1023,10 +1024,16 @@ const startContainer = (api: DockerApiClient, service: ServicePlan, name: string
 const isAlreadyConnectedResponse = (response: DockerHttpResponse) =>
   response.status === 403 && /already\s+(exists|connected)|endpoint.*exists|same name/iu.test(response.body);
 
-const connectSharedNetwork = (api: DockerApiClient, plan: AppPlan, service: ServicePlan, name: string) =>
+const connectSharedNetwork = (
+  api: DockerApiClient,
+  plan: AppPlan,
+  service: ServicePlan,
+  name: string,
+  sharedNetwork: string,
+) =>
   request(api, "apply", {
     method: "POST",
-    path: `/networks/${encodeURIComponent(SHARED_CROSS_APP_NETWORK)}/connect`,
+    path: `/networks/${encodeURIComponent(sharedNetwork)}/connect`,
     body: {
       Container: name,
       EndpointConfig: { Aliases: serviceNetworkAliases(plan, service) },
@@ -1085,6 +1092,7 @@ const rollbackPartialApply = (
 const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
   Effect.gen(function* () {
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
+    const sharedNetwork = landoSharedNetworkName(plan);
     const touched: string[] = [];
     let changed = false;
     for (const service of Object.values(plan.services)) {
@@ -1102,11 +1110,13 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         );
         serviceChanged = true;
       }
-      const connectEffect = connectSharedNetwork(api, plan, service, name);
-      if (inspected.exists && inspected.running) {
-        yield* connectEffect;
-      } else {
-        yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
+      if (sharedNetwork !== undefined) {
+        const connectEffect = connectSharedNetwork(api, plan, service, name, sharedNetwork);
+        if (inspected.exists && inspected.running) {
+          yield* connectEffect;
+        } else {
+          yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
+        }
       }
       if (!inspected.running) {
         yield* startContainer(api, service, name).pipe(

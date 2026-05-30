@@ -348,6 +348,55 @@ export const NetworkPlan = Schema.Struct({
 });
 export type NetworkPlan = typeof NetworkPlan.Type;
 
+/**
+ * Per-app bridge network — the isolated network every service in an app joins
+ * so intra-app service-name DNS (`<service>`) resolves (§10.1).
+ */
+export const PerAppBridgePlan = Schema.Struct({
+  /** Provider-visible per-app network name (e.g. `lando-<slug>`). */
+  name: Schema.String,
+  /** Driver (provider-specific; defaults to a bridge driver). */
+  driver: Schema.optional(Schema.String),
+});
+export type PerAppBridgePlan = typeof PerAppBridgePlan.Type;
+
+/**
+ * Shared cross-app network membership — how an app attaches to the
+ * provider-owned shared network so sibling apps and global services (e.g. the
+ * global Traefik proxy) can reach it via `<service>.<app>.internal` (§10.1).
+ *
+ * The shared network is owned by the global app: app destroy removes the
+ * per-app bridge but leaves the shared network in place.
+ */
+export const SharedNetworkMembershipPlan = Schema.Struct({
+  /** Provider-owned shared cross-app network name (e.g. `lando_bridge_network`). */
+  name: Schema.String,
+  /**
+   * Cross-app DNS aliases per service. Each service gets
+   * `<service>.<app>.internal` so siblings and global services resolve it on
+   * the shared network.
+   */
+  aliases: Schema.Record({ key: ServiceName, value: Schema.Array(Schema.String) }),
+});
+export type SharedNetworkMembershipPlan = typeof SharedNetworkMembershipPlan.Type;
+
+/**
+ * Networking plan — the per-app networking *intent* (§10.1). Core defines the
+ * intent; the `RuntimeProvider` realizes it: a per-app bridge network plus
+ * optional membership in the provider-owned shared cross-app network.
+ *
+ * `sharedNetworkMembership` is present when the selected provider advertises
+ * `sharedCrossAppNetwork`; it is omitted for providers without shared
+ * networking, which keeps cross-app features from silently depending on it.
+ */
+export const NetworkingPlan = Schema.Struct({
+  /** The per-app bridge network the provider must create for intra-app DNS. */
+  perAppBridge: PerAppBridgePlan,
+  /** Shared cross-app network membership, present when the app joins it. */
+  sharedNetworkMembership: Schema.optional(SharedNetworkMembershipPlan),
+});
+export type NetworkingPlan = typeof NetworkingPlan.Type;
+
 // Provider capabilities — the typed manifest of what a provider can do.
 
 export const ProviderCapabilities = Schema.Struct({
@@ -426,20 +475,66 @@ export const fileSyncVolumeName = (appName: string, serviceName: string, mountKe
 
 export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 
-export const landoAppNetworkName = (plan: Pick<AppPlan, "slug">): string =>
-  `lando-${plan.slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
+const perAppBridgeNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug">): ReadonlyArray<string> => [
+const serviceCrossAppAliases = (slug: string, serviceName: string): ReadonlyArray<string> => [
+  `${serviceName}.${slug}.internal`,
+];
+
+/**
+ * Build the typed per-app `NetworkingPlan` (§10.1): a per-app bridge network
+ * plus shared cross-app membership when the selected provider supports
+ * `sharedCrossAppNetwork`. The planner emits this; providers consume it.
+ */
+export const landoNetworkingPlan = (input: {
+  readonly slug: string;
+  readonly serviceNames: ReadonlyArray<string>;
+  readonly sharedCrossAppNetwork: boolean;
+}): NetworkingPlan => {
+  const perAppBridge = { name: perAppBridgeNetworkName(input.slug), driver: "bridge" };
+  if (!input.sharedCrossAppNetwork) return { perAppBridge };
+  const aliases: Record<string, ReadonlyArray<string>> = {};
+  for (const serviceName of input.serviceNames) {
+    aliases[serviceName] = serviceCrossAppAliases(input.slug, serviceName);
+  }
+  return {
+    perAppBridge,
+    sharedNetworkMembership: { name: LANDO_SHARED_CROSS_APP_NETWORK, aliases },
+  };
+};
+
+export const landoAppNetworkName = (plan: Pick<AppPlan, "slug" | "networking">): string =>
+  plan.networking?.perAppBridge.name ?? perAppBridgeNetworkName(plan.slug);
+
+export const landoAppNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => [
   landoAppNetworkName(plan),
 ];
 
-export const landoNetworkNames = (plan: Pick<AppPlan, "slug">): ReadonlyArray<string> =>
-  Array.from(new Set([...landoAppNetworkNames(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
+export const landoNetworkNames = (plan: Pick<AppPlan, "slug" | "networking">): ReadonlyArray<string> => {
+  if (plan.networking !== undefined) {
+    const names = [plan.networking.perAppBridge.name];
+    if (plan.networking.sharedNetworkMembership !== undefined) {
+      names.push(plan.networking.sharedNetworkMembership.name);
+    }
+    return Array.from(new Set(names));
+  }
+  return Array.from(new Set([...landoAppNetworkNames(plan), LANDO_SHARED_CROSS_APP_NETWORK]));
+};
+
+export const landoSharedNetworkName = (plan: Pick<AppPlan, "networking">): string | undefined =>
+  plan.networking !== undefined
+    ? plan.networking.sharedNetworkMembership?.name
+    : LANDO_SHARED_CROSS_APP_NETWORK;
 
 export const landoServiceNetworkAliases = (
-  plan: Pick<AppPlan, "slug">,
+  plan: Pick<AppPlan, "slug" | "networking">,
   service: Pick<ServicePlan, "name">,
-): ReadonlyArray<string> => [`${service.name}.${plan.slug}.internal`];
+): ReadonlyArray<string> => {
+  if (plan.networking !== undefined) {
+    return plan.networking.sharedNetworkMembership?.aliases[service.name] ?? [];
+  }
+  return serviceCrossAppAliases(plan.slug, service.name);
+};
 
 export const sameAppMountTarget = (
   appMount: ServicePlan["appMount"],
@@ -478,6 +573,13 @@ export const AppPlan = Schema.Struct({
   services: Schema.Record({ key: ServiceName, value: ServicePlan }),
   routes: Schema.Array(RoutePlan),
   networks: Schema.Array(NetworkPlan),
+  /**
+   * Typed per-app networking intent (§10.1): the per-app bridge plus optional
+   * shared cross-app network membership. Populated by the planner; omitted for
+   * service-less apps and legacy/hand-built plans (providers then fall back to
+   * slug-derived network names).
+   */
+  networking: Schema.optional(NetworkingPlan),
   stores: Schema.Array(DataStorePlan),
   /**
    * File-sync sessions auto-selected by the planner for accelerated mounts.

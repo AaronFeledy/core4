@@ -317,6 +317,47 @@
         "name": {
           "type": "string"
         },
+        "networking": {
+          "additionalProperties": false,
+          "properties": {
+            "perAppBridge": {
+              "additionalProperties": false,
+              "properties": {
+                "driver": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": ["name"],
+              "type": "object"
+            },
+            "sharedNetworkMembership": {
+              "additionalProperties": false,
+              "properties": {
+                "aliases": {
+                  "additionalProperties": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": ["name", "aliases"],
+              "type": "object"
+            }
+          },
+          "required": ["perAppBridge"],
+          "type": "object"
+        },
         "networks": {
           "items": {
             "additionalProperties": false,

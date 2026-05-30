@@ -7,6 +7,7 @@ import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
 import { GlobalServiceCapabilityError } from "@lando/sdk/errors";
 import {
   type AppPlan,
+  LANDO_SHARED_CROSS_APP_NETWORK,
   LandofileShape,
   PluginManifest,
   type ProviderCapabilities,
@@ -62,11 +63,11 @@ const baseCapabilities = (overrides: Partial<ProviderCapabilities>): ProviderCap
   ...overrides,
 });
 
-const planUserApp = (capabilities: ProviderCapabilities): Promise<AppPlan> => {
-  const landofile = Schema.decodeUnknownSync(LandofileShape)({
-    name: "shop",
-    services: { web: { image: "nginx:1.27", port: 80 } },
-  });
+const planApp = (
+  landofileInput: Record<string, unknown>,
+  capabilities: ProviderCapabilities,
+): Promise<AppPlan> => {
+  const landofile = Schema.decodeUnknownSync(LandofileShape)(landofileInput);
   return Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
       Effect.provide(AppPlannerLive),
@@ -74,6 +75,9 @@ const planUserApp = (capabilities: ProviderCapabilities): Promise<AppPlan> => {
     ),
   );
 };
+
+const planUserApp = (capabilities: ProviderCapabilities): Promise<AppPlan> =>
+  planApp({ name: "shop", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities);
 
 describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
   test("providers advertise sharedCrossAppNetwork on every supported platform", () => {
@@ -197,5 +201,57 @@ describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
     const error = result.rejected[0];
     if (error === undefined) throw new Error("expected at least one rejection");
     expect([...error.missing].sort()).toEqual(["routeProvider", "sharedCrossAppNetwork"]);
+  });
+});
+
+describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
+  test("emits a per-app bridge plus shared cross-app membership for a service app", async () => {
+    const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: true }));
+    expect(plan.networking?.perAppBridge.name).toBe("lando-shop");
+    expect(plan.networking?.sharedNetworkMembership?.name).toBe(LANDO_SHARED_CROSS_APP_NETWORK);
+    expect(plan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual([
+      "web.shop.internal",
+    ]);
+  });
+
+  test("omits shared membership for a provider without sharedCrossAppNetwork", async () => {
+    const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: false }));
+    expect(plan.networking?.perAppBridge.name).toBe("lando-shop");
+    expect(plan.networking?.sharedNetworkMembership).toBeUndefined();
+  });
+
+  test("two apps and the global Traefik proxy all join the shared network and resolve each other", async () => {
+    const capabilities = baseCapabilities({ sharedCrossAppNetwork: true });
+    const [shop, blog, global] = await Promise.all([
+      planApp({ name: "shop", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities),
+      planApp({ name: "blog", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities),
+      planApp(
+        { name: "lando-global", services: { traefik: { image: "nginx:1.27", port: 80 } } },
+        capabilities,
+      ),
+    ]);
+
+    for (const plan of [shop, blog, global]) {
+      expect(plan.networking?.sharedNetworkMembership?.name).toBe(LANDO_SHARED_CROSS_APP_NETWORK);
+    }
+
+    expect(shop.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual([
+      "web.shop.internal",
+    ]);
+    expect(blog.networking?.sharedNetworkMembership?.aliases[ServiceName.make("web")]).toEqual([
+      "web.blog.internal",
+    ]);
+    expect(global.networking?.sharedNetworkMembership?.aliases[ServiceName.make("traefik")]).toEqual([
+      "traefik.lando-global.internal",
+    ]);
+
+    const perAppBridges = [shop, blog, global].map((plan) => plan.networking?.perAppBridge.name);
+    expect(new Set(perAppBridges).size).toBe(3);
+    expect(perAppBridges).toEqual(["lando-shop", "lando-blog", "lando-lando-global"]);
+
+    const sharedNames = new Set(
+      [shop, blog, global].map((plan) => plan.networking?.sharedNetworkMembership?.name),
+    );
+    expect(sharedNames).toEqual(new Set([LANDO_SHARED_CROSS_APP_NETWORK]));
   });
 });
