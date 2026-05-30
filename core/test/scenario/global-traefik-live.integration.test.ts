@@ -18,8 +18,9 @@ import {
 
 const providerId = ProviderId.make("lando");
 const TRAEFIK_WEB_PORT = 38080;
+const SHOP_BACKEND_PORT = 31081;
 const SHOP_HOSTNAME = "web.shop.lndo.site";
-const SHOP_BACKEND = "web.shop.internal:80";
+const SHOP_BACKEND = `web.shop.internal:${SHOP_BACKEND_PORT}`;
 
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-30T00:00:00Z"),
@@ -41,16 +42,30 @@ const appPlan = (slug: string, service: ServicePlan): AppPlan => ({
   extensions: {},
 });
 
+const nginxStartScript = [
+  "cat > /etc/nginx/conf.d/default.conf <<'LANDO_NGINX_CONF'",
+  "server {",
+  `  listen ${SHOP_BACKEND_PORT};`,
+  "  location / {",
+  "    root /usr/share/nginx/html;",
+  "    index index.html index.htm;",
+  "  }",
+  "}",
+  "LANDO_NGINX_CONF",
+  "exec nginx -g 'daemon off;'",
+].join("\n");
+
 const nginxService = (): ServicePlan => ({
   name: ServiceName.make("web"),
   type: "compose",
   provider: providerId,
   primary: true,
   artifact: { kind: "ref", ref: "nginx:1.27" },
+  command: ["sh", "-c", nginxStartScript],
   environment: {},
   mounts: [],
   storage: [],
-  endpoints: [{ port: 80, protocol: "http", name: "web" }],
+  endpoints: [{ port: SHOP_BACKEND_PORT, protocol: "http", name: "web" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
