@@ -180,6 +180,31 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist quotes scalars that look like quoted YAML strings", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          environment: {
+            DOUBLE_WRAPPED: '"hello"',
+            SINGLE_WRAPPED: "'hello'",
+          },
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain(`      DOUBLE_WRAPPED: '"hello"'`);
+      expect(content).toContain("      SINGLE_WRAPPED: \"'hello'\"");
+      expect(parsed.services?.web?.environment).toEqual({
+        DOUBLE_WRAPPED: '"hello"',
+        SINGLE_WRAPPED: "'hello'",
+      });
+    });
+  });
+
   test("regenerateDist quotes list scalars that look like map entries", async () => {
     await withTempRoots(async (dataRoot) => {
       const services: Record<string, ServiceConfig> = {
