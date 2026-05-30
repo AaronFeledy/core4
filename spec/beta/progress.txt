@@ -1091,3 +1091,8 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - The minimal runtime previously wired a no-op `FileSystem` stub (`exists→false`, `writeAtomic→void`); any command that genuinely touches disk through the runtime needs the real `FileSystemLive`. `makeMinimalRuntimeLive` now uses `FileSystemLive`, and `bootstrap: "global"` (→ `makeProviderRuntimeLive`) resolves both `GlobalAppService` and `FileSystem`. NOTE for reviewers: this swap has repo-wide blast radius for runtime-built commands; it is covered by the full suite but worth a focused look.
   - AC "references plugin-contributed globalServices entries" is wired (`regenerateDist({services})` emits a sorted `services:` map, proven by a unit test with a non-empty map) but the live contributed set is empty until US-113 (contribution surface) and US-114/115 (bundled Traefik/Mailpit) land — `regenerateDist` is the stable extension point those stories feed.
 ---
+
+## [2026-05-30 CDT] - US-112 (verification)
+- Story verified complete on branch (no new code). `meta:global:install` materialization already shipped and committed; confirmed against PRD-B-05 acceptance criteria.
+- Verification: typecheck, lint, full test suite (1935 pass / 23 skip / 0 fail) passed. CLI QA in an isolated `LANDO_USER_DATA_ROOT`: happy path (both files created, exit 0), idempotent rerun (dist `unchanged` / user file `preserved` with a hand-added service kept intact), tampered-dist conflict (`GlobalDistConflictError` + remediation, exit 1), and plugin-arg remediation (`GlobalAppError`, exit 1) all behave as specified.
+---
