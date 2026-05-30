@@ -82,3 +82,10 @@ describe("parseLandofile — comment-after-colon regression (bugbot PR#138 findi
     expect(services.web).toEqual({ type: "node" });
   });
 });
+
+describe("parseLandofile — double-quoted scalar escapes", () => {
+  test("unescapes emitted newline, carriage return, tab, quote, and backslash sequences", async () => {
+    const result = await parse('value: "line one\\nline two\\rleft\\tright\\\\\\"quoted\\""\n');
+    expect((result as Record<string, unknown>).value).toBe('line one\nline two\rleft\tright\\"quoted"');
+  });
+});

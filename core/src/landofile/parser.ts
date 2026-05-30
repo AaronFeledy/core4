@@ -114,6 +114,14 @@ const parseInlineArray = (value: string, filePath: string, line: number): Readon
   return inner.split(",").map((part) => parseScalar(part.trim(), filePath, line));
 };
 
+const unescapeDoubleQuotedScalar = (value: string): string =>
+  value.replace(/\\([\\"nrt])/g, (_, escaped: string) => {
+    if (escaped === "n") return "\n";
+    if (escaped === "r") return "\r";
+    if (escaped === "t") return "\t";
+    return escaped;
+  });
+
 const parseScalar = (value: string, filePath: string, line: number): unknown => {
   if (value.includes("${")) {
     throw parseError(filePath, `Expressions are not supported in Landofiles at line ${line}`, line);
@@ -129,10 +137,10 @@ const parseScalar = (value: string, filePath: string, line: number): unknown => 
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
   }
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
+  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+    return unescapeDoubleQuotedScalar(trimmed.slice(1, -1));
+  }
+  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
     return trimmed.slice(1, -1);
   }
   return trimmed;
