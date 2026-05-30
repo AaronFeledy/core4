@@ -1735,7 +1735,7 @@
         "Lint passes"
       ],
       "priority": 103,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

@@ -10,6 +10,7 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Next step: watch for a rerun / flaky signal before making further changes
 
 ## Codebase Patterns
+- Running `@lando/core/cli` in-process (source mode → OCLIF `execute()`) calls `process.exit` on any erroring command, which silently kills the surrounding test runner. Scenario/test harnesses that invoke the CLI in-process must only drive commands that succeed; faked/canned runners exist precisely to avoid this for `start`/`destroy`/`curl`-style flows. Spawn the compiled binary (`core/dist/lando`, overridable via `LANDO_SCENARIO_E2E_BINARY`) when you need to run an erroring command without taking down the runner.
 - `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
 - `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
 - Windows Podman machine lifecycle is structurally identical to macOS (`ensureWindowsPodmanMachine` mirrors `ensureMacOSPodmanMachine`); the separation exists for future divergence (e.g. WSL-specific machine flags).
@@ -937,4 +938,22 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Fixed confirmed review blocker: wired the combined `lando doctor` report into the JSON renderer path so source and compiled command dispatch can emit one NDJSON stream containing both the selected-provider check and every subsystem check.
 - Review notes (deferred/rejected): broader DoctorService/plugin-contributed checks and live subsystem status APIs remain outside US-108; current story scope is the provider-bootstrap doctor report and subsystem records.
 - Verification: typecheck, lint, tests passed.
+---
+
+## [2026-05-29 16:41 CDT] - US-176 (agent2)
+- Split the executable-guide scenario engine's runCli into three explicit runners exposed via a new `ScenarioContextFactory` on `@lando/core/testing`: `scenario` (real in-process `@lando/core/cli` seam), `e2e` (spawns the compiled binary), and `testOnlyFake` (the Alpha2 canned start/destroy/curl shim). `ScenarioContext` now carries a `layer` field. `withScenarioContext` delegates to the fake runner so regenerated guide scenarios keep passing untouched.
+- Verification: typecheck, lint, tests passed (engine unit suite 18, codegen 12, all 74 generated guide scenarios green; `docs:scenario node-postgres` green). Pre-existing library packaging-export failures (fast-check / workspace-name resolution) reproduce identically with these changes stashed — environmental, not a regression.
+- **Learnings for future iterations:**
+  - In-process source-mode CLI (`@lando/core/cli` via OCLIF `execute()`) calls `process.exit` on any erroring command, which silently kills the test runner. Only commands that succeed (e.g. `init`, the hardcoded `version`) are safe to drive through the real `scenario` runner in-process; `start`/`destroy`/`curl`-style flows still belong on `testOnlyFake` until the CLI is wired to a TestRuntimeProvider with event bridging.
+  - The fake's `curl` is not a real CLI command and the real CLI does not surface its internal EventService events into `ScenarioContext.events`; both are why the canned shim must remain for current guides.
+  - The `e2e` runner resolves the compiled binary from `core/dist/lando` but honors `LANDO_SCENARIO_E2E_BINARY` for tests, and returns an exit-127 result (not a thrown error) when the binary is absent.
+---
+
+## [2026-05-29 17:10 CDT] - US-176 Review fixes (agent2)
+- Addressed review findings on the scenario runCli seam (`core/src/testing/scenario-context.ts`):
+  - The `e2e` runner now advances the working directory into the app created by a successful `init`/`apps:init`, matching the in-process runner. Extracted the shared `advanceWorkingDirectoryAfterInit` helper so both paths chdir consistently; without this, an e2e guide chaining `init` → a later command ran in the parent dir and missed the generated `.lando.yml`.
+  - The in-process `scenario` runner now guards against non-allowlisted commands (allowlist: `init`/`apps:init`, plus the hardcoded `version`). Unsupported commands return a catchable exit-1 result pointing at `ScenarioContextFactory.e2e` instead of letting source-mode OCLIF `process.exit` kill the test runner.
+  - Documented on `ScenarioContext.events` that only `testOnlyFake` populates it (the real/e2e runners do not bridge EventService), so event assertions are not silently empty under the real runners.
+  - Removed the dead `emitStartEvent` parameter from `invokeRealCli` (the fake path always short-circuits `start` through `runScenarioLayerCommand`, so the branch was unreachable).
+- Verification: `@lando/core` typecheck clean, lint clean, engine unit suite 20 pass / 0 fail (added 2 tests: scenario allowlist guard, e2e init-cwd advance).
 ---
