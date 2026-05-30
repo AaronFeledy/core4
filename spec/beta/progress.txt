@@ -10,6 +10,8 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Next step: watch for a rerun / flaky signal before making further changes
 
 ## Codebase Patterns
+- `lando doctor` subsystem recovery is classified per-subsystem in `core/src/cli/commands/doctor-subsystems.ts` via a `SubsystemSpec.recovery` of `automatic` (non-privileged, exposes a re-runnable `setup()` — proxy, ssh) or `manual` (privileged setup like CA trust-store / host DNS, or no `setup()` at all — certs, host-proxy, healthcheck, scanner). `--fix` only re-runs `setup()` for `automatic` degraded subsystems; `manual` ones report `fixOutcome: skipped-manual`. Doctor never auto-elevates. Fix outcomes ride in the check `context` (`fixOutcome`/`fixCommand`/`fixExitCode`/`fixError`) so both the plain-text and NDJSON renderers surface them with no renderer changes.
+- New doctor CLI flags must be wired in BOTH dispatch paths to keep source/compiled parity: the OCLIF `static flags` + `inputDoctorOptions` in `core/src/cli/oclif/commands/meta/doctor.ts`, and a hand-rolled `parse*Flag` in `core/src/cli/run.ts` `runDoctor`. Both funnel into the same `doctorReport(options)`.
 - Running `@lando/core/cli` in-process (source mode → OCLIF `execute()`) calls `process.exit` on any erroring command, which silently kills the surrounding test runner. Scenario/test harnesses that invoke the CLI in-process must only drive commands that succeed; faked/canned runners exist precisely to avoid this for `start`/`destroy`/`curl`-style flows. Spawn the compiled binary (`core/dist/lando`, overridable via `LANDO_SCENARIO_E2E_BINARY`) when you need to run an erroring command without taking down the runner.
 - `machineFailure()` in `plugins/provider-lando/src/setup.ts` is the single factory for all Podman machine errors; extend its regex conditions to detect new OS-specific virtualization prerequisites before adding new error subclasses.
 - `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
@@ -1008,6 +1010,36 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - CI outcome: pass
 - Review feedback: fixed (merge conflict with main in spec/beta/progress.txt resolved, keeping both US-109 and US-175 entries; checks re-ran green)
 - Merge: merged (squash)
+---
+
+## [2026-05-29 CDT] - US-110
+- Added subsystem failure-recovery and cleanup to `lando doctor`. Each degraded subsystem now reports a recovery-classified solution: the non-privileged proxy and SSH sidecar advertise an `automatic` `lando doctor --fix`, while the privileged certificate authority and host DNS proxy plus the no-setup healthcheck and scanner keep a `manual` `lando setup` remediation.
+- `meta:doctor --fix` re-runs the setup step of degraded `automatic` subsystems in-process and reports a command-shaped outcome (`fixOutcome`/`fixCommand`/`fixExitCode`/`fixError`); a failed attempt falls back to the manual remediation, and `manual` subsystems are recorded `skipped-manual` and never auto-run. The flag is wired through both the OCLIF command and the compiled dispatcher. Added a core-local `DoctorSubsystemFailure` tagged diagnostic + `classifySubsystemFailure` so a subsystem failure path maps to a `severity` + `solution` without modifying the compatibility-locked SDK error classes.
+- Verification: typecheck, lint, tests passed. CLI checked end-to-end in source mode for `lando doctor`, `lando doctor --fix`, and `lando doctor --fix --renderer=json`.
+- **Learnings for future iterations:**
+  - The bundled subsystem doctor layers are `unavailable`/`disabled` stubs whose `setup()` fails, so `--fix` against them legitimately reports `failed` until the real implementations land (proxy needs the global app; ssh needs the sidecar). Test the `recovered` path with a fake layer whose id stays `unavailable` but whose `setup()` succeeds — readiness is id-based with no post-setup re-probe, so recovery is keyed off `setup()` success.
+  - When a subsystem becomes automatically recoverable its degraded `DoctorSolution.kind` flips from `manual` to `automatic`; any test that asserted "every failing subsystem carries a manual `lando setup` remediation" must branch on `check.recovery`, and the `meta-doctor.subsystems.ndjson` fixture must be regenerated.
+---
+
+## 2026-05-29 CDT - Babysit
+- PR: none found for branch us-110-subsystem-failure-recovery
+- CI outcome: n/a (no PR)
+- Review feedback: none
+- Merge: deferred (no PR exists; push step should have created/refreshed it)
+---
+
+## [2026-05-29 CDT] - US-110 (verification)
+- Re-entered with in-flight work on `us-110-subsystem-failure-recovery` (story commit not yet on `main`, no PR). Re-verified the subsystem failure-recovery + `--fix` implementation against all acceptance criteria; no new code was needed. Every degraded subsystem reports `severity` + a recovery-classified `solution` (proxy/ssh `automatic` → `lando doctor --fix`; certs/healthcheck/scanner/host-proxy `manual` → `lando setup`); `--fix` re-runs `setup()` for `automatic` subsystems and reports a command-shaped outcome (`fixOutcome`/`fixCommand`/`fixExitCode`/`fixError`), falling back to a manual remediation on failure, while `manual` subsystems stay `skipped-manual` (never auto-run, no host mutation).
+- Verification: typecheck, lint passed; focused doctor tests green (19 pass / 0 fail). Live CLI QA in source mode against an isolated `LANDO_USER_CONF_ROOT`: `lando doctor`, `lando doctor --fix`, and `lando doctor --fix --renderer=json` all exit 0 and surface the per-subsystem solutions / fix outcomes (plain-text and NDJSON).
+- **Learnings for future iterations:**
+  - The hand-rolled `parseConfigYaml` in `core/src/services/config.ts` rejects flow-style `{}` in `~/.lando/config.yml` as "Malformed YAML at line 1". A stray `{}` global config left on the host distro by earlier runs makes every `lando doctor` invocation fail before the subsystem checks run. For doctor CLI QA, point `LANDO_USER_CONF_ROOT` at a fresh temp dir to bypass any polluted host config — doctor needs no `--app` so global config is its only file dependency.
+  - `core/test/scripts/codegen-ci.test.ts` fails reliably (9 pass / 1 fail) when run as a *file* because its 10 tests each spawn `bun run codegen`, and the concurrent codegen/biome writes race. The same failure reproduces on `origin/main`; `bun run codegen` standalone exits 0 and leaves a clean `git diff` (byte-idempotent). Treat it as a pre-existing environmental flake, not a regression — trust the standalone codegen exit code + clean diff.
+---
+
+## [2026-05-29 CDT] - US-110 Review
+- Reviewed the US-110 subsystem failure-recovery implementation against PRD-B-04, direct verification, and the review-work/background findings. Fixed confirmed review blockers: `meta:doctor --fix` now redacts secret-like values in failed setup error context before rendering plain text or NDJSON, recovered automatic checks no longer report `ready: false`, and the failure-path tests assert mapping to `DoctorSubsystemFailure` diagnostics instead of only checking a generic failed exit.
+- Review notes (deferred/rejected): §10.9 transcript-only support is broader doctor shell-transcript work, not introduced by this no-shell subsystem retry path; guide drift is a PR-body/Push concern for `doctor.ts` because US-110 has no dedicated guide row; compiled-dispatch parity is covered by code wiring and OCLIF mapping, with no extra compiled binary test added in this focused review fix.
+- Verification: focused doctor tests passed (20 pass / 0 fail); typecheck passed; lint passed; full `bun test` hit the pre-existing `core/test/scripts/codegen-ci.test.ts` concurrent codegen flake previously recorded for this branch.
 ---
 
 ## [2026-05-29 21:14 CDT] - US-177 (agent2)

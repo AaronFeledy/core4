@@ -34,7 +34,9 @@ export const doctorReport = (
 ): Effect.Effect<DoctorReport, DoctorError, ConfigService | RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const provider = yield* doctor(options);
-    const subsystems = yield* subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer));
+    const subsystems = yield* subsystemDoctor({ fix: options.fix === true }).pipe(
+      Effect.provide(DefaultSubsystemDoctorLayer),
+    );
     return { provider, subsystems };
   });
 
