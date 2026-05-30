@@ -690,6 +690,13 @@ const parseScenarioBody = (node: MdxNode, sourcePath: string): ReadonlyArray<Gui
       return { kind: "step" as const, step: parseStep(child, sourcePath) };
     });
 
+const unconditionalSteps = (body: ReadonlyArray<GuideScenarioBodyItem>): ReadonlyArray<GuideStepNode> =>
+  body.flatMap((item) => {
+    if (item.kind === "step") return [item.step];
+    if (item.kind === "hidden") return item.steps;
+    return [];
+  });
+
 const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => {
   assertAlpha2Component("Scenario", sourcePath);
   const props = propsOf(node);
@@ -712,7 +719,7 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
     render: scenario.render,
     ...(scenario.reason === undefined ? {} : { reason: scenario.reason }),
     line: lineOf(node),
-    steps: body.flatMap((item) => (item.kind === "step" ? [item.step] : [])),
+    steps: unconditionalSteps(body),
     body,
   };
 };
