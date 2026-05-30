@@ -1026,3 +1026,11 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review feedback: none
 - Merge: deferred (no PR exists; push step should have created/refreshed it)
 ---
+
+## [2026-05-29 CDT] - US-110 (verification)
+- Re-entered with in-flight work on `us-110-subsystem-failure-recovery` (story commit not yet on `main`, no PR). Re-verified the subsystem failure-recovery + `--fix` implementation against all acceptance criteria; no new code was needed. Every degraded subsystem reports `severity` + a recovery-classified `solution` (proxy/ssh `automatic` → `lando doctor --fix`; certs/healthcheck/scanner/host-proxy `manual` → `lando setup`); `--fix` re-runs `setup()` for `automatic` subsystems and reports a command-shaped outcome (`fixOutcome`/`fixCommand`/`fixExitCode`/`fixError`), falling back to a manual remediation on failure, while `manual` subsystems stay `skipped-manual` (never auto-run, no host mutation).
+- Verification: typecheck, lint passed; focused doctor tests green (19 pass / 0 fail). Live CLI QA in source mode against an isolated `LANDO_USER_CONF_ROOT`: `lando doctor`, `lando doctor --fix`, and `lando doctor --fix --renderer=json` all exit 0 and surface the per-subsystem solutions / fix outcomes (plain-text and NDJSON).
+- **Learnings for future iterations:**
+  - The hand-rolled `parseConfigYaml` in `core/src/services/config.ts` rejects flow-style `{}` in `~/.lando/config.yml` as "Malformed YAML at line 1". A stray `{}` global config left on the host distro by earlier runs makes every `lando doctor` invocation fail before the subsystem checks run. For doctor CLI QA, point `LANDO_USER_CONF_ROOT` at a fresh temp dir to bypass any polluted host config — doctor needs no `--app` so global config is its only file dependency.
+  - `core/test/scripts/codegen-ci.test.ts` fails reliably (9 pass / 1 fail) when run as a *file* because its 10 tests each spawn `bun run codegen`, and the concurrent codegen/biome writes race. The same failure reproduces on `origin/main`; `bun run codegen` standalone exits 0 and leaves a clean `git diff` (byte-idempotent). Treat it as a pre-existing environmental flake, not a regression — trust the standalone codegen exit code + clean diff.
+---
