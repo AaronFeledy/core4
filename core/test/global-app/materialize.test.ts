@@ -174,6 +174,27 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist quotes list scalars that look like map entries", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          cores: ["type: node"],
+          volumes: ["source: target"],
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain("      - 'type: node'");
+      expect(content).toContain("      - 'source: target'");
+      expect(parsed.services?.web?.cores).toEqual(["type: node"]);
+      expect(parsed.services?.web?.volumes).toEqual(["source: target"]);
+    });
+  });
+
   test("regenerateDist rejects a foreign .lando.dist.yml", async () => {
     await withTempRoots(async (dataRoot) => {
       const root = join(dataRoot, "global");
@@ -214,6 +235,20 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(failure).toBeInstanceOf(GlobalDistConflictError);
       expect((failure as GlobalDistConflictError).reason).toBe("manual-edit");
       expect((failure as GlobalDistConflictError).path).toBe(distPath);
+    });
+  });
+
+  test("regenerateDist accepts managed dist files read back with CRLF line endings", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const distPath = join(dataRoot, "global", ".lando.dist.yml");
+
+      await runWithGlobalApp(materializeDist({}));
+      const content = await readFile(distPath, "utf8");
+      await writeFile(distPath, content.replace(/\n/g, "\r\n"));
+
+      const result = await runWithGlobalApp(materializeDist({}));
+
+      expect(result.status).toBe("updated");
     });
   });
 

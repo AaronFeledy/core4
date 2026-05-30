@@ -46,6 +46,7 @@ const formatScalar = (value: string | number | boolean | null): string => {
     value === "" ||
     /^\s|\s$/.test(value) ||
     /[#[\]\{\}\n\r\t]/.test(value) ||
+    /^[A-Za-z_][A-Za-z0-9_-]*:\s/.test(value) ||
     value === "null" ||
     value === "true" ||
     value === "false" ||
@@ -108,11 +109,12 @@ const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): st
   return [distMarker, distOverrideHint, `${distHashPrefix}${sha256(body)}`, body].join("\n");
 };
 
-const currentDistBody = (content: string): string => content.split("\n").slice(3).join("\n");
+const splitYamlLines = (content: string): ReadonlyArray<string> => content.split(/\r?\n/);
+
+const currentDistBody = (content: string): string => splitYamlLines(content).slice(3).join("\n");
 
 const embeddedDistHash = (content: string): string | undefined =>
-  content
-    .split(/\r?\n/)
+  splitYamlLines(content)
     .find((line) => line.startsWith(distHashPrefix))
     ?.slice(distHashPrefix.length)
     .trim();
@@ -254,7 +256,7 @@ const makeGlobalAppService = (
           ),
         );
 
-      if (!currentContent.startsWith(`${distMarker}\n`)) {
+      if (splitYamlLines(currentContent)[0] !== distMarker) {
         return yield* Effect.fail(
           new GlobalDistConflictError({
             message: `The generated global app Landofile path is not managed by Lando: ${resolved.distLandofile}.`,
