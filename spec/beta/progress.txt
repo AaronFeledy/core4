@@ -1102,3 +1102,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (rejected): two review-agent FAIL verdicts were false positives. (1) "New SDK errors GlobalDistConflictError/GlobalLandofilePathConflictError must be documented in sdk/API_COMPATIBILITY.md" — rejected: the backward-compat test only freezes the "Additive Alpha schema exports"/"Additive Alpha service tags" headings (the frozen fixture has no errors key); error exports are governed solely by exports.test.ts presence assertions, which were updated. Precedent: US-111's GlobalAppError/AppIdReservedError are also absent from that doc and the suite is green. (2) "Hand-rolled YAML emitter is unsound for ServiceConfig (colon-space scalars, empty maps emit null)" — rejected: verified empirically that `command: echo: hello world` round-trips correctly through Lando's own subset parser and empty maps round-trip to `{}`; the emitter+parser are a matched pair. Exotic-value hardening is deferred to US-114/115 (which introduce live services and must add round-trip coverage); US-112 emits no live service values.
 - Verification: typecheck, lint, and full `bun test` (1935 pass / 23 skip / 0 fail) passed.
 ---
+
+## [2026-05-30 13:46 CDT] - Babysit
+- PR: #218 https://github.com/AaronFeledy/core4/pull/218
+- CI outcome: pass (all GitHub Actions checks SUCCESS)
+- Review feedback: fixed (triage hardened the global-app YAML emitter/parser round-trip — quoting strings that resemble already-quoted scalars, and quoted-comma/nested-bracket aware inline-array parsing for nested ServiceConfig arrays — with focused materialize coverage; commits 0d4fb04, e5863bb)
+- Merge: deferred (Cursor Bugbot keeps surfacing a fresh low-severity YAML edge case on each new HEAD; five-round triage cap reached and a sixth finding — "empty record in array emits unparseable YAML" on e5863bb — remains unaddressed. Handing off to a human to decide whether to fix or accept these latent emitter edge cases.)
+---
