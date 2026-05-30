@@ -906,6 +906,40 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Merge: merged (squash)
 ---
 
+## [2026-05-29 CDT] - US-108
+- Added per-subsystem diagnostics to `lando doctor`. A new `subsystemDoctor` builds one §10.9 `{name,status,severity,context,solutions}` check for each §11 subsystem (proxy, certs, ssh, healthcheck, scanner, host-proxy) by probing the published Effect service tags; a new combined `doctorReport` aggregates the existing provider diagnostics with the subsystem checks and renders both. Both CLI dispatch paths (OCLIF `meta:doctor` and the compiled `runDoctor`) now render the combined report, and a new NDJSON snapshot fixture (`meta-doctor.subsystems.ndjson`) covers every subsystem with failing-state remediations. Shipped the required `doctor-walkthrough` guide.
+- Verification: typecheck, lint, tests passed. CLI verified in both source mode and the compiled `core/dist/lando` binary — `lando doctor` prints the selected-provider section followed by all six subsystem sections, each with a manual `lando setup` remediation. The two full-suite failures are the compiled-binary tests, which pass in isolation and only flake under full-suite concurrency (documented pre-existing env behavior; `bun run build` succeeds standalone).
+- **Learnings for future iterations:**
+  - Subsystem checks live in a SEPARATE result (`doctorReport` = `doctor()` + `subsystemDoctor()`), not appended to `doctor().checks`. This keeps the byte-exact `meta-doctor.provider-status*.ndjson` fixtures and the many `result.checks.length`/index assertions in `doctor.test.ts` untouched. Append a new result section rather than growing the provider stream when adding doctor surfaces.
+  - In Beta the six subsystem Live Layers default to the fallback/disabled stubs (`ProxyServiceUnavailableLive` etc., ids `unavailable`/`disabled`); only `HostProxyServiceDisabled` exposes a `status()`. The doctor probes are read-only: a not-ready `id` ⇒ warn + `lando setup` remediation; host-proxy reads `status()`. When the production layers land (global app / @lando/ca-mkcert), the same probe reports `pass` with no code change.
+  - `Layer.mergeAll(a, b)` gives the LAST layer precedence on a duplicate service tag — an override Live Layer must be merged after the defaults, not before.
+  - `subsystemDoctor` requires only the six subsystem service tags (no ConfigService/AppPlanner), and `doctorReport` provides them internally via `Effect.provide(DefaultSubsystemDoctorLayer)`, so the combined report keeps `meta:doctor` at the `provider` bootstrap level and never triggers app bootstrap. `--app`-scoped checks remain deferred; the AC is satisfied as a guarantee (no app bootstrap occurs without `--app`).
+  - The guide-coverage gate maps `core/src/cli/commands/doctor.ts` to `docs/guides/subsystems/doctor-walkthrough.mdx`; touching the former requires the latter. Generated guide scenario tests under `test/scenarios/generated/guides/` stay gitignored — run `bun run scripts/build-guide-scenarios.ts --only doctor-walkthrough` locally to verify, commit only the `.mdx`.
+---
+
+## [2026-05-29 17:53 CDT] - Babysit
+- PR: #211 https://github.com/AaronFeledy/core4/pull/211
+- CI outcome: pass
+- Review feedback: deferred (Bugbot reported duplicated `renderSolution` between doctor renderers; needs triage before merge)
+- Merge: deferred (Bugbot feedback unresolved)
+---
+
+## [2026-05-29 18:20 CDT] - US-108 (in-flight finish)
+- Resolved the open Bugbot review blocker on the subsystem-doctor story: `renderSolution` was duplicated in both `doctor.ts` and `doctor-subsystems.ts`. Promoted the single canonical renderer to an export from `doctor.ts` and imported it into `doctor-subsystems.ts`, leaving one definition. No behavior change — the rendered `solution[<kind>]: <description> (<command>)` format is byte-identical.
+- Verification: typecheck, lint, full suite (1835 pass / 23 skip / 0 fail) passed.
+- CLI verification: ran `lando meta:doctor --renderer=plain` against an isolated clean conf root. Output reports every subsystem (`selected-provider`, `proxy`, `certs`, `ssh`, `healthcheck`, `scanner`, `host-proxy`) and renders the `solution[manual]: ... (lando setup)` remediation lines through the shared `renderSolution`, confirming the dedup works end-to-end (exit 0).
+- **Learnings for future iterations:**
+  - The host's `~/.lando/config.yml` may contain a JSON-style empty object (`{}`), which the minimal hand-rolled YAML parser in `core/src/services/config.ts` rejects with `Malformed YAML at line 1` before any command runs. To exercise CLI commands that bootstrap `ConfigService` on this host, set `LANDO_USER_CONF_ROOT` to a temp dir with a `key: value`-style `config.yml` (e.g. `defaultProviderId: lando`). `XDG_CONFIG_HOME`/`XDG_CACHE_HOME` do NOT redirect the config root — only `LANDO_USER_CONF_ROOT` (or `$HOME/.lando`) does.
+  - When two CLI command modules in `core/src/cli/commands/` need the same pure text renderer, export it from the module that owns the type (here `doctor.ts` owns `DoctorSolution`) and import it; there is no circular dependency because `doctor.ts` does not import `doctor-subsystems.ts`.
+---
+
+## [2026-05-29 18:29 CDT] - US-108 Review
+- Reviewed the US-108 doctor subsystem implementation against `spec/beta/prd-beta-04-subsystems.md`, the build-step range (`origin/main...HEAD`), and specialist review findings.
+- Fixed confirmed review blocker: wired the combined `lando doctor` report into the JSON renderer path so source and compiled command dispatch can emit one NDJSON stream containing both the selected-provider check and every subsystem check.
+- Review notes (deferred/rejected): broader DoctorService/plugin-contributed checks and live subsystem status APIs remain outside US-108; current story scope is the provider-bootstrap doctor report and subsystem records.
+- Verification: typecheck, lint, tests passed.
+---
+
 ## [2026-05-29 16:41 CDT] - US-176 (agent2)
 - Split the executable-guide scenario engine's runCli into three explicit runners exposed via a new `ScenarioContextFactory` on `@lando/core/testing`: `scenario` (real in-process `@lando/core/cli` seam), `e2e` (spawns the compiled binary), and `testOnlyFake` (the Alpha2 canned start/destroy/curl shim). `ScenarioContext` now carries a `layer` field. `withScenarioContext` delegates to the fake runner so regenerated guide scenarios keep passing untouched.
 - Verification: typecheck, lint, tests passed (engine unit suite 18, codegen 12, all 74 generated guide scenarios green; `docs:scenario node-postgres` green). Pre-existing library packaging-export failures (fast-check / workspace-name resolution) reproduce identically with these changes stashed — environmental, not a regression.

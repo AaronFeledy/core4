@@ -25,8 +25,9 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 
-type DoctorError =
+export type DoctorError =
   | ConfigError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -126,8 +127,11 @@ const branded = (value: string | undefined): ProviderId | undefined => {
   return ProviderId.make(trimmed);
 };
 
-const platformFromProcess = (): HostPlatform =>
-  process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
+const platformFromProcess = (): HostPlatform => {
+  if (process.platform === "linux") return "linux";
+  if (process.platform === "darwin") return "darwin";
+  return "win32";
+};
 
 const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSelectionRecord => ({
   providerId: String(resolution.providerId),
@@ -155,9 +159,10 @@ const conflictCheck = (
   platform: HostPlatform,
   selection?: DoctorSelectionRecord,
 ): DoctorCheck => {
+  const providerKind = providerKindFor(providerId);
   const context: Record<string, string> = {
     providerId,
-    providerKind: providerKindFor(providerId),
+    providerKind,
     providerVersion,
     runtimeStatus: "conflict",
     platform,
@@ -177,7 +182,7 @@ const conflictCheck = (
     providerId,
     providerName,
     providerVersion,
-    providerKind: providerKindFor(providerId),
+    providerKind,
     runtimeStatus: "conflict",
     runtime: { running: false, message: conflict.message },
     capabilities: {},
@@ -197,7 +202,7 @@ const gatherSelectionInputs = (
     const flag = branded(options.flagProviderId);
     const landofile = branded(options.landofileProviderId);
     const env = readProviderEnvVar(options.env ?? process.env);
-    const config = configProvider === undefined || configProvider === null ? undefined : configProvider;
+    const config = configProvider ?? undefined;
     return {
       ...(flag === undefined ? {} : { flag }),
       ...(landofile === undefined ? {} : { landofile }),
@@ -295,7 +300,6 @@ export const doctor = (
       };
     }
     const provider = yield* registry.select({
-      // Narrow registry input to the provider handle on this path.
       provider: resolution.providerId,
     } as never);
     const status = yield* provider.getStatus;
@@ -378,7 +382,7 @@ const renderCapabilityValue = (value: unknown): string => {
   return String(value);
 };
 
-const renderSolution = (solution: DoctorSolution): string => {
+export const renderSolution = (solution: DoctorSolution): string => {
   const command = solution.command === undefined ? "" : ` (${solution.command})`;
   return `solution[${solution.kind}]: ${solution.description}${command}`;
 };
@@ -426,29 +430,22 @@ const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): R
   return ordered;
 };
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> => {
-  const knownOrder = [
-    "providerId",
-    "providerKind",
-    "providerVersion",
-    "runtimeStatus",
-    "runtimeVersion",
-    "bundleVersion",
-    "platform",
-    "selectionSource",
-    "conflictKind",
-    "socketPath",
-    "providerLandoStatePath",
-  ];
-  const ordered: Record<string, string> = {};
-  for (const key of knownOrder) {
-    if (Object.hasOwn(context, key)) ordered[key] = context[key] as string;
-  }
-  for (const [key, value] of Object.entries(context)) {
-    if (!Object.hasOwn(ordered, key)) ordered[key] = value;
-  }
-  return ordered;
-};
+const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
+  "providerId",
+  "providerKind",
+  "providerVersion",
+  "runtimeStatus",
+  "runtimeVersion",
+  "bundleVersion",
+  "platform",
+  "selectionSource",
+  "conflictKind",
+  "socketPath",
+  "providerLandoStatePath",
+];
+
+const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
+  orderKnownKeys(context, CONTEXT_KEY_ORDER);
 
 const selectionEventPayload = (selection: DoctorSelectionRecord): Record<string, unknown> => ({
   providerId: selection.providerId,
@@ -495,30 +492,9 @@ export interface DoctorNdjsonOptions {
   readonly now?: Date;
 }
 
-export const renderDoctorResultAsNdjson = (
-  result: DoctorResult,
-  options: DoctorNdjsonOptions = {},
-): string => {
-  const timestamp = (options.now ?? new Date()).toISOString();
-  const lines: string[] = [];
-  lines.push(JSON.stringify({ _tag: "doctor.start", timestamp }));
-  for (const check of result.checks) {
-    lines.push(JSON.stringify(checkEventPayload(check)));
-  }
-  let failed = 0;
-  let warned = 0;
-  for (const check of result.checks) {
-    if (check.status === "fail") failed += 1;
-    else if (check.status === "warn") warned += 1;
-  }
-  lines.push(
-    JSON.stringify({
-      _tag: "doctor.complete",
-      timestamp,
-      checks: result.checks.length,
-      failed,
-      warned,
-    }),
-  );
-  return `${lines.join("\n")}\n`;
-};
+export const renderDoctorResultAsNdjson = (result: DoctorResult, options: DoctorNdjsonOptions = {}): string =>
+  renderDoctorChecksAsNdjson({
+    checks: result.checks,
+    now: options.now,
+    checkEventPayload,
+  });
