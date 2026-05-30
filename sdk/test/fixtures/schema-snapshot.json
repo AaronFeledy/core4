@@ -74,6 +74,31 @@
       "manifest": {
         "api": 4,
         "contributes": {
+          "globalServices": [
+            {
+              "enabledByDefault": true,
+              "id": "traefik",
+              "module": "./src/global-services/traefik.ts",
+              "requires": {
+                "providerCapabilities": ["sharedCrossAppNetwork"]
+              },
+              "summary": "Global Traefik reverse proxy"
+            }
+          ],
+          "proxies": ["traefik"]
+        },
+        "description": "Traefik-backed `ProxyService` and bundled global reverse proxy.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/proxy-traefik",
+        "version": "0.0.0"
+      },
+      "name": "@lando/proxy-traefik"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
           "serviceTypes": [
             "apache",
             "compose",
@@ -123,6 +148,7 @@
       "@lando/provider-docker",
       "@lando/provider-lando",
       "@lando/provider-podman",
+      "@lando/proxy-traefik",
       "@lando/service-lando"
     ],
     "sdkSchemas": [

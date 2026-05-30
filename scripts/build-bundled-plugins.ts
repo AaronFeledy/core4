@@ -52,9 +52,9 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
   }
 
   const imports: Array<string> = [
-    'import type { Layer } from "effect";',
+    'import { Effect, type Layer } from "effect";',
     "",
-    'import type { PluginManifest } from "@lando/sdk/schema";',
+    'import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";',
     'import type { ServiceTypeShape } from "@lando/sdk/services";',
     "",
   ];
@@ -72,6 +72,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
         `    layer: ${moduleName}.${layerExport},`,
         `    manifest: ${moduleName}.manifest,`,
         `    ...serviceTypesFrom({ ...${moduleName} }),`,
+        `    ...globalServicesFrom({ ...${moduleName} }),`,
         "  },",
       ].join("\n"),
     );
@@ -106,11 +107,22 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "): { readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape> } =>",
     "  isServiceTypeMap(module.serviceTypes) ? { serviceTypes: module.serviceTypes } : {};",
     "",
+    "type GlobalServiceEffect = Effect.Effect<ServiceConfig, unknown, never>;",
+    "",
+    "const isGlobalServiceMap = (value: unknown): value is ReadonlyMap<string, GlobalServiceEffect> =>",
+    "  value instanceof Map && [...value.values()].every((entry) => Effect.isEffect(entry));",
+    "",
+    "const globalServicesFrom = (",
+    "  module: BundledPluginModule,",
+    "): { readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect> } =>",
+    "  isGlobalServiceMap(module.globalServices) ? { globalServices: module.globalServices } : {};",
+    "",
     "export const BUNDLED_PLUGINS: ReadonlyArray<{",
     "  readonly name: string;",
     "  readonly layer: BundledLayer;",
     "  readonly manifest: PluginManifest;",
     "  readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape>;",
+    "  readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;",
     "}> = [",
     tableRows.join("\n"),
     "];",
@@ -120,11 +132,12 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
 
 const layerExportFor = (
   entry: (typeof buildConfig.bundledPlugins)[number],
-): "provider" | "services" | "logger" | "engine" => {
+): "provider" | "services" | "logger" | "engine" | "proxy" => {
   if (entry.contributes?.providers !== undefined) return "provider";
   if (entry.contributes?.serviceTypes !== undefined) return "services";
   if (entry.contributes?.loggers !== undefined) return "logger";
   if (entry.contributes?.fileSyncEngines !== undefined) return "engine";
+  if (entry.contributes?.proxies !== undefined) return "proxy";
 
   throw new Error(`Bundled plugin ${entry.name} does not declare a supported layer contribution.`);
 };

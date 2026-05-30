@@ -83,11 +83,16 @@ describe("global:install command operation", () => {
       expect(result.dist.status).toBe("created");
       expect(result.paths.userLandofile).toBe(join(dataRoot, "global", ".lando.yml"));
       expect(result.userLandofileCreated).toBe(true);
-      expect(await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8")).toContain("name: global");
+      const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      expect(distContent).toContain("name: global");
+      // Bundled @lando/proxy-traefik contributes the traefik global service by default.
+      expect(result.dist.serviceIds).toContain("traefik");
+      expect(distContent).toContain("traefik:");
+      expect(distContent).toContain("traefik:v3.3");
       expect(await readFile(join(dataRoot, "global", ".lando.yml"), "utf8")).toContain("User overrides");
       expect(output).toContain(".lando.dist.yml");
       expect(output).toContain("created");
-      expect(output).toContain("Global services: none");
+      expect(output).toContain("Global services: traefik");
     });
   });
 
