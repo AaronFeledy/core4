@@ -238,4 +238,37 @@ describe("provider-lando Compose emission", () => {
     const volumeLines = content.split("\n").filter((line) => /^ {6}- "\//.test(line));
     expect(volumeLines.length).toBeGreaterThan(0);
   });
+
+  test("renders typed NetworkingPlan custom shared network membership", () => {
+    const content = renderCompose({
+      ...plan,
+      networking: {
+        perAppBridge: { name: "custom-app-net", driver: "bridge" },
+        sharedNetworkMembership: {
+          name: "custom-shared-net",
+          aliases: { [web.name]: ["web.custom.internal"] },
+        },
+      },
+    });
+
+    expect(content).toContain("      custom-app-net:\n");
+    expect(content).toContain(
+      '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
+    );
+    expect(content).toContain('  custom-app-net:\n    driver: "bridge"');
+    expect(content).toContain('  custom-shared-net:\n    external: true\n    name: "custom-shared-net"');
+    expect(content).not.toContain("lando_bridge_network");
+  });
+
+  test("omits shared compose network for per-app-only NetworkingPlan", () => {
+    const content = renderCompose({
+      ...plan,
+      networking: { perAppBridge: { name: "custom-app-net", driver: "bridge" } },
+    });
+
+    expect(content).toContain("      custom-app-net:\n");
+    expect(content).toContain('  custom-app-net:\n    driver: "bridge"');
+    expect(content).not.toContain("aliases:");
+    expect(content).not.toContain("lando_bridge_network");
+  });
 });

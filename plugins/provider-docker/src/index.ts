@@ -12,7 +12,6 @@ import {
 import {
   type AppPlan,
   type HostPlatform,
-  LANDO_SHARED_CROSS_APP_NETWORK,
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
@@ -142,7 +141,6 @@ const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
 const networkName = landoAppNetworkName;
-const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
 const networkNames = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 
@@ -896,6 +894,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
 };
 
 export const renderCompose = (plan: AppPlan): string => {
+  const sharedNetwork = landoSharedNetworkName(plan);
   const services = Object.values(plan.services)
     .map((service) => {
       const image = service.artifact?.kind === "ref" ? service.artifact.ref : "";
@@ -908,10 +907,13 @@ export const renderCompose = (plan: AppPlan): string => {
         .join("\n");
       const networks = [
         "    networks:",
-        `      ${networkName(plan)}:`,
-        `      ${SHARED_CROSS_APP_NETWORK}:`,
-        "        aliases:",
-        ...serviceNetworkAliases(plan, service).map((alias) => `          - "${alias}"`),
+        ...networkNames(plan).flatMap((name) => {
+          if (name !== sharedNetwork) return [`      ${name}:`];
+          const aliases = serviceNetworkAliases(plan, service);
+          return aliases.length === 0
+            ? [`      ${name}:`]
+            : [`      ${name}:`, "        aliases:", ...aliases.map((alias) => `          - "${alias}"`)];
+        }),
       ].join("\n");
       return [
         `  ${service.name}:`,
@@ -923,7 +925,13 @@ export const renderCompose = (plan: AppPlan): string => {
         .join("\n");
     })
     .join("\n");
-  return `version: "3.9"\nservices:\n${services}\nnetworks:\n  ${networkName(plan)}:\n    name: "${networkName(plan)}"\n  ${SHARED_CROSS_APP_NETWORK}:\n    name: "${SHARED_CROSS_APP_NETWORK}"\n    external: true\n`;
+  const networks = networkNames(plan)
+    .map((name) => {
+      if (name === sharedNetwork) return `  ${name}:\n    name: "${name}"\n    external: true`;
+      return `  ${name}:\n    name: "${name}"`;
+    })
+    .join("\n");
+  return `version: "3.9"\nservices:\n${services}\nnetworks:\n${networks}\n`;
 };
 
 export const emitCompose = (

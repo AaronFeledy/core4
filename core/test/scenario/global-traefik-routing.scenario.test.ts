@@ -79,6 +79,18 @@ const planApp = (
 const planUserApp = (capabilities: ProviderCapabilities): Promise<AppPlan> =>
   planApp({ name: "shop", services: { web: { image: "nginx:1.27", port: 80 } } }, capabilities);
 
+const canReachSharedAlias = (source: AppPlan, targets: ReadonlyArray<AppPlan>, alias: string): boolean => {
+  const sourceNetwork = source.networking?.sharedNetworkMembership?.name;
+  if (sourceNetwork === undefined) return false;
+
+  return targets.some((target) => {
+    const targetMembership = target.networking?.sharedNetworkMembership;
+    if (targetMembership?.name !== sourceNetwork) return false;
+
+    return Object.values(targetMembership.aliases).some((aliases) => aliases.includes(alias));
+  });
+};
+
 describe("sharedCrossAppNetwork capability and provider-side wiring", () => {
   test("providers advertise sharedCrossAppNetwork on every supported platform", () => {
     for (const platform of ["linux", "darwin", "win32"] as const) {
@@ -253,5 +265,11 @@ describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
       [shop, blog, global].map((plan) => plan.networking?.sharedNetworkMembership?.name),
     );
     expect(sharedNames).toEqual(new Set([LANDO_SHARED_CROSS_APP_NETWORK]));
+
+    expect(canReachSharedAlias(global, [shop, blog], "web.shop.internal")).toBe(true);
+    expect(canReachSharedAlias(global, [shop, blog], "web.blog.internal")).toBe(true);
+    expect(canReachSharedAlias(shop, [global], "traefik.lando-global.internal")).toBe(true);
+    expect(canReachSharedAlias(blog, [global], "traefik.lando-global.internal")).toBe(true);
+    expect(canReachSharedAlias(shop, [blog], "web.blog.internal")).toBe(true);
   });
 });

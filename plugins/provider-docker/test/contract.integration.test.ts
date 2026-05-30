@@ -541,6 +541,39 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(compose).toContain('name: "lando-myapp"');
   });
 
+  test("emits compose networks from typed NetworkingPlan", () => {
+    const compose = renderCompose({
+      ...makePlan(),
+      networking: {
+        perAppBridge: { name: "custom-app-net", driver: "bridge" },
+        sharedNetworkMembership: {
+          name: "custom-shared-net",
+          aliases: { [serviceName]: ["web.custom.internal"] },
+        },
+      },
+    });
+
+    expect(compose).toContain("      custom-app-net:");
+    expect(compose).toContain(
+      '      custom-shared-net:\n        aliases:\n          - "web.custom.internal"',
+    );
+    expect(compose).toContain('  custom-app-net:\n    name: "custom-app-net"');
+    expect(compose).toContain('  custom-shared-net:\n    name: "custom-shared-net"\n    external: true');
+    expect(compose).not.toContain("lando_bridge_network");
+  });
+
+  test("omits the shared compose network for per-app-only NetworkingPlan", () => {
+    const compose = renderCompose({
+      ...makePlan(),
+      networking: { perAppBridge: { name: "custom-app-net", driver: "bridge" } },
+    });
+
+    expect(compose).toContain("      custom-app-net:");
+    expect(compose).toContain('  custom-app-net:\n    name: "custom-app-net"');
+    expect(compose).not.toContain("aliases:");
+    expect(compose).not.toContain("lando_bridge_network");
+  });
+
   test.skipIf(!process.env.LANDO_TEST_DOCKER_SOCKET && !process.env.DOCKER_HOST)(
     "runs the provider contract suite against a live Docker Engine socket",
     async () => {

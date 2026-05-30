@@ -3,18 +3,18 @@ import { Effect } from "effect";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
-  LANDO_SHARED_CROSS_APP_NETWORK,
   type ServicePlan,
   fileSyncVolumeName,
-  landoAppNetworkNames,
+  landoNetworkNames,
   landoServiceNetworkAliases,
+  landoSharedNetworkName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
-const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
-const appNetworkNames = landoAppNetworkNames;
+const networkNamesForPlan = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
+const sharedNetworkName = landoSharedNetworkName;
 
 const PROVIDER_ID = "lando";
 
@@ -169,7 +169,8 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
 });
 
 const toComposeDocument = (plan: AppPlan): ComposeDocument => {
-  const networkNames = Array.from(new Set([...appNetworkNames(plan), SHARED_CROSS_APP_NETWORK]));
+  const networkNames = networkNamesForPlan(plan);
+  const sharedName = sharedNetworkName(plan);
   const services = Object.fromEntries(
     Object.entries(plan.services).map(([name, service]) => [
       name,
@@ -183,7 +184,7 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         networks: Object.fromEntries(
           networkNames.map((networkName) => [
             networkName,
-            networkName === SHARED_CROSS_APP_NETWORK ? { aliases: serviceNetworkAliases(plan, service) } : {},
+            networkName === sharedName ? { aliases: serviceNetworkAliases(plan, service) } : {},
           ]),
         ),
       }),
@@ -191,10 +192,10 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
   );
   const networks = Object.fromEntries(
     networkNames.map((name) => {
-      if (name === SHARED_CROSS_APP_NETWORK) {
-        return [name, { external: true, name: SHARED_CROSS_APP_NETWORK }];
+      if (name === sharedName) {
+        return [name, { external: true, name }];
       }
-      const planned = plan.networks.find((network) => network.shared === false);
+      const planned = plan.networks.find((network) => network.name === name && network.shared === false);
       return [name, { driver: planned?.driver ?? "bridge" }];
     }),
   );

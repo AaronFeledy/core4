@@ -981,3 +981,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Verification: typecheck, lint passed; full `bun test` green on re-run (1861 pass / 23 skip / 0 fail). No new code was needed — the prior story commit already satisfies every criterion.
 - **Learnings for future iterations:**
   - `core/test/scripts/codegen-ci.test.ts` can transiently fail in the full parallel run (codegen exit non-zero) for the same shared-codegen/biome race documented for `schema-snapshot.test.ts`; it passes in isolation and `bun run codegen` is byte-idempotent (clean `git diff` after a manual run). Trust an isolated re-run + a clean full-suite re-run over a single flaky parallel-subset failure.
+
+## [2026-05-29 20:55 CDT] - US-109 Review
+- Reviewed US-109 networking intent against `spec/beta/prd-beta-04-subsystems.md`, the build-step range (`origin/main...HEAD`), and specialist review findings.
+- Fixed confirmed review blockers: provider Docker/Lando compose and bring-up paths now honor typed `NetworkingPlan` network names instead of hard-coded shared-network constants, and the two-app + global Traefik scenario now verifies simulated shared-network alias reachability.
+- Review notes (deferred/rejected): alias/slug hardening is a non-blocking follow-up, not a US-109 blocker; the earlier codegen timeout was transient and passed in isolation plus the full suite.
+- Verification: typecheck, lint, focused networking/provider tests, and full `bun test` passed.
+---
