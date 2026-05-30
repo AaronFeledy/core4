@@ -87,6 +87,37 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("accepts a guide declaring multi-axis `axes:`", async () => {
+    expect(await lintFixture("axes-green")).toEqual([]);
+  });
+
+  test("reports <Tabs> without an `axis` when multiple axes are declared", async () => {
+    expect(await lintFixture("axes-missing-prop")).toEqual([
+      "core/test/lint/guides/axes-missing-prop.mdx:11:5: guide.tabs.missing-axis: <Tabs> requires an `axis` attribute because this guide declares multiple axes.",
+    ]);
+  });
+
+  test("reports <Tabs axis> referencing an undeclared axis", async () => {
+    expect(await lintFixture("axes-unknown-axis")).toEqual([
+      'core/test/lint/guides/axes-unknown-axis.mdx:10:5: guide.tabs.unknown-axis: <Tabs axis="arch"> is not a declared `axes:` axis.',
+    ]);
+  });
+
+  test("reports <Tab> names that are not a declared axis value", async () => {
+    expect(await lintFixture("axes-unknown-value")).toEqual([
+      'core/test/lint/guides/axes-unknown-value.mdx:11:7: guide.tabs.missing-axis: <Tab name="windows"> is not a declared `os` axis value.',
+    ]);
+  });
+
+  test("reports `tabs:` and `axes:` declared together", async () => {
+    const diagnostics = await lintFixture("tabs-and-axes");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/tabs-and-axes.mdx:1:1");
+    expect(diagnostics[0]).toContain("guide.frontmatter");
+    expect(diagnostics[0]).toContain("mutually exclusive");
+  });
+
   test("reports inline Beta-only components anywhere in prose", async () => {
     const diagnostics = await lintFixture("beta-inline-component");
 

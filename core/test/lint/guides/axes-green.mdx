@@ -1,0 +1,37 @@
+---
+id: axes-green
+provider: test
+diataxis: tutorial
+axes:
+  os: [linux, macos]
+  package-manager: [composer, npm]
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Tabs axis="os">
+      <Tab name="linux">
+        <Step name="install">
+          <Run command="version" />
+        </Step>
+      </Tab>
+      <Tab name="macos">
+        <Step name="install">
+          <Run command="version" />
+        </Step>
+      </Tab>
+    </Tabs>
+    <Tabs axis="package-manager">
+      <Tab name="composer">
+        <Step name="setup">
+          <Run command="version" />
+        </Step>
+      </Tab>
+      <Tab name="npm">
+        <Step name="setup">
+          <Run command="version" />
+        </Step>
+      </Tab>
+    </Tabs>
+  </Scenario>
+</Guide>
