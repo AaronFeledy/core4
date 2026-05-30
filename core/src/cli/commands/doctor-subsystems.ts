@@ -35,6 +35,7 @@ import { HostProxyServiceDisabledLive } from "../../subsystems/host-proxy/api.ts
 import { ProxyServiceUnavailableLive } from "../../subsystems/proxy/api.ts";
 import { UrlScannerUnavailableLive } from "../../subsystems/scanner/api.ts";
 import { SshServiceUnavailableLive } from "../../subsystems/ssh/api.ts";
+import { redactString } from "../redact.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { renderSolution } from "./doctor.ts";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
@@ -240,9 +241,9 @@ export const subsystemFailureDiagnostic = (subsystem: string, cause?: unknown): 
 const errorMessage = (cause: unknown): string => {
   if (typeof cause === "object" && cause !== null && "message" in cause) {
     const message = (cause as { readonly message?: unknown }).message;
-    if (typeof message === "string" && message.length > 0) return message;
+    if (typeof message === "string" && message.length > 0) return redactString(message);
   }
-  return String(cause);
+  return redactString(String(cause));
 };
 
 const passCheck = (spec: SubsystemSpec, context: Record<string, string>): DoctorSubsystemCheck => ({
@@ -264,6 +265,7 @@ const buildDegradedCheck = (
   baseContext: Record<string, string>,
   fix: boolean,
   runSetup?: () => Effect.Effect<void, unknown>,
+  cause?: unknown,
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
     if (fix && spec.recovery === "automatic" && runSetup !== undefined) {
@@ -272,15 +274,17 @@ const buildDegradedCheck = (
       if (Either.isRight(result)) {
         return passCheck(spec, {
           ...baseContext,
+          ...(baseContext.ready === "false" ? { ready: "true" } : {}),
           fixOutcome: "recovered",
           fixCommand,
           fixExitCode: "0",
         });
       }
+      const diagnostic = subsystemFailureDiagnostic(spec.name, result.left);
       return {
         name: spec.name,
         status: "warn",
-        severity: "warn",
+        severity: diagnostic.severity,
         recovery: spec.recovery,
         context: {
           ...baseContext,
@@ -304,13 +308,14 @@ const buildDegradedCheck = (
       };
     }
 
+    const diagnostic = cause === undefined ? undefined : subsystemFailureDiagnostic(spec.name, cause);
     return {
       name: spec.name,
       status: "warn",
-      severity: "warn",
+      severity: diagnostic?.severity ?? "warn",
       recovery: spec.recovery,
       context: baseContext,
-      solutions: [degradedSolution(spec)],
+      solutions: [diagnostic?.solution ?? degradedSolution(spec)],
     };
   });
 
@@ -371,7 +376,13 @@ const buildHostProxyCheck = (
           subsystemId: hostProxy.id,
           active: "false",
         };
-    return yield* buildDegradedCheck(HOST_PROXY_SPEC, baseContext, fix);
+    return yield* buildDegradedCheck(
+      HOST_PROXY_SPEC,
+      baseContext,
+      fix,
+      undefined,
+      Either.isLeft(status) ? status.left : undefined,
+    );
   });
 
 /**

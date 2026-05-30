@@ -14,6 +14,7 @@ import {
   type SubsystemDoctorResult,
   classifySubsystemFailure,
   renderSubsystemDoctorResult,
+  renderSubsystemDoctorResultAsNdjson,
   subsystemDoctor,
   subsystemFailureDiagnostic,
 } from "../../src/cli/commands/doctor-subsystems.ts";
@@ -29,6 +30,18 @@ const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as c
 
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(subsystemDoctor({ fix }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
+
+const expectTaggedDiagnosticForFailure = (
+  subsystem: string,
+  exit: { readonly _tag: string; readonly cause?: unknown },
+): void => {
+  expect(exit._tag).toBe("Failure");
+  const diagnostic = subsystemFailureDiagnostic(subsystem, exit.cause);
+  expect(diagnostic._tag).toBe("DoctorSubsystemFailure");
+  expect(diagnostic.subsystem).toBe(subsystem);
+  expect(["info", "warn", "error"]).toContain(diagnostic.severity);
+  expect(diagnostic.solution.description.length).toBeGreaterThan(0);
+};
 
 describe("US-110 subsystem failure-recovery classification", () => {
   test("classifies proxy/ssh as automatic and certs/host-proxy/healthcheck/scanner as manual", async () => {
@@ -88,35 +101,35 @@ describe("US-110 each subsystem failure path produces a tagged error with severi
     const proxy = await Effect.runPromiseExit(
       Effect.flatMap(ProxyService, (s) => s.setup()).pipe(Effect.provide(ProxyServiceUnavailableLive)),
     );
-    expect(proxy._tag).toBe("Failure");
+    expectTaggedDiagnosticForFailure("proxy", proxy);
 
     const ca = await Effect.runPromiseExit(
       Effect.flatMap(CertificateAuthority, (s) => s.setup({ force: false })).pipe(
         Effect.provide(CertificateAuthorityUnavailableLive),
       ),
     );
-    expect(ca._tag).toBe("Failure");
+    expectTaggedDiagnosticForFailure("certs", ca);
 
     const ssh = await Effect.runPromiseExit(
       Effect.flatMap(SshService, (s) => s.setup({ force: false })).pipe(
         Effect.provide(SshServiceUnavailableLive),
       ),
     );
-    expect(ssh._tag).toBe("Failure");
+    expectTaggedDiagnosticForFailure("ssh", ssh);
 
     const hc = await Effect.runPromiseExit(
       Effect.flatMap(HealthcheckRunner, (s) =>
         s.run({ probes: [] } as never, "app" as never, "web" as never),
       ).pipe(Effect.provide(HealthcheckRunnerUnavailableLive)),
     );
-    expect(hc._tag).toBe("Failure");
+    expectTaggedDiagnosticForFailure("healthcheck", hc);
 
     const scanner = await Effect.runPromiseExit(
       Effect.flatMap(UrlScanner, (s) => s.scan("app" as never)).pipe(
         Effect.provide(UrlScannerUnavailableLive),
       ),
     );
-    expect(scanner._tag).toBe("Failure");
+    expectTaggedDiagnosticForFailure("scanner", scanner);
 
     const diag = subsystemFailureDiagnostic("proxy", new Error("boom"));
     expect(diag._tag).toBe("DoctorSubsystemFailure");
@@ -164,9 +177,33 @@ describe("US-110 meta:doctor --fix recovery", () => {
 
     expect(proxy?.status).toBe("pass");
     expect(proxy?.severity).toBe("info");
+    expect(proxy?.context.ready).toBe("true");
     expect(proxy?.context.fixOutcome).toBe("recovered");
     expect(proxy?.context.fixExitCode).toBe("0");
     expect(proxy?.solutions).toEqual([]);
+  });
+
+  test("--fix redacts secret-like environment values from failed setup errors", async () => {
+    const secretErrorProxy = Layer.succeed(ProxyService, {
+      id: "unavailable",
+      setup: () => Effect.fail(new Error("setup failed API_TOKEN=abc123 DATABASE_PASSWORD=hunter2")),
+      applyRoutes: () => Effect.void,
+      removeRoutes: () => Effect.void,
+    });
+    const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, secretErrorProxy);
+    const result = await Effect.runPromise(subsystemDoctor({ fix: true }).pipe(Effect.provide(layer)));
+    const proxy = result.checks.find((c) => c.name === "proxy");
+    const text = renderSubsystemDoctorResult(result);
+    const ndjson = renderSubsystemDoctorResultAsNdjson(result, {
+      now: new Date("1970-01-01T00:00:00.000Z"),
+    });
+
+    expect(proxy?.context.fixError).toContain("API_TOKEN=[REDACTED]");
+    expect(proxy?.context.fixError).toContain("DATABASE_PASSWORD=[REDACTED]");
+    expect(text).toContain("API_TOKEN=[REDACTED]");
+    expect(text).not.toContain("abc123");
+    expect(ndjson).toContain("DATABASE_PASSWORD=[REDACTED]");
+    expect(ndjson).not.toContain("hunter2");
   });
 
   test("human renderer surfaces the fix outcome for degraded subsystems under --fix", async () => {
