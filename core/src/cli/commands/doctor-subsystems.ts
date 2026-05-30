@@ -27,6 +27,7 @@ import { HostProxyServiceDisabledLive } from "../../subsystems/host-proxy/api.ts
 import { ProxyServiceUnavailableLive } from "../../subsystems/proxy/api.ts";
 import { UrlScannerUnavailableLive } from "../../subsystems/scanner/api.ts";
 import { SshServiceUnavailableLive } from "../../subsystems/ssh/api.ts";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { renderSolution } from "./doctor.ts";
 import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
 
@@ -211,16 +212,8 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "loopback",
 ];
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> => {
-  const ordered: Record<string, string> = {};
-  for (const key of CONTEXT_KEY_ORDER) {
-    if (Object.hasOwn(context, key)) ordered[key] = context[key] as string;
-  }
-  for (const [key, value] of Object.entries(context)) {
-    if (!Object.hasOwn(ordered, key)) ordered[key] = value;
-  }
-  return ordered;
-};
+const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
+  orderKnownKeys(context, CONTEXT_KEY_ORDER);
 
 const checkEventPayload = (check: DoctorSubsystemCheck): Record<string, unknown> => ({
   _tag: "doctor.check",
@@ -242,27 +235,9 @@ export interface SubsystemDoctorNdjsonOptions {
 export const renderSubsystemDoctorResultAsNdjson = (
   result: SubsystemDoctorResult,
   options: SubsystemDoctorNdjsonOptions = {},
-): string => {
-  const timestamp = (options.now ?? new Date()).toISOString();
-  const lines: string[] = [];
-  lines.push(JSON.stringify({ _tag: "doctor.start", timestamp }));
-  for (const check of result.checks) {
-    lines.push(JSON.stringify(checkEventPayload(check)));
-  }
-  let failed = 0;
-  let warned = 0;
-  for (const check of result.checks) {
-    if (check.status === "fail") failed += 1;
-    else if (check.status === "warn") warned += 1;
-  }
-  lines.push(
-    JSON.stringify({
-      _tag: "doctor.complete",
-      timestamp,
-      checks: result.checks.length,
-      failed,
-      warned,
-    }),
-  );
-  return `${lines.join("\n")}\n`;
-};
+): string =>
+  renderDoctorChecksAsNdjson({
+    checks: result.checks,
+    now: options.now,
+    checkEventPayload,
+  });
