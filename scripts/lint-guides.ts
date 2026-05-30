@@ -244,6 +244,14 @@ const lintHiddenReason = (
   });
 };
 
+const unconditionalStepElements = (scenario: MdxNode): ReadonlyArray<MdxNode> =>
+  elementChildren(scenario).flatMap((child) => {
+    if (child.name === "Step") return [child];
+    if (child.name === "Hidden")
+      return elementChildren(child).filter((hiddenChild) => hiddenChild.name === "Step");
+    return [];
+  });
+
 const lintStepNames = (
   sourcePath: string,
   scenarios: ReadonlyArray<MdxNode>,
@@ -251,7 +259,7 @@ const lintStepNames = (
 ): void => {
   for (const scenario of scenarios) {
     const seen = new Set<string>();
-    for (const step of elementChildren(scenario).filter((child) => child.name === "Step")) {
+    for (const step of unconditionalStepElements(scenario)) {
       const name = propsOf(step).name;
       if (typeof name !== "string") continue;
       if (seen.has(name)) {

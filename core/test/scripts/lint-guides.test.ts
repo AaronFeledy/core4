@@ -61,6 +61,38 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("reports duplicate Step names between hidden and visible steps", () => {
+    const sourcePath = "core/test/lint/guides/duplicate-hidden-step.mdx";
+    const diagnostics = lintGuideContent(
+      sourcePath,
+      [
+        "---",
+        "id: duplicate-hidden-step",
+        "provider: test",
+        "diataxis: tutorial",
+        "---",
+        "",
+        "<Guide>",
+        '  <Scenario id="reader-path">',
+        '    <Hidden reason="seed deterministic fixtures">',
+        '      <Step name="run">',
+        '        <Run command="version" />',
+        "      </Step>",
+        "    </Hidden>",
+        '    <Step name="run">',
+        '      <Run command="status" />',
+        "    </Step>",
+        "  </Scenario>",
+        "</Guide>",
+        "",
+      ].join("\n"),
+    ).diagnostics.map(formatGuideLintDiagnostic);
+
+    expect(diagnostics).toEqual([
+      'core/test/lint/guides/duplicate-hidden-step.mdx:14:5: guide.step.duplicate-name: Duplicate <Step name="run">.',
+    ]);
+  });
+
   test("reports Beta-only components with a source-mapped frame", async () => {
     const diagnostics = await lintFixture("beta-component");
 
