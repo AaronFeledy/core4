@@ -12,6 +12,7 @@ import {
   type FileSyncSessionSpec,
   type LandofileShape,
   type NetworkPlan,
+  type NetworkingPlan,
   PortablePath,
   type ProviderCapabilities,
   type ProviderId,
@@ -21,6 +22,7 @@ import {
   ServicePlan,
   type StorageScope,
   fileSyncVolumeName,
+  landoNetworkingPlan,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
@@ -609,16 +611,24 @@ const planApp = (
       }
     }
 
-    const networks: ReadonlyArray<NetworkPlan> =
-      Object.keys(services).length === 0
-        ? []
-        : [
-            {
-              name: appNetworkName(appName),
-              shared: false,
-              driver: "bridge",
-            },
-          ];
+    const serviceNames = Object.keys(services);
+    const hasServices = serviceNames.length > 0;
+    const networks: ReadonlyArray<NetworkPlan> = hasServices
+      ? [
+          {
+            name: appNetworkName(appName),
+            shared: false,
+            driver: "bridge",
+          },
+        ]
+      : [];
+    const networking: NetworkingPlan | undefined = hasServices
+      ? landoNetworkingPlan({
+          slug: appName,
+          serviceNames,
+          sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
+        })
+      : undefined;
 
     const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
@@ -629,6 +639,7 @@ const planApp = (
       services,
       routes: aggregatedRoutes,
       networks,
+      ...(networking !== undefined ? { networking } : {}),
       stores: aggregatedStores,
       fileSync: fileSyncEntries,
       metadata,

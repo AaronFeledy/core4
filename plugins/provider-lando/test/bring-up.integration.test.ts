@@ -218,6 +218,68 @@ describe("provider-lando bringUp", () => {
     ]);
   });
 
+  test("uses typed NetworkingPlan names and aliases when creating containers", async () => {
+    const fake = makeFakeApi();
+    const customPlan: AppPlan = {
+      ...plan,
+      networking: {
+        perAppBridge: { name: "custom-app-net", driver: "bridge" },
+        sharedNetworkMembership: {
+          name: "custom-shared-net",
+          aliases: { [node.name]: ["node.custom.internal"] },
+        },
+      },
+    };
+
+    await Effect.runPromise(bringUp(customPlan, { podmanApi: fake.api }));
+
+    const nodeCreate = fake.calls.find(
+      (call) =>
+        call.method === "POST" &&
+        call.path.startsWith("/containers/create") &&
+        new URL(`http://localhost${call.path}`).searchParams.get("name") === "lando-bringupapp-node",
+    );
+    const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
+    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({
+      "custom-app-net": {},
+      "custom-shared-net": { Aliases: ["node.custom.internal"] },
+    });
+    expect(
+      fake.calls
+        .filter((call) => call.path === "/networks/create")
+        .slice(0, 2)
+        .map((call) => call.body),
+    ).toEqual([
+      { Name: "custom-app-net", Driver: "bridge" },
+      { Name: "custom-shared-net", Driver: "bridge" },
+    ]);
+  });
+
+  test("omits shared Podman network membership when typed shared membership is absent", async () => {
+    const fake = makeFakeApi();
+    const perAppOnlyPlan: AppPlan = {
+      ...plan,
+      networking: { perAppBridge: { name: "custom-app-only", driver: "bridge" } },
+    };
+
+    await Effect.runPromise(bringUp(perAppOnlyPlan, { podmanApi: fake.api }));
+
+    const nodeCreate = fake.calls.find(
+      (call) =>
+        call.method === "POST" &&
+        call.path.startsWith("/containers/create") &&
+        new URL(`http://localhost${call.path}`).searchParams.get("name") === "lando-bringupapp-node",
+    );
+    const nodeCreateBody = nodeCreate?.body as CreateContainerBody | undefined;
+    expect(nodeCreateBody?.NetworkingConfig?.EndpointsConfig).toEqual({ "custom-app-only": {} });
+    expect(
+      fake.calls
+        .filter((call) => call.path === "/networks/create")
+        .slice(0, 1)
+        .map((call) => call.body),
+    ).toEqual([{ Name: "custom-app-only", Driver: "bridge" }]);
+  });
+
   test("realizes accelerated appMount and bind mounts as file-sync volumes", async () => {
     const fake = makeFakeApi();
     const acceleratedAppRoot = AbsolutePath.make("/tmp/lando-accel-app");

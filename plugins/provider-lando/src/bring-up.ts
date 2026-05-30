@@ -5,13 +5,13 @@ import { PostServiceStartEvent, PreServiceStartEvent } from "@lando/sdk/events";
 import {
   type AppPlan,
   type AppRef,
-  LANDO_SHARED_CROSS_APP_NETWORK,
   ProviderId,
   type ServicePlan,
   fileSyncVolumeName,
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
+  landoSharedNetworkName,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
 import type { ApplyResult, EventService } from "@lando/sdk/services";
@@ -19,10 +19,10 @@ import type { ApplyResult, EventService } from "@lando/sdk/services";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
 import { redactDetails } from "./redact.ts";
 
-const SHARED_CROSS_APP_NETWORK = LANDO_SHARED_CROSS_APP_NETWORK;
 const appNetworkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
+const sharedNetworkName = landoSharedNetworkName;
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
@@ -231,7 +231,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
       EndpointsConfig: Object.fromEntries(
         networkNames(plan).map((name) => [
           name,
-          name === SHARED_CROSS_APP_NETWORK ? { Aliases: serviceNetworkAliases(plan, service) } : {},
+          name === sharedNetworkName(plan) ? { Aliases: serviceNetworkAliases(plan, service) } : {},
         ]),
       ),
     },
@@ -242,14 +242,11 @@ const ensureNetwork = (
   api: PodmanApiClient,
   name: string,
 ): Effect.Effect<boolean, ProviderUnavailableError | ProviderInternalError> => {
-  // Inspect first — skip create if the network already exists (idempotent bringUp).
   return request(api, { method: "GET", path: `/networks/${encodeURIComponent(name)}` }).pipe(
     Effect.flatMap((inspectResponse) => {
       if (inspectResponse.status === 200) {
-        // Network already exists; nothing to do.
         return Effect.succeed(false);
       }
-      // Not found (404) or unexpected — attempt create.
       return request(api, {
         method: "POST",
         path: "/networks/create",
@@ -445,7 +442,6 @@ const rollbackPartialApply = (
   createdNetworks: ReadonlySet<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    // stop+force-remove every container we touched, then remove the app network.
     // stop/DELETE are idempotent on 404 so this is safe for never-created
     // containers. Volumes are preserved so rollback does not discard persistent data.
     yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });

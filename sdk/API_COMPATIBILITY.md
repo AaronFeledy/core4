@@ -32,8 +32,10 @@
 - `fileSyncVolumeName`
 - `landoAppNetworkName`
 - `landoAppNetworkNames`
+- `landoNetworkingPlan`
 - `landoNetworkNames`
 - `landoServiceNetworkAliases`
+- `landoSharedNetworkName`
 - `sameAppMountTarget`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
@@ -63,7 +65,10 @@
 - `MountInput`
 - `MountPlan`
 - `NetworkPlan`
+- `NetworkingPlan`
+- `PerAppBridgePlan`
 - `PlanMetadata`
+- `SharedNetworkMembershipPlan`
 - `PluginContribution`
 - `PluginName`
 - `PortablePath`
