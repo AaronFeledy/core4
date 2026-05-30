@@ -83,9 +83,16 @@ export interface GuideScenarioNode {
 
 const DEFAULT_AXIS = "default";
 
-export interface GuideVariant {
+export interface GuideVariantPair {
   readonly axis: string;
   readonly value: string;
+}
+
+export interface GuideVariant {
+  readonly pairs: ReadonlyArray<GuideVariantPair>;
+  readonly skip?: { readonly reason: string; readonly until?: string };
+  readonly tags?: ReadonlyArray<string>;
+  readonly platforms?: ReadonlyArray<string>;
 }
 
 interface ResolvedVariantSteps {
@@ -150,10 +157,36 @@ const collectVariables = (steps: ReadonlyArray<GuideStepNode>): ReadonlyMap<stri
   return variables;
 };
 
+const axisEntriesOf = (
+  frontmatter: GuideFrontmatter,
+): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => {
+  if (frontmatter.tabs !== undefined && frontmatter.tabs.length > 0) {
+    return [[DEFAULT_AXIS, frontmatter.tabs]];
+  }
+  if (frontmatter.axes !== undefined) return Object.entries(frontmatter.axes);
+  return [];
+};
+
 const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant | undefined> => {
-  const tabs = guide.frontmatter.tabs;
-  if (tabs === undefined || tabs.length === 0) return [undefined];
-  return tabs.map((value) => ({ axis: DEFAULT_AXIS, value }));
+  const entries = axisEntriesOf(guide.frontmatter);
+  if (entries.length === 0) return [undefined];
+  let combinations: ReadonlyArray<ReadonlyArray<GuideVariantPair>> = [[]];
+  for (const [axis, values] of entries) {
+    combinations = combinations.flatMap((prefix) => values.map((value) => [...prefix, { axis, value }]));
+  }
+  const overrides = guide.frontmatter.variants ?? {};
+  const guideTags = guide.frontmatter.tags ?? [];
+  return combinations.map((pairs) => {
+    const override = overrides[pairs.map((pair) => pair.value).join(".")];
+    const skip = override?.skip ?? guide.frontmatter.skip;
+    const tags = override?.tags === undefined ? undefined : [...new Set([...guideTags, ...override.tags])];
+    return {
+      pairs,
+      ...(skip === undefined ? {} : { skip }),
+      ...(tags === undefined ? {} : { tags }),
+      ...(override?.platforms === undefined ? {} : { platforms: override.platforms }),
+    };
+  });
 };
 
 const blockStepUnion = (block: GuideTabsBlock): ReadonlyArray<string> => {
@@ -169,6 +202,12 @@ const blockStepUnion = (block: GuideTabsBlock): ReadonlyArray<string> => {
   return union;
 };
 
+const effectiveAxisOf = (block: GuideTabsBlock, variant: GuideVariant): string => {
+  const [first] = variant.pairs;
+  if (block.axis === DEFAULT_AXIS && variant.pairs.length === 1 && first !== undefined) return first.axis;
+  return block.axis;
+};
+
 const resolveVariantSteps = (
   scenario: GuideScenarioNode,
   variant: GuideVariant | undefined,
@@ -181,7 +220,9 @@ const resolveVariantSteps = (
       continue;
     }
     const union = blockStepUnion(item);
-    const matched = variant === undefined ? undefined : item.tabs.find((tab) => tab.name === variant.value);
+    const axis = variant === undefined ? item.axis : effectiveAxisOf(item, variant);
+    const value = variant?.pairs.find((pair) => pair.axis === axis)?.value;
+    const matched = value === undefined ? undefined : item.tabs.find((tab) => tab.name === value);
     for (const stepName of union) {
       const step =
         variant === undefined
@@ -194,7 +235,7 @@ const resolveVariantSteps = (
       if (variant !== undefined) {
         skips.push({
           stepName,
-          reason: `axis ${item.axis}=${variant.value} tab does not include step ${stepName}`,
+          reason: `axis ${axis}=${value ?? ""} tab does not include step ${stepName}`,
         });
       }
     }
@@ -350,13 +391,22 @@ const renderScenarioTest = (
     })
     .join("\n");
   const variantHeader =
-    variant === undefined ? "// @variant:" : `// @variant: ${variant.axis}=${variant.value}`;
-  const skips = renderSkips(resolved.skips);
+    variant === undefined
+      ? "// @variant:"
+      : `// @variant: ${variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ")}`;
+  const annotationLines = [
+    ...(variant?.tags === undefined ? [] : [`// @tags: ${variant.tags.join(",")}`]),
+    ...(variant?.platforms === undefined ? [] : [`// @platforms: ${variant.platforms.join(",")}`]),
+    ...(variant?.skip === undefined ? [] : [`// @variant-skip: ${variant.skip.reason}`]),
+  ];
+  const variantAnnotations = annotationLines.length === 0 ? "" : `\n${annotationLines.join("\n")}`;
+  const skips = variant?.skip === undefined ? renderSkips(resolved.skips) : "";
+  const testFn = variant?.skip === undefined ? "test" : "test.skip";
 
   return `// @generated
 // @source: ${guide.sourcePath}:${scenario.line}
 // @scenario: ${scenario.id}
-${scenario.render === false ? "// @render: false\n" : ""}${variantHeader}
+${scenario.render === false ? "// @render: false\n" : ""}${variantHeader}${variantAnnotations}
 
 import { join } from "node:path";
 
@@ -382,7 +432,7 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   return Object.is(actual, expected);
 };
 
-test(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
+${testFn}(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
   await Effect.runPromise(
     withScenarioContext({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
@@ -713,7 +763,7 @@ export const emitGuideScenarioTests = async (
     const variants = variantsOf(guide);
     for (const scenario of [...guide.scenarios].sort((left, right) => left.id.localeCompare(right.id))) {
       for (const variant of variants) {
-        const suffix = variant === undefined ? "" : `.${variant.value}`;
+        const suffix = variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
         const relativePath = `${outputRoot}/${guideId}/${scenario.id}${suffix}.test.ts`;
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });

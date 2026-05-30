@@ -1388,6 +1388,29 @@
           "additionalProperties": false,
           "description": "Alpha 2 executable guide frontmatter.",
           "properties": {
+            "axes": {
+              "patternProperties": {
+                "": {
+                  "description": "an array of at least 1 item(s)",
+                  "items": {
+                    "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                    "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "title": "minItems(1)",
+                  "type": "array"
+                }
+              },
+              "properties": {},
+              "propertyNames": {
+                "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "required": [],
+              "type": "object"
+            },
             "defaultLayer": {
               "enum": ["scenario"],
               "type": "string"
@@ -1444,6 +1467,44 @@
               "exclusiveMinimum": 0,
               "title": "positive",
               "type": "integer"
+            },
+            "variants": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "platforms": {
+                    "items": {
+                      "enum": ["darwin", "linux", "win32", "wsl"],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "skip": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "reason": {
+                        "type": "string"
+                      },
+                      "until": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["reason"],
+                    "type": "object"
+                  },
+                  "tags": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
             }
           },
           "required": ["id"],

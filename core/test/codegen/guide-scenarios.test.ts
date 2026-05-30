@@ -113,7 +113,7 @@ describe("build-guide-scenarios MDX walker", () => {
     try {
       parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content);
     } catch (error) {
-      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("§19.16");
+      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("§19.11");
       expect(error instanceof NotImplementedError ? error.remediation : "").toContain("Phase 3 Beta");
     }
   });
@@ -484,6 +484,115 @@ describe("build-guide-scenarios MDX walker", () => {
         join(root, "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts"),
       ).text();
       expect(linuxAgain).toBe(linux);
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", ...written.map((path) => join(root, path))],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("fans out multi-axis `axes:` into the Cartesian product with per-cell overrides", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-axes-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/matrix.mdx"),
+        [
+          "---",
+          "id: matrix-guide",
+          "provider: test",
+          "axes:",
+          "  os: [linux, macos]",
+          "  package-manager: [composer, npm]",
+          "variants:",
+          "  linux.npm:",
+          "    skip:",
+          "      reason: npm on linux not covered here",
+          "  macos.composer:",
+          "    tags: [slow]",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="main">',
+          '    <Step name="prepare">',
+          '      <Run command="version" />',
+          "    </Step>",
+          '    <Tabs axis="os">',
+          '      <Tab name="linux">',
+          '        <Step name="os-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          '      <Tab name="macos">',
+          '        <Step name="os-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          '        <Step name="brew">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          "    </Tabs>",
+          '    <Tabs axis="package-manager">',
+          '      <Tab name="composer">',
+          '        <Step name="pm-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          '      <Tab name="npm">',
+          '        <Step name="pm-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          "    </Tabs>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual([
+        "test/scenarios/generated/guides/matrix-guide/main.linux.composer.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.linux.npm.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.macos.composer.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.macos.npm.test.ts",
+      ]);
+
+      const read = (relative: string): Promise<string> => Bun.file(join(root, relative)).text();
+      const linuxComposer = await read(written[0] ?? "");
+      const linuxNpm = await read(written[1] ?? "");
+      const macosComposer = await read(written[2] ?? "");
+      const macosNpm = await read(written[3] ?? "");
+
+      expect(linuxComposer).toContain("// @variant: os=linux package-manager=composer");
+      expect(macosNpm).toContain("// @variant: os=macos package-manager=npm");
+
+      expect(linuxComposer).toContain("// @step: prepare");
+      expect(linuxComposer).toContain("// @step: os-step");
+      expect(linuxComposer).toContain("// @step: pm-step");
+      expect(linuxComposer).not.toContain("// @step: brew");
+      expect(linuxComposer).toContain('test.skip("brew", () => {');
+      expect(linuxComposer).toContain("axis os=linux tab does not include step brew");
+
+      expect(macosComposer).toContain("// @step: brew");
+      expect(macosComposer).toContain("// @tags: slow");
+      expect(macosComposer).not.toContain("// @variant-skip:");
+
+      expect(linuxNpm).toContain("// @variant-skip: npm on linux not covered here");
+      expect(linuxNpm).toContain('test.skip("matrix-guide:main"');
+      expect(linuxNpm).not.toContain('test("matrix-guide:main"');
+
+      const second = await buildGuideScenarioTests(root);
+      expect(second).toEqual(written);
+      expect(await read(written[0] ?? "")).toBe(linuxComposer);
 
       const proc = Bun.spawnSync({
         cmd: [process.execPath, "test", ...written.map((path) => join(root, path))],

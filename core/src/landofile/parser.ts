@@ -176,7 +176,7 @@ const parseMap = (
     }
     if (line.text.startsWith("- ")) break;
 
-    const match = line.text.match(/^([A-Za-z0-9_-]+):(.*)$/);
+    const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
@@ -313,7 +313,7 @@ const parseListItemMap = (
       );
     }
 
-    const match = line.text.match(/^([A-Za-z0-9_-]+):(.*)$/);
+    const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
