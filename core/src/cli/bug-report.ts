@@ -60,8 +60,14 @@ const extractCode = (record: Record<string, unknown> | undefined): string => {
   return "Error";
 };
 
+const appIdReservedMessage = (record: Record<string, unknown>): string => {
+  const reserved = asString(record.reserved) ?? "global";
+  return `The app id "${reserved}" is reserved for the global Lando app and cannot be used as a project name.`;
+};
+
 const extractMessage = (record: Record<string, unknown> | undefined, error: unknown): string => {
   if (record !== undefined) {
+    if (asString(record._tag) === "AppIdReservedError") return appIdReservedMessage(record);
     const message = asString(record.message);
     if (message !== undefined) return message;
   }
@@ -103,6 +109,12 @@ const extractExtraTagFields = (
     const line = record.line;
     if (typeof line === "number") out.push(["line", String(line)]);
   }
+  if (tag === "AppIdReservedError") {
+    const reserved = asString(record.reserved);
+    if (reserved !== undefined) out.push(["reserved", reserved]);
+    const suggested = asString(record.suggested);
+    if (suggested !== undefined) out.push(["suggested", suggested]);
+  }
   if (tag === "RendererSelectionError") {
     const value = asString(record.value);
     if (value !== undefined) out.push(["value", value]);
@@ -143,10 +155,18 @@ const landofileNotFoundHint = (record: Record<string, unknown> | undefined): str
     ? "Run `lando init --full --name=<name>` to scaffold an app."
     : undefined;
 
+const appIdReservedHint = (record: Record<string, unknown> | undefined): string | undefined => {
+  if (asString(record?._tag) !== "AppIdReservedError") return undefined;
+  const suggested = asString(record?.suggested);
+  return suggested !== undefined
+    ? `Rename the project in your Landofile, e.g. name: ${suggested}.`
+    : 'Choose a different project name in your Landofile; "global" is reserved.';
+};
+
 const REDACTED_REMEDIATION_FALLBACK = (record: Record<string, unknown> | undefined): string | undefined => {
   const remediation = asString(record?.remediation);
   if (remediation !== undefined) return remediation;
-  return landofileNotFoundHint(record);
+  return landofileNotFoundHint(record) ?? appIdReservedHint(record);
 };
 
 const logsDirFor = (cacheRoot: string): string => `${cacheRoot.replace(/\/+$/u, "")}/logs`;

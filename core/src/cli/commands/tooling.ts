@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import type {
+  AppIdReservedError,
   CapabilityError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -30,6 +31,8 @@ import {
   type ToolingInvocation,
 } from "@lando/sdk/services";
 
+import { loadUserLandofile } from "../app-resolution.ts";
+
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
 import { runHostScript } from "../../services/host-tooling-engine.ts";
@@ -51,6 +54,7 @@ export interface RunToolingResult {
 }
 
 type RunToolingError =
+  | AppIdReservedError
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
@@ -183,7 +187,7 @@ export const runTooling = (
     const registry = yield* RuntimeProviderRegistry;
     const engine = yield* ToolingEngine;
 
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
     const task = landofile.tooling?.[toolingLookupKey];
 

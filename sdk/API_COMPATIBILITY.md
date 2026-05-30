@@ -125,6 +125,7 @@
 - `CommandFramework`
 - `CommandRegistry`
 - `FileSyncEngine`
+- `GlobalAppService`
 - `HealthcheckRunner`
 - `PluginSource`
 - `PrivilegeService`

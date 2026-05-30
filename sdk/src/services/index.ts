@@ -2,6 +2,7 @@
 import { Context, type Effect, type Queue, type Schema, type Scope, type Stream } from "effect";
 
 import type {
+  AbsolutePath,
   AppId,
   AppPlan,
   EndpointPlan,
@@ -40,6 +41,7 @@ import type {
   FileSyncDriftError,
   FileSyncStartError,
   FileSyncStopError,
+  GlobalAppError,
   HealthcheckError,
   HealthcheckTimeoutError,
   HostProxyError,
@@ -222,6 +224,15 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | LandofileTimeoutError
       | NotImplementedError
     >;
+  }
+>() {}
+
+export class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService")<
+  GlobalAppService,
+  {
+    readonly id: "global";
+    readonly root: Effect.Effect<AbsolutePath, GlobalAppError>;
+    readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
   }
 >() {}
 

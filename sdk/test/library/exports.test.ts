@@ -75,6 +75,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GuideFixtureSymlinkError).toBeDefined();
     expect(errors.GuideFrontmatterValidationError).toBeDefined();
     expect(errors.GuideHiddenScenarioReasonError).toBeDefined();
+    expect(errors.AppIdReservedError).toBeDefined();
+    expect(errors.GlobalAppError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
@@ -101,6 +103,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.CacheService).toBeDefined();
     expect(services.EventService).toBeDefined();
     expect(services.LandofileService).toBeDefined();
+    expect(services.GlobalAppService).toBeDefined();
     expect(services.PluginRegistry).toBeDefined();
     expect(services.RuntimeProvider).toBeDefined();
     expect(services.RuntimeProviderRegistry).toBeDefined();

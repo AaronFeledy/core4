@@ -7,6 +7,7 @@
 import { Effect } from "effect";
 
 import type {
+  AppIdReservedError,
   CacheError,
   CapabilityError,
   LandoCommandError,
@@ -26,6 +27,8 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+
+import { loadUserLandofile } from "../app-resolution.ts";
 
 import { compileAppCommands } from "../../cache/command-compiler.ts";
 import {
@@ -48,6 +51,7 @@ export interface AppCacheRefreshResult {
 }
 
 type AppCacheRefreshError =
+  | AppIdReservedError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -84,7 +88,7 @@ export const refreshAppCache = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
 
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
 

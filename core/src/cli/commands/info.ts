@@ -7,6 +7,7 @@
 import { Effect } from "effect";
 
 import type {
+  AppIdReservedError,
   CapabilityError,
   LandoCommandError,
   LandofileNotFoundError,
@@ -26,6 +27,8 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+
+import { loadUserLandofile } from "../app-resolution.ts";
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
@@ -53,6 +56,7 @@ export interface InfoAppResult {
 }
 
 type InfoAppError =
+  | AppIdReservedError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -131,7 +135,7 @@ export const infoApp = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
 
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
     const provider = yield* registry.select(plan);

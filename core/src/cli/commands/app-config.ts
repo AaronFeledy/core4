@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import type {
+  AppIdReservedError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -10,6 +11,8 @@ import type {
 } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
+
+import { loadUserLandofile } from "../app-resolution.ts";
 
 export interface AppConfigOptions {
   readonly format?: "json" | "table";
@@ -23,6 +26,7 @@ export interface AppConfigResult {
 }
 
 type AppConfigError =
+  | AppIdReservedError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileSandboxError
@@ -57,7 +61,7 @@ export const appConfig = (
 ): Effect.Effect<AppConfigResult, AppConfigError, AppConfigServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     return {
       app: landofile.name ?? "",
       source: "resolved",
