@@ -40,6 +40,9 @@ const ALPHA_2_COMPONENTS = [
   "UseFixture",
 ] as const;
 
+// Separate from ALPHA_2_COMPONENTS so each list records when a component landed.
+const BETA_COMPONENTS = ["Inspect"] as const;
+
 const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
   new NotImplementedError({
     message: `<${componentName}> is not supported in Alpha 2 at ${hostPath}.`,
@@ -51,6 +54,7 @@ const betaComponentError = (componentName: string, hostPath: string): NotImpleme
 export const assertAlpha2Component = (componentName: string, hostPath: string): void => {
   if (componentName === "Hidden") throw hiddenComponentError();
   if (ALPHA_2_COMPONENTS.some((name) => name === componentName)) return;
+  if (BETA_COMPONENTS.some((name) => name === componentName)) return;
   throw betaComponentError(componentName, hostPath);
 };
 
@@ -235,6 +239,31 @@ export const UseFixtureProps = Schema.Struct({
 });
 export type UseFixtureProps = typeof UseFixtureProps.Type;
 
+export const InspectProps = Schema.Struct({
+  file: Schema.optional(Schema.String),
+  json: Schema.optional(Schema.String),
+  // Literal `true` only: consumers act on `=== true`, so `false` must not decode.
+  events: Schema.optional(Schema.Literal(true)),
+  output: Schema.optional(Schema.Literal(true)),
+})
+  .pipe(
+    Schema.filter(
+      (input) =>
+        [input.file, input.json, input.events, input.output].filter((value) => value !== undefined).length ===
+        1,
+      {
+        message: () => "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
+        jsonSchema: {},
+      },
+    ),
+  )
+  .annotations({
+    identifier: "InspectProps",
+    title: "Inspect Props",
+    description: "Beta <Inspect> component props.",
+  });
+export type InspectProps = typeof InspectProps.Type;
+
 type DecodeError = NotImplementedError | ParseResult.ParseError;
 
 const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either.Either<A, DecodeError> =>
@@ -302,5 +331,8 @@ export const decodeVariablePropsEither = (input: unknown): Either.Either<Variabl
 
 export const decodeUseFixturePropsEither = (input: unknown): Either.Either<UseFixtureProps, DecodeError> =>
   decodeEither(UseFixtureProps, input);
+
+export const decodeInspectPropsEither = (input: unknown): Either.Either<InspectProps, DecodeError> =>
+  decodeEither(InspectProps, input);
 
 export const hiddenComponentNotImplemented = hiddenComponentError;

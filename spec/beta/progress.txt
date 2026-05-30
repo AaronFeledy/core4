@@ -15,6 +15,8 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - `buildSetupSteps()` drives both the event-tree children list and which setup actions run; adding a platform requires updating that function + the corresponding `if (platform === ...) ...` block in `setupProviderLando`.
 - Windows Podman machine lifecycle is structurally identical to macOS (`ensureWindowsPodmanMachine` mirrors `ensureMacOSPodmanMachine`); the separation exists for future divergence (e.g. WSL-specific machine flags).
 - Host-mutating live tests should gate on both the expected platform and an exact opt-in env value (`process.platform !== "win32" || process.env.GATE_VAR !== "1"`) so accidental truthy values do not run provider setup on the wrong host.
+- Adding a new executable-guide component touches five registration points: SDK `sdk/src/docs/components/props.ts` (prop schema + `decode*Either` helper + the `BETA_COMPONENTS` allowlist consulted by `assertAlpha2Component`), `scripts/build-guide-scenarios.ts` (the `GuideStepComponent` union + `parseStepComponent` + `renderStepComponent`), the `scripts/lint-guides.ts` component allowlist, the SDK schema registry in `sdk/src/schema/index.ts` (export/import/`JSON_SCHEMA_REGISTRY`/`getJsonSchema`), and `SDK_SCHEMA_NAMES` in `scripts/build-schema-snapshot.ts`; finish with `bun run codegen:schema-snapshot` and add the new export name to `sdk/API_COMPATIBILITY.md`.
+- Any new scenario transcript frame kind must be added to the `TranscriptFrame` union in `sdk/src/docs/transcript.ts`; `persistTranscript` runs `Schema.encodeSync(Transcript)` at scenario teardown and throws on an unknown frame kind.
 
 ## [2026-05-26] - US-074
 - Implemented Windows VM lifecycle for `@lando/provider-lando`
@@ -963,4 +965,16 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - CI outcome: pass
 - Review feedback: fixed (Bugbot duplication findings: `renderSolution` already shared; extracted shared NDJSON envelope/key-order helper so both doctor renderers stop duplicating the start/iterate/count/complete structure and `orderContextKeys`)
 - Merge: merged (squash)
+---
+
+## [2026-05-29 18:40 CDT] - US-175 (agent2)
+- Added the `<Inspect>` executable-guide component for read-only state capture between steps. `InspectProps` (exactly one of `file`, `json`, `events`, `output`) ships from `@lando/sdk/docs/components`, round-trips through the schema-snapshot gate, and is registered in the SDK JSON-schema registry. A new `inspect` transcript frame (`TranscriptInspectFrame`) records the captured value in the scenario transcript.
+- `ScenarioContext` gained an `inspect()` method: it reads a file or JSON file (relative to the scenario dir), snapshots the lifecycle event trace, or pulls the most recent command's stdout, then appends an inspect frame. It is deliberately non-failing — a missing file is captured as `null` so an inspection never changes a scenario's pass/fail.
+- The guide generator parses `<Inspect>` and emits `ctx.inspect(...)` (capture-only, no assertion); the guide linter accepts it. A growing `BETA_COMPONENTS` allowlist keeps the component recognized without polluting the Alpha-2 list.
+- Verification: typecheck, lint, lint:guides, schema-snapshot gate all green; focused suites (component-props, scenario-context, guide-scenarios) green; manual QA generated and ran a real `<Inspect>` guide showing emitted `context.inspect({...})` calls and a passing scenario. Three pre-existing `package export` packing failures (workspace/packed `@lando/core` resolution, `fast-check`) reproduce on a clean checkout and are unrelated.
+- **Learnings for future iterations:**
+  - New Beta guide components register in five places: SDK `props.ts` (schema + decode helper + `BETA_COMPONENTS`), `build-guide-scenarios.ts` (union + parse + render), `lint-guides.ts` allowlist, the SDK schema registry (`schema/index.ts` export/import/`JSON_SCHEMA_REGISTRY`/`getJsonSchema`), and `build-schema-snapshot.ts` `SDK_SCHEMA_NAMES` — then `bun run codegen:schema-snapshot` and the `API_COMPATIBILITY.md` export list.
+  - Any new scenario transcript frame kind must be added to the `TranscriptFrame` union in `sdk/src/docs/transcript.ts`, otherwise `persistTranscript`'s `Schema.encodeSync(Transcript)` throws at scenario teardown.
+  - `assertAlpha2Component` is the single recognition gate shared by the generator and linter; extend `BETA_COMPONENTS` (not the Alpha-2 list) when a deferred component becomes code-emitting.
+- Review fix (Bugbot): `events`/`output` were `Schema.Boolean`, so `{ events: false }` decoded as a valid single target but `createInspect`/`renderInspect` only act on `=== true` — silently capturing output instead. Narrowed both to `Schema.optional(Schema.Literal(true))` so `false` no longer decodes; schema and the `=== true` consumers can no longer disagree. Regenerated the schema snapshot (`enum: [true]`) and added decode-rejection tests.
 ---

@@ -17,6 +17,7 @@ export {
   CleanupProps,
   GuideProps,
   HiddenProps,
+  InspectProps,
   MatcherAnyOf,
   MatcherNot,
   MatcherPartialObject,
@@ -36,6 +37,7 @@ export {
   TranscriptCleanupFrame,
   TranscriptFixtureFrame,
   TranscriptFrame,
+  TranscriptInspectFrame,
   TranscriptRunFrame,
   TranscriptVerifyFrame,
 } from "../docs/transcript.ts";
@@ -43,6 +45,7 @@ import {
   CleanupProps,
   GuideProps,
   HiddenProps,
+  InspectProps,
   MatcherSchema,
   RunProps,
   ScenarioProps,
@@ -1236,6 +1239,7 @@ const JSON_SCHEMA_REGISTRY = {
   CleanupProps,
   VariableProps,
   HiddenProps,
+  InspectProps,
   UseFixtureProps,
   MatcherSchema,
   Transcript,
@@ -1286,6 +1290,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(VariableProps);
     case "HiddenProps":
       return JSONSchema.make(HiddenProps);
+    case "InspectProps":
+      return JSONSchema.make(InspectProps);
     case "UseFixtureProps":
       return JSONSchema.make(UseFixtureProps);
     case "MatcherSchema":
