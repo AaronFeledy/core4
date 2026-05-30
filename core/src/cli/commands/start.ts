@@ -9,6 +9,7 @@
 import { DateTime, Effect, Scope } from "effect";
 
 import type {
+  AppIdReservedError,
   CapabilityError,
   EventError,
   FileSyncDriftError,
@@ -37,6 +38,8 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import { loadUserLandofile } from "../app-resolution.ts";
+
 import {
   publishTaskComplete,
   publishTaskFail,
@@ -60,6 +63,7 @@ export interface StartAppResult {
 }
 
 type StartAppError =
+  | AppIdReservedError
   | EventError
   | FileSyncDriftError
   | FileSyncStartError
@@ -162,7 +166,7 @@ export const startApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
 
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
     const provider = yield* registry.select(plan);

@@ -6,6 +6,7 @@
 import { Effect } from "effect";
 
 import type {
+  AppIdReservedError,
   CapabilityError,
   EventError,
   FileSyncDriftError,
@@ -44,6 +45,7 @@ export interface RebuildAppResult {
 }
 
 type RebuildAppError =
+  | AppIdReservedError
   | EventError
   | FileSyncDriftError
   | FileSyncStartError

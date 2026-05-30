@@ -6,6 +6,7 @@
 import { DateTime, Effect } from "effect";
 
 import type {
+  AppIdReservedError,
   CapabilityError,
   EventError,
   FileSyncDriftError,
@@ -37,6 +38,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { loadUserLandofile } from "../app-resolution.ts";
+
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
 // biome-ignore lint/suspicious/noEmptyInterface: fields land with implementation
@@ -48,6 +51,7 @@ export interface StopAppResult {
 }
 
 type StopAppError =
+  | AppIdReservedError
   | EventError
   | FileSyncDriftError
   | FileSyncStartError
@@ -85,7 +89,7 @@ export const stopApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
 
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
     const provider = yield* registry.select(plan);

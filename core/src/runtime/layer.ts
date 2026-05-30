@@ -26,6 +26,7 @@ import {
   type ConfigService,
   type EventService,
   FileSystem,
+  type GlobalAppService,
   type LandofileService,
   type Logger,
   RuntimeProvider,
@@ -36,6 +37,7 @@ import {
 import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
 
 import { CacheServiceLive } from "../cache/service.ts";
+import { GlobalAppServiceLive } from "../global-app/service.ts";
 import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
@@ -115,7 +117,11 @@ export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
 type MinimalRuntimeServices = Logger | ConfigService | FileSystem | CacheService;
 type ToolingRuntimeServices = MinimalRuntimeServices | LandofileService | CommandRegistry;
-type ProviderRuntimeServices = MinimalRuntimeServices | RuntimeProvider | RuntimeProviderRegistry;
+type ProviderRuntimeServices =
+  | MinimalRuntimeServices
+  | RuntimeProvider
+  | RuntimeProviderRegistry
+  | GlobalAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
@@ -240,6 +246,7 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
     EventServiceLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     providerRegistryLive,
+    GlobalAppServiceLive.pipe(Layer.provide(minimalRuntimeLive)),
   );
 };
 

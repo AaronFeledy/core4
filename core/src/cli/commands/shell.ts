@@ -10,6 +10,7 @@ import { spawn as nodeSpawn } from "node:child_process";
 import { Effect } from "effect";
 
 import {
+  type AppIdReservedError,
   type CapabilityError,
   type LandofileNotFoundError,
   type LandofileParseError,
@@ -23,6 +24,8 @@ import {
   ShellExecError,
 } from "@lando/sdk/errors";
 import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+
+import { loadUserLandofile } from "../app-resolution.ts";
 
 export interface ShellAppOptions {
   /**
@@ -55,6 +58,7 @@ export interface ShellAppResult {
 }
 
 export type ShellAppError =
+  | AppIdReservedError
   | CapabilityError
   | LandofileNotFoundError
   | LandofileParseError
@@ -117,7 +121,7 @@ export const shellApp = (
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
 
-    const landofile = yield* landofileService.discover;
+    const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
 

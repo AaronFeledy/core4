@@ -159,6 +159,27 @@ export class GlobalServiceCapabilityError extends Schema.TaggedError<GlobalServi
   },
 ) {}
 
+/**
+ * A user-authored Landofile declared (or resolved to) the reserved app id
+ * `global`, which is owned by the global Lando app. Raised during user-app
+ * resolution before any plan is built.
+ */
+export class AppIdReservedError extends Schema.TaggedError<AppIdReservedError>()("AppIdReservedError", {
+  reserved: Schema.String,
+  suggested: Schema.optional(Schema.String),
+}) {}
+
+/**
+ * Umbrella error for global-app state transitions and path management
+ * performed by `GlobalAppService`.
+ */
+export class GlobalAppError extends Schema.TaggedError<GlobalAppError>()("GlobalAppError", {
+  message: Schema.String,
+  operation: Schema.optional(Schema.String),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,

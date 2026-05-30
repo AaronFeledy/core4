@@ -1,0 +1,34 @@
+---
+id: install-and-bundled-services
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, global, setup]
+---
+
+<Guide>
+  <Scenario id="global-app-reserved-id" render={false} reason="The reserved-id guard runs during user-app resolution; declaring name: global is rejected before any plan is built">
+    <Step name="reserved-id">
+      <Variable name="reservedId" value="global" display="The app id `global` is owned by the global Lando app and cannot be used by a project" />
+      <Variable name="error" value="AppIdReservedError" display="A Landofile that resolves to name: global is rejected with this tagged error" />
+      <Variable name="remediation" value="Choose a different project name in your Landofile; global is reserved." display="The remediation surfaced to the user" />
+      <Variable name="surfacedBefore" value="plan" display="The rejection happens during user-app resolution, before any AppPlan is built" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-app-root" render={false} reason="GlobalAppService resolves and materializes the global app directory under the per-user data root; production materialization lands with the bundled global services">
+    <Step name="app-root">
+      <Variable name="rootPath" value="userDataRoot/global" display="The global app is Lando-owned and lives under the per-user data root" />
+      <Variable name="service" value="GlobalAppService" display="The core service that resolves the root and ensures the directory exists" />
+      <Variable name="discovery" value="excluded" display="The global app directory is excluded from cwd-based app discovery; only meta:global:* commands resolve it" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-app-bundled-services" render={false} reason="Traefik and Mailpit ship as bundled global services in a later Beta story; this scenario documents the install surface they materialize into">
+    <Step name="bundled-services">
+      <Variable name="proxy" value="traefik" display="Traefik runs inside the global app and backs the default proxy referenced by per-app services" />
+      <Variable name="mail" value="mailpit" display="Mailpit runs inside the global app and captures mail for every per-app service" />
+      <Variable name="contribution" value="globalServices:" display="Plugins contribute additional global services through this manifest surface" />
+    </Step>
+  </Scenario>
+</Guide>
