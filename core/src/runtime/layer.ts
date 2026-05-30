@@ -29,6 +29,7 @@ import {
   type GlobalAppService,
   type LandofileService,
   type Logger,
+  type PluginRegistry,
   RuntimeProvider,
   type RuntimeProviderRegistry,
   type ToolingEngine,
@@ -120,6 +121,7 @@ type MinimalRuntimeServices = Logger | ConfigService | FileSystem | CacheService
 type ToolingRuntimeServices = MinimalRuntimeServices | LandofileService | CommandRegistry;
 type ProviderRuntimeServices =
   | MinimalRuntimeServices
+  | PluginRegistry
   | RuntimeProvider
   | RuntimeProviderRegistry
   | GlobalAppService;
@@ -224,6 +226,7 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   return Layer.mergeAll(
     minimalRuntimeLive,
     EventServiceLive,
+    PluginRegistryLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     providerRegistryLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),

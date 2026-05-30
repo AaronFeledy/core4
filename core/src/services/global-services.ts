@@ -1,5 +1,12 @@
-import { GlobalServiceCapabilityError } from "@lando/sdk/errors";
-import type { GlobalServiceContribution, PluginManifest, ProviderCapabilities } from "@lando/sdk/schema";
+import { Effect, Schema } from "effect";
+
+import { GlobalAppError, GlobalServiceCapabilityError, GlobalServiceCollisionError } from "@lando/sdk/errors";
+import {
+  type GlobalServiceContribution,
+  type PluginManifest,
+  type ProviderCapabilities,
+  ServiceConfig,
+} from "@lando/sdk/schema";
 
 export interface PendingGlobalServiceContribution {
   readonly contribution: GlobalServiceContribution;
@@ -122,3 +129,151 @@ export const validateGlobalServiceContributions = (
 
   return { accepted, rejected };
 };
+
+const collisionMessage = (id: string, plugins: ReadonlyArray<string>): string =>
+  `Global service id ${id} is contributed by multiple plugins: ${formatList(plugins)}.`;
+
+const collisionRemediation = (id: string, plugins: ReadonlyArray<string>): string =>
+  `Uninstall one of ${formatList(plugins)} so only one plugin contributes global service ${id}.`;
+
+export const resolveGlobalServiceContributions = (
+  manifests: ReadonlyArray<PluginManifest>,
+): Effect.Effect<ReadonlyArray<PendingGlobalServiceContribution>, GlobalServiceCollisionError> => {
+  const byId = new Map<string, PendingGlobalServiceContribution>();
+  const pluginsById = new Map<string, Set<string>>();
+
+  for (const pending of collectGlobalServiceContributions(manifests)) {
+    const id = pending.contribution.id;
+    byId.set(id, pending);
+    const plugins = pluginsById.get(id) ?? new Set<string>();
+    plugins.add(pending.plugin);
+    pluginsById.set(id, plugins);
+  }
+
+  const collision = [...pluginsById.entries()]
+    .filter(([, plugins]) => plugins.size > 1)
+    .sort(([left], [right]) => left.localeCompare(right))[0];
+
+  if (collision !== undefined) {
+    const [id, pluginSet] = collision;
+    const plugins = [...pluginSet].sort((left, right) => left.localeCompare(right));
+    return Effect.fail(
+      new GlobalServiceCollisionError({
+        message: collisionMessage(id, plugins),
+        id,
+        plugins,
+        remediation: collisionRemediation(id, plugins),
+      }),
+    );
+  }
+
+  return Effect.succeed(
+    [...byId.values()].sort((left, right) => left.contribution.id.localeCompare(right.contribution.id)),
+  );
+};
+
+export interface GlobalServiceModuleLoader {
+  readonly load: (entry: PendingGlobalServiceContribution) => Effect.Effect<ServiceConfig, GlobalAppError>;
+}
+
+const loaderError = (message: string, remediation: string, cause?: unknown): GlobalAppError =>
+  new GlobalAppError({
+    message,
+    operation: "regenerateDist",
+    remediation,
+    ...(cause === undefined ? {} : { cause }),
+  });
+
+export const defaultGlobalServiceModuleLoader: GlobalServiceModuleLoader = {
+  load: (entry) =>
+    Effect.gen(function* () {
+      const moduleSpecifier = entry.contribution.module?.trim();
+      if (moduleSpecifier === undefined || moduleSpecifier === "") {
+        return yield* Effect.fail(
+          loaderError(
+            `Global service ${entry.contribution.id} from plugin ${entry.plugin} does not declare a module.`,
+            `Update plugin ${entry.plugin} to declare a module for global service ${entry.contribution.id}, or uninstall the plugin.`,
+          ),
+        );
+      }
+
+      const loadedModule: unknown = yield* Effect.tryPromise({
+        try: () => import(moduleSpecifier),
+        catch: (cause) =>
+          loaderError(
+            `Unable to load global service ${entry.contribution.id} module ${moduleSpecifier}.`,
+            `Verify plugin ${entry.plugin} declares a resolvable module for global service ${entry.contribution.id}.`,
+            cause,
+          ),
+      });
+
+      const exported = (loadedModule as { readonly default?: unknown }).default;
+      if (!Effect.isEffect(exported)) {
+        return yield* Effect.fail(
+          loaderError(
+            `Global service ${entry.contribution.id} module ${moduleSpecifier} must default-export an Effect.`,
+            `Update plugin ${entry.plugin} so the global service module default export yields a ServiceConfig.`,
+          ),
+        );
+      }
+
+      const decoded = yield* (exported as Effect.Effect<unknown, unknown>).pipe(
+        Effect.mapError((cause) =>
+          loaderError(
+            `Global service ${entry.contribution.id} module ${moduleSpecifier} failed.`,
+            `Fix plugin ${entry.plugin}'s global service module or uninstall the plugin.`,
+            cause,
+          ),
+        ),
+        Effect.flatMap((value) =>
+          Schema.decodeUnknown(ServiceConfig)(value).pipe(
+            Effect.mapError((cause) =>
+              loaderError(
+                `Global service ${entry.contribution.id} module ${moduleSpecifier} did not return a valid ServiceConfig.`,
+                `Update plugin ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,
+                cause,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      return decoded;
+    }),
+};
+
+export interface GlobalServiceMaterializationInput {
+  readonly manifests: ReadonlyArray<PluginManifest>;
+  readonly providerCapabilities: ProviderCapabilities;
+  readonly providerId: string;
+  readonly loadServiceConfig: GlobalServiceModuleLoader["load"];
+}
+
+export const materializeGlobalServices = (
+  input: GlobalServiceMaterializationInput,
+): Effect.Effect<Record<string, ServiceConfig>, GlobalServiceCollisionError | GlobalAppError> =>
+  Effect.gen(function* () {
+    const resolved = yield* resolveGlobalServiceContributions(input.manifests);
+    const enabled = resolved.filter((entry) => entry.contribution.enabledByDefault !== false);
+    const validation = validateGlobalServiceContributions({
+      contributions: enabled,
+      providerCapabilities: input.providerCapabilities,
+      providerId: input.providerId,
+    });
+    const accepted = [...validation.accepted].sort((left, right) =>
+      left.contribution.id.localeCompare(right.contribution.id),
+    );
+    const entries = yield* Effect.forEach(
+      accepted,
+      (entry) =>
+        input
+          .loadServiceConfig(entry)
+          .pipe(Effect.map((serviceConfig) => [entry.contribution.id, serviceConfig] as const)),
+      { concurrency: 1 },
+    );
+    const services: Record<string, ServiceConfig> = {};
+    for (const [id, serviceConfig] of entries) {
+      services[id] = serviceConfig;
+    }
+    return services;
+  });

@@ -159,6 +159,16 @@ export class GlobalServiceCapabilityError extends Schema.TaggedError<GlobalServi
   },
 ) {}
 
+export class GlobalServiceCollisionError extends Schema.TaggedError<GlobalServiceCollisionError>()(
+  "GlobalServiceCollisionError",
+  {
+    message: Schema.String,
+    id: Schema.String,
+    plugins: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
 /**
  * A user-authored Landofile declared (or resolved to) the reserved app id
  * `global`, which is owned by the global Lando app. Raised during user-app
