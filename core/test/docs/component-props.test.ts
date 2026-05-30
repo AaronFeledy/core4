@@ -15,13 +15,13 @@ import {
   VariableProps,
   VerifyProps,
   assertAlpha2Component,
+  decodeHiddenPropsEither,
   decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
   decodeTabPropsEither,
   decodeTabsPropsEither,
   decodeVerifyPropsEither,
-  hiddenComponentNotImplemented,
 } from "@lando/core/docs/components";
 import { NotImplementedError } from "@lando/sdk/errors";
 import { Either, JSONSchema, ParseResult, Schema } from "effect";
@@ -234,30 +234,21 @@ describe("Alpha 2 component prop schemas", () => {
     }
   });
 
-  test("exposes Hidden generator rejection helper", () => {
-    const failure = hiddenComponentNotImplemented();
-    expect(failure).toBeInstanceOf(NotImplementedError);
-    expect(failure).toMatchObject({ commandId: "guide.component.hidden", specSection: "§19.3" });
-    expect(failure.remediation).toContain("<Scenario render={false}>");
-  });
+  test("accepts Hidden props and rejects reasons shorter than eight characters", () => {
+    expect(expectRight(decodeHiddenPropsEither({ reason: "seed deterministic state" }))).toEqual({
+      reason: "seed deterministic state",
+    });
 
-  test("assertAlpha2Component rejects Hidden with exact remediation", () => {
-    expect(() => assertAlpha2Component("Hidden", "docs/guides/node-postgres.mdx")).toThrow(
-      NotImplementedError,
-    );
-
-    try {
-      assertAlpha2Component("Hidden", "docs/guides/node-postgres.mdx");
-      throw new Error("expected Hidden to be rejected");
-    } catch (error) {
-      expect(error).toBeInstanceOf(NotImplementedError);
-      if (!(error instanceof NotImplementedError)) return;
-      expect(error.commandId).toBe("guide.component.hidden");
-      expect(error.specSection).toBe("§19.3");
-      expect(error.remediation).toBe(
-        "Move this coverage into a colocated `<Scenario render={false}>` per §19.9. `<Hidden>` ships in Phase 3 Beta — see `spec/ROADMAP.md`.",
-      );
+    const shortReason = decodeHiddenPropsEither({ reason: "short" });
+    expect(shortReason._tag).toBe("Left");
+    if (Either.isLeft(shortReason)) {
+      expect(shortReason.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(shortReason.left);
+      expect(issues.some((issue) => issue.path.includes("reason"))).toBe(true);
     }
+
+    const missingReason = decodeHiddenPropsEither({});
+    expect(missingReason._tag).toBe("Left");
   });
 
   test("accepts Tabs props with optional axis and rejects unknown keys", () => {
@@ -321,6 +312,7 @@ describe("Alpha 2 component prop schemas", () => {
     "Inspect",
     "Tabs",
     "Tab",
+    "Hidden",
   ] as const)("assertAlpha2Component accepts supported component <%s>", (componentName) => {
     expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
   });

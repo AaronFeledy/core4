@@ -1,0 +1,18 @@
+---
+id: lint-hidden-green
+provider: test
+diataxis: tutorial
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Hidden reason="seed deterministic fixtures">
+      <Step name="seed">
+        <Run command="version" />
+      </Step>
+    </Hidden>
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+  </Scenario>
+</Guide>

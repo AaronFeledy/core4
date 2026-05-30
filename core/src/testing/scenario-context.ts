@@ -76,6 +76,9 @@ export interface ScenarioContext {
   ) => Effect.Effect<ScenarioRunResult, unknown>;
   readonly shell: (command: string) => Effect.Effect<never, NotImplementedError>;
   readonly inspect: (props: ScenarioInspectProps) => Effect.Effect<void>;
+  // Runs `effect` with transcript recording suppressed so `<Hidden>` guide blocks
+  // execute without emitting reader-visible frames; depth-counted and always restored.
+  readonly hidden: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
   // Only the `testOnlyFake` runner records events here. The `scenario` and `e2e`
   // runners do not bridge the real EventService, so this stays empty under them —
   // event-based assertions are meaningful only with `testOnlyFake`.
@@ -290,7 +293,7 @@ const createFixtureUse = (
   guideId: string,
   testDir: string,
   setWorkingDirectory: (path: string) => void,
-  transcriptFrames: ScenarioTranscriptFrame[],
+  appendFrame: (frame: ScenarioTranscriptFrame) => void,
 ): ScenarioFixtures["use"] => {
   const copied = new Set<string>();
 
@@ -314,7 +317,7 @@ const createFixtureUse = (
         Effect.sync(() => {
           copied.add(name);
           setWorkingDirectory(target);
-          transcriptFrames.push({ kind: "fixture", name, copiedTo: target });
+          appendFrame({ kind: "fixture", name, copiedTo: target });
         }),
       ),
       Effect.provide(FileSystemLive),
@@ -337,6 +340,7 @@ const createInspect =
     testDir: string,
     events: LandoEvent[],
     transcriptFrames: ScenarioTranscriptFrame[],
+    appendFrame: (frame: ScenarioTranscriptFrame) => void,
   ): ScenarioContext["inspect"] =>
   (props) =>
     Effect.gen(function* () {
@@ -347,17 +351,17 @@ const createInspect =
         const exists = yield* Effect.promise(() => file.exists());
         const text = exists ? yield* Effect.promise(() => file.text()) : undefined;
         const value = text === undefined ? null : target === "json" ? safeJsonParse(text) : text;
-        yield* Effect.sync(() => transcriptFrames.push({ kind: "inspect", target, value }));
+        yield* Effect.sync(() => appendFrame({ kind: "inspect", target, value }));
         return;
       }
       if (props.events === true) {
         const value = [...events];
-        yield* Effect.sync(() => transcriptFrames.push({ kind: "inspect", target: "events", value }));
+        yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "events", value }));
         return;
       }
       const lastRun = [...transcriptFrames].reverse().find((frame) => frame.kind === "run");
       const value = lastRun !== undefined && lastRun.kind === "run" ? lastRun.stdout : "";
-      yield* Effect.sync(() => transcriptFrames.push({ kind: "inspect", target: "output", value }));
+      yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "output", value }));
     });
 
 const captureWrite = (stream: typeof process.stdout | typeof process.stderr) => {
@@ -641,7 +645,7 @@ const selectRunner = (
 
 const createRunCli = (
   events: LandoEvent[],
-  transcriptFrames: ScenarioTranscriptFrame[],
+  appendFrame: (frame: ScenarioTranscriptFrame) => void,
   getWorkingDirectory: () => string,
   setWorkingDirectory: (path: string) => void,
   runnerKind: ScenarioRunnerKind,
@@ -659,7 +663,7 @@ const createRunCli = (
       const result = yield* runner(command, options);
       const durationMs = Math.max(0, Date.now() - started);
       yield* Effect.sync(() => {
-        transcriptFrames.push({
+        appendFrame({
           kind: "run",
           command: result.command,
           stdout: result.stdout,
@@ -680,6 +684,22 @@ const makeScenarioContext = (
   const runtime = options.runtime ?? makeTestRuntime({ bootstrap: "provider" });
   const events: LandoEvent[] = [];
   const transcriptFrames: ScenarioTranscriptFrame[] = [];
+  let hiddenDepth = 0;
+  const appendFrame = (frame: ScenarioTranscriptFrame): void => {
+    if (hiddenDepth > 0) return;
+    transcriptFrames.push(frame);
+  };
+  const hidden = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.acquireUseRelease(
+      Effect.sync(() => {
+        hiddenDepth += 1;
+      }),
+      () => effect,
+      () =>
+        Effect.sync(() => {
+          hiddenDepth = Math.max(0, hiddenDepth - 1);
+        }),
+    );
   let workingDirectory = testDir;
   const getWorkingDirectory = () => workingDirectory;
   const setWorkingDirectory = (path: string) => {
@@ -697,21 +717,22 @@ const makeScenarioContext = (
     vars: new Map(options.vars ?? []),
     runCli: createRunCli(
       events,
-      transcriptFrames,
+      appendFrame,
       getWorkingDirectory,
       setWorkingDirectory,
       runnerKind,
       options.runCli,
     ),
     shell: (command) => Effect.fail(shellNotImplemented(command)),
-    inspect: createInspect(testDir, events, transcriptFrames),
+    inspect: createInspect(testDir, events, transcriptFrames, appendFrame),
+    hidden,
     events,
     transcript: {
       frames: transcriptFrames,
-      append: (frame) => Effect.sync(() => transcriptFrames.push(frame)),
+      append: (frame) => Effect.sync(() => appendFrame(frame)),
     },
     fixtures: {
-      use: createFixtureUse(options.guideId, testDir, setWorkingDirectory, transcriptFrames),
+      use: createFixtureUse(options.guideId, testDir, setWorkingDirectory, appendFrame),
     },
   };
 };

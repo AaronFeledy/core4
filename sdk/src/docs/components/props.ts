@@ -20,15 +20,6 @@ const betaComponentPropsError = (
     remediation: betaRemediation(`<${component}> \`${key}\``, specSection),
   });
 
-const hiddenComponentError = (): NotImplementedError =>
-  new NotImplementedError({
-    message: "<Hidden> is recognized but not generated in Alpha 2.",
-    commandId: "guide.component.hidden",
-    specSection: "§19.3",
-    remediation:
-      "Move this coverage into a colocated `<Scenario render={false}>` per §19.9. `<Hidden>` ships in Phase 3 Beta — see `spec/ROADMAP.md`.",
-  });
-
 const ALPHA_2_COMPONENTS = [
   "Guide",
   "Scenario",
@@ -41,7 +32,7 @@ const ALPHA_2_COMPONENTS = [
 ] as const;
 
 // Separate from ALPHA_2_COMPONENTS so each list records when a component landed.
-const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab"] as const;
+const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab", "Hidden"] as const;
 
 const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
   new NotImplementedError({
@@ -52,7 +43,6 @@ const betaComponentError = (componentName: string, hostPath: string): NotImpleme
   });
 
 export const assertAlpha2Component = (componentName: string, hostPath: string): void => {
-  if (componentName === "Hidden") throw hiddenComponentError();
   if (ALPHA_2_COMPONENTS.some((name) => name === componentName)) return;
   if (BETA_COMPONENTS.some((name) => name === componentName)) return;
   throw betaComponentError(componentName, hostPath);
@@ -356,6 +346,9 @@ export const decodeVariablePropsEither = (input: unknown): Either.Either<Variabl
 export const decodeUseFixturePropsEither = (input: unknown): Either.Either<UseFixtureProps, DecodeError> =>
   decodeEither(UseFixtureProps, input);
 
+export const decodeHiddenPropsEither = (input: unknown): Either.Either<HiddenProps, DecodeError> =>
+  decodeEither(HiddenProps, input);
+
 export const decodeInspectPropsEither = (input: unknown): Either.Either<InspectProps, DecodeError> =>
   decodeEither(InspectProps, input);
 
@@ -364,5 +357,3 @@ export const decodeTabsPropsEither = (input: unknown): Either.Either<TabsProps, 
 
 export const decodeTabPropsEither = (input: unknown): Either.Either<TabProps, DecodeError> =>
   decodeEither(TabProps, input);
-
-export const hiddenComponentNotImplemented = hiddenComponentError;

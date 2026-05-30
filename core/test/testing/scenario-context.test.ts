@@ -631,4 +631,51 @@ describe("ScenarioContextFactory", () => {
     );
     expect(layer).toBe("scenario");
   });
+
+  test("context.hidden suppresses transcript frames emitted inside its scope", async () => {
+    const frames = await Effect.runPromise(
+      withScenarioContext({ guideId: "node-postgres", scenarioId: "hidden-scope" }, (context) =>
+        Effect.gen(function* () {
+          yield* context.runCli(["version"]);
+          yield* context.hidden(
+            Effect.gen(function* () {
+              yield* context.runCli(["version"]);
+              yield* context.transcript.append({
+                kind: "verify",
+                target: "event",
+                matched: true,
+                expected: "ready",
+                actual: "ready",
+              });
+            }),
+          );
+          yield* context.runCli(["version"]);
+          return context.transcript.frames.map((frame) => frame.kind);
+        }),
+      ),
+    );
+
+    expect(frames).toEqual(["run", "run"]);
+  });
+
+  test("context.hidden restores transcript recording after a nested failure", async () => {
+    const frames = await Effect.runPromise(
+      withScenarioContext({ guideId: "node-postgres", scenarioId: "hidden-restore" }, (context) =>
+        Effect.gen(function* () {
+          yield* Effect.either(
+            context.hidden(
+              Effect.gen(function* () {
+                yield* context.runCli(["version"]);
+                return yield* Effect.fail(new Error("boom"));
+              }),
+            ),
+          );
+          yield* context.runCli(["version"]);
+          return context.transcript.frames.map((frame) => frame.kind);
+        }),
+      ),
+    );
+
+    expect(frames).toEqual(["run"]);
+  });
 });

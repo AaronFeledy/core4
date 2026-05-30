@@ -30,6 +30,7 @@ const ALPHA_2_COMPONENTS = new Set([
   "Inspect",
   "Tabs",
   "Tab",
+  "Hidden",
 ]);
 
 // This script enforces only the core guide rules implemented below.
@@ -223,6 +224,26 @@ const lintHiddenScenarioReason = (
   }
 };
 
+const lintHiddenReason = (
+  sourcePath: string,
+  root: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  walkElements(root, (node) => {
+    if (node.name !== "Hidden") return;
+    const reason = propsOf(node).reason;
+    if (typeof reason === "string" && reason.length >= 8) return;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        node,
+        "guide.hidden.reason",
+        "<Hidden> requires a `reason` of at least 8 characters per §19.10.",
+      ),
+    );
+  });
+};
+
 const lintStepNames = (
   sourcePath: string,
   scenarios: ReadonlyArray<MdxNode>,
@@ -247,16 +268,12 @@ const lintStepNames = (
 const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<GuideLintDiagnostic>): void => {
   walkElements(root, (node) => {
     if (node.name === undefined || node.name === null || ALPHA_2_COMPONENTS.has(node.name)) return;
-    const remediation =
-      node.name === "Hidden"
-        ? "Move this coverage into a colocated <Scenario render={false}> per §19.9."
-        : `<${node.name}> ships in Phase 3 Beta — see spec/ROADMAP.md.`;
     diagnostics.push(
       diagnostic(
         sourcePath,
         node,
         "guide.component.beta",
-        `<${node.name}> is not supported in Alpha 2. ${remediation}`,
+        `<${node.name}> is not supported in Alpha 2. <${node.name}> ships in Phase 3 Beta — see spec/ROADMAP.md.`,
       ),
     );
   });
@@ -386,6 +403,7 @@ export const lintGuideContent = (sourcePath: string, content: string): GuideLint
   lintComponents(sourcePath, root, diagnostics);
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
+  lintHiddenReason(sourcePath, root, diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
   lintTabs(sourcePath, root, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);

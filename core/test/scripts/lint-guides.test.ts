@@ -43,6 +43,16 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("accepts a guide with a <Hidden> block carrying a reason", async () => {
+    expect(await lintFixture("hidden-green")).toEqual([]);
+  });
+
+  test("reports <Hidden> blocks missing a reason", async () => {
+    expect(await lintFixture("hidden-missing-reason")).toEqual([
+      "core/test/lint/guides/hidden-missing-reason.mdx:9:5: guide.hidden.reason: <Hidden> requires a `reason` of at least 8 characters per §19.10.",
+    ]);
+  });
+
   test("reports duplicate Step names within one scenario", async () => {
     const diagnostics = await lintFixture("duplicate-step");
 
