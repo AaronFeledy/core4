@@ -1,0 +1,26 @@
+---
+id: tabs-green
+provider: test
+diataxis: tutorial
+tabs: [linux, macos]
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="prepare">
+      <Run command="version" />
+    </Step>
+    <Tabs>
+      <Tab name="linux">
+        <Step name="install">
+          <Run command="version" />
+        </Step>
+      </Tab>
+      <Tab name="macos">
+        <Step name="install">
+          <Run command="version" />
+        </Step>
+      </Tab>
+    </Tabs>
+  </Scenario>
+</Guide>

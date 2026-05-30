@@ -137,6 +137,8 @@
       "VariableProps",
       "HiddenProps",
       "InspectProps",
+      "TabsProps",
+      "TabProps",
       "UseFixtureProps",
       "MatcherSchema",
       "Transcript",
@@ -1378,6 +1380,17 @@
               },
               "required": ["reason"],
               "type": "object"
+            },
+            "tabs": {
+              "description": "an array of at least 1 item(s)",
+              "items": {
+                "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "minItems(1)",
+              "type": "array"
             },
             "tags": {
               "items": {
@@ -2945,6 +2958,46 @@
         }
       },
       "$ref": "#/$defs/StepProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "TabProps": {
+      "$defs": {
+        "TabProps": {
+          "additionalProperties": false,
+          "description": "Beta <Tab> component props.",
+          "properties": {
+            "name": {
+              "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": ["name"],
+          "title": "Tab Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/TabProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "TabsProps": {
+      "$defs": {
+        "TabsProps": {
+          "additionalProperties": false,
+          "description": "Beta <Tabs> component props.",
+          "properties": {
+            "axis": {
+              "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "Tabs Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/TabsProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "Transcript": {

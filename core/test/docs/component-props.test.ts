@@ -9,6 +9,8 @@ import {
   RunProps,
   ScenarioProps,
   StepProps,
+  TabProps,
+  TabsProps,
   UseFixtureProps,
   VariableProps,
   VerifyProps,
@@ -16,6 +18,8 @@ import {
   decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
+  decodeTabPropsEither,
+  decodeTabsPropsEither,
   decodeVerifyPropsEither,
   hiddenComponentNotImplemented,
 } from "@lando/core/docs/components";
@@ -218,6 +222,8 @@ describe("Alpha 2 component prop schemas", () => {
       ["HiddenProps", HiddenProps, { reason: "prepare shared context" }],
       ["InspectProps", InspectProps, { file: "package.json" }],
       ["UseFixtureProps", UseFixtureProps, { name: "invalid-service-type" }],
+      ["TabsProps", TabsProps, { axis: "default" }],
+      ["TabProps", TabProps, { name: "linux" }],
       ["MatcherSchema", MatcherSchema, { anyOf: ["ready", { not: false }] }],
     ] as const;
 
@@ -254,7 +260,40 @@ describe("Alpha 2 component prop schemas", () => {
     }
   });
 
-  test.each(["Tabs", "Tab", "Inline", "Skip"] as const)(
+  test("accepts Tabs props with optional axis and rejects unknown keys", () => {
+    expect(expectRight(decodeTabsPropsEither({}))).toEqual({});
+    expect(expectRight(decodeTabsPropsEither({ axis: "default" }))).toEqual({ axis: "default" });
+
+    const badAxis = decodeTabsPropsEither({ axis: "Default" });
+    expect(badAxis._tag).toBe("Left");
+    if (Either.isLeft(badAxis)) {
+      expect(badAxis.left).toBeInstanceOf(ParseResult.ParseError);
+    }
+
+    const excess = decodeTabsPropsEither({ name: "linux" });
+    expect(excess._tag).toBe("Left");
+  });
+
+  test("accepts Tab props with a kebab name and rejects missing or malformed names", () => {
+    expect(expectRight(decodeTabPropsEither({ name: "linux" }))).toEqual({ name: "linux" });
+    expect(expectRight(decodeTabPropsEither({ name: "drupal-10" }))).toEqual({ name: "drupal-10" });
+
+    const missing = decodeTabPropsEither({});
+    expect(missing._tag).toBe("Left");
+    if (Either.isLeft(missing)) {
+      expect(missing.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(missing.left);
+      expect(issues.some((issue) => issue.path.includes("name"))).toBe(true);
+    }
+
+    const malformed = decodeTabPropsEither({ name: "Linux" });
+    expect(malformed._tag).toBe("Left");
+
+    const legacyValueRejected = decodeTabPropsEither({ value: "linux" });
+    expect(legacyValueRejected._tag).toBe("Left");
+  });
+
+  test.each(["Inline", "Skip"] as const)(
     "assertAlpha2Component rejects Beta component <%s>",
     (componentName) => {
       try {
@@ -280,6 +319,8 @@ describe("Alpha 2 component prop schemas", () => {
     "Variable",
     "UseFixture",
     "Inspect",
+    "Tabs",
+    "Tab",
   ] as const)("assertAlpha2Component accepts supported component <%s>", (componentName) => {
     expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
   });
