@@ -41,7 +41,7 @@ const ALPHA_2_COMPONENTS = [
 ] as const;
 
 // Separate from ALPHA_2_COMPONENTS so each list records when a component landed.
-const BETA_COMPONENTS = ["Inspect"] as const;
+const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab"] as const;
 
 const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
   new NotImplementedError({
@@ -264,6 +264,30 @@ export const InspectProps = Schema.Struct({
   });
 export type InspectProps = typeof InspectProps.Type;
 
+const AxisToken = Schema.String.pipe(
+  Schema.pattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/, {
+    message: () => "Tab axis names and values must be lowercase kebab-case (a-z, 0-9, hyphen).",
+  }),
+);
+
+export const TabsProps = Schema.Struct({
+  axis: Schema.optional(AxisToken),
+}).annotations({
+  identifier: "TabsProps",
+  title: "Tabs Props",
+  description: "Beta <Tabs> component props.",
+});
+export type TabsProps = typeof TabsProps.Type;
+
+export const TabProps = Schema.Struct({
+  name: AxisToken,
+}).annotations({
+  identifier: "TabProps",
+  title: "Tab Props",
+  description: "Beta <Tab> component props.",
+});
+export type TabProps = typeof TabProps.Type;
+
 type DecodeError = NotImplementedError | ParseResult.ParseError;
 
 const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either.Either<A, DecodeError> =>
@@ -334,5 +358,11 @@ export const decodeUseFixturePropsEither = (input: unknown): Either.Either<UseFi
 
 export const decodeInspectPropsEither = (input: unknown): Either.Either<InspectProps, DecodeError> =>
   decodeEither(InspectProps, input);
+
+export const decodeTabsPropsEither = (input: unknown): Either.Either<TabsProps, DecodeError> =>
+  decodeEither(TabsProps, input);
+
+export const decodeTabPropsEither = (input: unknown): Either.Either<TabProps, DecodeError> =>
+  decodeEither(TabProps, input);
 
 export const hiddenComponentNotImplemented = hiddenComponentError;

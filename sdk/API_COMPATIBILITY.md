@@ -96,6 +96,8 @@
 - `StepProps`
 - `StorageInput`
 - `StorageScope`
+- `TabProps`
+- `TabsProps`
 - `TelemetryConfig`
 - `TemplateRenderContext`
 - `ToolingTaskShape`

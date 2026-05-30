@@ -1,0 +1,19 @@
+---
+id: axes-missing-prop
+provider: test
+axes:
+  os: [linux, macos]
+  package-manager: [composer, npm]
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Tabs>
+      <Tab name="linux">
+        <Step name="install">
+          <Run command="version" />
+        </Step>
+      </Tab>
+    </Tabs>
+  </Scenario>
+</Guide>

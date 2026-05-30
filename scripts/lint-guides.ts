@@ -28,6 +28,8 @@ const ALPHA_2_COMPONENTS = new Set([
   "Variable",
   "UseFixture",
   "Inspect",
+  "Tabs",
+  "Tab",
 ]);
 
 // This script enforces only the core guide rules implemented below.
@@ -260,6 +262,101 @@ const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<Gu
   });
 };
 
+const lintTabs = (
+  sourcePath: string,
+  root: MdxNode,
+  frontmatter: Record<string, unknown>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  const hasTabs = Object.hasOwn(frontmatter, "tabs");
+  const hasAxes = Object.hasOwn(frontmatter, "axes");
+  const stringValues = (input: unknown): ReadonlyArray<string> | undefined =>
+    Array.isArray(input) ? input.filter((value): value is string => typeof value === "string") : undefined;
+  const axesRecord =
+    hasAxes &&
+    frontmatter.axes !== null &&
+    typeof frontmatter.axes === "object" &&
+    !Array.isArray(frontmatter.axes)
+      ? (frontmatter.axes as Record<string, unknown>)
+      : {};
+  const axisNames = Object.keys(axesRecord);
+  const tabsValues = stringValues(frontmatter.tabs);
+
+  walkElements(root, (node) => {
+    if (node.name !== "Tabs") return;
+    if (!hasTabs && !hasAxes) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.tabs.missing-axis",
+          "<Tabs> requires a `tabs:` or `axes:` axis declaration in frontmatter.",
+        ),
+      );
+      return;
+    }
+    const axisProp = propsOf(node).axis;
+    let axisName: string | undefined;
+    if (hasTabs) {
+      axisName = "default";
+    } else if (typeof axisProp === "string") {
+      if (!axisNames.includes(axisProp)) {
+        diagnostics.push(
+          diagnostic(
+            sourcePath,
+            node,
+            "guide.tabs.unknown-axis",
+            `<Tabs axis="${axisProp}"> is not a declared \`axes:\` axis.`,
+          ),
+        );
+        return;
+      }
+      axisName = axisProp;
+    } else if (axisNames.length === 1) {
+      axisName = axisNames[0];
+    } else {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.tabs.missing-axis",
+          "<Tabs> requires an `axis` attribute because this guide declares multiple axes.",
+        ),
+      );
+      return;
+    }
+    const declaredValues = hasTabs ? tabsValues : stringValues(axesRecord[axisName ?? ""]);
+    const seen = new Set<string>();
+    for (const tab of elementChildren(node).filter((child) => child.name === "Tab")) {
+      const name = propsOf(tab).name;
+      if (typeof name !== "string") continue;
+      if (seen.has(name)) {
+        diagnostics.push(
+          diagnostic(
+            sourcePath,
+            tab,
+            "guide.tabs.duplicate-id",
+            `Duplicate <Tab name="${name}"> within a <Tabs> block.`,
+          ),
+        );
+        continue;
+      }
+      seen.add(name);
+      if (declaredValues !== undefined && !declaredValues.includes(name)) {
+        const reference = hasTabs ? "`tabs:` value" : `\`${axisName}\` axis value`;
+        diagnostics.push(
+          diagnostic(
+            sourcePath,
+            tab,
+            "guide.tabs.missing-axis",
+            `<Tab name="${name}"> is not a declared ${reference}.`,
+          ),
+        );
+      }
+    }
+  });
+};
+
 const scenarioRenders = (scenario: MdxNode): boolean => propsOf(scenario).render !== false;
 
 const lintDiataxis = (
@@ -290,6 +387,7 @@ export const lintGuideContent = (sourcePath: string, content: string): GuideLint
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
+  lintTabs(sourcePath, root, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
   return { diagnostics };
 };

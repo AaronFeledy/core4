@@ -113,7 +113,7 @@ describe("build-guide-scenarios MDX walker", () => {
     try {
       parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content);
     } catch (error) {
-      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("§19.16");
+      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("§19.11");
       expect(error instanceof NotImplementedError ? error.remediation : "").toContain("Phase 3 Beta");
     }
   });
@@ -409,6 +409,240 @@ describe("build-guide-scenarios MDX walker", () => {
         );
         expect(error instanceof GuideHiddenScenarioReasonError ? error.specSection : "").toBe("§19.9");
       }
+    }
+  });
+
+  test("fans out single-axis tabs into per-variant files with coverage-gap skips", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-tabs-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/tabs.mdx"),
+        [
+          "---",
+          "id: tabs-guide",
+          "provider: test",
+          "tabs: [linux, macos]",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="main">',
+          '    <Step name="prepare">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "    <Tabs>",
+          '      <Tab name="linux">',
+          '        <Step name="install">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          '      <Tab name="macos">',
+          '        <Step name="install">',
+          '          <Run command="version" />',
+          "        </Step>",
+          '        <Step name="brew">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          "    </Tabs>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual([
+        "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts",
+        "test/scenarios/generated/guides/tabs-guide/main.macos.test.ts",
+      ]);
+
+      const linux = await Bun.file(
+        join(root, "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts"),
+      ).text();
+      const macos = await Bun.file(
+        join(root, "test/scenarios/generated/guides/tabs-guide/main.macos.test.ts"),
+      ).text();
+
+      expect(linux).toContain("// @variant: default=linux");
+      expect(macos).toContain("// @variant: default=macos");
+      expect(linux).toContain("// @step: prepare");
+      expect(macos).toContain("// @step: prepare");
+      expect(linux).toContain("// @step: install");
+      expect(macos).toContain("// @step: install");
+      expect(macos).toContain("// @step: brew");
+      expect(linux).not.toContain("// @step: brew");
+      expect(linux).toContain('test.skip("brew", () => {');
+      expect(linux).toContain("axis default=linux tab does not include step brew");
+      expect(macos).not.toContain("test.skip(");
+
+      const second = await buildGuideScenarioTests(root);
+      expect(second).toEqual(written);
+      const linuxAgain = await Bun.file(
+        join(root, "test/scenarios/generated/guides/tabs-guide/main.linux.test.ts"),
+      ).text();
+      expect(linuxAgain).toBe(linux);
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", ...written.map((path) => join(root, path))],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("fans out multi-axis `axes:` into the Cartesian product with per-cell overrides", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-axes-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/matrix.mdx"),
+        [
+          "---",
+          "id: matrix-guide",
+          "provider: test",
+          "axes:",
+          "  os: [linux, macos]",
+          "  package-manager: [composer, npm]",
+          "variants:",
+          "  linux.npm:",
+          "    skip:",
+          "      reason: npm on linux not covered here",
+          "  macos.composer:",
+          "    tags: [slow]",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="main">',
+          '    <Step name="prepare">',
+          '      <Run command="version" />',
+          "    </Step>",
+          '    <Tabs axis="os">',
+          '      <Tab name="linux">',
+          '        <Step name="os-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          '      <Tab name="macos">',
+          '        <Step name="os-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          '        <Step name="brew">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          "    </Tabs>",
+          '    <Tabs axis="package-manager">',
+          '      <Tab name="composer">',
+          '        <Step name="pm-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          '      <Tab name="npm">',
+          '        <Step name="pm-step">',
+          '          <Run command="version" />',
+          "        </Step>",
+          "      </Tab>",
+          "    </Tabs>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual([
+        "test/scenarios/generated/guides/matrix-guide/main.linux.composer.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.linux.npm.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.macos.composer.test.ts",
+        "test/scenarios/generated/guides/matrix-guide/main.macos.npm.test.ts",
+      ]);
+
+      const read = (relative: string): Promise<string> => Bun.file(join(root, relative)).text();
+      const linuxComposer = await read(written[0] ?? "");
+      const linuxNpm = await read(written[1] ?? "");
+      const macosComposer = await read(written[2] ?? "");
+      const macosNpm = await read(written[3] ?? "");
+
+      expect(linuxComposer).toContain("// @variant: os=linux package-manager=composer");
+      expect(macosNpm).toContain("// @variant: os=macos package-manager=npm");
+
+      expect(linuxComposer).toContain("// @step: prepare");
+      expect(linuxComposer).toContain("// @step: os-step");
+      expect(linuxComposer).toContain("// @step: pm-step");
+      expect(linuxComposer).not.toContain("// @step: brew");
+      expect(linuxComposer).toContain('test.skip("brew", () => {');
+      expect(linuxComposer).toContain("axis os=linux tab does not include step brew");
+
+      expect(macosComposer).toContain("// @step: brew");
+      expect(macosComposer).toContain("// @tags: slow");
+      expect(macosComposer).not.toContain("// @variant-skip:");
+
+      expect(linuxNpm).toContain("// @variant-skip: npm on linux not covered here");
+      expect(linuxNpm).toContain('test.skip("matrix-guide:main"');
+      expect(linuxNpm).not.toContain('test("matrix-guide:main"');
+
+      const second = await buildGuideScenarioTests(root);
+      expect(second).toEqual(written);
+      expect(await read(written[0] ?? "")).toBe(linuxComposer);
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", ...written.map((path) => join(root, path))],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("fans out tabless scenarios into identical variants under a tabbed guide", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-tabless-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/notabs.mdx"),
+        [
+          "---",
+          "id: notabs-guide",
+          "provider: test",
+          "tabs: [linux, macos]",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="shared">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual([
+        "test/scenarios/generated/guides/notabs-guide/shared.linux.test.ts",
+        "test/scenarios/generated/guides/notabs-guide/shared.macos.test.ts",
+      ]);
+
+      const linux = await Bun.file(join(root, written[0] ?? "")).text();
+      const macos = await Bun.file(join(root, written[1] ?? "")).text();
+      const stripVariant = (content: string): string =>
+        content.replace(/\/\/ @variant: default=\w+/g, "// @variant:");
+      expect(stripVariant(linux)).toBe(stripVariant(macos));
+    } finally {
+      await rm(root, { force: true, recursive: true });
     }
   });
 

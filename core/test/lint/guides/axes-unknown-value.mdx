@@ -1,0 +1,18 @@
+---
+id: axes-unknown-value
+provider: test
+axes:
+  os: [linux, macos]
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Tabs axis="os">
+      <Tab name="windows">
+        <Step name="install">
+          <Run command="version" />
+        </Step>
+      </Tab>
+    </Tabs>
+  </Scenario>
+</Guide>

@@ -137,6 +137,8 @@
       "VariableProps",
       "HiddenProps",
       "InspectProps",
+      "TabsProps",
+      "TabProps",
       "UseFixtureProps",
       "MatcherSchema",
       "Transcript",
@@ -1386,6 +1388,29 @@
           "additionalProperties": false,
           "description": "Alpha 2 executable guide frontmatter.",
           "properties": {
+            "axes": {
+              "patternProperties": {
+                "": {
+                  "description": "an array of at least 1 item(s)",
+                  "items": {
+                    "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                    "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "title": "minItems(1)",
+                  "type": "array"
+                }
+              },
+              "properties": {},
+              "propertyNames": {
+                "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "required": [],
+              "type": "object"
+            },
             "defaultLayer": {
               "enum": ["scenario"],
               "type": "string"
@@ -1420,6 +1445,17 @@
               "required": ["reason"],
               "type": "object"
             },
+            "tabs": {
+              "description": "an array of at least 1 item(s)",
+              "items": {
+                "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "type": "string"
+              },
+              "minItems": 1,
+              "title": "minItems(1)",
+              "type": "array"
+            },
             "tags": {
               "items": {
                 "type": "string"
@@ -1431,6 +1467,44 @@
               "exclusiveMinimum": 0,
               "title": "positive",
               "type": "integer"
+            },
+            "variants": {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "platforms": {
+                    "items": {
+                      "enum": ["darwin", "linux", "win32", "wsl"],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "skip": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "reason": {
+                        "type": "string"
+                      },
+                      "until": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["reason"],
+                    "type": "object"
+                  },
+                  "tags": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
             }
           },
           "required": ["id"],
@@ -2986,6 +3060,46 @@
         }
       },
       "$ref": "#/$defs/StepProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "TabProps": {
+      "$defs": {
+        "TabProps": {
+          "additionalProperties": false,
+          "description": "Beta <Tab> component props.",
+          "properties": {
+            "name": {
+              "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": ["name"],
+          "title": "Tab Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/TabProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "TabsProps": {
+      "$defs": {
+        "TabsProps": {
+          "additionalProperties": false,
+          "description": "Beta <Tabs> component props.",
+          "properties": {
+            "axis": {
+              "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+              "type": "string"
+            }
+          },
+          "required": [],
+          "title": "Tabs Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/TabsProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "Transcript": {

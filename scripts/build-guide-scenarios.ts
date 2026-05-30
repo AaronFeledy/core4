@@ -24,6 +24,8 @@ import {
   decodeRunPropsEither,
   decodeScenarioPropsEither,
   decodeStepPropsEither,
+  decodeTabPropsEither,
+  decodeTabsPropsEither,
   decodeUseFixturePropsEither,
   decodeVariablePropsEither,
   decodeVerifyPropsEither,
@@ -55,12 +57,47 @@ export interface GuideStepNode {
   readonly components: ReadonlyArray<GuideStepComponent>;
 }
 
+export interface GuideTabNode {
+  readonly name: string;
+  readonly line: number;
+  readonly steps: ReadonlyArray<GuideStepNode>;
+}
+
+export interface GuideTabsBlock {
+  readonly kind: "tabs";
+  readonly axis: string;
+  readonly line: number;
+  readonly tabs: ReadonlyArray<GuideTabNode>;
+}
+
+export type GuideScenarioBodyItem = { readonly kind: "step"; readonly step: GuideStepNode } | GuideTabsBlock;
+
 export interface GuideScenarioNode {
   readonly id: string;
   readonly render: boolean;
   readonly reason?: string;
   readonly line: number;
   readonly steps: ReadonlyArray<GuideStepNode>;
+  readonly body: ReadonlyArray<GuideScenarioBodyItem>;
+}
+
+const DEFAULT_AXIS = "default";
+
+export interface GuideVariantPair {
+  readonly axis: string;
+  readonly value: string;
+}
+
+export interface GuideVariant {
+  readonly pairs: ReadonlyArray<GuideVariantPair>;
+  readonly skip?: { readonly reason: string; readonly until?: string };
+  readonly tags?: ReadonlyArray<string>;
+  readonly platforms?: ReadonlyArray<string>;
+}
+
+interface ResolvedVariantSteps {
+  readonly steps: ReadonlyArray<GuideStepNode>;
+  readonly skips: ReadonlyArray<{ readonly stepName: string; readonly reason: string }>;
 }
 
 export interface GuideScenarioAst {
@@ -110,14 +147,100 @@ const interpolate = (value: string, variables: ReadonlyMap<string, VariableProps
 
 const sourceComment = (sourcePath: string, line: number): string => `  // @source: ${sourcePath}:${line}`;
 
-const collectVariables = (scenario: GuideScenarioNode): ReadonlyMap<string, VariableProps> => {
+const collectVariables = (steps: ReadonlyArray<GuideStepNode>): ReadonlyMap<string, VariableProps> => {
   const variables = new Map<string, VariableProps>();
-  for (const step of scenario.steps) {
+  for (const step of steps) {
     for (const component of step.components) {
       if (component.kind === "Variable") variables.set(component.props.name, component.props);
     }
   }
   return variables;
+};
+
+const axisEntriesOf = (
+  frontmatter: GuideFrontmatter,
+): ReadonlyArray<readonly [string, ReadonlyArray<string>]> => {
+  if (frontmatter.tabs !== undefined && frontmatter.tabs.length > 0) {
+    return [[DEFAULT_AXIS, frontmatter.tabs]];
+  }
+  if (frontmatter.axes !== undefined) return Object.entries(frontmatter.axes);
+  return [];
+};
+
+const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant | undefined> => {
+  const entries = axisEntriesOf(guide.frontmatter);
+  if (entries.length === 0) return [undefined];
+  let combinations: ReadonlyArray<ReadonlyArray<GuideVariantPair>> = [[]];
+  for (const [axis, values] of entries) {
+    combinations = combinations.flatMap((prefix) => values.map((value) => [...prefix, { axis, value }]));
+  }
+  const overrides = guide.frontmatter.variants ?? {};
+  const guideTags = guide.frontmatter.tags ?? [];
+  return combinations.map((pairs) => {
+    const override = overrides[pairs.map((pair) => pair.value).join(".")];
+    const skip = override?.skip ?? guide.frontmatter.skip;
+    const tags = override?.tags === undefined ? undefined : [...new Set([...guideTags, ...override.tags])];
+    return {
+      pairs,
+      ...(skip === undefined ? {} : { skip }),
+      ...(tags === undefined ? {} : { tags }),
+      ...(override?.platforms === undefined ? {} : { platforms: override.platforms }),
+    };
+  });
+};
+
+const blockStepUnion = (block: GuideTabsBlock): ReadonlyArray<string> => {
+  const union: string[] = [];
+  const seen = new Set<string>();
+  for (const tab of block.tabs) {
+    for (const step of tab.steps) {
+      if (seen.has(step.stepName)) continue;
+      seen.add(step.stepName);
+      union.push(step.stepName);
+    }
+  }
+  return union;
+};
+
+const effectiveAxisOf = (block: GuideTabsBlock, variant: GuideVariant): string => {
+  const [first] = variant.pairs;
+  if (block.axis === DEFAULT_AXIS && variant.pairs.length === 1 && first !== undefined) return first.axis;
+  return block.axis;
+};
+
+const resolveVariantSteps = (
+  scenario: GuideScenarioNode,
+  variant: GuideVariant | undefined,
+): ResolvedVariantSteps => {
+  const steps: GuideStepNode[] = [];
+  const skips: Array<{ stepName: string; reason: string }> = [];
+  for (const item of scenario.body) {
+    if (item.kind === "step") {
+      steps.push(item.step);
+      continue;
+    }
+    const union = blockStepUnion(item);
+    const axis = variant === undefined ? item.axis : effectiveAxisOf(item, variant);
+    const value = variant?.pairs.find((pair) => pair.axis === axis)?.value;
+    const matched = value === undefined ? undefined : item.tabs.find((tab) => tab.name === value);
+    for (const stepName of union) {
+      const step =
+        variant === undefined
+          ? item.tabs.flatMap((tab) => tab.steps).find((candidate) => candidate.stepName === stepName)
+          : matched?.steps.find((candidate) => candidate.stepName === stepName);
+      if (step !== undefined) {
+        steps.push(step);
+        continue;
+      }
+      if (variant !== undefined) {
+        skips.push({
+          stepName,
+          reason: `axis ${axis}=${value ?? ""} tab does not include step ${stepName}`,
+        });
+      }
+    }
+  }
+  return { steps, skips };
 };
 
 const renderMatcher = (value: unknown): string => JSON.stringify(value, null, 2);
@@ -133,8 +256,8 @@ const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps>): str
     })
     .join("\n");
 
-const renderCleanupFinalizers = (scenario: GuideScenarioNode, sourcePath: string): string =>
-  scenario.steps
+const renderCleanupFinalizers = (steps: ReadonlyArray<GuideStepNode>, sourcePath: string): string =>
+  steps
     .flatMap((step) => step.components.filter((component) => component.kind === "Cleanup"))
     .map(
       (component) =>
@@ -246,11 +369,19 @@ const renderStepComponent = (
   return `${sourceComment(sourcePath, component.line)}\n    {\n${body}\n    }`;
 };
 
-const renderScenarioTest = (guide: GuideScenarioAst, scenario: GuideScenarioNode): string => {
-  const variables = collectVariables(scenario);
+const renderSkips = (skips: ResolvedVariantSteps["skips"]): string =>
+  skips.map((skip) => `// @skip: ${skip.reason}\ntest.skip(${quote(skip.stepName)}, () => {});`).join("\n");
+
+const renderScenarioTest = (
+  guide: GuideScenarioAst,
+  scenario: GuideScenarioNode,
+  variant: GuideVariant | undefined,
+): string => {
+  const resolved = resolveVariantSteps(scenario, variant);
+  const variables = collectVariables(resolved.steps);
   const variableSetup = renderVariableSetup(variables);
-  const cleanupFinalizers = renderCleanupFinalizers(scenario, guide.sourcePath);
-  const steps = scenario.steps
+  const cleanupFinalizers = renderCleanupFinalizers(resolved.steps, guide.sourcePath);
+  const steps = resolved.steps
     .map((step) => {
       const components = step.components
         .map((component) => renderStepComponent(component, guide.sourcePath, variables))
@@ -259,11 +390,23 @@ const renderScenarioTest = (guide: GuideScenarioAst, scenario: GuideScenarioNode
       return `${sourceComment(guide.sourcePath, step.line)}\n    // @step: ${step.stepName}${components === "" ? "" : `\n${components}`}`;
     })
     .join("\n");
+  const variantHeader =
+    variant === undefined
+      ? "// @variant:"
+      : `// @variant: ${variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ")}`;
+  const annotationLines = [
+    ...(variant?.tags === undefined ? [] : [`// @tags: ${variant.tags.join(",")}`]),
+    ...(variant?.platforms === undefined ? [] : [`// @platforms: ${variant.platforms.join(",")}`]),
+    ...(variant?.skip === undefined ? [] : [`// @variant-skip: ${variant.skip.reason}`]),
+  ];
+  const variantAnnotations = annotationLines.length === 0 ? "" : `\n${annotationLines.join("\n")}`;
+  const skips = variant?.skip === undefined ? renderSkips(resolved.skips) : "";
+  const testFn = variant?.skip === undefined ? "test" : "test.skip";
 
   return `// @generated
 // @source: ${guide.sourcePath}:${scenario.line}
 // @scenario: ${scenario.id}
-${scenario.render === false ? "// @render: false\n" : ""}// @variant:
+${scenario.render === false ? "// @render: false\n" : ""}${variantHeader}${variantAnnotations}
 
 import { join } from "node:path";
 
@@ -289,7 +432,7 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   return Object.is(actual, expected);
 };
 
-test(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
+${testFn}(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
   await Effect.runPromise(
     withScenarioContext({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
@@ -300,7 +443,7 @@ ${variableSetup === "" ? "" : `${variableSetup}\n`}${cleanupFinalizers === "" ? 
     ),
   );
 });
-`;
+${skips === "" ? "" : `\n${skips}\n`}`;
 };
 
 const parseFrontmatter = (sourcePath: string, yaml: string | undefined): Record<string, unknown> => {
@@ -460,6 +603,42 @@ const parseStep = (node: MdxNode, sourcePath: string): GuideStepNode => {
   return { stepName: props.name, line: lineOf(node), components };
 };
 
+const parseTab = (node: MdxNode, sourcePath: string): GuideTabNode => {
+  assertAlpha2Component("Tab", sourcePath);
+  const rawProps = propsOf(node);
+  const props = decodeOrThrow(decodeTabPropsEither(rawProps), sourcePath, "Tab", rawProps);
+  return {
+    name: props.name,
+    line: lineOf(node),
+    steps: elementChildren(node)
+      .filter((child) => child.name === "Step")
+      .map((child) => parseStep(child, sourcePath)),
+  };
+};
+
+const parseTabsBlock = (node: MdxNode, sourcePath: string): GuideTabsBlock => {
+  assertAlpha2Component("Tabs", sourcePath);
+  const rawProps = propsOf(node);
+  const props = decodeOrThrow(decodeTabsPropsEither(rawProps), sourcePath, "Tabs", rawProps);
+  return {
+    kind: "tabs",
+    axis: props.axis ?? DEFAULT_AXIS,
+    line: lineOf(node),
+    tabs: elementChildren(node)
+      .filter((child) => child.name === "Tab")
+      .map((child) => parseTab(child, sourcePath)),
+  };
+};
+
+const parseScenarioBody = (node: MdxNode, sourcePath: string): ReadonlyArray<GuideScenarioBodyItem> =>
+  elementChildren(node)
+    .filter((child) => child.name === "Step" || child.name === "Tabs")
+    .map((child) =>
+      child.name === "Tabs"
+        ? parseTabsBlock(child, sourcePath)
+        : { kind: "step" as const, step: parseStep(child, sourcePath) },
+    );
+
 const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => {
   assertAlpha2Component("Scenario", sourcePath);
   const props = propsOf(node);
@@ -476,14 +655,14 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
     });
   }
   const scenario = decodeOrThrow(decodeScenarioPropsEither(props), sourcePath, "Scenario", props);
+  const body = parseScenarioBody(node, sourcePath);
   return {
     id: scenario.id,
     render: scenario.render,
     ...(scenario.reason === undefined ? {} : { reason: scenario.reason }),
     line: lineOf(node),
-    steps: elementChildren(node)
-      .filter((child) => child.name === "Step")
-      .map((child) => parseStep(child, sourcePath)),
+    steps: body.flatMap((item) => (item.kind === "step" ? [item.step] : [])),
+    body,
   };
 };
 
@@ -581,12 +760,16 @@ export const emitGuideScenarioTests = async (
   const written: string[] = [];
   for (const guide of asts) {
     const guideId = guide.frontmatter.id;
+    const variants = variantsOf(guide);
     for (const scenario of [...guide.scenarios].sort((left, right) => left.id.localeCompare(right.id))) {
-      const relativePath = `${outputRoot}/${guideId}/${scenario.id}.test.ts`;
-      const absolutePath = resolve(root, relativePath);
-      await mkdir(dirname(absolutePath), { recursive: true });
-      await Bun.write(absolutePath, renderScenarioTest(guide, scenario));
-      written.push(relativePath);
+      for (const variant of variants) {
+        const suffix = variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
+        const relativePath = `${outputRoot}/${guideId}/${scenario.id}${suffix}.test.ts`;
+        const absolutePath = resolve(root, relativePath);
+        await mkdir(dirname(absolutePath), { recursive: true });
+        await Bun.write(absolutePath, renderScenarioTest(guide, scenario, variant));
+        written.push(relativePath);
+      }
     }
   }
   return written.sort((left, right) => left.localeCompare(right));

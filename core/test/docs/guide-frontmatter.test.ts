@@ -43,20 +43,74 @@ describe("GuideFrontmatter", () => {
     expect(decoded.left.message).toContain("lowercase kebab-case");
   });
 
-  test.each(["tabs", "axes", "variants"] as const)("rejects Beta-only `%s` with remediation", (key) => {
-    const decoded = decode({ id: "node-postgres", [key]: [] });
+  test("accepts single-axis `tabs:` value declarations", () => {
+    const decoded = expectRight({ id: "node-postgres", tabs: ["linux", "macos"] });
+    expect(decoded.tabs).toEqual(["linux", "macos"]);
+    expect(Schema.decodeUnknownSync(CoreGuideFrontmatter)(decoded)).toEqual(decoded);
+  });
+
+  test("rejects empty, duplicate, or non-kebab `tabs:` values", () => {
+    expect(decode({ id: "node-postgres", tabs: [] })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", tabs: ["linux", "linux"] })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", tabs: ["Linux"] })._tag).toBe("Left");
+  });
+
+  test("accepts multi-axis `axes:` declarations", () => {
+    const decoded = expectRight({
+      id: "node-postgres",
+      axes: { os: ["linux", "macos"], "package-manager": ["composer", "npm"] },
+    });
+    expect(decoded.axes).toEqual({ os: ["linux", "macos"], "package-manager": ["composer", "npm"] });
+    expect(Schema.decodeUnknownSync(CoreGuideFrontmatter)(decoded)).toEqual(decoded);
+  });
+
+  test("accepts per-cell `variants:` overrides keyed by dot-joined axis values", () => {
+    const decoded = expectRight({
+      id: "node-postgres",
+      axes: { os: ["linux", "macos"], "package-manager": ["composer", "npm"] },
+      variants: {
+        "linux.npm": { skip: { reason: "npm unsupported on linux here" } },
+        "macos.composer": { tags: ["slow"], platforms: ["darwin"] },
+      },
+    });
+    expect(decoded.variants?.["linux.npm"]?.skip?.reason).toBe("npm unsupported on linux here");
+    expect(decoded.variants?.["macos.composer"]?.tags).toEqual(["slow"]);
+  });
+
+  test("accepts single-axis `tabs:` with `variants:` overrides", () => {
+    const decoded = expectRight({
+      id: "node-postgres",
+      tabs: ["linux", "macos"],
+      variants: { linux: { tags: ["ci"] } },
+    });
+    expect(decoded.variants?.linux?.tags).toEqual(["ci"]);
+  });
+
+  test("rejects `tabs:` and `axes:` declared together", () => {
+    const decoded = decode({ id: "node-postgres", tabs: ["linux"], axes: { os: ["linux"] } });
     expect(decoded._tag).toBe("Left");
     if (Either.isRight(decoded)) return;
-    expect(decoded.left).toBeInstanceOf(NotImplementedError);
-    expect(decoded.left).toMatchObject({
-      _tag: "NotImplementedError",
-      commandId: "guide.frontmatter",
-      specSection: "§19.16",
+    expect(decoded.left).toBeInstanceOf(ParseResult.ParseError);
+    expect(decoded.left.message).toContain("mutually exclusive");
+  });
+
+  test("rejects `variants:` keys that are not Cartesian cells", () => {
+    const decoded = decode({
+      id: "node-postgres",
+      axes: { os: ["linux", "macos"] },
+      variants: { windows: { tags: ["x"] } },
     });
-    expect(decoded.left.message).toContain(key);
-    expect(decoded.left.remediation).toContain("Phase 3 Beta");
-    expect(decoded.left.remediation).toContain("§19.16");
-    expect(decoded.left.remediation).toContain("spec/ROADMAP.md");
+    expect(decoded._tag).toBe("Left");
+    if (Either.isRight(decoded)) return;
+    expect(decoded.left).toBeInstanceOf(ParseResult.ParseError);
+    expect(decoded.left.message).toContain("Cartesian");
+  });
+
+  test("rejects empty `axes:` and empty axis value lists", () => {
+    expect(decode({ id: "node-postgres", axes: {} })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", axes: { os: [] } })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", axes: { os: ["linux", "linux"] } })._tag).toBe("Left");
+    expect(decode({ id: "node-postgres", axes: { OS: ["linux"] } })._tag).toBe("Left");
   });
 
   test("rejects e2e default layer with Beta remediation", () => {
