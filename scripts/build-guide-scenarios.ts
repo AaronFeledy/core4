@@ -20,6 +20,7 @@ import {
   assertAlpha2Component,
   decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,
+  decodeHiddenPropsEither,
   decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
@@ -54,6 +55,8 @@ export type GuideStepComponent =
 export interface GuideStepNode {
   readonly stepName: string;
   readonly line: number;
+  readonly hidden: boolean;
+  readonly hiddenReason?: string;
   readonly components: ReadonlyArray<GuideStepComponent>;
 }
 
@@ -70,7 +73,17 @@ export interface GuideTabsBlock {
   readonly tabs: ReadonlyArray<GuideTabNode>;
 }
 
-export type GuideScenarioBodyItem = { readonly kind: "step"; readonly step: GuideStepNode } | GuideTabsBlock;
+export interface GuideHiddenBlock {
+  readonly kind: "hidden";
+  readonly reason: string;
+  readonly line: number;
+  readonly steps: ReadonlyArray<GuideStepNode>;
+}
+
+export type GuideScenarioBodyItem =
+  | { readonly kind: "step"; readonly step: GuideStepNode }
+  | GuideTabsBlock
+  | GuideHiddenBlock;
 
 export interface GuideScenarioNode {
   readonly id: string;
@@ -219,6 +232,10 @@ const resolveVariantSteps = (
       steps.push(item.step);
       continue;
     }
+    if (item.kind === "hidden") {
+      for (const step of item.steps) steps.push(step);
+      continue;
+    }
     const union = blockStepUnion(item);
     const axis = variant === undefined ? item.axis : effectiveAxisOf(item, variant);
     const value = variant?.pairs.find((pair) => pair.axis === axis)?.value;
@@ -258,11 +275,18 @@ const renderVariableSetup = (variables: ReadonlyMap<string, VariableProps>): str
 
 const renderCleanupFinalizers = (steps: ReadonlyArray<GuideStepNode>, sourcePath: string): string =>
   steps
-    .flatMap((step) => step.components.filter((component) => component.kind === "Cleanup"))
-    .map(
-      (component) =>
-        `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => context.transcript.append({ kind: "cleanup", command: [], exit: 0 }));`,
+    .flatMap((step) =>
+      step.components
+        .filter((component) => component.kind === "Cleanup")
+        .map((component) => ({ component, hidden: step.hidden })),
     )
+    .map(({ component, hidden }) => {
+      // Hidden-origin cleanup finalizers run at teardown where hiddenDepth is 0, so
+      // re-enter context.hidden to keep their frame suppressed per §17/§19.3.
+      const append = `context.transcript.append({ kind: "cleanup", command: [], exit: 0 })`;
+      const finalizer = hidden ? `context.hidden(${append})` : append;
+      return `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => ${finalizer});`;
+    })
     .join("\n");
 
 const renderRun = (
@@ -387,7 +411,14 @@ const renderScenarioTest = (
         .map((component) => renderStepComponent(component, guide.sourcePath, variables))
         .filter(Boolean)
         .join("\n");
-      return `${sourceComment(guide.sourcePath, step.line)}\n    // @step: ${step.stepName}${components === "" ? "" : `\n${components}`}`;
+      const header = `${sourceComment(guide.sourcePath, step.line)}\n    // @step: ${step.stepName}`;
+      if (step.hidden) {
+        const hiddenHeader = `${header}\n    // @hidden: ${step.hiddenReason ?? ""}`;
+        return components === ""
+          ? hiddenHeader
+          : `${hiddenHeader}\n    yield* context.hidden(Effect.gen(function* () {\n${components}\n    }));`;
+      }
+      return `${header}${components === "" ? "" : `\n${components}`}`;
     })
     .join("\n");
   const variantHeader =
@@ -593,14 +624,34 @@ const parseStepComponent = (node: MdxNode, sourcePath: string): GuideStepCompone
   }
 };
 
-const parseStep = (node: MdxNode, sourcePath: string): GuideStepNode => {
+const parseStep = (node: MdxNode, sourcePath: string, hiddenReason?: string): GuideStepNode => {
   assertAlpha2Component("Step", sourcePath);
   const rawProps = propsOf(node);
   const props = decodeOrThrow(decodeStepPropsEither(rawProps), sourcePath, "Step", rawProps);
   const components = elementChildren(node)
     .map((child) => parseStepComponent(child, sourcePath))
     .filter((component): component is GuideStepComponent => component !== undefined);
-  return { stepName: props.name, line: lineOf(node), components };
+  return {
+    stepName: props.name,
+    line: lineOf(node),
+    hidden: hiddenReason !== undefined,
+    ...(hiddenReason === undefined ? {} : { hiddenReason }),
+    components,
+  };
+};
+
+const parseHiddenBlock = (node: MdxNode, sourcePath: string): GuideHiddenBlock => {
+  assertAlpha2Component("Hidden", sourcePath);
+  const rawProps = propsOf(node);
+  const props = decodeOrThrow(decodeHiddenPropsEither(rawProps), sourcePath, "Hidden", rawProps);
+  return {
+    kind: "hidden",
+    reason: props.reason,
+    line: lineOf(node),
+    steps: elementChildren(node)
+      .filter((child) => child.name === "Step")
+      .map((child) => parseStep(child, sourcePath, props.reason)),
+  };
 };
 
 const parseTab = (node: MdxNode, sourcePath: string): GuideTabNode => {
@@ -632,12 +683,19 @@ const parseTabsBlock = (node: MdxNode, sourcePath: string): GuideTabsBlock => {
 
 const parseScenarioBody = (node: MdxNode, sourcePath: string): ReadonlyArray<GuideScenarioBodyItem> =>
   elementChildren(node)
-    .filter((child) => child.name === "Step" || child.name === "Tabs")
-    .map((child) =>
-      child.name === "Tabs"
-        ? parseTabsBlock(child, sourcePath)
-        : { kind: "step" as const, step: parseStep(child, sourcePath) },
-    );
+    .filter((child) => child.name === "Step" || child.name === "Tabs" || child.name === "Hidden")
+    .map((child) => {
+      if (child.name === "Tabs") return parseTabsBlock(child, sourcePath);
+      if (child.name === "Hidden") return parseHiddenBlock(child, sourcePath);
+      return { kind: "step" as const, step: parseStep(child, sourcePath) };
+    });
+
+const unconditionalSteps = (body: ReadonlyArray<GuideScenarioBodyItem>): ReadonlyArray<GuideStepNode> =>
+  body.flatMap((item) => {
+    if (item.kind === "step") return [item.step];
+    if (item.kind === "hidden") return item.steps;
+    return [];
+  });
 
 const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => {
   assertAlpha2Component("Scenario", sourcePath);
@@ -661,7 +719,7 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
     render: scenario.render,
     ...(scenario.reason === undefined ? {} : { reason: scenario.reason }),
     line: lineOf(node),
-    steps: body.flatMap((item) => (item.kind === "step" ? [item.step] : [])),
+    steps: unconditionalSteps(body),
     body,
   };
 };

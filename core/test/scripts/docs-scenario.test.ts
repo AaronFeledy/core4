@@ -24,6 +24,29 @@ const guideContent = (guideId: string, run = '<Run command="version" />'): strin
     "",
   ].join("\n");
 
+const hiddenGuideContent = (guideId: string): string =>
+  [
+    "---",
+    `id: ${guideId}`,
+    "provider: test",
+    "---",
+    "",
+    "<Guide>",
+    '  <Scenario id="runs">',
+    '    <Hidden reason="seed deterministic state invisibly">',
+    '      <Step name="seed">',
+    '        <Variable name="seedName" value="seed-app" display="Seed App" />',
+    '        <UseFixture name="hidden-fixture" />',
+    "      </Step>",
+    "    </Hidden>",
+    '    <Step name="run">',
+    '      <Run command="version" />',
+    "    </Step>",
+    "  </Scenario>",
+    "</Guide>",
+    "",
+  ].join("\n");
+
 const writeGuide = async (guideId: string, content: string): Promise<void> => {
   const guidePath = resolve(repoRoot, "docs/guides", `${guideId}.mdx`);
   await mkdir(dirname(guidePath), { recursive: true });
@@ -32,6 +55,7 @@ const writeGuide = async (guideId: string, content: string): Promise<void> => {
 
 const removeGuide = async (guideId: string): Promise<void> => {
   await rm(resolve(repoRoot, "docs/guides", `${guideId}.mdx`), { force: true });
+  await rm(resolve(repoRoot, "docs/guides", guideId), { force: true, recursive: true });
   await rm(resolve(generatedRoot, guideId), { force: true, recursive: true });
 };
 
@@ -121,6 +145,27 @@ Step: run (Variable, Run)
           "Variable: appName value=node-postgres display=Node/Postgres",
         ].join("\n"),
       );
+    } finally {
+      await removeGuide(guideId);
+    }
+  });
+
+  test("prints hidden steps and their components in explain and debug output", async () => {
+    const guideId = "docs-scenario-hidden";
+    try {
+      await writeGuide(guideId, hiddenGuideContent(guideId));
+      await mkdir(resolve(repoRoot, "docs/guides", guideId, "fixtures/hidden-fixture"), { recursive: true });
+
+      const explain = await runDocsScenario([guideId, "--explain"]);
+
+      expect(explain.exitCode).toBe(0);
+      expect(explain.stdout).toContain(["Step: seed (Variable, UseFixture)", "Step: run (Run)"].join("\n"));
+
+      const debug = await runDocsScenario([guideId, "--debug", "--scenario=runs"]);
+
+      expect(debug.exitCode).toBe(0);
+      expect(debug.stdout).toContain("Variable: seedName value=seed-app display=Seed App");
+      expect(debug.stdout).toContain("Fixture: hidden-fixture -> <testDir>/hidden-fixture");
     } finally {
       await removeGuide(guideId);
     }
