@@ -1001,3 +1001,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
 - Review notes (deferred/rejected): alias/slug hardening is a non-blocking follow-up, not a US-109 blocker; the earlier codegen timeout was transient and passed in isolation plus the full suite.
 - Verification: typecheck, lint, focused networking/provider tests, and full `bun test` passed.
 ---
+
+## 2026-05-29 21:40 CDT - Babysit
+- PR: #213 https://github.com/AaronFeledy/core4/pull/213
+- CI outcome: pass
+- Review feedback: fixed (merge conflict with main in spec/beta/progress.txt resolved, keeping both US-109 and US-175 entries; checks re-ran green)
+- Merge: merged (squash)
+---
