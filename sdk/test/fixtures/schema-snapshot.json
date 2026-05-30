@@ -136,6 +136,7 @@
       "CleanupProps",
       "VariableProps",
       "HiddenProps",
+      "InspectProps",
       "UseFixtureProps",
       "MatcherSchema",
       "Transcript",
@@ -1489,6 +1490,35 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "enum": ["darwin", "linux", "win32", "wsl"],
       "type": "string"
+    },
+    "InspectProps": {
+      "$defs": {
+        "InspectProps": {
+          "additionalProperties": false,
+          "description": "Beta <Inspect> component props.",
+          "properties": {
+            "events": {
+              "enum": [true],
+              "type": "boolean"
+            },
+            "file": {
+              "type": "string"
+            },
+            "json": {
+              "type": "string"
+            },
+            "output": {
+              "enum": [true],
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "title": "Inspect Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/InspectProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "LandofileShape": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -3070,10 +3100,34 @@
             },
             {
               "$ref": "#/$defs/TranscriptCleanupFrame"
+            },
+            {
+              "$ref": "#/$defs/TranscriptInspectFrame"
             }
           ],
           "description": "Internal guide scenario transcript frame.",
           "title": "Transcript Frame"
+        },
+        "TranscriptInspectFrame": {
+          "additionalProperties": false,
+          "description": "Internal guide scenario transcript frame for a captured inspection.",
+          "properties": {
+            "kind": {
+              "enum": ["inspect"],
+              "type": "string"
+            },
+            "target": {
+              "enum": ["file", "json", "events", "output"],
+              "type": "string"
+            },
+            "value": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            }
+          },
+          "required": ["kind", "target", "value"],
+          "title": "Transcript Inspect Frame",
+          "type": "object"
         },
         "TranscriptRunFrame": {
           "additionalProperties": false,

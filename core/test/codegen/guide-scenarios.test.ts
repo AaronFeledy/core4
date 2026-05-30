@@ -284,6 +284,55 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("emits ctx.inspect calls for <Inspect> and runs against ScenarioContext", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-inspect-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/inspect.mdx"),
+        [
+          "---",
+          "id: inspect-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="inspect-state">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "      <Inspect output />",
+          "      <Inspect events />",
+          '      <Inspect file="notes.txt" />',
+          '      <Inspect json="config.json" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual(["test/scenarios/generated/guides/inspect-guide/inspect-state.test.ts"]);
+      const generated = await Bun.file(join(root, written[0] ?? "")).text();
+      expect(generated).toContain("yield* context.inspect({ output: true });");
+      expect(generated).toContain("yield* context.inspect({ events: true });");
+      expect(generated).toContain('yield* context.inspect({ file: "notes.txt" });');
+      expect(generated).toContain('yield* context.inspect({ json: "config.json" });');
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", join(root, written[0] ?? "")],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("generated scenario TypeScript runs against ScenarioContext", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-guide-run-"));
     try {

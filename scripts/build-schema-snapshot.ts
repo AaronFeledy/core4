@@ -29,6 +29,7 @@ const SDK_SCHEMA_NAMES = [
   "CleanupProps",
   "VariableProps",
   "HiddenProps",
+  "InspectProps",
   "UseFixtureProps",
   "MatcherSchema",
   "Transcript",

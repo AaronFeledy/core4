@@ -12,6 +12,7 @@ import { parseLandofile } from "../core/src/landofile/parser.ts";
 import {
   type CleanupProps,
   type GuideFrontmatter,
+  type InspectProps,
   type RunProps,
   type UseFixtureProps,
   type VariableProps,
@@ -19,6 +20,7 @@ import {
   assertAlpha2Component,
   decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,
+  decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
   decodeStepPropsEither,
@@ -44,7 +46,8 @@ export type GuideStepComponent =
   | { readonly kind: "Verify"; readonly props: VerifyProps; readonly line: number }
   | { readonly kind: "Cleanup"; readonly props: CleanupProps; readonly line: number }
   | { readonly kind: "Variable"; readonly props: VariableProps; readonly line: number }
-  | { readonly kind: "UseFixture"; readonly props: UseFixtureProps; readonly line: number };
+  | { readonly kind: "UseFixture"; readonly props: UseFixtureProps; readonly line: number }
+  | { readonly kind: "Inspect"; readonly props: InspectProps; readonly line: number };
 
 export interface GuideStepNode {
   readonly stepName: string;
@@ -206,6 +209,22 @@ const renderVerify = (
   ].join("\n");
 };
 
+const renderInspect = (
+  component: Extract<GuideStepComponent, { kind: "Inspect" }>,
+  variables: ReadonlyMap<string, VariableProps>,
+): string => {
+  const props = component.props;
+  const arg =
+    props.file !== undefined
+      ? `{ file: ${quote(interpolate(props.file, variables))} }`
+      : props.json !== undefined
+        ? `{ json: ${quote(interpolate(props.json, variables))} }`
+        : props.events === true
+          ? "{ events: true }"
+          : "{ output: true }";
+  return `    yield* context.inspect(${arg});`;
+};
+
 const renderStepComponent = (
   component: GuideStepComponent,
   sourcePath: string,
@@ -220,6 +239,8 @@ const renderStepComponent = (
         return renderVerify(component, variables);
       case "UseFixture":
         return `    yield* context.fixtures.use(${quote(component.props.name)});`;
+      case "Inspect":
+        return renderInspect(component, variables);
     }
   })();
   return `${sourceComment(sourcePath, component.line)}\n    {\n${body}\n    }`;
@@ -416,6 +437,12 @@ const parseStepComponent = (node: MdxNode, sourcePath: string): GuideStepCompone
       return {
         kind: "UseFixture",
         props: decodeOrThrow(decodeUseFixturePropsEither(props), sourcePath, "UseFixture", props),
+        line,
+      };
+    case "Inspect":
+      return {
+        kind: "Inspect",
+        props: decodeOrThrow(decodeInspectPropsEither(props), sourcePath, "Inspect", props),
         line,
       };
     default:

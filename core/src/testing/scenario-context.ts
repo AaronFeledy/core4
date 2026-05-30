@@ -41,6 +41,13 @@ export interface ScenarioRunOptions {
   readonly answers?: Readonly<Record<string, string>>;
 }
 
+export interface ScenarioInspectProps {
+  readonly file?: string;
+  readonly json?: string;
+  readonly events?: true;
+  readonly output?: true;
+}
+
 export type ScenarioTranscriptFrame = TranscriptFrame;
 
 export interface ScenarioTranscript {
@@ -68,6 +75,7 @@ export interface ScenarioContext {
     options?: ScenarioRunOptions,
   ) => Effect.Effect<ScenarioRunResult, unknown>;
   readonly shell: (command: string) => Effect.Effect<never, NotImplementedError>;
+  readonly inspect: (props: ScenarioInspectProps) => Effect.Effect<void>;
   // Only the `testOnlyFake` runner records events here. The `scenario` and `e2e`
   // runners do not bridge the real EventService, so this stays empty under them —
   // event-based assertions are meaningful only with `testOnlyFake`.
@@ -313,6 +321,44 @@ const createFixtureUse = (
     );
   };
 };
+
+const safeJsonParse = (text: string): unknown => {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+};
+
+// `<Inspect>` captures read-only state into the transcript and must never change
+// pass/fail, so a missing file is recorded as `null` rather than raising.
+const createInspect =
+  (
+    testDir: string,
+    events: LandoEvent[],
+    transcriptFrames: ScenarioTranscriptFrame[],
+  ): ScenarioContext["inspect"] =>
+  (props) =>
+    Effect.gen(function* () {
+      if (props.file !== undefined || props.json !== undefined) {
+        const target = props.file !== undefined ? "file" : "json";
+        const relativePath = (props.file ?? props.json) as string;
+        const file = Bun.file(join(testDir, relativePath));
+        const exists = yield* Effect.promise(() => file.exists());
+        const text = exists ? yield* Effect.promise(() => file.text()) : undefined;
+        const value = text === undefined ? null : target === "json" ? safeJsonParse(text) : text;
+        yield* Effect.sync(() => transcriptFrames.push({ kind: "inspect", target, value }));
+        return;
+      }
+      if (props.events === true) {
+        const value = [...events];
+        yield* Effect.sync(() => transcriptFrames.push({ kind: "inspect", target: "events", value }));
+        return;
+      }
+      const lastRun = [...transcriptFrames].reverse().find((frame) => frame.kind === "run");
+      const value = lastRun !== undefined && lastRun.kind === "run" ? lastRun.stdout : "";
+      yield* Effect.sync(() => transcriptFrames.push({ kind: "inspect", target: "output", value }));
+    });
 
 const captureWrite = (stream: typeof process.stdout | typeof process.stderr) => {
   const chunks: string[] = [];
@@ -658,6 +704,7 @@ const makeScenarioContext = (
       options.runCli,
     ),
     shell: (command) => Effect.fail(shellNotImplemented(command)),
+    inspect: createInspect(testDir, events, transcriptFrames),
     events,
     transcript: {
       frames: transcriptFrames,

@@ -4,6 +4,7 @@ import {
   CleanupProps,
   GuideProps,
   HiddenProps,
+  InspectProps,
   MatcherSchema,
   RunProps,
   ScenarioProps,
@@ -12,6 +13,7 @@ import {
   VariableProps,
   VerifyProps,
   assertAlpha2Component,
+  decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
   decodeVerifyPropsEither,
@@ -172,6 +174,38 @@ describe("Alpha 2 component prop schemas", () => {
     );
   });
 
+  test("accepts a single Inspect target and rejects zero or multiple targets", () => {
+    expect(expectRight(decodeInspectPropsEither({ file: "package.json" }))).toEqual({
+      file: "package.json",
+    });
+    expect(expectRight(decodeInspectPropsEither({ json: "lando.yml" }))).toEqual({ json: "lando.yml" });
+    expect(expectRight(decodeInspectPropsEither({ events: true }))).toEqual({ events: true });
+    expect(expectRight(decodeInspectPropsEither({ output: true }))).toEqual({ output: true });
+
+    expect(decodeInspectPropsEither({ events: false })._tag).toBe("Left");
+    expect(decodeInspectPropsEither({ output: false })._tag).toBe("Left");
+
+    const none = decodeInspectPropsEither({});
+    expect(none._tag).toBe("Left");
+    if (Either.isLeft(none)) {
+      expect(none.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(none.left);
+      expect(issues.map((issue) => issue.message)).toContain(
+        "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
+      );
+    }
+
+    const multiple = decodeInspectPropsEither({ file: "package.json", output: true });
+    expect(multiple._tag).toBe("Left");
+    if (Either.isLeft(multiple)) {
+      expect(multiple.left).toBeInstanceOf(ParseResult.ParseError);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(multiple.left);
+      expect(issues.map((issue) => issue.message)).toContain(
+        "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
+      );
+    }
+  });
+
   test("round-trips every component schema through encode/decode and JSON Schema", () => {
     const examples = [
       ["GuideProps", GuideProps, {}],
@@ -182,6 +216,7 @@ describe("Alpha 2 component prop schemas", () => {
       ["CleanupProps", CleanupProps, {}],
       ["VariableProps", VariableProps, { name: "siteName", value: "node-postgres" }],
       ["HiddenProps", HiddenProps, { reason: "prepare shared context" }],
+      ["InspectProps", InspectProps, { file: "package.json" }],
       ["UseFixtureProps", UseFixtureProps, { name: "invalid-service-type" }],
       ["MatcherSchema", MatcherSchema, { anyOf: ["ready", { not: false }] }],
     ] as const;
@@ -219,7 +254,7 @@ describe("Alpha 2 component prop schemas", () => {
     }
   });
 
-  test.each(["Inspect", "Tabs", "Tab", "Inline", "Skip"] as const)(
+  test.each(["Tabs", "Tab", "Inline", "Skip"] as const)(
     "assertAlpha2Component rejects Beta component <%s>",
     (componentName) => {
       try {
@@ -235,10 +270,17 @@ describe("Alpha 2 component prop schemas", () => {
     },
   );
 
-  test.each(["Guide", "Scenario", "Step", "Run", "Verify", "Cleanup", "Variable", "UseFixture"] as const)(
-    "assertAlpha2Component accepts Alpha 2 component <%s>",
-    (componentName) => {
-      expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
-    },
-  );
+  test.each([
+    "Guide",
+    "Scenario",
+    "Step",
+    "Run",
+    "Verify",
+    "Cleanup",
+    "Variable",
+    "UseFixture",
+    "Inspect",
+  ] as const)("assertAlpha2Component accepts supported component <%s>", (componentName) => {
+    expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
+  });
 });
