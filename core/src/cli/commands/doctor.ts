@@ -25,6 +25,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
+import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 
 export type DoctorError =
   | ConfigError
@@ -429,29 +430,22 @@ const orderCapabilityKeys = (capabilities: Readonly<Record<string, unknown>>): R
   return ordered;
 };
 
-const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> => {
-  const knownOrder = [
-    "providerId",
-    "providerKind",
-    "providerVersion",
-    "runtimeStatus",
-    "runtimeVersion",
-    "bundleVersion",
-    "platform",
-    "selectionSource",
-    "conflictKind",
-    "socketPath",
-    "providerLandoStatePath",
-  ];
-  const ordered: Record<string, string> = {};
-  for (const key of knownOrder) {
-    if (Object.hasOwn(context, key)) ordered[key] = context[key] as string;
-  }
-  for (const [key, value] of Object.entries(context)) {
-    if (!Object.hasOwn(ordered, key)) ordered[key] = value;
-  }
-  return ordered;
-};
+const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
+  "providerId",
+  "providerKind",
+  "providerVersion",
+  "runtimeStatus",
+  "runtimeVersion",
+  "bundleVersion",
+  "platform",
+  "selectionSource",
+  "conflictKind",
+  "socketPath",
+  "providerLandoStatePath",
+];
+
+const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>
+  orderKnownKeys(context, CONTEXT_KEY_ORDER);
 
 const selectionEventPayload = (selection: DoctorSelectionRecord): Record<string, unknown> => ({
   providerId: selection.providerId,
@@ -498,30 +492,9 @@ export interface DoctorNdjsonOptions {
   readonly now?: Date;
 }
 
-export const renderDoctorResultAsNdjson = (
-  result: DoctorResult,
-  options: DoctorNdjsonOptions = {},
-): string => {
-  const timestamp = (options.now ?? new Date()).toISOString();
-  const lines: string[] = [];
-  lines.push(JSON.stringify({ _tag: "doctor.start", timestamp }));
-  for (const check of result.checks) {
-    lines.push(JSON.stringify(checkEventPayload(check)));
-  }
-  let failed = 0;
-  let warned = 0;
-  for (const check of result.checks) {
-    if (check.status === "fail") failed += 1;
-    else if (check.status === "warn") warned += 1;
-  }
-  lines.push(
-    JSON.stringify({
-      _tag: "doctor.complete",
-      timestamp,
-      checks: result.checks.length,
-      failed,
-      warned,
-    }),
-  );
-  return `${lines.join("\n")}\n`;
-};
+export const renderDoctorResultAsNdjson = (result: DoctorResult, options: DoctorNdjsonOptions = {}): string =>
+  renderDoctorChecksAsNdjson({
+    checks: result.checks,
+    now: options.now,
+    checkEventPayload,
+  });
