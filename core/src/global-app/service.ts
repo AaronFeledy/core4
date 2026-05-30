@@ -67,9 +67,9 @@ const emitArray = (items: ReadonlyArray<unknown>, indent: number): ReadonlyArray
   return items.flatMap((item) => {
     if (isPlainRecord(item)) {
       const entries = sortedEntries(item);
-      if (entries.length === 0) return [`${prefix}-`];
+      if (entries.length === 0) return [`${prefix}- {}`];
       const firstEntry = entries[0];
-      if (firstEntry === undefined) return [`${prefix}-`];
+      if (firstEntry === undefined) return [`${prefix}- {}`];
       const [firstKey, firstValue] = firstEntry;
       const rest = entries.slice(1);
       const lines = emitValue(firstKey, firstValue, indent, "- ");

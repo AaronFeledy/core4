@@ -89,3 +89,26 @@ describe("parseLandofile — double-quoted scalar escapes", () => {
     expect((result as Record<string, unknown>).value).toBe('line one\nline two\rleft\tright\\"quoted"');
   });
 });
+
+describe("parseLandofile — empty-record list item round-trip", () => {
+  test("a `- {}` sequence item parses to an empty object", async () => {
+    const result = await parse(["mounts:", "  - {}"].join("\n"));
+    expect((result as Record<string, unknown>).mounts).toEqual([{}]);
+  });
+
+  test("a `- {}` item interleaves with populated map items", async () => {
+    const result = await parse(["mounts:", "  - {}", "  - target: /app"].join("\n"));
+    expect((result as Record<string, unknown>).mounts).toEqual([{}, { target: "/app" }]);
+  });
+
+  test("non-empty inline objects remain rejected", async () => {
+    await expect(parse(["mounts:", "  - {a: 1}"].join("\n"))).rejects.toThrow(
+      /Inline objects are not supported/,
+    );
+  });
+
+  test("a flow-empty `{}` map value parses to an empty object", async () => {
+    const result = await parse("config: {}\n");
+    expect((result as Record<string, unknown>).config).toEqual({});
+  });
+});

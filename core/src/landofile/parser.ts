@@ -171,6 +171,10 @@ const parseScalar = (value: string, filePath: string, line: number): unknown => 
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) return parseInlineArray(trimmed, filePath, line);
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+    // The flow-empty map `{}` is the only inline object the Landofile emitter
+    // produces (for empty records, which have no block sequence-item form).
+    // Round-trip it while populated inline objects stay rejected.
+    if (trimmed.slice(1, -1).trim() === "") return {};
     throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
   }
   if (trimmed.startsWith('"') && trimmed.endsWith('"')) {

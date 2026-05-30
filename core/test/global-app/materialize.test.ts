@@ -227,6 +227,72 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist round-trips an empty record in an array", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          providers: {
+            docker: { entries: [{}, { target: "/app" }] },
+          },
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain("          - {}");
+      expect(parsed.services?.web?.providers).toEqual({
+        docker: { entries: [{}, { target: "/app" }] },
+      });
+    });
+  });
+
+  test("regenerateDist round-trips an empty record nested in a provider array", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          providers: {
+            docker: { matrix: [{}] },
+          },
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain("- {}");
+      expect(parsed.services?.web?.providers).toEqual({
+        docker: { matrix: [{}] },
+      });
+    });
+  });
+
+  test("regenerateDist round-trips an empty record nested inside an inline array", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          providers: {
+            docker: { matrix: [[{}]] },
+          },
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain("- [{}]");
+      expect(parsed.services?.web?.providers).toEqual({
+        docker: { matrix: [[{}]] },
+      });
+    });
+  });
+
   test("regenerateDist quotes list scalars that look like map entries", async () => {
     await withTempRoots(async (dataRoot) => {
       const services: Record<string, ServiceConfig> = {
