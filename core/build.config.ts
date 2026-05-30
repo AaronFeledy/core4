@@ -23,6 +23,8 @@ export interface BundledPluginEntry {
     readonly serviceTypes?: ReadonlyArray<string>;
     readonly loggers?: ReadonlyArray<string>;
     readonly fileSyncEngines?: ReadonlyArray<string>;
+    readonly proxies?: ReadonlyArray<string>;
+    readonly globalServices?: ReadonlyArray<string>;
   };
 }
 
@@ -65,6 +67,11 @@ export const buildConfig: BuildConfig = {
       name: "@lando/file-sync-mutagen",
       path: "plugins/file-sync-mutagen",
       contributes: { fileSyncEngines: ["mutagen"] },
+    },
+    {
+      name: "@lando/proxy-traefik",
+      path: "plugins/proxy-traefik",
+      contributes: { proxies: ["traefik"], globalServices: ["traefik"] },
     },
   ],
   bundledRecipes: [

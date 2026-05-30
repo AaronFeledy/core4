@@ -9,6 +9,7 @@ import * as loggerPretty from "@lando/logger-pretty";
 import * as providerDocker from "@lando/provider-docker";
 import * as providerLando from "@lando/provider-lando";
 import * as providerPodman from "@lando/provider-podman";
+import * as proxyTraefik from "@lando/proxy-traefik";
 import * as serviceLando from "@lando/service-lando";
 
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
@@ -25,6 +26,7 @@ const EXPECTED_BUNDLED_PLUGINS = [
     layer: fileSyncMutagen.engine,
     manifest: fileSyncMutagen.manifest,
   },
+  { name: "@lando/proxy-traefik", layer: proxyTraefik.proxy, manifest: proxyTraefik.manifest },
 ];
 
 const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundled.ts");
@@ -32,7 +34,7 @@ const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundl
 
 describe("BUNDLED_PLUGINS", () => {
   test("exports all bundled plugins with real layer and manifest references", () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(6);
+    expect(BUNDLED_PLUGINS).toHaveLength(7);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
     );

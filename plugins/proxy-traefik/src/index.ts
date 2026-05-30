@@ -1,9 +1,50 @@
 /**
- * `@lando/proxy-traefik` — Traefik-backed ProxyService.
+ * `@lando/proxy-traefik` — Traefik-backed ProxyService + bundled global service.
  *
- * Translates Lando's provider-neutral `RoutePlan` and `RouteFilter`
- * schemas into Traefik dynamic config.
+ * Contributes:
+ *   - `proxies: ["traefik"]` — the Traefik-backed `ProxyService` id.
+ *   - `globalServices: ["traefik"]` — the bundled global reverse-proxy service
+ *     materialized into the global app's `.lando.dist.yml`.
  *
- * Status: stub.
+ * The `globalServices` map is the static, compiled-binary-safe contribution
+ * surface: `meta:global:install`'s bundled-first loader reads it instead of
+ * dynamically importing the manifest `module:` path (which cannot resolve in a
+ * `bun build --compile` binary). The manifest still records `module:` for
+ * documentation and the non-bundled (future) dynamic-import fallback.
  */
+import { type Effect, Layer, Schema } from "effect";
+
+import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
+
+import traefikGlobalService from "./global-services/traefik.ts";
+
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
+
+/** ProxyService Layer slot. Realization lands with the ProxyService story. */
+export const proxy = Layer.empty;
+
+/** Static global-service contributions, keyed by contribution id. */
+export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
+  ["traefik", traefikGlobalService],
+]);
+
+export const manifest = Schema.decodeSync(PluginManifest)({
+  name: PLUGIN_NAME,
+  version: "0.0.0",
+  api: 4,
+  description: "Traefik-backed `ProxyService` and bundled global reverse proxy.",
+  enabled: true,
+  contributes: {
+    proxies: ["traefik"],
+    globalServices: [
+      {
+        id: "traefik",
+        module: "./src/global-services/traefik.ts",
+        enabledByDefault: true,
+        requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+        summary: "Global Traefik reverse proxy",
+      },
+    ],
+  },
+  entry: "./src/index.ts",
+});

@@ -272,8 +272,10 @@ jobs:
           podman pull docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           podman pull getmeili/meilisearch:v1.11
           podman pull memcached:1.6
+          podman pull nginx:1.27
           podman pull opensearchproject/opensearch:2
           podman pull solr:9
+          podman pull traefik:v3.3
           podman pull valkey/valkey:8
           docker pull node:22-alpine
 

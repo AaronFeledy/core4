@@ -13,6 +13,7 @@ const expectedBundledPluginNames: ReadonlyArray<string> = [
   "@lando/service-lando",
   "@lando/logger-pretty",
   "@lando/file-sync-mutagen",
+  "@lando/proxy-traefik",
 ];
 
 interface RunResult {
