@@ -957,3 +957,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Removed the dead `emitStartEvent` parameter from `invokeRealCli` (the fake path always short-circuits `start` through `runScenarioLayerCommand`, so the branch was unreachable).
 - Verification: `@lando/core` typecheck clean, lint clean, engine unit suite 20 pass / 0 fail (added 2 tests: scenario allowlist guard, e2e init-cwd advance).
 ---
+
+## [2026-05-29 19:37 CDT] - Babysit
+- PR: #211 https://github.com/AaronFeledy/core4/pull/211
+- CI outcome: pass
+- Review feedback: fixed (Bugbot duplication findings: `renderSolution` already shared; extracted shared NDJSON envelope/key-order helper so both doctor renderers stop duplicating the start/iterate/count/complete structure and `orderContextKeys`)
+- Merge: merged (squash)
+---
