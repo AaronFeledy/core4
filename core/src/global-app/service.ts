@@ -74,14 +74,16 @@ const emitValue = (key: string, value: unknown, indent: number, marker = ""): Re
   const prefix = `${" ".repeat(indent)}${marker}${key}:`;
   if (Array.isArray(value)) {
     if (value.length === 0) return [`${prefix} []`];
-    return [prefix, ...emitArray(value, indent + 2)];
+    return [prefix, ...emitArray(value, indent + marker.length + 2)];
   }
   if (isPlainRecord(value)) {
     const entries = sortedEntries(value);
     if (entries.length === 0) return [prefix];
     return [
       prefix,
-      ...entries.flatMap(([nestedKey, nestedValue]) => emitValue(nestedKey, nestedValue, indent + 2)),
+      ...entries.flatMap(([nestedKey, nestedValue]) =>
+        emitValue(nestedKey, nestedValue, indent + marker.length + 2),
+      ),
     ];
   }
   return [`${prefix} ${formatScalar(value as string | number | boolean | null)}`];

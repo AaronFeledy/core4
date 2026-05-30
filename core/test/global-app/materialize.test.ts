@@ -132,6 +132,26 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist indents nested array-of-record children under the array marker", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          mounts: [{ excludes: ["node_modules"], target: "/app" }],
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+      const parsed = await parseAndValidate(content);
+
+      expect(content).toContain(
+        ["    mounts:", "      - excludes:", "          - node_modules", "        target: /app"].join("\n"),
+      );
+      expect(parsed.services?.web?.mounts).toEqual([{ excludes: ["node_modules"], target: "/app" }]);
+    });
+  });
+
   test("regenerateDist rejects a foreign .lando.dist.yml", async () => {
     await withTempRoots(async (dataRoot) => {
       const root = join(dataRoot, "global");
