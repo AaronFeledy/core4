@@ -31,6 +31,14 @@ const sortedEntries = <T>(record: Readonly<Record<string, T>>): ReadonlyArray<re
 const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const escapeDoubleQuotedScalar = (value: string): string =>
+  value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+
 const formatScalar = (value: string | number | boolean | null): string => {
   if (value === null) return "null";
   if (typeof value === "number" || typeof value === "boolean") return String(value);
@@ -43,8 +51,8 @@ const formatScalar = (value: string | number | boolean | null): string => {
     value === "false" ||
     /^-?\d+(?:\.\d+)?$/.test(value)
   ) {
-    if (!value.includes("'")) return `'${value}'`;
-    return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+    if (!/[\n\r\t]/.test(value) && !value.includes("'")) return `'${value}'`;
+    return `"${escapeDoubleQuotedScalar(value)}"`;
   }
   return value;
 };

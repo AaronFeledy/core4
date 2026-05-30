@@ -152,6 +152,28 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist escapes control characters in quoted scalars", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        web: {
+          type: "node",
+          environment: {
+            MULTILINE: "line one\nline two",
+            RETURN: "left\rright",
+            TAB: "left\tright",
+          },
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+      const content = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
+
+      expect(content).toContain('      MULTILINE: "line one\\nline two"');
+      expect(content).toContain('      RETURN: "left\\rright"');
+      expect(content).toContain('      TAB: "left\\tright"');
+    });
+  });
+
   test("regenerateDist rejects a foreign .lando.dist.yml", async () => {
     await withTempRoots(async (dataRoot) => {
       const root = join(dataRoot, "global");
