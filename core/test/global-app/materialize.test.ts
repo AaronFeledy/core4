@@ -9,16 +9,29 @@ import {
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
 } from "@lando/core/errors";
-import { LandofileShape, type ServiceConfig } from "@lando/core/schema";
-import { GlobalAppService } from "@lando/core/services";
+import { LandofileShape, ProviderId, type ServiceConfig } from "@lando/core/schema";
+import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
+import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { parseLandofile } from "../../src/landofile/parser.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 
-const globalAppLayer = GlobalAppServiceLive.pipe(
-  Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),
+const provider = { ...TestRuntimeProvider, id: "lando" };
+
+const globalAppLayer = Layer.mergeAll(
+  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+  Layer.succeed(PluginRegistry, {
+    list: Effect.succeed([]),
+    load: () => Effect.die("not needed"),
+    loadServiceType: () => Effect.die("not needed"),
+  }),
+  Layer.succeed(RuntimeProviderRegistry, {
+    list: Effect.succeed([ProviderId.make(provider.id)]),
+    capabilities: Effect.succeed(provider.capabilities),
+    select: () => Effect.succeed(provider),
+  }),
 );
 
 const overlayContent = [
