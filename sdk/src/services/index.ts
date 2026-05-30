@@ -42,6 +42,8 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAppError,
+  GlobalDistConflictError,
+  GlobalLandofilePathConflictError,
   HealthcheckError,
   HealthcheckTimeoutError,
   HostProxyError,
@@ -227,12 +229,33 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
   }
 >() {}
 
+export interface GlobalAppPaths {
+  readonly root: AbsolutePath;
+  readonly distLandofile: AbsolutePath;
+  readonly userLandofile: AbsolutePath;
+}
+
+export interface GlobalDistResult {
+  readonly path: AbsolutePath;
+  readonly status: "created" | "updated" | "unchanged";
+  readonly serviceIds: ReadonlyArray<string>;
+}
+
 export class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService")<
   GlobalAppService,
   {
     readonly id: "global";
     readonly root: Effect.Effect<AbsolutePath, GlobalAppError>;
     readonly ensureRoot: Effect.Effect<void, GlobalAppError, Scope.Scope>;
+    readonly paths: Effect.Effect<GlobalAppPaths, GlobalAppError>;
+    readonly ensureUserLandofile: Effect.Effect<
+      { readonly path: AbsolutePath; readonly created: boolean },
+      GlobalAppError | GlobalLandofilePathConflictError
+    >;
+    readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
+      GlobalDistResult,
+      GlobalAppError | GlobalDistConflictError
+    >;
   }
 >() {}
 

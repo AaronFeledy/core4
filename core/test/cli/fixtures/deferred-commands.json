@@ -26,7 +26,6 @@
     { "id": "meta:global:config", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
     { "id": "meta:global:destroy", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
     { "id": "meta:global:info", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
-    { "id": "meta:global:install", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
     { "id": "meta:global:list", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
     { "id": "meta:global:logs", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },
     { "id": "meta:global:rebuild", "phase": "Phase 3 Beta", "specSection": "spec/18-global-app.md" },

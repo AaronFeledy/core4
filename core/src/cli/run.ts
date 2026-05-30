@@ -3,9 +3,14 @@ import { fileURLToPath } from "node:url";
 
 import { execute } from "@oclif/core";
 import type { Command } from "@oclif/core";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, type Layer } from "effect";
 
-import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import {
+  type LandoRuntimeBootstrapError,
+  NotImplementedError,
+  RendererSelectionError,
+} from "@lando/sdk/errors";
+import type { GlobalAppService } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
@@ -21,6 +26,7 @@ import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
 import { listServices, renderAppsListResult } from "./commands/list.ts";
 import { logsApp, renderLogsAppResult } from "./commands/logs.ts";
+import { globalInstall, renderGlobalInstallResult } from "./commands/meta/global-install.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
@@ -778,6 +784,27 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
+const runMetaGlobalInstall = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const plugin = argv.find((arg) => !arg.startsWith("-"));
+  const exit = await Effect.runPromiseExit(
+    globalInstall(plugin === undefined ? {} : { plugin }).pipe(
+      Effect.provide(
+        makeLandoRuntime({ bootstrap: "global" }) as Layer.Layer<
+          GlobalAppService,
+          LandoRuntimeBootstrapError
+        >,
+      ),
+    ),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderGlobalInstallResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runMetaBun = async (argv: ReadonlyArray<string>): Promise<void> => {
   const exit = await Effect.runPromiseExit(metaBun({ argv: argv.slice() }));
   if (Exit.isSuccess(exit)) {
@@ -904,6 +931,8 @@ const CANONICAL_COMMAND_ID_BY_TOKEN: Readonly<Record<string, string>> = {
   "apps:poweroff": "apps:poweroff",
   config: "meta:config",
   "meta:config": "meta:config",
+  "global:install": "meta:global:install",
+  "meta:global:install": "meta:global:install",
   bun: "meta:bun",
   "meta:bun": "meta:bun",
   x: "meta:x",
@@ -1119,6 +1148,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "config" || argv[0] === "meta:config") {
     await runMetaConfig(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:install" || argv[0] === "meta:global:install") {
+    await runMetaGlobalInstall(argv.slice(1));
     return;
   }
 

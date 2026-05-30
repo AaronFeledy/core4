@@ -25,7 +25,7 @@ import {
   type CommandRegistry,
   type ConfigService,
   type EventService,
-  FileSystem,
+  type FileSystem,
   type GlobalAppService,
   type LandofileService,
   type Logger,
@@ -45,6 +45,7 @@ import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
 import { CommandRegistryLive } from "../services/command-registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
+import { FileSystemLive } from "../services/file-system.ts";
 import { AppPlannerLive } from "../services/planner.ts";
 import { ProviderExecToolingEngineLive } from "../services/tooling-engine.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
@@ -165,22 +166,6 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   providerExtensions: [],
 });
 
-const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
-  read: () => Stream.empty,
-  readText: () => Effect.succeed(""),
-  write: () => Effect.void,
-  writeAtomic: () => Effect.void,
-  exists: () => Effect.succeed(false),
-  stat: () => Effect.succeed({ size: 0, mtimeMs: 0, isFile: false, isDirectory: false }),
-  lstat: () =>
-    Effect.succeed({ size: 0, mtimeMs: 0, isFile: false, isDirectory: false, isSymbolicLink: false }),
-  mkdir: () => Effect.void,
-  remove: () => Effect.void,
-  readDir: () => Effect.succeed([]),
-  readFile: () => Effect.succeed(""),
-  writeFile: () => Effect.void,
-};
-
 const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
   id: "stub",
   displayName: "Stub Runtime Provider",
@@ -228,12 +213,7 @@ const collectEmbeddingPluginLayers = (
 };
 
 const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
-    LoggerLive({ mode: loggerMode }),
-    ConfigServiceLive,
-    CacheServiceLive,
-    Layer.succeed(FileSystem, fileSystemService),
-  );
+  Layer.mergeAll(LoggerLive({ mode: loggerMode }), ConfigServiceLive, CacheServiceLive, FileSystemLive);
 
 const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
@@ -246,7 +226,7 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
     EventServiceLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     providerRegistryLive,
-    GlobalAppServiceLive.pipe(Layer.provide(minimalRuntimeLive)),
+    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   );
 };
 
