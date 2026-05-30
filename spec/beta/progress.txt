@@ -1060,3 +1060,10 @@ Spec source of truth: spec/ROADMAP.md Phase 3 + spec/{01..19}-*.md and spec/15-b
   - Guide frontmatter is parsed by the Landofile YAML subset, which has no inline `{ }` flow maps — write `variants:`/`axes:` in block style — and whose map-key charset was widened to include `.` so dot-joined `variants:` keys parse at all.
   - The rich object-form `TabAxisValue` (name/label/icon/default + per-axis-value refinements from §19.16) is intentionally deferred; this story ships the plain string-array axis form, which is the breadth the PRD acceptance criteria require.
 ---
+
+## 2026-05-29 23:25 CDT - Babysit
+- PR: #216 https://github.com/AaronFeledy/core4/pull/216
+- CI outcome: pass
+- Review feedback: fixed (PR not mergeable due to merge conflict with main in spec/beta/prd.json + progress.txt; integrated origin/main, unioned passes:true stories and kept all log entries; full CI re-ran green)
+- Merge: merged (squash)
+---
