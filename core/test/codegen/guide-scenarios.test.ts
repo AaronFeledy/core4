@@ -482,6 +482,106 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("emits a verbatim inline transcript frame for <Inline> with no execution code", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-inline-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/inline.mdx"),
+        [
+          "---",
+          "id: inline-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="sample">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          '      <Inline code="const config = { api: 4 };" justification="shows the config object" />',
+          '      <Inline code="print(1)" lang="py" justification="python sample only" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual(["test/scenarios/generated/guides/inline-guide/sample.test.ts"]);
+      const generated = await Bun.file(join(root, written[0] ?? "")).text();
+      expect(generated).toContain(
+        'yield* context.transcript.append({ kind: "inline", lang: "ts", code: "const config = { api: 4 };" });',
+      );
+      expect(generated).toContain(
+        'yield* context.transcript.append({ kind: "inline", lang: "py", code: "print(1)" });',
+      );
+      expect(generated).not.toContain('context.runCli("const config');
+      expect(generated).not.toContain('context.shell("const config');
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", join(root, written[0] ?? "")],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("emits test.skip for steps inside <Skip> and keeps them out of the main test", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-skip-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/skip.mdx"),
+        [
+          "---",
+          "id: skip-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="partial">',
+          '    <Step name="run">',
+          '      <Run command="version" />',
+          "    </Step>",
+          '    <Skip reason="awaiting upstream fix">',
+          '      <Step name="later">',
+          '        <Run command="version" />',
+          "      </Step>",
+          "    </Skip>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual(["test/scenarios/generated/guides/skip-guide/partial.test.ts"]);
+      const generated = await Bun.file(join(root, written[0] ?? "")).text();
+      expect(generated).toContain("// @skip: awaiting upstream fix");
+      expect(generated).toContain('test.skip("later", () => {});');
+      expect(generated).not.toContain("// @step: later");
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", join(root, written[0] ?? "")],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("test-only scenarios require a reason", () => {
     const missingReason = [
       "---",

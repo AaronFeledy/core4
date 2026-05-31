@@ -1,0 +1,18 @@
+---
+id: lint-skip-green
+provider: test
+diataxis: tutorial
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="version" />
+    </Step>
+    <Skip reason="awaiting upstream fix">
+      <Step name="later">
+        <Run command="version" />
+      </Step>
+    </Skip>
+  </Scenario>
+</Guide>

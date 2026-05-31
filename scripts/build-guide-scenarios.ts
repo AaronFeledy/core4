@@ -12,6 +12,7 @@ import { parseLandofile } from "../core/src/landofile/parser.ts";
 import {
   type CleanupProps,
   type GuideFrontmatter,
+  type InlineProps,
   type InspectProps,
   type RunProps,
   type UseFixtureProps,
@@ -21,9 +22,11 @@ import {
   decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,
   decodeHiddenPropsEither,
+  decodeInlinePropsEither,
   decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
+  decodeSkipPropsEither,
   decodeStepPropsEither,
   decodeTabPropsEither,
   decodeTabsPropsEither,
@@ -50,7 +53,8 @@ export type GuideStepComponent =
   | { readonly kind: "Cleanup"; readonly props: CleanupProps; readonly line: number }
   | { readonly kind: "Variable"; readonly props: VariableProps; readonly line: number }
   | { readonly kind: "UseFixture"; readonly props: UseFixtureProps; readonly line: number }
-  | { readonly kind: "Inspect"; readonly props: InspectProps; readonly line: number };
+  | { readonly kind: "Inspect"; readonly props: InspectProps; readonly line: number }
+  | { readonly kind: "Inline"; readonly props: InlineProps; readonly line: number };
 
 export interface GuideStepNode {
   readonly stepName: string;
@@ -80,10 +84,19 @@ export interface GuideHiddenBlock {
   readonly steps: ReadonlyArray<GuideStepNode>;
 }
 
+export interface GuideSkipBlock {
+  readonly kind: "skip";
+  readonly reason: string;
+  readonly until?: string;
+  readonly line: number;
+  readonly steps: ReadonlyArray<GuideStepNode>;
+}
+
 export type GuideScenarioBodyItem =
   | { readonly kind: "step"; readonly step: GuideStepNode }
   | GuideTabsBlock
-  | GuideHiddenBlock;
+  | GuideHiddenBlock
+  | GuideSkipBlock;
 
 export interface GuideScenarioNode {
   readonly id: string;
@@ -236,6 +249,10 @@ const resolveVariantSteps = (
       for (const step of item.steps) steps.push(step);
       continue;
     }
+    if (item.kind === "skip") {
+      for (const step of item.steps) skips.push({ stepName: step.stepName, reason: item.reason });
+      continue;
+    }
     const union = blockStepUnion(item);
     const axis = variant === undefined ? item.axis : effectiveAxisOf(item, variant);
     const value = variant?.pairs.find((pair) => pair.axis === axis)?.value;
@@ -372,6 +389,9 @@ const renderInspect = (
   return `    yield* context.inspect(${arg});`;
 };
 
+const renderInline = (component: Extract<GuideStepComponent, { kind: "Inline" }>): string =>
+  `    yield* context.transcript.append({ kind: "inline", lang: ${quote(component.props.lang)}, code: ${quote(component.props.code)} });`;
+
 const renderStepComponent = (
   component: GuideStepComponent,
   sourcePath: string,
@@ -388,6 +408,8 @@ const renderStepComponent = (
         return `    yield* context.fixtures.use(${quote(component.props.name)});`;
       case "Inspect":
         return renderInspect(component, variables);
+      case "Inline":
+        return renderInline(component);
     }
   })();
   return `${sourceComment(sourcePath, component.line)}\n    {\n${body}\n    }`;
@@ -619,6 +641,12 @@ const parseStepComponent = (node: MdxNode, sourcePath: string): GuideStepCompone
         props: decodeOrThrow(decodeInspectPropsEither(props), sourcePath, "Inspect", props),
         line,
       };
+    case "Inline":
+      return {
+        kind: "Inline",
+        props: decodeOrThrow(decodeInlinePropsEither(props), sourcePath, "Inline", props),
+        line,
+      };
     default:
       return undefined;
   }
@@ -654,6 +682,21 @@ const parseHiddenBlock = (node: MdxNode, sourcePath: string): GuideHiddenBlock =
   };
 };
 
+const parseSkipBlock = (node: MdxNode, sourcePath: string): GuideSkipBlock => {
+  assertAlpha2Component("Skip", sourcePath);
+  const rawProps = propsOf(node);
+  const props = decodeOrThrow(decodeSkipPropsEither(rawProps), sourcePath, "Skip", rawProps);
+  return {
+    kind: "skip",
+    reason: props.reason,
+    ...(props.until === undefined ? {} : { until: props.until }),
+    line: lineOf(node),
+    steps: elementChildren(node)
+      .filter((child) => child.name === "Step")
+      .map((child) => parseStep(child, sourcePath)),
+  };
+};
+
 const parseTab = (node: MdxNode, sourcePath: string): GuideTabNode => {
   assertAlpha2Component("Tab", sourcePath);
   const rawProps = propsOf(node);
@@ -683,10 +726,14 @@ const parseTabsBlock = (node: MdxNode, sourcePath: string): GuideTabsBlock => {
 
 const parseScenarioBody = (node: MdxNode, sourcePath: string): ReadonlyArray<GuideScenarioBodyItem> =>
   elementChildren(node)
-    .filter((child) => child.name === "Step" || child.name === "Tabs" || child.name === "Hidden")
+    .filter(
+      (child) =>
+        child.name === "Step" || child.name === "Tabs" || child.name === "Hidden" || child.name === "Skip",
+    )
     .map((child) => {
       if (child.name === "Tabs") return parseTabsBlock(child, sourcePath);
       if (child.name === "Hidden") return parseHiddenBlock(child, sourcePath);
+      if (child.name === "Skip") return parseSkipBlock(child, sourcePath);
       return { kind: "step" as const, step: parseStep(child, sourcePath) };
     });
 

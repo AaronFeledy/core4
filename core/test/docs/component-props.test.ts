@@ -4,10 +4,12 @@ import {
   CleanupProps,
   GuideProps,
   HiddenProps,
+  InlineProps,
   InspectProps,
   MatcherSchema,
   RunProps,
   ScenarioProps,
+  SkipProps,
   StepProps,
   TabProps,
   TabsProps,
@@ -16,9 +18,11 @@ import {
   VerifyProps,
   assertAlpha2Component,
   decodeHiddenPropsEither,
+  decodeInlinePropsEither,
   decodeInspectPropsEither,
   decodeRunPropsEither,
   decodeScenarioPropsEither,
+  decodeSkipPropsEither,
   decodeTabPropsEither,
   decodeTabsPropsEither,
   decodeVerifyPropsEither,
@@ -284,8 +288,8 @@ describe("Alpha 2 component prop schemas", () => {
     expect(legacyValueRejected._tag).toBe("Left");
   });
 
-  test.each(["Inline", "Skip"] as const)(
-    "assertAlpha2Component rejects Beta component <%s>",
+  test.each(["Bogus", "NotAComponent"] as const)(
+    "assertAlpha2Component rejects unknown component <%s>",
     (componentName) => {
       try {
         assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx");
@@ -313,7 +317,46 @@ describe("Alpha 2 component prop schemas", () => {
     "Tabs",
     "Tab",
     "Hidden",
+    "Inline",
+    "Skip",
   ] as const)("assertAlpha2Component accepts supported component <%s>", (componentName) => {
     expect(assertAlpha2Component(componentName, "docs/guides/node-postgres.mdx")).toBeUndefined();
+  });
+
+  test("accepts Inline props, applies lang default, and requires justification >= 8 chars", () => {
+    expect(
+      expectRight(
+        decodeInlinePropsEither({ code: "const x = 1;", justification: "shows the config object" }),
+      ),
+    ).toEqual({ code: "const x = 1;", lang: "ts", justification: "shows the config object" });
+    expect(
+      expectRight(
+        decodeInlinePropsEither({ code: "print(1)", lang: "py", justification: "python sample only" }),
+      ),
+    ).toEqual({ code: "print(1)", lang: "py", justification: "python sample only" });
+
+    const shortJustification = decodeInlinePropsEither({ code: "x", justification: "tiny" });
+    expect(shortJustification._tag).toBe("Left");
+    const missingCode = decodeInlinePropsEither({ justification: "explains the omitted code" });
+    expect(missingCode._tag).toBe("Left");
+
+    expect(JSONSchema.make(InlineProps)).toBeDefined();
+  });
+
+  test("accepts Skip props, requires reason >= 8 chars, and allows optional until", () => {
+    expect(expectRight(decodeSkipPropsEither({ reason: "awaiting upstream fix" }))).toEqual({
+      reason: "awaiting upstream fix",
+    });
+    expect(expectRight(decodeSkipPropsEither({ reason: "blocked on flaky CI", until: "v4.1.0" }))).toEqual({
+      reason: "blocked on flaky CI",
+      until: "v4.1.0",
+    });
+
+    const shortReason = decodeSkipPropsEither({ reason: "soon" });
+    expect(shortReason._tag).toBe("Left");
+    const missingReason = decodeSkipPropsEither({ until: "v4.1.0" });
+    expect(missingReason._tag).toBe("Left");
+
+    expect(JSONSchema.make(SkipProps)).toBeDefined();
   });
 });

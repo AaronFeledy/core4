@@ -53,6 +53,7 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `InlineProps`
 - `InspectProps`
 - `LANDO_SHARED_CROSS_APP_NETWORK`
 - `MatcherAnyOf`
@@ -93,6 +94,7 @@
 - `RunProps`
 - `ScenarioProps`
 - `ServiceConfig`
+- `SkipProps`
 - `StepProps`
 - `StorageInput`
 - `StorageScope`
@@ -110,6 +112,7 @@
 - `TranscriptCleanupFrame`
 - `TranscriptFixtureFrame`
 - `TranscriptFrame`
+- `TranscriptInlineFrame`
 - `TranscriptInspectFrame`
 - `TranscriptRunFrame`
 - `TranscriptVerifyFrame`

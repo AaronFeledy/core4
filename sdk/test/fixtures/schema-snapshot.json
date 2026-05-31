@@ -165,6 +165,8 @@
       "InspectProps",
       "TabsProps",
       "TabProps",
+      "InlineProps",
+      "SkipProps",
       "UseFixtureProps",
       "MatcherSchema",
       "Transcript",
@@ -1590,6 +1592,33 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "enum": ["darwin", "linux", "win32", "wsl"],
       "type": "string"
+    },
+    "InlineProps": {
+      "$defs": {
+        "InlineProps": {
+          "additionalProperties": false,
+          "description": "Beta <Inline> component props.",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "justification": {
+              "description": "a string at least 8 character(s) long",
+              "minLength": 8,
+              "title": "minLength(8)",
+              "type": "string"
+            },
+            "lang": {
+              "type": "string"
+            }
+          },
+          "required": ["code", "justification"],
+          "title": "Inline Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/InlineProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "InspectProps": {
       "$defs": {
@@ -3065,6 +3094,30 @@
       ],
       "type": "object"
     },
+    "SkipProps": {
+      "$defs": {
+        "SkipProps": {
+          "additionalProperties": false,
+          "description": "Beta <Skip> component props.",
+          "properties": {
+            "reason": {
+              "description": "a string at least 8 character(s) long",
+              "minLength": 8,
+              "title": "minLength(8)",
+              "type": "string"
+            },
+            "until": {
+              "type": "string"
+            }
+          },
+          "required": ["reason"],
+          "title": "Skip Props",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/SkipProps",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
     "StepProps": {
       "$defs": {
         "ComponentId": {
@@ -3243,10 +3296,32 @@
             },
             {
               "$ref": "#/$defs/TranscriptInspectFrame"
+            },
+            {
+              "$ref": "#/$defs/TranscriptInlineFrame"
             }
           ],
           "description": "Internal guide scenario transcript frame.",
           "title": "Transcript Frame"
+        },
+        "TranscriptInlineFrame": {
+          "additionalProperties": false,
+          "description": "Internal guide scenario transcript frame for a verbatim, non-executed code sample.",
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": ["inline"],
+              "type": "string"
+            },
+            "lang": {
+              "type": "string"
+            }
+          },
+          "required": ["kind", "lang", "code"],
+          "title": "Transcript Inline Frame",
+          "type": "object"
         },
         "TranscriptInspectFrame": {
           "additionalProperties": false,
