@@ -1,5 +1,6 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
@@ -7,6 +8,7 @@ import {
   type GuideFixtureInventoryEntry,
   formatGuideLintDiagnostic,
   lintGuideContent,
+  lintGuides,
 } from "../../../scripts/lint-guides.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -229,6 +231,41 @@ describe("lint:guides", () => {
     expect(diagnostics[0]).toContain("core/test/lint/guides/axis-duplicate-value.mdx:1:1");
     expect(diagnostics[0]).toContain("guide.frontmatter");
     expect(diagnostics[0]).toContain("Axis values must be unique");
+  });
+
+  test("lints a guide root override instead of the repository guide tree", async () => {
+    const guideRoot = await mkdtemp(join(tmpdir(), "lando-guide-lint-override-"));
+    try {
+      await writeFile(
+        join(guideRoot, "bad.mdx"),
+        [
+          "---",
+          "id: bad",
+          "provider: test",
+          "diataxis: tutorial",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path">',
+          "    <Hidden>",
+          '      <Step name="run"><Run command="status" /></Step>',
+          "    </Hidden>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const diagnostics = (await lintGuides(repoRoot, { guideRoot })).diagnostics.map(
+        formatGuideLintDiagnostic,
+      );
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toContain("bad.mdx:9:5");
+      expect(diagnostics[0]).toContain("guide.hidden.reason");
+    } finally {
+      await rm(guideRoot, { force: true, recursive: true });
+    }
   });
 
   test("reports a <UseFixture> that resolves to no fixture directory", async () => {

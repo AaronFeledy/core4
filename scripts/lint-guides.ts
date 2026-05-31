@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
+import type { Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 
 import { Effect, Either } from "effect";
 import remarkFrontmatter from "remark-frontmatter";
@@ -79,6 +80,10 @@ export interface GuideFixtureInventoryEntry {
 
 export interface GuideLintContentOptions {
   readonly fixtures?: ReadonlyArray<GuideFixtureInventoryEntry>;
+}
+
+export interface GuideLintOptions {
+  readonly guideRoot?: string;
 }
 
 const processor = unified().use(remarkParse).use(remarkMdx).use(remarkFrontmatter, ["yaml"]);
@@ -594,9 +599,9 @@ const collectSymlinkDescendants = async (
 ): Promise<ReadonlyArray<string>> => {
   const found: Array<string> = [];
   const walk = async (rel: string): Promise<void> => {
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Array<Dirent<string>>;
     try {
-      entries = await readdir(resolve(repoRoot, rel), { withFileTypes: true });
+      entries = await readdir(resolve(repoRoot, rel), { encoding: "utf8", withFileTypes: true });
     } catch {
       return;
     }
@@ -610,19 +615,51 @@ const collectSymlinkDescendants = async (
   return found;
 };
 
+const normalizePath = (path: string): string => path.split("\\").join("/");
+
+const pathForRoot = (repoRoot: string, absolutePath: string): string =>
+  normalizePath(relative(repoRoot, absolutePath));
+
+const discoverLintGuideMdxFiles = async (
+  repoRoot: string,
+  guideRoot: string | undefined,
+): Promise<ReadonlyArray<string>> => {
+  if (guideRoot === undefined) return discoverGuideMdxFiles(repoRoot);
+
+  const absoluteGuideRoot = resolve(repoRoot, guideRoot);
+  const found: Array<string> = [];
+  const walk = async (absoluteDir: string): Promise<void> => {
+    let entries: Array<Dirent<string>>;
+    try {
+      entries = await readdir(absoluteDir, { encoding: "utf8", withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const absoluteChild = resolve(absoluteDir, entry.name);
+      if (entry.isDirectory()) await walk(absoluteChild);
+      else if (entry.isFile() && entry.name.endsWith(".mdx"))
+        found.push(pathForRoot(repoRoot, absoluteChild));
+    }
+  };
+  await walk(absoluteGuideRoot);
+  return found.sort((left, right) => left.localeCompare(right));
+};
+
 const buildFixtureInventory = async (
   repoRoot: string,
   guideId: string,
+  guideRoot = "docs/guides",
 ): Promise<ReadonlyArray<GuideFixtureInventoryEntry>> => {
   const roots: ReadonlyArray<{ readonly dir: string; readonly scope: "local" | "shared" }> = [
-    { dir: `docs/guides/${guideId}/fixtures`, scope: "local" },
-    { dir: "docs/guides/fixtures", scope: "shared" },
+    { dir: `${guideRoot}/${guideId}/fixtures`, scope: "local" },
+    { dir: `${guideRoot}/fixtures`, scope: "shared" },
   ];
   const inventory: Array<GuideFixtureInventoryEntry> = [];
   for (const { dir, scope } of roots) {
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Array<Dirent<string>>;
     try {
-      entries = await readdir(resolve(repoRoot, dir), { withFileTypes: true });
+      entries = await readdir(resolve(repoRoot, dir), { encoding: "utf8", withFileTypes: true });
     } catch {
       continue;
     }
@@ -650,14 +687,18 @@ const buildFixtureInventory = async (
   return inventory;
 };
 
-export const lintGuides = async (root = REPO_ROOT): Promise<GuideLintResult> => {
+export const lintGuides = async (
+  root = REPO_ROOT,
+  options: GuideLintOptions = {},
+): Promise<GuideLintResult> => {
   const diagnostics: Array<GuideLintDiagnostic> = [];
-  const files = await discoverGuideMdxFiles(root);
+  const files = await discoverLintGuideMdxFiles(root, options.guideRoot);
   for (const sourcePath of files) {
     const content = await Bun.file(resolve(root, sourcePath)).text();
     const frontmatter = readGuideFrontmatter(sourcePath, content);
     const guideId = typeof frontmatter.id === "string" ? frontmatter.id : undefined;
-    const fixtures = guideId === undefined ? [] : await buildFixtureInventory(root, guideId);
+    const fixtures =
+      guideId === undefined ? [] : await buildFixtureInventory(root, guideId, options.guideRoot);
     const result = lintGuideContent(sourcePath, content, { fixtures });
     diagnostics.push(...result.diagnostics);
   }
@@ -668,7 +709,10 @@ export const formatGuideLintDiagnostic = (entry: GuideLintDiagnostic): string =>
   `${entry.sourcePath}:${entry.line}:${entry.column}: ${entry.code}: ${entry.message}`;
 
 const main = async (): Promise<void> => {
-  const result = await lintGuides(REPO_ROOT);
+  const guideRoot = process.env.GUIDES_DIR_OVERRIDE;
+  const result = await lintGuides(REPO_ROOT, {
+    ...(guideRoot === undefined || guideRoot.trim() === "" ? {} : { guideRoot }),
+  });
   if (result.diagnostics.length === 0) {
     process.stdout.write("Guide lint passed.\n");
     return;

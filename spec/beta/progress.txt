@@ -154,3 +154,9 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   depth logic against fixtures without weakening it.
 - After fix: lint:guides still passes the real 7 guides; depth test 3/3 pass;
   typecheck / lint / bun test all green (602 pass, 3 skip, 0 fail).
+
+## [2026-05-31 00:00 CDT] - US-181 Review
+- Fixed the real review blocker in the guide-lint CLI: `GUIDES_DIR_OVERRIDE` now drives the linted guide tree, including local/shared fixture inventory roots, instead of always linting the repository `docs/guides` tree.
+- Review notes (deferred/rejected): full `bun test` still fails only in the pre-existing package-export/packed-install cases (`@lando/core/testing`, `@lando/core/cli/operations`, missing packed `fast-check`); unrelated to US-181 guide lint depth and already documented as an environment/package-export issue.
+- Verification: `bun run typecheck`, `bun run lint`, `bun run lint:guides`, focused guide-lint tests, and manual `GUIDES_DIR_OVERRIDE` pass/fail QA passed; full `bun test` ran 1993 pass / 24 skip / 3 fail with only the pre-existing package-export failures above.
+---
