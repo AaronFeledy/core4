@@ -153,6 +153,9 @@ describe("global Traefik routing — live integration", () => {
       const shopPlan = appPlan("shop", nginxService());
       const globalPlan = appPlan("global", traefikService());
 
+      await Effect.runPromise(Effect.either(bringDown(globalPlan, { podmanApi: api })));
+      await Effect.runPromise(Effect.either(bringDown(shopPlan, { podmanApi: api })));
+
       try {
         const shopApplied = await Effect.runPromise(bringUp(shopPlan, { podmanApi: api }));
         expect(shopApplied.changed).toBe(true);
