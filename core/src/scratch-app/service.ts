@@ -26,7 +26,7 @@ const sanitizeBase = (base: string): string => {
 };
 
 // Security: reject ids that `join` could use to escape `<userCacheRoot>/scratch/<id>/`
-// (spec §21.3) — path separators, NUL, or a pure-dot segment (`.`, `..`).
+// — path separators, NUL, or a pure-dot segment (`.`, `..`).
 const isUnsafeScratchId = (id: string): boolean =>
   id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);
 
