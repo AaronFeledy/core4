@@ -21,6 +21,7 @@ import { parseLandofile } from "../landofile/parser.ts";
 
 const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
   "RecipeManifestNotFoundError",
+  "RecipeManifestParseError",
   "RecipeManifestValidationError",
   "NotImplementedError",
 ]);

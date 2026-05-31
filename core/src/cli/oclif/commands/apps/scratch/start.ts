@@ -32,10 +32,12 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
       multiple: true,
     }),
     yes: Flags.boolean({
+      char: "y",
       description: "Accept every recipe prompt's default without asking.",
       default: false,
     }),
     "no-interactive": Flags.boolean({
+      aliases: ["non-interactive"],
       description: "Never prompt; recipe prompts must be satisfied by defaults or --answer.",
       default: false,
     }),
