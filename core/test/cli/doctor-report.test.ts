@@ -46,7 +46,7 @@ const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
   Effect.runPromise(doctorReport().pipe(Effect.provide(buildLayers(provider))));
 
 describe("meta:doctor combined report", () => {
-  test("aggregates the selected provider checks and every subsystem check", async () => {
+  test("aggregates the selected provider checks, every subsystem check, and the global-app check", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
 
@@ -59,9 +59,10 @@ describe("meta:doctor combined report", () => {
       "scanner",
       "host-proxy",
     ]);
+    expect(report.globalApp.checks[0]?.name).toBe("global-app");
   });
 
-  test("renderDoctorReport surfaces both the provider section and every subsystem", async () => {
+  test("renderDoctorReport surfaces provider section, every subsystem, and global-app section", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
     const text = renderDoctorReport(report);
@@ -70,6 +71,7 @@ describe("meta:doctor combined report", () => {
     for (const name of ["proxy", "certs", "ssh", "healthcheck", "scanner", "host-proxy"]) {
       expect(text).toContain(`${name}:`);
     }
+    expect(text).toContain("global-app:");
     expect(text).toContain("solution[manual]:");
     expect(text).toContain("lando setup");
     expect(text).not.toContain("[object Object]");
@@ -79,9 +81,20 @@ describe("meta:doctor combined report", () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
     expect(report.subsystems.checks.length).toBe(6);
+    expect(report.globalApp.checks.length).toBe(1);
   });
 
-  test("combined ndjson renderer emits provider and subsystem checks in one stream", async () => {
+  test("global-app check reports not-installed when no userDataRoot is configured", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await run(provider);
+    const check = report.globalApp.checks[0];
+    expect(check?.name).toBe("global-app");
+    expect(check?.status).toBe("warn");
+    expect(check?.context.installed).toBe("false");
+    expect(check?.solutions[0]?.command).toBe("lando global:install");
+  });
+
+  test("combined ndjson renderer emits provider, subsystem, and global-app checks in one stream", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
     const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
@@ -99,13 +112,14 @@ describe("meta:doctor combined report", () => {
       "healthcheck",
       "scanner",
       "host-proxy",
+      "global-app",
     ]);
     expect(lines.at(-1)).toEqual({
       _tag: "doctor.complete",
       timestamp: "1970-01-01T00:00:00.000Z",
-      checks: 7,
+      checks: 8,
       failed: 0,
-      warned: 6,
+      warned: 7,
     });
   });
 
@@ -117,6 +131,7 @@ describe("meta:doctor combined report", () => {
     expect(rendered).toStartWith('{"_tag":"doctor.start"');
     expect(rendered).toContain('"name":"selected-provider"');
     expect(rendered).toContain('"name":"host-proxy"');
-    expect(rendered).toContain('"checks":7');
+    expect(rendered).toContain('"name":"global-app"');
+    expect(rendered).toContain('"checks":8');
   });
 });

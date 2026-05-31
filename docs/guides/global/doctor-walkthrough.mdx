@@ -1,0 +1,47 @@
+---
+id: global-doctor-walkthrough
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, global, doctor, diagnostics]
+---
+
+<Guide>
+  <Scenario id="global-app-doctor-section" render={false} reason="The global-app doctor check runs against files on disk (no provider needed); the default layer reads the dist file path from GlobalAppService, which depends on userDataRoot in the config">
+    <Step name="global-app-section">
+      <Variable name="command" value="lando doctor" display="Includes a global-app section in the combined doctor report without requiring app bootstrap" />
+      <Variable name="checkName" value="global-app" display="The check name reported by the global-app diagnostics section" />
+      <Variable name="bootstrapLevel" value="provider" display="Doctor runs at the provider bootstrap level; the global-app section never triggers app or scratch bootstrap" />
+      <Variable name="requiredServices" value="GlobalAppService, PluginRegistry, FileSystem" display="Services consumed by globalAppDoctor; provided by DefaultGlobalAppDoctorLayer which only requires ConfigService" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-app-doctor-not-installed" render={false} reason="When no dist file exists under the userDataRoot the global-app check warns and suggests the install command">
+    <Step name="not-installed">
+      <Variable name="status" value="warn" display="global-app check status when meta:global:install has not been run" />
+      <Variable name="context.installed" value="false" display="Context field reporting installation state" />
+      <Variable name="solution.command" value="lando global:install" display="Remediation command surfaced when the global app is not installed" />
+      <Variable name="solution.kind" value="manual" display="Not-installed remediation is always manual (requires running the install command)" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-app-doctor-installed" render={false} reason="When the dist file exists the global-app check passes and reports paths, timestamp, services, and contributing plugins">
+    <Step name="installed">
+      <Variable name="status" value="pass" display="global-app check status when meta:global:install has been run and the dist file exists" />
+      <Variable name="context.installed" value="true" display="Context field reporting installation state" />
+      <Variable name="context.distLandofilePath" value="&lt;userDataRoot&gt;/global/.lando.dist.yml" display="Absolute path to the generated dist Landofile" />
+      <Variable name="context.userLandofilePath" value="&lt;userDataRoot&gt;/global/.lando.yml" display="Absolute path to the hand-editable overlay Landofile" />
+      <Variable name="context.lastInstallTimestamp" value="ISO 8601 mtime of .lando.dist.yml" display="Timestamp derived from the dist file mtime — updated on every meta:global:install run" />
+      <Variable name="context.services" value="mailpit, traefik" display="Comma-separated list of service ids materialized in the dist Landofile" />
+      <Variable name="context.contributingPlugins" value="@lando/proxy-traefik (example)" display="Comma-separated plugin names whose manifests declare globalServices: contributions" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-app-doctor-ndjson" render={false} reason="The JSON renderer (lando doctor --renderer=json) emits the global-app check as a standard doctor.check event in the ndjson stream">
+    <Step name="ndjson-stream">
+      <Variable name="eventTag" value="doctor.check" display="The ndjson event tag for every check, including global-app" />
+      <Variable name="streamOrder" value="selected-provider, proxy, certs, ssh, healthcheck, scanner, host-proxy, global-app" display="Doctor checks appear in this order in the ndjson stream" />
+      <Variable name="totalChecks" value="8" display="Combined check count across provider + 6 subsystems + global-app when no provider-conflict check fires" />
+    </Step>
+  </Scenario>
+</Guide>

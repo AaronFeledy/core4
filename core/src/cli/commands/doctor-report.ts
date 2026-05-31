@@ -1,13 +1,20 @@
 /**
  * Combined `lando doctor` report.
  *
- * Merges provider and subsystem diagnostics into a single report without
- * requiring app bootstrap.
+ * Merges provider, subsystem, and global-app diagnostics into a single report
+ * without requiring app bootstrap.
  */
 import { Effect } from "effect";
 
 import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import {
+  DefaultGlobalAppDoctorLayer,
+  type GlobalAppDoctorResult,
+  globalAppDoctor,
+  renderGlobalAppDoctorResult,
+  renderGlobalAppDoctorResultAsNdjson,
+} from "./doctor-global-app.ts";
 import {
   DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
@@ -27,6 +34,7 @@ import {
 export interface DoctorReport {
   readonly provider: DoctorResult;
   readonly subsystems: SubsystemDoctorResult;
+  readonly globalApp: GlobalAppDoctorResult;
 }
 
 export const doctorReport = (
@@ -37,15 +45,16 @@ export const doctorReport = (
     const subsystems = yield* subsystemDoctor({ fix: options.fix === true }).pipe(
       Effect.provide(DefaultSubsystemDoctorLayer),
     );
-    return { provider, subsystems };
+    const globalApp = yield* globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer));
+    return { provider, subsystems, globalApp };
   });
 
 export const renderDoctorReport = (report: DoctorReport): string => {
   const provider = renderDoctorResult(report.provider);
   const subsystems = renderSubsystemDoctorResult(report.subsystems);
-  if (subsystems.length === 0) return provider;
-  if (provider.length === 0) return subsystems;
-  return `${provider}\n${subsystems}`;
+  const globalApp = renderGlobalAppDoctorResult(report.globalApp);
+  const parts = [provider, subsystems, globalApp].filter((part) => part.length > 0);
+  return parts.join("\n");
 };
 
 export interface DoctorReportNdjsonOptions {
@@ -65,8 +74,9 @@ export const renderDoctorReportAsNdjson = (
   lines.push(
     ...checkLinesFromNdjson(renderDoctorResultAsNdjson(report.provider, { now })),
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
+    ...checkLinesFromNdjson(renderGlobalAppDoctorResultAsNdjson(report.globalApp, { now })),
   );
-  const checks = [...report.provider.checks, ...report.subsystems.checks];
+  const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
   lines.push(
     JSON.stringify({
       _tag: "doctor.complete",
