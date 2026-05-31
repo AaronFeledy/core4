@@ -201,3 +201,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review notes (rejected): no out-of-scope/style-only review findings were accepted; the full-suite package-export/packed-install failures are the known `/tmp` worktree symlink/packed `fast-check` failures already documented for this branch and unrelated to guide coverage.
 - Verification: typecheck and lint passed; focused guide-coverage tests passed; `bun run check:guide-coverage` passed on the real repo; a manual driver confirmed the new empty user-facing and non-None internal diagnostics. Full `bun test` still fails only in the 3 known package-export/packed-install cases.
 ---
+
+## [2026-05-31 18:10 CDT] - Babysit
+- PR: #237 https://github.com/AaronFeledy/core4/pull/237
+- CI outcome: pass
+- Review feedback: fixed (rebuilt the branch onto current main to drop a prior botched merge that had reverted the scratch recipe/`--isolate` work from #234/#236, restoring it; fixed a real Bugbot finding where a stray `**None` substring anywhere in a `## Guide Coverage` section short-circuited guide-path extraction — `none` is now recognized only when zero paths are listed; rejected a stale Bugbot "internal None not enforced" finding already handled by the review fix)
+- Merge: merged (squash)
+---
