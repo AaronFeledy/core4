@@ -328,3 +328,10 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - Review notes (rejected): single-guide/red-guide failure reports were false positives from review-run pollution or stale focused output — `bun test core/test/scripts/dev-guides.test.ts` is green locally. The docs watcher being broader than MDX-only was accepted as non-blocking because guide fixture changes can affect executable-guide runs, and the PRD requires watching MDX, not ignoring all other guide-adjacent inputs.
 - Verification: typecheck and lint passed; focused `dev-guides` tests passed; full `bun test` still fails only in the pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`) documented by prior progress entries and unrelated to US-196.
 ---
+
+## [2026-05-31 12:49:52 CDT] - Babysit
+- PR: #232 https://github.com/AaronFeledy/core4/pull/232
+- CI outcome: pass
+- Review feedback: rejected (Bugbot unresolved issues require triage; no implementation sub-agent available)
+- Merge: deferred (Bugbot unresolved issues; implementation triage sub-agent unavailable in this session)
+---
