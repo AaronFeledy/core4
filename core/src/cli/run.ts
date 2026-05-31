@@ -17,6 +17,7 @@ import type {
   GlobalAppService,
   PluginRegistry,
   RuntimeProviderRegistry,
+  ScratchAppService,
 } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../recipes/prompts/index.ts";
@@ -45,6 +46,24 @@ import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
+import {
+  type ScratchListFormat,
+  type ScratchStartOptions,
+  renderScratchDestroyResult,
+  renderScratchGcReport,
+  renderScratchInfoResult,
+  renderScratchListResult,
+  renderScratchLogsResult,
+  renderScratchStartResult,
+  renderScratchStopResult,
+  scratchDestroy,
+  scratchGc,
+  scratchInfo,
+  scratchList,
+  scratchLogs,
+  scratchStart,
+  scratchStop,
+} from "./commands/scratch.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
@@ -826,6 +845,107 @@ const parseTableJsonFormat = (argv: ReadonlyArray<string>): "json" | "table" => 
   return "table";
 };
 
+const scratchRuntimeLayer = () =>
+  makeLandoRuntime({ bootstrap: "scratch" }) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
+
+const runScratchEffect = async <A>(
+  operation: Effect.Effect<A, unknown, ScratchAppService>,
+  render: (result: A) => string | undefined,
+): Promise<void> => {
+  const exit = await Effect.runPromiseExit(operation.pipe(Effect.provide(scratchRuntimeLayer())));
+  if (Exit.isSuccess(exit)) {
+    const rendered = render(exit.value);
+    if (rendered !== undefined && rendered.length > 0) console.log(rendered);
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions => {
+  let fork = false;
+  let from: string | undefined;
+  let detach = false;
+  let name: string | undefined;
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === undefined) continue;
+    if (arg === "--fork") {
+      fork = true;
+      continue;
+    }
+    if (arg === "--detach") {
+      detach = true;
+      continue;
+    }
+    const fromMatch = parseStringFlag(argv, i, "from");
+    if (fromMatch !== undefined) {
+      from = fromMatch.value;
+      i += fromMatch.consumed - 1;
+      continue;
+    }
+    const nameMatch = parseStringFlag(argv, i, "name");
+    if (nameMatch !== undefined) {
+      name = nameMatch.value;
+      i += nameMatch.consumed - 1;
+    }
+  }
+
+  return { fork, detach, ...(from === undefined ? {} : { from }), ...(name === undefined ? {} : { name }) };
+};
+
+const scratchIdFromArgv = (argv: ReadonlyArray<string>): string => {
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === undefined) continue;
+    const serviceMatch = parseStringFlag(argv, i, "service", "s");
+    if (serviceMatch !== undefined) {
+      i += serviceMatch.consumed - 1;
+      continue;
+    }
+    for (const flag of ["format", "tail", "since"] as const) {
+      const match = parseStringFlag(argv, i, flag);
+      if (match !== undefined) {
+        i += match.consumed - 1;
+      }
+    }
+    if (arg.startsWith("-")) continue;
+    return arg;
+  }
+  return "";
+};
+
+const runAppsScratchStart = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(scratchStart(parseScratchStartArgv(argv)), renderScratchStartResult);
+
+const runAppsScratchStop = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(scratchStop(scratchIdFromArgv(argv)), renderScratchStopResult);
+
+const runAppsScratchDestroy = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(
+    scratchDestroy(scratchIdFromArgv(argv), { keepVolumes: argv.includes("--keep-volumes") }),
+    renderScratchDestroyResult,
+  );
+
+const scratchListFormatFromArgv = (argv: ReadonlyArray<string>): ScratchListFormat =>
+  activeRendererMode === "json" ? "json" : parseTableJsonFormat(argv);
+
+const runAppsScratchList = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(scratchList(), (result) =>
+    renderScratchListResult(result, scratchListFormatFromArgv(argv)),
+  );
+
+const runAppsScratchInfo = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(scratchInfo(scratchIdFromArgv(argv)), renderScratchInfoResult);
+
+const runAppsScratchLogs = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(scratchLogs(scratchIdFromArgv(argv)), renderScratchLogsResult);
+
+const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> =>
+  runScratchEffect(scratchGc({ prune: argv.includes("--prune") }), renderScratchGcReport);
+
 const runMetaGlobalStart = async (argv: ReadonlyArray<string>): Promise<void> => {
   const services = parseGlobalServiceFlags(argv);
   const controller = new AbortController();
@@ -1061,6 +1181,21 @@ const CANONICAL_COMMAND_ID_BY_TOKEN: Readonly<Record<string, string>> = {
   "apps:list": "apps:list",
   poweroff: "apps:poweroff",
   "apps:poweroff": "apps:poweroff",
+  scratch: "apps:scratch:start",
+  "scratch:start": "apps:scratch:start",
+  "apps:scratch:start": "apps:scratch:start",
+  "scratch:stop": "apps:scratch:stop",
+  "apps:scratch:stop": "apps:scratch:stop",
+  "scratch:destroy": "apps:scratch:destroy",
+  "apps:scratch:destroy": "apps:scratch:destroy",
+  "scratch:list": "apps:scratch:list",
+  "apps:scratch:list": "apps:scratch:list",
+  "scratch:info": "apps:scratch:info",
+  "apps:scratch:info": "apps:scratch:info",
+  "scratch:logs": "apps:scratch:logs",
+  "apps:scratch:logs": "apps:scratch:logs",
+  "scratch:gc": "apps:scratch:gc",
+  "apps:scratch:gc": "apps:scratch:gc",
   config: "meta:config",
   "meta:config": "meta:config",
   "global:config": "meta:global:config",
@@ -1287,6 +1422,41 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "poweroff" || argv[0] === "apps:poweroff") {
     await runAppsPoweroff(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch" || argv[0] === "scratch:start" || argv[0] === "apps:scratch:start") {
+    await runAppsScratchStart(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch:stop" || argv[0] === "apps:scratch:stop") {
+    await runAppsScratchStop(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch:destroy" || argv[0] === "apps:scratch:destroy") {
+    await runAppsScratchDestroy(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch:list" || argv[0] === "apps:scratch:list") {
+    await runAppsScratchList(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch:info" || argv[0] === "apps:scratch:info") {
+    await runAppsScratchInfo(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch:logs" || argv[0] === "apps:scratch:logs") {
+    await runAppsScratchLogs(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "scratch:gc" || argv[0] === "apps:scratch:gc") {
+    await runAppsScratchGc(argv.slice(1));
     return;
   }
 

@@ -102,6 +102,37 @@ describe("ScratchAppServiceLive", () => {
     });
   });
 
+  test("current lifecycle seam returns honest source, empty, and not-found outcomes", async () => {
+    await withTempCacheRoot(async () => {
+      const program = Effect.gen(function* () {
+        const service = yield* ScratchAppService;
+        const acquired = yield* Effect.scoped(
+          service.acquire({ source: { kind: "fork" }, detached: true }),
+        ).pipe(Effect.either);
+        const listed = yield* service.list();
+        const gc = yield* service.gc({ prune: true });
+        const resolved = yield* service.resolveById("scratch-nope-000000").pipe(Effect.either);
+        const started = yield* service.start("scratch-nope-000000", { detach: true }).pipe(Effect.either);
+        const stopped = yield* service.stop("scratch-nope-000000").pipe(Effect.either);
+        const destroyed = yield* service
+          .destroy("scratch-nope-000000", { keepVolumes: true })
+          .pipe(Effect.either);
+        return { acquired, listed, gc, resolved, started, stopped, destroyed };
+      });
+
+      const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
+      expect(result.acquired._tag).toBe("Left");
+      if (result.acquired._tag === "Left")
+        expect(result.acquired.left._tag).toBe("ScratchSourceUnresolvedError");
+      expect(result.listed).toEqual([]);
+      expect(result.gc).toEqual({ inspected: 0, reaped: [], errors: [] });
+      for (const outcome of [result.resolved, result.started, result.stopped, result.destroyed]) {
+        expect(outcome._tag).toBe("Left");
+        if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchAppNotFoundError");
+      }
+    });
+  });
+
   test("the scratch bootstrap runtime tier provides ScratchAppService", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       const runtime = makeLandoRuntime({ bootstrap: "scratch" });

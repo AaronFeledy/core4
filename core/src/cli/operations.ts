@@ -75,3 +75,4 @@ export * from "./commands/app-cache-refresh.ts";
 export * from "./commands/version.ts";
 export * from "./commands/update.ts";
 export * from "./commands/tooling.ts";
+export * from "./commands/scratch.ts";
