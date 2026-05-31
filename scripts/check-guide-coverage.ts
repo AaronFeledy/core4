@@ -46,6 +46,8 @@ export interface PrdGuideCoverage {
   readonly source: string;
   readonly classification: PrdClassification;
   readonly present: boolean;
+  readonly none: boolean;
+  readonly pathCount: number;
 }
 
 export interface CoverageDiagnostic {
@@ -139,11 +141,25 @@ export const checkGuideCoverage = (input: CheckGuideCoverageInput): CoverageResu
 
   for (const prd of input.prdCoverage ?? []) {
     if (prd.classification === "exempt") continue;
-    if (prd.present) continue;
-    diagnostics.push({
-      code: "coverage.missing-section",
-      message: `${prd.source} is a ${prd.classification} PRD but has no "## Guide Coverage" section; user-facing PRDs must list their guides and internal/infra PRDs must declare None.`,
-    });
+    if (!prd.present) {
+      diagnostics.push({
+        code: "coverage.missing-section",
+        message: `${prd.source} is a ${prd.classification} PRD but has no "## Guide Coverage" section; user-facing PRDs must list their guides and internal/infra PRDs must declare None.`,
+      });
+      continue;
+    }
+    if (prd.classification === "user-facing" && prd.pathCount === 0) {
+      diagnostics.push({
+        code: "coverage.empty-user-facing-section",
+        message: `${prd.source} is a user-facing PRD but its "## Guide Coverage" section declares no guide paths.`,
+      });
+    }
+    if (prd.classification === "internal" && !prd.none) {
+      diagnostics.push({
+        code: "coverage.internal-section-not-none",
+        message: `${prd.source} is an internal/infra PRD but its "## Guide Coverage" section does not declare None.`,
+      });
+    }
   }
 
   const seenDeclaration = new Set<string>();
@@ -216,6 +232,8 @@ export const checkGuideCoverageOnDisk = async (
       source: `${specDir}/${name}`,
       classification: classifyPrd(name),
       present: section.present,
+      none: section.none,
+      pathCount: section.paths.length,
     });
     for (const guidePath of section.paths) {
       declarations.push({ source: `${specDir}/${name}`, guidePath });

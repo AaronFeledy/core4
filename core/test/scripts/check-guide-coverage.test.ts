@@ -294,6 +294,57 @@ describe("check:guide-coverage", () => {
     }
   });
 
+  test("a user-facing PRD with a None declaration fails the section convention", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-01-providers.md":
+        "# Provider Matrix\n\n## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Open Questions\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.empty-user-facing-section");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("a user-facing PRD with an empty Guide Coverage section fails", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-01-providers.md":
+        "# Provider Matrix\n\n## Guide Coverage\n\nNo guide rows yet.\n\n## Open Questions\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.empty-user-facing-section");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("an internal PRD with guide paths fails the None convention", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-09-renderer.md": prdSection([
+        { story: "US-150", feature: "Renderer", path: "docs/guides/rendering/renderer.mdx" },
+      ]),
+      "docs/guides/INDEX.md": indexDoc([
+        {
+          prd: "PRD-09",
+          userStory: "US-150",
+          feature: "Renderer",
+          guidePath: "docs/guides/rendering/renderer.mdx",
+          status: "Planned",
+        },
+      ]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.internal-section-not-none");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("an internal PRD missing its Guide Coverage section fails", async () => {
     const root = await scaffold({
       "spec/beta/prd-beta-13-build.md": "# Build & CI\n\n## User Stories\n\nNo coverage section.\n",

@@ -195,3 +195,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The coverage gate is now a hard convention check, not just an INDEX↔declaration cross-check: any NEW user-facing beta PRD must add a `## Guide Coverage` section (with a story→guide table) or `check:guide-coverage` fails. Internal/infra PRDs must still declare the section but as `**None — …**`. The classifier keys off the `prd-beta-NN-` filename number, so a renamed/renumbered PRD shifts tiers automatically.
   - The "declares a non-existent guide path fails" requirement is satisfied transitively: a declared path not in INDEX trips `coverage.missing-index-row`; a declared path that maps to a Shipped INDEX row but is absent on disk trips `coverage.missing-guide-file`. `Planned` INDEX rows remain the intentional escape for declared-but-unbuilt guides.
 ---
+
+## [2026-05-31 17:12 CDT] - US-198 Review
+- Reviewed the per-PRD guide coverage convention gate and fixed a real acceptance gap: user-facing PRDs with an empty/`None` `## Guide Coverage` section now fail with `coverage.empty-user-facing-section`, and internal/infra PRDs with guide rows now fail with `coverage.internal-section-not-none`. This makes the checker enforce both sides of the US-198 convention, not just section presence.
+- Review notes (rejected): no out-of-scope/style-only review findings were accepted; the full-suite package-export/packed-install failures are the known `/tmp` worktree symlink/packed `fast-check` failures already documented for this branch and unrelated to guide coverage.
+- Verification: typecheck and lint passed; focused guide-coverage tests passed; `bun run check:guide-coverage` passed on the real repo; a manual driver confirmed the new empty user-facing and non-None internal diagnostics. Full `bun test` still fails only in the 3 known package-export/packed-install cases.
+---
