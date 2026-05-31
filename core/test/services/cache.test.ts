@@ -354,6 +354,41 @@ describe("CacheServiceLive", () => {
     expect(stale).toBeNull();
   });
 
+  test("derives route global-service requirements when reading cached app plans", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-routed-cache-"));
+    const appRoot = "/workspace/routed-cache-plan";
+    const key = "app-plan-key";
+    const routedPlan = {
+      ...appPlanFixture,
+      root: AbsolutePath.make(appRoot),
+      routes: [
+        {
+          hostname: "web.cache-plan.lndo.site",
+          scheme: "https" as const,
+          service: ServiceName.make("web"),
+        },
+      ],
+    };
+
+    await runWithCache(
+      writeCachedAppPlan({
+        cacheRoot,
+        appName: "cache-plan",
+        appRoot,
+        key,
+        plan: routedPlan,
+        now: () => 1,
+      }),
+    );
+
+    const read = await Effect.runPromise(
+      readCachedAppPlan({ cacheRoot, appName: "cache-plan", appRoot, key }),
+    );
+
+    expect(read?.routes).toHaveLength(1);
+    expect(read?.requires?.globalServices).toEqual(["traefik"]);
+  });
+
   test("namespaces app-plan caches per app root to prevent cross-project collisions", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cross-"));
     const rootA = "/workspace/proj-a";
