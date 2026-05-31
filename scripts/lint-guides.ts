@@ -385,7 +385,7 @@ const lintFixtures = (
   }
 
   for (const [name, node] of references) {
-    const entries = entriesByName.get(name) ?? [];
+    const entries = (entriesByName.get(name) ?? []).filter((entry) => entry.kind !== "other");
     if (entries.length === 0) {
       diagnostics.push(
         diagnostic(
@@ -416,6 +416,7 @@ const lintFixtures = (
   const anchor = guide ?? root;
   for (const entry of fixtures) {
     if (entry.scope !== "local") continue;
+    if (entry.kind === "other") continue;
     if (references.has(entry.name)) continue;
     diagnostics.push(
       diagnostic(

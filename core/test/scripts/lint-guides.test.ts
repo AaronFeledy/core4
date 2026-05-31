@@ -274,6 +274,21 @@ describe("lint:guides", () => {
     ]);
   });
 
+  test("reports a <UseFixture> that resolves only to a regular file", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "other",
+        },
+      ]),
+    ).toEqual([
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory per §19.9.',
+    ]);
+  });
+
   test("accepts a <UseFixture> that resolves to a directory fixture", async () => {
     expect(
       await lintFixtureWithInventory("fixture-demo", [
@@ -337,6 +352,25 @@ describe("lint:guides", () => {
     ).toEqual([
       'core/test/lint/guides/fixture-demo.mdx:7:1: guide.fixture.unused: Fixture "orphan" is not referenced by any <UseFixture> in guide "fixture-demo" per §19.10.',
     ]);
+  });
+
+  test("does not flag an unreferenced regular file as an unused fixture", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "directory",
+        },
+        {
+          name: "orphan.txt",
+          sourcePath: "docs/guides/fixture-demo/fixtures/orphan.txt",
+          scope: "local",
+          kind: "other",
+        },
+      ]),
+    ).toEqual([]);
   });
 
   test("does not flag an unreferenced shared fixture as unused", async () => {
