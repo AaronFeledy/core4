@@ -10,7 +10,13 @@ import {
   NotImplementedError,
   RendererSelectionError,
 } from "@lando/sdk/errors";
-import type { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
+import type {
+  AppPlanner,
+  FileSystem,
+  GlobalAppService,
+  PluginRegistry,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
@@ -26,7 +32,13 @@ import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
 import { listServices, renderAppsListResult } from "./commands/list.ts";
 import { logsApp, renderLogsAppResult } from "./commands/logs.ts";
+import { globalConfig, renderGlobalConfigResult } from "./commands/meta/global-config.ts";
+import { globalDestroy, renderGlobalDestroyResult } from "./commands/meta/global-destroy.ts";
 import { globalInstall, renderGlobalInstallResult } from "./commands/meta/global-install.ts";
+import { globalStart, renderGlobalStartResult } from "./commands/meta/global-start.ts";
+import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-status.ts";
+import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.ts";
+import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/global-uninstall.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
@@ -784,17 +796,136 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
+const globalRuntimeLayer = () =>
+  makeLandoRuntime({ bootstrap: "global" }) as Layer.Layer<
+    GlobalAppService | PluginRegistry | RuntimeProviderRegistry | AppPlanner | FileSystem,
+    LandoRuntimeBootstrapError
+  >;
+
+const parseGlobalServiceFlags = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const services: string[] = [];
+  for (let i = 0; i < argv.length; i += 1) {
+    const match = parseStringFlag(argv, i, "service", "s");
+    if (match !== undefined) {
+      services.push(match.value);
+      i += match.consumed - 1;
+    }
+  }
+  return services;
+};
+
+const parseTableJsonFormat = (argv: ReadonlyArray<string>): "json" | "table" => {
+  for (let i = 0; i < argv.length; i += 1) {
+    const match = parseStringFlag(argv, i, "format");
+    if (match !== undefined) {
+      if (match.value === "json" || match.value === "table") return match.value;
+      i += match.consumed - 1;
+    }
+  }
+  return "table";
+};
+
+const runMetaGlobalStart = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const services = parseGlobalServiceFlags(argv);
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    const exit = await Effect.runPromiseExit(
+      globalStart({
+        ...(services.length === 0 ? {} : { services }),
+        signal: controller.signal,
+      }).pipe(Effect.provide(globalRuntimeLayer())),
+    );
+    if (Exit.isSuccess(exit)) {
+      console.log(renderGlobalStartResult(exit.value));
+      return;
+    }
+    const failure = Cause.failureOption(exit.cause);
+    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+    process.exitCode = 1;
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+};
+
+const runMetaGlobalStop = async (): Promise<void> => {
+  const exit = await Effect.runPromiseExit(globalStop().pipe(Effect.provide(globalRuntimeLayer())));
+  if (Exit.isSuccess(exit)) {
+    console.log(renderGlobalStopResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaGlobalStatus = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const services = parseGlobalServiceFlags(argv);
+  const format = parseTableJsonFormat(argv);
+  const exit = await Effect.runPromiseExit(
+    globalStatus(services.length === 0 ? {} : { services }).pipe(Effect.provide(globalRuntimeLayer())),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderGlobalStatusResult(exit.value, format));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaGlobalDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const yes = argv.includes("--yes") || argv.includes("-y");
+  const purge = argv.includes("--purge");
+  const exit = await Effect.runPromiseExit(
+    globalDestroy({ yes, purge }).pipe(Effect.provide(globalRuntimeLayer())),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderGlobalDestroyResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaGlobalConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const format = parseTableJsonFormat(argv);
+  const exit = await Effect.runPromiseExit(globalConfig().pipe(Effect.provide(globalRuntimeLayer())));
+  if (Exit.isSuccess(exit)) {
+    console.log(renderGlobalConfigResult(exit.value, format));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const runMetaGlobalUninstall = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const plugin = argv.find((arg) => !arg.startsWith("-"));
+  const purge = argv.includes("--purge");
+  const exit = await Effect.runPromiseExit(
+    globalUninstall({
+      ...(plugin === undefined ? {} : { plugin }),
+      purge,
+    }).pipe(Effect.provide(globalRuntimeLayer())),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderGlobalUninstallResult(exit.value));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runMetaGlobalInstall = async (argv: ReadonlyArray<string>): Promise<void> => {
   const plugin = argv.find((arg) => !arg.startsWith("-"));
   const exit = await Effect.runPromiseExit(
-    globalInstall(plugin === undefined ? {} : { plugin }).pipe(
-      Effect.provide(
-        makeLandoRuntime({ bootstrap: "global" }) as Layer.Layer<
-          GlobalAppService | PluginRegistry | RuntimeProviderRegistry,
-          LandoRuntimeBootstrapError
-        >,
-      ),
-    ),
+    globalInstall(plugin === undefined ? {} : { plugin }).pipe(Effect.provide(globalRuntimeLayer())),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderGlobalInstallResult(exit.value));
@@ -931,8 +1062,20 @@ const CANONICAL_COMMAND_ID_BY_TOKEN: Readonly<Record<string, string>> = {
   "apps:poweroff": "apps:poweroff",
   config: "meta:config",
   "meta:config": "meta:config",
+  "global:config": "meta:global:config",
+  "meta:global:config": "meta:global:config",
+  "global:destroy": "meta:global:destroy",
+  "meta:global:destroy": "meta:global:destroy",
   "global:install": "meta:global:install",
   "meta:global:install": "meta:global:install",
+  "global:start": "meta:global:start",
+  "meta:global:start": "meta:global:start",
+  "global:status": "meta:global:status",
+  "meta:global:status": "meta:global:status",
+  "global:stop": "meta:global:stop",
+  "meta:global:stop": "meta:global:stop",
+  "global:uninstall": "meta:global:uninstall",
+  "meta:global:uninstall": "meta:global:uninstall",
   bun: "meta:bun",
   "meta:bun": "meta:bun",
   x: "meta:x",
@@ -1151,8 +1294,38 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
+  if (argv[0] === "global:config" || argv[0] === "meta:global:config") {
+    await runMetaGlobalConfig(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:destroy" || argv[0] === "meta:global:destroy") {
+    await runMetaGlobalDestroy(argv.slice(1));
+    return;
+  }
+
   if (argv[0] === "global:install" || argv[0] === "meta:global:install") {
     await runMetaGlobalInstall(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:start" || argv[0] === "meta:global:start") {
+    await runMetaGlobalStart(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:status" || argv[0] === "meta:global:status") {
+    await runMetaGlobalStatus(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:stop" || argv[0] === "meta:global:stop") {
+    await runMetaGlobalStop();
+    return;
+  }
+
+  if (argv[0] === "global:uninstall" || argv[0] === "meta:global:uninstall") {
+    await runMetaGlobalUninstall(argv.slice(1));
     return;
   }
 

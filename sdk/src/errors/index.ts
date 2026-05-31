@@ -190,6 +190,14 @@ export class GlobalAppError extends Schema.TaggedError<GlobalAppError>()("Global
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class GlobalDestroyConfirmationError extends Schema.TaggedError<GlobalDestroyConfirmationError>()(
+  "GlobalDestroyConfirmationError",
+  {
+    message: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class GlobalDistConflictError extends Schema.TaggedError<GlobalDistConflictError>()(
   "GlobalDistConflictError",
   {

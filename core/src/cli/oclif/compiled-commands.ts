@@ -38,6 +38,7 @@ import MetaGlobalLogsCommand from "./commands/meta/global/logs.ts";
 import MetaGlobalRebuildCommand from "./commands/meta/global/rebuild.ts";
 import MetaGlobalRestartCommand from "./commands/meta/global/restart.ts";
 import MetaGlobalStartCommand from "./commands/meta/global/start.ts";
+import MetaGlobalStatusCommand from "./commands/meta/global/status.ts";
 import MetaGlobalStopCommand from "./commands/meta/global/stop.ts";
 import MetaGlobalUninstallCommand from "./commands/meta/global/uninstall.ts";
 import PluginAddCommand from "./commands/meta/plugin/add.ts";
@@ -99,6 +100,7 @@ export default {
   "meta:global:rebuild": MetaGlobalRebuildCommand,
   "meta:global:restart": MetaGlobalRestartCommand,
   "meta:global:start": MetaGlobalStartCommand,
+  "meta:global:status": MetaGlobalStatusCommand,
   "meta:global:stop": MetaGlobalStopCommand,
   "meta:global:uninstall": MetaGlobalUninstallCommand,
   "meta:plugin:add": PluginAddCommand,
