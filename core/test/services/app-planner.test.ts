@@ -295,6 +295,25 @@ describe("AppPlannerLive", () => {
     ]);
   });
 
+  test("suppresses per-app Mailpit env vars for global app services", async () => {
+    const appPlan = await plan({
+      name: "global",
+      runtime: 4,
+      services: {
+        [ServiceName.make("mailpit")]: {
+          type: "compose",
+          image: "docker.io/axllent/mailpit:v1.30.1",
+          appMount: false,
+        },
+      },
+    });
+
+    const mailpit = appPlan.services[ServiceName.make("mailpit")];
+    expect(mailpit?.environment.LANDO_APP_KIND).toBe("global");
+    expect(mailpit?.environment.LANDO_MAIL_HOST).toBeUndefined();
+    expect(mailpit?.environment.LANDO_MAIL_PORT).toBeUndefined();
+  });
+
   test("reuses the persisted app plan cache until planning inputs change", async () => {
     await withTempCwd(async () => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;

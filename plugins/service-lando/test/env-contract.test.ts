@@ -286,6 +286,15 @@ describe("LANDO_* environment contract across catalog service families", () => {
       }
     });
 
+    test(`${item.id} marks global-app services and does not project global Mailpit env`, () => {
+      const serviceName = item.id === "compose" ? "mailpit" : "web";
+      const plan = planFor(item, serviceName, "global");
+
+      expect(plan.environment.LANDO_APP_KIND).toBe("global");
+      expect(plan.environment.LANDO_MAIL_HOST).toBeUndefined();
+      expect(plan.environment.LANDO_MAIL_PORT).toBeUndefined();
+    });
+
     test(`${item.id} rejects user environment that collides with reserved LANDO_* keys`, () => {
       const serviceName = item.id === "compose" ? "worker" : "web";
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
