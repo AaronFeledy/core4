@@ -125,6 +125,7 @@ type ProviderRuntimeServices =
   | RuntimeProvider
   | RuntimeProviderRegistry
   | GlobalAppService;
+type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
@@ -140,6 +141,8 @@ type RuntimeLayer =
   | Layer.Layer<ToolingRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
   | Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<GlobalRuntimeServices>
+  | Layer.Layer<GlobalRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<AppRuntimeServices>
   | Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<unknown, LandoRuntimeBootstrapError>;
@@ -240,6 +243,14 @@ const makeToolingRuntimeLive = (loggerMode: LoggerMode) =>
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
   );
 
+const makeGlobalRuntimeLive = (loggerMode: LoggerMode) =>
+  Layer.mergeAll(
+    makeProviderRuntimeLive(loggerMode),
+    AppPlannerLive.pipe(
+      Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+    ),
+  );
+
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
@@ -261,9 +272,10 @@ const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): Run
     case "tooling":
       return makeToolingRuntimeLive(loggerMode);
     case "provider":
-    case "global":
     case "scratch":
       return makeProviderRuntimeLive(loggerMode);
+    case "global":
+      return makeGlobalRuntimeLive(loggerMode);
     case "app":
       return makeAppRuntimeLive(loggerMode);
   }
@@ -288,6 +300,10 @@ export function makeLandoRuntime(options: { readonly bootstrap: "minimal" }): La
 >;
 export function makeLandoRuntime(options: { readonly bootstrap: "provider" }): Layer.Layer<
   ProviderRuntimeServices,
+  LandoRuntimeBootstrapError
+>;
+export function makeLandoRuntime(options: { readonly bootstrap: "global" }): Layer.Layer<
+  GlobalRuntimeServices,
   LandoRuntimeBootstrapError
 >;
 export function makeLandoRuntime(options: { readonly bootstrap: "app" }): Layer.Layer<

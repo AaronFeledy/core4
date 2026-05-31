@@ -197,7 +197,7 @@ describe("deferred command remediation contract (US-037)", () => {
 
     const parityProbes: ReadonlyArray<FixtureEntry> = [
       fixture.commands.find((entry) => entry.id === "apps:scratch:start") as FixtureEntry,
-      fixture.commands.find((entry) => entry.id === "meta:global:start") as FixtureEntry,
+      fixture.commands.find((entry) => entry.id === "meta:global:info") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:plugin:trust") as FixtureEntry,
     ];
 

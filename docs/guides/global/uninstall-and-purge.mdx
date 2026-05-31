@@ -1,0 +1,49 @@
+---
+id: uninstall-and-purge
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, global, lifecycle]
+---
+
+<Guide>
+  <Scenario id="global-lifecycle-namespace" render={false} reason="The meta:global:* lifecycle commands drive the host-level global Lando app and require a running provider; this scenario documents the command surface without booting a runtime">
+    <Step name="namespace">
+      <Variable name="install" value="meta:global:install" display="Materializes the global Landofile and installs bundled global services" />
+      <Variable name="start" value="meta:global:start" display="Applies the global-rooted plan and brings every global service up" />
+      <Variable name="stop" value="meta:global:stop" display="Destroys the running provider resources without removing volumes or state" />
+      <Variable name="status" value="meta:global:status" display="Inspects each planned global service and reports its runtime status" />
+      <Variable name="config" value="meta:global:config" display="Prints the generated global Landofile and the hand-editable overlay path" />
+      <Variable name="uninstall" value="meta:global:uninstall" display="Clears global services from the materialized Landofile; --purge also removes data" />
+      <Variable name="destroy" value="meta:global:destroy" display="Tears down the global app provider resources behind a --yes confirmation" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-lifecycle-aliases" render={false} reason="Each meta:global:* command publishes a top-level global:* alias per the §8.2 alias rules so operators can use the shorter form">
+    <Step name="aliases">
+      <Variable name="installAlias" value="global:install" display="`lando global:install` is the alias for `lando meta:global:install`" />
+      <Variable name="startAlias" value="global:start" display="`lando global:start` is the alias for `lando meta:global:start`" />
+      <Variable name="statusAlias" value="global:status" display="`lando global:status` is the alias for `lando meta:global:status`" />
+      <Variable name="uninstallAlias" value="global:uninstall" display="`lando global:uninstall` is the alias for `lando meta:global:uninstall`" />
+      <Variable name="destroyAlias" value="global:destroy" display="`lando global:destroy` is the alias for `lando meta:global:destroy`" />
+      <Variable name="parity" value="compiled" display="The compiled $bunfs binary routes every meta:global:* command and its alias through the same dispatcher as source mode" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-uninstall-vs-purge" render={false} reason="meta:global:uninstall unregisters global services from the materialized Landofile while --purge additionally destroys the provider data; neither path requires a confirmation flag">
+    <Step name="uninstall">
+      <Variable name="default" value="unregister" display="Without --purge, uninstall regenerates the global Landofile with its services cleared and leaves provider volumes untouched" />
+      <Variable name="purge" value="--purge" display="With --purge, uninstall first destroys the provider resources and volumes, then clears the services" />
+      <Variable name="pluginRejected" value="GlobalAppError" display="Passing a plugin argument that is not installed fails with a tagged error before any provider or dist mutation" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="global-destroy-confirmation" render={false} reason="meta:global:destroy is a destructive command gated behind the cross-cutting --yes confirmation rule; running it without --yes fails before any provider call">
+    <Step name="destroy">
+      <Variable name="confirmation" value="--yes" display="meta:global:destroy requires --yes (or -y); without it the command fails with GlobalDestroyConfirmationError and touches nothing" />
+      <Variable name="error" value="GlobalDestroyConfirmationError" display="The tagged error surfaced when --yes is omitted" />
+      <Variable name="volumes" value="preserved" display="With --yes the provider state is removed but service data volumes are preserved unless --purge is also passed" />
+      <Variable name="purge" value="--purge" display="meta:global:destroy --yes --purge removes provider state and the data volumes together" />
+    </Step>
+  </Scenario>
+</Guide>
