@@ -35,7 +35,7 @@ export const TRAEFIK_STATIC_FLAGS: ReadonlyArray<string> = [
   "--api.insecure=true",
   "--entrypoints.web.address=:80",
   "--entrypoints.websecure.address=:443",
-  "--entrypoints.traefik.address=:8080",
+  "--entrypoints.traefik.address=:8443",
   `--providers.file.directory=${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
   "--providers.file.watch=true",
 ];
@@ -74,7 +74,7 @@ const traefikServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   image: TRAEFIK_IMAGE,
   appMount: false,
   command: ["sh", "-c", TRAEFIK_START_SCRIPT],
-  ports: ["80", "443", "8080"],
+  ports: ["80", "443", "8443"],
   environment: {},
 });
 
