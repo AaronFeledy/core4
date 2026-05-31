@@ -221,6 +221,7 @@ jobs:
 
       - name: Start Podman socket
         run: |
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
           podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
           echo "$!" > /tmp/podman-service.pid
           for _ in {1..30}; do

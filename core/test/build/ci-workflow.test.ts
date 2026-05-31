@@ -175,6 +175,7 @@ describe("ci workflow", () => {
     );
     expect(providerIntegration).toContain("      - name: Restore binary executable bit");
     expect(providerIntegration).toContain("        run: chmod +x dist/lando");
+    expect(providerIntegration).toContain("          sudo sysctl net.ipv4.ip_unprivileged_port_start=0");
     expect(providerIntegration).toContain(
       '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
     );
