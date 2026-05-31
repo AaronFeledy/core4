@@ -410,6 +410,7 @@ const planApp = (
     runtime: 4 as const,
   };
   const services: Record<string, unknown> = {};
+  const serviceHostnames: Record<string, ReadonlyArray<string>> = {};
   const aggregatedStores: Array<{ name: string; scope: StorageScope }> = [];
   const fileSyncEntries: Array<FileSyncPlan> = [];
   const aggregatedRoutes: Array<RoutePlan> = [];
@@ -575,6 +576,7 @@ const planApp = (
         );
       }
 
+      serviceHostnames[name] = service.hostnames ?? [];
       services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
 
       for (const shadow of shadowResult.shadowStores) {
@@ -627,6 +629,7 @@ const planApp = (
           slug: appName,
           serviceNames,
           sharedCrossAppNetwork: providerCapabilities.sharedCrossAppNetwork,
+          serviceHostnames,
         })
       : undefined;
 
