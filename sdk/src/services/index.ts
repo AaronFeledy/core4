@@ -17,6 +17,7 @@ import type {
   GlobalConfig,
   HealthcheckPlan,
   HostPlatform,
+  IsolateMode,
   LandofileShape,
   PlanMetadata,
   PluginManifest,
@@ -281,6 +282,7 @@ export interface ScratchAcquireInput {
   readonly answers?: Record<string, string>;
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
+  readonly isolate?: IsolateMode;
 }
 
 export interface ScratchHandle {

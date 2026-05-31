@@ -619,6 +619,7 @@ export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: st
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
     copyMounts: false,
+    copyOnWriteAppRoot: false,
     hostPortPublish: "proxy",
     routeProvider: false,
     tlsCertificates: "none",

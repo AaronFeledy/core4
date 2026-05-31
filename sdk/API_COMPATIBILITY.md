@@ -55,6 +55,7 @@
 - `HostArchitecture`
 - `InlineProps`
 - `InspectProps`
+- `IsolateMode`
 - `LANDO_SHARED_CROSS_APP_NETWORK`
 - `MatcherAnyOf`
 - `MatcherNot`

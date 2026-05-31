@@ -41,6 +41,10 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
       description: "Never prompt; recipe prompts must be satisfied by defaults or --answer.",
       default: false,
     }),
+    isolate: Flags.string({
+      options: ["none", "full"],
+      description: "Fork isolation: 'none' shares the source app root, 'full' uses a content copy.",
+    }),
   };
   static override landoSpec: LandoCommandSpec = appsScratchStartSpec;
   static override bootstrap = appsScratchStartSpec.bootstrap;

@@ -146,6 +146,7 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     copyMounts: false,
+    copyOnWriteAppRoot: false,
     hostPortPublish: "proxy",
     routeProvider: false,
     tlsCertificates: "lando",

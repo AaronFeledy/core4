@@ -29,6 +29,7 @@ const capabilities = (overrides: Partial<ProviderCapabilities> = {}): ProviderCa
   bindMounts: true,
   bindMountPerformance: "native",
   copyMounts: false,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "proxy",
   routeProvider: false,
   tlsCertificates: "lando",

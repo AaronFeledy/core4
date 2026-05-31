@@ -53,6 +53,7 @@ const baseCapabilities = (overrides: Partial<ProviderCapabilities>): ProviderCap
   bindMounts: true,
   bindMountPerformance: "native",
   copyMounts: false,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "proxy",
   routeProvider: false,
   tlsCertificates: "lando",

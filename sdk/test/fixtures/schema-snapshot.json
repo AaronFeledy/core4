@@ -2514,6 +2514,9 @@
         "copyMounts": {
           "type": "boolean"
         },
+        "copyOnWriteAppRoot": {
+          "type": "boolean"
+        },
         "hostPortPublish": {
           "enum": ["native", "proxy", "manual", "none"],
           "type": "string"
@@ -2576,6 +2579,7 @@
         "bindMounts",
         "bindMountPerformance",
         "copyMounts",
+        "copyOnWriteAppRoot",
         "hostPortPublish",
         "routeProvider",
         "tlsCertificates",
