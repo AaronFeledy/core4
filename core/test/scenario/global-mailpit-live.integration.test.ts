@@ -1,7 +1,6 @@
-import { type Socket, createConnection } from "node:net";
 import { DateTime, Effect } from "effect";
 
-import { bringDown, bringUp, makePodmanApiClient } from "@lando/provider-lando";
+import { bringDown, bringUp, exec, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
   AppId,
@@ -13,6 +12,7 @@ import {
 
 import {
   MAILPIT_IMAGE,
+  MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
   MAILPIT_WEB_PORT,
 } from "../../../plugins/service-lando/src/mailpit-constants.ts";
@@ -20,6 +20,9 @@ import {
 const providerId = ProviderId.make("lando");
 const SUBJECT = "Mailpit live integration";
 const RECIPIENT = "recipient@example.lndo.site";
+// Minimal base image with a busybox shell + `nc`, used to drive SMTP from inside
+// a per-app service container.
+const SENDER_IMAGE = "alpine:3.21";
 
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-30T00:00:00Z"),
@@ -61,53 +64,62 @@ const mailpitService = (): ServicePlan => ({
   extensions: {},
 });
 
-const waitForSmtpLine = (socket: Socket, expected: string): Promise<string> =>
-  new Promise((resolve, reject) => {
-    let buffer = "";
-    const timeout = setTimeout(
-      () => reject(new Error(`SMTP response timed out waiting for ${expected}`)),
-      10_000,
-    );
-    const onData = (chunk: Buffer) => {
-      buffer += chunk.toString("utf8");
-      if (buffer.includes(expected)) {
-        clearTimeout(timeout);
-        socket.off("data", onData);
-        resolve(buffer);
-      }
-    };
-    socket.on("data", onData);
-    socket.once("error", reject);
-  });
+// A per-app service that stays alive so the test can exec an SMTP send from
+// inside its container, exercising the shared cross-app network DNS alias the
+// per-app `LANDO_MAIL_HOST` env var points at.
+const senderService = (): ServicePlan => ({
+  name: ServiceName.make("web"),
+  type: "compose",
+  provider: providerId,
+  primary: true,
+  artifact: { kind: "ref", ref: SENDER_IMAGE },
+  command: ["sleep", "infinity"],
+  environment: {},
+  mounts: [],
+  storage: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata,
+  extensions: {},
+});
 
-const sendCommand = async (socket: Socket, command: string, expected: string): Promise<void> => {
-  socket.write(`${command}\r\n`);
-  await waitForSmtpLine(socket, expected);
-};
+// Raw SMTP conversation piped to the global Mailpit service over the shared
+// cross-app network. Mailpit advertises PIPELINING, so the buffered commands are
+// processed in order even after the client half-closes the connection.
+const smtpPayload = [
+  "HELO web.shop.internal",
+  "MAIL FROM:<sender@example.lndo.site>",
+  `RCPT TO:<${RECIPIENT}>`,
+  "DATA",
+  `Subject: ${SUBJECT}`,
+  `To: ${RECIPIENT}`,
+  "From: sender@example.lndo.site",
+  "",
+  "Mailpit works from a per-app service.",
+  ".",
+  "QUIT",
+  "",
+].join("\\r\\n");
 
-const sendMail = async (): Promise<void> => {
-  const socket = createConnection({ host: "127.0.0.1", port: MAILPIT_SMTP_PORT });
-  try {
-    await waitForSmtpLine(socket, "220");
-    await sendCommand(socket, "HELO lando.test", "250");
-    await sendCommand(socket, "MAIL FROM:<sender@example.lndo.site>", "250");
-    await sendCommand(socket, `RCPT TO:<${RECIPIENT}>`, "250");
-    await sendCommand(socket, "DATA", "354");
-    socket.write(
-      [
-        `Subject: ${SUBJECT}`,
-        `To: ${RECIPIENT}`,
-        "From: sender@example.lndo.site",
-        "",
-        "Mailpit works.",
-        ".",
-      ].join("\r\n"),
+const sendMailFromService = async (
+  plan: AppPlan,
+  api: ReturnType<typeof makePodmanApiClient>,
+): Promise<void> => {
+  const target = { app: AppId.make(plan.slug), service: ServiceName.make("web") };
+  const command = {
+    command: [
+      "sh",
+      "-c",
+      `printf '%b' '${smtpPayload}' | nc -w 5 ${MAILPIT_SHARED_NETWORK_HOST} ${MAILPIT_SMTP_PORT}`,
+    ],
+  };
+  const result = await Effect.runPromise(exec(plan, target, command, { podmanApi: api }));
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `SMTP send from per-app service failed (exit ${result.exitCode}): ${result.stderr || result.stdout}`,
     );
-    socket.write("\r\n");
-    await waitForSmtpLine(socket, "250");
-    await sendCommand(socket, "QUIT", "221");
-  } finally {
-    socket.end();
   }
 };
 
@@ -151,22 +163,29 @@ const waitForCapturedMessage = async (timeoutMs: number): Promise<void> => {
 
 describe("global Mailpit capture — live integration", () => {
   test.skipIf(!process.env.LANDO_TEST_PODMAN_SOCKET)(
-    "captures SMTP mail and exposes it through the Mailpit API",
+    "captures SMTP mail sent from a per-app service over the shared cross-app network",
     async () => {
       const socketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
       expect(socketPath).toBeTruthy();
 
       const api = makePodmanApiClient(socketPath);
       const globalPlan = appPlan("global", mailpitService());
+      const shopPlan = appPlan("shop", senderService());
 
       try {
         const mailpitApplied = await Effect.runPromise(bringUp(globalPlan, { podmanApi: api }));
         expect(mailpitApplied.changed).toBe(true);
 
+        const shopApplied = await Effect.runPromise(bringUp(shopPlan, { podmanApi: api }));
+        expect(shopApplied.changed).toBe(true);
+
+        // Wait for Mailpit's API to come up before driving SMTP from the per-app
+        // service, then assert the message lands in Mailpit's API.
         await fetchMailpitMessages(120_000);
-        await sendMail();
+        await sendMailFromService(shopPlan, api);
         await waitForCapturedMessage(120_000);
       } finally {
+        await Effect.runPromise(Effect.either(bringDown(shopPlan, { podmanApi: api })));
         await Effect.runPromise(Effect.either(bringDown(globalPlan, { podmanApi: api })));
       }
     },
