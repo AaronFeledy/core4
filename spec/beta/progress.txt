@@ -180,3 +180,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The scratch fork `--isolate=full` path reaches `copyAppRoot` only AFTER `registry.capabilities` resolves, so it cannot be exercised end-to-end on a host with no provider runtime (capability resolution fails first) — the recording-fake-provider unit test is the authoritative content-copy artifact; the live path belongs in the sandbox.
   - `run.ts` typed its parsed isolate via `ScratchStartOptions["isolate"]` (already imported) instead of importing `IsolateMode`, avoiding a new schema import on the cold-start-adjacent dispatch module.
 ---
+
+## [2026-05-31 17:55 CDT] - Babysit
+- PR: #238 https://github.com/AaronFeledy/core4/pull/238
+- CI outcome: pass
+- Review feedback: rejected (Bugbot High-severity "fallback cp nests app root" is a false positive — verified empirically that `node:fs/promises` cp(src, dest, {recursive}) flattens source *contents* into the existing dest, matching the reflink `${source}/.` path, so `.lando.yml` lands at the scratch root; no nesting, no fix needed)
+- Merge: merged (squash)
+---
