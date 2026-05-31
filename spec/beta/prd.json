@@ -1252,7 +1252,7 @@
         "Lint passes"
       ],
       "priority": 196,
-      "passes": false,
+      "passes": true,
       "notes": "Added during paradigm review (PRD-B-12 §Guide-as-TDD discipline). Alpha2-04 explicitly deferred this to Beta+; Beta picks it up."
     },
     {
