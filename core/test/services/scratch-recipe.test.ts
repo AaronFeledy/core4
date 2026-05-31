@@ -201,6 +201,35 @@ describe("ScratchAppServiceLive recipe acquire", () => {
     });
   });
 
+  test("surfaces recipe prompt failures with answer remediation", async () => {
+    await withTempEnv(async ({ cacheRoot }) => {
+      const outcome = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(
+            service.acquire({
+              source: { kind: "recipe", ref: "lamp" },
+              detached: true,
+              nonInteractive: true,
+              answers: { php: "9.0" },
+            }),
+          ),
+        ).pipe(Effect.provide(makeScratchRecipeLayer([])), Effect.either),
+      );
+
+      expect(outcome._tag).toBe("Left");
+      if (outcome._tag === "Left") {
+        expect(outcome.left._tag).toBe("ScratchAppError");
+        expect(outcome.left.message).toContain('recipe prompt "php"');
+        expect(outcome.left.message).toContain('Invalid value for prompt "php"');
+        expect(outcome.left.message).not.toContain("Unable to render the recipe into the scratch app root");
+        expect(outcome.left.remediation).toBe(
+          "Provide it with --answer php=<value> or --option php=<value>.",
+        );
+      }
+      expect(await readdir(join(cacheRoot, "scratch"))).toEqual([]);
+    });
+  });
+
   test("maps an unknown recipe reference to ScratchSourceUnresolvedError", async () => {
     await withTempEnv(async ({ cacheRoot }) => {
       const outcome = await Effect.runPromise(

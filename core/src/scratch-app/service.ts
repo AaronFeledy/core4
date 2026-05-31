@@ -27,12 +27,19 @@ const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
   "NotImplementedError",
 ]);
 
+const RECIPE_PROMPT_ERROR_TAGS = new Set(["RecipeMissingAnswerError", "RecipePromptValidationError"]);
+
 export { ScratchAppService } from "@lando/sdk/services";
 
 export const SCRATCH_DIR = "scratch";
 
-const scratchAppError = (operation: string, message: string, cause: unknown): ScratchAppError =>
-  new ScratchAppError({ message, operation, cause });
+const scratchAppError = (
+  operation: string,
+  message: string,
+  cause: unknown,
+  remediation?: string,
+): ScratchAppError =>
+  new ScratchAppError({ message, operation, cause, ...(remediation === undefined ? {} : { remediation }) });
 
 const scratchSourceLabel = (input: ScratchAcquireInput): string => {
   if (input.source === undefined) return "unresolved";
@@ -79,16 +86,41 @@ const withProcessCwd = <A, E, R>(
     (original) => Effect.sync(() => process.chdir(original)),
   );
 
+const causeRecord = (cause: unknown): Record<string, unknown> | undefined =>
+  typeof cause === "object" && cause !== null ? (cause as Record<string, unknown>) : undefined;
+
+const causeTag = (cause: unknown): string | undefined => {
+  const record = causeRecord(cause);
+  return record !== undefined && "_tag" in record ? String(record._tag) : undefined;
+};
+
+const promptInitError = (input: ScratchAcquireInput, cause: unknown): ScratchAppError => {
+  const record = causeRecord(cause);
+  const promptName = typeof record?.promptName === "string" ? record.promptName : undefined;
+  const causeMessage = typeof record?.message === "string" ? record.message : "Recipe prompt failed.";
+  const promptLabel = promptName === undefined ? "recipe prompt" : `recipe prompt "${promptName}"`;
+  const remediation =
+    promptName === undefined
+      ? "Provide required recipe prompt values with --answer key=value or --option key=value."
+      : `Provide it with --answer ${promptName}=<value> or --option ${promptName}=<value>.`;
+  return scratchAppError(
+    "materialize",
+    `Unable to answer ${promptLabel} for scratch source ${scratchSourceLabel(input)}: ${causeMessage}`,
+    cause,
+    remediation,
+  );
+};
+
 const mapInitError = (
   input: ScratchAcquireInput,
   cause: unknown,
 ): ScratchSourceUnresolvedError | ScratchAppError => {
-  const tag =
-    typeof cause === "object" && cause !== null && "_tag" in cause
-      ? String((cause as { readonly _tag: unknown })._tag)
-      : undefined;
+  const tag = causeTag(cause);
   if (tag !== undefined && RECIPE_RESOLUTION_ERROR_TAGS.has(tag)) {
     return scratchSourceUnresolvedError(input);
+  }
+  if (tag !== undefined && RECIPE_PROMPT_ERROR_TAGS.has(tag)) {
+    return promptInitError(input, cause);
   }
   return scratchAppError("materialize", "Unable to render the recipe into the scratch app root.", cause);
 };
