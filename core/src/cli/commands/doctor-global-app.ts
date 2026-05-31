@@ -136,12 +136,36 @@ export const globalAppDoctor = (): Effect.Effect<
       .lstat(paths.distLandofile)
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
-    const content = yield* fileSystem
-      .readText(paths.distLandofile)
-      .pipe(Effect.catchAll(() => Effect.succeed("")));
-
-    const serviceIds = parseServiceIds(content);
+    const content = yield* Effect.either(fileSystem.readText(paths.distLandofile));
     const lastInstallTimestamp = stat !== undefined ? new Date(stat.mtimeMs).toISOString() : undefined;
+
+    if (content._tag === "Left") {
+      const context: Record<string, string> = {
+        installed: "true",
+        distLandofilePath: String(paths.distLandofile),
+        userLandofilePath: String(paths.userLandofile),
+        readError: content.left.message,
+      };
+      if (lastInstallTimestamp !== undefined) context.lastInstallTimestamp = lastInstallTimestamp;
+      if (contributingPlugins.length > 0) context.contributingPlugins = contributingPlugins;
+
+      const check: GlobalAppDoctorCheck = {
+        name: "global-app",
+        status: "fail",
+        severity: "error",
+        context,
+        solutions: [
+          {
+            kind: "manual",
+            description:
+              "The global app dist Landofile exists but could not be read. Check file permissions and rerun `lando global:install` if needed.",
+          },
+        ],
+      };
+      return { checks: [check] };
+    }
+
+    const serviceIds = parseServiceIds(content.right);
 
     const context: Record<string, string> = {
       installed: "true",
