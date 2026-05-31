@@ -143,7 +143,7 @@ describe("pruneOrphanGeneratedGuides", () => {
   });
 });
 
-describe("dev:guides one-shot pipeline", () => {
+describe.serial("dev:guides one-shot pipeline", () => {
   test("runs a green guide and reports a pass", async () => {
     const guideId = "dev-guides-green";
     try {
@@ -171,6 +171,24 @@ describe("dev:guides one-shot pipeline", () => {
       expect(result.exitCode).not.toBe(0);
       expect(combined).toContain(`at docs/guides/${guideId}.mdx:`);
       expect(combined).toContain(`[${guideId}:runs]`);
+    } finally {
+      await removeGuide(guideId);
+    }
+  }, 60000);
+
+  test("fails when a requested guide emits no scenarios", async () => {
+    const guideId = "dev-guides-empty";
+    try {
+      const path = await writeGuide(
+        guideId,
+        ["---", `id: ${guideId}`, "provider: test", "---", "", "<Guide />", ""].join("\n"),
+      );
+      const result = await runDevGuides(["--once", path]);
+      const combined = `${result.stdout}${result.stderr}`;
+
+      expect(result.exitCode).not.toBe(0);
+      expect(combined).toContain("no generated scenario output");
+      expect(await Bun.file(resolve(generatedRoot, guideId, "runs.test.ts")).exists()).toBe(false);
     } finally {
       await removeGuide(guideId);
     }

@@ -31,6 +31,8 @@ interface RunResult {
   readonly stderr: string;
 }
 
+const ABORT_EXIT_CODE = 130;
+
 let activeProc: Bun.Subprocess | undefined;
 let shuttingDown = false;
 const shutdownHooks = new Set<() => void>();
@@ -78,7 +80,13 @@ const run = async (
   cmd: ReadonlyArray<string>,
   env: Record<string, string | undefined> = {},
 ): Promise<RunResult> => {
-  if (shuttingDown) return { exitCode: 0, stdout: "", stderr: "" };
+  if (shuttingDown) {
+    return {
+      exitCode: ABORT_EXIT_CODE,
+      stdout: "",
+      stderr: "dev:guides: shutdown requested before subprocess start\n",
+    };
+  }
   const proc = Bun.spawn({
     cmd: [...cmd],
     cwd: REPO_ROOT,
@@ -156,7 +164,13 @@ const regenerate = async (guideIds: readonly string[], isAll: boolean): Promise<
 
 const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> => {
   const present = await generatedDirsFor(guideIds);
-  if (present.length === 0) return { exitCode: 0, stdout: "", stderr: "" };
+  if (present.length === 0) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `dev:guides: no generated scenario output found for ${guideIds.join(", ") || "requested guides"}\n`,
+    };
+  }
   const include = present.map((id) => `${resolve(REPO_ROOT, GENERATED_ROOT, id)}/**/*.ts`);
   const configDir = await mkdtemp(join(tmpdir(), "lando-dev-guides-"));
   const configPath = join(configDir, "tsconfig.json");
@@ -191,12 +205,18 @@ const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> 
 const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<RunResult> => {
   if (isAll) {
     if (!(await dirExists(resolve(REPO_ROOT, GENERATED_ROOT)))) {
-      return { exitCode: 0, stdout: "", stderr: "" };
+      return { exitCode: 1, stdout: "", stderr: "dev:guides: no generated scenario output found\n" };
     }
     return run([process.execPath, "test", `${GENERATED_ROOT}/`]);
   }
   const present = await generatedDirsFor(guideIds);
-  if (present.length === 0) return { exitCode: 0, stdout: "", stderr: "" };
+  if (present.length === 0) {
+    return {
+      exitCode: 1,
+      stdout: "",
+      stderr: `dev:guides: no generated scenario output found for ${guideIds.join(", ") || "requested guides"}\n`,
+    };
+  }
   return run([process.execPath, "test", ...present.map((id) => `${GENERATED_ROOT}/${id}/`)]);
 };
 
@@ -210,19 +230,21 @@ const writeMapped = (result: RunResult): void => {
 };
 
 const runIteration = async (guideIds: readonly string[], isAll: boolean): Promise<number> => {
-  if (!isAll && guideIds.length === 0) return 0;
-
   const generated = await regenerate(guideIds, isAll);
   if (generated.exitCode !== 0) {
     process.stderr.write(generated.stderr || generated.stdout);
     return generated.exitCode;
   }
 
+  if (shuttingDown) return ABORT_EXIT_CODE;
+
   const typecheck = await typecheckGuides(guideIds);
   if (typecheck.exitCode !== 0) {
     process.stderr.write(typecheck.stdout || typecheck.stderr);
     return typecheck.exitCode;
   }
+
+  if (shuttingDown) return ABORT_EXIT_CODE;
 
   const tested = await testGuides(guideIds, isAll);
   writeMapped(tested);
@@ -244,26 +266,55 @@ const buildGuideIndex = async (): Promise<{
   };
 };
 
+const writeError = (prefix: string, error: unknown): void => {
+  const detail = error instanceof Error ? error.stack || error.message : JSON.stringify(error, null, 2);
+  process.stderr.write(`${prefix}: ${detail ?? String(error)}\n`);
+};
+
+const resolveSingleGuideId = (
+  index: { readonly guidePathToId: ReadonlyMap<string, string> },
+  singleGuidePath: string,
+): string | undefined => index.guidePathToId.get(singleGuidePath);
+
 const main = async (): Promise<void> => {
   process.once("SIGINT", requestShutdown);
   process.once("SIGTERM", requestShutdown);
 
   const options = parseDevGuidesArgs(Bun.argv.slice(2));
-  let index = await buildGuideIndex();
+  let index: Awaited<ReturnType<typeof buildGuideIndex>> = {
+    asts: [],
+    allGuideIds: [],
+    guidePathToId: new Map(),
+  };
+  let indexReady = false;
 
-  let singleGuideId: string | undefined;
-  if (options.singleGuidePath !== undefined) {
-    singleGuideId = index.guidePathToId.get(options.singleGuidePath);
-    if (singleGuideId === undefined) {
-      process.stderr.write(`dev:guides: no guide found at ${options.singleGuidePath}\n`);
-      process.exitCode = 2;
+  try {
+    index = await buildGuideIndex();
+    indexReady = true;
+  } catch (error) {
+    writeError("dev:guides: failed to build guide index", error);
+    if (options.once) {
+      process.exitCode = 1;
       return;
     }
   }
 
-  const initialIds = singleGuideId === undefined ? index.allGuideIds : [singleGuideId];
-  const initialIsAll = singleGuideId === undefined;
-  const initialCode = await runIteration(initialIds, initialIsAll);
+  let initialCode = 1;
+  if (indexReady) {
+    const singleGuideId =
+      options.singleGuidePath === undefined
+        ? undefined
+        : resolveSingleGuideId(index, options.singleGuidePath);
+    if (options.singleGuidePath !== undefined && singleGuideId === undefined) {
+      process.stderr.write(`dev:guides: no guide found at ${options.singleGuidePath}\n`);
+      process.exitCode = 2;
+      return;
+    }
+
+    const initialIds = singleGuideId === undefined ? index.allGuideIds : [singleGuideId];
+    const initialIsAll = singleGuideId === undefined;
+    initialCode = await runIteration(initialIds, initialIsAll);
+  }
 
   if (options.once) {
     process.exitCode = initialCode;
@@ -272,7 +323,7 @@ const main = async (): Promise<void> => {
 
   if (shuttingDown) return;
 
-  await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
+  if (indexReady) await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
 
   const watchedRoots: string[] = [
     resolve(REPO_ROOT, GUIDE_ROOT),
@@ -292,14 +343,32 @@ const main = async (): Promise<void> => {
     const changed = [...pending];
     pending.clear();
     try {
-      index = await buildGuideIndex();
+      try {
+        index = await buildGuideIndex();
+        indexReady = true;
+      } catch (error) {
+        indexReady = false;
+        writeError("dev:guides: failed to build guide index", error);
+        return;
+      }
+      if (shuttingDown) return;
       await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
+      if (shuttingDown) return;
+      const singleGuideId =
+        options.singleGuidePath === undefined
+          ? undefined
+          : resolveSingleGuideId(index, options.singleGuidePath);
+      if (options.singleGuidePath !== undefined && singleGuideId === undefined) {
+        process.stderr.write(`dev:guides: no guide found at ${options.singleGuidePath}\n`);
+        return;
+      }
       const ctx: AffectedGuidesContext =
         singleGuideId === undefined
           ? { allGuideIds: index.allGuideIds, guidePathToId: index.guidePathToId }
           : { allGuideIds: index.allGuideIds, guidePathToId: index.guidePathToId, singleGuideId };
       const affected = uniqueSorted(changed.flatMap((path) => computeAffectedGuides(path, ctx)));
       const isAll = singleGuideId === undefined && affected.length === index.allGuideIds.length;
+      if (shuttingDown) return;
       await runIteration(affected, isAll);
     } finally {
       running = false;
