@@ -40,7 +40,7 @@ describe("traefik global service ServiceConfig", () => {
     const ports = config.ports ?? [];
     expect(ports).toContain("80");
     expect(ports).toContain("443");
-    expect(ports).toContain("8443");
+    expect(ports).toContain("8080");
   });
 
   test("enables the file provider and dashboard via static flags", async () => {
@@ -51,7 +51,7 @@ describe("traefik global service ServiceConfig", () => {
     expect(text).toContain("--api.dashboard=true");
     expect(text).toContain("--entrypoints.web.address=:80");
     expect(text).toContain("--entrypoints.websecure.address=:443");
-    expect(text).toContain("--entrypoints.traefik.address=:8443");
+    expect(text).toContain("--entrypoints.traefik.address=:8080");
     // Routing must NOT depend on the provider-specific Docker provider.
     expect(text).not.toContain("--providers.docker");
   });
