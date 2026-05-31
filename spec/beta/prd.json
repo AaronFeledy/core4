@@ -739,8 +739,8 @@
         "Lint passes"
       ],
       "priority": 46,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "global-app doctor check added; DefaultGlobalAppDoctorLayer wired; guide at docs/guides/global/doctor-walkthrough.mdx"
     },
     {
       "id": "US-120",
