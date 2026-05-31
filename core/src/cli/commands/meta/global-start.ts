@@ -112,7 +112,7 @@ export const globalStart = (
     const provider = yield* registry.select(loaded.plan);
     const services = selectedServices(loaded.plan, options.services);
 
-    // Spec §20.7: `--service` starts a subset, so apply only the selected services.
+    // With `--service`, start only the selected subset rather than the whole plan.
     const selectedNames = new Set(services.map((service) => String(service.name)));
     const planToApply =
       services.length === Object.keys(loaded.plan.services).length
