@@ -2,15 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 
 import { ScratchAppService } from "@lando/core/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-
-const scratchAppLayer = ScratchAppServiceLive.pipe(Layer.provide(FileSystemLive));
+const scratchAppLayer = makeLandoRuntime({ bootstrap: "scratch" });
 
 const withTempCacheRoot = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await mkdtemp(join(tmpdir(), "lando-scratch-cache-"));
@@ -31,6 +28,18 @@ const directoryExists = async (path: string): Promise<boolean> => {
     return (await stat(path)).isDirectory();
   } catch {
     return false;
+  }
+};
+
+const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
+  const dir = await mkdtemp(join(tmpdir(), "lando-scratch-empty-cwd-"));
+  const previous = process.cwd();
+  try {
+    process.chdir(dir);
+    return await run(dir);
+  } finally {
+    process.chdir(previous);
+    await rm(dir, { recursive: true, force: true });
   }
 };
 
@@ -104,32 +113,34 @@ describe("ScratchAppServiceLive", () => {
 
   test("current lifecycle seam returns honest source, empty, and not-found outcomes", async () => {
     await withTempCacheRoot(async () => {
-      const program = Effect.gen(function* () {
-        const service = yield* ScratchAppService;
-        const acquired = yield* Effect.scoped(
-          service.acquire({ source: { kind: "fork" }, detached: true }),
-        ).pipe(Effect.either);
-        const listed = yield* service.list();
-        const gc = yield* service.gc({ prune: true });
-        const resolved = yield* service.resolveById("scratch-nope-000000").pipe(Effect.either);
-        const started = yield* service.start("scratch-nope-000000", { detach: true }).pipe(Effect.either);
-        const stopped = yield* service.stop("scratch-nope-000000").pipe(Effect.either);
-        const destroyed = yield* service
-          .destroy("scratch-nope-000000", { keepVolumes: true })
-          .pipe(Effect.either);
-        return { acquired, listed, gc, resolved, started, stopped, destroyed };
-      });
+      await withTempCwd(async () => {
+        const program = Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const acquired = yield* Effect.scoped(
+            service.acquire({ source: { kind: "fork" }, detached: true }),
+          ).pipe(Effect.either);
+          const listed = yield* service.list();
+          const gc = yield* service.gc({ prune: true });
+          const resolved = yield* service.resolveById("scratch-nope-000000").pipe(Effect.either);
+          const started = yield* service.start("scratch-nope-000000", { detach: true }).pipe(Effect.either);
+          const stopped = yield* service.stop("scratch-nope-000000").pipe(Effect.either);
+          const destroyed = yield* service
+            .destroy("scratch-nope-000000", { keepVolumes: true })
+            .pipe(Effect.either);
+          return { acquired, listed, gc, resolved, started, stopped, destroyed };
+        });
 
-      const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
-      expect(result.acquired._tag).toBe("Left");
-      if (result.acquired._tag === "Left")
-        expect(result.acquired.left._tag).toBe("ScratchSourceUnresolvedError");
-      expect(result.listed).toEqual([]);
-      expect(result.gc).toEqual({ inspected: 0, reaped: [], errors: [] });
-      for (const outcome of [result.resolved, result.started, result.stopped, result.destroyed]) {
-        expect(outcome._tag).toBe("Left");
-        if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchAppNotFoundError");
-      }
+        const result = await Effect.runPromise(program.pipe(Effect.provide(scratchAppLayer)));
+        expect(result.acquired._tag).toBe("Left");
+        if (result.acquired._tag === "Left")
+          expect(result.acquired.left._tag).toBe("ScratchSourceUnresolvedError");
+        expect(result.listed).toEqual([]);
+        expect(result.gc).toEqual({ inspected: 0, reaped: [], errors: [] });
+        for (const outcome of [result.resolved, result.started, result.stopped, result.destroyed]) {
+          expect(outcome._tag).toBe("Left");
+          if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchAppNotFoundError");
+        }
+      });
     });
   });
 
