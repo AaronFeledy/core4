@@ -37,9 +37,6 @@ const ALPHA_2_COMPONENTS = new Set([
   "Skip",
 ]);
 
-// This script enforces only the core guide rules implemented below.
-// Other guide checks remain deferred to a later pass.
-
 type MdxNode = {
   readonly type: string;
   readonly name?: string | null;
