@@ -144,11 +144,11 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeStopLayer = () => {
+const makeStopLayer = (plannedApp: AppPlan = plan) => {
   const events: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const stopped = new Set<ServiceName>();
-  const volumes = new Set(plan.stores.map((store) => store.name));
+  const volumes = new Set(plannedApp.stores.map((store) => store.name));
   const provider: RuntimeProviderShape = {
     id: "lando",
     displayName: "Lando Runtime Provider",
@@ -183,7 +183,7 @@ const makeStopLayer = () => {
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
-        for (const service of Object.values(plan.services)) stopped.add(service.name);
+        for (const service of Object.values(plannedApp.services)) stopped.add(service.name);
       }),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -191,7 +191,7 @@ const makeStopLayer = () => {
     logs: () => Stream.die("not used"),
     inspect: (target) =>
       Effect.succeed({
-        app: plan.id,
+        app: plannedApp.id,
         service: target.service,
         providerId,
         status: stopped.has(target.service) ? "stopped" : "running",
@@ -203,7 +203,7 @@ const makeStopLayer = () => {
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -249,6 +249,20 @@ describe("lando stop", () => {
 
     expect(second.servicesStopped).toEqual(["database", "web"]);
     expect(harness.destroyCalls).toHaveLength(2);
+  });
+
+  test("does not auto-stop global services when the app plan declares global requirements", async () => {
+    const planWithGlobalRequirement: AppPlan = { ...plan, requires: { globalServices: ["traefik"] } };
+    const harness = makeStopLayer(planWithGlobalRequirement);
+
+    await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+
+    expect(
+      harness.events.some((event) => event.startsWith("pre-global") || event.startsWith("post-global")),
+    ).toBe(false);
+    expect(harness.destroyCalls).toHaveLength(1);
+    expect(String(harness.destroyCalls[0]?.target.app)).toBe("test-stop");
+    expect(harness.destroyCalls[0]?.target.plan).toEqual(planWithGlobalRequirement);
   });
 
   test("fails outside an app directory with init remediation", async () => {

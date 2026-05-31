@@ -79,6 +79,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GlobalAppError).toBeDefined();
     expect(errors.GlobalDestroyConfirmationError).toBeDefined();
     expect(errors.GlobalServiceCollisionError).toBeDefined();
+    expect(errors.GlobalServiceMissingError).toBeDefined();
+    expect(errors.GlobalAutoStartError).toBeDefined();
     expect(errors.GlobalDistConflictError).toBeDefined();
     expect(errors.GlobalLandofilePathConflictError).toBeDefined();
   });

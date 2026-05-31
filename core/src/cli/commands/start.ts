@@ -26,19 +26,24 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
+import { GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, FileSyncSessionRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
   EventService,
   FileSyncEngine,
+  type FileSystem,
+  type GlobalAppService,
   LandofileService,
+  type PluginRegistry,
   type ProviderError,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
+import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 
 import {
   publishTaskComplete,
@@ -75,13 +80,21 @@ type StartAppError =
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError
+  | GlobalAutoStartError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError;
 
-type StartAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;
+type StartAppServices =
+  | AppPlanner
+  | EventService
+  | FileSystem
+  | GlobalAppService
+  | LandofileService
+  | PluginRegistry
+  | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -171,6 +184,26 @@ export const startApp = (
     const plan = yield* planner.plan(landofile, capabilities);
     const provider = yield* registry.select(plan);
     const ref = appRef(plan);
+
+    const neededGlobalServices = requiredGlobalServicesForPlan(plan);
+    if (neededGlobalServices.length > 0) {
+      yield* ensureGlobalServicesRunning({
+        services: neededGlobalServices,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      }).pipe(
+        Effect.mapError(
+          (cause) =>
+            new GlobalAutoStartError({
+              message: `Failed to auto-start global services (${neededGlobalServices.join(", ")}) required by ${plan.name}.`,
+              app: plan.name,
+              services: [...neededGlobalServices],
+              remediation: "Start the global app manually with `lando global:start`, then retry.",
+              cause,
+            }),
+        ),
+      );
+    }
+
     const serviceList = Object.values(plan.services);
     const serviceIds = serviceList.map((service) => String(service.name));
     const applyParentId = `apply-${plan.id}`;

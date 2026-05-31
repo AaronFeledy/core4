@@ -115,6 +115,21 @@ const decode = (bytes: Uint8Array): AppPlanCachePayload | null => {
   }
 };
 
+const withDerivedRouteRequirements = (plan: AppPlan): AppPlan => {
+  if (plan.routes.length === 0) return plan;
+
+  const current = plan.requires?.globalServices ?? [];
+  if (current.includes("traefik")) return plan;
+
+  return {
+    ...plan,
+    requires: {
+      ...plan.requires,
+      globalServices: [...current, "traefik"],
+    },
+  };
+};
+
 export const readCachedAppPlan = (input: {
   readonly cacheRoot: string;
   readonly appName: string;
@@ -146,7 +161,7 @@ export const readCachedAppPlan = (input: {
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION || payload.key !== input.key) return null;
     return yield* Effect.try({
-      try: () => Schema.decodeUnknownSync(AppPlan)(payload.plan),
+      try: () => withDerivedRouteRequirements(Schema.decodeUnknownSync(AppPlan)(payload.plan)),
       catch: (cause) =>
         new CacheError({
           message: `Cached app plan at ${path} failed schema decode.`,

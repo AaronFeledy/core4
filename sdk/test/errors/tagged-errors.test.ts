@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Either, Exit, Schema } from "effect";
 
 import {
+  GlobalAutoStartError,
+  GlobalServiceMissingError,
   LandoRuntimeBootstrapError,
   LandofileParseError,
   NoProviderInstalledError,
@@ -276,5 +278,52 @@ describe("MVP tagged-error catalog", () => {
     expect(new LandofileParseError({ filePath: "/x", message: "x" })._tag).toBe("LandofileParseError");
     expect(new PluginLoadError({ message: "x", pluginName: "p" })._tag).toBe("PluginLoadError");
     expect(new NoProviderInstalledError({ message: "x" })._tag).toBe("NoProviderInstalledError");
+  });
+});
+
+describe("GlobalServiceMissingError", () => {
+  test("matches the global auto-start missing-service payload contract", () => {
+    const fields = Object.keys(GlobalServiceMissingError.fields);
+
+    expect(fields).toContain("message");
+    expect(fields).toContain("requested");
+    expect(fields).toContain("available");
+    expect(fields).toContain("remediation");
+    expect(fields).not.toContain("missing");
+  });
+
+  test("decodes without remediation and without a missing payload", () => {
+    const decoded = Schema.decodeUnknownEither(GlobalServiceMissingError)({
+      _tag: "GlobalServiceMissingError",
+      message: "Global service(s) not available in the global app: mailpit.",
+      requested: ["mailpit"],
+      available: ["traefik"],
+    });
+
+    expect(Either.isRight(decoded)).toBe(true);
+    if (Either.isRight(decoded)) {
+      expect(decoded.right.remediation).toBeUndefined();
+      expect("missing" in decoded.right).toBe(false);
+    }
+  });
+});
+
+describe("GlobalAutoStartError", () => {
+  test("chains the underlying global-service failure in cause", () => {
+    const cause = new GlobalServiceMissingError({
+      message: "Global service(s) not available in the global app: traefik.",
+      requested: ["traefik"],
+      available: [],
+    });
+    const error = new GlobalAutoStartError({
+      message: "Failed to auto-start global services (traefik) required by test-start.",
+      app: "test-start",
+      services: ["traefik"],
+      cause,
+    });
+
+    expect(error._tag).toBe("GlobalAutoStartError");
+    expect(error.cause).toBe(cause);
+    expect(error.remediation).toBeUndefined();
   });
 });

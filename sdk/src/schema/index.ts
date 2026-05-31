@@ -608,6 +608,17 @@ export const AppPlan = Schema.Struct({
   fileSync: Schema.Array(FileSyncPlan),
   metadata: PlanMetadata,
   extensions: ProviderExtensionConfig,
+  /**
+   * Global-app services this app depends on at start, aggregated by the planner
+   * (e.g. proxy routes require the global `traefik` service). The user-app start
+   * path ensures these are running in the global app before bringing the app up.
+   * Omitted when the app needs no global services.
+   */
+  requires: Schema.optional(
+    Schema.Struct({
+      globalServices: Schema.Array(Schema.String),
+    }),
+  ),
 });
 export type AppPlan = typeof AppPlan.Type;
 

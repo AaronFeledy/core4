@@ -2,16 +2,22 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
-import { FileSyncStartError, ProviderUnavailableError } from "@lando/core/errors";
+import {
+  FileSyncStartError,
+  GlobalAutoStartError,
+  GlobalServiceMissingError,
+  ProviderUnavailableError,
+} from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
   type AppPlan,
   type FileSyncSessionRef,
   type FileSyncSessionSpec,
+  PluginManifest,
   PortablePath,
   type ProviderCapabilities,
   ProviderId,
@@ -22,10 +28,20 @@ import {
   AppPlanner,
   EventService,
   FileSyncEngine,
+  type LandoEvent,
   LandofileService,
+  PluginRegistry,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import type { FileSyncEngineShape, RuntimeProviderShape } from "@lando/sdk/services";
+import type {
+  FileSyncEngineShape,
+  RuntimeProviderShape,
+  ServiceTypePlanInput,
+  ServiceTypeShape,
+} from "@lando/sdk/services";
+import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
+import { ConfigServiceLive } from "../../src/services/config.ts";
+import { FileSystemLive } from "../../src/services/file-system.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -131,9 +147,27 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
+const emptyPluginRegistry = {
+  list: Effect.succeed([]),
+  load: () => Effect.die("not used"),
+  loadServiceType: () => Effect.die("not used"),
+};
+
+const unusedGlobalServicesLayer = Layer.mergeAll(
+  ConfigServiceLive,
+  FileSystemLive,
+  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+  Layer.succeed(PluginRegistry, emptyPluginRegistry),
+);
+
 const makeStartLayer = (
-  options: { readonly signalSeen?: boolean[]; readonly applyFailure?: ProviderUnavailableError } = {},
+  options: {
+    readonly signalSeen?: boolean[];
+    readonly applyFailure?: ProviderUnavailableError;
+    readonly plannedApp?: AppPlan;
+  } = {},
 ) => {
+  const plannedApp = options.plannedApp ?? plan;
   const events: string[] = [];
   const taskEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const applyPlans: AppPlan[] = [];
@@ -185,19 +219,19 @@ const makeStartLayer = (
     logs: () => Stream.die("not used"),
     inspect: (target) =>
       Effect.succeed({
-        app: plan.id,
+        app: plannedApp.id,
         service: target.service,
         providerId,
         status: "running",
         state: "running",
-        endpoints: plan.services[target.service]?.endpoints ?? [],
+        endpoints: plannedApp.services[target.service]?.endpoints ?? [],
       }),
     list: () => Effect.succeed([]),
   };
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -213,9 +247,209 @@ const makeStartLayer = (
       subscribeQueue: Effect.die("not used"),
       waitFor: () => Effect.die("not used"),
     }),
+    unusedGlobalServicesLayer,
   );
 
   return { layer, events, applyPlans, taskEvents };
+};
+
+const globalServiceType: ServiceTypeShape = {
+  id: "lando",
+  toServicePlan: ({
+    name,
+    provider = ProviderId.make("lando"),
+    primary = false,
+    metadata,
+  }: ServiceTypePlanInput) => ({
+    ...servicePlan("web"),
+    name: ServiceName.make(name),
+    type: "lando",
+    provider,
+    primary,
+    endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+    metadata,
+  }),
+};
+
+const withGlobalRoots = async <T>(run: (dataRoot: string, confRoot: string) => Promise<T>): Promise<T> => {
+  const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-start-global-data-")));
+  const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-start-global-conf-")));
+  const previousData = process.env.LANDO_USER_DATA_ROOT;
+  const previousConf = process.env.LANDO_USER_CONF_ROOT;
+  try {
+    process.env.LANDO_USER_DATA_ROOT = dataRoot;
+    process.env.LANDO_USER_CONF_ROOT = confRoot;
+    return await run(dataRoot, confRoot);
+  } finally {
+    if (previousData === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+    else process.env.LANDO_USER_DATA_ROOT = previousData;
+    if (previousConf === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+    else process.env.LANDO_USER_CONF_ROOT = previousConf;
+    await rm(dataRoot, { recursive: true, force: true });
+    await rm(confRoot, { recursive: true, force: true });
+  }
+};
+
+const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => {
+  const modulePath = join(moduleRoot, "fake-start-global-service.mjs");
+  await Bun.write(
+    modulePath,
+    'import { Effect } from "effect";\nexport default Effect.succeed({ type: "lando" });\n',
+  );
+  return modulePath;
+};
+
+const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
+  const services = Object.fromEntries(
+    serviceIds.map((id) => {
+      const service = globalServiceType.toServicePlan({
+        name: id,
+        service: { type: "lando" },
+        appRoot: "/tmp/global",
+        appName: "global",
+        metadata,
+      });
+      return [service.name, service];
+    }),
+  );
+  return {
+    ...plan,
+    id: AppId.make("global"),
+    name: "global",
+    slug: "global",
+    root: AbsolutePath.make("/tmp/global"),
+    services,
+    routes: [],
+    networks: [],
+    stores: [],
+    fileSync: [],
+    requires: undefined,
+  };
+};
+
+const makeAutoStartLayer = async (options: {
+  readonly userPlan: AppPlan;
+  readonly globalServiceIds: ReadonlyArray<string>;
+  readonly moduleRoot: string;
+  readonly failGlobalApply?: ProviderUnavailableError;
+}) => {
+  const modulePath = await writeGlobalServiceModule(options.moduleRoot);
+  const events: Array<LandoEvent> = [];
+  const applyPlans: AppPlan[] = [];
+  const provider: RuntimeProviderShape = {
+    id: "lando",
+    displayName: "Lando Runtime Provider",
+    version: "0.0.0",
+    platform: "linux",
+    capabilities: { ...capabilities, sharedCrossAppNetwork: true },
+    isAvailable: Effect.succeed(true),
+    setup: () => Effect.void,
+    getStatus: Effect.succeed({ running: true }),
+    getVersions: Effect.succeed({ provider: "0.0.0" }),
+    buildArtifact: () =>
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "buildArtifact",
+          message: "unavailable",
+        }),
+      ),
+    pullArtifact: () =>
+      Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "pullArtifact",
+          message: "unavailable",
+        }),
+      ),
+    removeArtifact: () => Effect.void,
+    apply: (appPlan) =>
+      Effect.sync(() => {
+        applyPlans.push(appPlan);
+      }).pipe(
+        Effect.flatMap(() =>
+          options.failGlobalApply !== undefined && String(appPlan.id) === "global"
+            ? Effect.fail(options.failGlobalApply)
+            : Effect.succeed({ changed: true }),
+        ),
+      ),
+    start: () => Effect.void,
+    stop: () => Effect.void,
+    restart: () => Effect.void,
+    destroy: () => Effect.void,
+    exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    execStream: () => Stream.die("not used"),
+    run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+    logs: () => Stream.die("not used"),
+    inspect: (target) =>
+      Effect.succeed({
+        app: target.app,
+        service: target.service,
+        providerId,
+        status: "running",
+        state: "running",
+        endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+      }),
+    list: () => Effect.succeed([]),
+  };
+  const manifest = Schema.decodeSync(PluginManifest)({
+    name: "@lando/fake-start-global",
+    version: "1.0.0",
+    api: 4,
+    contributes: {
+      serviceTypes: [globalServiceType.id],
+      globalServices: options.globalServiceIds.map((id) => ({
+        id,
+        module: modulePath,
+        enabledByDefault: true,
+      })),
+    },
+  });
+  const pluginRegistry = {
+    list: Effect.succeed([manifest]),
+    load: () => Effect.succeed(manifest),
+    loadServiceType: () => Effect.succeed(globalServiceType),
+  };
+  const plannedGlobal = globalPlan(options.globalServiceIds);
+  const layer = Layer.mergeAll(
+    ConfigServiceLive,
+    FileSystemLive,
+    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    Layer.succeed(LandofileService, {
+      discover: Effect.succeed({ name: options.userPlan.name, services: {} }),
+    }),
+    Layer.succeed(AppPlanner, {
+      plan: (landofile) =>
+        Effect.succeed(
+          (landofile as { readonly name?: string }).name === "global" ? plannedGlobal : options.userPlan,
+        ),
+    }),
+    Layer.succeed(RuntimeProviderRegistry, {
+      list: Effect.succeed([providerId]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    }),
+    Layer.succeed(EventService, {
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.never,
+    }),
+    Layer.succeed(PluginRegistry, pluginRegistry),
+  );
+  return { layer, events, applyPlans };
+};
+
+const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) throw new Error("expected failure");
+  const failure = Cause.failureOption(exit.cause);
+  expect(failure._tag).toBe("Some");
+  if (failure._tag !== "Some") throw new Error("expected typed failure");
+  return failure.value;
 };
 
 describe("lando start", () => {
@@ -339,6 +573,71 @@ describe("lando start", () => {
     await Effect.runPromise(startApp({ signal: controller.signal }).pipe(Effect.provide(harness.layer)));
 
     expect(signalSeen).toEqual([true]);
+  });
+
+  test("auto-starts required global services before publishing pre-app-start", async () => {
+    await withGlobalRoots(async () => {
+      const moduleRoot = await realpath(await mkdtemp(join(process.cwd(), ".lando-start-global-module-")));
+      try {
+        const userPlan: AppPlan = { ...plan, requires: { globalServices: ["traefik"] } };
+        const harness = await makeAutoStartLayer({
+          userPlan,
+          globalServiceIds: ["traefik"],
+          moduleRoot,
+        });
+
+        await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+        const tags = harness.events.map((event) => event._tag);
+        expect(tags).toContain("post-global-start");
+        expect(tags).toContain("pre-app-start");
+        expect(tags.indexOf("post-global-start")).toBeLessThan(tags.indexOf("pre-app-start"));
+        expect(harness.applyPlans.map((applied) => String(applied.id))).toEqual(["global", "test-start"]);
+      } finally {
+        await rm(moduleRoot, { recursive: true, force: true });
+      }
+    });
+  });
+
+  test("skips global lifecycle events when the plan has no global requirements", async () => {
+    const harness = makeStartLayer();
+
+    await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    expect(
+      harness.events.some((event) => event === "pre-global-start" || event === "post-global-start"),
+    ).toBe(false);
+  });
+
+  test("wraps global ensure failures in GlobalAutoStartError before pre-app-start", async () => {
+    await withGlobalRoots(async () => {
+      const moduleRoot = await realpath(await mkdtemp(join(process.cwd(), ".lando-start-global-module-")));
+      try {
+        const userPlan: AppPlan = { ...plan, requires: { globalServices: ["traefik"] } };
+        const harness = await makeAutoStartLayer({
+          userPlan,
+          globalServiceIds: [],
+          moduleRoot,
+        });
+
+        const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+        const error = failureOf(exit);
+        expect(error).toBeInstanceOf(GlobalAutoStartError);
+        if (error instanceof GlobalAutoStartError) {
+          expect(error.message).toBe(
+            "Failed to auto-start global services (traefik) required by test-start.",
+          );
+          expect(error.services).toEqual(["traefik"]);
+          expect(error.cause).toBeInstanceOf(GlobalServiceMissingError);
+        }
+        expect(harness.events.map((event) => event._tag)).toContain("pre-global-start");
+        expect(harness.events.map((event) => event._tag)).not.toContain("pre-app-start");
+        expect(harness.applyPlans).toEqual([]);
+      } finally {
+        await rm(moduleRoot, { recursive: true, force: true });
+      }
+    });
   });
 
   test("fails outside an app directory with init remediation", async () => {
@@ -484,6 +783,7 @@ describe("lando start", () => {
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
       }),
+      unusedGlobalServicesLayer,
       Layer.succeed(FileSyncEngine, fakeEngine),
     );
     await Effect.runPromise(startApp().pipe(Effect.provide(fullLayer)));
@@ -594,6 +894,7 @@ describe("lando start", () => {
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
       }),
+      unusedGlobalServicesLayer,
       Layer.succeed(FileSyncEngine, fakeEngine),
     );
 
@@ -714,6 +1015,7 @@ describe("lando start", () => {
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
       }),
+      unusedGlobalServicesLayer,
       Layer.succeed(FileSyncEngine, fakeEngine),
     );
 

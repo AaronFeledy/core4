@@ -12,6 +12,7 @@ import type {
   FileSyncDriftError,
   FileSyncStartError,
   FileSyncStopError,
+  GlobalAutoStartError,
   LandoCommandError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -26,7 +27,10 @@ import type {
 import type {
   AppPlanner,
   EventService,
+  FileSystem,
+  GlobalAppService,
   LandofileService,
+  PluginRegistry,
   ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -57,13 +61,21 @@ type RestartAppError =
   | LandofileValidationError
   | NotImplementedError
   | CapabilityError
+  | GlobalAutoStartError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError;
 
-type RestartAppServices = AppPlanner | EventService | LandofileService | RuntimeProviderRegistry;
+type RestartAppServices =
+  | AppPlanner
+  | EventService
+  | FileSystem
+  | GlobalAppService
+  | LandofileService
+  | PluginRegistry
+  | RuntimeProviderRegistry;
 
 export const renderRestartAppResult = (result: RestartAppResult): string => {
   const services = result.servicesStarted
