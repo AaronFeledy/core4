@@ -4,6 +4,7 @@ import type { ServiceTypeHostFacts, ServiceTypePlanInput } from "@lando/sdk/serv
 import { MAILPIT_SHARED_NETWORK_HOST, MAILPIT_SMTP_PORT } from "../mailpit-constants.ts";
 
 const RESERVED_PREFIX = "LANDO" as const;
+const GLOBAL_APP_NAME = "global" as const;
 
 export type HostEnvFacts = ServiceTypeHostFacts;
 
@@ -53,7 +54,7 @@ export const buildLandoEnv = (opts: BuildLandoEnvOptions): Record<string, string
   validateUserEnv(opts.serviceName, userEnv);
 
   const env: Record<string, string> = { ...(opts.extraDefaults ?? {}), ...userEnv };
-  const appKind = opts.appKind ?? "user";
+  const appKind = opts.appKind ?? (opts.appName === GLOBAL_APP_NAME ? "global" : "user");
   env.LANDO = "ON";
   env.LANDO_APP_NAME = opts.appName;
   env.LANDO_APP_KIND = appKind;
