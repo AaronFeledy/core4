@@ -32,7 +32,7 @@ const ALPHA_2_COMPONENTS = [
 ] as const;
 
 // Separate from ALPHA_2_COMPONENTS so each list records when a component landed.
-const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab", "Hidden"] as const;
+const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab", "Hidden", "Inline", "Skip"] as const;
 
 const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
   new NotImplementedError({
@@ -278,6 +278,27 @@ export const TabProps = Schema.Struct({
 });
 export type TabProps = typeof TabProps.Type;
 
+export const InlineProps = Schema.Struct({
+  code: Schema.String,
+  lang: Schema.optionalWith(Schema.String, { default: () => "ts" }),
+  justification: Schema.String.pipe(Schema.minLength(8)),
+}).annotations({
+  identifier: "InlineProps",
+  title: "Inline Props",
+  description: "Beta <Inline> component props.",
+});
+export type InlineProps = typeof InlineProps.Type;
+
+export const SkipProps = Schema.Struct({
+  reason: Schema.String.pipe(Schema.minLength(8)),
+  until: Schema.optional(Schema.String),
+}).annotations({
+  identifier: "SkipProps",
+  title: "Skip Props",
+  description: "Beta <Skip> component props.",
+});
+export type SkipProps = typeof SkipProps.Type;
+
 type DecodeError = NotImplementedError | ParseResult.ParseError;
 
 const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either.Either<A, DecodeError> =>
@@ -357,3 +378,9 @@ export const decodeTabsPropsEither = (input: unknown): Either.Either<TabsProps, 
 
 export const decodeTabPropsEither = (input: unknown): Either.Either<TabProps, DecodeError> =>
   decodeEither(TabProps, input);
+
+export const decodeInlinePropsEither = (input: unknown): Either.Either<InlineProps, DecodeError> =>
+  decodeEither(InlineProps, input);
+
+export const decodeSkipPropsEither = (input: unknown): Either.Either<SkipProps, DecodeError> =>
+  decodeEither(SkipProps, input);

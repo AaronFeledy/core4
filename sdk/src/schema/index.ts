@@ -17,6 +17,7 @@ export {
   CleanupProps,
   GuideProps,
   HiddenProps,
+  InlineProps,
   InspectProps,
   MatcherAnyOf,
   MatcherNot,
@@ -27,6 +28,7 @@ export {
   MatcherSchemaRef,
   RunProps,
   ScenarioProps,
+  SkipProps,
   StepProps,
   TabProps,
   TabsProps,
@@ -39,6 +41,7 @@ export {
   TranscriptCleanupFrame,
   TranscriptFixtureFrame,
   TranscriptFrame,
+  TranscriptInlineFrame,
   TranscriptInspectFrame,
   TranscriptRunFrame,
   TranscriptVerifyFrame,
@@ -47,10 +50,12 @@ import {
   CleanupProps,
   GuideProps,
   HiddenProps,
+  InlineProps,
   InspectProps,
   MatcherSchema,
   RunProps,
   ScenarioProps,
+  SkipProps,
   StepProps,
   TabProps,
   TabsProps,
@@ -1355,6 +1360,8 @@ const JSON_SCHEMA_REGISTRY = {
   InspectProps,
   TabsProps,
   TabProps,
+  InlineProps,
+  SkipProps,
   UseFixtureProps,
   MatcherSchema,
   Transcript,
@@ -1411,6 +1418,10 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(TabsProps);
     case "TabProps":
       return JSONSchema.make(TabProps);
+    case "InlineProps":
+      return JSONSchema.make(InlineProps);
+    case "SkipProps":
+      return JSONSchema.make(SkipProps);
     case "UseFixtureProps":
       return JSONSchema.make(UseFixtureProps);
     case "MatcherSchema":

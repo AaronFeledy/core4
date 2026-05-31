@@ -32,6 +32,8 @@ const SDK_SCHEMA_NAMES = [
   "InspectProps",
   "TabsProps",
   "TabProps",
+  "InlineProps",
+  "SkipProps",
   "UseFixtureProps",
   "MatcherSchema",
   "Transcript",

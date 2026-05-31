@@ -31,6 +31,8 @@ const ALPHA_2_COMPONENTS = new Set([
   "Tabs",
   "Tab",
   "Hidden",
+  "Inline",
+  "Skip",
 ]);
 
 // This script enforces only the core guide rules implemented below.
@@ -244,11 +246,47 @@ const lintHiddenReason = (
   });
 };
 
+const lintSkipReason = (sourcePath: string, root: MdxNode, diagnostics: Array<GuideLintDiagnostic>): void => {
+  walkElements(root, (node) => {
+    if (node.name !== "Skip") return;
+    const reason = propsOf(node).reason;
+    if (typeof reason === "string" && reason.length >= 8) return;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        node,
+        "guide.skip.reason",
+        "<Skip> requires a `reason` of at least 8 characters per §19.10.",
+      ),
+    );
+  });
+};
+
+const lintInlineJustification = (
+  sourcePath: string,
+  root: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  walkElements(root, (node) => {
+    if (node.name !== "Inline") return;
+    const justification = propsOf(node).justification;
+    if (typeof justification === "string" && justification.length >= 8) return;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        node,
+        "guide.inline.justification",
+        "<Inline> requires a `justification` of at least 8 characters per §19.10.",
+      ),
+    );
+  });
+};
+
 const unconditionalStepElements = (scenario: MdxNode): ReadonlyArray<MdxNode> =>
   elementChildren(scenario).flatMap((child) => {
     if (child.name === "Step") return [child];
-    if (child.name === "Hidden")
-      return elementChildren(child).filter((hiddenChild) => hiddenChild.name === "Step");
+    if (child.name === "Hidden" || child.name === "Skip")
+      return elementChildren(child).filter((nestedChild) => nestedChild.name === "Step");
     return [];
   });
 
@@ -412,6 +450,8 @@ export const lintGuideContent = (sourcePath: string, content: string): GuideLint
   const scenarios = guide === undefined ? [] : lintScenarioIds(sourcePath, guide, diagnostics);
   lintHiddenScenarioReason(sourcePath, scenarios, diagnostics);
   lintHiddenReason(sourcePath, root, diagnostics);
+  lintSkipReason(sourcePath, root, diagnostics);
+  lintInlineJustification(sourcePath, root, diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
   lintTabs(sourcePath, root, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
