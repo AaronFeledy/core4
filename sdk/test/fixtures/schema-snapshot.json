@@ -422,6 +422,19 @@
         "provider": {
           "type": "string"
         },
+        "requires": {
+          "additionalProperties": false,
+          "properties": {
+            "globalServices": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["globalServices"],
+          "type": "object"
+        },
         "root": {
           "type": "string"
         },

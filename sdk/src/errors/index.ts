@@ -190,6 +190,36 @@ export class GlobalAppError extends Schema.TaggedError<GlobalAppError>()("Global
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+/**
+ * A user app's start required a global service that is not present in the
+ * resolved global app plan (its contributing plugin is not installed, the
+ * service is disabled, or its provider capability requirements were not met).
+ * Raised by the auto-start integration during a user app's `start`.
+ */
+export class GlobalServiceMissingError extends Schema.TaggedError<GlobalServiceMissingError>()(
+  "GlobalServiceMissingError",
+  {
+    message: Schema.String,
+    requested: Schema.Array(Schema.String),
+    available: Schema.Array(Schema.String),
+    remediation: Schema.optional(Schema.String),
+  },
+) {}
+
+/**
+ * The global Lando app failed to auto-start while bringing up a user app that
+ * declared a dependency on one or more global services. Chains the underlying
+ * global-app failure in `cause` so the user-app start error points at the real
+ * root cause.
+ */
+export class GlobalAutoStartError extends Schema.TaggedError<GlobalAutoStartError>()("GlobalAutoStartError", {
+  message: Schema.String,
+  app: Schema.String,
+  services: Schema.Array(Schema.String),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class GlobalDestroyConfirmationError extends Schema.TaggedError<GlobalDestroyConfirmationError>()(
   "GlobalDestroyConfirmationError",
   {

@@ -647,6 +647,7 @@ const planApp = (
       fileSync: fileSyncEntries,
       metadata,
       extensions: {},
+      ...(aggregatedRoutes.length > 0 ? { requires: { globalServices: ["traefik"] } } : {}),
     });
     if (cacheService !== undefined) {
       yield* writeCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey, plan }).pipe(

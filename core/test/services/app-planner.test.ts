@@ -413,6 +413,33 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("marks routed apps as requiring the global traefik service", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(landofileFixture);
+
+      expect(appPlan.routes).not.toEqual([]);
+      expect(appPlan.requires?.globalServices).toEqual(["traefik"]);
+    });
+  });
+
+  test("omits global service requirements when the plan has no routes", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("worker")]: {
+            image: "node:lts",
+            ports: [],
+          },
+        },
+      });
+
+      expect(appPlan.routes).toEqual([]);
+      expect(appPlan.requires).toBeUndefined();
+    });
+  });
+
   test("plans a Node and Postgres Landofile into a schema-valid AppPlan", async () => {
     await withTempCwd(async (appRoot) => {
       const appPlan = await plan(landofileFixture);
