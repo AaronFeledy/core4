@@ -160,7 +160,7 @@ const fileNameOf = (pairs: ReadonlyArray<VariantPair>): string =>
 const interpolate = (value: string, variables: ReadonlyMap<string, string>): string =>
   value.replace(/\{\{\s*([A-Za-z_$][\w$-]*)\s*\}\}/g, (_match, name: string) => variables.get(name) ?? "");
 
-// <Variable> supplies `display` (falling back to `value`) for {{name}} interpolation per §19.13.
+// <Variable> supplies `display` (falling back to `value`) for stripped README interpolation.
 const collectVariables = (node: MdxNode, variables: Map<string, string>): void => {
   if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
     if (node.name === "Variable") {
@@ -199,7 +199,7 @@ const displayedCommand = (props: Record<string, unknown>, variables: ReadonlyMap
 };
 
 // A step that contains a <Cleanup/> marker is a teardown step: its <Run> commands are
-// deferred into the final "Cleanup" section and the step emits no numbered heading (§19.13).
+// deferred into the final "Cleanup" block and the step emits no numbered heading.
 const isCleanupStep = (step: MdxNode): boolean =>
   elementChildren(step).some((child) => child.name === "Cleanup");
 
@@ -212,7 +212,7 @@ const stripStepComponents = (step: MdxNode, ctx: StripContext): ReadonlyArray<Md
         output.push(codeNode("bash", displayedCommand(props, ctx.variables)));
         break;
       case "Inspect":
-        // No runtime transcript at strip time -> placeholder per §19.13.
+        // No runtime transcript is available while stripping, so emit a placeholder.
         output.push(codeNode(null, "(generated at runtime)"));
         break;
       case "Inline": {

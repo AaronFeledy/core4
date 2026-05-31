@@ -148,7 +148,7 @@ describe("build-recipe-readmes strip/flatten", () => {
     expect(md).toContain("```bash\nlando init --recipe sample --name=My Sample App --yes\n```");
     // <Inspect> placeholder.
     expect(md).toContain("(generated at runtime)");
-    // <Cleanup> defers its <Run> command to a final Cleanup section.
+    // <Cleanup> defers its <Run> command to the final Cleanup block.
     expect(md).toContain("## Cleanup");
     expect(md).toContain("lando destroy -y");
 
