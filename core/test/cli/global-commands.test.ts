@@ -356,6 +356,26 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("status with unknown --service fails before rendering an empty table", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness, {
+        proxy: { type: "lando" },
+        mail: { type: "lando" },
+      });
+
+      const exit = await Effect.runPromiseExit(
+        globalStatus({ services: ["nope"] }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(harness.calls.inspect).toEqual([]);
+      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
+      expect(error._tag).toBe("ToolingExecError");
+      expect(error.message).toContain("nope");
+      expect(error.message).toContain("available: mail, proxy");
+      expect(error.message).not.toContain("(no services)");
+    });
+  });
+
   test("status returns an empty success when the global app is not installed", async () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalStatus().pipe(Effect.provide(harness.layer)));

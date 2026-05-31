@@ -10,6 +10,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
+import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
@@ -56,7 +57,8 @@ type GlobalStatusError =
   | NotImplementedError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | ToolingExecError;
 
 type GlobalStatusServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
@@ -74,14 +76,37 @@ const statusText = (status: string | undefined): GlobalServiceStatus => {
   }
 };
 
+const availableServiceList = (services: AppPlan["services"]): string =>
+  Object.values(services)
+    .map((service) => String(service.name))
+    .sort()
+    .join(", ");
+
+const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
+  const list = availableServiceList(services);
+  return new ToolingExecError({
+    message:
+      list.length === 0
+        ? `meta:global:status: service ${requested} is not in the global app plan.`
+        : `meta:global:status: service ${requested} is not in the global app plan (available: ${list}).`,
+    tool: "meta:global:status",
+  });
+};
+
 const selectedServices = (
   plan: AppPlan,
   requested: ReadonlyArray<string> | undefined,
-): ReadonlyArray<ServicePlan> => {
+): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
   const services = Object.values(plan.services);
-  if (requested === undefined || requested.length === 0) return services;
-  const ids = new Set(requested.filter((service) => service.length > 0));
-  return services.filter((service) => ids.has(String(service.name)));
+  if (requested === undefined || requested.length === 0) return Effect.succeed(services);
+
+  const ids = new Set(requested);
+  const matched = services.filter((service) => ids.has(String(service.name)));
+  const matchedIds = new Set(matched.map((service) => String(service.name)));
+  const missing = [...ids].find((service) => !matchedIds.has(service));
+
+  if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
+  return Effect.succeed(matched);
 };
 
 const endpointText = (endpoint: EndpointPlan): string => {
@@ -148,7 +173,8 @@ export const globalStatus = (
         Effect.catchAll(() => Effect.succeed(degraded(service))),
       );
 
-    const services = yield* Effect.forEach(selectedServices(loaded.plan, options.services), inspectService);
+    const selected = yield* selectedServices(loaded.plan, options.services);
+    const services = yield* Effect.forEach(selected, inspectService);
 
     return { app: loaded.plan.name, materialized: true, services };
   });
