@@ -244,6 +244,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run codegen");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
+      expect(workflow).toContain("run: bun run check:guide-coverage");
       expect(workflow).toContain("run: bun test test/scenarios/generated/guides/**");
       expect(workflow).toContain("name: guide-scenario-transcripts-${{ github.run_id }}.zip");
       expect(workflow).toContain("path: dist/transcripts/guides/**/*.json");
@@ -264,6 +265,11 @@ describe("ci workflow codegen", () => {
       );
       expect(
         workflow.indexOf("run: bun run lint:guides", workflow.indexOf("guide-scenarios-linux-x64")),
+      ).toBeLessThan(
+        workflow.indexOf("run: bun run check:guide-coverage", workflow.indexOf("guide-scenarios-linux-x64")),
+      );
+      expect(
+        workflow.indexOf("run: bun run check:guide-coverage", workflow.indexOf("guide-scenarios-linux-x64")),
       ).toBeLessThan(
         workflow.indexOf(
           "run: bun test test/scenarios/generated/guides/**",

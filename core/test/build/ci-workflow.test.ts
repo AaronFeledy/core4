@@ -125,6 +125,7 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain("        run: bun run codegen");
     expect(guideScenarios).toContain("        run: bun run typecheck");
     expect(guideScenarios).toContain("        run: bun run lint:guides");
+    expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
     expect(guideScenarios).toContain("        run: bun test test/scenarios/generated/guides/**");
     expect(guideScenarios).toContain("        if: failure()");
     expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");
@@ -143,6 +144,9 @@ describe("ci workflow", () => {
       guideScenarios.indexOf("bun run lint:guides"),
     );
     expect(guideScenarios.indexOf("bun run lint:guides")).toBeLessThan(
+      guideScenarios.indexOf("bun run check:guide-coverage"),
+    );
+    expect(guideScenarios.indexOf("bun run check:guide-coverage")).toBeLessThan(
       guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
     );
     expect(guideScenarios.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(

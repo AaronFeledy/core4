@@ -1270,7 +1270,7 @@
         "Lint passes"
       ],
       "priority": 197,
-      "passes": false,
+      "passes": true,
       "notes": "Authored matrix (not generated) so it can carry status/notes columns that a frontmatter scrape can't express."
     },
     {
