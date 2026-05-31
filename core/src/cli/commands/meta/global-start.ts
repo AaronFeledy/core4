@@ -14,6 +14,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
+import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
@@ -58,7 +59,8 @@ type GlobalStartError =
   | PluginManifestError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | ToolingExecError;
 
 type GlobalStartServices =
   | AppPlanner
@@ -67,14 +69,37 @@ type GlobalStartServices =
   | PluginRegistry
   | RuntimeProviderRegistry;
 
+const availableServiceList = (services: AppPlan["services"]): string =>
+  Object.values(services)
+    .map((service) => String(service.name))
+    .sort()
+    .join(", ");
+
+const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
+  const list = availableServiceList(services);
+  return new ToolingExecError({
+    message:
+      list.length === 0
+        ? `meta:global:start: service ${requested} is not in the global app plan.`
+        : `meta:global:start: service ${requested} is not in the global app plan (available: ${list}).`,
+    tool: "meta:global:start",
+  });
+};
+
 const selectedServices = (
   plan: AppPlan,
   requested: ReadonlyArray<string> | undefined,
-): ReadonlyArray<ServicePlan> => {
+): Effect.Effect<ReadonlyArray<ServicePlan>, ToolingExecError> => {
   const services = Object.values(plan.services);
-  if (requested === undefined || requested.length === 0) return services;
-  const ids = new Set(requested.filter((service) => service.length > 0));
-  return services.filter((service) => ids.has(String(service.name)));
+  if (requested === undefined || requested.length === 0) return Effect.succeed(services);
+
+  const ids = new Set(requested);
+  const matched = services.filter((service) => ids.has(String(service.name)));
+  const matchedIds = new Set(matched.map((service) => String(service.name)));
+  const missing = [...ids].find((service) => !matchedIds.has(service));
+
+  if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
+  return Effect.succeed(matched);
 };
 
 const endpointText = (endpoint: EndpointPlan): string => {
@@ -108,9 +133,9 @@ export const globalStart = (
     const loaded = yield* loadGlobalPlan();
     if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
+    const services = yield* selectedServices(loaded.plan, options.services);
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan);
-    const services = selectedServices(loaded.plan, options.services);
 
     // With `--service`, start only the selected subset rather than the whole plan.
     const selectedNames = new Set(services.map((service) => String(service.name)));

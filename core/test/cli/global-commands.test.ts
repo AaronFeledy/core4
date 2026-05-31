@@ -300,6 +300,21 @@ describe("meta:global command effects", () => {
     });
   });
 
+  test("start with unknown --service fails before applying a plan", async () => {
+    await withHarness(async (harness) => {
+      const exit = await Effect.runPromiseExit(
+        globalStart({ services: ["nope"] }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(harness.calls.apply).toEqual([]);
+      expect(harness.calls.inspect).toEqual([]);
+      const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
+      expect(error._tag).toBe("ToolingExecError");
+      expect(error.message).toContain("nope");
+      expect(error.message).toContain("available: mail, proxy");
+    });
+  });
+
   test("stop destroys provider resources without volumes or state removal", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness);
