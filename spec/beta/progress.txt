@@ -162,3 +162,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - Every user-facing Beta PRD (01–08, 10, 11) ALREADY carries a `## Guide Coverage` table; PRDs 09 & 13 declare `**None — internal/infra PRD.**`. US-198's job is now mostly the gate that *enforces* the section exists, not authoring it. The coverage check keys off these tables, so adding/removing a guide row in a PRD's `## Guide Coverage` requires a matching `docs/guides/INDEX.md` edit (and vice-versa for shipped guides) or `check:guide-coverage` fails.
   - The matrix is mid-flight-safe by design: declared-but-unimplemented guides (scratch/recipes/landofile/tooling/plugins) live in INDEX as `Status: Planned` and are skipped by the on-disk check. When a story lands its guide, flip that row to `Shipped` in the same PR. The stricter "every Planned row's file must be absent / every shipped guide must be Shipped" cutover assertion is deliberately deferred (coordinate with the sequential agent so it doesn't fail mid-flight).
+
+## [2026-05-31 17:01 CDT] - Babysit
+- PR: #236 https://github.com/AaronFeledy/core4/pull/236
+- CI outcome: pass
+- Review feedback: fixed (resolved two main-merge conflicts in spec/beta/progress.txt, and three Bugbot findings — orphaned scratch cache dirs on recipe-resolution failure now cleaned up, stale "not available in this build" remediation replaced with recipe-reference guidance, and prompt/answer init failures now surface the prompt name + --answer/--option remediation)
+- Merge: merged (squash)
+---
