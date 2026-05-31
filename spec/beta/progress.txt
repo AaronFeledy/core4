@@ -203,3 +203,8 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - **Learnings for future iterations:**
   - `AppPlannerLive` does NOT thread an `appKind` into `buildLandoEnv`; the only signal a service plugin has for global-vs-user scope at env-projection time is `appName`. Because `global` is a reserved app id (US-111 — no user app can take it), inferring `appKind` from `appName === "global"` is sound. Any future global-scope env carve-out (storage scope, mail, proxy) should gate on the same `appKind !== "global"` guard rather than re-deriving scope. When US-116/118 wire real global-app start, prefer threading `appKind` explicitly through the planner so the inference becomes a fallback rather than the primary signal.
 ---
+
+## [2026-05-31 00:17 CDT] - US-115 (verified complete)
+- Story verified complete on branch `fix-mailpit-global-app-env` (no new code). The self-referential mail-env fix — `buildLandoEnv` inferring `appKind: "global"` from the reserved `appName === "global"` so global services skip the `LANDO_MAIL_HOST`/`LANDO_MAIL_PORT` projection — is committed with its app-planner and env-contract regression tests, and US-115 is already marked complete.
+- Verification: typecheck, lint passed; targeted regression tests green (env-contract + app-planner 152 pass / 0 fail); full `bun test` 2021 pass / 25 skip. The two reported failures are the documented full-suite timing flakes (codegen orchestrator passes in ~5.2s with an adequate timeout; docs-scenario passes 6/0 in isolation) and are orthogonal to this `service-lando` env change.
+---
