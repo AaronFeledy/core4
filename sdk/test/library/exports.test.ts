@@ -83,6 +83,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.GlobalAutoStartError).toBeDefined();
     expect(errors.GlobalDistConflictError).toBeDefined();
     expect(errors.GlobalLandofilePathConflictError).toBeDefined();
+    expect(errors.ScratchAppError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
@@ -114,6 +115,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.EventService).toBeDefined();
     expect(services.LandofileService).toBeDefined();
     expect(services.GlobalAppService).toBeDefined();
+    expect(services.ScratchAppService).toBeDefined();
     expect(services.PluginRegistry).toBeDefined();
     expect(services.RuntimeProvider).toBeDefined();
     expect(services.RuntimeProviderRegistry).toBeDefined();
