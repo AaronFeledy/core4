@@ -305,3 +305,8 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   - `BootstrapLevel` (and `BOOTSTRAP_RANK`) already shipped `scratch` at rank 7 with frozen ordering tests (`sdk/test/schema/bootstrap.test.ts`, `core/test/unit/bootstrap.test.ts`) and a frozen-surface entry — do NOT move it (the PRD's "between commands and provider" is superseded by spec §3.2's `…provider → global → scratch → app`). `AppRef.kind` likewise already includes `"scratch"`. The only runtime gap was the missing dedicated tier + the `ScratchAppService` tag itself.
   - The `ScratchAppService` contract is intentionally minimal (root/ensureRoot/synthesizeId/paths) — the spec §21.5 `acquire`/`start`/`stop`/`destroy`/`gc` surface belongs to US-121–128, which grow this additive (non-frozen) tag the same way US-112+ grew `GlobalAppService`.
 ---
+
+## [2026-05-31 CDT] - US-120 (verified complete)
+- Story verified complete on branch `us-120-scratch-app-service` (no new code). The `ScratchAppService` SDK tag + contract and `ScratchAppError` are published from `@lando/sdk`; `core/src/scratch-app/service.ts` provides `ScratchAppServiceLive` (resolves `<userCacheRoot>/scratch/`, idempotent `ensureRoot`, `synthesizeId`, §21.3 per-instance layout); and `runtimeLayerFor` routes the `scratch` bootstrap level (rank 7 per §3.2) to a dedicated `makeScratchRuntimeLive` tier that carries no `LandofileService` cwd discovery. `passes: true` was already set.
+- Verification: typecheck clean, lint clean (614 files), full `bun test` 2095 pass / 25 skip / 0 fail. US-120 ships no CLI command (those are US-121+), so no CLI behavior to re-run beyond the previously documented `makeLandoRuntime({ bootstrap: "scratch" })` runtime-tier QA.
+---
