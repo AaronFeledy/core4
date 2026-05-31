@@ -484,9 +484,11 @@ export const LANDO_SHARED_CROSS_APP_NETWORK = "lando_bridge_network" as const;
 
 const perAppBridgeNetworkName = (slug: string): string => `lando-${slug}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-const serviceCrossAppAliases = (slug: string, serviceName: string): ReadonlyArray<string> => [
-  `${serviceName}.${slug}.internal`,
-];
+const serviceCrossAppAliases = (
+  slug: string,
+  serviceName: string,
+  hostnames: ReadonlyArray<string> = [],
+): ReadonlyArray<string> => Array.from(new Set([`${serviceName}.${slug}.internal`, ...hostnames]));
 
 /**
  * Build the typed per-app `NetworkingPlan`: a per-app bridge network plus
@@ -497,12 +499,17 @@ export const landoNetworkingPlan = (input: {
   readonly slug: string;
   readonly serviceNames: ReadonlyArray<string>;
   readonly sharedCrossAppNetwork: boolean;
+  readonly serviceHostnames?: Readonly<Record<string, ReadonlyArray<string>>> | undefined;
 }): NetworkingPlan => {
   const perAppBridge = { name: perAppBridgeNetworkName(input.slug), driver: "bridge" };
   if (!input.sharedCrossAppNetwork) return { perAppBridge };
   const aliases: Record<string, ReadonlyArray<string>> = {};
   for (const serviceName of input.serviceNames) {
-    aliases[serviceName] = serviceCrossAppAliases(input.slug, serviceName);
+    aliases[serviceName] = serviceCrossAppAliases(
+      input.slug,
+      serviceName,
+      input.serviceHostnames?.[serviceName] ?? [],
+    );
   }
   return {
     perAppBridge,

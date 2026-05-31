@@ -58,6 +58,19 @@ describe("landoNetworkingPlan builder", () => {
     });
   });
 
+  test("adds configured service hostnames to shared cross-app aliases", () => {
+    const plan = landoNetworkingPlan({
+      slug: "global",
+      serviceNames: ["mailpit"],
+      sharedCrossAppNetwork: true,
+      serviceHostnames: { mailpit: ["mailpit.global.internal", "smtp.global.internal"] },
+    });
+
+    expect(plan.sharedNetworkMembership?.aliases).toEqual({
+      mailpit: ["mailpit.global.internal", "smtp.global.internal"],
+    });
+  });
+
   test("omits shared membership when the provider lacks sharedCrossAppNetwork", () => {
     const plan = landoNetworkingPlan({
       slug: "shop",
