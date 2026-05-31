@@ -159,3 +159,10 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - **Learnings for future iterations:**
   - Concurrent compiled-binary tests (`deferred-commands.test.ts` `$bunfs`, `compile.test.ts`, `aliases.test.ts`) share a single `bun run build:compile`; under parallel load this races to `ETXTBSY` / exit 1. Re-run the suite once before treating a compiled-binary `build:compile` exit-1 as a real failure.
 ---
+
+## [2026-05-30 22:53 CDT] - Babysit
+- PR: #222 https://github.com/AaronFeledy/core4/pull/222 (already merged by a prior run, squash 67a111a)
+- CI outcome: pass
+- Review feedback: Bugbot #1 (Mailpit `ServiceConfig` missing `hostnames`) already resolved on HEAD (commit d2c8c9b, propagated via planner/networking shared aliases) — rejected as already-fixed. Bugbot #2 confirmed REAL and present in merged main: the `appKind !== "global"` guard in `plugins/service-lando/src/services/env.ts` never fires because `AppPlannerLive` (`core/src/services/planner.ts`) does not thread `appKind` into `buildLandoEnv`, so global services (mailpit/traefik) get self-referential `LANDO_MAIL_HOST`/`LANDO_MAIL_PORT` (LOW severity).
+- Merge: deferred — PR was merged externally at d7bf983 before triage finished, so the vetted fix for #2 is orphaned at commit 2c6989d on remote branch `us-115-bundled-mailpit-global-service` (threads `appKind` via the reserved `global` app name + adds env-contract and planner regression tests; typecheck/lint/`bun test` green, 2023 pass/25 skip/0 fail). This isolated babysit step cannot re-merge a merged PR or open new work — land 2c6989d via a follow-up PR to remove the LOW self-referential-mail-env bug now in main.
+---
