@@ -345,3 +345,8 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   - To give a `bootstrap: "scratch"` core service the planner + landofile + provider registry, widen `makeScratchRuntimeLive` (and the `ScratchRuntimeServices` union) and provide those deps to the `ScratchAppServiceLive` sub-layer; capture them in the service closure so the SDK method signatures (`acquire` R/error union) stay frozen-compatible and the compiled-path cast in `run.ts` needs no change.
   - The `scratch` runtime tier intentionally roots fork plans at `process.cwd()` (shared source root) for now; the later `--isolate=full` story is the seam that swaps the fork's app root to a content copy under `<userCacheRoot>/scratch/<id>/root/`.
 ---
+
+## [2026-05-31 CDT] - US-122 (verified complete)
+- Story verified complete on branch `us-122-scratch-fork-mode` (no new code). `ScratchAppService.acquire` resolves `{ kind: "fork" }` sources by re-planning the cwd Landofile under a fresh `scratch-<base>-<6hex>` identity (separate containers, networks, DNS aliases, volume names; source plan untouched); recipe-source acquire still returns the interim `ScratchSourceUnresolvedError`. `apps:scratch:start --fork` is wired through both dispatch paths and the `makeScratchRuntimeLive` tier carries the planner/Landofile/provider deps. `passes: true` was already set.
+- Verification: typecheck clean, lint clean (619 files), full `bun test` 2108 pass / 26 skip / 0 fail. CLI QA: `lando scratch start --fork` outside a project renders the `ScratchSourceUnresolvedError` + remediation and exits 1. The podman-gated Node+Postgres simultaneous-run scenario skips without `LANDO_TEST_PODMAN_SOCKET` (host-safe).
+---
