@@ -195,4 +195,26 @@ describe("lint:guides", () => {
       "core/test/lint/guides/bad-diataxis.mdx:7:1: guide.diataxis: `diataxis:` must be `tutorial` or `how-to` for guides containing rendered scenarios.",
     ]);
   });
+
+  test("accepts a guide whose <Verify> matcher conforms to MatcherSchema", async () => {
+    expect(await lintFixture("verify-matcher-green")).toEqual([]);
+  });
+
+  test("reports a <Verify> whose expect matcher fails MatcherSchema", async () => {
+    const diagnostics = await lintFixture("verify-matcher-bad");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/verify-matcher-bad.mdx:11:7");
+    expect(diagnostics[0]).toContain("guide.verify.matcher");
+    expect(diagnostics[0]).toContain("Invalid <Verify> props:");
+  });
+
+  test("reports duplicate declared axis values via the frontmatter gate", async () => {
+    const diagnostics = await lintFixture("axis-duplicate-value");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/axis-duplicate-value.mdx:1:1");
+    expect(diagnostics[0]).toContain("guide.frontmatter");
+    expect(diagnostics[0]).toContain("Axis values must be unique");
+  });
 });

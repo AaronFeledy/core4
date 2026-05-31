@@ -8,7 +8,7 @@ import remarkParse from "remark-parse";
 import { unified } from "unified";
 
 import { parseLandofile } from "../core/src/landofile/parser.ts";
-import { decodeGuideFrontmatterEither } from "../sdk/src/docs/components/index.ts";
+import { decodeGuideFrontmatterEither, decodeVerifyPropsEither } from "../sdk/src/docs/components/index.ts";
 import {
   GuideFrontmatterValidationError,
   GuideHiddenScenarioReasonError,
@@ -311,6 +311,41 @@ const lintStepNames = (
   }
 };
 
+const lintVerifyMatchers = (
+  sourcePath: string,
+  root: MdxNode,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  walkElements(root, (node) => {
+    if (node.name !== "Verify") return;
+    let props: Record<string, unknown>;
+    try {
+      props = propsOf(node);
+    } catch (error) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.verify.matcher",
+          `Invalid <Verify> props: ${formatErrorMessage(error)} per §19.10.`,
+        ),
+      );
+      return;
+    }
+    const decoded = decodeVerifyPropsEither(props);
+    if (Either.isLeft(decoded)) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.verify.matcher",
+          `Invalid <Verify> props: ${formatErrorMessage(decoded.left)} per §19.10.`,
+        ),
+      );
+    }
+  });
+};
+
 const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<GuideLintDiagnostic>): void => {
   walkElements(root, (node) => {
     if (node.name === undefined || node.name === null || ALPHA_2_COMPONENTS.has(node.name)) return;
@@ -452,6 +487,7 @@ export const lintGuideContent = (sourcePath: string, content: string): GuideLint
   lintHiddenReason(sourcePath, root, diagnostics);
   lintSkipReason(sourcePath, root, diagnostics);
   lintInlineJustification(sourcePath, root, diagnostics);
+  lintVerifyMatchers(sourcePath, root, diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
   lintTabs(sourcePath, root, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
