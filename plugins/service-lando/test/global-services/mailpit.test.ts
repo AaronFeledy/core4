@@ -7,6 +7,7 @@ import mailpitGlobalService from "../../src/global-services/mailpit.ts";
 import {
   MAILPIT_DASHBOARD_HOSTNAME,
   MAILPIT_IMAGE,
+  MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
   MAILPIT_WEB_PORT,
 } from "../../src/mailpit-constants.ts";
@@ -41,6 +42,12 @@ describe("mailpit global service ServiceConfig", () => {
     expect(ports).toContain(String(MAILPIT_WEB_PORT));
     expect(MAILPIT_SMTP_PORT).toBe(1025);
     expect(MAILPIT_WEB_PORT).toBe(8025);
+  });
+
+  test("declares the shared SMTP network hostname", async () => {
+    const config = await decodeConfig();
+    expect(MAILPIT_SHARED_NETWORK_HOST).toBe("mailpit.global.internal");
+    expect(config.hostnames).toContain(MAILPIT_SHARED_NETWORK_HOST);
   });
 
   test("routes the web UI through mailpit.lndo.site by default", async () => {

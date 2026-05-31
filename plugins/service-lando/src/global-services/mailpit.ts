@@ -21,6 +21,7 @@ import { ServiceConfig } from "@lando/sdk/schema";
 import {
   MAILPIT_DASHBOARD_HOSTNAME,
   MAILPIT_IMAGE,
+  MAILPIT_SHARED_NETWORK_HOST,
   MAILPIT_SMTP_PORT,
   MAILPIT_WEB_PORT,
 } from "../mailpit-constants.ts";
@@ -31,6 +32,7 @@ const mailpitServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   image: MAILPIT_IMAGE,
   appMount: false,
   ports: [String(MAILPIT_SMTP_PORT), String(MAILPIT_WEB_PORT)],
+  hostnames: [MAILPIT_SHARED_NETWORK_HOST],
   routes: [{ hostname: MAILPIT_DASHBOARD_HOSTNAME, endpoint: MAILPIT_WEB_PORT }],
   environment: {},
 });
