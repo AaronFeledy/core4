@@ -68,12 +68,24 @@ export const TranscriptInspectFrame = Schema.Struct({
 });
 export type TranscriptInspectFrame = typeof TranscriptInspectFrame.Type;
 
+export const TranscriptInlineFrame = Schema.Struct({
+  kind: Schema.Literal("inline"),
+  lang: Schema.String,
+  code: Schema.String,
+}).annotations({
+  identifier: "TranscriptInlineFrame",
+  title: "Transcript Inline Frame",
+  description: "Internal guide scenario transcript frame for a verbatim, non-executed code sample.",
+});
+export type TranscriptInlineFrame = typeof TranscriptInlineFrame.Type;
+
 export const TranscriptFrame = Schema.Union(
   TranscriptRunFrame,
   TranscriptVerifyFrame,
   TranscriptFixtureFrame,
   TranscriptCleanupFrame,
   TranscriptInspectFrame,
+  TranscriptInlineFrame,
 ).annotations({
   identifier: "TranscriptFrame",
   title: "Transcript Frame",

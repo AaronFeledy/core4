@@ -1,13 +1,14 @@
 ---
-id: beta-inline-component
+id: lint-inline-green
 provider: test
+diataxis: tutorial
 ---
 
 <Guide>
   <Scenario id="reader-path">
     <Step name="run">
-      Some prose with an inline <Bogus value="x" /> component.
       <Run command="version" />
+      <Inline code="const config = { api: 4 };" justification="shows the config object" />
     </Step>
   </Scenario>
 </Guide>

@@ -93,12 +93,32 @@ describe("lint:guides", () => {
     ]);
   });
 
-  test("reports Beta-only components with a source-mapped frame", async () => {
+  test("reports unknown components with a source-mapped frame", async () => {
     const diagnostics = await lintFixture("beta-component");
 
     expect(diagnostics[0]).toBe(
-      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Skip> is not supported in Alpha 2. <Skip> ships in Phase 3 Beta — see spec/ROADMAP.md.",
+      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Bogus> is not supported in Alpha 2. <Bogus> ships in Phase 3 Beta — see spec/ROADMAP.md.",
     );
+  });
+
+  test("accepts a guide with a <Skip> block carrying a reason", async () => {
+    expect(await lintFixture("skip-green")).toEqual([]);
+  });
+
+  test("reports <Skip> blocks missing or short reasons", async () => {
+    expect(await lintFixture("skip-missing-reason")).toEqual([
+      "core/test/lint/guides/skip-missing-reason.mdx:9:5: guide.skip.reason: <Skip> requires a `reason` of at least 8 characters per §19.10.",
+    ]);
+  });
+
+  test("accepts a guide with an <Inline> carrying a justification", async () => {
+    expect(await lintFixture("inline-green")).toEqual([]);
+  });
+
+  test("reports <Inline> components missing or short justifications", async () => {
+    expect(await lintFixture("inline-missing-justification")).toEqual([
+      "core/test/lint/guides/inline-missing-justification.mdx:11:7: guide.inline.justification: <Inline> requires a `justification` of at least 8 characters per §19.10.",
+    ]);
   });
 
   test("accepts a guide declaring single-axis tabs", async () => {
@@ -160,11 +180,11 @@ describe("lint:guides", () => {
     expect(diagnostics[0]).toContain("mutually exclusive");
   });
 
-  test("reports inline Beta-only components anywhere in prose", async () => {
+  test("reports unknown components anywhere in prose", async () => {
     const diagnostics = await lintFixture("beta-inline-component");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/beta-inline-component.mdx:9:33: guide.component.beta: <Inline> is not supported in Alpha 2. <Inline> ships in Phase 3 Beta — see spec/ROADMAP.md.",
+      "core/test/lint/guides/beta-inline-component.mdx:9:33: guide.component.beta: <Bogus> is not supported in Alpha 2. <Bogus> ships in Phase 3 Beta — see spec/ROADMAP.md.",
     ]);
   });
 
