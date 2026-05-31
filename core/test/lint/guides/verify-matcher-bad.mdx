@@ -1,0 +1,14 @@
+---
+id: verify-matcher-bad
+provider: test
+diataxis: tutorial
+---
+
+<Guide>
+  <Scenario id="reader-path">
+    <Step name="run">
+      <Run command="status" />
+      <Verify command="status" expect={{ regex: 5 }} />
+    </Step>
+  </Scenario>
+</Guide>

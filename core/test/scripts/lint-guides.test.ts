@@ -1,9 +1,15 @@
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { formatGuideLintDiagnostic, lintGuideContent } from "../../../scripts/lint-guides.ts";
+import {
+  type GuideFixtureInventoryEntry,
+  formatGuideLintDiagnostic,
+  lintGuideContent,
+  lintGuides,
+} from "../../../scripts/lint-guides.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/lint/guides");
@@ -12,6 +18,15 @@ const lintFixture = async (name: string): Promise<ReadonlyArray<string>> => {
   const sourcePath = `core/test/lint/guides/${name}.mdx`;
   const content = await readFile(resolve(fixturesRoot, `${name}.mdx`), "utf8");
   return lintGuideContent(sourcePath, content).diagnostics.map(formatGuideLintDiagnostic);
+};
+
+const lintFixtureWithInventory = async (
+  name: string,
+  fixtures: ReadonlyArray<GuideFixtureInventoryEntry>,
+): Promise<ReadonlyArray<string>> => {
+  const sourcePath = `core/test/lint/guides/${name}.mdx`;
+  const content = await readFile(resolve(fixturesRoot, `${name}.mdx`), "utf8");
+  return lintGuideContent(sourcePath, content, { fixtures }).diagnostics.map(formatGuideLintDiagnostic);
 };
 
 describe("lint:guides", () => {
@@ -194,5 +209,186 @@ describe("lint:guides", () => {
     expect(diagnostics).toEqual([
       "core/test/lint/guides/bad-diataxis.mdx:7:1: guide.diataxis: `diataxis:` must be `tutorial` or `how-to` for guides containing rendered scenarios.",
     ]);
+  });
+
+  test("accepts a guide whose <Verify> matcher conforms to MatcherSchema", async () => {
+    expect(await lintFixture("verify-matcher-green")).toEqual([]);
+  });
+
+  test("reports a <Verify> whose expect matcher fails MatcherSchema", async () => {
+    const diagnostics = await lintFixture("verify-matcher-bad");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/verify-matcher-bad.mdx:11:7");
+    expect(diagnostics[0]).toContain("guide.verify.matcher");
+    expect(diagnostics[0]).toContain("Invalid <Verify> props:");
+  });
+
+  test("reports duplicate declared axis values via the frontmatter gate", async () => {
+    const diagnostics = await lintFixture("axis-duplicate-value");
+
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toContain("core/test/lint/guides/axis-duplicate-value.mdx:1:1");
+    expect(diagnostics[0]).toContain("guide.frontmatter");
+    expect(diagnostics[0]).toContain("Axis values must be unique");
+  });
+
+  test("lints a guide root override instead of the repository guide tree", async () => {
+    const guideRoot = await mkdtemp(join(tmpdir(), "lando-guide-lint-override-"));
+    try {
+      await writeFile(
+        join(guideRoot, "bad.mdx"),
+        [
+          "---",
+          "id: bad",
+          "provider: test",
+          "diataxis: tutorial",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path">',
+          "    <Hidden>",
+          '      <Step name="run"><Run command="status" /></Step>',
+          "    </Hidden>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const diagnostics = (await lintGuides(repoRoot, { guideRoot })).diagnostics.map(
+        formatGuideLintDiagnostic,
+      );
+
+      expect(diagnostics).toHaveLength(1);
+      expect(diagnostics[0]).toContain("bad.mdx:9:5");
+      expect(diagnostics[0]).toContain("guide.hidden.reason");
+    } finally {
+      await rm(guideRoot, { force: true, recursive: true });
+    }
+  });
+
+  test("reports a <UseFixture> that resolves to no fixture directory", async () => {
+    expect(await lintFixtureWithInventory("fixture-demo", [])).toEqual([
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory per §19.9.',
+    ]);
+  });
+
+  test("reports a <UseFixture> that resolves only to a regular file", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "other",
+        },
+      ]),
+    ).toEqual([
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory per §19.9.',
+    ]);
+  });
+
+  test("accepts a <UseFixture> that resolves to a directory fixture", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "directory",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("reports a fixture whose source tree contains a symbolic link", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "directory",
+          symlinkPaths: ["docs/guides/fixture-demo/fixtures/demo/link"],
+        },
+      ]),
+    ).toEqual([
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.symlink: Fixture "demo" contains a symbolic link at "docs/guides/fixture-demo/fixtures/demo/link" and cannot be copied immutably per §19.9.',
+    ]);
+  });
+
+  test("reports a fixture whose source root is itself a symbolic link", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "symlink",
+        },
+      ]),
+    ).toEqual([
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.symlink: Fixture "demo" contains a symbolic link at "docs/guides/fixture-demo/fixtures/demo" and cannot be copied immutably per §19.9.',
+    ]);
+  });
+
+  test("reports a local fixture not referenced by any <UseFixture>", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "directory",
+        },
+        {
+          name: "orphan",
+          sourcePath: "docs/guides/fixture-demo/fixtures/orphan",
+          scope: "local",
+          kind: "directory",
+        },
+      ]),
+    ).toEqual([
+      'core/test/lint/guides/fixture-demo.mdx:7:1: guide.fixture.unused: Fixture "orphan" is not referenced by any <UseFixture> in guide "fixture-demo" per §19.10.',
+    ]);
+  });
+
+  test("does not flag an unreferenced regular file as an unused fixture", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "directory",
+        },
+        {
+          name: "orphan.txt",
+          sourcePath: "docs/guides/fixture-demo/fixtures/orphan.txt",
+          scope: "local",
+          kind: "other",
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  test("does not flag an unreferenced shared fixture as unused", async () => {
+    expect(
+      await lintFixtureWithInventory("fixture-demo", [
+        {
+          name: "demo",
+          sourcePath: "docs/guides/fixture-demo/fixtures/demo",
+          scope: "local",
+          kind: "directory",
+        },
+        {
+          name: "shared-extra",
+          sourcePath: "docs/guides/fixtures/shared-extra",
+          scope: "shared",
+          kind: "directory",
+        },
+      ]),
+    ).toEqual([]);
   });
 });
