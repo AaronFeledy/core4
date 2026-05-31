@@ -285,8 +285,8 @@ const lintInlineJustification = (
 const unconditionalStepElements = (scenario: MdxNode): ReadonlyArray<MdxNode> =>
   elementChildren(scenario).flatMap((child) => {
     if (child.name === "Step") return [child];
-    if (child.name === "Hidden")
-      return elementChildren(child).filter((hiddenChild) => hiddenChild.name === "Step");
+    if (child.name === "Hidden" || child.name === "Skip")
+      return elementChildren(child).filter((nestedChild) => nestedChild.name === "Step");
     return [];
   });
 
