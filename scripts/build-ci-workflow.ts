@@ -264,6 +264,7 @@ jobs:
 
       - name: Pre-pull container images
         run: |
+          podman pull docker.io/library/alpine:3.21
           podman pull node:lts
           podman pull node:22-alpine
           podman pull postgres:16
@@ -271,6 +272,7 @@ jobs:
           podman pull golang:1.22
           podman pull docker.elastic.co/elasticsearch/elasticsearch:8.17.0
           podman pull getmeili/meilisearch:v1.11
+          podman pull docker.io/axllent/mailpit:v1.30.1
           podman pull memcached:1.6
           podman pull nginx:1.27
           podman pull opensearchproject/opensearch:2
