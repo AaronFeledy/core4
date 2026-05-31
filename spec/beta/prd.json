@@ -1288,7 +1288,7 @@
         "Lint passes"
       ],
       "priority": 198,
-      "passes": false,
+      "passes": true,
       "notes": "Decentralized declaration (per PRD) with centralized matrix (INDEX.md) — keeps each PRD self-describing while still giving one place to scan for gaps."
     },
     {

@@ -187,6 +187,27 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: rejected (Bugbot High-severity "fallback cp nests app root" is a false positive — verified empirically that `node:fs/promises` cp(src, dest, {recursive}) flattens source *contents* into the existing dest, matching the reflink `${source}/.` path, so `.lando.yml` lands at the scratch root; no nesting, no fix needed)
 - Merge: merged (squash)
 ---
+## [2026-05-31 17:05 CDT] - US-198 (agent2)
+- Extended `check-guide-coverage.ts` to enforce the per-PRD `## Guide Coverage` section convention. PRDs are now classified by filename tier: user-facing (01–08, 10, 11) and internal/infra (09, 13) MUST carry the section; the index/meta PRDs (00, 12) are exempt. A missing section on a non-exempt PRD now emits `coverage.missing-section` and fails the gate; internal PRDs satisfy it by declaring `**None — …**`.
+- Added `parseGuideCoverageSection` ({present, none, paths}) and `classifyPrd` as pure helpers; `parseGuideCoveragePaths` now delegates to the former (backward compatible). The on-disk entry threads a `prdCoverage` list into the pure `checkGuideCoverage`, so the new rule unit-tests without disk.
+- Verification: typecheck, lint, story tests (18) passed. Full `bun test` clean except 3 pre-existing package-export/packed-install failures present on clean `origin/main` (unrelated to this change). CLI surface verified: `bun run check:guide-coverage` exits 0 on the real repo, exits 1 with the `coverage.missing-section` diagnostic when a user-facing PRD's section is stripped, and exits 0 again once restored.
+- **Learnings for future iterations:**
+  - The coverage gate is now a hard convention check, not just an INDEX↔declaration cross-check: any NEW user-facing beta PRD must add a `## Guide Coverage` section (with a story→guide table) or `check:guide-coverage` fails. Internal/infra PRDs must still declare the section but as `**None — …**`. The classifier keys off the `prd-beta-NN-` filename number, so a renamed/renumbered PRD shifts tiers automatically.
+  - The "declares a non-existent guide path fails" requirement is satisfied transitively: a declared path not in INDEX trips `coverage.missing-index-row`; a declared path that maps to a Shipped INDEX row but is absent on disk trips `coverage.missing-guide-file`. `Planned` INDEX rows remain the intentional escape for declared-but-unbuilt guides.
+---
+
+## [2026-05-31 17:12 CDT] - US-198 Review
+- Reviewed the per-PRD guide coverage convention gate and fixed a real acceptance gap: user-facing PRDs with an empty/`None` `## Guide Coverage` section now fail with `coverage.empty-user-facing-section`, and internal/infra PRDs with guide rows now fail with `coverage.internal-section-not-none`. This makes the checker enforce both sides of the US-198 convention, not just section presence.
+- Review notes (rejected): no out-of-scope/style-only review findings were accepted; the full-suite package-export/packed-install failures are the known `/tmp` worktree symlink/packed `fast-check` failures already documented for this branch and unrelated to guide coverage.
+- Verification: typecheck and lint passed; focused guide-coverage tests passed; `bun run check:guide-coverage` passed on the real repo; a manual driver confirmed the new empty user-facing and non-None internal diagnostics. Full `bun test` still fails only in the 3 known package-export/packed-install cases.
+---
+
+## [2026-05-31 18:10 CDT] - Babysit
+- PR: #237 https://github.com/AaronFeledy/core4/pull/237
+- CI outcome: pass
+- Review feedback: fixed (rebuilt the branch onto current main to drop a prior botched merge that had reverted the scratch recipe/`--isolate` work from #234/#236, restoring it; fixed a real Bugbot finding where a stray `**None` substring anywhere in a `## Guide Coverage` section short-circuited guide-path extraction — `none` is now recognized only when zero paths are listed; rejected a stale Bugbot "internal None not enforced" finding already handled by the review fix)
+- Merge: merged (squash)
+---
 
 ## [2026-05-31 19:30 CDT] - US-125
 - Shipped scope-bound lifetime + finalizer for scratch apps. `ScratchAppService.acquire` now registers an `Effect.addFinalizer` against the caller's `Scope` (in `startScratchPlan`, after the inner `Effect.scoped(provider.apply(...))` so it binds to the ambient acquire scope, not the apply sub-scope) — but only for a foreground (`detached !== true`) acquire. The finalizer is a single best-effort/total step: `provider.destroy({app, plan}, {volumes:true, removeState:true})` then `cleanupScratchInstance(instanceRoot)`, each `catchAllCause` → `logWarning` so a teardown failure never escapes the scope. A `tapError` runs the same teardown when `provider.apply` fails, so a broken start no longer leaks the materialized scratch dir. Teardown removes `instanceRoot` (always under `<userCacheRoot>/scratch/<id>/`), never `plan.root` — an `--isolate=none` fork plans against the source cwd, so removing `plan.root` would delete the user's own app. `--detach` registers no finalizer; the scratch survives until an explicit destroy/gc.
