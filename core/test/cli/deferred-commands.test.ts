@@ -1,13 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { beforeAll } from "bun:test";
 import {
   DEFERRED_COMMAND_PLANS,
   deferredCommandPlan,
   notImplementedErrorForCommand,
 } from "../../src/cli/deferred-commands.ts";
 import { isMvpCommandId } from "../../src/cli/oclif/command-base.ts";
+
 import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 
 interface FixtureEntry {
@@ -21,8 +23,9 @@ interface FixtureFile {
 }
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
+const coreRoot = resolve(repoRoot, "core");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
-const compiledBinary = resolve(repoRoot, "core/dist/lando");
+const compiledBinary = resolve(coreRoot, "dist/lando");
 const fixturePath = resolve(import.meta.dirname, "fixtures/deferred-commands.json");
 
 const fixture: FixtureFile = JSON.parse(readFileSync(fixturePath, "utf-8")) as FixtureFile;
@@ -33,10 +36,14 @@ interface RunResult {
   readonly stderr: string;
 }
 
-const runProcess = async (cmd: ReadonlyArray<string>, env?: Record<string, string>): Promise<RunResult> => {
+const runProcess = async (
+  cmd: ReadonlyArray<string>,
+  env?: Record<string, string>,
+  cwd = repoRoot,
+): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd: [...cmd],
-    cwd: repoRoot,
+    cwd,
     env: { ...process.env, ...(env ?? {}) },
     stdout: "pipe",
     stderr: "pipe",
@@ -174,12 +181,11 @@ describe("deferred command remediation contract (US-037)", () => {
     }
   });
 
-  describe("compiled $bunfs CLI", () => {
-    const skipCompiled = !existsSync(compiledBinary);
-    if (skipCompiled) {
-      test.skip("compiled binary not built (run `bun run build:compile` to enable)", () => {});
-      return;
-    }
+  describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled $bunfs CLI", () => {
+    beforeAll(async () => {
+      const build = await runProcess([process.execPath, "run", "build:compile"], undefined, coreRoot);
+      expect(build.exitCode).toBe(0);
+    }, 120_000);
 
     const collapseErrorBlock = (text: string): string =>
       extractErrorBlock(text)

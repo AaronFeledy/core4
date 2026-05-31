@@ -264,6 +264,8 @@ describe("LANDO_* environment contract across catalog service families", () => {
       expect(plan.environment.LANDO_SERVICE_API).toBe("4");
       expect(plan.environment.LANDO_SERVICE_NAME).toBe(serviceName);
       expect(plan.environment.LANDO_SERVICE_TYPE).toBe(item.expectedType);
+      expect(plan.environment.LANDO_MAIL_HOST).toBe("mailpit.global.internal");
+      expect(plan.environment.LANDO_MAIL_PORT).toBe("1025");
 
       expect(plan.environment.LANDO_HOST_OS).toBe(host.os);
       expect(plan.environment.LANDO_HOST_USER).toBe(host.user);

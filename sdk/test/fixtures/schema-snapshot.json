@@ -99,6 +99,17 @@
       "manifest": {
         "api": 4,
         "contributes": {
+          "globalServices": [
+            {
+              "enabledByDefault": true,
+              "id": "mailpit",
+              "module": "./src/global-services/mailpit.ts",
+              "requires": {
+                "providerCapabilities": ["sharedCrossAppNetwork"]
+              },
+              "summary": "Global Mailpit SMTP capture server with web UI"
+            }
+          ],
           "serviceTypes": [
             "apache",
             "compose",

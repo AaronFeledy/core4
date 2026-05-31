@@ -276,6 +276,25 @@ describe("AppPlannerLive", () => {
     }
   });
 
+  test("adds configured service hostnames to shared networking aliases", async () => {
+    const appPlan = await plan({
+      ...landofileFixture,
+      services: {
+        [ServiceName.make("mailpit")]: {
+          type: "compose",
+          image: "docker.io/axllent/mailpit:v1.30.1",
+          appMount: false,
+          hostnames: ["mailpit.global.internal"],
+        },
+      },
+    });
+
+    expect(appPlan.networking?.sharedNetworkMembership?.aliases[ServiceName.make("mailpit")]).toEqual([
+      "mailpit.myapp.internal",
+      "mailpit.global.internal",
+    ]);
+  });
+
   test("reuses the persisted app plan cache until planning inputs change", async () => {
     await withTempCwd(async () => {
       const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;

@@ -34,7 +34,7 @@ describe("bundled-first global service loader", () => {
 
   test("fails with GlobalAppError when a bundled plugin lacks the requested static entry", async () => {
     const exit = await Effect.runPromiseExit(
-      // @lando/service-lando is bundled but contributes no globalServices map.
+      // @lando/service-lando contributes mailpit, but not traefik, in its static globalServices map.
       bundledFirstGlobalServiceLoader.load(entry("@lando/service-lando", "traefik", "./x.ts")),
     );
     const failure = failureOf(exit);

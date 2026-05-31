@@ -85,14 +85,17 @@ describe("global:install command operation", () => {
       expect(result.userLandofileCreated).toBe(true);
       const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
       expect(distContent).toContain("name: global");
-      // Bundled @lando/proxy-traefik contributes the traefik global service by default.
+      // Bundled plugins contribute mailpit and traefik global services by default.
+      expect(result.dist.serviceIds).toContain("mailpit");
       expect(result.dist.serviceIds).toContain("traefik");
+      expect(distContent).toContain("mailpit:");
+      expect(distContent).toContain("docker.io/axllent/mailpit:v1.30.1");
       expect(distContent).toContain("traefik:");
       expect(distContent).toContain("traefik:v3.3");
       expect(await readFile(join(dataRoot, "global", ".lando.yml"), "utf8")).toContain("User overrides");
       expect(output).toContain(".lando.dist.yml");
       expect(output).toContain("created");
-      expect(output).toContain("Global services: traefik");
+      expect(output).toContain("Global services: mailpit, traefik");
     });
   });
 

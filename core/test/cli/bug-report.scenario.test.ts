@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -151,9 +150,13 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
   }, 30_000);
 });
 
-describe.skipIf(!existsSync(compiledBinaryPath))(
+describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
   "US-038: bug-report diagnostics on failure (compiled $bunfs CLI parity)",
   () => {
+    beforeAll(async () => {
+      const build = await runCommand([process.execPath, "run", "build:compile"]);
+      expect(build.exitCode).toBe(0);
+    }, 120_000);
     test("compiled NotImplementedError plain output mirrors source", async () => {
       const result = await runCommand([compiledBinaryPath, "meta:plugin:trust"], isolationEnv());
       expect(result.exitCode).not.toBe(0);
