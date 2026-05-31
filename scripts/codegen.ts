@@ -19,6 +19,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "build-recipe-readmes",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-recipe-readmes.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "bundled-plugins",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-plugins.ts`],
     cwd: REPO_ROOT,

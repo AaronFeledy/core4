@@ -38,5 +38,7 @@ describe("codegen orchestrator", () => {
 
     expect(await readFile(bundledPluginsPath, "utf8")).toBe(firstBundledPlugins);
     expect(await readFile(oclifManifestPath, "utf8")).toBe(firstOclifManifest);
-  });
+    // Runs the whole generator catalog twice; the catalog grows over time, so the
+    // idempotency assertion needs headroom beyond the default per-test timeout.
+  }, 60000);
 });
