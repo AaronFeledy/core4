@@ -87,6 +87,21 @@ describe("ScratchAppServiceLive", () => {
     });
   });
 
+  test("paths rejects ids that would escape the scratch namespace", async () => {
+    await withTempCacheRoot(async () => {
+      for (const unsafe of ["..", ".", "../../etc", "a/b", "a\\b", ""]) {
+        const result = await Effect.runPromise(
+          Effect.flatMap(ScratchAppService, (service) => service.paths(unsafe)).pipe(
+            Effect.provide(scratchAppLayer),
+            Effect.either,
+          ),
+        );
+        expect(result._tag).toBe("Left");
+        if (result._tag === "Left") expect(result.left._tag).toBe("ScratchAppError");
+      }
+    });
+  });
+
   test("the scratch bootstrap runtime tier provides ScratchAppService", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       const runtime = makeLandoRuntime({ bootstrap: "scratch" });

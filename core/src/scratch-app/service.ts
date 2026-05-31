@@ -25,6 +25,11 @@ const sanitizeBase = (base: string): string => {
   return cleaned.length === 0 ? "scratch" : cleaned;
 };
 
+// Security: reject ids that `join` could use to escape `<userCacheRoot>/scratch/<id>/`
+// (spec §21.3) — path separators, NUL, or a pure-dot segment (`.`, `..`).
+const isUnsafeScratchId = (id: string): boolean =>
+  id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);
+
 const makeScratchAppService = (
   fileSystem: Context.Tag.Service<typeof FileSystem>,
 ): Context.Tag.Service<typeof ScratchAppService> => {
@@ -51,19 +56,23 @@ const makeScratchAppService = (
     });
 
   const paths = (id: string) =>
-    root.pipe(
-      Effect.map((base) => {
-        const instanceRoot = AbsolutePath.make(join(base, id));
-        return {
-          base,
-          instanceRoot,
-          root: AbsolutePath.make(join(instanceRoot, "root")),
-          planCache: AbsolutePath.make(join(instanceRoot, "plan.bin")),
-          infoCache: AbsolutePath.make(join(instanceRoot, "info.json")),
-          buildResults: AbsolutePath.make(join(instanceRoot, "build-results.bin")),
-        };
-      }),
-    );
+    isUnsafeScratchId(id)
+      ? Effect.fail(
+          scratchAppError("paths", `Refusing to resolve scratch paths for unsafe id "${id}".`, undefined),
+        )
+      : root.pipe(
+          Effect.map((base) => {
+            const instanceRoot = AbsolutePath.make(join(base, id));
+            return {
+              base,
+              instanceRoot,
+              root: AbsolutePath.make(join(instanceRoot, "root")),
+              planCache: AbsolutePath.make(join(instanceRoot, "plan.bin")),
+              infoCache: AbsolutePath.make(join(instanceRoot, "info.json")),
+              buildResults: AbsolutePath.make(join(instanceRoot, "build-results.bin")),
+            };
+          }),
+        );
 
   return { kind: "scratch", root, ensureRoot, synthesizeId, paths };
 };
