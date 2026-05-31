@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Either, ParseResult, Schema } from "effect";
 
-import { ProviderCapabilities } from "@lando/sdk/schema";
+import { IsolateMode, ProviderCapabilities } from "@lando/sdk/schema";
 
 const BOOLEAN_FIELDS = [
   "artifactBuild",
@@ -16,6 +16,7 @@ const BOOLEAN_FIELDS = [
   "persistentStorage",
   "bindMounts",
   "copyMounts",
+  "copyOnWriteAppRoot",
   "routeProvider",
   "rootless",
   "privilegedServices",
@@ -49,6 +50,7 @@ const providerLandoFixture: typeof ProviderCapabilities.Encoded = {
   bindMounts: true,
   bindMountPerformance: "native",
   copyMounts: true,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "native",
   routeProvider: true,
   tlsCertificates: "lando",
@@ -73,6 +75,7 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
   bindMounts: true,
   bindMountPerformance: "slow",
   copyMounts: true,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "native",
   routeProvider: false,
   tlsCertificates: "none",
@@ -82,11 +85,25 @@ const providerDockerFixture: typeof ProviderCapabilities.Encoded = {
   providerExtensions: ["compose", "labels", "registryCredentials"],
 };
 
+describe("IsolateMode", () => {
+  test("accepts the two scratch isolation modes", () => {
+    for (const mode of ["none", "full"] as const) {
+      expect(Either.isRight(Schema.decodeUnknownEither(IsolateMode)(mode))).toBe(true);
+    }
+  });
+
+  test("rejects any other isolation value", () => {
+    for (const invalid of ["", "partial", "cow", "FULL"]) {
+      expect(Either.isLeft(Schema.decodeUnknownEither(IsolateMode)(invalid))).toBe(true);
+    }
+  });
+});
+
 describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(21);
+    expect(actual).toHaveLength(22);
   });
 
   test("every boolean capability accepts only booleans", () => {

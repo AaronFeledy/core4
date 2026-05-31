@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { rm } from "node:fs/promises";
+import { cp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type Context, Effect, Either, Layer, Schema } from "effect";
@@ -156,6 +156,19 @@ const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
     remediation: "Run `lando apps:scratch:list` to see currently registered scratch apps.",
   });
 
+const reflinkCopyAppRoot = async (source: string, destination: string): Promise<boolean> => {
+  if (process.platform !== "linux") return false;
+  try {
+    const proc = Bun.spawn(["cp", "-a", "--reflink=auto", `${source}/.`, destination], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    return (await proc.exited) === 0;
+  } catch {
+    return false;
+  }
+};
+
 const sanitizeBase = (base: string): string => {
   const cleaned = base
     .trim()
@@ -233,6 +246,20 @@ const makeScratchAppService = (
         scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
     });
 
+  const copyAppRoot = (source: string, destination: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (await reflinkCopyAppRoot(source, destination)) return;
+        await cp(source, destination, { recursive: true });
+      },
+      catch: (cause) =>
+        scratchAppError(
+          "materialize",
+          `Unable to copy the source app root into the scratch app at ${destination}.`,
+          cause,
+        ),
+    });
+
   const startScratchPlan = (scratchId: string, plan: AppPlan) =>
     Effect.gen(function* () {
       const provider = yield* registry
@@ -278,13 +305,22 @@ const makeScratchAppService = (
       yield* materializeDir(scratchPaths.root);
 
       const forkLandofile = { ...landofile, name: scratchId };
-      const forkPlan = yield* planner
-        .plan(forkLandofile, capabilities)
-        .pipe(
-          Effect.mapError((cause) =>
-            scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
-          ),
-        );
+      const planForkPlan =
+        input.isolate === "full"
+          ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root)).pipe(
+              Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))),
+              Effect.zipRight(
+                withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities)),
+              ),
+            )
+          : planner.plan(forkLandofile, capabilities);
+      const forkPlan = yield* planForkPlan.pipe(
+        Effect.mapError((cause) =>
+          cause instanceof ScratchAppError
+            ? cause
+            : scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
+        ),
+      );
       return yield* startScratchPlan(scratchId, forkPlan);
     });
 

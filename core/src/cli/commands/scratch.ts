@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import { ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import type { ScratchAppError, ScratchAppNotFoundError } from "@lando/sdk/errors";
+import type { IsolateMode } from "@lando/sdk/schema";
 import type { ScratchGcOptions, ScratchGcReport, ScratchHandle, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
@@ -15,7 +16,11 @@ export interface ScratchStartOptions {
   readonly answers?: Record<string, string>;
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
+  readonly isolate?: IsolateMode;
 }
+
+export const asIsolateMode = (value: unknown): IsolateMode | undefined =>
+  value === "none" || value === "full" ? value : undefined;
 
 export interface ScratchStartResult {
   readonly handle: ScratchHandle;
@@ -59,6 +64,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     ...stringArrayFlag(flags, "answer"),
     ...stringArrayFlag(flags, "option"),
   ]);
+  const isolate = asIsolateMode(flags.isolate);
   return {
     fork: flags.fork === true,
     ...(typeof flags.from === "string" ? { from: flags.from } : {}),
@@ -67,6 +73,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     answers,
     yes: flags.yes === true,
     nonInteractive: flags["no-interactive"] === true || flags["non-interactive"] === true,
+    ...(isolate === undefined ? {} : { isolate }),
   };
 };
 
@@ -124,6 +131,7 @@ export const scratchStart = (
         ...(options.answers === undefined ? {} : { answers: options.answers }),
         ...(options.yes === undefined ? {} : { yes: options.yes }),
         ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
+        ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
       }),
     );
     return { handle, detached: options.detach === true };

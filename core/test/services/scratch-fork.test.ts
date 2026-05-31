@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Stream } from "effect";
@@ -38,6 +38,7 @@ const capabilities: ProviderCapabilities = {
   bindMounts: true,
   bindMountPerformance: "native",
   copyMounts: true,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "proxy",
   routeProvider: false,
   tlsCertificates: "lando",
@@ -188,6 +189,40 @@ describe("ScratchAppServiceLive fork acquire", () => {
       expect(result.sourcePlan.slug).toBe("forkme");
       expect(result.sourcePlan.name).toBe("forkme");
       expect(JSON.stringify(result.sourcePlan)).toBe(result.sourceSnapshot);
+    });
+  });
+
+  test("isolate=full copies the source app root and plans under the scratch root", async () => {
+    await withTempProject(forkLandofile, async (dir) => {
+      await writeFile(join(dir, "marker.txt"), "source-content");
+      const appliedPlans: AppPlan[] = [];
+      const handle = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true, isolate: "full" })),
+        ).pipe(Effect.provide(makeScratchForkLayer(appliedPlans))),
+      );
+
+      expect(appliedPlans).toHaveLength(1);
+      const appliedPlan = appliedPlans.at(0);
+      if (appliedPlan === undefined) throw new Error("scratch fork acquire did not apply a plan");
+      expect(String(appliedPlan.root)).not.toBe(dir);
+      expect(String(appliedPlan.root)).toContain(join("scratch", handle.id, "root"));
+      expect(await readFile(join(String(appliedPlan.root), "marker.txt"), "utf8")).toBe("source-content");
+      expect(await readFile(join(String(appliedPlan.root), ".lando.yml"), "utf8")).toContain("forkme");
+      expect(await readFile(join(dir, "marker.txt"), "utf8")).toBe("source-content");
+      expect(appliedPlan.name).toBe(handle.id);
+    });
+  });
+
+  test("isolate=none (default) shares the source app root", async () => {
+    await withTempProject(forkLandofile, async (dir) => {
+      const appliedPlans: AppPlan[] = [];
+      await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true, isolate: "none" })),
+        ).pipe(Effect.provide(makeScratchForkLayer(appliedPlans))),
+      );
+      expect(String(appliedPlans.at(0)?.root)).toBe(dir);
     });
   });
 

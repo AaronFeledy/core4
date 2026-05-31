@@ -49,6 +49,7 @@ import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import {
   type ScratchListFormat,
   type ScratchStartOptions,
+  asIsolateMode,
   renderScratchDestroyResult,
   renderScratchGcReport,
   renderScratchInfoResult,
@@ -870,6 +871,7 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
   let name: string | undefined;
   let yes = false;
   let nonInteractive = false;
+  let isolate: ScratchStartOptions["isolate"];
   const answerValues: string[] = [];
   const optionValues: string[] = [];
 
@@ -914,6 +916,12 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
     if (optionMatch !== undefined) {
       optionValues.push(optionMatch.value);
       i += optionMatch.consumed - 1;
+      continue;
+    }
+    const isolateMatch = parseStringFlag(argv, i, "isolate");
+    if (isolateMatch !== undefined) {
+      isolate = asIsolateMode(isolateMatch.value);
+      i += isolateMatch.consumed - 1;
     }
   }
 
@@ -925,6 +933,7 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
     answers: parseAnswerFlags([...answerValues, ...optionValues]),
     ...(from === undefined ? {} : { from }),
     ...(name === undefined ? {} : { name }),
+    ...(isolate === undefined ? {} : { isolate }),
   };
 };
 

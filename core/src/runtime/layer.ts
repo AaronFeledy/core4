@@ -167,6 +167,7 @@ const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
   bindMounts: false,
   bindMountPerformance: "none",
   copyMounts: false,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "none",
   routeProvider: false,
   tlsCertificates: "none",

@@ -44,6 +44,7 @@ const stubCapabilities = {
   bindMounts: false,
   bindMountPerformance: "none" as const,
   copyMounts: false,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "none" as const,
   routeProvider: false,
   tlsCertificates: "none" as const,

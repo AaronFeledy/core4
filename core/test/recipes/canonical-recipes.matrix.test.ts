@@ -73,6 +73,7 @@ const providerCapabilities = {
   bindMounts: true,
   bindMountPerformance: "native" as const,
   copyMounts: true,
+  copyOnWriteAppRoot: false,
   hostPortPublish: "native" as const,
   routeProvider: true,
   tlsCertificates: "lando" as const,

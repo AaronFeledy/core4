@@ -426,6 +426,7 @@ export const ProviderCapabilities = Schema.Struct({
   bindMounts: Schema.Boolean,
   bindMountPerformance: Schema.Literal("native", "slow", "none"),
   copyMounts: Schema.Boolean,
+  copyOnWriteAppRoot: Schema.Boolean,
   hostPortPublish: Schema.Literal("native", "proxy", "manual", "none"),
   routeProvider: Schema.Boolean,
   tlsCertificates: Schema.Literal("native", "lando", "none"),
@@ -435,6 +436,9 @@ export const ProviderCapabilities = Schema.Struct({
   providerExtensions: Schema.Array(Schema.String),
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
+
+export const IsolateMode = Schema.Literal("none", "full");
+export type IsolateMode = typeof IsolateMode.Type;
 
 // AppRef — shared identity field across App, Global, and Scratch event scopes.
 // Carries `kind` discriminator splitting the identifier namespace across user,
