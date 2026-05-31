@@ -140,3 +140,17 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   - The `<Verify>` decoder Left can be a verbose Effect `ParseError`; assert lint output with `toContain` (code + stable message prefix), not exact string match, since the parse-tree text is version-sensitive.
   - Keep `lintGuideContent` pure with an injected fixture inventory so fixture rules are unit-testable without touching disk; only `lintGuides` does the filesystem walk.
 ---
+
+## US-181 — review notes
+
+- Found blocking bug: test/guides/lint-guides-depth.test.ts drives the script
+  with GUIDES_DIR_OVERRIDE, but scripts/lint-guides.ts ignored it and always
+  linted the real docs/guides dir. The "fails guides that exceed the budget"
+  case therefore exercised real (clean) guides and failed (expected exit 1,
+  got 0), violating acceptance criterion #4 (test must hit a real failing case)
+  and #5 (bun test must pass).
+- Fix: scripts/lint-guides.ts now honors process.env.GUIDES_DIR_OVERRIDE,
+  falling back to docs/guides. Smallest change that makes the test exercise the
+  depth logic against fixtures without weakening it.
+- After fix: lint:guides still passes the real 7 guides; depth test 3/3 pass;
+  typecheck / lint / bun test all green (602 pass, 3 skip, 0 fail).
