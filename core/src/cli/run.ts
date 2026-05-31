@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/errors";
 import type {
   AppPlanner,
+  EventService,
   FileSystem,
   GlobalAppService,
   PluginRegistry,
@@ -798,7 +799,7 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
 
 const globalRuntimeLayer = () =>
   makeLandoRuntime({ bootstrap: "global" }) as Layer.Layer<
-    GlobalAppService | PluginRegistry | RuntimeProviderRegistry | AppPlanner | FileSystem,
+    GlobalAppService | PluginRegistry | RuntimeProviderRegistry | AppPlanner | FileSystem | EventService,
     LandoRuntimeBootstrapError
   >;
 

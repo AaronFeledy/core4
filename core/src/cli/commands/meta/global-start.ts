@@ -1,7 +1,8 @@
-import { Effect } from "effect";
+import { DateTime, Effect } from "effect";
 
 import type {
   CapabilityError,
+  EventError,
   GlobalAppError,
   GlobalDistConflictError,
   GlobalLandofilePathConflictError,
@@ -15,9 +16,11 @@ import type {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
+import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
+import type { AppPlan, AppRef, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  EventService,
   type FileSystem,
   type FileSystemError,
   type GlobalAppService,
@@ -28,6 +31,10 @@ import {
 
 import { globalInstall } from "./global-install.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
+
+const now = () => DateTime.unsafeMake(new Date().toISOString());
+
+const globalAppRef = (plan: AppPlan): AppRef => ({ kind: "global", id: plan.id, root: plan.root });
 
 export interface GlobalStartOptions {
   readonly services?: ReadonlyArray<string>;
@@ -47,6 +54,7 @@ export interface GlobalStartResult {
 
 type GlobalStartError =
   | CapabilityError
+  | EventError
   | FileSystemError
   | GlobalAppError
   | GlobalDistConflictError
@@ -64,6 +72,7 @@ type GlobalStartError =
 
 type GlobalStartServices =
   | AppPlanner
+  | EventService
   | FileSystem
   | GlobalAppService
   | PluginRegistry
@@ -134,6 +143,7 @@ export const globalStart = (
     if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
     const services = yield* selectedServices(loaded.plan, options.services);
+    const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan);
 
@@ -151,6 +161,18 @@ export const globalStart = (
             ),
           };
 
+    yield* events.publish(
+      PreGlobalStartEvent.make({
+        scope: "global",
+        app: globalAppRef(loaded.plan),
+        plan: loaded.plan,
+        triggeredBy: "meta:global:start",
+        ensuringServices: [],
+        cached: false,
+        timestamp: now(),
+      }),
+    );
+
     yield* Effect.scoped(
       provider.apply(planToApply, {
         reconcile: false,
@@ -166,6 +188,16 @@ export const globalStart = (
           endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
         })),
       ),
+    );
+
+    yield* events.publish(
+      PostGlobalStartEvent.make({
+        scope: "global",
+        app: globalAppRef(loaded.plan),
+        plan: loaded.plan,
+        cached: false,
+        timestamp: now(),
+      }),
     );
 
     return { app: loaded.plan.name, servicesStarted };
