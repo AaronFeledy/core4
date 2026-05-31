@@ -160,7 +160,10 @@ const makeHarness = async (
     api: 4,
     contributes: {
       serviceTypes: [fakeServiceType.id],
-      globalServices: [{ id: "proxy", module: modulePath, enabledByDefault: true }],
+      globalServices: [
+        { id: "proxy", module: modulePath, enabledByDefault: true },
+        { id: "mail", module: modulePath, enabledByDefault: true },
+      ],
     },
   });
   const calls: ProviderCalls = { apply: [], destroy: [], inspect: [] };
@@ -275,8 +278,25 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
       expect(harness.calls.apply[0]?.plan.root).toBe(join(harness.dataRoot, "global"));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
-      expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["proxy"]);
-      expect(result.servicesStarted.map((service) => service.name)).toEqual(["proxy"]);
+      expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.inspect.map((call) => String(call.target.service)).sort()).toEqual([
+        "mail",
+        "proxy",
+      ]);
+      expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+    });
+  });
+
+  test("start with --service applies and inspects only the selected subset", async () => {
+    await withHarness(async (harness) => {
+      const result = await Effect.runPromise(
+        globalStart({ services: ["mail"] }).pipe(Effect.provide(harness.layer)),
+      );
+
+      expect(harness.calls.apply).toHaveLength(1);
+      expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
+      expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["mail"]);
+      expect(result.servicesStarted.map((service) => service.name)).toEqual(["mail"]);
     });
   });
 

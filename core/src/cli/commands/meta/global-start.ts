@@ -112,8 +112,22 @@ export const globalStart = (
     const provider = yield* registry.select(loaded.plan);
     const services = selectedServices(loaded.plan, options.services);
 
+    // Spec §20.7: `--service` starts a subset, so apply only the selected services.
+    const selectedNames = new Set(services.map((service) => String(service.name)));
+    const planToApply =
+      services.length === Object.keys(loaded.plan.services).length
+        ? loaded.plan
+        : {
+            ...loaded.plan,
+            services: Object.fromEntries(
+              Object.entries(loaded.plan.services).filter(([, service]) =>
+                selectedNames.has(String(service.name)),
+              ),
+            ),
+          };
+
     yield* Effect.scoped(
-      provider.apply(loaded.plan, {
+      provider.apply(planToApply, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),
