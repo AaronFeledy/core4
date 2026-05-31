@@ -329,9 +329,9 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - Verification: typecheck and lint passed; focused `dev-guides` tests passed; full `bun test` still fails only in the pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`) documented by prior progress entries and unrelated to US-196.
 ---
 
-## [2026-05-31 13:28:58 CDT] - Babysit
+## [2026-05-31 14:01:17 CDT] - Babysit
 - PR: #232 https://github.com/AaronFeledy/core4/pull/232
 - CI outcome: pass
-- Review feedback: fixed (Bugbot: hardened dev:guides watch loop — non-silent failures, parse-error survival, shutdown abort-code, per-flush id refresh, serial integration tests)
-- Merge: deferred (new Bugbot finding on c948123: Watch flush drops debounced paths)
+- Review feedback: fixed (Bugbot: hardened dev:guides watch loop over two rounds — non-silent/partial-output failures, parse-error survival + batch re-queue, shutdown abort-code, per-flush id refresh, startup orphan prune, serial integration tests)
+- Merge: merged (squash)
 ---
