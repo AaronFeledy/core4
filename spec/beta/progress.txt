@@ -266,3 +266,8 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   - `AppPlan.requires.globalServices` is the single forward-compatible seam: when the full `AppFeature` subsystem (§6.11.4) lands, its `requires.globalServices` aggregation just becomes the planner's source for the same field — `startApp` never needs to know whether the requirement came from routes or activated features.
   - Adding `requires` to `AppPlan` must be `Schema.optional` + planner-populated (omit the key entirely when there are no routes) so the ~47 hand-built plan/cache fixtures keep decoding; only the schema snapshot needed regenerating (errors ride `exports.test.ts` presence + `tagged-errors.test.ts`, not `API_COMPATIBILITY.md` or the frozen `sdk-mvp-surface.json`).
 ---
+
+## [2026-05-31 CDT] - US-118 (verified complete)
+- Story verified complete on branch `us-118-appfeature-global-autostart` (no new code). The auto-start wiring is fully in place: the planner populates `AppPlan.requires.globalServices: ["traefik"]` for routed apps, `startApp` resolves it via `requiredGlobalServicesForPlan` and calls `ensureGlobalServicesRunning` before `pre-app-start` (failures chained into `GlobalAutoStartError` → `GlobalServiceMissingError`), and `stop` never auto-stops the global app. `GlobalAutoStartError`/`GlobalServiceMissingError` are published from `@lando/sdk/errors`; `passes: true` was already set.
+- Verification: typecheck, lint, and full `bun test` (2084 pass / 25 skip / 0 fail) passed. CLI QA: `lando start` outside an app still renders the `LandofileNotFoundError` init remediation and exits 1 (auto-start wiring did not regress the no-app path). PR #229 is open with all CI checks green (CLEAN / MERGEABLE).
+---
