@@ -958,8 +958,21 @@ const scratchIdFromArgv = (argv: ReadonlyArray<string>): string => {
   return "";
 };
 
-const runAppsScratchStart = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchStart(parseScratchStartArgv(argv)), renderScratchStartResult);
+const runAppsScratchStart = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  process.once("SIGINT", abort);
+  process.once("SIGTERM", abort);
+  try {
+    await runScratchEffect(
+      scratchStart({ ...parseScratchStartArgv(argv), signal: controller.signal }),
+      renderScratchStartResult,
+    );
+  } finally {
+    process.off("SIGINT", abort);
+    process.off("SIGTERM", abort);
+  }
+};
 
 const runAppsScratchStop = async (argv: ReadonlyArray<string>): Promise<void> =>
   runScratchEffect(scratchStop(scratchIdFromArgv(argv)), renderScratchStopResult);
