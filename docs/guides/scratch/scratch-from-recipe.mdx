@@ -1,0 +1,43 @@
+---
+id: scratch-from-recipe
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, scratch, recipe]
+---
+
+<Guide>
+  <Scenario id="scratch-recipe-command" render={false} reason="Recipe scratch mode renders a recipe and starts the stack on a real provider, so this scenario documents the command surface without booting containers">
+    <Step name="start">
+      <Variable name="command" value="apps:scratch:start --from lamp" display="Materializes the named recipe into an ephemeral scratch app instead of scaffolding into the current directory" />
+      <Variable name="alias" value="scratch start --from lamp" display="The scratch namespace alias reaches the same recipe mode behavior" />
+      <Variable name="source" value="--fork XOR --from" display="apps:scratch:start requires exactly one of --fork or --from <recipe-ref>; passing both or neither fails with ScratchSourceUnresolvedError" />
+      <Variable name="detach" value="--detach" display="Returns after the provider apply starts the recipe resources instead of keeping an attached command session" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-recipe-answers" render={false} reason="Recipe prompts are auto-answered from flags so scratch mode can run non-interactively in CI">
+    <Step name="answers">
+      <Variable name="answer" value="--answer key=value" display="Repeatable; supplies a recipe prompt answer so prompts that take defaults can be auto-answered" />
+      <Variable name="option" value="--option key=value" display="Synonym for --answer; on a key collision --option wins because answers are merged before options (last write wins)" />
+      <Variable name="yes" value="--yes" display="Accepts every recipe prompt's default without asking; the -y shorthand is equivalent" />
+      <Variable name="noInteractive" value="--no-interactive" display="Never prompts; remaining prompts must be satisfied by defaults or --answer, otherwise the recipe fails; --non-interactive is accepted as a synonym" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-recipe-render" render={false} reason="The recipe is rendered into the scratch cache root and planned under a generated identity, mirroring fork mode's materialize then plan then apply shape">
+    <Step name="render">
+      <Variable name="root" value="user cache scratch dir" display="The recipe renders into <userCacheRoot>/scratch/<id>/root/, never into the current working directory" />
+      <Variable name="identity" value="scratch-&lt;base&gt;-&lt;6hex&gt;" display="The scratch id is generated from --name, then the recipe reference as a fallback, and forced onto the rendered Landofile name" />
+      <Variable name="planName" value="scratch id" display="The rendered Landofile is re-planned under the scratch id so plan id, name, and slug all match the scratch identity" />
+      <Variable name="postInit" value="skipped" display="The recipe's postInit: actions are not run for scratch mode; --run-post-init opt-in is a later flag" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-recipe-unresolved" render={false} reason="A recipe reference that cannot be resolved fails before any scratch app is created so no partial state is left behind">
+    <Step name="unresolved">
+      <Variable name="unknown" value="ScratchSourceUnresolvedError" display="An unknown or unresolvable --from <recipe-ref> maps recipe-resolution failures to ScratchSourceUnresolvedError" />
+      <Variable name="render" value="ScratchAppError" display="Render, IO, or parse failures of an otherwise resolvable recipe surface as ScratchAppError instead" />
+    </Step>
+  </Scenario>
+</Guide>

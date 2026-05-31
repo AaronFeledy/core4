@@ -863,11 +863,15 @@ const runScratchEffect = async <A>(
   process.exitCode = 1;
 };
 
-const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions => {
+export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions => {
   let fork = false;
   let from: string | undefined;
   let detach = false;
   let name: string | undefined;
+  let yes = false;
+  let nonInteractive = false;
+  const answerValues: string[] = [];
+  const optionValues: string[] = [];
 
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -880,6 +884,14 @@ const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions
       detach = true;
       continue;
     }
+    if (arg === "--yes" || arg === "-y") {
+      yes = true;
+      continue;
+    }
+    if (arg === "--no-interactive" || arg === "--non-interactive") {
+      nonInteractive = true;
+      continue;
+    }
     const fromMatch = parseStringFlag(argv, i, "from");
     if (fromMatch !== undefined) {
       from = fromMatch.value;
@@ -890,10 +902,30 @@ const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions
     if (nameMatch !== undefined) {
       name = nameMatch.value;
       i += nameMatch.consumed - 1;
+      continue;
+    }
+    const answerMatch = parseStringFlag(argv, i, "answer");
+    if (answerMatch !== undefined) {
+      answerValues.push(answerMatch.value);
+      i += answerMatch.consumed - 1;
+      continue;
+    }
+    const optionMatch = parseStringFlag(argv, i, "option");
+    if (optionMatch !== undefined) {
+      optionValues.push(optionMatch.value);
+      i += optionMatch.consumed - 1;
     }
   }
 
-  return { fork, detach, ...(from === undefined ? {} : { from }), ...(name === undefined ? {} : { name }) };
+  return {
+    fork,
+    detach,
+    yes,
+    nonInteractive,
+    answers: parseAnswerFlags([...answerValues, ...optionValues]),
+    ...(from === undefined ? {} : { from }),
+    ...(name === undefined ? {} : { name }),
+  };
 };
 
 const scratchIdFromArgv = (argv: ReadonlyArray<string>): string => {

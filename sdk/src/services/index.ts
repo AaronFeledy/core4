@@ -278,6 +278,9 @@ export interface ScratchAcquireInput {
   readonly source: ScratchSource;
   readonly detached: boolean;
   readonly name?: string;
+  readonly answers?: Record<string, string>;
+  readonly yes?: boolean;
+  readonly nonInteractive?: boolean;
 }
 
 export interface ScratchHandle {

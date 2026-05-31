@@ -79,6 +79,10 @@ export interface InitAppOptions {
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
   readonly events?: ProgressEmitter;
+  // Absolute render target; defaults to `<cwd>/<appName>` when omitted.
+  readonly destination?: string;
+  // Run recipe `postInit:` actions after rendering; defaults to true.
+  readonly runPostInit?: boolean;
 }
 
 export interface InitAppResult {
@@ -160,10 +164,11 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
 
   const events = options.events;
   const postInitActions = manifest.postInit ?? [];
+  const shouldRunPostInit = options.runPostInit !== false && postInitActions.length > 0;
   const initParentId = `init:${manifest.id}`;
   const treeStartedAt = performance.now();
   const childIds: string[] = ["render"];
-  if (postInitActions.length > 0) childIds.push("postinit");
+  if (shouldRunPostInit) childIds.push("postinit");
 
   await publishTreeStartAsync(events, {
     parentId: initParentId,
@@ -179,7 +184,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     label: `Render recipe files (${files.length})`,
   });
 
-  const directory = join(cwd, appName);
+  const directory = options.destination ?? join(cwd, appName);
 
   try {
     const existing = await readdir(directory).catch((cause: unknown) => {
@@ -248,7 +253,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   });
 
   let postInit: PostInitOutcome = { executed: [] };
-  if (postInitActions.length > 0) {
+  if (shouldRunPostInit) {
     const postInitStartedAt = performance.now();
     await publishTaskStartAsync(events, {
       taskId: "postinit",

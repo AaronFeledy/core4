@@ -26,6 +26,21 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
     from: Flags.string({ description: "Recipe reference to materialize as a scratch app." }),
     detach: Flags.boolean({ description: "Return after acquiring the scratch app.", default: false }),
     name: Flags.string({ description: "Base name for the generated scratch id." }),
+    answer: Flags.string({ description: "Recipe answer in key=value form (repeatable).", multiple: true }),
+    option: Flags.string({
+      description: "Alias for --answer in key=value form (repeatable).",
+      multiple: true,
+    }),
+    yes: Flags.boolean({
+      char: "y",
+      description: "Accept every recipe prompt's default without asking.",
+      default: false,
+    }),
+    "no-interactive": Flags.boolean({
+      aliases: ["non-interactive"],
+      description: "Never prompt; recipe prompts must be satisfied by defaults or --answer.",
+      default: false,
+    }),
   };
   static override landoSpec: LandoCommandSpec = appsScratchStartSpec;
   static override bootstrap = appsScratchStartSpec.bootstrap;
