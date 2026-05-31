@@ -128,7 +128,7 @@ type ProviderRuntimeServices =
   | RuntimeProviderRegistry
   | GlobalAppService;
 type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner;
-type ScratchRuntimeServices = ProviderRuntimeServices | ScratchAppService;
+type ScratchRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
@@ -256,11 +256,19 @@ const makeGlobalRuntimeLive = (loggerMode: LoggerMode) =>
     ),
   );
 
-const makeScratchRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode),
-    ScratchAppServiceLive.pipe(Layer.provide(FileSystemLive)),
+const makeScratchRuntimeLive = (loggerMode: LoggerMode) => {
+  const providerBase = makeProviderRuntimeLive(loggerMode);
+  const plannerLive = AppPlannerLive.pipe(
+    Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
+  const scratchDeps = Layer.mergeAll(providerBase, LandofileServiceLive, plannerLive);
+  return Layer.mergeAll(
+    providerBase,
+    LandofileServiceLive,
+    plannerLive,
+    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+  );
+};
 
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(

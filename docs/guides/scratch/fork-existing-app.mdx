@@ -1,0 +1,45 @@
+---
+id: fork-existing-app
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, scratch, fork]
+---
+
+<Guide>
+  <Scenario id="scratch-fork-command" render={false} reason="Fork mode starts a scratch app from the current directory Landofile and requires a real provider, so this scenario documents the command surface without booting containers">
+    <Step name="start">
+      <Variable name="command" value="apps:scratch:start --fork" display="Starts a scratch fork from the Landofile discovered in the current directory" />
+      <Variable name="alias" value="scratch start --fork" display="The scratch namespace alias reaches the same fork mode behavior" />
+      <Variable name="detach" value="--detach" display="Returns after the provider apply starts the fork resources instead of keeping an attached command session" />
+      <Variable name="sourceRequired" value="Landofile" display="Running fork mode outside a directory with a resolvable Landofile fails before any scratch app is created" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-fork-identity" render={false} reason="Every fork receives a generated scratch identity so the forked plan does not reuse the source app slug or provider resource names">
+    <Step name="identity">
+      <Variable name="pattern" value="scratch-&lt;base&gt;-&lt;6hex&gt;" display="The scratch id is generated from --name, then the source Landofile name, then app as a fallback" />
+      <Variable name="planName" value="scratch id" display="The fork plan uses the scratch id for id, name, and slug" />
+      <Variable name="dns" value="web.&lt;scratch-id&gt;.internal" display="Service DNS aliases derive from the scratch slug instead of the source slug" />
+      <Variable name="source" value="untouched" display="The source Landofile object is not rewritten when the fork plan is derived" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-fork-provider-resources" render={false} reason="Fork mode is intended to let the source app and scratch fork run at the same time with separate provider resources">
+    <Step name="resources">
+      <Variable name="containers" value="separate" display="Provider containers are named from the scratch slug, so source and fork containers do not collide" />
+      <Variable name="networks" value="lando-&lt;scratch-id&gt;" display="The fork gets its own per-app bridge network instead of joining the source app network" />
+      <Variable name="volumes" value="scratch slug" display="Service volumes and file-sync names are derived from the scratch app name when the plan is rebuilt" />
+      <Variable name="sourceRunning" value="simultaneous" display="Starting the fork does not stop or rename the current-directory source app" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-fork-shared-root" render={false} reason="The first fork mode implementation shares the current project directory by design and leaves content-copy isolation for a later command surface">
+    <Step name="root">
+      <Variable name="root" value="source app root" display="The fork plan keeps the source app root so code edits are visible to both apps" />
+      <Variable name="copy" value="not copied" display="No source files are copied into the scratch cache when --fork starts" />
+      <Variable name="cache" value="user cache scratch dir" display="Only the scratch instance metadata directories are materialized under the user cache root" />
+      <Variable name="isolation" value="provider resources" display="Isolation applies to containers, networks, DNS, and derived volume names, not to the mounted content" />
+    </Step>
+  </Scenario>
+</Guide>
