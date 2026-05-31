@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 
 import {
   computeAffectedGuides,
+  missingGeneratedGuideIds,
   parseDevGuidesArgs,
   pruneOrphanGeneratedGuides,
 } from "../../../scripts/dev-guides.ts";
@@ -117,6 +118,13 @@ describe("computeAffectedGuides", () => {
     const single = { ...ctx, singleGuideId: "alpha" };
     expect(computeAffectedGuides("core/src/foo.ts", single)).toEqual(["alpha"]);
     expect(computeAffectedGuides("docs/guides/nested/beta.mdx", single)).toEqual(["alpha"]);
+  });
+});
+
+describe("missingGeneratedGuideIds", () => {
+  test("reports every requested guide without generated output", () => {
+    expect(missingGeneratedGuideIds(["alpha", "beta", "gamma"], ["alpha", "gamma"])).toEqual(["beta"]);
+    expect(missingGeneratedGuideIds(["alpha", "beta"], [])).toEqual(["alpha", "beta"]);
   });
 });
 

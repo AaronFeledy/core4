@@ -123,6 +123,20 @@ const generatedDirsFor = async (guideIds: readonly string[]): Promise<readonly s
   return present;
 };
 
+export const missingGeneratedGuideIds = (
+  guideIds: readonly string[],
+  presentIds: readonly string[],
+): readonly string[] => {
+  const present = new Set(presentIds);
+  return guideIds.filter((id) => !present.has(id));
+};
+
+const noGeneratedOutput = (guideIds: readonly string[]): RunResult => ({
+  exitCode: 1,
+  stdout: "",
+  stderr: `dev:guides: no generated scenario output found for ${guideIds.join(", ") || "requested guides"}\n`,
+});
+
 export const pruneOrphanGeneratedGuides = async (validIds: ReadonlySet<string>): Promise<void> => {
   let entries: readonly string[];
   try {
@@ -163,14 +177,11 @@ const regenerate = async (guideIds: readonly string[], isAll: boolean): Promise<
 };
 
 const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> => {
+  if (guideIds.length === 0) return noGeneratedOutput([]);
+
   const present = await generatedDirsFor(guideIds);
-  if (present.length === 0) {
-    return {
-      exitCode: 1,
-      stdout: "",
-      stderr: `dev:guides: no generated scenario output found for ${guideIds.join(", ") || "requested guides"}\n`,
-    };
-  }
+  const missing = missingGeneratedGuideIds(guideIds, present);
+  if (missing.length > 0) return noGeneratedOutput(missing);
   const include = present.map((id) => `${resolve(REPO_ROOT, GENERATED_ROOT, id)}/**/*.ts`);
   const configDir = await mkdtemp(join(tmpdir(), "lando-dev-guides-"));
   const configPath = join(configDir, "tsconfig.json");
@@ -204,19 +215,14 @@ const typecheckGuides = async (guideIds: readonly string[]): Promise<RunResult> 
 
 const testGuides = async (guideIds: readonly string[], isAll: boolean): Promise<RunResult> => {
   if (isAll) {
-    if (!(await dirExists(resolve(REPO_ROOT, GENERATED_ROOT)))) {
-      return { exitCode: 1, stdout: "", stderr: "dev:guides: no generated scenario output found\n" };
-    }
+    if (!(await dirExists(resolve(REPO_ROOT, GENERATED_ROOT)))) return noGeneratedOutput([]);
     return run([process.execPath, "test", `${GENERATED_ROOT}/`]);
   }
+  if (guideIds.length === 0) return noGeneratedOutput([]);
+
   const present = await generatedDirsFor(guideIds);
-  if (present.length === 0) {
-    return {
-      exitCode: 1,
-      stdout: "",
-      stderr: `dev:guides: no generated scenario output found for ${guideIds.join(", ") || "requested guides"}\n`,
-    };
-  }
+  const missing = missingGeneratedGuideIds(guideIds, present);
+  if (missing.length > 0) return noGeneratedOutput(missing);
   return run([process.execPath, "test", ...present.map((id) => `${GENERATED_ROOT}/${id}/`)]);
 };
 
@@ -301,6 +307,8 @@ const main = async (): Promise<void> => {
 
   let initialCode = 1;
   if (indexReady) {
+    await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
+
     const singleGuideId =
       options.singleGuidePath === undefined
         ? undefined
@@ -323,8 +331,6 @@ const main = async (): Promise<void> => {
 
   if (shuttingDown) return;
 
-  if (indexReady) await pruneOrphanGeneratedGuides(new Set(index.allGuideIds));
-
   const watchedRoots: string[] = [
     resolve(REPO_ROOT, GUIDE_ROOT),
     resolve(REPO_ROOT, "core/src"),
@@ -335,6 +341,10 @@ const main = async (): Promise<void> => {
   const pending = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let running = false;
+
+  const requeue = (changed: readonly string[]): void => {
+    for (const path of changed) pending.add(path);
+  };
 
   const flush = async (): Promise<void> => {
     if (running || shuttingDown) return;
@@ -349,6 +359,7 @@ const main = async (): Promise<void> => {
       } catch (error) {
         indexReady = false;
         writeError("dev:guides: failed to build guide index", error);
+        requeue(changed);
         return;
       }
       if (shuttingDown) return;
@@ -360,6 +371,7 @@ const main = async (): Promise<void> => {
           : resolveSingleGuideId(index, options.singleGuidePath);
       if (options.singleGuidePath !== undefined && singleGuideId === undefined) {
         process.stderr.write(`dev:guides: no guide found at ${options.singleGuidePath}\n`);
+        requeue(changed);
         return;
       }
       const ctx: AffectedGuidesContext =
