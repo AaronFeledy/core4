@@ -288,3 +288,10 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   - A new doctor *section* (vs. a flag) is wired only in `doctor-report.ts` (the combined report both dispatch paths share) — there is no per-path flag plumbing like the `--fix`/renderer flags need, because the section always renders. Adding one means: new `*Doctor()` check + `DefaultXDoctorLayer`, a field on `DoctorReport`, and appending to both `renderDoctorReport` (filter empty parts, join) and `renderDoctorReportAsNdjson` (push `checkLinesFromNdjson(...)`). The report's check-count/stream-order assertions in `doctor-report.test.ts` must bump accordingly.
   - When a prior loop run commits a story directly to `main` (unpushed) instead of a story branch, relocate it cleanly: `git switch -c <story-branch>` at the commit, `git branch -f main origin/main`, update `.local/looper/.last-branch`. This preserves the work, keeps `main` == `origin/main` for the Push/PR flow, and avoids a direct-to-main push that bypasses review.
 ---
+
+## 2026-05-31 09:56 - Babysit
+- PR: #230 https://github.com/AaronFeledy/core4/pull/230
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: unreadable global dist Landofile now reports fail/error with readError instead of pass; regression test added)
+- Merge: merged (squash)
+---
