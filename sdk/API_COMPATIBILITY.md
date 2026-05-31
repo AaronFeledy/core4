@@ -136,6 +136,7 @@
 - `RecipeManifestService`
 - `Renderer`
 - `SchemaValidator`
+- `ScratchAppService`
 - `SecretStore`
 - `HostProxyService`
 - `SshService`

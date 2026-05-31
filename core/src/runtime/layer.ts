@@ -32,6 +32,7 @@ import {
   type PluginRegistry,
   RuntimeProvider,
   type RuntimeProviderRegistry,
+  type ScratchAppService,
   type ToolingEngine,
 } from "@lando/sdk/services";
 
@@ -43,6 +44,7 @@ import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
+import { ScratchAppServiceLive } from "../scratch-app/service.ts";
 import { CommandRegistryLive } from "../services/command-registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
@@ -126,6 +128,7 @@ type ProviderRuntimeServices =
   | RuntimeProviderRegistry
   | GlobalAppService;
 type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner;
+type ScratchRuntimeServices = ProviderRuntimeServices | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
@@ -143,6 +146,8 @@ type RuntimeLayer =
   | Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<GlobalRuntimeServices>
   | Layer.Layer<GlobalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<ScratchRuntimeServices>
+  | Layer.Layer<ScratchRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<AppRuntimeServices>
   | Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<unknown, LandoRuntimeBootstrapError>;
@@ -251,6 +256,12 @@ const makeGlobalRuntimeLive = (loggerMode: LoggerMode) =>
     ),
   );
 
+const makeScratchRuntimeLive = (loggerMode: LoggerMode) =>
+  Layer.mergeAll(
+    makeProviderRuntimeLive(loggerMode),
+    ScratchAppServiceLive.pipe(Layer.provide(FileSystemLive)),
+  );
+
 const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
@@ -272,10 +283,11 @@ const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): Run
     case "tooling":
       return makeToolingRuntimeLive(loggerMode);
     case "provider":
-    case "scratch":
       return makeProviderRuntimeLive(loggerMode);
     case "global":
       return makeGlobalRuntimeLive(loggerMode);
+    case "scratch":
+      return makeScratchRuntimeLive(loggerMode);
     case "app":
       return makeAppRuntimeLive(loggerMode);
   }
@@ -304,6 +316,10 @@ export function makeLandoRuntime(options: { readonly bootstrap: "provider" }): L
 >;
 export function makeLandoRuntime(options: { readonly bootstrap: "global" }): Layer.Layer<
   GlobalRuntimeServices,
+  LandoRuntimeBootstrapError
+>;
+export function makeLandoRuntime(options: { readonly bootstrap: "scratch" }): Layer.Layer<
+  ScratchRuntimeServices,
   LandoRuntimeBootstrapError
 >;
 export function makeLandoRuntime(options: { readonly bootstrap: "app" }): Layer.Layer<

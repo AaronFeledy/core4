@@ -68,6 +68,7 @@ import type {
   RecipeManifestParseError,
   RecipeManifestValidationError,
   ScannerError,
+  ScratchAppError,
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
@@ -256,6 +257,26 @@ export class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService"
       GlobalDistResult,
       GlobalAppError | GlobalDistConflictError
     >;
+  }
+>() {}
+
+export interface ScratchAppPaths {
+  readonly base: AbsolutePath;
+  readonly instanceRoot: AbsolutePath;
+  readonly root: AbsolutePath;
+  readonly planCache: AbsolutePath;
+  readonly infoCache: AbsolutePath;
+  readonly buildResults: AbsolutePath;
+}
+
+export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppService")<
+  ScratchAppService,
+  {
+    readonly kind: "scratch";
+    readonly root: Effect.Effect<AbsolutePath, ScratchAppError>;
+    readonly ensureRoot: Effect.Effect<AbsolutePath, ScratchAppError, Scope.Scope>;
+    readonly synthesizeId: (base: string) => Effect.Effect<string, ScratchAppError>;
+    readonly paths: (id: string) => Effect.Effect<ScratchAppPaths, ScratchAppError>;
   }
 >() {}
 

@@ -249,6 +249,17 @@ export class GlobalLandofilePathConflictError extends Schema.TaggedError<GlobalL
   },
 ) {}
 
+/**
+ * Umbrella error for scratch-app state transitions and path management
+ * performed by `ScratchAppService`.
+ */
+export class ScratchAppError extends Schema.TaggedError<ScratchAppError>()("ScratchAppError", {
+  message: Schema.String,
+  operation: Schema.optional(Schema.String),
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,
