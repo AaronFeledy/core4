@@ -185,6 +185,59 @@ describe("build-recipe-readmes strip/flatten", () => {
     expect(byPath["recipes/tabbed-recipe/.scaffold/mysql.md"]).not.toContain("--db=postgres");
   });
 
+  test("collects variables only from the rendered variant path", () => {
+    const mdx = `---
+id: variable-scope-recipe
+provider: test
+axes:
+  db: [postgres, mysql]
+---
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Tabs axis="db">
+      <Tab name="postgres">
+        <Step name="configure">
+          <Variable name="dbName" value="postgres-visible" />
+          <Run command="lando init --db={{dbName}}" />
+        </Step>
+      </Tab>
+      <Tab name="mysql">
+        <Step name="configure">
+          <Variable name="dbName" value="mysql-visible" />
+          <Run command="lando init --db={{dbName}}" />
+        </Step>
+      </Tab>
+    </Tabs>
+    <Hidden>
+      <Step name="hidden">
+        <Variable name="dbName" value="hidden-wrong" />
+      </Step>
+    </Hidden>
+  </Scenario>
+  <Scenario id="test-only" render={false}>
+    <Step name="hidden-scenario">
+      <Variable name="dbName" value="render-false-wrong" />
+    </Step>
+  </Scenario>
+</Guide>
+`;
+
+    const outputs = stripRecipeReadme("recipes/variable-scope-recipe/README.mdx", mdx);
+    const byPath = Object.fromEntries(outputs.map((o) => [o.relativePath, o.markdown]));
+    const postgres = byPath["recipes/variable-scope-recipe/.scaffold/postgres.md"] ?? "";
+    const mysql = byPath["recipes/variable-scope-recipe/.scaffold/mysql.md"] ?? "";
+
+    expect(postgres).toContain("lando init --db=postgres-visible");
+    expect(postgres).not.toContain("mysql-visible");
+    expect(postgres).not.toContain("hidden-wrong");
+    expect(postgres).not.toContain("render-false-wrong");
+    expect(mysql).toContain("lando init --db=mysql-visible");
+    expect(mysql).not.toContain("postgres-visible");
+    expect(mysql).not.toContain("hidden-wrong");
+    expect(mysql).not.toContain("render-false-wrong");
+  });
+
   test("emits the full Cartesian product for a multi-axis guide", () => {
     const mdx = `---
 id: matrix-recipe

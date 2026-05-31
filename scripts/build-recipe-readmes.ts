@@ -160,9 +160,34 @@ const fileNameOf = (pairs: ReadonlyArray<VariantPair>): string =>
 const interpolate = (value: string, variables: ReadonlyMap<string, string>): string =>
   value.replace(/\{\{\s*([A-Za-z_$][\w$-]*)\s*\}\}/g, (_match, name: string) => variables.get(name) ?? "");
 
+const matchedTab = (tabs: MdxNode, variant: ReadonlyArray<VariantPair>): MdxNode | undefined => {
+  const axisProp = propsOf(tabs).axis;
+  const [firstPair] = variant;
+  const axis =
+    typeof axisProp === "string"
+      ? axisProp
+      : variant.length === 1 && firstPair !== undefined
+        ? firstPair.axis
+        : DEFAULT_AXIS;
+  const value = variant.find((pair) => pair.axis === axis)?.value;
+  if (value === undefined) return undefined;
+  return elementChildren(tabs).find((child) => child.name === "Tab" && propsOf(child).name === value);
+};
+
 // <Variable> supplies `display` (falling back to `value`) for stripped README interpolation.
-const collectVariables = (node: MdxNode, variables: Map<string, string>): void => {
+const collectVariables = (
+  node: MdxNode,
+  variables: Map<string, string>,
+  variant: ReadonlyArray<VariantPair>,
+): void => {
   if (node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement") {
+    if (node.name === "Scenario" && propsOf(node).render === false) return;
+    if (node.name === "Hidden" || node.name === "Skip") return;
+    if (node.name === "Tabs") {
+      const tab = matchedTab(node, variant);
+      if (tab !== undefined) collectVariables(tab, variables, variant);
+      return;
+    }
     if (node.name === "Variable") {
       const props = propsOf(node);
       const name = typeof props.name === "string" ? props.name : undefined;
@@ -173,7 +198,7 @@ const collectVariables = (node: MdxNode, variables: Map<string, string>): void =
       }
     }
   }
-  for (const child of node.children ?? []) collectVariables(child, variables);
+  for (const child of node.children ?? []) collectVariables(child, variables, variant);
 };
 
 const headingNode = (depth: number, text: string): MdxNode => ({
@@ -242,27 +267,13 @@ const stripStep = (step: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> => 
   return [headingNode(2, `${ctx.stepCounter}. ${name}`), ...stripStepComponents(step, ctx)];
 };
 
-const matchedTab = (tabs: MdxNode, ctx: StripContext): MdxNode | undefined => {
-  const axisProp = propsOf(tabs).axis;
-  const [firstPair] = ctx.variant;
-  const axis =
-    typeof axisProp === "string"
-      ? axisProp
-      : ctx.variant.length === 1 && firstPair !== undefined
-        ? firstPair.axis
-        : DEFAULT_AXIS;
-  const value = ctx.variant.find((pair) => pair.axis === axis)?.value;
-  if (value === undefined) return undefined;
-  return elementChildren(tabs).find((child) => child.name === "Tab" && propsOf(child).name === value);
-};
-
 const stripScenarioChild = (child: MdxNode, ctx: StripContext): ReadonlyArray<MdxNode> => {
   if (child.type === "mdxJsxFlowElement" || child.type === "mdxJsxTextElement") {
     switch (child.name) {
       case "Step":
         return stripStep(child, ctx);
       case "Tabs": {
-        const tab = matchedTab(child, ctx);
+        const tab = matchedTab(child, ctx.variant);
         if (tab === undefined) return [];
         return elementChildren(tab)
           .filter((node) => node.name === "Step")
@@ -315,7 +326,7 @@ export const stripRecipeReadme = (sourcePath: string, content: string): Readonly
       return { fileName, relativePath, markdown: content };
     }
     const variables = new Map<string, string>();
-    collectVariables(root, variables);
+    collectVariables(root, variables, pairs);
     const ctx: StripContext = { variables, variant: pairs, stepCounter: 0, cleanups: [] };
     const children: MdxNode[] = [];
     for (const child of root.children ?? []) {
