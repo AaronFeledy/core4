@@ -130,6 +130,25 @@ describe("check:guide-coverage parsers", () => {
     const section = parseGuideCoverageSection("# Title\n\n## User Stories\n\nNo coverage section here.\n");
     expect(section).toEqual({ present: false, none: false, paths: [] });
   });
+
+  test("parseGuideCoverageSection extracts paths even when prose contains a None substring", () => {
+    const section = parseGuideCoverageSection(
+      "## Guide Coverage\n\n**None of the legacy flows apply here.**\n\n| Story | Guide |\n| --- | --- |\n| US-074 | docs/guides/setup/foo.mdx |\n\n## Next\n",
+    );
+    expect(section).toEqual({
+      present: true,
+      none: false,
+      paths: ["docs/guides/setup/foo.mdx"],
+    });
+  });
+
+  test("parseGuideCoverageSection does not treat a None marker as a declaration when paths are listed", () => {
+    const section = parseGuideCoverageSection(
+      "## Guide Coverage\n\n**None — but see below.**\n\n| Story | Guide |\n| --- | --- |\n| US-082 | docs/guides/setup/baz.mdx |\n\n## Next\n",
+    );
+    expect(section.none).toBe(false);
+    expect(section.paths).toEqual(["docs/guides/setup/baz.mdx"]);
+  });
 });
 
 describe("check:guide-coverage", () => {

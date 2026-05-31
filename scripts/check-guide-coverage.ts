@@ -120,7 +120,6 @@ const guideCoverageSection = (content: string): string | undefined => {
 export const parseGuideCoverageSection = (content: string): GuideCoverageSection => {
   const section = guideCoverageSection(content);
   if (section === undefined) return { present: false, none: false, paths: [] };
-  if (/\*\*None\b/i.test(section)) return { present: true, none: true, paths: [] };
   const seen = new Set<string>();
   const paths: Array<string> = [];
   for (const match of section.matchAll(GUIDE_PATH_PATTERN_GLOBAL)) {
@@ -129,7 +128,8 @@ export const parseGuideCoverageSection = (content: string): GuideCoverageSection
     seen.add(value);
     paths.push(value);
   }
-  return { present: true, none: false, paths };
+  const none = paths.length === 0 && /\*\*None\b/i.test(section);
+  return { present: true, none, paths };
 };
 
 export const parseGuideCoveragePaths = (content: string): ReadonlyArray<string> =>
