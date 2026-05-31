@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, stat } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Stream } from "effect";
@@ -41,7 +41,7 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-const withTempEnv = async <T>(run: () => Promise<T>): Promise<T> => {
+const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Promise<T>): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-cache-")));
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-data-")));
   const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-conf-")));
@@ -55,7 +55,7 @@ const withTempEnv = async <T>(run: () => Promise<T>): Promise<T> => {
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run();
+    return await run({ cacheRoot });
   } finally {
     process.chdir(previousCwd);
     // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
@@ -202,7 +202,7 @@ describe("ScratchAppServiceLive recipe acquire", () => {
   });
 
   test("maps an unknown recipe reference to ScratchSourceUnresolvedError", async () => {
-    await withTempEnv(async () => {
+    await withTempEnv(async ({ cacheRoot }) => {
       const outcome = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
           Effect.scoped(
@@ -216,7 +216,13 @@ describe("ScratchAppServiceLive recipe acquire", () => {
       );
 
       expect(outcome._tag).toBe("Left");
-      if (outcome._tag === "Left") expect(outcome.left._tag).toBe("ScratchSourceUnresolvedError");
+      if (outcome._tag === "Left") {
+        expect(outcome.left._tag).toBe("ScratchSourceUnresolvedError");
+        expect(outcome.left.remediation).toBe(
+          "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
+        );
+      }
+      expect(await readdir(join(cacheRoot, "scratch"))).toEqual([]);
     });
   });
 });

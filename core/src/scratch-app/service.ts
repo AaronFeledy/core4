@@ -1,4 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { type Context, Effect, Either, Layer, Schema } from "effect";
@@ -39,13 +40,17 @@ const scratchSourceLabel = (input: ScratchAcquireInput): string => {
   return `recipe:${input.source.ref}`;
 };
 
+const scratchSourceRemediation = (input: ScratchAcquireInput): string =>
+  input.source?.kind === "recipe"
+    ? "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`."
+    : "Scratch source resolution is not available in this build yet, so no scratch app was created.";
+
 const scratchSourceUnresolvedError = (input: ScratchAcquireInput): ScratchSourceUnresolvedError =>
   new ScratchSourceUnresolvedError({
     message: `Unable to resolve scratch source ${scratchSourceLabel(input)}.`,
     source: scratchSourceLabel(input),
     attempts: [],
-    remediation:
-      "Scratch source resolution is not available in this build yet, so no scratch app was created.",
+    remediation: scratchSourceRemediation(input),
   });
 
 const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
@@ -189,6 +194,13 @@ const makeScratchAppService = (
         ),
       );
 
+  const cleanupScratchInstance = (path: AbsolutePath) =>
+    Effect.tryPromise({
+      try: () => rm(path, { recursive: true, force: true }),
+      catch: (cause) =>
+        scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
+    });
+
   const startScratchPlan = (scratchId: string, plan: AppPlan) =>
     Effect.gen(function* () {
       const provider = yield* registry
@@ -270,7 +282,7 @@ const makeScratchAppService = (
             ...(input.nonInteractive === undefined ? {} : { nonInteractive: input.nonInteractive }),
           }),
         catch: (cause) => mapInitError(input, cause),
-      });
+      }).pipe(Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))));
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
       const content = yield* fileSystem
