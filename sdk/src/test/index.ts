@@ -515,11 +515,13 @@ const serviceContractFailure = (assertion: string, details?: unknown): ContractF
 const requireServiceContract = (condition: boolean, assertion: string, details?: unknown) =>
   condition ? Effect.void : Effect.fail(serviceContractFailure(assertion, details));
 
-/** Identity env keys every catalog service must emit. */
+/** Required base env keys every catalog service must emit. */
 const SERVICE_LANDO_IDENTITY_KEYS: ReadonlyArray<string> = [
   "LANDO",
   "LANDO_APP_NAME",
   "LANDO_APP_KIND",
+  "LANDO_MAIL_HOST",
+  "LANDO_MAIL_PORT",
   "LANDO_PROJECT",
   "LANDO_SERVICE_API",
   "LANDO_SERVICE_NAME",
@@ -603,6 +605,8 @@ export const TestServiceType: ServiceTypeShape = {
       LANDO: "ON",
       LANDO_APP_NAME: appName,
       LANDO_APP_KIND: "user",
+      LANDO_MAIL_HOST: "mailpit.global.internal",
+      LANDO_MAIL_PORT: "1025",
       LANDO_PROJECT: slug,
       LANDO_SERVICE_API: "4",
       LANDO_SERVICE_NAME: input.name,

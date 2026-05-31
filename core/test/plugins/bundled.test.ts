@@ -50,6 +50,11 @@ describe("BUNDLED_PLUGINS", () => {
       expect(plugin.layer).toBe(expected.layer);
       expect(plugin.manifest).toBe(expected.manifest);
     }
+
+    const serviceLandoEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/service-lando");
+    expect(serviceLandoEntry?.globalServices?.get("mailpit")).toBe(
+      serviceLando.globalServices.get("mailpit"),
+    );
   });
 
   test("generated bundled plugin module is idempotent", async () => {

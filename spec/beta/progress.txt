@@ -122,3 +122,12 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
   - Stale `plugins/proxy-traefik/plugin.yaml` (old `provides.proxyServices` shape, no `globalServices`) — out of scope: pre-existing, repo-wide, not loaded for bundled discovery (the TS `manifest` export is authoritative). Resolve as part of the broader `provides:`→`contributes:` plugin.yaml migration.
 - **Learnings for future iterations:** US-101 (ProxyService Live Layer) inherits two deferred US-114 items — (a) end-to-end coverage that runs the shipped `traefik` `ServiceConfig.command` via `meta:global:install`→provider start, and (b) the dashboard exposure hardening (`--api.insecure`/`:8080`).
 ---
+
+## [2026-05-30 20:08 CDT] - US-115
+- Shipped bundled Mailpit global service from `@lando/service-lando` via `type: "compose"` on `axllent/mailpit:v1.30.1`, with SMTP `1025`, web/API `8025`, and default route `mailpit.lndo.site`; `meta:global:install` now materializes id-sorted `mailpit, traefik` into the global `.lando.dist.yml`.
+- Extended the per-app `LANDO_*` env contract with `LANDO_MAIL_HOST=mailpit.global.internal` and `LANDO_MAIL_PORT=1025`, gated only on `appKind !== "global"`; regenerated the bundled plugin/schema snapshot outputs and added the podman-gated live mail-capture scenario test.
+- Verification: typecheck, lint, focused tests, manual isolated `lando global install` QA, and full `bun test` passed; live Mailpit/Traefik integration remains podman-gated/skipped locally without `LANDO_TEST_PODMAN_SOCKET`.
+- **Learnings for future iterations:**
+  - Mailpit lives in `@lando/service-lando` for US-115, not a dedicated `@lando/service-mailpit` package. A future US-118 may extract a Mailpit service type/AppFeature and add AppFeature-gated `MAIL_*` / `LANDO_GLOBAL_MAILPIT_*` projection separately; do not rename or overload the unconditional `LANDO_MAIL_*` compatibility contract.
+  - `global install` output is id-sorted (`Global services: mailpit, traefik`), and the bundled-loader missing-static-entry test still asks `@lando/service-lando` for `traefik`: the static map now exists but `.get("traefik")` remains undefined, so the same loud `GlobalAppError` path is preserved.
+---

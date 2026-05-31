@@ -1,8 +1,9 @@
-import { Layer, Schema } from "effect";
+import { type Effect, Layer, Schema } from "effect";
 
-import { PluginManifest } from "@lando/sdk/schema";
+import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import mailpitGlobalService from "./global-services/mailpit.ts";
 import { apacheServiceType } from "./services/apache.ts";
 import { composeServiceType } from "./services/compose.ts";
 import { elasticsearch8ServiceType, elasticsearchServiceType } from "./services/elasticsearch.ts";
@@ -90,6 +91,11 @@ export const serviceTypes: ReadonlyMap<string, ServiceTypeShape> = new Map<strin
 
 export const services = Layer.empty;
 
+/** Static global-service contributions, keyed by contribution id. */
+export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
+  ["mailpit", mailpitGlobalService],
+]);
+
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
   version: "0.0.0",
@@ -97,6 +103,15 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   description: "The opinionated `lando` service base.",
   enabled: true,
   contributes: {
+    globalServices: [
+      {
+        id: "mailpit",
+        module: "./src/global-services/mailpit.ts",
+        enabledByDefault: true,
+        requires: { providerCapabilities: ["sharedCrossAppNetwork"] },
+        summary: "Global Mailpit SMTP capture server with web UI",
+      },
+    ],
     serviceTypes: [
       "apache",
       "compose",
