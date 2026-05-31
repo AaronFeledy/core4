@@ -167,6 +167,9 @@ jobs:
       - name: Lint guides
         run: bun run lint:guides
 
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
       - name: Run generated guide scenarios
         run: bun test test/scenarios/generated/guides/**
 

@@ -31,6 +31,7 @@
     "docs:scenario": "bun run scripts/docs-scenario.ts",
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
+    "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
     "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
