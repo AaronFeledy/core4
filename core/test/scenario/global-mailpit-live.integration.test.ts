@@ -22,7 +22,7 @@ const SUBJECT = "Mailpit live integration";
 const RECIPIENT = "recipient@example.lndo.site";
 // Minimal base image with a busybox shell + `nc`, used to drive SMTP from inside
 // a per-app service container.
-const SENDER_IMAGE = "alpine:3.21";
+const SENDER_IMAGE = "docker.io/library/alpine:3.21";
 
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-05-30T00:00:00Z"),

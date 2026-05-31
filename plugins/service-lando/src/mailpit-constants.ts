@@ -5,7 +5,7 @@
  */
 
 /** Pinned Mailpit image. Override per-install via the user `.lando.yml`. */
-export const MAILPIT_IMAGE = "axllent/mailpit:v1.30.1";
+export const MAILPIT_IMAGE = "docker.io/axllent/mailpit:v1.30.1";
 /** Default SMTP port Mailpit listens on. */
 export const MAILPIT_SMTP_PORT = 1025;
 /** Default web UI / HTTP API port Mailpit listens on. */

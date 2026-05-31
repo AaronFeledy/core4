@@ -89,7 +89,7 @@ describe("global:install command operation", () => {
       expect(result.dist.serviceIds).toContain("mailpit");
       expect(result.dist.serviceIds).toContain("traefik");
       expect(distContent).toContain("mailpit:");
-      expect(distContent).toContain("axllent/mailpit:v1.30.1");
+      expect(distContent).toContain("docker.io/axllent/mailpit:v1.30.1");
       expect(distContent).toContain("traefik:");
       expect(distContent).toContain("traefik:v3.3");
       expect(await readFile(join(dataRoot, "global", ".lando.yml"), "utf8")).toContain("User overrides");

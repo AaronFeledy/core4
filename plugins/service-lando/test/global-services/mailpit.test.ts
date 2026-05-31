@@ -27,7 +27,7 @@ describe("mailpit global service ServiceConfig", () => {
   test("uses a pinned Mailpit image", async () => {
     const config = await decodeConfig();
     expect(config.image).toBe(MAILPIT_IMAGE);
-    expect(MAILPIT_IMAGE.startsWith("axllent/mailpit:v")).toBe(true);
+    expect(MAILPIT_IMAGE.startsWith("docker.io/axllent/mailpit:v")).toBe(true);
   });
 
   test("opts out of the per-app source mount", async () => {
