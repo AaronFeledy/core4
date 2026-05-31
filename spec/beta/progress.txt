@@ -271,3 +271,11 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - Story verified complete on branch `us-118-appfeature-global-autostart` (no new code). The auto-start wiring is fully in place: the planner populates `AppPlan.requires.globalServices: ["traefik"]` for routed apps, `startApp` resolves it via `requiredGlobalServicesForPlan` and calls `ensureGlobalServicesRunning` before `pre-app-start` (failures chained into `GlobalAutoStartError` → `GlobalServiceMissingError`), and `stop` never auto-stops the global app. `GlobalAutoStartError`/`GlobalServiceMissingError` are published from `@lando/sdk/errors`; `passes: true` was already set.
 - Verification: typecheck, lint, and full `bun test` (2084 pass / 25 skip / 0 fail) passed. CLI QA: `lando start` outside an app still renders the `LandofileNotFoundError` init remediation and exits 1 (auto-start wiring did not regress the no-app path). PR #229 is open with all CI checks green (CLEAN / MERGEABLE).
 ---
+
+## [2026-05-31 08:28 CDT] - Babysit
+- PR: #229 https://github.com/AaronFeledy/core4/pull/229 (US-118 auto-start global app)
+- CI outcome: pass (static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, guide-scenarios-linux-x64, build-linux-x64, provider-integration-linux-x64 all SUCCESS; Cursor Bugbot NEUTRAL)
+- Review feedback: resolved (Bugbot flagged "Cached plans skip global auto-start" on stale commit a837bdde — already fixed by follow-up c04ef41 `Derive global service requirements from cached routes`, which injects `requires.globalServices: ["traefik"]` on cached-plan read via `withDerivedRouteRequirements` in `core/src/cache/app-plan.ts` with a regression test in `core/test/services/cache.test.ts`).
+- Local gate re-verified before merge: `bun run typecheck` clean, `bun run lint` clean (610 files), full `bun test` 2083 pass / 25 skip / 0 fail (one flaky failure on first run did not reproduce on re-run; deterministic cache test passes every run).
+- Merge: merged (squash) as 3ed3a2c; branch deleted; local main fast-forwarded.
+---
