@@ -145,3 +145,10 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - Verification: typecheck, lint, and US-115 unit/integration tests (111 pass / 1 podman-gated skip) green.
 - **Learnings for future iterations:** A "from a per-app service" live scenario should bring up a second app on the shared cross-app network and use `exec` from `@lando/provider-lando` to drive traffic from inside the per-app container at the `<service>.<slug>.internal` alias — host-loopback (`127.0.0.1`) shortcuts skip the cross-app DNS path the env contract actually depends on.
 ---
+
+## [2026-05-30 22:40 CDT] - Babysit
+- PR: #222 https://github.com/AaronFeledy/core4/pull/222
+- CI outcome: pass
+- Review feedback: fixed (Bugbot's missing-mailpit-`hostnames` bug was already resolved on HEAD; triage pushed the unpushed main merge plus two test-only stability fixes — codegen CI test-timeout bump and compiled-CLI parity fixtures — to clear the CONFLICTING state and green the full suite)
+- Merge: merged (squash)
+---
