@@ -152,3 +152,10 @@ This condenses the provider-matrix, service-catalog, file-sync, and subsystem st
 - Review feedback: fixed (Bugbot's missing-mailpit-`hostnames` bug was already resolved on HEAD; triage pushed the unpushed main merge plus two test-only stability fixes — codegen CI test-timeout bump and compiled-CLI parity fixtures — to clear the CONFLICTING state and green the full suite)
 - Merge: merged (squash)
 ---
+
+## [2026-05-30 22:10 CDT] - US-115 (verified complete)
+- Story verified complete on branch `us-115-bundled-mailpit-global-service` (no new code). Bundled Mailpit global service, the `LANDO_MAIL_HOST`/`LANDO_MAIL_PORT` per-app env contract, and the per-app-service live mail-capture scenario are all in place from the prior implementation + review iterations.
+- Verification: typecheck, lint, and full `bun test` passed (1999 pass / 25 skip / 0 fail on a clean run). The compiled-`$bunfs` CLI / `build:compile` failures seen under concurrent build pressure are the known `ETXTBSY` flake (vanish on isolated re-run), not a US-115 regression.
+- **Learnings for future iterations:**
+  - Concurrent compiled-binary tests (`deferred-commands.test.ts` `$bunfs`, `compile.test.ts`, `aliases.test.ts`) share a single `bun run build:compile`; under parallel load this races to `ETXTBSY` / exit 1. Re-run the suite once before treating a compiled-binary `build:compile` exit-1 as a real failure.
+---
