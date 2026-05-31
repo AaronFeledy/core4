@@ -15,6 +15,7 @@
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
     "@types/bun": "^1.3.14",
+    "mdast-util-to-markdown": "^2.1.2",
     "typescript": "^5.6.0"
   },
   "scripts": {
@@ -30,6 +31,7 @@
     "docs:scenario": "bun run scripts/docs-scenario.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
+    "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",
     "release": "bun run scripts/release.ts"
