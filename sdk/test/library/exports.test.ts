@@ -96,6 +96,10 @@ describe("@lando/sdk package exports", () => {
     expect(events.PostStartEvent).toBeDefined();
     expect(events.PreStopEvent).toBeDefined();
     expect(events.PostStopEvent).toBeDefined();
+    expect(events.PreGlobalStartEvent).toBeDefined();
+    expect(events.PostGlobalStartEvent).toBeDefined();
+    expect(events.PreGlobalStopEvent).toBeDefined();
+    expect(events.PostGlobalStopEvent).toBeDefined();
     expect(events.LandoEvent).toBeDefined();
   });
 

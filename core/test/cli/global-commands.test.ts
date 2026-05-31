@@ -1,7 +1,7 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Queue, Schema, Stream } from "effect";
 
 import { GlobalAppError, GlobalDestroyConfirmationError, ProviderUnavailableError } from "@lando/core/errors";
 import {
@@ -22,8 +22,10 @@ import {
   type CacheService,
   type ConfigService,
   type DestroyOptions,
+  EventService,
   type FileSystem,
   GlobalAppService,
+  type LandoEvent,
   PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -32,6 +34,7 @@ import {
   type ServiceTypeShape,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { PreAppStartEvent } from "@lando/sdk/events";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
@@ -43,6 +46,7 @@ import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { parseLandofile } from "../../src/landofile/parser.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
+import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
@@ -70,6 +74,7 @@ type HarnessLayer = Layer.Layer<
   | AppPlanner
   | CacheService
   | ConfigService
+  | EventService
   | FileSystem
   | GlobalAppService
   | PluginRegistry
@@ -80,6 +85,7 @@ interface Harness {
   readonly dataRoot: string;
   readonly layer: HarnessLayer;
   readonly calls: ProviderCalls;
+  readonly events: Array<LandoEvent>;
 }
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
@@ -167,6 +173,7 @@ const makeHarness = async (
     },
   });
   const calls: ProviderCalls = { apply: [], destroy: [], inspect: [] };
+  const events: Array<LandoEvent> = [];
   const providerId = ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
@@ -212,6 +219,15 @@ const makeHarness = async (
     CacheServiceLive,
     FileSystemLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    Layer.succeed(EventService, {
+      publish: (event) =>
+        Effect.sync(() => {
+          events.push(event);
+        }),
+      subscribe: () => Stream.empty,
+      subscribeQueue: Queue.unbounded<LandoEvent>(),
+      waitFor: () => Effect.never,
+    }),
     Layer.succeed(PluginRegistry, pluginRegistry),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -224,7 +240,7 @@ const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, calls };
+  return { dataRoot, layer, calls, events };
 };
 
 const withHarness = async <T>(
@@ -312,6 +328,109 @@ describe("meta:global command effects", () => {
       expect(error._tag).toBe("ToolingExecError");
       expect(error.message).toContain("nope");
       expect(error.message).toContain("available: mail, proxy");
+    });
+  });
+
+  test("start publishes scope:global pre/post-global-start in order", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
+
+      const lifecycle = harness.events.filter(
+        (event) => event._tag === "pre-global-start" || event._tag === "post-global-start",
+      );
+      expect(lifecycle.map((event) => event._tag)).toEqual(["pre-global-start", "post-global-start"]);
+      expect(lifecycle.every((event) => (event as { scope?: string }).scope === "global")).toBe(true);
+
+      const pre = harness.events.find((event) => event._tag === "pre-global-start") as {
+        triggeredBy?: string;
+        cached?: boolean;
+        ensuringServices?: ReadonlyArray<string>;
+        app?: { id?: string; kind?: string };
+      };
+      expect(pre.triggeredBy).toBe("meta:global:start");
+      expect(pre.cached).toBe(false);
+      expect(pre.ensuringServices).toEqual([]);
+      expect(pre.app?.id).toBe("global");
+      expect(pre.app?.kind).toBe("global");
+    });
+  });
+
+  test("start emits no global lifecycle events when an unknown --service aborts before apply", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromiseExit(globalStart({ services: ["nope"] }).pipe(Effect.provide(harness.layer)));
+
+      expect(
+        harness.events.filter(
+          (event) => event._tag === "pre-global-start" || event._tag === "post-global-start",
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  test("stop publishes scope:global pre/post-global-stop in order", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness);
+
+      await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+
+      const lifecycle = harness.events.filter(
+        (event) => event._tag === "pre-global-stop" || event._tag === "post-global-stop",
+      );
+      expect(lifecycle.map((event) => event._tag)).toEqual(["pre-global-stop", "post-global-stop"]);
+      expect(lifecycle.every((event) => (event as { scope?: string }).scope === "global")).toBe(true);
+      const pre = harness.events.find((event) => event._tag === "pre-global-stop") as {
+        triggeredBy?: string;
+      };
+      expect(pre.triggeredBy).toBe("meta:global:stop");
+    });
+  });
+
+  test("stop emits no global lifecycle events when the global app is not installed", async () => {
+    await withHarness(async (harness) => {
+      await Effect.runPromise(globalStop().pipe(Effect.provide(harness.layer)));
+
+      expect(
+        harness.events.filter(
+          (event) => event._tag === "pre-global-stop" || event._tag === "post-global-stop",
+        ),
+      ).toEqual([]);
+    });
+  });
+
+  test("a post-global-start subscriber observes it before a per-app service boots", async () => {
+    await withHarness(async (harness) => {
+      const preAppStart = Schema.decodeUnknownSync(PreAppStartEvent)({
+        _tag: "pre-app-start",
+        eventName: "pre-app-start",
+        appRef: { kind: "user", id: "myapp", root: "/srv/apps/myapp" },
+        providerId: "lando",
+        timestamp: DateTime.formatIso(DateTime.unsafeMake("2026-05-31T07:30:00Z")),
+      });
+
+      const layer = Layer.mergeAll(harness.layer, EventServiceLive);
+
+      const tags = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            yield* globalStart({});
+            yield* eventService.publish(preAppStart);
+
+            const collected: Array<string> = [];
+            while (true) {
+              const event = yield* Queue.take(queue);
+              collected.push(event._tag);
+              if (event._tag === "pre-app-start") break;
+            }
+            return collected;
+          }),
+        ).pipe(Effect.provide(layer)),
+      );
+
+      expect(tags).toContain("post-global-start");
+      expect(tags.indexOf("post-global-start")).toBeGreaterThanOrEqual(0);
+      expect(tags.indexOf("post-global-start")).toBeLessThan(tags.indexOf("pre-app-start"));
     });
   });
 
