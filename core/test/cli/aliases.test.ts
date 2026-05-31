@@ -11,6 +11,13 @@ import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
 import SshCommand from "../../src/cli/oclif/commands/app/ssh.ts";
 import StartCommand from "../../src/cli/oclif/commands/app/start.ts";
 import StopCommand from "../../src/cli/oclif/commands/app/stop.ts";
+import AppsScratchDestroyCommand from "../../src/cli/oclif/commands/apps/scratch/destroy.ts";
+import AppsScratchGcCommand from "../../src/cli/oclif/commands/apps/scratch/gc.ts";
+import AppsScratchInfoCommand from "../../src/cli/oclif/commands/apps/scratch/info.ts";
+import AppsScratchListCommand from "../../src/cli/oclif/commands/apps/scratch/list.ts";
+import AppsScratchLogsCommand from "../../src/cli/oclif/commands/apps/scratch/logs.ts";
+import AppsScratchStartCommand from "../../src/cli/oclif/commands/apps/scratch/start.ts";
+import AppsScratchStopCommand from "../../src/cli/oclif/commands/apps/scratch/stop.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(repoRoot, "core");
@@ -55,6 +62,18 @@ describe("app command aliases", () => {
     expect(commandAliases(AppShellCommand)).toContain("shell");
   });
 
+  test("declare scratch namespace top-level aliases on the command classes", () => {
+    expect(commandAliases(AppsScratchStartCommand)).toEqual(
+      expect.arrayContaining(["scratch:start", "scratch"]),
+    );
+    expect(commandAliases(AppsScratchStopCommand)).toContain("scratch:stop");
+    expect(commandAliases(AppsScratchDestroyCommand)).toContain("scratch:destroy");
+    expect(commandAliases(AppsScratchListCommand)).toContain("scratch:list");
+    expect(commandAliases(AppsScratchInfoCommand)).toContain("scratch:info");
+    expect(commandAliases(AppsScratchLogsCommand)).toContain("scratch:logs");
+    expect(commandAliases(AppsScratchGcCommand)).toContain("scratch:gc");
+  });
+
   test("register alias metadata in the OCLIF command manifest model", async () => {
     const config = await Config.load({ root: coreRoot, ignoreManifest: true });
     const rootPlugin = config.plugins.get(config.pjson.name);
@@ -70,6 +89,15 @@ describe("app command aliases", () => {
     expect(aliasesById.get("app:exec")).toContain("exec");
     expect(aliasesById.get("app:ssh")).toContain("ssh");
     expect(aliasesById.get("app:shell")).toContain("shell");
+    expect(aliasesById.get("apps:scratch:start")).toEqual(
+      expect.arrayContaining(["scratch:start", "scratch"]),
+    );
+    expect(aliasesById.get("apps:scratch:stop")).toContain("scratch:stop");
+    expect(aliasesById.get("apps:scratch:destroy")).toContain("scratch:destroy");
+    expect(aliasesById.get("apps:scratch:list")).toContain("scratch:list");
+    expect(aliasesById.get("apps:scratch:info")).toContain("scratch:info");
+    expect(aliasesById.get("apps:scratch:logs")).toContain("scratch:logs");
+    expect(aliasesById.get("apps:scratch:gc")).toContain("scratch:gc");
   });
 });
 

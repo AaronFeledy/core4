@@ -1,6 +1,29 @@
-import { makeDeferredStubCommand } from "../../../deferred-stub.ts";
+import { Args } from "@oclif/core";
 
-export default makeDeferredStubCommand({
+import type { ScratchHandle } from "@lando/sdk/services";
+import { renderScratchStopResult, scratchIdFromInput, scratchStop } from "../../../../commands/scratch.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+
+export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   id: "apps:scratch:stop",
-  summary: "Scratch-app `stop` (Phase 3 Beta deliverable).",
-});
+  summary: "Stop a scratch Lando app.",
+  namespace: "apps",
+  topLevelAlias: "scratch:stop",
+  bootstrap: "scratch",
+  run: (input) => scratchStop(scratchIdFromInput(input)),
+  render: (result) => renderScratchStopResult(result as ScratchHandle),
+};
+
+export default class AppsScratchStopCommand extends LandoCommandBase {
+  static override description = appsScratchStopSpec.summary;
+  static override aliases = [...resolveTopLevelAliases(appsScratchStopSpec)];
+  static override args = {
+    id: Args.string({ description: "Scratch app id.", required: true }),
+  };
+  static override landoSpec: LandoCommandSpec = appsScratchStopSpec;
+  static override bootstrap = appsScratchStopSpec.bootstrap;
+
+  override async run(): Promise<void> {
+    await this.runEffect(appsScratchStopSpec);
+  }
+}

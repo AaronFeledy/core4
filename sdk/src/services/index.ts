@@ -5,6 +5,7 @@ import type {
   AbsolutePath,
   AppId,
   AppPlan,
+  AppRef,
   EndpointPlan,
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -69,6 +70,8 @@ import type {
   RecipeManifestValidationError,
   ScannerError,
   ScratchAppError,
+  ScratchAppNotFoundError,
+  ScratchSourceUnresolvedError,
   ServiceExecError,
   ServiceNotFoundError,
   ServiceStartError,
@@ -269,6 +272,42 @@ export interface ScratchAppPaths {
   readonly buildResults: AbsolutePath;
 }
 
+export type ScratchSource = { readonly kind: "fork" } | { readonly kind: "recipe"; readonly ref: string };
+
+export interface ScratchAcquireInput {
+  readonly source: ScratchSource;
+  readonly detached: boolean;
+  readonly name?: string;
+}
+
+export interface ScratchHandle {
+  readonly id: string;
+  readonly app: AppRef;
+}
+
+export interface ScratchSummary {
+  readonly id: string;
+  readonly app: AppRef;
+}
+
+export interface ScratchStartOptions {
+  readonly detach?: boolean;
+}
+
+export interface ScratchDestroyOptions {
+  readonly keepVolumes?: boolean;
+}
+
+export interface ScratchGcOptions {
+  readonly prune?: boolean;
+}
+
+export interface ScratchGcReport {
+  readonly inspected: number;
+  readonly reaped: ReadonlyArray<string>;
+  readonly errors: ReadonlyArray<string>;
+}
+
 export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppService")<
   ScratchAppService,
   {
@@ -277,6 +316,23 @@ export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppServic
     readonly ensureRoot: Effect.Effect<AbsolutePath, ScratchAppError, Scope.Scope>;
     readonly synthesizeId: (base: string) => Effect.Effect<string, ScratchAppError>;
     readonly paths: (id: string) => Effect.Effect<ScratchAppPaths, ScratchAppError>;
+    readonly acquire: (
+      input: ScratchAcquireInput,
+    ) => Effect.Effect<ScratchHandle, ScratchSourceUnresolvedError | ScratchAppError, Scope.Scope>;
+    readonly resolveById: (
+      id: string,
+    ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
+    readonly list: () => Effect.Effect<ReadonlyArray<ScratchSummary>, ScratchAppError>;
+    readonly start: (
+      id: string,
+      options?: ScratchStartOptions,
+    ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
+    readonly stop: (id: string) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
+    readonly destroy: (
+      id: string,
+      options?: ScratchDestroyOptions,
+    ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;
+    readonly gc: (options?: ScratchGcOptions) => Effect.Effect<ScratchGcReport, ScratchAppError>;
   }
 >() {}
 

@@ -37,15 +37,6 @@ const APP_CONFIG_TRANSLATE_PLAN: DeferredCommandPlan = {
     'Config translators land in Phase 3 Beta. Hand-author the Landofile until Beta. See spec/ROADMAP.md Phase 3 "full breadth" and spec/07-landofile-and-config.md.',
 };
 
-const APPS_SCRATCH_PLAN: DeferredCommandPlan = {
-  phase: "Phase 3 Beta",
-  specSection: "spec/19-scratch-apps.md",
-  summary:
-    "Scratch apps (forked or recipe-rendered short-lived apps bound to an Effect Scope) ship in Phase 3 Beta (spec §21).",
-  remediation:
-    'Scratch apps land in Phase 3 Beta. See spec/ROADMAP.md Phase 3 "full breadth" and spec/19-scratch-apps.md.',
-};
-
 const META_GLOBAL_PLAN: DeferredCommandPlan = {
   phase: "Phase 3 Beta",
   specSection: "spec/18-global-app.md",
@@ -122,13 +113,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["app:includes:update", APP_INCLUDES_PLAN],
   ["app:includes:verify", APP_INCLUDES_PLAN],
   ["app:config:translate", APP_CONFIG_TRANSLATE_PLAN],
-  ["apps:scratch:destroy", APPS_SCRATCH_PLAN],
-  ["apps:scratch:gc", APPS_SCRATCH_PLAN],
-  ["apps:scratch:info", APPS_SCRATCH_PLAN],
-  ["apps:scratch:list", APPS_SCRATCH_PLAN],
-  ["apps:scratch:logs", APPS_SCRATCH_PLAN],
-  ["apps:scratch:start", APPS_SCRATCH_PLAN],
-  ["apps:scratch:stop", APPS_SCRATCH_PLAN],
   ["meta:global:info", META_GLOBAL_PLAN],
   ["meta:global:list", META_GLOBAL_PLAN],
   ["meta:global:logs", META_GLOBAL_PLAN],

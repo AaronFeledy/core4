@@ -111,7 +111,7 @@ const expectPhaseTaggedRemediation = (stderr: string, entry: FixtureEntry): void
 describe("deferred command remediation contract (US-037)", () => {
   test("fixture covers every command surface in the AC list", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
-    const requiredPrefixes = ["apps:scratch:", "meta:global:", "app:includes:"];
+    const requiredPrefixes = ["meta:global:", "app:includes:"];
     const requiredExactIds = [
       "app:config:translate",
       "meta:plugin:new",
@@ -196,7 +196,7 @@ describe("deferred command remediation contract (US-037)", () => {
         .replace(/\s+/g, " ");
 
     const parityProbes: ReadonlyArray<FixtureEntry> = [
-      fixture.commands.find((entry) => entry.id === "apps:scratch:start") as FixtureEntry,
+      fixture.commands.find((entry) => entry.id === "meta:global:list") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:global:info") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:plugin:trust") as FixtureEntry,
     ];

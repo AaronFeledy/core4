@@ -260,6 +260,35 @@ export class ScratchAppError extends Schema.TaggedError<ScratchAppError>()("Scra
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class ScratchSourceUnresolvedError extends Schema.TaggedError<ScratchSourceUnresolvedError>()(
+  "ScratchSourceUnresolvedError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    attempts: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
+export class ScratchAppNotFoundError extends Schema.TaggedError<ScratchAppNotFoundError>()(
+  "ScratchAppNotFoundError",
+  {
+    message: Schema.String,
+    id: Schema.String,
+    suggestions: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
+export class ScratchAppIdInvalidError extends Schema.TaggedError<ScratchAppIdInvalidError>()(
+  "ScratchAppIdInvalidError",
+  {
+    message: Schema.String,
+    id: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,
