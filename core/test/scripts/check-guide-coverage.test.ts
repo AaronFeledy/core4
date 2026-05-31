@@ -10,6 +10,7 @@ import {
   checkGuideCoverageOnDisk,
   formatCoverageDiagnostic,
   parseGuideCoveragePaths,
+  parseGuideCoverageSection,
   parseIndexRows,
 } from "../../../scripts/check-guide-coverage.ts";
 
@@ -102,6 +103,32 @@ describe("check:guide-coverage parsers", () => {
       "## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Next\n",
     );
     expect(paths).toEqual([]);
+  });
+
+  test("parseGuideCoverageSection reports a present section with declared paths", () => {
+    const section = parseGuideCoverageSection(
+      prdSection([
+        { story: "US-074", feature: "Foo", path: "docs/guides/setup/foo.mdx" },
+        { story: "US-082", feature: "Baz", path: "docs/guides/setup/baz.mdx" },
+      ]),
+    );
+    expect(section).toEqual({
+      present: true,
+      none: false,
+      paths: ["docs/guides/setup/foo.mdx", "docs/guides/setup/baz.mdx"],
+    });
+  });
+
+  test("parseGuideCoverageSection reports a present None declaration", () => {
+    const section = parseGuideCoverageSection(
+      "## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Next\n",
+    );
+    expect(section).toEqual({ present: true, none: true, paths: [] });
+  });
+
+  test("parseGuideCoverageSection reports an absent section", () => {
+    const section = parseGuideCoverageSection("# Title\n\n## User Stories\n\nNo coverage section here.\n");
+    expect(section).toEqual({ present: false, none: false, paths: [] });
   });
 });
 
@@ -237,5 +264,76 @@ describe("check:guide-coverage", () => {
       guideExists: () => true,
     });
     expect(codesFor(result.diagnostics)).toContain("coverage.invalid-status");
+  });
+
+  test("a user-facing PRD without a Guide Coverage section fails", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-01-providers.md": "# Provider Matrix\n\n## User Stories\n\nNo coverage section.\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.missing-section");
+      expect(result.diagnostics.some((d) => d.message.includes("prd-beta-01-providers.md"))).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("an internal PRD that declares None passes the section convention", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-09-renderer.md":
+        "# Renderer\n\n## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Open Questions\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("an internal PRD missing its Guide Coverage section fails", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-13-build.md": "# Build & CI\n\n## User Stories\n\nNo coverage section.\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.missing-section");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("a user-facing PRD declaring a non-existent guide path fails the gate", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-01-providers.md": prdSection([
+        { story: "US-074", feature: "Ghost", path: "docs/guides/setup/ghost.mdx" },
+      ]),
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+      expect(result.diagnostics.some((d) => d.message.includes("docs/guides/setup/ghost.mdx"))).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("the index PRD (PRD-00) and guides PRD (PRD-12) are exempt from the section convention", async () => {
+    const root = await scaffold({
+      "spec/beta/prd-beta-00-index.md": "# Index\n\nNo coverage section.\n",
+      "spec/beta/prd-beta-12-guides.md": "# Executable Guides\n\nNo coverage section.\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).not.toContain("coverage.missing-section");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
   });
 });

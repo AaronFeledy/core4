@@ -9,6 +9,20 @@ const GUIDE_PATH_PATTERN = /docs\/guides\/[A-Za-z0-9._/-]+\.mdx/;
 const GUIDE_PATH_PATTERN_GLOBAL = /docs\/guides\/[A-Za-z0-9._/-]+\.mdx/g;
 const VALID_STATUSES = new Set(["Shipped", "Planned"]);
 
+const PRD_NUMBER_PATTERN = /prd-beta-(\d{2})-/;
+const USER_FACING_PRD_NUMBERS = new Set(["01", "02", "03", "04", "05", "06", "07", "08", "10", "11"]);
+const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
+
+export type PrdClassification = "user-facing" | "internal" | "exempt";
+
+export const classifyPrd = (name: string): PrdClassification => {
+  const number = name.match(PRD_NUMBER_PATTERN)?.[1];
+  if (number === undefined) return "exempt";
+  if (USER_FACING_PRD_NUMBERS.has(number)) return "user-facing";
+  if (INTERNAL_PRD_NUMBERS.has(number)) return "internal";
+  return "exempt";
+};
+
 export interface GuideCoverageRow {
   readonly prd: string;
   readonly userStory: string;
@@ -20,6 +34,18 @@ export interface GuideCoverageRow {
 export interface GuideCoverageDeclaration {
   readonly source: string;
   readonly guidePath: string;
+}
+
+export interface GuideCoverageSection {
+  readonly present: boolean;
+  readonly none: boolean;
+  readonly paths: ReadonlyArray<string>;
+}
+
+export interface PrdGuideCoverage {
+  readonly source: string;
+  readonly classification: PrdClassification;
+  readonly present: boolean;
 }
 
 export interface CoverageDiagnostic {
@@ -35,6 +61,7 @@ export interface CheckGuideCoverageInput {
   readonly indexRows: ReadonlyArray<GuideCoverageRow>;
   readonly declarations: ReadonlyArray<GuideCoverageDeclaration>;
   readonly guideExists: (guidePath: string) => boolean;
+  readonly prdCoverage?: ReadonlyArray<PrdGuideCoverage>;
 }
 
 export interface CheckGuideCoverageOptions {
@@ -88,10 +115,10 @@ const guideCoverageSection = (content: string): string | undefined => {
   return body.join("\n");
 };
 
-export const parseGuideCoveragePaths = (content: string): ReadonlyArray<string> => {
+export const parseGuideCoverageSection = (content: string): GuideCoverageSection => {
   const section = guideCoverageSection(content);
-  if (section === undefined) return [];
-  if (/\*\*None\b/i.test(section)) return [];
+  if (section === undefined) return { present: false, none: false, paths: [] };
+  if (/\*\*None\b/i.test(section)) return { present: true, none: true, paths: [] };
   const seen = new Set<string>();
   const paths: Array<string> = [];
   for (const match of section.matchAll(GUIDE_PATH_PATTERN_GLOBAL)) {
@@ -100,12 +127,24 @@ export const parseGuideCoveragePaths = (content: string): ReadonlyArray<string> 
     seen.add(value);
     paths.push(value);
   }
-  return paths;
+  return { present: true, none: false, paths };
 };
+
+export const parseGuideCoveragePaths = (content: string): ReadonlyArray<string> =>
+  parseGuideCoverageSection(content).paths;
 
 export const checkGuideCoverage = (input: CheckGuideCoverageInput): CoverageResult => {
   const diagnostics: Array<CoverageDiagnostic> = [];
   const indexPaths = new Set(input.indexRows.map((row) => row.guidePath));
+
+  for (const prd of input.prdCoverage ?? []) {
+    if (prd.classification === "exempt") continue;
+    if (prd.present) continue;
+    diagnostics.push({
+      code: "coverage.missing-section",
+      message: `${prd.source} is a ${prd.classification} PRD but has no "## Guide Coverage" section; user-facing PRDs must list their guides and internal/infra PRDs must declare None.`,
+    });
+  }
 
   const seenDeclaration = new Set<string>();
   for (const declaration of input.declarations) {
@@ -163,6 +202,7 @@ export const checkGuideCoverageOnDisk = async (
   const indexRows = parseIndexRows(await Bun.file(indexAbsolute).text());
 
   const declarations: Array<GuideCoverageDeclaration> = [];
+  const prdCoverage: Array<PrdGuideCoverage> = [];
   let specEntries: ReadonlyArray<string> = [];
   try {
     specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
@@ -171,7 +211,13 @@ export const checkGuideCoverageOnDisk = async (
   }
   for (const name of specEntries) {
     const content = await Bun.file(resolve(root, specDir, name)).text();
-    for (const guidePath of parseGuideCoveragePaths(content)) {
+    const section = parseGuideCoverageSection(content);
+    prdCoverage.push({
+      source: `${specDir}/${name}`,
+      classification: classifyPrd(name),
+      present: section.present,
+    });
+    for (const guidePath of section.paths) {
       declarations.push({ source: `${specDir}/${name}`, guidePath });
     }
   }
@@ -180,6 +226,7 @@ export const checkGuideCoverageOnDisk = async (
     indexRows,
     declarations,
     guideExists: (guidePath) => existsSync(resolve(root, guidePath)),
+    prdCoverage,
   });
 };
 
