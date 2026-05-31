@@ -5,11 +5,16 @@ import type { ScratchAppError, ScratchAppNotFoundError } from "@lando/sdk/errors
 import type { ScratchGcOptions, ScratchGcReport, ScratchHandle, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
+import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
+
 export interface ScratchStartOptions {
   readonly fork?: boolean;
   readonly from?: string;
   readonly detach?: boolean;
   readonly name?: string;
+  readonly answers?: Record<string, string>;
+  readonly yes?: boolean;
+  readonly nonInteractive?: boolean;
 }
 
 export interface ScratchStartResult {
@@ -43,13 +48,25 @@ const rendererModeFromInput = (input: unknown): string | undefined => {
   return typeof rendererMode === "string" ? rendererMode : undefined;
 };
 
+const stringArrayFlag = (flags: Record<string, unknown>, key: string): ReadonlyArray<string> => {
+  const value = flags[key];
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+};
+
 export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOptions => {
   const flags = flagsFromInput(input);
+  const answers = parseAnswerFlags([
+    ...stringArrayFlag(flags, "answer"),
+    ...stringArrayFlag(flags, "option"),
+  ]);
   return {
     fork: flags.fork === true,
     ...(typeof flags.from === "string" ? { from: flags.from } : {}),
     detach: flags.detach === true,
     ...(typeof flags.name === "string" ? { name: flags.name } : {}),
+    answers,
+    yes: flags.yes === true,
+    nonInteractive: flags["no-interactive"] === true || flags["non-interactive"] === true,
   };
 };
 
@@ -104,6 +121,9 @@ export const scratchStart = (
         source: hasFork ? { kind: "fork" } : { kind: "recipe", ref: from ?? "" },
         detached: options.detach === true,
         ...(options.name === undefined ? {} : { name: options.name }),
+        ...(options.answers === undefined ? {} : { answers: options.answers }),
+        ...(options.yes === undefined ? {} : { yes: options.yes }),
+        ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
       }),
     );
     return { handle, detached: options.detach === true };

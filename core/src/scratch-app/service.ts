@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { join } from "node:path";
 
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, Either, Layer, Schema } from "effect";
 
 import { ScratchAppError, ScratchAppNotFoundError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import { AbsolutePath } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, LandofileShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
   FileSystem,
@@ -16,6 +16,14 @@ import {
 } from "@lando/sdk/services";
 
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { initApp } from "../cli/commands/init.ts";
+import { parseLandofile } from "../landofile/parser.ts";
+
+const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
+  "RecipeManifestNotFoundError",
+  "RecipeManifestValidationError",
+  "NotImplementedError",
+]);
 
 export { ScratchAppService } from "@lando/sdk/services";
 
@@ -46,6 +54,61 @@ const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
     attempts: [],
     remediation: "Run `lando apps:scratch:start --fork` from a directory containing a Landofile.",
   });
+
+const withProcessCwd = <A, E, R>(
+  dir: string,
+  use: () => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | ScratchAppError, R> =>
+  Effect.acquireUseRelease(
+    Effect.try({
+      try: () => {
+        const original = process.cwd();
+        process.chdir(dir);
+        return original;
+      },
+      catch: (cause) =>
+        scratchAppError("plan", `Unable to enter the scratch app directory at ${dir}.`, cause),
+    }),
+    () => use(),
+    (original) => Effect.sync(() => process.chdir(original)),
+  );
+
+const mapInitError = (
+  input: ScratchAcquireInput,
+  cause: unknown,
+): ScratchSourceUnresolvedError | ScratchAppError => {
+  const tag =
+    typeof cause === "object" && cause !== null && "_tag" in cause
+      ? String((cause as { readonly _tag: unknown })._tag)
+      : undefined;
+  if (tag !== undefined && RECIPE_RESOLUTION_ERROR_TAGS.has(tag)) {
+    return scratchSourceUnresolvedError(input);
+  }
+  return scratchAppError("materialize", "Unable to render the recipe into the scratch app root.", cause);
+};
+
+const decodeScratchLandofile = (
+  file: string,
+  content: string,
+  cwd: string,
+): Effect.Effect<LandofileShape, ScratchAppError> =>
+  parseLandofile({ file, content, cwd }).pipe(
+    Effect.mapError((cause) =>
+      scratchAppError("materialize", `Unable to parse the rendered scratch Landofile at ${file}.`, cause),
+    ),
+    Effect.flatMap((parsed) => {
+      const decoded = Schema.decodeUnknownEither(LandofileShape)(parsed, { onExcessProperty: "error" });
+      return Either.isRight(decoded)
+        ? Effect.succeed(decoded.right)
+        : Effect.fail(
+            scratchAppError(
+              "materialize",
+              `The rendered scratch Landofile at ${file} is invalid.`,
+              decoded.left,
+            ),
+          );
+    }),
+  );
 
 const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>
   new ScratchAppNotFoundError({
@@ -125,10 +188,28 @@ const makeScratchAppService = (
         ),
       );
 
-  const acquire = (input: ScratchAcquireInput) => {
-    if (input.source.kind !== "fork") return Effect.fail(scratchSourceUnresolvedError(input));
+  const startScratchPlan = (scratchId: string, plan: AppPlan) =>
+    Effect.gen(function* () {
+      const provider = yield* registry
+        .select(plan)
+        .pipe(
+          Effect.mapError((cause) =>
+            scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
+          ),
+        );
+      yield* Effect.scoped(provider.apply(plan, { reconcile: false })).pipe(
+        Effect.mapError((cause) =>
+          scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
+        ),
+      );
+      return {
+        id: scratchId,
+        app: { kind: "scratch", id: scratchId, root: plan.root },
+      } satisfies ScratchHandle;
+    });
 
-    return Effect.gen(function* () {
+  const acquireFork = (input: ScratchAcquireInput) =>
+    Effect.gen(function* () {
       const landofile = yield* landofileService.discover.pipe(
         Effect.mapError(() => scratchForkUnresolvedError()),
       );
@@ -159,26 +240,69 @@ const makeScratchAppService = (
             scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
           ),
         );
-      const provider = yield* registry
-        .select(forkPlan)
+      return yield* startScratchPlan(scratchId, forkPlan);
+    });
+
+  const acquireRecipe = (input: ScratchAcquireInput, recipeRef: string) =>
+    Effect.gen(function* () {
+      const ref = recipeRef.trim();
+      if (ref.length === 0) return yield* Effect.fail(scratchSourceUnresolvedError(input));
+
+      const base = input.name ?? ref;
+      const scratchId = yield* synthesizeId(base);
+      const scratchPaths = yield* paths(scratchId);
+
+      yield* materializeDir(scratchPaths.instanceRoot);
+      yield* materializeDir(scratchPaths.root);
+
+      yield* Effect.tryPromise({
+        try: () =>
+          initApp({
+            cwd: scratchPaths.instanceRoot,
+            destination: scratchPaths.root,
+            full: false,
+            recipe: ref,
+            name: scratchId,
+            runPostInit: false,
+            ...(input.answers === undefined ? {} : { answers: input.answers }),
+            ...(input.yes === undefined ? {} : { yes: input.yes }),
+            ...(input.nonInteractive === undefined ? {} : { nonInteractive: input.nonInteractive }),
+          }),
+        catch: (cause) => mapInitError(input, cause),
+      });
+
+      const landofilePath = join(scratchPaths.root, ".lando.yml");
+      const content = yield* fileSystem
+        .readText(landofilePath)
         .pipe(
           Effect.mapError((cause) =>
-            scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
+            scratchAppError(
+              "materialize",
+              `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
+              cause,
+            ),
           ),
         );
+      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root);
+      const recipeLandofile = { ...landofile, name: scratchId };
 
-      yield* Effect.scoped(provider.apply(forkPlan, { reconcile: false })).pipe(
+      const capabilities = yield* registry.capabilities.pipe(
         Effect.mapError((cause) =>
-          scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
+          scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
         ),
       );
-
-      return {
-        id: scratchId,
-        app: { kind: "scratch", id: scratchId, root: forkPlan.root },
-      } satisfies ScratchHandle;
+      const recipePlan = yield* withProcessCwd(scratchPaths.root, () =>
+        planner.plan(recipeLandofile, capabilities),
+      ).pipe(
+        Effect.mapError((cause) =>
+          scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
+        ),
+      );
+      return yield* startScratchPlan(scratchId, recipePlan);
     });
-  };
+
+  const acquire = (input: ScratchAcquireInput) =>
+    input.source.kind === "fork" ? acquireFork(input) : acquireRecipe(input, input.source.ref);
   const resolveById = (id: string) => Effect.fail(scratchAppNotFoundError(id));
   const list = () => Effect.succeed([]);
   const start = (id: string) => resolveById(id);
