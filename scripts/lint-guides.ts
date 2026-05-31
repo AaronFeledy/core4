@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import { Effect, Either } from "effect";
@@ -66,6 +67,18 @@ export interface GuideLintDiagnostic {
 
 export interface GuideLintResult {
   readonly diagnostics: ReadonlyArray<GuideLintDiagnostic>;
+}
+
+export interface GuideFixtureInventoryEntry {
+  readonly name: string;
+  readonly sourcePath: string;
+  readonly scope: "local" | "shared";
+  readonly kind: "directory" | "symlink" | "other";
+  readonly symlinkPaths?: ReadonlyArray<string>;
+}
+
+export interface GuideLintContentOptions {
+  readonly fixtures?: ReadonlyArray<GuideFixtureInventoryEntry>;
 }
 
 const processor = unified().use(remarkParse).use(remarkMdx).use(remarkFrontmatter, ["yaml"]);
@@ -346,6 +359,73 @@ const lintVerifyMatchers = (
   });
 };
 
+const lintFixtures = (
+  sourcePath: string,
+  root: MdxNode,
+  guide: MdxNode | undefined,
+  frontmatter: Record<string, unknown>,
+  fixtures: ReadonlyArray<GuideFixtureInventoryEntry>,
+  diagnostics: Array<GuideLintDiagnostic>,
+): void => {
+  const references = new Map<string, MdxNode>();
+  walkElements(root, (node) => {
+    if (node.name !== "UseFixture") return;
+    const name = propsOf(node).name;
+    if (typeof name !== "string") return;
+    if (!references.has(name)) references.set(name, node);
+  });
+
+  const entriesByName = new Map<string, Array<GuideFixtureInventoryEntry>>();
+  for (const entry of fixtures) {
+    const list = entriesByName.get(entry.name) ?? [];
+    list.push(entry);
+    entriesByName.set(entry.name, list);
+  }
+
+  for (const [name, node] of references) {
+    const entries = entriesByName.get(name) ?? [];
+    if (entries.length === 0) {
+      diagnostics.push(
+        diagnostic(
+          sourcePath,
+          node,
+          "guide.fixture.missing",
+          `<UseFixture name="${name}"> does not resolve to a fixture directory per §19.9.`,
+        ),
+      );
+      continue;
+    }
+    for (const entry of entries) {
+      const symlinkPaths = entry.kind === "symlink" ? [entry.sourcePath] : (entry.symlinkPaths ?? []);
+      for (const symlinkPath of symlinkPaths) {
+        diagnostics.push(
+          diagnostic(
+            sourcePath,
+            node,
+            "guide.fixture.symlink",
+            `Fixture "${name}" contains a symbolic link at "${symlinkPath}" and cannot be copied immutably per §19.9.`,
+          ),
+        );
+      }
+    }
+  }
+
+  const guideId = typeof frontmatter.id === "string" ? frontmatter.id : "";
+  const anchor = guide ?? root;
+  for (const entry of fixtures) {
+    if (entry.scope !== "local") continue;
+    if (references.has(entry.name)) continue;
+    diagnostics.push(
+      diagnostic(
+        sourcePath,
+        anchor,
+        "guide.fixture.unused",
+        `Fixture "${entry.name}" is not referenced by any <UseFixture> in guide "${guideId}" per §19.10.`,
+      ),
+    );
+  }
+};
+
 const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<GuideLintDiagnostic>): void => {
   walkElements(root, (node) => {
     if (node.name === undefined || node.name === null || ALPHA_2_COMPONENTS.has(node.name)) return;
@@ -476,7 +556,11 @@ const lintDiataxis = (
   );
 };
 
-export const lintGuideContent = (sourcePath: string, content: string): GuideLintResult => {
+export const lintGuideContent = (
+  sourcePath: string,
+  content: string,
+  options: GuideLintContentOptions = {},
+): GuideLintResult => {
   const diagnostics: Array<GuideLintDiagnostic> = [];
   const root = processor.parse(content) as MdxNode;
   const frontmatter = validateFrontmatter(sourcePath, root, diagnostics);
@@ -488,17 +572,93 @@ export const lintGuideContent = (sourcePath: string, content: string): GuideLint
   lintSkipReason(sourcePath, root, diagnostics);
   lintInlineJustification(sourcePath, root, diagnostics);
   lintVerifyMatchers(sourcePath, root, diagnostics);
+  lintFixtures(sourcePath, root, guide, frontmatter, options.fixtures ?? [], diagnostics);
   lintStepNames(sourcePath, scenarios, diagnostics);
   lintTabs(sourcePath, root, frontmatter, diagnostics);
   lintDiataxis(sourcePath, guide, frontmatter, diagnostics);
   return { diagnostics };
 };
 
+const readGuideFrontmatter = (sourcePath: string, content: string): Record<string, unknown> => {
+  const root = processor.parse(content) as MdxNode;
+  try {
+    return parseFrontmatter(sourcePath, firstYaml(root).value);
+  } catch {
+    return {};
+  }
+};
+
+const collectSymlinkDescendants = async (
+  repoRoot: string,
+  relDir: string,
+): Promise<ReadonlyArray<string>> => {
+  const found: Array<string> = [];
+  const walk = async (rel: string): Promise<void> => {
+    let entries: Awaited<ReturnType<typeof readdir>>;
+    try {
+      entries = await readdir(resolve(repoRoot, rel), { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const childRel = `${rel}/${entry.name}`;
+      if (entry.isSymbolicLink()) found.push(childRel);
+      else if (entry.isDirectory()) await walk(childRel);
+    }
+  };
+  await walk(relDir);
+  return found;
+};
+
+const buildFixtureInventory = async (
+  repoRoot: string,
+  guideId: string,
+): Promise<ReadonlyArray<GuideFixtureInventoryEntry>> => {
+  const roots: ReadonlyArray<{ readonly dir: string; readonly scope: "local" | "shared" }> = [
+    { dir: `docs/guides/${guideId}/fixtures`, scope: "local" },
+    { dir: "docs/guides/fixtures", scope: "shared" },
+  ];
+  const inventory: Array<GuideFixtureInventoryEntry> = [];
+  for (const { dir, scope } of roots) {
+    let entries: Awaited<ReturnType<typeof readdir>>;
+    try {
+      entries = await readdir(resolve(repoRoot, dir), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      const sourcePath = `${dir}/${entry.name}`;
+      let kind: "directory" | "symlink" | "other";
+      let symlinkPaths: ReadonlyArray<string> = [];
+      if (entry.isSymbolicLink()) {
+        kind = "symlink";
+      } else if (entry.isDirectory()) {
+        kind = "directory";
+        symlinkPaths = await collectSymlinkDescendants(repoRoot, sourcePath);
+      } else {
+        kind = "other";
+      }
+      inventory.push({
+        name: entry.name,
+        sourcePath,
+        scope,
+        kind,
+        ...(symlinkPaths.length > 0 ? { symlinkPaths } : {}),
+      });
+    }
+  }
+  return inventory;
+};
+
 export const lintGuides = async (root = REPO_ROOT): Promise<GuideLintResult> => {
   const diagnostics: Array<GuideLintDiagnostic> = [];
   const files = await discoverGuideMdxFiles(root);
   for (const sourcePath of files) {
-    const result = lintGuideContent(sourcePath, await Bun.file(resolve(root, sourcePath)).text());
+    const content = await Bun.file(resolve(root, sourcePath)).text();
+    const frontmatter = readGuideFrontmatter(sourcePath, content);
+    const guideId = typeof frontmatter.id === "string" ? frontmatter.id : undefined;
+    const fixtures = guideId === undefined ? [] : await buildFixtureInventory(root, guideId);
+    const result = lintGuideContent(sourcePath, content, { fixtures });
     diagnostics.push(...result.diagnostics);
   }
   return { diagnostics };
