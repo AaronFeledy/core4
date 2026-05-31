@@ -1,4 +1,3 @@
-/** Shared Mailpit defaults used by the global-service module and per-app env contract. */
 /**
  * Mailpit defaults shared by the bundled global service module and the per-app
  * `LANDO_MAIL_*` environment contract so the shipped service and projected

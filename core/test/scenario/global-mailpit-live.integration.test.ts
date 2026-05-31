@@ -18,7 +18,7 @@ import {
 } from "../../../plugins/service-lando/src/mailpit-constants.ts";
 
 const providerId = ProviderId.make("lando");
-const SUBJECT = "US-115 Mailpit live integration";
+const SUBJECT = "Mailpit live integration";
 const RECIPIENT = "recipient@example.lndo.site";
 
 const metadata = {
