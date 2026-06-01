@@ -218,3 +218,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - `Effect.addFinalizer` binds to the nearest enclosing `Scope` in `R`. Place it AFTER any inner `Effect.scoped(...)` block so it attaches to the caller's scope, not the short-lived inner one (which would fire immediately). The scratch finalizer relies on the CLI keeping the acquire scope open (one outer `Effect.scoped` around acquire + the foreground block) — `Effect.scoped(acquire(...))` alone closes the scope the instant acquire returns, which would destroy a foreground scratch on the spot.
   - A foreground `scratchStart` with no `signal` blocks on `Effect.never` by design — tests must never drive a *successful* foreground acquire without a signal (use `--detach`, an already-aborted signal, or a separate `Fiber.interrupt`).
 ---
+
+## Sun May 31 2026 06:50 PM CDT - Babysit
+- PR: #239 https://github.com/AaronFeledy/core4/pull/239
+- CI outcome: pass
+- Review feedback: fixed (merged origin/main into branch and resolved a `spec/beta/progress.txt` conflict — kept both main's US-198/PR #237 entries and the branch's US-125 entry; prd.json auto-merged preserving main's US-198 passes:true)
+- Merge: merged (squash)
+---
