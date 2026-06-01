@@ -109,7 +109,13 @@ const withTempProject = async <T>(
 const die = (operation: string) =>
   Effect.dieMessage(`scratch fork test provider should not call ${operation}`);
 
-const makeScratchForkLayer = (appliedPlans: AppPlan[]) => {
+interface DestroyCall {
+  readonly app: string;
+  readonly volumes: boolean;
+  readonly removeState: boolean | undefined;
+}
+
+const makeScratchForkLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[] = []) => {
   const provider: RuntimeProviderShape = {
     id: String(providerId),
     displayName: "Scratch Fork Test Provider",
@@ -131,7 +137,14 @@ const makeScratchForkLayer = (appliedPlans: AppPlan[]) => {
     start: () => die("start"),
     stop: () => die("stop"),
     restart: () => die("restart"),
-    destroy: () => die("destroy"),
+    destroy: (target, options) =>
+      Effect.sync(() => {
+        destroyCalls.push({
+          app: String(target.app),
+          volumes: options.volumes,
+          removeState: options.removeState,
+        });
+      }),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch fork test provider should not call execStream"),
     run: () => die("run"),
@@ -223,15 +236,25 @@ describe("ScratchAppServiceLive fork acquire", () => {
     });
   });
 
-  test("isolate=none (default) shares the source app root", async () => {
+  test("isolate=none (default) shares the source app root in registry-backed handles", async () => {
     await withTempProject(forkLandofile, async (dir) => {
       const appliedPlans: AppPlan[] = [];
-      await Effect.runPromise(
-        Effect.flatMap(ScratchAppService, (service) =>
-          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true, isolate: "none" })),
-        ).pipe(Effect.provide(makeScratchForkLayer(appliedPlans))),
+      const destroyCalls: DestroyCall[] = [];
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          const handle = yield* Effect.scoped(
+            service.acquire({ source: { kind: "fork" }, detached: true, isolate: "none" }),
+          );
+          const resolved = yield* service.resolveById(handle.id);
+          const stopped = yield* service.stop(handle.id);
+          return { handle, resolved, stopped };
+        }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, destroyCalls))),
       );
       expect(String(appliedPlans.at(0)?.root)).toBe(dir);
+      expect(result.resolved).toEqual(result.handle);
+      expect(result.stopped).toEqual(result.handle);
+      expect(destroyCalls).toEqual([{ app: result.handle.id, volumes: true, removeState: true }]);
     });
   });
 

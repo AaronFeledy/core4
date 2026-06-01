@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, type Context, Effect, Either, Layer, Schema } from "effect";
 
 import { ScratchAppError, ScratchAppNotFoundError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppPlan, LandofileShape } from "@lando/sdk/schema";
+import { AbsolutePath, type AppPlan, AppPlan as AppPlanSchema, LandofileShape } from "@lando/sdk/schema";
 import {
   AppPlanner,
   FileSystem,
@@ -296,6 +296,31 @@ const makeScratchAppService = (
         scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
     });
 
+  const writeCachedPlan = (planCache: AbsolutePath, plan: AppPlan) =>
+    Effect.try({
+      try: () => `${JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))}\n`,
+      catch: (cause) =>
+        scratchAppError("planCache", `Unable to encode scratch plan cache at ${planCache}.`, cause),
+    }).pipe(
+      Effect.flatMap((content) => fileSystem.writeAtomic(planCache, content)),
+      Effect.mapError((cause) =>
+        cause instanceof ScratchAppError
+          ? cause
+          : scratchAppError("planCache", `Unable to write scratch plan cache at ${planCache}.`, cause),
+      ),
+    );
+
+  const readCachedPlan = (planCache: AbsolutePath): Effect.Effect<AppPlan | undefined, never> =>
+    fileSystem.readText(planCache).pipe(
+      Effect.flatMap((content) =>
+        Effect.try({
+          try: () => Schema.decodeUnknownSync(AppPlanSchema)(JSON.parse(content)),
+          catch: () => undefined,
+        }),
+      ),
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    );
+
   const reapScratch = (input: {
     readonly id: string;
     readonly instanceRoot: AbsolutePath;
@@ -347,6 +372,7 @@ const makeScratchAppService = (
     scratchId: string,
     plan: AppPlan,
     instanceRoot: AbsolutePath,
+    planCache: AbsolutePath,
     detached: boolean,
   ) =>
     Effect.gen(function* () {
@@ -366,6 +392,7 @@ const makeScratchAppService = (
           Effect.logWarning(`Unable to reap scratch app ${scratchId} during cleanup: ${Cause.pretty(cause)}`),
         ),
       );
+      yield* writeCachedPlan(planCache, markedPlan);
       yield* Effect.scoped(provider.apply(markedPlan, { reconcile: false })).pipe(
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
@@ -438,9 +465,20 @@ const makeScratchAppService = (
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      return yield* startScratchPlan(scratchId, forkPlan, scratchPaths.instanceRoot, input.detached).pipe(
+      return yield* startScratchPlan(
+        scratchId,
+        forkPlan,
+        scratchPaths.instanceRoot,
+        scratchPaths.planCache,
+        input.detached,
+      ).pipe(
         Effect.tap(() =>
-          scratchRegistry.upsert({ ...registryEntry, status: "running", updatedAt: nowIso() }),
+          scratchRegistry.upsert({
+            ...registryEntry,
+            rootPath: String(forkPlan.root),
+            status: "running",
+            updatedAt: nowIso(),
+          }),
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
@@ -517,9 +555,20 @@ const makeScratchAppService = (
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      return yield* startScratchPlan(scratchId, recipePlan, scratchPaths.instanceRoot, input.detached).pipe(
+      return yield* startScratchPlan(
+        scratchId,
+        recipePlan,
+        scratchPaths.instanceRoot,
+        scratchPaths.planCache,
+        input.detached,
+      ).pipe(
         Effect.tap(() =>
-          scratchRegistry.upsert({ ...registryEntry, status: "running", updatedAt: nowIso() }),
+          scratchRegistry.upsert({
+            ...registryEntry,
+            rootPath: String(recipePlan.root),
+            status: "running",
+            updatedAt: nowIso(),
+          }),
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
@@ -561,9 +610,16 @@ const makeScratchAppService = (
       if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
       const scratchPaths = yield* paths(id);
       const handle = handleFromEntry(entry);
-      yield* scratchRegistry
-        .upsert({ ...entry, status: "stopping", updatedAt: nowIso() })
-        .pipe(Effect.zipRight(reapScratch({ id, instanceRoot: scratchPaths.instanceRoot })));
+      const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
+      yield* scratchRegistry.upsert({ ...entry, status: "stopping", updatedAt: nowIso() }).pipe(
+        Effect.zipRight(
+          reapScratch({
+            id,
+            instanceRoot: scratchPaths.instanceRoot,
+            ...(cachedPlan === undefined ? {} : { plan: cachedPlan }),
+          }),
+        ),
+      );
       return handle;
     });
 
@@ -606,7 +662,7 @@ const makeScratchAppService = (
         const hasRegistry = entry !== undefined;
         const hasDir = dirIds.has(id);
         const hasLabel = labelIds.has(id);
-        const registryStale = hasRegistry && !hasDir && !hasLabel;
+        const registryStale = hasRegistry && !hasDir;
         const directoryOrphan = hasDir && !hasRegistry;
         const providerLabelOrphan = hasLabel && !hasRegistry;
         const deadOwner = entry !== undefined && ownerPidIsDead(entry);
@@ -619,9 +675,12 @@ const makeScratchAppService = (
       const errors: string[] = [];
       for (const id of candidates) {
         const scratchPaths = yield* paths(id);
-        const result = yield* reapScratch({ id, instanceRoot: scratchPaths.instanceRoot }).pipe(
-          Effect.either,
-        );
+        const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
+        const result = yield* reapScratch({
+          id,
+          instanceRoot: scratchPaths.instanceRoot,
+          ...(cachedPlan === undefined ? {} : { plan: cachedPlan }),
+        }).pipe(Effect.either);
         if (result._tag === "Right") reaped.push(id);
         else errors.push(`${id}: ${result.left.message}`);
       }
