@@ -12,3 +12,14 @@ export {
   type PromptIO,
   type PromptReadOptions,
 } from "./io.ts";
+export {
+  ChoicesParseFailure,
+  createDefaultChoicesCommandRunner,
+  defaultChoicesCommandSpawner,
+  landoInvocationPrefix,
+  parseChoicesOutput,
+  type ChoicesCommandInput,
+  type ChoicesCommandResult,
+  type ChoicesCommandRunner,
+  type ChoicesCommandSpawner,
+} from "./choices-command.ts";

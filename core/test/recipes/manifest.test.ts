@@ -254,20 +254,38 @@ version: 0.0.1
     }
   });
 
-  test("prompt `choicesFrom:` is rejected with §8.8.5 remediation", async () => {
+  test("prompt `choicesFrom:` is accepted (no static choices required)", async () => {
     const yaml = `${baseHeader}prompts:
-  - name: site
+  - name: phpVersion
     type: select
-    message: Site?
+    message: PHP version?
     choicesFrom:
-      run: pantheon:list-sites
+      command: services:list
+      args:
+        - --type=php
+      parse: lines
 `;
-    const exit = await runParse("test://beta-choicesfrom", yaml);
+    const exit = await runParse("test://choicesfrom-accept", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const prompt = exit.value.prompts?.[0];
+    expect(prompt?.choicesFrom?.command).toBe("services:list");
+    expect(prompt?.choicesFrom?.args).toEqual(["--type=php"]);
+    expect(prompt?.choicesFrom?.parse).toBe("lines");
+    expect(prompt?.choices).toBeUndefined();
+  });
+
+  test("select with neither `choices:` nor `choicesFrom:` is rejected", async () => {
+    const yaml = `${baseHeader}prompts:
+  - name: phpVersion
+    type: select
+    message: PHP version?
+`;
+    const exit = await runParse("test://choicesfrom-missing", yaml);
     const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§8.8.5");
-      expect(error.message).toContain("choicesFrom");
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("choicesFrom"))).toBe(true);
     }
   });
 

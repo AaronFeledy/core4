@@ -15,6 +15,7 @@ import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
 import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source.ts";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
 import {
+  type ChoicesCommandRunner,
   type PromptAnswers,
   type PromptIO,
   collectPrompts,
@@ -98,6 +99,7 @@ export interface InitAppOptions {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly io?: PromptIO;
+  readonly choicesRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
   readonly events?: ProgressEmitter;
@@ -281,6 +283,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     nonInteractive: options.nonInteractive === true || io === undefined,
     cwd,
     ...(io === undefined ? {} : { io }),
+    ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
   });
 
   const appNameValue = collected[APP_NAME_PROMPT];

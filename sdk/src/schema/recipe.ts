@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 // Recipe manifest schema with prompt and post-init action shapes.
-// Unsupported fields (`runs:`, `fetchAllowlist:`, `choicesFrom:`,
+// Unsupported fields (`runs:`, `fetchAllowlist:`,
 // `editor` prompt type, non-`install` `bun:` verbs) are intentionally absent
 // from the schema and are rejected before strict decode so users see a
 // targeted remediation instead of a generic excess-property error.
@@ -38,6 +38,14 @@ export const RecipePromptType = Schema.Literal(
 );
 export type RecipePromptType = typeof RecipePromptType.Type;
 
+/** Dynamic-choices source — run a canonical Lando command and parse its stdout into choices. */
+export const RecipeChoicesFrom = Schema.Struct({
+  command: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  parse: Schema.Literal("json", "lines"),
+});
+export type RecipeChoicesFrom = typeof RecipeChoicesFrom.Type;
+
 /** Recipe-prompt choice — bare value or labeled object. */
 export const RecipePromptChoice = Schema.Union(
   Schema.String,
@@ -70,6 +78,7 @@ export const RecipePrompt = Schema.Struct({
   when: Schema.optional(Schema.String),
   validate: Schema.optional(RecipePromptValidate),
   choices: Schema.optional(Schema.Array(RecipePromptChoice)),
+  choicesFrom: Schema.optional(RecipeChoicesFrom),
 });
 export type RecipePrompt = typeof RecipePrompt.Type;
 

@@ -12,9 +12,16 @@
 import { access } from "node:fs/promises";
 import { resolve as resolvePath } from "node:path";
 
-import { RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
-import type { RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
+import { RecipeChoicesError, RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
+import type { RecipeChoicesFrom, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 
+import {
+  type ChoicesCommandRunner,
+  ChoicesParseFailure,
+  type ChoicesParseFailureKind,
+  createDefaultChoicesCommandRunner,
+  parseChoicesOutput,
+} from "./choices-command.ts";
 import type { PromptIO } from "./io.ts";
 
 export type PromptAnswer = string | number | boolean | ReadonlyArray<string | number | boolean>;
@@ -28,6 +35,7 @@ export interface CollectPromptsOptions {
   readonly nonInteractive?: boolean;
   readonly cwd?: string;
   readonly io?: PromptIO;
+  readonly choicesRunner?: ChoicesCommandRunner;
 }
 
 const ACCEPTED_BOOL_TRUE = new Set(["y", "yes", "true", "1", "on"]);
@@ -288,13 +296,176 @@ const runInteractivePrompt = async (
   }
 };
 
+const isDynamicChoicesPrompt = (
+  prompt: RecipePrompt,
+): prompt is RecipePrompt & { choicesFrom: RecipeChoicesFrom } =>
+  (prompt.type === "select" || prompt.type === "multiselect") && prompt.choicesFrom !== undefined;
+
+type ChoicesOutcome =
+  | { readonly ok: true; readonly choices: ReadonlyArray<RecipePromptChoice> }
+  | {
+      readonly ok: false;
+      readonly kind: "command-failed" | ChoicesParseFailureKind;
+      readonly reason: string;
+      readonly exitCode?: number;
+    };
+
+const describeCause = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
+
+const runChoicesCommand = async (
+  runner: ChoicesCommandRunner,
+  choicesFrom: RecipeChoicesFrom,
+): Promise<ChoicesOutcome> => {
+  let result: Awaited<ReturnType<ChoicesCommandRunner>>;
+  try {
+    result = await runner({ command: choicesFrom.command, args: choicesFrom.args ?? [] });
+  } catch (cause) {
+    return { ok: false, kind: "command-failed", reason: `command failed to run: ${describeCause(cause)}` };
+  }
+  if (result.exitCode !== 0) {
+    return {
+      ok: false,
+      kind: "command-failed",
+      reason: `command exited with code ${String(result.exitCode)}`,
+      exitCode: result.exitCode,
+    };
+  }
+  try {
+    return { ok: true, choices: parseChoicesOutput(result.stdout, choicesFrom.parse) };
+  } catch (cause) {
+    if (cause instanceof ChoicesParseFailure) return { ok: false, kind: cause.kind, reason: cause.message };
+    return { ok: false, kind: "unparseable", reason: describeCause(cause) };
+  }
+};
+
+const splitMultiValues = (raw: string): ReadonlyArray<string> =>
+  raw
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== "");
+
+const acceptManualValue = (prompt: RecipePrompt, raw: string): CoerceResult => {
+  if (prompt.type === "multiselect") {
+    const values = splitMultiValues(raw);
+    const bounds = enforceMultiSelectBounds(prompt, values.length);
+    if (!bounds.ok) return { ok: false, issue: bounds.issue };
+    return { ok: true, value: values };
+  }
+  return validateText(prompt, raw);
+};
+
+const renderManualChoiceLine = (prompt: RecipePrompt): string => {
+  const hint = prompt.default === undefined ? "" : `(default: ${String(prompt.default)})`;
+  const base = hint === "" ? prompt.message : `${prompt.message} ${hint}`;
+  return prompt.type === "multiselect" ? `${base}\n(comma-separated values; blank for none): ` : `${base}: `;
+};
+
+const choicesError = (
+  prompt: RecipePrompt,
+  choicesFrom: RecipeChoicesFrom,
+  outcome: Extract<ChoicesOutcome, { ok: false }>,
+): RecipeChoicesError =>
+  new RecipeChoicesError({
+    message: `Could not load dynamic choices for prompt "${prompt.name}": ${outcome.reason}.`,
+    promptName: prompt.name,
+    command: choicesFrom.command,
+    kind: outcome.kind,
+    remediation: `Provide the value directly via --answer ${prompt.name}=<value>, or fix the \`${choicesFrom.command}\` command.`,
+    ...(outcome.exitCode === undefined ? {} : { exitCode: outcome.exitCode }),
+  });
+
+const runManualChoiceFallback = async (
+  prompt: RecipePrompt,
+  io: PromptIO,
+  reason: string,
+): Promise<PromptAnswer> => {
+  io.writeError(`Could not load choices for "${prompt.name}" (${reason}). Enter the value manually.\n`);
+  const def = promptDefaultRaw(prompt);
+  while (true) {
+    io.write(renderManualChoiceLine(prompt));
+    const raw = await io.readLine();
+    const effective = raw === "" && def.hasDefault ? def.raw : raw;
+    if (effective === "") {
+      if (prompt.type === "multiselect") {
+        const bounds = enforceMultiSelectBounds(prompt, 0);
+        if (bounds.ok) return [];
+        io.writeError(`Invalid value: ${bounds.issue}. Please try again.\n`);
+        continue;
+      }
+      io.writeError("Value is required. Please try again.\n");
+      continue;
+    }
+    const result = acceptManualValue(prompt, effective);
+    if (result.ok) return result.value;
+    io.writeError(`Invalid value: ${result.issue}. Please try again.\n`);
+  }
+};
+
+const resolveDynamicSupplied = (prompt: RecipePrompt, supplied: string): PromptAnswer => {
+  const result = acceptManualValue(prompt, supplied);
+  if (!result.ok) {
+    throw validationFail(
+      prompt,
+      result.issue,
+      `Update --answer ${prompt.name}=<value> with a value that satisfies the recipe constraint.`,
+    );
+  }
+  return result.value;
+};
+
+const resolveDynamicChoicesPrompt = async (
+  prompt: RecipePrompt & { choicesFrom: RecipeChoicesFrom },
+  context: {
+    readonly supplied: string | undefined;
+    readonly runner: ChoicesCommandRunner;
+    readonly io: PromptIO | undefined;
+    readonly interactive: boolean;
+    readonly yes: boolean;
+    readonly cwd: string;
+  },
+): Promise<PromptAnswer> => {
+  const { supplied, runner, io, interactive, yes, cwd } = context;
+  if (supplied !== undefined) return resolveDynamicSupplied(prompt, supplied);
+
+  const outcome = await runChoicesCommand(runner, prompt.choicesFrom);
+  if (outcome.ok) {
+    const effective: RecipePrompt = { ...prompt, choices: outcome.choices };
+    const def = promptDefaultRaw(effective);
+    if (yes || !interactive) {
+      if (def.hasDefault) return resolveDefault(effective, def.raw, cwd);
+      throw missingAnswer(effective);
+    }
+    return runInteractivePrompt(effective, io as PromptIO, cwd);
+  }
+
+  if (interactive && io !== undefined) return runManualChoiceFallback(prompt, io, outcome.reason);
+
+  const def = promptDefaultRaw(prompt);
+  if (def.hasDefault) return resolveDynamicSupplied(prompt, def.raw);
+  throw choicesError(prompt, prompt.choicesFrom, outcome);
+};
+
 export const collectPrompts = async (options: CollectPromptsOptions): Promise<PromptAnswers> => {
   const { prompts, answers = {}, yes = false, nonInteractive = false, cwd = process.cwd(), io } = options;
   const interactive = !nonInteractive && io !== undefined;
+  const choicesRunner = options.choicesRunner ?? createDefaultChoicesCommandRunner();
 
   const resolved: Record<string, PromptAnswer> = {};
   for (const prompt of prompts) {
     const supplied = answers[prompt.name];
+
+    if (isDynamicChoicesPrompt(prompt)) {
+      resolved[prompt.name] = await resolveDynamicChoicesPrompt(prompt, {
+        supplied,
+        runner: choicesRunner,
+        io,
+        interactive,
+        yes,
+        cwd,
+      });
+      continue;
+    }
+
     if (supplied !== undefined) {
       resolved[prompt.name] = await resolveSupplied(prompt, supplied, cwd);
       continue;
