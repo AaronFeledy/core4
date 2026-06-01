@@ -398,3 +398,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review notes (rejected/deferred): Oracle's other notes were non-blocking and correct as-shipped — the deliberate double-decode (default client + resolver re-decode) is justified (it validates injected fake clients so `registry-invalid` is reachable without network IO); registry-indirection SSRF introduces no NEW risk over the already-shipped `--source=git/tarball` (the resolver delegates to those existing paths); omitting `ref` from the git schema variant is correct (`resolveGitRecipeSource` has no ref support); `return { ...resolved, id }` correctly lets the registry id win per AC.
 - Verification: typecheck, lint (653 files), full `bun test` (2332 pass / 27 skip / 0 fail), lint:guides, check:guide-coverage, and schema-snapshot all green.
 ---
+
+## [2026-06-01 14:55 CDT] - Babysit
+- PR: #253 https://github.com/AaronFeledy/core4/pull/253
+- CI outcome: pass
+- Review feedback: fixed (resolved merge conflict against main; forwarded registry init CLI `--path` into the registry resolver per Bugbot)
+- Merge: merged (squash)
+---
