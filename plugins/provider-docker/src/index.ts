@@ -162,12 +162,13 @@ const networkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 
-const unavailable = (operation: string, message: string, details?: unknown) =>
+const unavailable = (operation: string, message: string, details?: unknown, cause?: unknown) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
     message,
     ...(details === undefined ? {} : { details }),
+    ...(cause === undefined ? {} : { cause }),
   });
 
 const internal = (operation: string, message: string, details?: unknown, cause?: unknown) =>
@@ -256,7 +257,7 @@ const dockerApiFailure = (
   if (cause instanceof ContainerTransportError) {
     return cause.kind === "parse"
       ? internal("docker-api", cause.message, cause.details, cause)
-      : unavailable("docker-api", cause.message, cause.details);
+      : unavailable("docker-api", cause.message, cause.details, cause);
   }
   return unavailable("docker-api", "Failed to call the Docker API.", {
     method: request.method,

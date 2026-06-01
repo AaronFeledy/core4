@@ -250,6 +250,8 @@ export async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGen
   }
 
   if (buffer.length > 0) {
+    // Intentionally flush complete buffered chunks on EOF without a terminal zero chunk.
+    // Valid chunked responses are unchanged, while truncated responses retain Podman's prior robustness.
     for (const bodyChunk of flushChunkedBufferAtEnd(buffer)) yield bodyChunk;
   }
 }
