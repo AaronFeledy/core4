@@ -65,9 +65,8 @@ export const defaultRecipeRegistryClient = (registryUrl: string): RecipeRegistry
     });
     if (response.status === 404) return undefined;
     if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText}`);
-    const json = await response.json();
     try {
-      return decodeRegistryResponse(json);
+      return decodeRegistryResponse(await response.json());
     } catch (cause) {
       throw new RegistryDecodeError(cause);
     }
