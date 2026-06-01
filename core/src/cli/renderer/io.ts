@@ -14,7 +14,9 @@ export const createStdioRendererIO = (
   writeStdout: (chunk) => stdout.write(chunk),
   writeStderr: (chunk) => stderr.write(chunk),
   isTTY: stdout.isTTY === true,
-  terminalColumns: typeof stdout.columns === "number" ? stdout.columns : undefined,
+  get terminalColumns() {
+    return typeof stdout.columns === "number" ? stdout.columns : undefined;
+  },
 });
 
 export interface BufferedRendererIO extends RendererIO {

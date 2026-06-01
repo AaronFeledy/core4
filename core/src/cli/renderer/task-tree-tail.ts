@@ -111,6 +111,8 @@ export interface LandoTreePainterOptions {
   readonly detailCapacity?: number;
   /** Terminal columns used to count wrapped physical rows for frame clearing. */
   readonly terminalColumns?: number | undefined;
+  /** Live terminal columns source, read on every redraw. */
+  readonly getTerminalColumns?: (() => number | undefined) | undefined;
 }
 
 export interface LandoTreePainterSnapshot {
@@ -127,12 +129,16 @@ const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
 
 const visibleLength = (line: string): number => line.replace(ansiPattern, "").length;
 
+const DEFAULT_TERMINAL_COLUMNS = 80;
+
+const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
+  terminalColumns === undefined ? DEFAULT_TERMINAL_COLUMNS : Math.max(1, Math.trunc(terminalColumns));
+
 const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
-  const columns = terminalColumns === undefined ? undefined : Math.max(1, Math.trunc(terminalColumns));
-  return line.split("\n").reduce((rows, segment) => {
-    if (columns === undefined) return rows + 1;
-    return rows + Math.max(1, Math.ceil(visibleLength(segment) / columns));
-  }, 0);
+  const columns = normalizeTerminalColumns(terminalColumns);
+  return line
+    .split("\n")
+    .reduce((rows, segment) => rows + Math.max(1, Math.ceil(visibleLength(segment) / columns)), 0);
 };
 
 const physicalRowsForFrame = (frame: ReadonlyArray<string>, terminalColumns: number | undefined): number =>
@@ -147,14 +153,16 @@ const physicalRowsForFrame = (frame: ReadonlyArray<string>, terminalColumns: num
 export class LandoTreePainter {
   readonly #detailCapacity: number;
   readonly #terminalColumns: number | undefined;
+  readonly #getTerminalColumns: (() => number | undefined) | undefined;
   readonly #tasks = new Map<string, TaskState>();
   readonly #order: string[] = [];
   #tree: TreeState | undefined;
-  #lastFrameLineCount = 0;
+  #lastFrame: ReadonlyArray<string> = [];
 
   constructor(options: LandoTreePainterOptions = {}) {
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
     this.#terminalColumns = options.terminalColumns;
+    this.#getTerminalColumns = options.getTerminalColumns;
   }
 
   consume(event: LandoEvent): string {
@@ -169,7 +177,7 @@ export class LandoTreePainter {
   passthrough(line: string): string {
     const clear = this.#clearPrevious();
     const frame = this.#renderFrame();
-    this.#lastFrameLineCount = physicalRowsForFrame(frame, this.#terminalColumns);
+    this.#lastFrame = frame;
     const body = frame.length === 0 ? "" : `${frame.join("\n")}\n`;
     return `${clear}${line}\n${body}`;
   }
@@ -328,15 +336,20 @@ export class LandoTreePainter {
     return logical.map((line) => (line.startsWith(PANEL_INDENT) ? `${csi.dim}${line}${csi.dimReset}` : line));
   }
 
+  #currentTerminalColumns(): number | undefined {
+    return this.#getTerminalColumns?.() ?? this.#terminalColumns;
+  }
+
   #clearPrevious(): string {
-    if (this.#lastFrameLineCount === 0) return "";
-    return `${csi.cursorUp(this.#lastFrameLineCount)}${csi.carriageReturn}${csi.eraseDown}`;
+    const lineCount = physicalRowsForFrame(this.#lastFrame, this.#currentTerminalColumns());
+    if (lineCount === 0) return "";
+    return `${csi.cursorUp(lineCount)}${csi.carriageReturn}${csi.eraseDown}`;
   }
 
   #repaint(): string {
     const clear = this.#clearPrevious();
     const frame = this.#renderFrame();
-    this.#lastFrameLineCount = physicalRowsForFrame(frame, this.#terminalColumns);
+    this.#lastFrame = frame;
     if (frame.length === 0) return clear;
     return `${clear}${frame.join("\n")}\n`;
   }

@@ -228,6 +228,20 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
   });
 
+  test("rewinds by physical rows using the current terminal width", () => {
+    let columns = 80;
+    const painter = new LandoTreePainter({ getTerminalColumns: () => columns });
+    painter.consume(treeStart("build", "Run", ["a"]));
+    painter.consume(taskStart("a", "a", "build"));
+    painter.consume(detail("a", "1234567890123456789012345678901"));
+
+    columns = 10;
+    const collapse = painter.consume(taskComplete("a", "a", 10));
+
+    expect(collapse.startsWith(csi.cursorUp(7))).toBe(true);
+    expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
+  });
+
   test("redraw clears downward so a collapsing frame leaves no stale panel rows", () => {
     const painter = new LandoTreePainter();
     painter.consume(treeStart("build", "Building", ["a"]));

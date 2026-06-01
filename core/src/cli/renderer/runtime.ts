@@ -52,7 +52,7 @@ export const makeJsonRendererLive = (io: RendererIO): Layer.Layer<never, never, 
   makeRendererLive(renderJsonLine, io, "stderr");
 
 const makeLandoTtyRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> => {
-  const painter = new LandoTreePainter({ terminalColumns: io.terminalColumns });
+  const painter = new LandoTreePainter({ getTerminalColumns: () => io.terminalColumns });
   return makeEventConsumerRendererLive((event) => {
     if (isRenderableTaskTreeEvent(event)) {
       io.writeStdout(painter.consume(event));
