@@ -26,6 +26,11 @@ const sharedNetworkName = landoSharedNetworkName;
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
+export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
+  const scratch = plan.extensions["@lando/core/scratch"] as { readonly id?: string } | undefined;
+  return scratch?.id === plan.id ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratch.id } : {};
+};
+
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 type BringUpError = ServiceStartError | ProviderUnavailableError | ProviderInternalError;
 
@@ -225,6 +230,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
     Labels: {
       "dev.lando.app": plan.id,
       "dev.lando.service": service.name,
+      ...scratchLabelsForPlan(plan),
     },
     HostConfig: hostConfig(plan, service),
     NetworkingConfig: {

@@ -1,0 +1,34 @@
+---
+id: scratch-gc
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, scratch, gc]
+---
+
+<Guide>
+  <Scenario id="scratch-gc-command" render={false} reason="Scratch GC inspects the local registry, cache footprint, and provider-label scan; this scenario documents the host-safe command surface without booting containers">
+    <Step name="inspect">
+      <Variable name="command" value="apps:scratch:gc" display="Inspects registered scratch apps, scratch cache directories, and provider resources tagged with scratch labels" />
+      <Variable name="alias" value="scratch:gc" display="The scratch namespace alias reaches the same garbage-collection helper" />
+      <Variable name="default" value="report only" display="Without --prune, garbage collection reports inspected and orphan counts without deleting registry entries, directories, or provider resources" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-gc-prune" render={false} reason="Pruning removes local and provider-side scratch orphans, which requires a real provider and host cache state">
+    <Step name="prune">
+      <Variable name="command" value="apps:scratch:gc --prune" display="Reaps orphaned scratch ids by pruning provider resources, removing the cache directory, and deleting the registry entry" />
+      <Variable name="idempotent" value="safe repeat" display="A missing provider resource or scratch directory is treated as success, so a second --prune pass reports no remaining work" />
+      <Variable name="registry" value="&lt;userCacheRoot&gt;/scratch/registry.bin" display="The registry is the source for scratch list/info and is cross-checked against on-disk scratch dirs" />
+      <Variable name="labels" value="dev.lando.scratch-id" display="Provider containers for scratch apps carry the scratch id label so GC can find resources whose registry entry is gone" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-gc-orphans" render={false} reason="Orphan categories are classified by cross-referencing local registry state, cache dirs, and provider labels">
+    <Step name="classification">
+      <Variable name="directoryOrphan" value="dir without registry" display="A scratch cache directory with no registry entry is removable with --prune" />
+      <Variable name="providerLabelOrphan" value="label without registry" display="A provider resource tagged with a scratch id but missing from the registry is pruned via the provider scanner seam" />
+      <Variable name="deadOwner" value="foreground owner pid exited" display="A foreground registry entry whose owner process is gone is considered orphaned and eligible for prune" />
+    </Step>
+  </Scenario>
+</Guide>

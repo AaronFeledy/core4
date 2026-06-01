@@ -44,6 +44,8 @@ import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
+import { ScratchRegistryLive } from "../scratch-app/registry.ts";
+import { ScratchResourceScannerLive } from "../scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../scratch-app/service.ts";
 import { CommandRegistryLive } from "../services/command-registry.ts";
 import { ConfigServiceLive } from "../services/config.ts";
@@ -262,11 +264,19 @@ const makeScratchRuntimeLive = (loggerMode: LoggerMode) => {
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
-  const scratchDeps = Layer.mergeAll(providerBase, LandofileServiceLive, plannerLive);
+  const scratchDeps = Layer.mergeAll(
+    providerBase,
+    LandofileServiceLive,
+    plannerLive,
+    ScratchRegistryLive,
+    ScratchResourceScannerLive,
+  );
   return Layer.mergeAll(
     providerBase,
     LandofileServiceLive,
     plannerLive,
+    ScratchRegistryLive,
+    ScratchResourceScannerLive,
     ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
   );
 };
