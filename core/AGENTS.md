@@ -14,7 +14,8 @@ Inherit the root `AGENTS.md` instructions for all core package work.
 ## Git recipe source
 
 - `lando init --source=git` is acquisition-only: it shallow-clones through `core/src/recipes/git-source.ts`, publishes by commit SHA under `<userDataRoot>/recipe-cache/git/`, and then uses the existing recipe render path. Non-bundled directory recipe rendering is still the shared Alpha boundary, so do not assume git recipes scaffold end-to-end yet.
-- Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; both OCLIF init and the compiled dispatcher must accept/reject `--source`/`--url`/`--path` identically, and the default git cloner must keep interactive prompts disabled.
+- `lando init --source=tarball` mirrors git acquisition in `core/src/recipes/tarball-source.ts`: it downloads via an injectable `fetcher` (default = global `fetch`, which accepts `file://` for tests), SHA-256-verifies, extracts via a pure-JS tar(.gz) reader (no host `tar` dependency at runtime), and publishes under `<userDataRoot>/recipe-cache/tarball/<sha256>/`. `--checksum` makes verification hard-fail (`checksum-mismatch`, computed BEFORE any extraction); without it the resolver warns once with the computed digest and, when an interactive `confirmUnverified` seam is supplied (i.e. not `--yes`/`--no-interactive`), prompts once — a decline aborts with `checksum-unverified`. The verify/prompt seam lives in `loadTarballRecipe` (`init.ts`), not the resolver, so the resolver stays pure/injectable.
+- Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; both OCLIF init and the compiled dispatcher must accept/reject `--source`/`--url`/`--path`/`--checksum` identically (preserve the exact per-source missing-url wording — `<git-url>` vs `<tarball-url>` — to keep the parity tests green), and the default git cloner must keep interactive prompts disabled.
 
 ## Renderer task-tree tail (interactive Lando renderer)
 

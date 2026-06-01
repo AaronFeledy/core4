@@ -21,6 +21,11 @@ import {
 } from "../../recipes/prompts/index.ts";
 import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source.ts";
 import {
+  type TarballRecipeExtractor,
+  type TarballRecipeFetcher,
+  resolveTarballRecipeSource,
+} from "../../recipes/tarball-source.ts";
+import {
   type ProgressEmitter,
   publishTaskCompleteAsync,
   publishTaskFailAsync,
@@ -73,11 +78,14 @@ export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
-  readonly source?: "git";
+  readonly source?: "git" | "tarball";
   readonly url?: string;
   readonly path?: string;
+  readonly checksum?: string;
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
+  readonly tarballRecipeFetcher?: TarballRecipeFetcher;
+  readonly tarballRecipeExtractor?: TarballRecipeExtractor;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
   readonly yes?: boolean;
@@ -135,6 +143,40 @@ const loadGitRecipe = async (options: InitAppOptions) => {
   return parseResolvedRecipe(resolved);
 };
 
+const CONFIRM_YES_RE = /^(?:y|yes)$/iu;
+
+const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefined) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    url: options.url,
+    path: options.path,
+    checksum: options.checksum,
+  });
+  const interactive = options.nonInteractive !== true && options.yes !== true && io !== undefined;
+  const warn = (message: string): void => {
+    if (io !== undefined) io.writeError(`${message}\n`);
+    else process.stderr.write(`${message}\n`);
+  };
+  const confirmUnverified = interactive
+    ? async (): Promise<boolean> => {
+        (io as PromptIO).write("Continue installing this recipe without checksum verification? [y/N] ");
+        const answer = await (io as PromptIO).readLine();
+        return CONFIRM_YES_RE.test(answer.trim());
+      }
+    : undefined;
+  const resolved = await resolveTarballRecipeSource({
+    url: sourceOptions.url ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(sourceOptions.checksum === undefined ? {} : { checksum: sourceOptions.checksum }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
+    ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
+    onWarn: warn,
+    ...(confirmUnverified === undefined ? {} : { confirmUnverified }),
+  });
+  return parseResolvedRecipe(resolved);
+};
+
 const composeAnswers = (options: InitAppOptions): Record<string, string> => {
   const out: Record<string, string> = { ...(options.answers ?? {}) };
   if (options.name !== undefined && options.name.trim() !== "") {
@@ -158,11 +200,15 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     path: options.path,
   });
   const recipeRef =
-    sourceOptions.source === "git" && sourceOptions.url !== undefined
+    sourceOptions.source !== undefined && sourceOptions.url !== undefined
       ? sourceOptions.url
       : await resolveRecipeSelection(options, io, cwd);
   const { resolved, manifest } =
-    sourceOptions.source === "git" ? await loadGitRecipe(options) : await loadRecipe(recipeRef, cwd);
+    sourceOptions.source === "git"
+      ? await loadGitRecipe(options)
+      : sourceOptions.source === "tarball"
+        ? await loadTarballRecipe(options, io)
+        : await loadRecipe(recipeRef, cwd);
 
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
   if (renderer === undefined) {
