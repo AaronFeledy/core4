@@ -1009,7 +1009,9 @@ const runAppsScratchList = async (argv: ReadonlyArray<string>): Promise<void> =>
   );
 
 const runAppsScratchInfo = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchInfo(scratchIdFromArgv(argv)), renderScratchInfoResult);
+  runScratchEffect(scratchInfo(scratchIdFromArgv(argv)), (result) =>
+    renderScratchInfoResult(result, scratchListFormatFromArgv(argv)),
+  );
 
 const runAppsScratchLogs = async (argv: ReadonlyArray<string>): Promise<void> =>
   runScratchEffect(scratchLogs(scratchIdFromArgv(argv)), renderScratchLogsResult);

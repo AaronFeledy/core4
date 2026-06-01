@@ -1,0 +1,36 @@
+---
+id: list-and-info
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, scratch, list, info]
+---
+
+<Guide>
+  <Scenario id="scratch-list-columns" render={false} reason="Scratch list reads the local registry to report what scratch apps exist; this scenario documents the host-safe command surface without booting containers">
+    <Step name="list">
+      <Variable name="command" value="apps:scratch:list" display="Lists every registered scratch app with its id, source, mode, creation time, and lifetime status" />
+      <Variable name="alias" value="scratch:list" display="The scratch namespace alias reaches the same listing" />
+      <Variable name="columns" value="ID / SOURCE / MODE / CREATED / STATUS" display="The default table renders one row per scratch app across these five columns" />
+      <Variable name="json" value="apps:scratch:list --format json" display="The JSON renderer emits the same fields as a machine-readable array for scripting" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-list-status" render={false} reason="Lifetime status is derived from the local registry entry; classification needs no provider">
+    <Step name="status">
+      <Variable name="attached" value="foreground owner alive" display="An attached scratch is a foreground app whose owning CLI process is still running" />
+      <Variable name="detached" value="--detach app" display="A detached scratch outlives the command that created it and survives until explicit destroy or gc" />
+      <Variable name="orphan" value="foreground owner exited" display="An orphan is a foreground scratch whose owner process exited without cleanup, making it a reap candidate for apps:scratch:gc" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-info-detail" render={false} reason="Scratch info enriches the list row with mount points, network membership, and per-service endpoints read from the cached plan, which documents the surface without a running provider">
+    <Step name="info">
+      <Variable name="command" value="apps:scratch:info &lt;id&gt;" display="Shows the same id / source / mode / created / status data plus the realized detail for one scratch app" />
+      <Variable name="mounts" value="service mount points" display="Each mount lists the owning service, the container target, the host path or volume source, the mount kind, and whether it is read-only" />
+      <Variable name="network" value="bridge + shared membership" display="Network membership reports the per-app bridge network and, when the app joined it, the shared cross-app network" />
+      <Variable name="endpoints" value="per-service listeners" display="Endpoints are grouped by service and show each protocol, port, and optional name" />
+      <Variable name="json" value="apps:scratch:info &lt;id&gt; --format json" display="The JSON renderer emits the enriched detail object for scripting" />
+    </Step>
+  </Scenario>
+</Guide>

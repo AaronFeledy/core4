@@ -30,6 +30,11 @@ import {
   ScratchAppService,
   type ScratchDestroyOptions,
   type ScratchHandle,
+  type ScratchInfo,
+  type ScratchLifetimeStatus,
+  type ScratchMountPoint,
+  type ScratchNetworkMembership,
+  type ScratchServiceEndpoints,
   type ScratchSummary,
 } from "@lando/sdk/services";
 
@@ -362,6 +367,78 @@ const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
     return (cause as { readonly code?: unknown }).code === "ESRCH";
   }
 };
+
+const lifetimeStatus = (entry: ScratchRegistryEntry): ScratchLifetimeStatus => {
+  if (entry.detached) return "detached";
+  return ownerPidIsDead(entry) ? "orphan" : "attached";
+};
+
+const summaryFromEntry = (entry: ScratchRegistryEntry): ScratchSummary => ({
+  id: entry.id,
+  app: { kind: "scratch", id: entry.id, root: AbsolutePath.make(entry.rootPath) },
+  source: entry.source,
+  mode: entry.isolate,
+  created: entry.createdAt,
+  status: lifetimeStatus(entry),
+});
+
+const planMountPoints = (plan: AppPlan): ReadonlyArray<ScratchMountPoint> => {
+  const points: ScratchMountPoint[] = [];
+  for (const [name, service] of Object.entries(plan.services)) {
+    if (service === undefined) continue;
+    if (service.appMount !== undefined) {
+      points.push({
+        service: name,
+        target: String(service.appMount.target),
+        source: String(service.appMount.source),
+        kind: "app",
+        readOnly: service.appMount.readOnly,
+      });
+    }
+    for (const mount of service.mounts) {
+      points.push({
+        service: name,
+        target: String(mount.target),
+        ...(mount.source === undefined ? {} : { source: mount.source }),
+        kind: mount.type,
+        readOnly: mount.readOnly,
+      });
+    }
+  }
+  return points;
+};
+
+const planNetworkMembership = (plan: AppPlan): ScratchNetworkMembership => ({
+  ...(plan.networking?.perAppBridge?.name === undefined
+    ? {}
+    : { perAppBridge: plan.networking.perAppBridge.name }),
+  ...(plan.networking?.sharedNetworkMembership?.name === undefined
+    ? {}
+    : { sharedNetwork: plan.networking.sharedNetworkMembership.name }),
+});
+
+const planServiceEndpoints = (plan: AppPlan): ReadonlyArray<ScratchServiceEndpoints> =>
+  Object.entries(plan.services)
+    .filter(([, service]) => service !== undefined)
+    .map(([name, service]) => ({
+      service: name,
+      endpoints: (service?.endpoints ?? []).map((endpoint) => ({
+        protocol: endpoint.protocol,
+        ...(endpoint.port === undefined ? {} : { port: endpoint.port }),
+        ...(endpoint.name === undefined ? {} : { name: endpoint.name }),
+      })),
+    }));
+
+const scratchPlanDetail = (
+  plan: AppPlan | undefined,
+): Pick<ScratchInfo, "mounts" | "network" | "endpoints"> =>
+  plan === undefined
+    ? { mounts: [], network: {}, endpoints: [] }
+    : {
+        mounts: planMountPoints(plan),
+        network: planNetworkMembership(plan),
+        endpoints: planServiceEndpoints(plan),
+      };
 
 const makeScratchAppService = (
   fileSystem: Context.Tag.Service<typeof FileSystem>,
@@ -753,14 +830,16 @@ const makeScratchAppService = (
       );
 
   const list = (): Effect.Effect<ReadonlyArray<ScratchSummary>, ScratchAppError> =>
-    scratchRegistry.list().pipe(
-      Effect.map((entries) =>
-        entries.map((entry) => ({
-          id: entry.id,
-          app: { kind: "scratch", id: entry.id, root: AbsolutePath.make(entry.rootPath) },
-        })),
-      ),
-    );
+    scratchRegistry.list().pipe(Effect.map((entries) => entries.map(summaryFromEntry)));
+
+  const info = (id: string): Effect.Effect<ScratchInfo, ScratchAppNotFoundError | ScratchAppError> =>
+    Effect.gen(function* () {
+      const entry = yield* scratchRegistry.get(id);
+      if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
+      const scratchPaths = yield* paths(id);
+      const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
+      return { ...summaryFromEntry(entry), ...scratchPlanDetail(cachedPlan) };
+    });
 
   const start = (id: string) => resolveById(id);
 
@@ -860,6 +939,7 @@ const makeScratchAppService = (
     paths,
     acquire,
     resolveById,
+    info,
     list,
     start,
     stop,

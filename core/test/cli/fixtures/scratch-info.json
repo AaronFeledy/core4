@@ -1,0 +1,55 @@
+{
+  "id": "scratch-drupal-abc123",
+  "app": {
+    "kind": "scratch",
+    "id": "scratch-drupal-abc123",
+    "root": "/cache/scratch/scratch-drupal-abc123/root"
+  },
+  "source": {
+    "kind": "fork"
+  },
+  "mode": "none",
+  "created": "2026-05-31T18:00:00.000Z",
+  "status": "attached",
+  "mounts": [
+    {
+      "service": "appserver",
+      "target": "/app",
+      "source": "/home/me/drupal",
+      "kind": "app",
+      "readOnly": false
+    },
+    {
+      "service": "appserver",
+      "target": "/data",
+      "source": "appserver-data",
+      "kind": "volume",
+      "readOnly": true
+    }
+  ],
+  "network": {
+    "perAppBridge": "lando-scratch-drupal-abc123",
+    "sharedNetwork": "lando_bridge_network"
+  },
+  "endpoints": [
+    {
+      "service": "appserver",
+      "endpoints": [
+        {
+          "protocol": "http",
+          "port": 80,
+          "name": "web"
+        }
+      ]
+    },
+    {
+      "service": "database",
+      "endpoints": [
+        {
+          "protocol": "tcp",
+          "port": 3306
+        }
+      ]
+    }
+  ]
+}

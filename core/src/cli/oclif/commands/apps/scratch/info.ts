@@ -1,17 +1,23 @@
-import { Args } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
 
-import type { ScratchHandle } from "@lando/sdk/services";
-import { renderScratchInfoResult, scratchIdFromInput, scratchInfo } from "../../../../commands/scratch.ts";
+import type { ScratchInfo } from "@lando/sdk/services";
+import {
+  renderScratchInfoResult,
+  scratchIdFromInput,
+  scratchInfo,
+  scratchListFormatFromInput,
+} from "../../../../commands/scratch.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-export const appsScratchInfoSpec: LandoCommandSpec<ScratchHandle> = {
+export const appsScratchInfoSpec: LandoCommandSpec<ScratchInfo> = {
   id: "apps:scratch:info",
   summary: "Show information for a scratch Lando app.",
   namespace: "apps",
   topLevelAlias: "scratch:info",
   bootstrap: "scratch",
   run: (input) => scratchInfo(scratchIdFromInput(input)),
-  render: (result) => renderScratchInfoResult(result as ScratchHandle),
+  render: (result, input) =>
+    renderScratchInfoResult(result as ScratchInfo, scratchListFormatFromInput(input)),
 };
 
 export default class AppsScratchInfoCommand extends LandoCommandBase {
@@ -19,6 +25,9 @@ export default class AppsScratchInfoCommand extends LandoCommandBase {
   static override aliases = [...resolveTopLevelAliases(appsScratchInfoSpec)];
   static override args = {
     id: Args.string({ description: "Scratch app id.", required: false }),
+  };
+  static override flags = {
+    format: Flags.string({ description: "Output format.", options: ["table", "json"], default: "table" }),
   };
   static override landoSpec: LandoCommandSpec = appsScratchInfoSpec;
   static override bootstrap = appsScratchInfoSpec.bootstrap;

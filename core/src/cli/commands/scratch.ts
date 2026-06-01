@@ -7,7 +7,14 @@ import type {
   ScratchIsolationConflictError,
 } from "@lando/sdk/errors";
 import type { IsolateMode } from "@lando/sdk/schema";
-import type { ScratchGcOptions, ScratchGcReport, ScratchHandle, ScratchSummary } from "@lando/sdk/services";
+import type {
+  ScratchGcOptions,
+  ScratchGcReport,
+  ScratchHandle,
+  ScratchInfo,
+  ScratchSource,
+  ScratchSummary,
+} from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
@@ -207,14 +214,19 @@ export const scratchList = (): Effect.Effect<
   ScratchAppService
 > => Effect.flatMap(ScratchAppService, (service) => service.list());
 
+export const scratchSourceLabel = (source: ScratchSource): string =>
+  source.kind === "fork" ? "fork" : `recipe:${source.ref}`;
+
 export const renderScratchListResult = (
   result: ReadonlyArray<ScratchSummary>,
   format: ScratchListFormat = "table",
 ): string => {
   if (format === "json") return JSON.stringify(result);
   if (result.length === 0) return "No scratch apps found.";
-  const rows = result.map((entry) => `${entry.id}\t${entry.app.root}`);
-  return ["ID\tROOT", ...rows].join("\n");
+  const rows = result.map((entry) =>
+    [entry.id, scratchSourceLabel(entry.source), entry.mode, entry.created, entry.status].join("\t"),
+  );
+  return ["ID\tSOURCE\tMODE\tCREATED\tSTATUS", ...rows].join("\n");
 };
 
 export const scratchGc = (
@@ -229,15 +241,64 @@ export const renderScratchGcReport = (report: ScratchGcReport): string =>
     `errors: ${report.errors.length}`,
   ].join("\n");
 
-export const scratchInfo = (
+export const scratchResolve = (
   id: string,
 ): Effect.Effect<ScratchHandle, ScratchIdCommandError, ScratchAppService> =>
   Effect.flatMap(validateScratchId(id), (validId) =>
     Effect.flatMap(ScratchAppService, (service) => service.resolveById(validId)),
   );
 
-export const renderScratchInfoResult = (result: ScratchHandle): string =>
-  JSON.stringify({ id: result.id, app: result.app }, null, 2);
+export const scratchInfo = (
+  id: string,
+): Effect.Effect<ScratchInfo, ScratchIdCommandError, ScratchAppService> =>
+  Effect.flatMap(validateScratchId(id), (validId) =>
+    Effect.flatMap(ScratchAppService, (service) => service.info(validId)),
+  );
+
+const renderInfoMounts = (info: ScratchInfo): ReadonlyArray<string> => {
+  if (info.mounts.length === 0) return ["mounts: (none)"];
+  return [
+    "mounts:",
+    ...info.mounts.map((mount) => {
+      const origin = mount.source === undefined ? "" : ` <- ${mount.source}`;
+      const flags = mount.readOnly ? `${mount.kind},ro` : mount.kind;
+      return `  ${mount.service} ${mount.target}${origin} (${flags})`;
+    }),
+  ];
+};
+
+const renderInfoEndpoints = (info: ScratchInfo): ReadonlyArray<string> => {
+  const lines = info.endpoints.flatMap((service) =>
+    service.endpoints.map((endpoint) => {
+      const port = endpoint.port === undefined ? "" : `:${endpoint.port}`;
+      const name = endpoint.name === undefined ? "" : ` (${endpoint.name})`;
+      return `  ${service.service} ${endpoint.protocol}${port}${name}`;
+    }),
+  );
+  return lines.length === 0 ? ["endpoints: (none)"] : ["endpoints:", ...lines];
+};
+
+const renderInfoNetwork = (info: ScratchInfo): string => {
+  const parts: string[] = [];
+  if (info.network.perAppBridge !== undefined) parts.push(`bridge=${info.network.perAppBridge}`);
+  if (info.network.sharedNetwork !== undefined) parts.push(`shared=${info.network.sharedNetwork}`);
+  return `network: ${parts.length === 0 ? "(none)" : parts.join(", ")}`;
+};
+
+export const renderScratchInfoResult = (result: ScratchInfo, format: ScratchListFormat = "table"): string => {
+  if (format === "json") return JSON.stringify(result, null, 2);
+  return [
+    `id: ${result.id}`,
+    `source: ${scratchSourceLabel(result.source)}`,
+    `mode: ${result.mode}`,
+    `created: ${result.created}`,
+    `status: ${result.status}`,
+    `root: ${result.app.root}`,
+    renderInfoNetwork(result),
+    ...renderInfoMounts(result),
+    ...renderInfoEndpoints(result),
+  ].join("\n");
+};
 
 export const scratchStop = (
   id: string,
@@ -261,7 +322,7 @@ export const renderScratchDestroyResult = (result: ScratchHandle): string => `de
 export const scratchLogs = (
   id: string,
 ): Effect.Effect<ScratchLogsResult, ScratchIdCommandError, ScratchAppService> =>
-  Effect.map(scratchInfo(id), (handle) => ({ handle, lines: [] }));
+  Effect.map(scratchResolve(id), (handle) => ({ handle, lines: [] }));
 
 export const renderScratchLogsResult = (result: ScratchLogsResult): string => {
   if (result.lines.length === 0) return `${result.handle.id} (no log lines)`;

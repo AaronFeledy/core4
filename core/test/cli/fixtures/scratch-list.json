@@ -1,0 +1,26 @@
+[
+  {
+    "id": "scratch-drupal-abc123",
+    "app": {
+      "kind": "scratch",
+      "id": "scratch-drupal-abc123",
+      "root": "/cache/scratch/scratch-drupal-abc123/root"
+    },
+    "source": { "kind": "fork" },
+    "mode": "none",
+    "created": "2026-05-31T18:00:00.000Z",
+    "status": "attached"
+  },
+  {
+    "id": "scratch-empty-def456",
+    "app": {
+      "kind": "scratch",
+      "id": "scratch-empty-def456",
+      "root": "/cache/scratch/scratch-empty-def456/root"
+    },
+    "source": { "kind": "recipe", "ref": "empty" },
+    "mode": "full",
+    "created": "2026-05-31T18:05:00.000Z",
+    "status": "detached"
+  }
+]
