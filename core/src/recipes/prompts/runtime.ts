@@ -438,7 +438,7 @@ const resolveDynamicChoicesPrompt = async (
     return runInteractivePrompt(effective, io as PromptIO, cwd);
   }
 
-  if (interactive && io !== undefined) return runManualChoiceFallback(prompt, io, outcome.reason);
+  if (interactive && !yes && io !== undefined) return runManualChoiceFallback(prompt, io, outcome.reason);
 
   const def = promptDefaultRaw(prompt);
   if (def.hasDefault) return resolveDynamicSupplied(prompt, def.raw);

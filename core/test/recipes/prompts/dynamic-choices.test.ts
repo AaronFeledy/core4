@@ -147,4 +147,27 @@ describe("collectPrompts — dynamic choicesFrom", () => {
     const promise = collectPrompts({ prompts: [dynamicSelect], nonInteractive: true, choicesRunner: runner });
     await expect(promise).rejects.toBeInstanceOf(RecipeMissingAnswerError);
   });
+
+  test("--yes never blocks on a manual fallback prompt when the command fails", async () => {
+    // A TTY io is present (interactive=true) but --yes means non-interactive
+    // intent: a choicesFrom failure must NOT drop into io.readLine() and hang.
+    const io = createBufferedPromptIO({ inputs: ["should-not-be-read"], isTTY: true });
+    const runner = fixedRunner({ exitCode: 1, stdout: "", stderr: "boom" });
+    let caught: unknown;
+    try {
+      await collectPrompts({ prompts: [dynamicSelect], yes: true, io, choicesRunner: runner });
+    } catch (cause) {
+      caught = cause;
+    }
+    expect(caught).toBeInstanceOf(RecipeChoicesError);
+    if (caught instanceof RecipeChoicesError) expect(caught.kind).toBe("command-failed");
+  });
+
+  test("--yes with a default uses the default on command failure instead of prompting", async () => {
+    const prompt: RecipePrompt = { ...dynamicSelect, default: "8.2" };
+    const io = createBufferedPromptIO({ inputs: ["should-not-be-read"], isTTY: true });
+    const runner = fixedRunner({ exitCode: 1, stdout: "" });
+    const answers = await collectPrompts({ prompts: [prompt], yes: true, io, choicesRunner: runner });
+    expect(answers.phpVersion).toBe("8.2");
+  });
 });
