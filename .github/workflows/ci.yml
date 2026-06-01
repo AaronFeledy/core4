@@ -123,6 +123,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -143,6 +145,14 @@ jobs:
 
       - name: Check guide coverage
         run: bun run check:guide-coverage
+
+      - name: Check guide drift
+        if: ${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
 
       - name: Run generated guide scenarios
         run: bun test test/scenarios/generated/guides/**

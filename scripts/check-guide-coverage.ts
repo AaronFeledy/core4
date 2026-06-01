@@ -99,7 +99,7 @@ export const parseIndexRows = (content: string): ReadonlyArray<GuideCoverageRow>
   return rows;
 };
 
-const guideCoverageSection = (content: string): string | undefined => {
+export const extractGuideCoverageSection = (content: string): string | undefined => {
   const lines = content.split(/\r?\n/);
   let start = -1;
   for (let index = 0; index < lines.length; index += 1) {
@@ -118,7 +118,7 @@ const guideCoverageSection = (content: string): string | undefined => {
 };
 
 export const parseGuideCoverageSection = (content: string): GuideCoverageSection => {
-  const section = guideCoverageSection(content);
+  const section = extractGuideCoverageSection(content);
   if (section === undefined) return { present: false, none: false, paths: [] };
   const seen = new Set<string>();
   const paths: Array<string> = [];
