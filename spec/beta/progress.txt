@@ -259,3 +259,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Registry lockfile TOCTOU / age-based stale reclaim: real but low-severity for a single-user tool with a sub-millisecond open→write window; the registry's corruption-quarantine + label-driven gc recovery (spec §21.14) bound the blast radius by design. Not rewriting concurrency primitives in a review step without a multi-process stress harness; flagged as a focused follow-up (renewable-lease / atomic link-based lock).
 - Verification: `bun run typecheck` (exit 0), `bun run lint` (633 files clean), scratch + provider-label + scratch-namespace suites green; full `bun test` pre-fix = 2186 pass / 26 skip / 0 fail.
 ---
+
+## 2026-05-31 20:30 - Babysit
+- PR: #241 https://github.com/AaronFeledy/core4/pull/241
+- CI outcome: pass
+- Review feedback: fixed (Bugbot 6 medium findings across 2 rounds: fork registry rootPath, registry-backed stop/destroy/gc provider teardown, dirless-stale GC reap, detached post-start failure teardown, destroy keepVolumes pass-through, gc --prune unsafe-id skipping)
+- Merge: merged (squash)
+---
