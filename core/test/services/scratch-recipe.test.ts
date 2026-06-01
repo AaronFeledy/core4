@@ -44,7 +44,9 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
-const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Promise<T>): Promise<T> => {
+const withTempEnv = async <T>(
+  run: (roots: { readonly cacheRoot: string; readonly dataRoot: string }) => Promise<T>,
+): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-cache-")));
   const dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-data-")));
   const confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-recipe-conf-")));
@@ -58,7 +60,7 @@ const withTempEnv = async <T>(run: (roots: { readonly cacheRoot: string }) => Pr
     process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
-    return await run({ cacheRoot });
+    return await run({ cacheRoot, dataRoot });
   } finally {
     process.chdir(previousCwd);
     // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
@@ -140,7 +142,7 @@ const fileExists = async (path: string): Promise<boolean> => {
 
 describe("ScratchAppServiceLive recipe acquire", () => {
   test("renders a bundled recipe into the scratch root and plans under a fresh identity", async () => {
-    await withTempEnv(async () => {
+    await withTempEnv(async ({ cacheRoot, dataRoot }) => {
       const appliedPlans: AppPlan[] = [];
       const handle = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) =>
@@ -161,7 +163,8 @@ describe("ScratchAppServiceLive recipe acquire", () => {
       expect(String(appliedPlan.id)).toBe(handle.id);
       expect(appliedPlan.slug).toBe(handle.id);
       expect(appliedPlan.name).toBe(handle.id);
-      expect(appliedPlan.root.endsWith(join("scratch", handle.id, "root"))).toBe(true);
+      expect(String(appliedPlan.root)).toBe(join(cacheRoot, "scratch", handle.id, "root"));
+      expect(String(appliedPlan.root).startsWith(dataRoot)).toBe(false);
       expect(handle.app).toEqual({ kind: "scratch", id: handle.id, root: appliedPlan.root });
       expect(await fileExists(join(appliedPlan.root, ".lando.yml"))).toBe(true);
       const rendered = await readFile(join(appliedPlan.root, ".lando.yml"), "utf8");

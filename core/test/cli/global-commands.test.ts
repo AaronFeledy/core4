@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -39,6 +40,7 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
+import { loadGlobalPlan } from "../../src/cli/commands/meta/global-plan.ts";
 import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
 import { globalStatus } from "../../src/cli/commands/meta/global-status.ts";
 import { globalStop } from "../../src/cli/commands/meta/global-stop.ts";
@@ -90,11 +92,14 @@ interface Harness {
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
   const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-commands-data-"));
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-global-commands-cache-"));
   const confRoot = await mkdtemp(join(tmpdir(), "lando-global-commands-conf-"));
   const previousData = process.env.LANDO_USER_DATA_ROOT;
+  const previousCache = process.env.LANDO_USER_CACHE_ROOT;
   const previousConf = process.env.LANDO_USER_CONF_ROOT;
   try {
     process.env.LANDO_USER_DATA_ROOT = dataRoot;
+    process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
     process.env.LANDO_USER_CONF_ROOT = confRoot;
     return await run(dataRoot);
   } finally {
@@ -102,9 +107,13 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
     if (previousData === undefined) delete process.env.LANDO_USER_DATA_ROOT;
     else process.env.LANDO_USER_DATA_ROOT = previousData;
     // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
+    if (previousCache === undefined) delete process.env.LANDO_USER_CACHE_ROOT;
+    else process.env.LANDO_USER_CACHE_ROOT = previousCache;
+    // biome-ignore lint/performance/noDelete: environment cleanup must preserve the originally unset state.
     if (previousConf === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousConf;
     await rm(dataRoot, { recursive: true, force: true });
+    await rm(cacheRoot, { recursive: true, force: true });
     await rm(confRoot, { recursive: true, force: true });
   }
 };
@@ -285,6 +294,20 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 };
 
 describe("meta:global command effects", () => {
+  test("loadGlobalPlan reads the rendered global Landofile from the user data root", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness);
+
+      const loaded = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(harness.layer)));
+
+      expect(loaded.materialized).toBe(true);
+      if (!loaded.materialized) throw new Error("expected a materialized global plan");
+      expect(String(loaded.paths.root)).toBe(join(harness.dataRoot, "global"));
+      expect(String(loaded.plan.root)).toBe(join(harness.dataRoot, "global"));
+      expect(String(loaded.paths.root).startsWith(process.env.LANDO_USER_CACHE_ROOT ?? "")).toBe(false);
+    });
+  });
+
   test("start materializes the global app, applies the global-rooted plan, and inspects each service", async () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
@@ -292,7 +315,7 @@ describe("meta:global command effects", () => {
       expect(harness.calls.apply).toHaveLength(1);
       expect(String(harness.calls.apply[0]?.plan.id)).toBe("global");
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
-      expect(harness.calls.apply[0]?.plan.root).toBe(join(harness.dataRoot, "global"));
+      expect(String(harness.calls.apply[0]?.plan.root) === join(harness.dataRoot, "global")).toBe(true);
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
       expect(harness.calls.inspect.map((call) => String(call.target.service)).sort()).toEqual([
