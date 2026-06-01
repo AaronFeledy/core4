@@ -3,7 +3,7 @@ id: remote-sources
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, recipes, git, tarball, npm]
+tags: [beta, docs, recipes, git, tarball, npm, registry]
 ---
 
 <Guide>
@@ -86,6 +86,32 @@ tags: [beta, docs, recipes, git, tarball, npm]
       <Variable name="registryFailed" value="RecipeSourceError kind=registry-failed" display="A registry metadata fetch error fails with registry remediation" />
       <Variable name="integrityMismatch" value="RecipeSourceError kind=integrity-mismatch" display="A downloaded tarball that does not match the registry integrity/shasum fails before extraction" />
       <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK tarball URL fails with download remediation" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="registry-source-command" render={false} reason="The live registry path resolves registry metadata and then follows a remote git or tarball source, so this executable guide documents the CLI surface without hitting the registry during CI">
+    <Step name="command">
+      <Variable name="command" value="lando init --source=registry --id=&lt;recipe-id&gt;" display="Resolve a recipe id through the configured registry, then read recipe.yml from the resolved git clone or tarball extract" />
+      <Variable name="defaultRegistry" value="https://registry.lando.dev/recipes/" display="With no override, Lando queries the default recipe registry URL" />
+      <Variable name="registryUrl" value="--registry-url=&lt;url&gt;" display="Override the registry base URL for private or test registries" />
+      <Variable name="scope" value="manifest and prompts" display="US-132 reaches registry resolution, recipe manifest parsing, and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="registry-source-resolution" render={false} reason="Resolution behavior is covered by core/test/recipes/registry-source.test.ts with a fake registry client and deterministic downstream sources">
+    <Step name="resolution">
+      <Variable name="schema" value="RecipeRegistryResponse / RecipeRegistryResolution" display="The registry response schema is published in @lando/sdk so registries and clients share the same contract" />
+      <Variable name="git" value="kind: git" display="A registry resolution can point to a git source; Lando follows it and caches the recipe under &lt;userDataRoot&gt;/recipe-cache/git/&lt;commitSha&gt;/" />
+      <Variable name="tarball" value="kind: tarball" display="A registry resolution can point to a tarball source; Lando downloads, verifies when configured, extracts, and caches it under &lt;userDataRoot&gt;/recipe-cache/tarball/&lt;sha256&gt;/" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="registry-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on the live Lando recipe registry">
+    <Step name="failures">
+      <Variable name="missingId" value="RecipeSourceError kind=missing-id" display="--source=registry requires --id=&lt;recipe-id&gt;" />
+      <Variable name="recipeNotFound" value="RecipeSourceError kind=recipe-not-found" display="A recipe id the registry returns 404 for fails with registry recipe remediation" />
+      <Variable name="registryInvalid" value="RecipeSourceError kind=registry-invalid" display="A malformed registry response fails before any downstream source is followed" />
+      <Variable name="registryFailed" value="RecipeSourceError kind=registry-failed" display="An unreachable registry or non-OK registry response fails with registry remediation" />
     </Step>
   </Scenario>
 </Guide>

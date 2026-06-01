@@ -22,6 +22,8 @@ interface InitFlags {
   readonly recipe?: string;
   readonly source?: string;
   readonly url?: string;
+  readonly id?: string;
+  readonly "registry-url"?: string;
   readonly package?: string;
   readonly path?: string;
   readonly checksum?: string;
@@ -44,8 +46,12 @@ export default class InitCommand extends LandoCommandBase {
   static override aliases = [...resolveTopLevelAliases(initSpec)];
   static override flags = {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
-    source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, template)." }),
+    source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, registry, template)." }),
     url: Flags.string({ description: "Remote recipe source URL (for --source=git/tarball)." }),
+    id: Flags.string({ description: "Recipe id for --source=registry." }),
+    "registry-url": Flags.string({
+      description: "Override the recipe registry base URL (for --source=registry).",
+    }),
     package: Flags.string({
       description: "npm package spec <name>[@version] (for --source=npm).",
     }),
@@ -103,6 +109,7 @@ export default class InitCommand extends LandoCommandBase {
       const sourceOptions = parseInitSourceFlags({
         source: flags.source,
         url: flags.url,
+        id: flags.id,
         package: flags.package,
         path: flags.path,
         checksum: flags.checksum,
@@ -116,6 +123,7 @@ export default class InitCommand extends LandoCommandBase {
         ...sourceOptions,
         ...(flags.name === undefined ? {} : { name: flags.name }),
         ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
+        ...(flags["registry-url"] === undefined ? {} : { registryUrl: flags["registry-url"] }),
       };
       result = await initApp(options);
     } catch (error) {
