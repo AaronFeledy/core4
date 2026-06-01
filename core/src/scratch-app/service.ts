@@ -36,7 +36,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { parseLandofile } from "../landofile/parser.ts";
-import { withProcessCwd } from "../lifecycle/plan-runtime.ts";
+import { loadPlanFromRenderedFile, withProcessCwd } from "../lifecycle/plan-runtime.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
@@ -657,44 +657,47 @@ const makeScratchAppService = (
       }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
-      const content = yield* fileSystem.readText(landofilePath).pipe(
-        Effect.mapError((cause) =>
-          scratchAppError(
-            "materialize",
-            `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
-            cause,
-          ),
-        ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
-      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
-      const recipeLandofile = { ...landofile, name: scratchId };
-
       const capabilities = yield* providerRegistry.capabilities.pipe(
         Effect.mapError((cause) =>
           scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      const recipePlan = yield* withProcessCwd(
-        scratchPaths.root,
-        () => planner.plan(recipeLandofile, capabilities),
-        {
-          onEnterError: (cause) =>
+      const { plan: recipePlan } = yield* loadPlanFromRenderedFile({
+        file: landofilePath,
+        cwd: scratchPaths.root,
+        read: fileSystem
+          .readText(landofilePath)
+          .pipe(
+            Effect.mapError((cause) =>
+              scratchAppError(
+                "materialize",
+                `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
+                cause,
+              ),
+            ),
+          ),
+        decode: ({ file, content, cwd }) => decodeScratchLandofile(file, content, cwd),
+        prepareLandofile: (landofile) => ({ ...landofile, name: scratchId }),
+        plan: (landofile) =>
+          planner
+            .plan(landofile, capabilities)
+            .pipe(
+              Effect.mapError((cause) =>
+                scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
+              ),
+            ),
+        onEnterCwdError: (cause) =>
+          scratchAppError(
+            "start",
+            `Unable to plan scratch app ${scratchId}.`,
             scratchAppError(
               "plan",
               `Unable to enter the scratch app directory at ${scratchPaths.root}.`,
               cause,
             ),
-        },
-      ).pipe(
-        Effect.mapError((cause) =>
-          scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
-        ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
+          ),
+      }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
       const startPlan = yield* applyScratchStartFlags(recipePlan, input, capabilities, hostCwd).pipe(
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
