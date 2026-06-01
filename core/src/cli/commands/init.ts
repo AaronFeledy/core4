@@ -207,6 +207,7 @@ const loadRegistryRecipe = async (options: InitAppOptions) => {
   });
   const resolved = await resolveRegistryRecipeSource({
     id: sourceOptions.id ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.registryClient === undefined ? {} : { registryClient: options.registryClient }),

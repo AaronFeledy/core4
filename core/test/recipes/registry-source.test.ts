@@ -62,10 +62,17 @@ const runGit = async (args: ReadonlyArray<string>, cwd: string): Promise<void> =
   if (code !== 0) throw new Error(`git ${args.join(" ")} failed: ${stderr}`);
 };
 
-const makeGitRepo = async (dir: string): Promise<string> => {
+const makeGitRepo = async (
+  dir: string,
+  files: Readonly<Record<string, string>> = { "recipe.yml": VALID_RECIPE },
+): Promise<string> => {
   const worktree = join(dir, "worktree");
   await mkdir(worktree, { recursive: true });
-  await writeFile(join(worktree, "recipe.yml"), VALID_RECIPE);
+  for (const [rel, fileContent] of Object.entries(files)) {
+    const target = join(worktree, rel);
+    await mkdir(join(target, ".."), { recursive: true });
+    await writeFile(target, fileContent);
+  }
   await runGit(["init", "-b", "main"], worktree);
   await runGit(["add", "."], worktree);
   await runGit(["commit", "-m", "add recipe"], worktree);
@@ -133,6 +140,24 @@ describe("resolveRegistryRecipeSource", () => {
       expect(result.source.endsWith("recipe.yml")).toBe(true);
       expect(result.manifestYaml).toContain("Registry Recipe");
       expect(result.root).toBeDefined();
+    });
+  });
+
+  test("forwards an explicit registry source path to the underlying git resolver", async () => {
+    await withTempRoot(async (dir) => {
+      const registryId = "registry-git-subpath";
+      const bare = await makeGitRepo(dir, { "recipes/registry/recipe.yml": VALID_RECIPE });
+
+      const result = await resolveRegistryRecipeSource({
+        id: registryId,
+        path: "recipes/registry",
+        userDataRoot: join(dir, "data"),
+        registryClient: clientFor({ id: registryId, resolution: { kind: "git", url: `file://${bare}` } }),
+      });
+
+      expect(result.id).toBe(registryId);
+      expect(result.source.endsWith("recipes/registry/recipe.yml")).toBe(true);
+      expect(result.manifestYaml).toContain("Registry Recipe");
     });
   });
 
@@ -227,6 +252,31 @@ describe("resolveRegistryRecipeSource", () => {
 });
 
 describe("initApp registry source boundary", () => {
+  test("registry init forwards --path to the registry resolver", async () => {
+    await withTempRoot(async (dir) => {
+      const registryId = "registry-init-subpath";
+      const bare = await makeGitRepo(dir, { "recipes/registry/recipe.yml": VALID_RECIPE });
+      let caught: unknown;
+      try {
+        await initApp({
+          cwd: dir,
+          full: false,
+          source: "registry",
+          id: registryId,
+          path: "recipes/registry",
+          registryClient: clientFor({ id: registryId, resolution: { kind: "git", url: `file://${bare}` } }),
+          userDataRoot: join(dir, "data"),
+          nonInteractive: true,
+        });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toContain("Recipe file rendering");
+      expect((caught as Error).message).toContain(registryId);
+    });
+  });
+
   test("registry git recipes reach manifest parsing before the existing non-bundled render limitation", async () => {
     await withTempRoot(async (dir) => {
       const registryId = "registry-init-git";

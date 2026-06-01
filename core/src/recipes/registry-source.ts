@@ -31,6 +31,7 @@ export interface ResolveRegistryRecipeSourceOptions {
   readonly registryUrl?: string;
   readonly userDataRoot?: string;
   readonly registryClient?: RecipeRegistryClient;
+  readonly path?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
   readonly tarballRecipeFetcher?: TarballRecipeFetcher;
   readonly tarballRecipeExtractor?: TarballRecipeExtractor;
@@ -131,17 +132,18 @@ export const resolveRegistryRecipeSource = async (
   }
 
   const { resolution } = decoded;
+  const sourcePath = options.path ?? resolution.path;
   const resolved =
     resolution.kind === "git"
       ? await resolveGitRecipeSource({
           url: resolution.url,
-          ...(resolution.path === undefined ? {} : { path: resolution.path }),
+          ...(sourcePath === undefined ? {} : { path: sourcePath }),
           ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
           ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
         })
       : await resolveTarballRecipeSource({
           url: resolution.url,
-          ...(resolution.path === undefined ? {} : { path: resolution.path }),
+          ...(sourcePath === undefined ? {} : { path: sourcePath }),
           ...(resolution.checksum === undefined ? {} : { checksum: resolution.checksum }),
           ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
           ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
