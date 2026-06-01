@@ -11,6 +11,7 @@ import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { parseAnswerFlags } from "../../../../recipes/prompts/index.ts";
 import { formatBugReport } from "../../../bug-report.ts";
+import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
 import { resolveRendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
@@ -19,6 +20,11 @@ interface InitFlags {
   readonly full: boolean;
   readonly name?: string;
   readonly recipe?: string;
+  readonly source?: string;
+  readonly url?: string;
+  readonly package?: string;
+  readonly path?: string;
+  readonly checksum?: string;
   readonly answer?: ReadonlyArray<string>;
   readonly "no-interactive"?: boolean;
   readonly yes?: boolean;
@@ -38,7 +44,15 @@ export default class InitCommand extends LandoCommandBase {
   static override aliases = [...resolveTopLevelAliases(initSpec)];
   static override flags = {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
-    source: Flags.string({ description: "Init source id (cwd, git, tarball, template)." }),
+    source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, template)." }),
+    url: Flags.string({ description: "Remote recipe source URL (for --source=git/tarball)." }),
+    package: Flags.string({
+      description: "npm package spec <name>[@version] (for --source=npm).",
+    }),
+    path: Flags.string({ description: "Subdirectory within a remote recipe source." }),
+    checksum: Flags.string({
+      description: "Expected SHA-256 of a --source=tarball archive (64 hex chars).",
+    }),
     recipe: Flags.string({ description: "Recipe to apply." }),
     destination: Flags.string({ description: "Target directory." }),
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
@@ -83,18 +97,26 @@ export default class InitCommand extends LandoCommandBase {
 
     const { flags } = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
     const answers = parseAnswerFlags(flags.answer ?? []);
-    const options: InitAppOptions = {
-      cwd: process.cwd(),
-      full: flags.full,
-      answers,
-      yes: flags.yes === true,
-      nonInteractive: flags["no-interactive"] === true,
-      ...(flags.name === undefined ? {} : { name: flags.name }),
-      ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
-    };
 
     let result: InitAppResult;
     try {
+      const sourceOptions = parseInitSourceFlags({
+        source: flags.source,
+        url: flags.url,
+        package: flags.package,
+        path: flags.path,
+        checksum: flags.checksum,
+      });
+      const options: InitAppOptions = {
+        cwd: process.cwd(),
+        full: flags.full,
+        answers,
+        yes: flags.yes === true,
+        nonInteractive: flags["no-interactive"] === true,
+        ...sourceOptions,
+        ...(flags.name === undefined ? {} : { name: flags.name }),
+        ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
+      };
       result = await initApp(options);
     } catch (error) {
       const text = formatBugReport({

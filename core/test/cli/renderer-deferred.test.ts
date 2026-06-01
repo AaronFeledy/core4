@@ -98,9 +98,11 @@ describe("deferredRendererFlagError", () => {
     expect(err.remediation).toContain("spec/ROADMAP.md");
   });
 
-  test("--tail remediation calls out the task.detail streaming-tail feature", () => {
+  test("--tail remediation says the control flag, not the fixed Beta tail, is deferred", () => {
     const err = deferredRendererFlagError("--tail");
     expect(err.remediation).toContain("task.detail");
+    expect(err.remediation).toContain("fixed Beta 4-line");
+    expect(err.remediation).toContain("control flag is deferred");
   });
 });
 

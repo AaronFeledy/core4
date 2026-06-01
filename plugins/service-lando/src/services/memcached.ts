@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "memcached:1.6";
@@ -24,7 +23,7 @@ export const memcachedServiceType: ServiceTypeShape = {
 
     const port = service.port ?? DEFAULT_PORT;
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: "memcached",
       provider,

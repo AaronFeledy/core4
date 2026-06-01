@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
@@ -102,7 +101,7 @@ const makePythonServiceType = (version: SupportedPythonVersion): ServiceTypeShap
     });
     const endpointPort = service.port ?? preset.port;
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: serviceType,
       provider,

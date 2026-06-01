@@ -6,7 +6,7 @@
  * `NotImplementedError` objects so callers see the deferred remediation
  * instead of a silent no-op or a generic `RendererSelectionError`.
  *
- * Deferred surfaces include the `task.detail` streaming tail, expand and
+ * Deferred surfaces include the `task.detail` tail control flag, expand and
  * collapse controls for the task tree, and the `verbose` renderer mode.
  *
  * Wiring:
@@ -75,7 +75,7 @@ export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurfac
           phase: "Phase 4 RC",
           roadmapDescriptor: PHASE_4_RC_DESCRIPTOR,
           remediation:
-            'The renderer `task.detail` streaming tail (per-task ring buffer with dimmed indented panel) is deferred to Phase 4 RC (spec/ROADMAP.md Phase 4 "hardening + governance" and spec/08-cli-and-tooling.md §8.9.2). Alpha emits `task.detail` events per line; use `--renderer=json` for structured NDJSON or `--renderer=plain` for line-per-event output.',
+            'The TTY `lando` renderer now shows the fixed Beta 4-line `task.detail` tail. The `--tail` / `--no-tail` control flag is deferred to Phase 4 RC (spec/ROADMAP.md Phase 4 "hardening + governance" and spec/08-cli-and-tooling.md §8.9.2); use `--renderer=json` for structured NDJSON or `--renderer=plain` for line-per-event output.',
         },
       ];
     }

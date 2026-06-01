@@ -8,7 +8,7 @@
   "homepage": "https://github.com/lando-community/core4",
   "repository": "lando-community/core4",
   "bugs": "https://github.com/lando-community/core4/issues",
-  "workspaces": ["core", "sdk", "plugins/*"],
+  "workspaces": ["core", "sdk", "container-runtime", "plugins/*"],
   "engines": {
     "bun": ">=1.3.14"
   },

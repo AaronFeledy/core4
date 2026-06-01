@@ -31,6 +31,7 @@ import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
 import { doctorReport, renderDoctorReport, renderDoctorReportAsNdjson } from "./commands/doctor-report.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
+import { parseInitSourceFlags } from "./commands/init-source.ts";
 import { initApp } from "./commands/init.ts";
 import { listServices, renderAppsListResult } from "./commands/list.ts";
 import { logsApp, renderLogsAppResult } from "./commands/logs.ts";
@@ -1362,6 +1363,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     const rest = argv.slice(1);
     let name: string | undefined;
     let recipe: string | undefined;
+    let source: string | undefined;
+    let url: string | undefined;
+    let pkg: string | undefined;
+    let path: string | undefined;
+    let checksum: string | undefined;
     const answerValues: string[] = [];
     let full = false;
     let yes = false;
@@ -1393,6 +1399,36 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         i += recipeMatch.consumed - 1;
         continue;
       }
+      const sourceMatch = parseStringFlag(rest, i, "source");
+      if (sourceMatch !== undefined) {
+        source = sourceMatch.value;
+        i += sourceMatch.consumed - 1;
+        continue;
+      }
+      const urlMatch = parseStringFlag(rest, i, "url");
+      if (urlMatch !== undefined) {
+        url = urlMatch.value;
+        i += urlMatch.consumed - 1;
+        continue;
+      }
+      const packageMatch = parseStringFlag(rest, i, "package");
+      if (packageMatch !== undefined) {
+        pkg = packageMatch.value;
+        i += packageMatch.consumed - 1;
+        continue;
+      }
+      const pathMatch = parseStringFlag(rest, i, "path");
+      if (pathMatch !== undefined) {
+        path = pathMatch.value;
+        i += pathMatch.consumed - 1;
+        continue;
+      }
+      const checksumMatch = parseStringFlag(rest, i, "checksum");
+      if (checksumMatch !== undefined) {
+        checksum = checksumMatch.value;
+        i += checksumMatch.consumed - 1;
+        continue;
+      }
       const answerMatch = parseStringFlag(rest, i, "answer");
       if (answerMatch !== undefined) {
         answerValues.push(answerMatch.value);
@@ -1401,9 +1437,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     }
     const answers = parseAnswerFlags(answerValues);
     try {
+      const sourceOptions = parseInitSourceFlags({ source, url, package: pkg, path, checksum });
       const result = await initApp({
         cwd: process.cwd(),
         full,
+        ...sourceOptions,
         ...(name === undefined ? {} : { name }),
         ...(recipe === undefined ? {} : { recipe }),
         answers,

@@ -21,7 +21,7 @@ const isRenderableEvent = (event: LandoEvent): boolean =>
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 
-const formatDurationSuffix = (durationMs: number | undefined): string => {
+export const formatDurationSuffix = (durationMs: number | undefined): string => {
   if (durationMs === undefined) return "";
   if (durationMs < 1000) return ` (${durationMs}ms)`;
   return ` (${(durationMs / 1000).toFixed(1)}s)`;

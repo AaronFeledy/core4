@@ -18,6 +18,14 @@
         "typescript": "^5.6.0",
       },
     },
+    "container-runtime": {
+      "name": "@lando/container-runtime",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "core": {
       "name": "@lando/core",
       "version": "0.0.0",
@@ -66,6 +74,7 @@
       "name": "@lando/provider-docker",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },
@@ -74,6 +83,7 @@
       "name": "@lando/provider-lando",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "effect": "^3.21.2",
       },
       "peerDependencies": {
@@ -85,6 +95,7 @@
       "name": "@lando/provider-podman",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/container-runtime": "workspace:*",
         "@lando/provider-lando": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
@@ -259,6 +270,8 @@
     "@inquirer/type": ["@inquirer/type@1.5.5", "", { "dependencies": { "mute-stream": "^1.0.0" } }, "sha512-MzICLu4yS7V8AA61sANROZ9vT1H3ooca5dSmI1FjZkzq7o/koMsRfQSzRtFo+F3Ao4Sf1C0bpLKejpKB/+j6MA=="],
 
     "@lando/ca-mkcert": ["@lando/ca-mkcert@workspace:plugins/ca-mkcert"],
+
+    "@lando/container-runtime": ["@lando/container-runtime@workspace:container-runtime"],
 
     "@lando/core": ["@lando/core@workspace:core"],
 
