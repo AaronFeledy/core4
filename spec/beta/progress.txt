@@ -374,3 +374,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Version resolution is exact-version + dist-tag + default-latest only (no semver range resolution) — this fully satisfies "Honors `@version` suffix; defaults to latest stable" without pulling in a semver dependency. US-132 (registry source) is the next sibling and should follow the same delegate-to-an-underlying-source shape (registry resolution → git/tarball underlying source).
   - `RecipeSourceError.kind` remains a non-frozen `Schema.Literal` (not snapshotted, not in the SDK compat fixture — `exports.test.ts` only presence-asserts the error). Adding the five npm kinds needed NO schema-snapshot regen and NO API_COMPATIBILITY edit; `bun run codegen:schema-snapshot` confirmed zero drift.
 ---
+
+## Mon Jun 01 2026 1:30 PM CDT - Babysit
+- PR: #252 https://github.com/AaronFeledy/core4/pull/252
+- CI outcome: pass
+- Review feedback: fixed (Bugbot medium "Bad integrity skips shasum": verifyNpmIntegrity now falls back to legacy shasum when SRI is unusable/unknown instead of returning unverified; security regression test added)
+- Merge: merged (squash)
+---
