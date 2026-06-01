@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 export const SUPPORTED_PHP_VERSIONS = ["8.2", "8.3"] as const;
@@ -76,7 +75,7 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceTypeShape => (
     });
     const endpointPort = service.port ?? HEALTHCHECK_PORT;
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: serviceType,
       provider,
