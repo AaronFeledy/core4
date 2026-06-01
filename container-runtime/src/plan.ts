@@ -1,9 +1,4 @@
-import {
-  type AppPlan,
-  type ServicePlan,
-  fileSyncVolumeName,
-  sameAppMountTarget,
-} from "@lando/sdk/schema";
+import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
 
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
@@ -88,7 +83,9 @@ export const bindMountStrings = (
   return Array.from(new Set([...appMounts, ...binds]));
 };
 
-export const containerPortBindings = (service: ServicePlan): Record<string, ReadonlyArray<Record<string, string>>> =>
+export const containerPortBindings = (
+  service: ServicePlan,
+): Record<string, ReadonlyArray<Record<string, string>>> =>
   Object.fromEntries(
     service.endpoints
       .filter((endpoint) => endpoint.port !== undefined)

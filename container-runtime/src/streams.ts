@@ -22,11 +22,7 @@ const concatBytes = (left: StreamBytes, right: StreamBytes): StreamBytes => {
 };
 
 const frameLength = (buffer: StreamBytes): number =>
-  ((((buffer[4] ?? 0) << 24) |
-    ((buffer[5] ?? 0) << 16) |
-    ((buffer[6] ?? 0) << 8) |
-    (buffer[7] ?? 0)) >>>
-  0);
+  (((buffer[4] ?? 0) << 24) | ((buffer[5] ?? 0) << 16) | ((buffer[6] ?? 0) << 8) | (buffer[7] ?? 0)) >>> 0;
 
 const streamName = (streamType: number): MultiplexedStream | undefined => {
   if (streamType === 1) return "stdout";

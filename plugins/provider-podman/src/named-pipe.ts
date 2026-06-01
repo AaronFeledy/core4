@@ -37,7 +37,9 @@ const internal = (operation: string, message: string, details?: unknown, cause?:
 
 export const connectNamedPipeSocket = connectSocket;
 
-const transportFailure = (cause: ContainerTransportError): ProviderUnavailableError | ProviderInternalError =>
+const transportFailure = (
+  cause: ContainerTransportError,
+): ProviderUnavailableError | ProviderInternalError =>
   cause.kind === "parse"
     ? internal("podman-api", cause.message, cause.details, cause)
     : unavailable("podman-api", cause.message, cause.details, cause);

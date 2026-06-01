@@ -7,13 +7,8 @@
     "composite": true,
     "noEmit": false
   },
-  "include": [
-    "./src/**/*.ts"
-  ],
-  "exclude": [
-    "./dist",
-    "./node_modules"
-  ],
+  "include": ["./src/**/*.ts"],
+  "exclude": ["./dist", "./node_modules"],
   "references": [
     {
       "path": "../../sdk"

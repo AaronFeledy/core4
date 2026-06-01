@@ -1,5 +1,15 @@
 import { createConnection } from "node:net";
 
+import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import {
+  commonContainerLabels,
+  containerCreateBodyFragment,
+  containerHostConfigFragment,
+} from "@lando/container-runtime/plan";
+import {
+  makeAttachDecoder as makeRuntimeAttachDecoder,
+  makeLogDecoder as makeRuntimeLogDecoder,
+} from "@lando/container-runtime/streams";
 import {
   ContainerTransportError,
   type SocketHttpConnection,
@@ -7,16 +17,6 @@ import {
   makeSocketHttpClient,
   normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
-import {
-  makeAttachDecoder as makeRuntimeAttachDecoder,
-  makeLogDecoder as makeRuntimeLogDecoder,
-} from "@lando/container-runtime/streams";
-import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import {
-  commonContainerLabels,
-  containerCreateBodyFragment,
-  containerHostConfigFragment,
-} from "@lando/container-runtime/plan";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {

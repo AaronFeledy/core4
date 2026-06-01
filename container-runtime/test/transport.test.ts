@@ -71,11 +71,7 @@ describe("socket HTTP transport", () => {
   test("streams connection-close response bodies without content-length", async () => {
     const first = bytes("first");
     const second = bytes("second");
-    const connection = new FakeConnection([
-      bytes("HTTP/1.1 200 OK\r\n\r\n"),
-      first,
-      second,
-    ]);
+    const connection = new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n"), first, second]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
 
     const chunks = await Array.fromAsync(client.stream({ method: "GET", path: "/events" }));
@@ -84,7 +80,7 @@ describe("socket HTTP transport", () => {
   });
 
   test("throws a neutral transport error for malformed status lines", async () => {
-    const connection = new FakeConnection([bytes("HTTP/1.1 OK\r\n\r\n{}")] );
+    const connection = new FakeConnection([bytes("HTTP/1.1 OK\r\n\r\n{}")]);
     const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
 
     await expect(client.request({ method: "GET", path: "/info" })).rejects.toBeInstanceOf(

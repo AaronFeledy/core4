@@ -12,7 +12,9 @@ export interface ProviderCapabilityConstants {
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
 }
 
-export const buildProviderCapabilities = (constants: ProviderCapabilityConstants): ProviderCapabilitiesShape =>
+export const buildProviderCapabilities = (
+  constants: ProviderCapabilityConstants,
+): ProviderCapabilitiesShape =>
   Schema.decodeSync(ProviderCapabilities)({
     artifactBuild: false,
     artifactPull: false,

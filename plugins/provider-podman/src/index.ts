@@ -39,7 +39,7 @@ import {
   AppPlan,
   type HostPlatform,
   PluginManifest,
-  ProviderCapabilities,
+  type ProviderCapabilities,
   ProviderId,
 } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";

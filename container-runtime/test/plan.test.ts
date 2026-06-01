@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -8,6 +7,7 @@ import {
   envArrayFromRecord,
   mountSuffix,
 } from "@lando/container-runtime/plan";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 
 const plan = {
   id: "app-id",

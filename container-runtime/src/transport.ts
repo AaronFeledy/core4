@@ -43,7 +43,6 @@ export class ContainerTransportError extends Error {
   }
 }
 
-
 export interface ConnectableSocket {
   once(event: "connect", listener: () => void): unknown;
   once(event: "error", listener: (cause: Error) => void): unknown;
@@ -158,7 +157,12 @@ export const socketHttpRequestText = (
 export const parseHttpHead = (bytes: Bytes, operation = "container-transport"): ParsedHttpHead => {
   const marker = indexOfBytes(bytes, headerSeparator);
   if (marker === -1) {
-    throw fail("parse", operation, "Container runtime response did not include HTTP headers.", textDecoder.decode(bytes));
+    throw fail(
+      "parse",
+      operation,
+      "Container runtime response did not include HTTP headers.",
+      textDecoder.decode(bytes),
+    );
   }
 
   const head = textDecoder.decode(bytes.slice(0, marker));
@@ -256,7 +260,10 @@ const collectBytes = async (chunks: AsyncIterable<Bytes>): Promise<Bytes> => {
   return concatBytes(collected);
 };
 
-const connect = async (options: SocketHttpClientOptions, request: SocketHttpRequest): Promise<SocketHttpConnection> => {
+const connect = async (
+  options: SocketHttpClientOptions,
+  request: SocketHttpRequest,
+): Promise<SocketHttpConnection> => {
   try {
     return await options.connect();
   } catch (cause) {

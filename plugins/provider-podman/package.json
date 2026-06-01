@@ -17,18 +17,8 @@
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "files": [
-    "./src",
-    "./dist",
-    "!./dist/**/*.tsbuildinfo",
-    "./plugin.yaml"
-  ],
-  "keywords": [
-    "lando",
-    "lando-plugin",
-    "lando-provider",
-    "podman"
-  ],
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
+  "keywords": ["lando", "lando-plugin", "lando-provider", "podman"],
   "lando": {
     "manifest": "./plugin.yaml"
   },
