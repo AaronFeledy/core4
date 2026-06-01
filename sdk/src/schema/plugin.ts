@@ -1,0 +1,76 @@
+import { Schema } from "effect";
+
+import { PluginName } from "./primitives.ts";
+
+// Plugin manifest — declared by every plugin's package.json + plugin.yaml.
+
+/**
+ * Plugin-contributed global app service entry.
+ *
+ * Plugins use `globalServices:` to add a service to the global Lando app's
+ * generated `dist` layer. The active provider must satisfy any capabilities
+ * listed in `requires.providerCapabilities`; otherwise the planner drops the
+ * contribution with `GlobalServiceCapabilityError`.
+ */
+export const GlobalServiceContribution = Schema.Struct({
+  /** Service id inside the global Landofile. MUST be unique across plugins. */
+  id: Schema.String,
+  /** Path to the module that produces the Effect returning a ServiceConfig. */
+  module: Schema.optional(Schema.String),
+  /** Initial enabled state in `global.config.yml` when the plugin is first installed. */
+  enabledByDefault: Schema.optional(Schema.Boolean),
+  /** Provider/global-app dependencies that must be satisfied for materialization. */
+  requires: Schema.optional(
+    Schema.Struct({
+      /** ProviderCapabilities keys the active provider MUST satisfy. */
+      providerCapabilities: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ),
+  /** Other global service ids that cannot coexist with this contribution. */
+  conflicts: Schema.optional(Schema.Array(Schema.String)),
+  /** One-line description surfaced in `meta:global:list` / `info`. */
+  summary: Schema.optional(Schema.String),
+  /** Canonical command ids contributed by the same plugin that operate on this service. */
+  commands: Schema.optional(Schema.Array(Schema.String)),
+});
+export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
+
+/** Contribution surface — keys the plugin contributes to. */
+export const PluginContribution = Schema.Struct({
+  /** Service types this plugin registers. */
+  serviceTypes: Schema.optional(Schema.Array(Schema.String)),
+  /** Service features this plugin registers. */
+  serviceFeatures: Schema.optional(Schema.Array(Schema.String)),
+  /** Provider ids registered. */
+  providers: Schema.optional(Schema.Array(Schema.String)),
+  /** Proxy ids registered. */
+  proxies: Schema.optional(Schema.Array(Schema.String)),
+  /** Logger ids registered. */
+  loggers: Schema.optional(Schema.Array(Schema.String)),
+  /** Renderer ids registered. */
+  renderers: Schema.optional(Schema.Array(Schema.String)),
+  /** Template engine ids registered. */
+  templateEngines: Schema.optional(Schema.Array(Schema.String)),
+  /** File-sync engine ids registered. */
+  fileSyncEngines: Schema.optional(Schema.Array(Schema.String)),
+  /** CA ids registered. */
+  cas: Schema.optional(Schema.Array(Schema.String)),
+  /** Built-in commands registered. */
+  commands: Schema.optional(Schema.Array(Schema.String)),
+  /** Global-app service contributions added by plugins. */
+  globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
+});
+export type PluginContribution = typeof PluginContribution.Type;
+
+export const PluginManifest = Schema.Struct({
+  name: PluginName,
+  version: Schema.String,
+  api: Schema.Literal(4),
+  description: Schema.optional(Schema.String),
+  enabled: Schema.optional(Schema.Boolean),
+  bundled: Schema.optional(Schema.Boolean),
+  contributes: Schema.optional(PluginContribution),
+  /** Entry module path relative to plugin package root. */
+  entry: Schema.optional(Schema.String),
+});
+export type PluginManifest = typeof PluginManifest.Type;

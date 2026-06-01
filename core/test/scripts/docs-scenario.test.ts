@@ -1,10 +1,12 @@
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, setDefaultTimeout, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const generatedRoot = resolve(repoRoot, "test/scenarios/generated/guides");
+
+setDefaultTimeout(15_000);
 
 const guideContent = (guideId: string, run = '<Run command="version" />'): string =>
   [

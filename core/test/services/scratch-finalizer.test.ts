@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect, Exit, Fiber, Layer, Stream } from "effect";
+import { Deferred, Effect, Exit, Fiber, Layer, Stream } from "effect";
 
 import { type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import { RuntimeProviderRegistry, type RuntimeProviderShape, ScratchAppService } from "@lando/core/services";
@@ -165,6 +165,16 @@ const directoryExists = async (path: string): Promise<boolean> => {
   }
 };
 
+// Readiness MUST be a post-`acquire` condition: `appliedPlans` is recorded at
+// apply-start, before the scope-bound destroy finalizer is registered, so
+// interrupting on it races teardown (#244).
+const waitUntil = (predicate: () => boolean) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 500 && !predicate(); attempt += 1) {
+      yield* Effect.sleep("5 millis");
+    }
+  });
+
 describe("ScratchAppServiceLive scope-bound finalizer", () => {
   test("foreground (detached:false) destroys the scratch when the acquire scope closes", async () => {
     await withTempProject(async () => {
@@ -216,15 +226,17 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
       const destroyCalls: DestroyCall[] = [];
       const exit = await Effect.runPromise(
         Effect.gen(function* () {
+          const ready = yield* Deferred.make<void>();
           const fiber = yield* Effect.fork(
             Effect.scoped(
               Effect.flatMap(ScratchAppService, (service) =>
-                Effect.zipRight(service.acquire({ source: { kind: "fork" }, detached: false }), Effect.never),
+                service
+                  .acquire({ source: { kind: "fork" }, detached: false })
+                  .pipe(Effect.zipRight(Deferred.succeed(ready, undefined)), Effect.zipRight(Effect.never)),
               ),
             ),
           );
-          // Let the acquire complete (apply the plan + register the finalizer) before interrupting.
-          yield* Effect.sleep("50 millis");
+          yield* Deferred.await(ready);
           return yield* Fiber.interrupt(fiber);
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
       );
@@ -250,7 +262,7 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
         const result = await Effect.runPromise(
           Effect.gen(function* () {
             const fiber = yield* Effect.fork(scratchStart({ fork: true, signal: controller.signal }));
-            yield* Effect.sleep("50 millis");
+            yield* waitUntil(() => logged.some((line) => line.startsWith("started:")));
             yield* Effect.sync(() => controller.abort());
             return yield* Fiber.join(fiber);
           }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),

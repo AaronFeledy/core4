@@ -1,0 +1,35 @@
+import { Context, type Effect } from "effect";
+
+import type {
+  CapabilityError,
+  EventError,
+  LandofileValidationError,
+  NoProviderInstalledError,
+  NotImplementedError,
+  ProviderConfigError,
+  ProviderUnavailableError,
+} from "../errors/index.ts";
+import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
+import type { ProviderError } from "./provider.ts";
+
+export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
+  AppPlanner,
+  {
+    readonly plan: (
+      landofile: LandofileShape,
+      providerCapabilities: ProviderCapabilities,
+    ) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>;
+  }
+>() {}
+
+export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
+  BuildOrchestrator,
+  {
+    readonly build: (
+      plan: AppPlan,
+    ) => Effect.Effect<
+      void,
+      EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
+    >;
+  }
+>() {}
