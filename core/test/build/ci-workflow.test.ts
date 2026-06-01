@@ -126,6 +126,17 @@ describe("ci workflow", () => {
     expect(guideScenarios).toContain("        run: bun run typecheck");
     expect(guideScenarios).toContain("        run: bun run lint:guides");
     expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
+    expect(guideScenarios).toContain("          fetch-depth: 0");
+    expect(guideScenarios).toContain("      - name: Check guide drift");
+    expect(guideScenarios).toContain("        if: ${{ github.event_name == 'pull_request' }}");
+    expect(guideScenarios).toContain(
+      "          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
+    );
+    expect(guideScenarios).toContain(
+      "          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
+    );
+    expect(guideScenarios).toContain("          GUIDE_DRIFT_PR_BODY: ${{ github.event.pull_request.body }}");
+    expect(guideScenarios).toContain("        run: bun run check:guide-drift");
     expect(guideScenarios).toContain("        run: bun test test/scenarios/generated/guides/**");
     expect(guideScenarios).toContain("        if: failure()");
     expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");
@@ -147,6 +158,9 @@ describe("ci workflow", () => {
       guideScenarios.indexOf("bun run check:guide-coverage"),
     );
     expect(guideScenarios.indexOf("bun run check:guide-coverage")).toBeLessThan(
+      guideScenarios.indexOf("bun run check:guide-drift"),
+    );
+    expect(guideScenarios.indexOf("bun run check:guide-drift")).toBeLessThan(
       guideScenarios.indexOf("bun test test/scenarios/generated/guides/**"),
     );
     expect(guideScenarios.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(

@@ -226,6 +226,14 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Merge: merged (squash)
 ---
 
+## [2026-05-31 19:30 CDT] - US-199 (agent2)
+- Shipped the guide-drift CI gate (`scripts/check-guide-drift.ts`, `bun run check:guide-drift`). It reads every user-facing PRD's `## Guide Coverage` section, parsing the `**CLI / source surface paths covered (drift gate input):**` bullet block (glob-like surface paths) alongside the owned guide table. On a pull request it diffs the changed files against those globs (`Bun.Glob`) and fails (`drift.guide-not-touched`) when a covered surface is touched without updating any owned guide, emitting a remediation that names the surface, the owned guides, and the `Guide-Coverage-Skip:` escape hatch. The escape hatch (`Guide-Coverage-Skip: <reason ≥ 24 chars>` in the PR body) bypasses the gate and logs the reason; a shorter reason fails (`drift.skip-reason-too-short`). Wired as a blocking step in the `guide-scenarios-linux-x64` job immediately after `check:guide-coverage`, gated to `pull_request` events and reading the PR diff/body from `GUIDE_DRIFT_*` env (the job checkout now uses `fetch-depth: 0` for merge-base diffs). Off a PR (push/local) it is a no-op pass.
+- Verification: typecheck, lint, lint:guides, check:guide-coverage all green; full `bun test` 2192 pass / 26 skip / 3 fail — the 3 failures are the pre-existing `@lando/core/testing` + `@lando/core/cli/operations` packed-package-export resolution flakes (reproduced identically on a clean stashed tree; untouched by this CLI-script change). CLI QA exercised all five acceptance scenarios via `GUIDE_DRIFT_CHANGED_FILES`/`GUIDE_DRIFT_PR_BODY`: touch-surface-without-guide → exit 1 with remediation; touch-both → exit 0; guide-only → exit 0; valid skip tag → exit 0 with logged reason; too-short skip → exit 1; plus no-env no-op pass and the `GUIDE_DRIFT_BASE_REF` git-diff path.
+- **Learnings for future iterations:**
+  - The drift gate consumes a SECOND block in `## Guide Coverage` that the coverage gate ignores: the surface-path bullets under `**CLI / source surface paths covered (drift gate input):**`. `parseGuideCoverageSurfacePaths` reuses `extractGuideCoverageSection` (newly exported from `check-guide-coverage.ts`) and scans only the bullets after that sub-header, stopping at the first blank line, so the guide table is never mis-parsed as a surface. A new user-facing PRD owning CLI surface must declare BOTH blocks.
+  - Resolving a PR's changed files in CI without a marketplace action: pass `GUIDE_DRIFT_BASE_SHA`/`GUIDE_DRIFT_HEAD_SHA` from `github.event.pull_request.{base,head}.sha` and run `git diff --name-only BASE HEAD`; this requires the job checkout to set `fetch-depth: 0` (the default depth-1 checkout lacks the base commit). The script falls back to a `--merge-base` diff against `GUIDE_DRIFT_BASE_REF`, and to an explicit `GUIDE_DRIFT_CHANGED_FILES` override for tests. No env ⇒ no-op pass so `push`/local runs stay green.
+---
+
 ## [2026-05-31 19:40 CDT] - US-126
 - Shipped the scratch-app registry + provider-label orphan-reap. Scratch instances are now recorded in a persisted per-user registry at `<userCacheRoot>/scratch/registry.bin` (versioned `{version,entries}` envelope, rename-atomic writes via `writeFileAtomicViaRename`, token-based lockfile `registry.lock` whose release only deletes a matching token, and corrupt-file quarantine to `registry.bin.corrupt-<ts>` + rebuild-empty). `ScratchAppService.acquire` writes the entry `acquiring` (with `ownerPid` for foreground) before provider ops and flips it to `running` after a successful apply; the failure/finalizer paths reap it. `list`/`resolveById`/`stop`/`destroy` are now registry-backed (unknown ids still surface `ScratchAppNotFoundError`).
 - Scratch provider containers are tagged `dev.lando.scratch: "true"` + `dev.lando.scratch-id: <id>`. Detection rides a `plan.extensions["@lando/core/scratch"] = { id }` marker stamped by the scratch service immediately before `provider.apply` (NOT an id-prefix heuristic, NOT a new AppPlan field) — both `@lando/provider-docker` and the shared `@lando/provider-lando` bring-up (reused by `@lando/provider-podman`) emit the labels only when the marker id equals `plan.id`.
@@ -249,6 +257,13 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Verification: typecheck (exit 0), lint (633 files clean), scratch + provider-label + scratch-namespace suites green; full `bun test` pre-fix = 2186 pass / 26 skip / 0 fail.
 ---
 
+## 2026-05-31 20:30 - Babysit
+- PR: #241 https://github.com/AaronFeledy/core4/pull/241
+- CI outcome: pass
+- Review feedback: fixed (Bugbot 6 medium findings across 2 rounds: fork registry rootPath, registry-backed stop/destroy/gc provider teardown, dirless-stale GC reap, detached post-start failure teardown, destroy keepVolumes pass-through, gc --prune unsafe-id skipping)
+- Merge: merged (squash)
+---
+
 ## [2026-05-31 20:35 CDT] - US-126 Review
 - Fixed one real, in-scope spec-conformance defect: both providers (and the label fixture) emitted the scratch marker label as `dev.lando.scratch: "true"`, but the authoritative spec (spec/19-scratch-apps.md §21.10/§21.11, lines 60/349/357/465) mandates `"TRUE"` and the orphan-reap contract matches on that exact value. Left lowercase, the forthcoming live `ScratchResourceScanner` (spec's strict `"TRUE"` walk) would silently miss every orphaned scratch container. Realigned to `"TRUE"` in both provider helpers and `scratch-labels.test.ts`.
 - Review notes (rejected / deferred — all confirmed NOT build-introduced blockers):
@@ -260,9 +275,15 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Verification: `bun run typecheck` (exit 0), `bun run lint` (633 files clean), scratch + provider-label + scratch-namespace suites green; full `bun test` pre-fix = 2186 pass / 26 skip / 0 fail.
 ---
 
-## 2026-05-31 20:30 - Babysit
-- PR: #241 https://github.com/AaronFeledy/core4/pull/241
-- CI outcome: pass
-- Review feedback: fixed (Bugbot 6 medium findings across 2 rounds: fork registry rootPath, registry-backed stop/destroy/gc provider teardown, dirless-stale GC reap, detached post-start failure teardown, destroy keepVolumes pass-through, gc --prune unsafe-id skipping)
-- Merge: merged (squash)
+## [2026-05-31 20:49 CDT] - US-199 Review
+- Reviewed the guide-drift CI gate against PRD-B-12 US-199. Fixed one in-scope acceptance gap: `Guide-Coverage-Skip:` reasons were printed to the CI log but not surfaced in the PR check summary, so `check-guide-drift` now writes a GitHub step summary (when `GITHUB_STEP_SUMMARY` is present) for pass/fail/skip outcomes and includes the valid skip reason there.
+- Review notes (rejected): no other blockers found in the review pass; the full-suite package-export failures are the same pre-existing workspace/packed-package resolution flakes already recorded by the build step and unrelated to the guide-drift script.
+- Verification: typecheck passed, lint passed, focused guide-drift tests passed, CLI QA confirmed a valid skip writes both stdout and the step summary; full `bun test` remains 2193 pass / 26 skip / 3 fail due only to the pre-existing `@lando/core/testing` and `@lando/core/cli/operations` package-export failures.
+---
+
+## [2026-05-31 21:04 CDT] - Babysit
+- PR: #240 https://github.com/AaronFeledy/core4/pull/240
+- CI outcome: fail (Cursor Bugbot still pending)
+- Review feedback: none triaged (latest Bugbot check did not complete; prior Bugbot review is stale on 079ed0a)
+- Merge: deferred (PR is still `CONFLICTING` and the required Cursor Bugbot check remains pending on the latest head)
 ---

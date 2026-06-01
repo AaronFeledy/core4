@@ -1306,7 +1306,7 @@
         "Lint passes"
       ],
       "priority": 199,
-      "passes": false,
+      "passes": true,
       "notes": "Blocking from day one of Beta (no soft-warning ramp). Escape hatch (`Guide-Coverage-Skip:`) handles legitimate exceptions like refactors and dependency bumps."
     },
     {
