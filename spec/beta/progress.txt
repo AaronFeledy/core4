@@ -325,3 +325,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Whole-frame redraw (track `lastFrameLineCount`, rewind + `ESC[0J`, repaint) is the correct model over per-panel cursor accounting — the latter breaks the moment one task's panel sits above another's. This also makes collapse (shorter frame) trivially correct because erase-down clears stale rows.
   - `RendererIO.isTTY` left `undefined` by the buffered test double is the lever that keeps all prior buffered renderer tests on the plain path while letting `{ ...createBufferedRendererIO(), isTTY: true }` exercise the painter — no changes needed to existing test fixtures.
 ---
+
+## [2026-06-01 00:43 CDT] - US-150 Review
+- Reviewed the interactive `task.detail` tail against PRD-B-09 US-150 and fixed one stale user-facing deferred-renderer remediation: the TTY `lando` renderer now ships the fixed 4-line tail, while only the `--tail`/`--no-tail` control flag remains deferred.
+- Review notes (rejected/deferred): no code-quality or security blockers found in the ring-buffer/painter path; expand/collapse and the `--tail` control flag stay deferred to US-151/Phase 4 control surfaces, not part of US-150.
+- Verification: typecheck passed, lint passed, focused renderer tests passed (37/37). Full `bun test` did not complete green in this host worktree: timed out after 300s with unrelated pre-existing package-export/packed `fast-check` failures and a `logs.scenario` timeout; the US-150 focused suites are green.
+---
