@@ -6,7 +6,7 @@
  * resolves `recipe.yml` at the archive top level (or a monorepo `--path`
  * subpath). Mirrors the `git` source's cache/publish/subpath discipline.
  *
- * Checksum policy (spec §8.8.4 / PRD-B-07 US-130):
+ * Checksum policy:
  *   - `--checksum=<hash>` supplied → SHA-256 is REQUIRED; a mismatch fails with
  *     a tagged `checksum-mismatch` error before anything is extracted.
  *   - no checksum → warn-only; when an interactive confirm seam is supplied
