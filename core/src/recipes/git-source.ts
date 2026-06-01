@@ -122,17 +122,41 @@ const fileExists = async (path: string): Promise<boolean> =>
     () => false,
   );
 
-const publish = async (stagingDir: string, publishedDir: string): Promise<void> => {
+interface PublishFileSystem {
+  readonly rename: typeof rename;
+  readonly cp: typeof cp;
+  readonly rm: typeof rm;
+  readonly fileExists: typeof fileExists;
+}
+
+const publishFileSystem = { rename, cp, rm, fileExists } satisfies PublishFileSystem;
+
+const hasErrorCode = (cause: unknown, code: string): boolean =>
+  typeof cause === "object" && cause !== null && "code" in cause && cause.code === code;
+
+export const publish = async (
+  stagingDir: string,
+  publishedDir: string,
+  fs: PublishFileSystem = publishFileSystem,
+): Promise<void> => {
   try {
-    await rename(stagingDir, publishedDir);
+    await fs.rename(stagingDir, publishedDir);
   } catch (cause) {
-    if (await fileExists(publishedDir)) {
-      await rm(stagingDir, { recursive: true, force: true });
+    if (await fs.fileExists(publishedDir)) {
+      await fs.rm(stagingDir, { recursive: true, force: true });
       return;
     }
-    if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "EXDEV") {
-      await cp(stagingDir, publishedDir, { recursive: true, errorOnExist: true, force: false });
-      await rm(stagingDir, { recursive: true, force: true });
+    if (hasErrorCode(cause, "EXDEV")) {
+      try {
+        await fs.cp(stagingDir, publishedDir, { recursive: true, errorOnExist: true, force: false });
+      } catch (copyCause) {
+        if (await fs.fileExists(publishedDir)) {
+          await fs.rm(stagingDir, { recursive: true, force: true });
+          return;
+        }
+        throw copyCause;
+      }
+      await fs.rm(stagingDir, { recursive: true, force: true });
       return;
     }
     throw cause;

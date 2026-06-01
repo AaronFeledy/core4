@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -7,7 +7,7 @@ import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/error
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { type GitRecipeCloner, resolveGitRecipeSource } from "../../src/recipes/git-source.ts";
+import { type GitRecipeCloner, publish, resolveGitRecipeSource } from "../../src/recipes/git-source.ts";
 import { RecipeManifestServiceLive } from "../../src/recipes/manifest/service.ts";
 
 const VALID_RECIPE = `id: remote-recipe
@@ -103,6 +103,40 @@ describe("resolveGitRecipeSource", () => {
         new Bun.Glob(".staging-*").scan({ cwd: join(userDataRoot, "recipe-cache", "git"), onlyFiles: false }),
       );
       expect(staging).toEqual([]);
+    });
+  });
+
+  test("EXDEV publish fallback treats a concurrently-created published dir as success", async () => {
+    await withTempRoot(async (dir) => {
+      const staging = join(dir, "staging");
+      const published = join(dir, "published");
+      await mkdir(staging, { recursive: true });
+      await writeFile(join(staging, "recipe.yml"), VALID_RECIPE);
+      const exdev = Object.assign(new Error("cross-device rename"), { code: "EXDEV" });
+      const exists = Object.assign(new Error("destination exists"), { code: "EEXIST" });
+
+      await publish(staging, published, {
+        rename: async () => {
+          throw exdev;
+        },
+        cp: async () => {
+          await mkdir(published, { recursive: true });
+          await writeFile(
+            join(published, "recipe.yml"),
+            VALID_RECIPE.replace("Remote Recipe", "Cached Recipe"),
+          );
+          throw exists;
+        },
+        rm,
+        fileExists: async (path) =>
+          stat(path).then(
+            () => true,
+            () => false,
+          ),
+      });
+
+      expect(await Bun.file(staging).exists()).toBe(false);
+      expect(await Bun.file(join(published, "recipe.yml")).text()).toContain("Cached Recipe");
     });
   });
 
