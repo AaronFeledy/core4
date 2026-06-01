@@ -1366,6 +1366,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     let source: string | undefined;
     let url: string | undefined;
     let path: string | undefined;
+    let checksum: string | undefined;
     const answerValues: string[] = [];
     let full = false;
     let yes = false;
@@ -1415,6 +1416,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         i += pathMatch.consumed - 1;
         continue;
       }
+      const checksumMatch = parseStringFlag(rest, i, "checksum");
+      if (checksumMatch !== undefined) {
+        checksum = checksumMatch.value;
+        i += checksumMatch.consumed - 1;
+        continue;
+      }
       const answerMatch = parseStringFlag(rest, i, "answer");
       if (answerMatch !== undefined) {
         answerValues.push(answerMatch.value);
@@ -1423,7 +1430,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     }
     const answers = parseAnswerFlags(answerValues);
     try {
-      const sourceOptions = parseInitSourceFlags({ source, url, path });
+      const sourceOptions = parseInitSourceFlags({ source, url, path, checksum });
       const result = await initApp({
         cwd: process.cwd(),
         full,

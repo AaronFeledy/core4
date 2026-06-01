@@ -332,6 +332,10 @@ export class RecipeSourceError extends Schema.TaggedError<RecipeSourceError>()("
     "cache",
     "unsupported-source",
     "missing-url",
+    "download-failed",
+    "checksum-mismatch",
+    "checksum-unverified",
+    "extract-failed",
   ),
   remediation: Schema.String,
 }) {}

@@ -23,6 +23,7 @@ interface InitFlags {
   readonly source?: string;
   readonly url?: string;
   readonly path?: string;
+  readonly checksum?: string;
   readonly answer?: ReadonlyArray<string>;
   readonly "no-interactive"?: boolean;
   readonly yes?: boolean;
@@ -45,6 +46,9 @@ export default class InitCommand extends LandoCommandBase {
     source: Flags.string({ description: "Init source id (cwd, git, tarball, template)." }),
     url: Flags.string({ description: "Remote recipe source URL." }),
     path: Flags.string({ description: "Subdirectory within a remote recipe source." }),
+    checksum: Flags.string({
+      description: "Expected SHA-256 of a --source=tarball archive (64 hex chars).",
+    }),
     recipe: Flags.string({ description: "Recipe to apply." }),
     destination: Flags.string({ description: "Target directory." }),
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
@@ -92,7 +96,12 @@ export default class InitCommand extends LandoCommandBase {
 
     let result: InitAppResult;
     try {
-      const sourceOptions = parseInitSourceFlags({ source: flags.source, url: flags.url, path: flags.path });
+      const sourceOptions = parseInitSourceFlags({
+        source: flags.source,
+        url: flags.url,
+        path: flags.path,
+        checksum: flags.checksum,
+      });
       const options: InitAppOptions = {
         cwd: process.cwd(),
         full: flags.full,

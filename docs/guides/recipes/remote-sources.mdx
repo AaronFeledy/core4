@@ -3,7 +3,7 @@ id: remote-sources
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, recipes, git]
+tags: [beta, docs, recipes, git, tarball]
 ---
 
 <Guide>
@@ -30,6 +30,34 @@ tags: [beta, docs, recipes, git]
       <Variable name="subpathInvalid" value="RecipeSourceError kind=subpath-invalid" display="Absolute paths and .. escapes are rejected before cloning can publish a source" />
       <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with git-specific remediation" />
       <Variable name="auth" value="RecipeSourceError kind=auth" display="Interactive git credential prompts are disabled with GIT_TERMINAL_PROMPT=0 so CI fails fast" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tarball-source-command" render={false} reason="The live tarball download path targets arbitrary URLs, so this executable guide documents the CLI surface without downloading during CI">
+    <Step name="command">
+      <Variable name="command" value="lando init --source=tarball --url=&lt;tarball-url&gt;" display="Download a tar/tar.gz archive as the recipe source, then read recipe.yml from the extracted root" />
+      <Variable name="checksum" value="--checksum=&lt;sha256&gt;" display="Optional 64-hex SHA-256; when present the archive is verified before extraction and a mismatch fails closed" />
+      <Variable name="subpath" value="--path=packages/my-recipe" display="Optional monorepo subdirectory; recipe.yml must live at the top level of that subpath" />
+      <Variable name="scope" value="manifest and prompts" display="US-130 reaches recipe manifest parsing and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tarball-source-cache" render={false} reason="Cache and extraction behavior is covered by core/test/recipes/tarball-source.test.ts with a fake fetcher and deterministic archives">
+    <Step name="cache">
+      <Variable name="cacheRoot" value="&lt;userDataRoot&gt;/recipe-cache/tarball/&lt;sha256&gt;/" display="Tarball recipes are cached under the Lando user data root, keyed by the downloaded archive's SHA-256" />
+      <Variable name="extract" value="in-memory tar(.gz) reader" display="Archives are extracted by a dependency-free ustar reader (gzip auto-detected); no host tar binary is required" />
+      <Variable name="reuse" value="content-addressed" display="If the SHA-256 directory already exists, Lando discards the staging extract and reuses the published cache entry" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tarball-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on external archive hosts">
+    <Step name="failures">
+      <Variable name="missingUrl" value="RecipeSourceError kind=missing-url" display="--source=tarball requires --url=&lt;tarball-url&gt;" />
+      <Variable name="checksumMismatch" value="RecipeSourceError kind=checksum-mismatch" display="A --checksum that does not match the downloaded archive fails before anything is extracted" />
+      <Variable name="checksumUnverified" value="RecipeSourceError kind=checksum-unverified" display="Without --checksum Lando warns with the computed digest and, when interactive, prompts once; a decline aborts" />
+      <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK URL fails with download remediation" />
+      <Variable name="extractFailed" value="RecipeSourceError kind=extract-failed" display="Bytes that are not a readable tar/tar.gz archive fail with extraction remediation" />
+      <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with tarball-specific remediation" />
     </Step>
   </Scenario>
 </Guide>
