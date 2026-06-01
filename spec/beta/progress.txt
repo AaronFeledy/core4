@@ -239,3 +239,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review notes (rejected): no other blockers found in the review pass; the full-suite package-export failures are the same pre-existing workspace/packed-package resolution flakes already recorded by the build step and unrelated to the guide-drift script.
 - Verification: typecheck passed, lint passed, focused guide-drift tests passed, CLI QA confirmed a valid skip writes both stdout and the step summary; full `bun test` remains 2193 pass / 26 skip / 3 fail due only to the pre-existing `@lando/core/testing` and `@lando/core/cli/operations` package-export failures.
 ---
+
+## [2026-05-31 21:04 CDT] - Babysit
+- PR: #240 https://github.com/AaronFeledy/core4/pull/240
+- CI outcome: fail (Cursor Bugbot still pending)
+- Review feedback: none triaged (latest Bugbot check did not complete; prior Bugbot review is stale on 079ed0a)
+- Merge: deferred (PR is still `CONFLICTING` and the required Cursor Bugbot check remains pending on the latest head)
+---
