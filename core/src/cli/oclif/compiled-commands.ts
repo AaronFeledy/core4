@@ -2,6 +2,7 @@ import type { Command } from "@oclif/core";
 
 import AppCacheRefreshCommand from "./commands/app/cache/refresh.ts";
 import AppConfigCommand from "./commands/app/config/index.ts";
+import AppConfigLintCommand from "./commands/app/config/lint.ts";
 import AppConfigTranslateCommand from "./commands/app/config/translate.ts";
 import DestroyCommand from "./commands/app/destroy.ts";
 import ExecCommand from "./commands/app/exec.ts";
@@ -64,6 +65,7 @@ import XCommand from "./commands/meta/x.ts";
 export default {
   "app:cache:refresh": AppCacheRefreshCommand,
   "app:config": AppConfigCommand,
+  "app:config:lint": AppConfigLintCommand,
   "app:config:translate": AppConfigTranslateCommand,
   "app:destroy": DestroyCommand,
   "app:exec": ExecCommand,

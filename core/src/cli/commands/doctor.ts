@@ -112,6 +112,12 @@ export interface DoctorOptions {
    * subsystem whose recovery is safe to automate. Defaults to `false`.
    */
   readonly fix?: boolean | undefined;
+  /**
+   * When `true`, `lando doctor --app` additionally lints the current app's
+   * Landofile against the canonical schema (the same pass as
+   * `lando app:config:lint`). Defaults to `false`.
+   */
+  readonly app?: boolean | undefined;
 }
 
 const CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<

@@ -188,6 +188,8 @@
       "ProviderCapabilities",
       "LandofileShape",
       "GlobalConfig",
+      "ConfigLintViolation",
+      "ConfigLintResult",
       "AppId",
       "ServiceName",
       "ProviderId",
@@ -924,6 +926,59 @@
       },
       "$ref": "#/$defs/CleanupProps",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "ConfigLintResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "valid": {
+          "type": "boolean"
+        },
+        "violations": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "suggestedFix": {
+                "type": "string"
+              }
+            },
+            "required": ["path", "message"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["app", "file", "valid", "violations"],
+      "type": "object"
+    },
+    "ConfigLintViolation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "suggestedFix": {
+          "type": "string"
+        }
+      },
+      "required": ["path", "message"],
+      "type": "object"
     },
     "DeprecationNotice": {
       "$defs": {

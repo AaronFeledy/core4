@@ -1,0 +1,43 @@
+---
+id: config-lint
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, config, lint]
+---
+
+<Guide>
+  <Scenario id="clean-landofile" render={false} reason="app:config:lint reads the Landofile from disk and validates it against the canonical schema; the happy path and exit codes are covered by the app-config-lint scenario tests">
+    <Step name="scaffold">
+      <UseFixture name="config-lint-demo" />
+      <Variable name="command" value="lando app:config:lint" display="Validate the current app's Landofile against the canonical schema" />
+      <Variable name="scope" value="canonical JSON Schema only" display="No translators, no doctor checks, no provider probes are run" />
+      <Variable name="cleanOutput" value="<file>: no canonical-schema violations." display="Output on a Landofile that passes the canonical schema" />
+      <Variable name="cleanExit" value="0" display="Exit code when the Landofile is valid" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="json-output" render={false} reason="The --format=json shape is a stable LSP contract covered by the SDK schema snapshot and the app-config-lint scenario tests">
+    <Step name="json">
+      <Variable name="command" value="lando app:config:lint --format=json" display="Emit a stable JSON ConfigLintResult for editor / LSP integrations" />
+      <Variable name="shape" value="{ app, file, valid, violations: [{ path, message, suggestedFix? }] }" display="The ConfigLintResult JSON shape (frozen by the schema-snapshot gate)" />
+      <Variable name="defaultFormat" value="text" display="--format defaults to text (human-readable); pass --format=json for machine output" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="schema-violation" render={false} reason="Failure modes are covered by the lintLandofile unit tests and the app-config-lint scenario tests; this documents the user-facing behavior">
+    <Step name="violation">
+      <Variable name="exitCode" value="non-zero" display="A schema violation exits non-zero so editors and CI can gate on it" />
+      <Variable name="violationFields" value="path, message, suggestedFix" display="Each violation carries a dot-joined path, a message, and an optional suggested fix" />
+      <Variable name="unknownKey" value='Remove the unknown key "…"; it is not part of the canonical Landofile schema.' display="Unknown keys surface as excess-property violations (schema-only — never a NotImplementedError)" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="doctor-app" render={false} reason="lando doctor --app reuses the same lintLandofile pass; the shared-source-of-truth wiring is covered by the doctor-report tests">
+    <Step name="doctor">
+      <Variable name="command" value="lando doctor --app" display="Run the same canonical-schema lint as part of the combined doctor report" />
+      <Variable name="checkName" value="app-config-lint" display="The doctor check name carrying the lint result (text section and ndjson stream)" />
+      <Variable name="singleSource" value="lintLandofile" display="Both lando app:config:lint and lando doctor --app call the same lintLandofile pass — no forked logic" />
+    </Step>
+  </Scenario>
+</Guide>

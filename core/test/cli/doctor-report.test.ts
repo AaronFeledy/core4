@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { type Context, Effect, Layer } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
@@ -133,5 +137,36 @@ describe("meta:doctor combined report", () => {
     expect(rendered).toContain('"name":"host-proxy"');
     expect(rendered).toContain('"name":"global-app"');
     expect(rendered).toContain('"checks":8');
+  });
+
+  test("doctorReport runs the shared app:config:lint pass and renders it under --app", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-app-")));
+    await writeFile(join(dir, ".lando.yml"), "name: doctor-app\nbogusKey: nope\n");
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      const report = await Effect.runPromise(
+        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      expect(report.appConfig).toBeDefined();
+      expect(report.appConfig?.valid).toBe(false);
+      expect(report.appConfig?.violations.some((v) => v.path.includes("bogusKey"))).toBe(true);
+
+      const text = renderDoctorReport(report);
+      expect(text).toContain("app-config-lint: fail");
+
+      const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
+      const lines = ndjson
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(lines.slice(1, -1).map((line) => line.name)).toContain("app-config-lint");
+      expect(lines.at(-1)).toMatchObject({ checks: 9, failed: 1 });
+    } finally {
+      process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });
