@@ -112,7 +112,7 @@ const fileExists = async (path: string): Promise<boolean> =>
     () => false,
   );
 
-const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
+export const defaultTarballRecipeFetcher: TarballRecipeFetcher = {
   fetch: async (url) => {
     const response = await fetch(url, { redirect: "follow" });
     if (!response.ok) {

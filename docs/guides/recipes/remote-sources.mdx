@@ -3,7 +3,7 @@ id: remote-sources
 provider: test
 platforms: [darwin, linux, win32]
 timeout: 60000
-tags: [beta, docs, recipes, git, tarball]
+tags: [beta, docs, recipes, git, tarball, npm]
 ---
 
 <Guide>
@@ -58,6 +58,34 @@ tags: [beta, docs, recipes, git, tarball]
       <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK URL fails with download remediation" />
       <Variable name="extractFailed" value="RecipeSourceError kind=extract-failed" display="Bytes that are not a readable tar/tar.gz archive fail with extraction remediation" />
       <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with tarball-specific remediation" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="npm-source-command" render={false} reason="The live npm path resolves registry metadata and downloads a published tarball, so this executable guide documents the CLI surface without hitting the registry during CI">
+    <Step name="command">
+      <Variable name="command" value="lando init --source=npm --package=@lando/recipe-foo" display="Resolve an npm package's metadata, download the published tarball, and read recipe.yml from the extracted package/ root" />
+      <Variable name="version" value="--package=@lando/recipe-foo@1.2.3" display="An @version suffix is honored as an exact published version or a dist-tag; with no suffix the registry latest dist-tag is used" />
+      <Variable name="subpath" value="--path=recipes/my-recipe" display="Optional subdirectory inside the package; recipe.yml must live at the top level of that subpath" />
+      <Variable name="scope" value="manifest and prompts" display="US-131 reaches recipe manifest parsing and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="npm-source-cache" render={false} reason="Cache, extraction, and integrity behavior is covered by core/test/recipes/npm-source.test.ts with a fake registry client and deterministic tarballs">
+    <Step name="cache">
+      <Variable name="reuse" value="reuses the tarball extractor" display="The npm source delegates to the shared tarball resolver, so archives are cached under &lt;userDataRoot&gt;/recipe-cache/tarball/&lt;sha256&gt;/ and extracted by the same dependency-free ustar reader" />
+      <Variable name="packageRoot" value="package/ prefix" display="npm tarballs nest every file under package/, so the resolved recipe root is that package/ directory (plus any --path subpath)" />
+      <Variable name="integrity" value="dist.integrity / dist.shasum" display="The downloaded tarball is verified against the registry SRI integrity (sha512) or the legacy sha1 shasum before extraction" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="npm-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on the live npm registry">
+    <Step name="failures">
+      <Variable name="missingPackage" value="RecipeSourceError kind=missing-package" display="--source=npm requires --package=&lt;name&gt;[@version]" />
+      <Variable name="packageNotFound" value="RecipeSourceError kind=package-not-found" display="A package the registry returns 404 for fails with package remediation" />
+      <Variable name="versionNotFound" value="RecipeSourceError kind=version-not-found" display="An @version that matches no published version or dist-tag fails before download" />
+      <Variable name="registryFailed" value="RecipeSourceError kind=registry-failed" display="A registry metadata fetch error fails with registry remediation" />
+      <Variable name="integrityMismatch" value="RecipeSourceError kind=integrity-mismatch" display="A downloaded tarball that does not match the registry integrity/shasum fails before extraction" />
+      <Variable name="downloadFailed" value="RecipeSourceError kind=download-failed" display="An unreachable or non-OK tarball URL fails with download remediation" />
     </Step>
   </Scenario>
 </Guide>

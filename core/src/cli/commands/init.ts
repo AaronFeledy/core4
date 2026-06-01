@@ -12,6 +12,7 @@ import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { getRecipeCatalog } from "../../recipes/catalog.ts";
 import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
+import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source.ts";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
 import {
   type PromptAnswers,
@@ -78,14 +79,17 @@ export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
-  readonly source?: "git" | "tarball";
+  readonly source?: "git" | "tarball" | "npm";
   readonly url?: string;
+  readonly package?: string;
   readonly path?: string;
   readonly checksum?: string;
+  readonly registryUrl?: string;
   readonly userDataRoot?: string;
   readonly gitRecipeCloner?: GitRecipeCloner;
   readonly tarballRecipeFetcher?: TarballRecipeFetcher;
   readonly tarballRecipeExtractor?: TarballRecipeExtractor;
+  readonly npmRegistryClient?: NpmRegistryClient;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
   readonly yes?: boolean;
@@ -177,6 +181,24 @@ const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefin
   return parseResolvedRecipe(resolved);
 };
 
+const loadNpmRecipe = async (options: InitAppOptions) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    package: options.package,
+    path: options.path,
+  });
+  const resolved = await resolveNpmRecipeSource({
+    package: sourceOptions.package ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.npmRegistryClient === undefined ? {} : { registryClient: options.npmRegistryClient }),
+    ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
+    ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
+  });
+  return parseResolvedRecipe(resolved);
+};
+
 const composeAnswers = (options: InitAppOptions): Record<string, string> => {
   const out: Record<string, string> = { ...(options.answers ?? {}) };
   if (options.name !== undefined && options.name.trim() !== "") {
@@ -197,18 +219,22 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
   const sourceOptions = parseInitSourceFlags({
     source: options.source,
     url: options.url,
+    package: options.package,
     path: options.path,
   });
+  const remoteRef = sourceOptions.url ?? sourceOptions.package;
   const recipeRef =
-    sourceOptions.source !== undefined && sourceOptions.url !== undefined
-      ? sourceOptions.url
+    sourceOptions.source !== undefined && remoteRef !== undefined
+      ? remoteRef
       : await resolveRecipeSelection(options, io, cwd);
   const { resolved, manifest } =
     sourceOptions.source === "git"
       ? await loadGitRecipe(options)
       : sourceOptions.source === "tarball"
         ? await loadTarballRecipe(options, io)
-        : await loadRecipe(recipeRef, cwd);
+        : sourceOptions.source === "npm"
+          ? await loadNpmRecipe(options)
+          : await loadRecipe(recipeRef, cwd);
 
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
   if (renderer === undefined) {
