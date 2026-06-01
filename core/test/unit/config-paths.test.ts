@@ -45,6 +45,12 @@ describe("config root resolution", () => {
     expect(resolveUserDataRoot()).toBe("/home/test/.local/share/lando");
   });
 
+  test("empty XDG_DATA_HOME is treated as unset and falls back to HOME", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "" });
+
+    expect(resolveUserDataRoot()).toBe("/home/test/.local/share/lando");
+  });
+
   test("LANDO_USER_CONF_ROOT wins over XDG_CONFIG_HOME and HOME", () => {
     setEnv({ HOME: "/home/test", XDG_CONFIG_HOME: "/xdg/config", LANDO_USER_CONF_ROOT: "/lando/conf" });
 
