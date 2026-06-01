@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cp, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { type Context, Effect, Either, Layer, Schema } from "effect";
+import { Cause, type Context, Effect, Either, Layer, Schema } from "effect";
 
 import { ScratchAppError, ScratchAppNotFoundError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
 import { AbsolutePath, type AppPlan, LandofileShape } from "@lando/sdk/schema";
@@ -260,7 +260,12 @@ const makeScratchAppService = (
         ),
     });
 
-  const startScratchPlan = (scratchId: string, plan: AppPlan) =>
+  const startScratchPlan = (
+    scratchId: string,
+    plan: AppPlan,
+    instanceRoot: AbsolutePath,
+    detached: boolean,
+  ) =>
     Effect.gen(function* () {
       const provider = yield* registry
         .select(plan)
@@ -269,11 +274,38 @@ const makeScratchAppService = (
             scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
           ),
         );
+      // Security: tears down `instanceRoot` (always under `<userCacheRoot>/scratch/<id>/`),
+      // never `plan.root` — an `--isolate=none` fork plans against the source cwd, so removing
+      // `plan.root` would delete the user's own app.
+      const destroyScratchResources = provider
+        .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
+        .pipe(
+          Effect.catchAllCause((cause) =>
+            Effect.logWarning(
+              `Unable to destroy provider resources for scratch app ${scratchId} during cleanup: ${Cause.pretty(cause)}`,
+            ),
+          ),
+          Effect.zipRight(
+            cleanupScratchInstance(instanceRoot).pipe(
+              Effect.catchAllCause((cause) =>
+                Effect.logWarning(
+                  `Unable to remove the scratch app directory for ${scratchId} during cleanup: ${Cause.pretty(cause)}`,
+                ),
+              ),
+            ),
+          ),
+        );
       yield* Effect.scoped(provider.apply(plan, { reconcile: false })).pipe(
+        // A failed start can leave a materialized dir and partial provider state; the scope
+        // finalizer only covers a successful start, so reclaim on the failure path too.
+        Effect.tapError(() => destroyScratchResources),
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
         ),
       );
+      if (!detached) {
+        yield* Effect.addFinalizer(() => destroyScratchResources);
+      }
       return {
         id: scratchId,
         app: { kind: "scratch", id: scratchId, root: plan.root },
@@ -321,7 +353,7 @@ const makeScratchAppService = (
             : scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
         ),
       );
-      return yield* startScratchPlan(scratchId, forkPlan);
+      return yield* startScratchPlan(scratchId, forkPlan, scratchPaths.instanceRoot, input.detached);
     });
 
   const acquireRecipe = (input: ScratchAcquireInput, recipeRef: string) =>
@@ -379,7 +411,7 @@ const makeScratchAppService = (
           scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
         ),
       );
-      return yield* startScratchPlan(scratchId, recipePlan);
+      return yield* startScratchPlan(scratchId, recipePlan, scratchPaths.instanceRoot, input.detached);
     });
 
   const acquire = (input: ScratchAcquireInput) =>

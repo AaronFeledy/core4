@@ -17,6 +17,7 @@ export interface ScratchStartOptions {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly isolate?: IsolateMode;
+  readonly signal?: AbortSignal;
 }
 
 export const asIsolateMode = (value: unknown): IsolateMode | undefined =>
@@ -25,6 +26,7 @@ export const asIsolateMode = (value: unknown): IsolateMode | undefined =>
 export interface ScratchStartResult {
   readonly handle: ScratchHandle;
   readonly detached: boolean;
+  readonly rendered?: boolean;
 }
 
 export interface ScratchLogsResult {
@@ -53,6 +55,25 @@ const rendererModeFromInput = (input: unknown): string | undefined => {
   return typeof rendererMode === "string" ? rendererMode : undefined;
 };
 
+const signalFromInput = (input: unknown): AbortSignal | undefined => {
+  if (typeof input !== "object" || input === null) return undefined;
+  const signal = (input as { readonly signal?: unknown }).signal;
+  return signal instanceof AbortSignal ? signal : undefined;
+};
+
+export const waitForAbortSignal = (signal: AbortSignal | undefined): Effect.Effect<void> => {
+  if (signal === undefined) return Effect.never;
+  return Effect.async<void>((resume) => {
+    if (signal.aborted) {
+      resume(Effect.void);
+      return;
+    }
+    const onAbort = () => resume(Effect.void);
+    signal.addEventListener("abort", onAbort, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", onAbort));
+  });
+};
+
 const stringArrayFlag = (flags: Record<string, unknown>, key: string): ReadonlyArray<string> => {
   const value = flags[key];
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
@@ -65,6 +86,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     ...stringArrayFlag(flags, "option"),
   ]);
   const isolate = asIsolateMode(flags.isolate);
+  const signal = signalFromInput(input);
   return {
     fork: flags.fork === true,
     ...(typeof flags.from === "string" ? { from: flags.from } : {}),
@@ -74,6 +96,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     yes: flags.yes === true,
     nonInteractive: flags["no-interactive"] === true || flags["non-interactive"] === true,
     ...(isolate === undefined ? {} : { isolate }),
+    ...(signal === undefined ? {} : { signal }),
   };
 };
 
@@ -123,22 +146,39 @@ export const scratchStart = (
     }
 
     const service = yield* ScratchAppService;
-    const handle = yield* Effect.scoped(
-      service.acquire({
-        source: hasFork ? { kind: "fork" } : { kind: "recipe", ref: from ?? "" },
-        detached: options.detach === true,
-        ...(options.name === undefined ? {} : { name: options.name }),
-        ...(options.answers === undefined ? {} : { answers: options.answers }),
-        ...(options.yes === undefined ? {} : { yes: options.yes }),
-        ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
-        ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
+    const acquireBase = {
+      source: hasFork ? ({ kind: "fork" } as const) : ({ kind: "recipe", ref: from ?? "" } as const),
+      ...(options.name === undefined ? {} : { name: options.name }),
+      ...(options.answers === undefined ? {} : { answers: options.answers }),
+      ...(options.yes === undefined ? {} : { yes: options.yes }),
+      ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
+      ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
+    };
+
+    if (options.detach === true) {
+      const handle = yield* Effect.scoped(service.acquire({ ...acquireBase, detached: true }));
+      return { handle, detached: true };
+    }
+
+    // Foreground: hold the acquire scope open until the user signals exit; the scope's
+    // destroy finalizer then tears the scratch down. Print "started" before blocking, so the
+    // post-run renderer is suppressed (`rendered: true`) to avoid a duplicate line.
+    return yield* Effect.scoped(
+      Effect.gen(function* () {
+        const handle = yield* service.acquire({ ...acquireBase, detached: false });
+        yield* Effect.sync(() => {
+          console.log(`started: ${handle.id} (press Ctrl-C to stop and destroy)`);
+        });
+        yield* waitForAbortSignal(options.signal);
+        return { handle, detached: false, rendered: true } satisfies ScratchStartResult;
       }),
     );
-    return { handle, detached: options.detach === true };
   });
 
-export const renderScratchStartResult = (result: ScratchStartResult): string =>
-  result.detached ? result.handle.id : `started: ${result.handle.id}`;
+export const renderScratchStartResult = (result: ScratchStartResult): string | undefined => {
+  if (result.rendered === true) return undefined;
+  return result.detached ? result.handle.id : `started: ${result.handle.id}`;
+};
 
 export const scratchList = (): Effect.Effect<
   ReadonlyArray<ScratchSummary>,
