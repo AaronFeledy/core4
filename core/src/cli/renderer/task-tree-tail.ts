@@ -112,6 +112,8 @@ const formatDurationSuffix = (durationMs: number | undefined): string => {
 export interface LandoTreePainterOptions {
   /** Ring-buffer depth (defaults to {@link TASK_DETAIL_TAIL_CAPACITY}). */
   readonly detailCapacity?: number;
+  /** Terminal columns used to count wrapped physical rows for frame clearing. */
+  readonly terminalColumns?: number | undefined;
 }
 
 export interface LandoTreePainterSnapshot {
@@ -124,6 +126,21 @@ export interface LandoTreePainterSnapshot {
 const CHILD_INDENT = "  ";
 const PANEL_INDENT = "      ";
 
+const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
+
+const visibleLength = (line: string): number => line.replace(ansiPattern, "").length;
+
+const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
+  const columns = terminalColumns === undefined ? undefined : Math.max(1, Math.trunc(terminalColumns));
+  return line.split("\n").reduce((rows, segment) => {
+    if (columns === undefined) return rows + 1;
+    return rows + Math.max(1, Math.ceil(visibleLength(segment) / columns));
+  }, 0);
+};
+
+const physicalRowsForFrame = (frame: ReadonlyArray<string>, terminalColumns: number | undefined): number =>
+  frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
+
 /**
  * Pure, deterministic painter for the concurrent task-tree tail. Drive it with
  * the renderable `task.*` events; non-tree output is routed through
@@ -132,6 +149,7 @@ const PANEL_INDENT = "      ";
  */
 export class LandoTreePainter {
   readonly #detailCapacity: number;
+  readonly #terminalColumns: number | undefined;
   readonly #tasks = new Map<string, TaskState>();
   readonly #order: string[] = [];
   #tree: TreeState | undefined;
@@ -139,6 +157,7 @@ export class LandoTreePainter {
 
   constructor(options: LandoTreePainterOptions = {}) {
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
+    this.#terminalColumns = options.terminalColumns;
   }
 
   consume(event: LandoEvent): string {
@@ -153,7 +172,7 @@ export class LandoTreePainter {
   passthrough(line: string): string {
     const clear = this.#clearPrevious();
     const frame = this.#renderFrame();
-    this.#lastFrameLineCount = frame.length;
+    this.#lastFrameLineCount = physicalRowsForFrame(frame, this.#terminalColumns);
     const body = frame.length === 0 ? "" : `${frame.join("\n")}\n`;
     return `${clear}${line}\n${body}`;
   }
@@ -317,7 +336,7 @@ export class LandoTreePainter {
   #repaint(): string {
     const clear = this.#clearPrevious();
     const frame = this.#renderFrame();
-    this.#lastFrameLineCount = frame.length;
+    this.#lastFrameLineCount = physicalRowsForFrame(frame, this.#terminalColumns);
     if (frame.length === 0) return clear;
     return `${clear}${frame.join("\n")}\n`;
   }

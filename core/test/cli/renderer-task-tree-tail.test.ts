@@ -209,6 +209,18 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     expect(second.includes(csi.eraseDown)).toBe(true);
   });
 
+  test("rewinds by physical rows for wrapped and multiline frame entries", () => {
+    const painter = new LandoTreePainter({ terminalColumns: 20 });
+    painter.consume(treeStart("build", "Run", ["a"]));
+    painter.consume(taskStart("a", "a", "build"));
+    painter.consume(detail("a", "123456789012345678901\nx"));
+
+    const collapse = painter.consume(taskComplete("a", "a", 10));
+
+    expect(collapse.startsWith(csi.cursorUp(5))).toBe(true);
+    expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
+  });
+
   test("redraw clears downward so a collapsing frame leaves no stale panel rows", () => {
     const painter = new LandoTreePainter();
     painter.consume(treeStart("build", "Building", ["a"]));
