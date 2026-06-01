@@ -331,3 +331,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review notes (rejected/deferred): no code-quality or security blockers found in the ring-buffer/painter path; expand/collapse and the `--tail` control flag stay deferred to US-151/Phase 4 control surfaces, not part of US-150.
 - Verification: typecheck passed, lint passed, focused renderer tests passed (37/37). Full `bun test` did not complete green in this host worktree: timed out after 300s with unrelated pre-existing package-export/packed `fast-check` failures and a `logs.scenario` timeout; the US-150 focused suites are green.
 ---
+## [2026-06-01 01:08] - Babysit
+- PR: #249 https://github.com/AaronFeledy/core4/pull/249
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: task-tail running label used the started-count instead of the declared children count; frame clearing counted logical lines instead of physical terminal rows for wrapped/multiline output)
+- Merge: merged (squash)
+---
