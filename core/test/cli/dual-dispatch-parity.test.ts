@@ -48,6 +48,12 @@ describe("dual-dispatch argv parser parity", () => {
     });
   });
 
+  test("apps:init accepts the --non-interactive alias for --no-interactive", () => {
+    const input = compiledInput("apps:init", ["--non-interactive"]);
+
+    expect(initOptionsFromInput(input).nonInteractive).toBe(true);
+  });
+
   test("app:logs uses the same parsed input shape as the OCLIF helper", () => {
     const input = compiledInput("app:logs", ["--service", "appserver", "--tail", "25"]);
 

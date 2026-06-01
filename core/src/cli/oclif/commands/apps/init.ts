@@ -61,6 +61,7 @@ export default class InitCommand extends LandoCommandBase {
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
     yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
     "no-interactive": Flags.boolean({
+      aliases: ["non-interactive"],
       description:
         "Disable interactive prompting. Missing required answers fail with RecipeMissingAnswerError.",
       default: false,
