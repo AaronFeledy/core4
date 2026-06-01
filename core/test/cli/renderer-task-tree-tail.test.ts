@@ -175,6 +175,17 @@ describe("LandoTreePainter — tail panel", () => {
   });
 });
 
+describe("LandoTreePainter — tree start metadata", () => {
+  test("uses declared tree children as the running denominator before all siblings start", () => {
+    const painter = new LandoTreePainter();
+    painter.consume(treeStart("build", "Building", ["a", "b", "c", "d"]));
+    expect(painter.snapshot().frameLines[0]).toContain("(0/4 running)");
+
+    painter.consume(taskStart("a", "step a", "build"));
+    expect(painter.snapshot().frameLines[0]).toContain("(1/4 running)");
+  });
+});
+
 describe("LandoTreePainter — CSI cursor handling", () => {
   test("first paint emits no cursor-up (no prior frame)", () => {
     const painter = new LandoTreePainter();

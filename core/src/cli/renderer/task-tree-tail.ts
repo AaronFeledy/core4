@@ -92,6 +92,7 @@ interface TaskState {
 
 interface TreeState {
   readonly parentId: string;
+  readonly childCount: number;
   label: string;
   done: boolean;
   summary: string | undefined;
@@ -170,6 +171,7 @@ export class LandoTreePainter {
       case "task.tree.start": {
         this.#tree = {
           parentId: asString(record.parentId) ?? "tree",
+          childCount: Array.isArray(record.children) ? record.children.length : 0,
           label: asString(record.label) ?? "tasks",
           done: false,
           summary: undefined,
@@ -230,6 +232,7 @@ export class LandoTreePainter {
         if (this.#tree === undefined) {
           this.#tree = {
             parentId: asString(record.parentId) ?? "tree",
+            childCount: 0,
             label: asString(record.summary) ?? "tasks",
             done: true,
             summary: asString(record.summary),
@@ -265,7 +268,7 @@ export class LandoTreePainter {
       const label = tree.summary ?? tree.label;
       return `▶ ${label} (${tree.succeeded} ✓ · ${tree.failed} ✗)`;
     }
-    return `▼ ${tree.label} (${this.#runningCount()}/${this.#order.length} running)`;
+    return `▼ ${tree.label} (${this.#runningCount()}/${tree.childCount} running)`;
   }
 
   #childSummaryLine(task: TaskState): string {
