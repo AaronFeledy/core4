@@ -1,6 +1,6 @@
 {
-  "name": "@lando/provider-docker",
-  "description": "Reference Docker `RuntimeProvider` implementation.",
+  "name": "@lando/container-runtime",
+  "description": "Private provider-agnostic container runtime helpers for Lando providers.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/lando-community/core4.git",
-    "directory": "plugins/provider-docker"
+    "directory": "container-runtime"
   },
   "type": "module",
   "private": true,
@@ -17,13 +17,16 @@
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
-  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
-  "keywords": ["lando", "lando-plugin", "lando-provider", "docker"],
-  "lando": {
-    "manifest": "./plugin.yaml"
+  "exports": {
+    ".": "./src/index.ts",
+    "./transport": "./src/transport.ts",
+    "./streams": "./src/streams.ts",
+    "./plan": "./src/plan.ts",
+    "./capabilities": "./src/capabilities.ts"
   },
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
+  "keywords": ["lando", "container-runtime", "provider"],
   "dependencies": {
-    "@lando/container-runtime": "workspace:*",
     "@lando/sdk": "workspace:*",
     "effect": "^3.21.2"
   },

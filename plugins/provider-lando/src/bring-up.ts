@@ -1,3 +1,8 @@
+import {
+  commonContainerLabels,
+  containerCreateBodyFragment,
+  containerHostConfigFragment,
+} from "@lando/container-runtime/plan";
 import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
@@ -7,12 +12,10 @@ import {
   type AppRef,
   ProviderId,
   type ServicePlan,
-  fileSyncVolumeName,
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
-  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
@@ -152,88 +155,21 @@ const inspectContainer = (
     return { exists: true, running: inspect.State?.Running === true || inspect.State?.Status === "running" };
   });
 
-const serviceEnv = (service: ServicePlan) =>
-  Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
-
-const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
-
-const hostConfig = (plan: AppPlan, service: ServicePlan) => {
-  const portBindings = Object.fromEntries(
-    service.endpoints
-      .filter((endpoint) => endpoint.port !== undefined)
-      .map((endpoint) => [
-        `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
-        [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
-      ]),
-  );
-
-  const appMounts =
-    service.appMount === undefined
-      ? []
-      : [
-          `${
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source
-          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
-        ];
-  const binds = service.mounts.flatMap((mount, index) => {
-    if (mount.type !== "bind") return [];
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    if (mount.source === undefined) {
+const hostConfig = (plan: AppPlan, service: ServicePlan) =>
+  containerHostConfigFragment(plan, service, {
+    onMissingBindMountSource: (mount) => {
       throw podmanFailure(service, "bringUp.mount", "provider-lando bind mounts require a source.", {
         mount,
       });
-    }
-    const source =
-      mount.realization === "accelerated"
-        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-        : mount.source;
-    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
-  });
-  const allBinds = Array.from(new Set([...appMounts, ...binds]));
-
-  return {
-    ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
-    ...(allBinds.length > 0 ? { Binds: allBinds } : {}),
-  };
-};
-
-const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) => {
-  if (service.artifact?.kind !== "ref") {
-    throw podmanFailure(
-      service,
-      "bringUp.artifact",
-      "provider-lando bringUp requires pre-built artifact references.",
-      { artifact: service.artifact },
-    );
-  }
-
-  const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
-    if (cmd === undefined) return undefined;
-    if (typeof cmd === "string") return ["sh", "-lc", cmd];
-    return [...cmd];
-  };
-
-  return {
-    Image: service.artifact.ref,
-    name,
-    Env: serviceEnv(service),
-    Cmd: normalizeCmd(service.command),
-    Entrypoint:
-      service.entrypoint === undefined
-        ? undefined
-        : Array.isArray(service.entrypoint)
-          ? service.entrypoint
-          : [service.entrypoint],
-    WorkingDir: service.workingDirectory,
-    Labels: {
-      "dev.lando.app": plan.id,
-      "dev.lando.service": service.name,
-      ...scratchLabelsForPlan(plan),
     },
-    HostConfig: hostConfig(plan, service),
-    NetworkingConfig: {
+  });
+
+const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) =>
+  containerCreateBodyFragment(plan, service, {
+    name,
+    labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+    hostConfig: hostConfig(plan, service),
+    networkingConfig: {
       EndpointsConfig: Object.fromEntries(
         networkNames(plan).map((name) => [
           name,
@@ -241,8 +177,15 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) 
         ]),
       ),
     },
-  };
-};
+    onMissingArtifact: (artifact) => {
+      throw podmanFailure(
+        service,
+        "bringUp.artifact",
+        "provider-lando bringUp requires pre-built artifact references.",
+        { artifact },
+      );
+    },
+  });
 
 const ensureNetwork = (
   api: PodmanApiClient,

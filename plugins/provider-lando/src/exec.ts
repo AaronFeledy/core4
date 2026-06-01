@@ -1,3 +1,4 @@
+import { makeAttachDecoder as makeRuntimeAttachDecoder } from "@lando/container-runtime/streams";
 import { Effect, Stream } from "effect";
 
 import {
@@ -140,37 +141,6 @@ const inspectExec = (
     return exitCode;
   });
 
-const makeAttachDecoder = () => {
-  let buffer = new Uint8Array(0);
-
-  return (chunk: Uint8Array): ReadonlyArray<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> => {
-    const merged = new Uint8Array(buffer.length + chunk.length);
-    merged.set(buffer);
-    merged.set(chunk, buffer.length);
-    buffer = merged;
-
-    const decoded: Array<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> = [];
-    while (buffer.length >= 8) {
-      const streamType = buffer[0] ?? 0;
-      const frameLength =
-        (((buffer[4] ?? 0) << 24) | ((buffer[5] ?? 0) << 16) | ((buffer[6] ?? 0) << 8) | (buffer[7] ?? 0)) >>>
-        0;
-      if (buffer.length < 8 + frameLength) {
-        break;
-      }
-
-      const payload = buffer.slice(8, 8 + frameLength);
-      buffer = buffer.slice(8 + frameLength);
-
-      if (streamType === 1 || streamType === 2) {
-        decoded.push({ kind: streamType === 1 ? "stdout" : "stderr", chunk: payload });
-      }
-    }
-
-    return decoded;
-  };
-};
-
 export const execStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -189,13 +159,17 @@ export const execStream = (
 
   return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
     Stream.flatMap((execId) => {
-      const decodeChunk = makeAttachDecoder();
+      const decodeChunk = makeRuntimeAttachDecoder();
       const start = stream(api, {
         method: "POST",
         path: `/exec/${encodeURIComponent(execId)}/start`,
         body: { Detach: false, Tty: false },
       }).pipe(
-        Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))),
+        Stream.flatMap((chunk) =>
+          Stream.fromIterable(
+            decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
+          ),
+        ),
         Stream.concat(
           Stream.fromEffect(inspectExec(api, service, execId).pipe(Effect.map((exitCode) => ({ exitCode })))),
         ),
