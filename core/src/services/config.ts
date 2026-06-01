@@ -6,8 +6,7 @@ import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
-const DEFAULT_CONFIG_ROOT = `${process.env.HOME ?? "."}/.lando`;
-const DEFAULT_DATA_ROOT = `${process.env.XDG_DATA_HOME ?? `${process.env.HOME ?? "."}/.local/share`}/lando`;
+import { resolveUserConfRoot, resolveUserDataRoot } from "../config/roots.ts";
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
@@ -94,7 +93,7 @@ const envOverlay = (): Record<string, unknown> => {
 };
 
 const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string, unknown>): unknown => ({
-  userDataRoot: DEFAULT_DATA_ROOT,
+  userDataRoot: resolveUserDataRoot(),
   defaultProviderId: "lando",
   ...fileConfig,
   ...overlay,
@@ -109,7 +108,7 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
 });
 
 const loadConfig = async (): Promise<GlobalConfig> => {
-  const userConfRoot = process.env.LANDO_USER_CONF_ROOT ?? DEFAULT_CONFIG_ROOT;
+  const userConfRoot = resolveUserConfRoot();
   const path = join(userConfRoot, "config.yml");
   const file = Bun.file(path);
   let fileConfig: Record<string, unknown> = {};

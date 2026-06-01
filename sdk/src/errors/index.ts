@@ -321,6 +321,30 @@ export class RecipeManifestNotFoundError extends Schema.TaggedError<RecipeManife
   },
 ) {}
 
+export class RecipeSourceError extends Schema.TaggedError<RecipeSourceError>()("RecipeSourceError", {
+  message: Schema.String,
+  source: Schema.String,
+  kind: Schema.Literal(
+    "clone-failed",
+    "auth",
+    "subpath-invalid",
+    "subpath-missing",
+    "cache",
+    "unsupported-source",
+    "missing-url",
+    "missing-package",
+    "download-failed",
+    "checksum-mismatch",
+    "checksum-unverified",
+    "extract-failed",
+    "registry-failed",
+    "package-not-found",
+    "version-not-found",
+    "integrity-mismatch",
+  ),
+  remediation: Schema.String,
+}) {}
+
 export class RecipeManifestParseError extends Schema.TaggedError<RecipeManifestParseError>()(
   "RecipeManifestParseError",
   {

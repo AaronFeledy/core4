@@ -1,4 +1,4 @@
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { Effect, ParseResult } from "effect";
 
 import {
   type CapabilityError,
@@ -21,6 +21,7 @@ import {
 } from "@lando/sdk/services";
 
 import { parseLandofile } from "../../../landofile/parser.ts";
+import { decodeOrFail } from "../../../schema/decode.ts";
 
 export interface MissingGlobalPlanResult {
   readonly materialized: false;
@@ -61,19 +62,15 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
 const validateGlobalLandofile = (
   filePath: string,
   parsed: unknown,
-): Effect.Effect<LandofileShape, LandofileValidationError> => {
-  const result = Schema.decodeUnknownEither(LandofileShapeSchema)(parsed, { onExcessProperty: "error" });
-  if (Either.isRight(result)) return Effect.succeed(result.right);
-
-  const issues = validationIssues(result.left);
-  return Effect.fail(
-    new LandofileValidationError({
+): Effect.Effect<LandofileShape, LandofileValidationError> =>
+  decodeOrFail(LandofileShapeSchema, (cause) => {
+    const issues = validationIssues(cause);
+    return new LandofileValidationError({
       message: `Landofile contains unsupported MVP keys: ${issues.join(", ")}. Remove unsupported keys or update the documented Landofile service schema.`,
       file: filePath,
       issues,
-    }),
-  );
-};
+    });
+  })(parsed, { onExcessProperty: "error" });
 
 export const decodeGlobalLandofile = (input: {
   readonly file: string;

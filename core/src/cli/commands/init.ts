@@ -10,7 +10,9 @@ import { RecipeManifestService } from "@lando/sdk/services";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { getRecipeCatalog } from "../../recipes/catalog.ts";
+import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
+import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source.ts";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
 import {
   type PromptAnswers,
@@ -18,7 +20,12 @@ import {
   collectPrompts,
   createStdioPromptIO,
 } from "../../recipes/prompts/index.ts";
-import { resolveRecipeRef } from "../../recipes/source.ts";
+import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source.ts";
+import {
+  type TarballRecipeExtractor,
+  type TarballRecipeFetcher,
+  resolveTarballRecipeSource,
+} from "../../recipes/tarball-source.ts";
 import {
   type ProgressEmitter,
   publishTaskCompleteAsync,
@@ -28,6 +35,7 @@ import {
   publishTreeStartAsync,
 } from "../progress.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
+import { parseInitSourceFlags } from "./init-source.ts";
 
 const APP_NAME_PROMPT = "name";
 const RECIPE_SELECT_PROMPT = "__recipe__";
@@ -71,6 +79,17 @@ export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
+  readonly source?: "git" | "tarball" | "npm";
+  readonly url?: string;
+  readonly package?: string;
+  readonly path?: string;
+  readonly checksum?: string;
+  readonly registryUrl?: string;
+  readonly userDataRoot?: string;
+  readonly gitRecipeCloner?: GitRecipeCloner;
+  readonly tarballRecipeFetcher?: TarballRecipeFetcher;
+  readonly tarballRecipeExtractor?: TarballRecipeExtractor;
+  readonly npmRegistryClient?: NpmRegistryClient;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
   readonly yes?: boolean;
@@ -92,22 +111,92 @@ export interface InitAppResult {
   readonly postInit: PostInitOutcome;
 }
 
-const loadRecipe = async (recipeRef: string, cwd: string) => {
+const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
   const exit = await Effect.runPromiseExit(
-    resolveRecipeRef(recipeRef, { cwd }).pipe(
-      Effect.flatMap((resolved) =>
-        Effect.map(
-          Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
-          (manifest) => ({ resolved, manifest }),
-        ),
-      ),
-      Effect.provide(RecipeManifestServiceLive),
-    ),
+    Effect.map(
+      Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
+      (manifest) => ({ resolved, manifest }),
+    ).pipe(Effect.provide(RecipeManifestServiceLive)),
   );
   if (Exit.isSuccess(exit)) return exit.value;
   const failure = Cause.failureOption(exit.cause);
   if (failure._tag === "Some") throw failure.value;
   throw new Error(Cause.pretty(exit.cause));
+};
+
+const loadRecipe = async (recipeRef: string, cwd: string) => {
+  const exit = await Effect.runPromiseExit(resolveRecipeRef(recipeRef, { cwd }));
+  if (Exit.isSuccess(exit)) return parseResolvedRecipe(exit.value);
+  const failure = Cause.failureOption(exit.cause);
+  if (failure._tag === "Some") throw failure.value;
+  throw new Error(Cause.pretty(exit.cause));
+};
+
+const loadGitRecipe = async (options: InitAppOptions) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    url: options.url,
+    path: options.path,
+  });
+  const resolved = await resolveGitRecipeSource({
+    url: sourceOptions.url ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
+  });
+  return parseResolvedRecipe(resolved);
+};
+
+const CONFIRM_YES_RE = /^(?:y|yes)$/iu;
+
+const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefined) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    url: options.url,
+    path: options.path,
+    checksum: options.checksum,
+  });
+  const interactive = options.nonInteractive !== true && options.yes !== true && io !== undefined;
+  const warn = (message: string): void => {
+    if (io !== undefined) io.writeError(`${message}\n`);
+    else process.stderr.write(`${message}\n`);
+  };
+  const confirmUnverified = interactive
+    ? async (): Promise<boolean> => {
+        (io as PromptIO).write("Continue installing this recipe without checksum verification? [y/N] ");
+        const answer = await (io as PromptIO).readLine();
+        return CONFIRM_YES_RE.test(answer.trim());
+      }
+    : undefined;
+  const resolved = await resolveTarballRecipeSource({
+    url: sourceOptions.url ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(sourceOptions.checksum === undefined ? {} : { checksum: sourceOptions.checksum }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
+    ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
+    onWarn: warn,
+    ...(confirmUnverified === undefined ? {} : { confirmUnverified }),
+  });
+  return parseResolvedRecipe(resolved);
+};
+
+const loadNpmRecipe = async (options: InitAppOptions) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    package: options.package,
+    path: options.path,
+  });
+  const resolved = await resolveNpmRecipeSource({
+    package: sourceOptions.package ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.npmRegistryClient === undefined ? {} : { registryClient: options.npmRegistryClient }),
+    ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
+    ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
+  });
+  return parseResolvedRecipe(resolved);
 };
 
 const composeAnswers = (options: InitAppOptions): Record<string, string> => {
@@ -127,8 +216,25 @@ const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
   const io = resolveIO(options);
-  const recipeRef = await resolveRecipeSelection(options, io, cwd);
-  const { resolved, manifest } = await loadRecipe(recipeRef, cwd);
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    url: options.url,
+    package: options.package,
+    path: options.path,
+  });
+  const remoteRef = sourceOptions.url ?? sourceOptions.package;
+  const recipeRef =
+    sourceOptions.source !== undefined && remoteRef !== undefined
+      ? remoteRef
+      : await resolveRecipeSelection(options, io, cwd);
+  const { resolved, manifest } =
+    sourceOptions.source === "git"
+      ? await loadGitRecipe(options)
+      : sourceOptions.source === "tarball"
+        ? await loadTarballRecipe(options, io)
+        : sourceOptions.source === "npm"
+          ? await loadNpmRecipe(options)
+          : await loadRecipe(recipeRef, cwd);
 
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
   if (renderer === undefined) {

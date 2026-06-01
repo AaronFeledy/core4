@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 
-import { Cause, type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
+import { Cause, type Context, Effect, Layer, ParseResult } from "effect";
 
 import {
   LandofileNotFoundError,
@@ -13,6 +13,7 @@ import {
 import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
+import { decodeOrFail } from "../schema/decode.ts";
 import { parseLandofile } from "./parser.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
@@ -274,20 +275,16 @@ const validationScope = (parsed: unknown): { readonly scope: string; readonly re
 const validateLandofile = (
   filePath: string,
   parsed: unknown,
-): Effect.Effect<typeof LandofileShape.Type, LandofileValidationError> => {
-  const result = Schema.decodeUnknownEither(LandofileShape)(parsed, { onExcessProperty: "error" });
-  if (Either.isRight(result)) return Effect.succeed(result.right);
-
-  const issues = validationIssues(result.left);
-  const { scope, remediation } = validationScope(parsed);
-  return Effect.fail(
-    new LandofileValidationError({
+): Effect.Effect<typeof LandofileShape.Type, LandofileValidationError> =>
+  decodeOrFail(LandofileShape, (cause) => {
+    const issues = validationIssues(cause);
+    const { scope, remediation } = validationScope(parsed);
+    return new LandofileValidationError({
       message: `Landofile contains ${scope}: ${issues.join(", ")}. ${remediation}`,
       file: filePath,
       issues,
-    }),
-  );
-};
+    });
+  })(parsed, { onExcessProperty: "error" });
 
 const scanContentForBetaExpressions = (
   filePath: string,

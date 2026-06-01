@@ -1,6 +1,10 @@
 export interface RendererIO {
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
+  /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */
+  readonly isTTY?: boolean;
+  /** Terminal width used by the TTY tail to account for wrapped rows. */
+  readonly terminalColumns?: number | undefined;
 }
 
 export const createStdioRendererIO = (
@@ -9,6 +13,10 @@ export const createStdioRendererIO = (
 ): RendererIO => ({
   writeStdout: (chunk) => stdout.write(chunk),
   writeStderr: (chunk) => stderr.write(chunk),
+  isTTY: stdout.isTTY === true,
+  get terminalColumns() {
+    return typeof stdout.columns === "number" ? stdout.columns : undefined;
+  },
 });
 
 export interface BufferedRendererIO extends RendererIO {

@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
@@ -25,7 +24,7 @@ export const nginxServiceType: ServiceTypeShape = {
     });
     const endpointPort = service.port ?? DEFAULT_PORT;
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: "nginx",
       provider,

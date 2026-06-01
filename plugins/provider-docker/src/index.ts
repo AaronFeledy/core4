@@ -1,4 +1,22 @@
 import { createConnection } from "node:net";
+
+import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import {
+  commonContainerLabels,
+  containerCreateBodyFragment,
+  containerHostConfigFragment,
+} from "@lando/container-runtime/plan";
+import {
+  makeAttachDecoder as makeRuntimeAttachDecoder,
+  makeLogDecoder as makeRuntimeLogDecoder,
+} from "@lando/container-runtime/streams";
+import {
+  ContainerTransportError,
+  type SocketHttpConnection,
+  connectSocket,
+  makeSocketHttpClient,
+  normalizeNamedPipePath,
+} from "@lando/container-runtime/transport";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -15,12 +33,10 @@ import {
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
-  fileSyncVolumeName,
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
-  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
   type CommandSpec,
@@ -75,8 +91,6 @@ const redactDetails = (value: unknown): unknown => {
   if (typeof value === "string") return redactString(value);
   return value;
 };
-type Bytes = Uint8Array<ArrayBufferLike>;
-
 export interface DockerHttpRequest {
   readonly method: "GET" | "POST" | "DELETE";
   readonly path: `/${string}`;
@@ -148,12 +162,13 @@ const networkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 
-const unavailable = (operation: string, message: string, details?: unknown) =>
+const unavailable = (operation: string, message: string, details?: unknown, cause?: unknown) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
     message,
     ...(details === undefined ? {} : { details }),
+    ...(cause === undefined ? {} : { cause }),
   });
 
 const internal = (operation: string, message: string, details?: unknown, cause?: unknown) =>
@@ -237,262 +252,30 @@ const stream = (
 const dockerApiFailure = (
   request: DockerHttpRequest,
   cause: unknown,
-): ProviderUnavailableError | ProviderInternalError =>
-  cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
-    ? cause
-    : unavailable("docker-api", "Failed to call the Docker API.", {
-        method: request.method,
-        path: request.path,
-        cause,
-      });
-
-const requestBody = (request: DockerHttpRequest): string | undefined =>
-  request.body === undefined ? undefined : JSON.stringify(request.body);
-
-const dockerHttpRequestText = (request: DockerHttpRequest, body: string | undefined): string => {
-  const headers = [
-    `${request.method} /v1.43${request.path} HTTP/1.1`,
-    "Host: localhost",
-    "Connection: close",
-  ];
-  if (body !== undefined) {
-    headers.push(
-      "Content-Type: application/json",
-      `Content-Length: ${new TextEncoder().encode(body).length}`,
-    );
+): ProviderUnavailableError | ProviderInternalError => {
+  if (cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError) return cause;
+  if (cause instanceof ContainerTransportError) {
+    return cause.kind === "parse"
+      ? internal("docker-api", cause.message, cause.details, cause)
+      : unavailable("docker-api", cause.message, cause.details, cause);
   }
-  return `${headers.join("\r\n")}\r\n\r\n${body ?? ""}`;
-};
-
-const headerSeparator: Bytes = new TextEncoder().encode("\r\n\r\n");
-
-const indexOfBytes = (haystack: Bytes, needle: Bytes): number => {
-  for (let index = 0; index <= haystack.length - needle.length; index += 1) {
-    let matched = true;
-    for (let offset = 0; offset < needle.length; offset += 1) {
-      if (haystack[index + offset] !== needle[offset]) {
-        matched = false;
-        break;
-      }
-    }
-    if (matched) return index;
-  }
-  return -1;
-};
-
-const concatBytes = (chunks: ReadonlyArray<Bytes>): Bytes => {
-  const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-  const merged = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, offset);
-    offset += chunk.length;
-  }
-  return merged;
-};
-
-interface ParsedDockerHttpHead {
-  readonly status: number;
-  readonly headers: ReadonlyMap<string, string>;
-  readonly bodyStart: Bytes;
-}
-
-const parseDockerHttpHead = (bytes: Bytes, operation: string): ParsedDockerHttpHead => {
-  const marker = indexOfBytes(bytes, headerSeparator);
-  if (marker === -1) {
-    throw internal(operation, "Docker API response did not include HTTP headers.", textDecoder.decode(bytes));
-  }
-  const head = textDecoder.decode(bytes.slice(0, marker));
-  const [statusLine, ...headerLines] = head.split("\r\n");
-  const statusText = statusLine?.split(/\s+/u)[1];
-  const status = statusText === undefined ? Number.NaN : Number.parseInt(statusText, 10);
-  if (!Number.isInteger(status)) {
-    throw internal(operation, "Docker API response did not include an HTTP status code.", head);
-  }
-  const headers = new Map<string, string>();
-  for (const line of headerLines) {
-    const separator = line.indexOf(":");
-    if (separator !== -1) {
-      headers.set(line.slice(0, separator).trim().toLowerCase(), line.slice(separator + 1).trim());
-    }
-  }
-  return { status, headers, bodyStart: bytes.slice(marker + headerSeparator.length) };
-};
-
-async function* decodeChunkedBody(chunks: AsyncIterable<Bytes>): AsyncGenerator<Bytes> {
-  let buffer: Bytes = new Uint8Array(0);
-  for await (const chunk of chunks) {
-    buffer = concatBytes([buffer, chunk]);
-    while (true) {
-      const marker = indexOfBytes(buffer, new TextEncoder().encode("\r\n"));
-      if (marker === -1) break;
-      const size = Number.parseInt(textDecoder.decode(buffer.slice(0, marker)), 16);
-      if (!Number.isInteger(size)) break;
-      const chunkStart = marker + 2;
-      const chunkEnd = chunkStart + size;
-      if (buffer.length < chunkEnd + 2) break;
-      if (size === 0) return;
-      yield buffer.slice(chunkStart, chunkEnd);
-      buffer = buffer.slice(chunkEnd + 2);
-    }
-  }
-}
-
-const chunkSeparator = new TextEncoder().encode("\r\n");
-
-const decodeChunkedBuffer = (
-  buffer: Bytes,
-): { readonly chunks: ReadonlyArray<Bytes>; readonly remainder: Bytes; readonly complete: boolean } => {
-  const chunks: Bytes[] = [];
-  let remaining: Bytes = buffer;
-
-  while (true) {
-    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
-    if (sizeEnd === -1) break;
-
-    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
-    if (!Number.isInteger(size)) break;
-
-    const chunkStart = sizeEnd + chunkSeparator.length;
-    const chunkEnd = chunkStart + size;
-    if (remaining.length < chunkEnd + chunkSeparator.length) break;
-
-    if (size === 0) return { chunks, remainder: new Uint8Array(0) as Bytes, complete: true };
-
-    chunks.push(remaining.slice(chunkStart, chunkEnd));
-    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
-  }
-
-  return { chunks, remainder: remaining, complete: false };
-};
-
-const flushChunkedBufferAtEnd = (buffer: Bytes): ReadonlyArray<Bytes> => {
-  const chunks: Bytes[] = [];
-  let remaining: Bytes = buffer;
-
-  while (true) {
-    const sizeEnd = indexOfBytes(remaining, chunkSeparator);
-    if (sizeEnd === -1) break;
-
-    const size = Number.parseInt(textDecoder.decode(remaining.slice(0, sizeEnd)), 16);
-    if (!Number.isInteger(size)) break;
-
-    const chunkStart = sizeEnd + chunkSeparator.length;
-    const chunkEnd = chunkStart + size;
-    if (remaining.length < chunkEnd) break;
-
-    if (size === 0) return chunks;
-
-    chunks.push(remaining.slice(chunkStart, chunkEnd));
-    if (remaining.length < chunkEnd + chunkSeparator.length) break;
-
-    remaining = remaining.slice(chunkEnd + chunkSeparator.length);
-  }
-
-  return chunks;
-};
-
-async function* streamNamedPipeRequest(pipePath: string, request: DockerHttpRequest): AsyncGenerator<Bytes> {
-  const socket = createConnection({ path: pipePath });
-  const body = requestBody(request);
-  await new Promise<void>((resolve, reject) => {
-    socket.once("connect", resolve);
-    socket.once("error", reject);
+  return unavailable("docker-api", "Failed to call the Docker API.", {
+    method: request.method,
+    path: request.path,
+    cause,
   });
-  const initialChunks: Bytes[] = [];
-  socket.write(dockerHttpRequestText(request, body));
-
-  try {
-    let parsed: ParsedDockerHttpHead | undefined;
-    let chunkedBody = false;
-    let bodyBuffer: Bytes = new Uint8Array(0) as Bytes;
-
-    for await (const chunk of socket) {
-      if (parsed === undefined) {
-        initialChunks.push(chunk);
-        const merged = concatBytes(initialChunks);
-        if (indexOfBytes(merged, headerSeparator) === -1) continue;
-        parsed = parseDockerHttpHead(merged, "docker-api");
-        if (parsed.status < 200 || parsed.status >= 300) {
-          throw unavailable(
-            "docker-api",
-            `Docker API stream request failed with HTTP ${parsed.status}.`,
-            request,
-          );
-        }
-        chunkedBody = parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
-        if (chunkedBody) {
-          bodyBuffer = parsed.bodyStart;
-          const decoded = decodeChunkedBuffer(bodyBuffer);
-          for (const bodyChunk of decoded.chunks) yield bodyChunk;
-          bodyBuffer = decoded.remainder;
-          if (decoded.complete) return;
-        } else {
-          if (parsed.bodyStart.length > 0) yield parsed.bodyStart;
-        }
-        continue;
-      }
-
-      if (chunkedBody) {
-        bodyBuffer = concatBytes([bodyBuffer, chunk]);
-        const decoded = decodeChunkedBuffer(bodyBuffer);
-        for (const bodyChunk of decoded.chunks) yield bodyChunk;
-        bodyBuffer = decoded.remainder;
-        if (decoded.complete) return;
-        continue;
-      }
-
-      yield chunk;
-    }
-
-    if (parsed === undefined) {
-      throw internal("docker-api", "Docker API stream response ended before HTTP headers.", request);
-    }
-    if (chunkedBody && bodyBuffer.length > 0) {
-      for (const bodyChunk of flushChunkedBufferAtEnd(bodyBuffer)) yield bodyChunk;
-    }
-  } finally {
-    socket.destroy();
-  }
-}
-
-const collectBytes = async (chunks: AsyncIterable<Bytes>): Promise<Bytes> => {
-  const collected: Bytes[] = [];
-  for await (const chunk of chunks) {
-    collected.push(chunk);
-  }
-  return concatBytes(collected);
 };
 
-const requestNamedPipe = async (
-  pipePath: string,
-  request: DockerHttpRequest,
-): Promise<DockerHttpResponse> => {
-  const socket = createConnection({ path: pipePath });
-  const body = requestBody(request);
-  await new Promise<void>((resolve, reject) => {
-    socket.once("connect", resolve);
-    socket.once("error", reject);
+const makeNamedPipeTransportClient = (pipePath: string) =>
+  makeSocketHttpClient({
+    apiPrefix: "/v1.43",
+    operation: "docker-api",
+    connect: async () => {
+      const socket = createConnection({ path: pipePath });
+      await connectSocket(socket);
+      return socket as unknown as SocketHttpConnection;
+    },
   });
-  socket.write(dockerHttpRequestText(request, body));
-  try {
-    const responseBytes = await collectBytes(socket);
-    const parsed = parseDockerHttpHead(responseBytes, "docker-api");
-    const bodyBytes =
-      parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked"
-        ? await collectBytes(
-            decodeChunkedBody(
-              (async function* () {
-                yield parsed.bodyStart;
-              })(),
-            ),
-          )
-        : parsed.bodyStart;
-    return { status: parsed.status, body: textDecoder.decode(bodyBytes) };
-  } finally {
-    socket.destroy();
-  }
-};
 
 async function* streamUnixSocketRequest(
   socketPath: string,
@@ -582,15 +365,7 @@ const unixSocketPath = (dockerHost: string) =>
 
 export const isNpipeDockerHost = (dockerHost: string): boolean => dockerHost.startsWith("npipe:");
 
-export const npipeSocketPath = (dockerHost: string): string => {
-  if (!dockerHost.startsWith("npipe:")) return dockerHost;
-  const pipePath = dockerHost.slice("npipe:".length);
-  const dockerDesktopPipe = pipePath.match(/^\/{2,4}\.\/pipe\/(.+)$/u);
-  if (dockerDesktopPipe !== null) {
-    return `\\\\.\\pipe\\${(dockerDesktopPipe[1] ?? "").replaceAll("/", "\\")}`;
-  }
-  return pipePath;
-};
+export const npipeSocketPath = normalizeNamedPipePath;
 
 const platformFromProcess = (): HostPlatform =>
   process.platform === "linux" ? "linux" : process.platform === "darwin" ? "darwin" : "win32";
@@ -608,27 +383,11 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
 };
 
 export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: string): ProviderCapabilities =>
-  Schema.decodeSync(ProviderCapabilities)({
-    artifactBuild: false,
-    artifactPull: false,
-    buildSecrets: false,
-    buildSsh: false,
-    multiServiceApply: true,
-    serviceExec: true,
-    serviceLogs: true,
-    serviceHealth: "lando",
-    hostReachability: "emulated",
-    sharedCrossAppNetwork: true,
-    persistentStorage: true,
+  buildProviderCapabilities({
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
-    copyMounts: false,
-    copyOnWriteAppRoot: false,
-    hostPortPublish: "proxy",
-    routeProvider: false,
     tlsCertificates: "none",
     rootless: false,
-    privilegedServices: false,
     composeSpec: "portable",
     providerExtensions: [],
   });
@@ -744,29 +503,30 @@ const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
   }),
 });
 
-const makeNamedPipeDockerApiClient = (pipePath: string): DockerApiClient => ({
-  stream: (input) =>
-    Stream.fromAsyncIterable(streamNamedPipeRequest(pipePath, input), (cause) =>
-      dockerApiFailure(input, cause),
-    ),
-  request: (input) =>
-    Effect.tryPromise({
-      try: () => requestNamedPipe(pipePath, input),
-      catch: (cause) => dockerApiFailure(input, cause),
+const makeNamedPipeDockerApiClient = (pipePath: string): DockerApiClient => {
+  const client = makeNamedPipeTransportClient(pipePath);
+  return {
+    stream: (input) =>
+      Stream.fromAsyncIterable(client.stream(input), (cause) => dockerApiFailure(input, cause)),
+    request: (input) =>
+      Effect.tryPromise({
+        try: () => client.request(input),
+        catch: (cause) => dockerApiFailure(input, cause),
+      }),
+    info: Effect.gen(function* () {
+      const response = yield* Effect.tryPromise({
+        try: () => client.request({ method: "GET", path: "/info" }),
+        catch: (cause) => dockerApiFailure({ method: "GET", path: "/info" }, cause),
+      });
+      if (response.status < 200 || response.status >= 300) {
+        yield* Effect.fail(
+          unavailable("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
+        );
+      }
+      return yield* parseInfoJson(response);
     }),
-  info: Effect.gen(function* () {
-    const response = yield* makeNamedPipeDockerApiClient(pipePath).request?.({
-      method: "GET",
-      path: "/info",
-    }) ?? Effect.fail(unavailable("capabilities", "Docker API request client is missing."));
-    if (response.status < 200 || response.status >= 300) {
-      yield* Effect.fail(
-        unavailable("capabilities", `Docker info failed with HTTP ${response.status}.`, response),
-      );
-    }
-    return yield* parseInfoJson(response);
-  }),
-});
+  };
+};
 
 const makeHttpDockerApiClient = (baseUrl: string): DockerApiClient => ({
   stream: (input) =>
@@ -820,83 +580,24 @@ export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): strin
   return "/var/run/docker.sock";
 };
 
-const serviceEnv = (service: ServicePlan) =>
-  Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
-
-const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
-
-const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
-  if (cmd === undefined) return undefined;
-  if (typeof cmd === "string") return ["sh", "-lc", cmd];
-  return [...cmd];
-};
-
-const normalizeEntrypoint = (
-  entrypoint: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (entrypoint === undefined) return undefined;
-  if (typeof entrypoint === "string") return [entrypoint];
-  return [...entrypoint];
-};
-
-const hostConfig = (plan: AppPlan, service: ServicePlan) => {
-  const portBindings = Object.fromEntries(
-    service.endpoints
-      .filter((endpoint) => endpoint.port !== undefined)
-      .map((endpoint) => [
-        `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
-        [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
-      ]),
-  );
-
-  const appMounts =
-    service.appMount === undefined
-      ? []
-      : [
-          `${
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source
-          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
-        ];
-  const binds = service.mounts.flatMap((mount, index) => {
-    if (mount.type !== "bind") return [];
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    if (mount.source === undefined) {
+const hostConfig = (plan: AppPlan, service: ServicePlan) =>
+  containerHostConfigFragment(plan, service, {
+    onMissingBindMountSource: (mount) => {
       throw serviceStartFailure(service, "provider-docker bind mounts require a source.", { mount });
-    }
-    const source =
-      mount.realization === "accelerated"
-        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-        : mount.source;
-    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+    },
   });
-  const allBinds = Array.from(new Set([...appMounts, ...binds]));
 
-  return {
-    ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
-    ...(allBinds.length > 0 ? { Binds: allBinds } : {}),
-  };
-};
-
-const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
-  if (service.artifact?.kind !== "ref") {
-    throw serviceStartFailure(service, "provider-docker apply requires pre-built artifact references.", {
-      artifact: service.artifact,
-    });
-  }
-
-  return {
-    Image: service.artifact.ref,
-    Env: serviceEnv(service),
-    Cmd: normalizeCmd(service.command),
-    Entrypoint: normalizeEntrypoint(service.entrypoint),
-    WorkingDir: service.workingDirectory,
-    Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name, ...scratchLabelsForPlan(plan) },
-    HostConfig: hostConfig(plan, service),
-    NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
-  };
-};
+const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
+  containerCreateBodyFragment(plan, service, {
+    labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+    hostConfig: hostConfig(plan, service),
+    networkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
+    onMissingArtifact: (artifact) => {
+      throw serviceStartFailure(service, "provider-docker apply requires pre-built artifact references.", {
+        artifact,
+      });
+    },
+  });
 
 export const renderCompose = (plan: AppPlan): string => {
   const sharedNetwork = landoSharedNetworkName(plan);
@@ -1315,32 +1016,6 @@ const inspectExec = (api: DockerApiClient, service: ServicePlan, execId: string)
     return exitCode;
   });
 
-const makeAttachDecoder = () => {
-  let buffer = new Uint8Array(0);
-  return (chunk: Uint8Array): ReadonlyArray<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> => {
-    const merged = new Uint8Array(buffer.length + chunk.length);
-    merged.set(buffer);
-    merged.set(chunk, buffer.length);
-    buffer = merged;
-    const decoded: Array<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> = [];
-    while (buffer.length >= 8) {
-      const streamType = buffer[0] ?? 0;
-      const frameLength =
-        (((buffer[4] ?? 0) << 24) | ((buffer[5] ?? 0) << 16) | ((buffer[6] ?? 0) << 8) | (buffer[7] ?? 0)) >>>
-        0;
-      if (buffer.length < 8 + frameLength) {
-        break;
-      }
-      const payload = buffer.slice(8, 8 + frameLength);
-      buffer = buffer.slice(8 + frameLength);
-      if (streamType === 1 || streamType === 2) {
-        decoded.push({ kind: streamType === 1 ? "stdout" : "stderr", chunk: payload });
-      }
-    }
-    return decoded;
-  };
-};
-
 const execStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -1353,13 +1028,17 @@ const execStream = (
   }
   return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
     Stream.flatMap((execId) => {
-      const decodeChunk = makeAttachDecoder();
+      const decodeChunk = makeRuntimeAttachDecoder();
       return stream(api, "exec", {
         method: "POST",
         path: `/exec/${encodeURIComponent(execId)}/start`,
         body: { Detach: false, Tty: false },
       }).pipe(
-        Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))),
+        Stream.flatMap((chunk) =>
+          Stream.fromIterable(
+            decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
+          ),
+        ),
         Stream.concat(
           Stream.fromEffect(inspectExec(api, service, execId).pipe(Effect.map((exitCode) => ({ exitCode })))),
         ),
@@ -1404,87 +1083,8 @@ const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", lin
     : { service: service.name, stream: streamName, line: match[2] ?? "", timestamp };
 };
 
-type LogsDecoderMode = "unknown" | "framed" | "raw";
-
-const parseTextLines = (
-  service: ServicePlan,
-  streamName: "stdout" | "stderr",
-  text: string,
-): { readonly chunks: ReadonlyArray<LogChunk>; readonly remainder: string } => {
-  const lines = text.split(/\r?\n/u);
-  const remainder = lines.pop() ?? "";
-  return {
-    chunks: lines.filter((line) => line.length > 0).map((line) => parseLogLine(service, streamName, line)),
-    remainder,
-  };
-};
-
-const makeLogsDecoder = (service: ServicePlan) => {
-  let mode: LogsDecoderMode = "unknown";
-  let frameBuffer = new Uint8Array(0);
-  let rawBuffer = "";
-
-  const decodeRaw = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
-    mode = "raw";
-    const parsed = parseTextLines(service, "stdout", rawBuffer + textDecoder.decode(bytes));
-    rawBuffer = parsed.remainder;
-    return parsed.chunks;
-  };
-
-  const decodeFramed = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
-    const merged = new Uint8Array(frameBuffer.length + bytes.length);
-    merged.set(frameBuffer);
-    merged.set(bytes, frameBuffer.length);
-    frameBuffer = merged;
-    mode = "framed";
-
-    const decoded: LogChunk[] = [];
-    while (frameBuffer.length >= 8) {
-      const streamType = frameBuffer[0] ?? 0;
-      const frameLength =
-        (((frameBuffer[4] ?? 0) << 24) |
-          ((frameBuffer[5] ?? 0) << 16) |
-          ((frameBuffer[6] ?? 0) << 8) |
-          (frameBuffer[7] ?? 0)) >>>
-        0;
-      if (frameBuffer.length < 8 + frameLength) {
-        break;
-      }
-
-      const payload = frameBuffer.slice(8, 8 + frameLength);
-      frameBuffer = frameBuffer.slice(8 + frameLength);
-
-      if (streamType === 1 || streamType === 2) {
-        const streamName = streamType === 1 ? "stdout" : "stderr";
-        for (const line of textDecoder
-          .decode(payload)
-          .split(/\r?\n/u)
-          .filter((entry) => entry.length > 0)) {
-          decoded.push(parseLogLine(service, streamName, line));
-        }
-      }
-    }
-
-    return decoded;
-  };
-
-  return (chunk: Uint8Array): ReadonlyArray<LogChunk> => {
-    if (mode === "raw") {
-      return decodeRaw(chunk);
-    }
-
-    if (chunk.length === 0) {
-      return [];
-    }
-
-    if (mode === "unknown" && chunk[0] !== 1 && chunk[0] !== 2) {
-      frameBuffer = new Uint8Array(0);
-      return decodeRaw(chunk);
-    }
-
-    return decodeFramed(chunk);
-  };
-};
+const makeLogsDecoder = (service: ServicePlan) =>
+  makeRuntimeLogDecoder({ parseLine: (streamName, line) => parseLogLine(service, streamName, line) });
 
 const logs = (
   plan: AppPlan,
