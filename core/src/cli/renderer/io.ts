@@ -1,6 +1,8 @@
 export interface RendererIO {
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
+  /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */
+  readonly isTTY?: boolean;
 }
 
 export const createStdioRendererIO = (
@@ -9,6 +11,7 @@ export const createStdioRendererIO = (
 ): RendererIO => ({
   writeStdout: (chunk) => stdout.write(chunk),
   writeStderr: (chunk) => stderr.write(chunk),
+  isTTY: stdout.isTTY === true,
 });
 
 export interface BufferedRendererIO extends RendererIO {
