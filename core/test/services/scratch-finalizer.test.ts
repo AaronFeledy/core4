@@ -11,6 +11,8 @@ import { CacheServiceLive } from "../../src/cache/service.ts";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
+import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -144,7 +146,14 @@ const makeRecordingLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[]
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(provider),
   });
-  const scratchDeps = Layer.mergeAll(FileSystemLive, LandofileServiceLive, plannerLive, registryLive);
+  const scratchDeps = Layer.mergeAll(
+    FileSystemLive,
+    LandofileServiceLive,
+    plannerLive,
+    registryLive,
+    ScratchRegistryLive,
+    ScratchResourceScannerLive,
+  );
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
 };
 

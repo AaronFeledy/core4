@@ -1,0 +1,87 @@
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { Effect } from "effect";
+
+import {
+  type ScratchRegistryEntry,
+  acquireScratchRegistryLock,
+  makeScratchRegistry,
+  scratchRegistryPaths,
+} from "../../src/scratch-app/registry.ts";
+
+const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
+  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-cache-")));
+  const previous = process.env.LANDO_USER_CACHE_ROOT;
+  try {
+    process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+    return await run(cacheRoot);
+  } finally {
+    if (previous === undefined) {
+      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+      delete process.env.LANDO_USER_CACHE_ROOT;
+    } else {
+      process.env.LANDO_USER_CACHE_ROOT = previous;
+    }
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
+};
+
+const entry = (id: string): ScratchRegistryEntry => ({
+  id,
+  source: { kind: "fork" },
+  isolate: "none",
+  detached: true,
+  rootPath: join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id, "root"),
+  status: "running",
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+});
+
+describe("scratch registry", () => {
+  test("upsert, list, and get roundtrip through registry.bin", async () => {
+    await withTempCache(async () => {
+      const registry = makeScratchRegistry();
+      const first = entry("scratch-one-000001");
+      const second = entry("scratch-two-000002");
+
+      await Effect.runPromise(registry.upsert(second));
+      await Effect.runPromise(registry.upsert(first));
+
+      await expect(Effect.runPromise(registry.list())).resolves.toEqual([first, second]);
+      await expect(Effect.runPromise(registry.get(first.id))).resolves.toEqual(first);
+      await expect(Effect.runPromise(registry.get("scratch-missing-ffffff"))).resolves.toBeUndefined();
+      expect(await readFile(scratchRegistryPaths().registry, "utf8")).toContain(first.id);
+    });
+  });
+
+  test("corrupt registry files are quarantined and rebuilt empty", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      await mkdir(paths.base, { recursive: true });
+      await writeFile(paths.registry, "not-json");
+
+      await expect(Effect.runPromise(makeScratchRegistry().list())).resolves.toEqual([]);
+
+      const files = await readdir(paths.base);
+      expect(files.some((file) => file.startsWith("registry.bin.corrupt-"))).toBe(true);
+    });
+  });
+
+  test("lock release removes only the matching token", async () => {
+    await withTempCache(async () => {
+      const paths = scratchRegistryPaths();
+      const lock = await Effect.runPromise(acquireScratchRegistryLock(paths));
+      await writeFile(
+        paths.lock,
+        JSON.stringify({ pid: process.pid, token: "other", createdAt: Date.now() }),
+      );
+
+      await Effect.runPromise(lock.release);
+
+      const current = JSON.parse(await readFile(paths.lock, "utf8")) as { readonly token: string };
+      expect(current.token).toBe("other");
+    });
+  });
+});
