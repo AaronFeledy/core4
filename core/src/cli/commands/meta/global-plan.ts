@@ -21,6 +21,7 @@ import {
 } from "@lando/sdk/services";
 
 import { parseLandofile } from "../../../landofile/parser.ts";
+import { withProcessCwd } from "../../../lifecycle/plan-runtime.ts";
 import { decodeOrFail } from "../../../schema/decode.ts";
 
 export interface MissingGlobalPlanResult {
@@ -79,28 +80,6 @@ export const decodeGlobalLandofile = (input: {
 }): Effect.Effect<LandofileShape, LandofileParseError | LandofileValidationError> =>
   parseLandofile(input).pipe(Effect.flatMap((parsed) => validateGlobalLandofile(input.file, parsed)));
 
-const withProcessCwd = <A, E, R>(
-  cwd: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | GlobalAppError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(cwd);
-        return original;
-      },
-      catch: (cause) =>
-        new GlobalAppError({
-          message: `Unable to enter the global app directory at ${cwd}.`,
-          operation: "loadPlan",
-          cause,
-        }),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
-
 export const loadGlobalPlan = (): Effect.Effect<
   LoadGlobalPlanResult,
   LoadGlobalPlanError,
@@ -122,7 +101,14 @@ export const loadGlobalPlan = (): Effect.Effect<
     const registry = yield* RuntimeProviderRegistry;
     const capabilities = yield* registry.capabilities;
     const planner = yield* AppPlanner;
-    const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, capabilities));
+    const plan = yield* withProcessCwd(paths.root, () => planner.plan(landofile, capabilities), {
+      onEnterError: (cause) =>
+        new GlobalAppError({
+          message: `Unable to enter the global app directory at ${paths.root}.`,
+          operation: "loadPlan",
+          cause,
+        }),
+    });
 
     return { materialized: true, paths, landofile, plan };
   });

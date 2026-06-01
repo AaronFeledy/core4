@@ -36,6 +36,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { parseLandofile } from "../landofile/parser.ts";
+import { withProcessCwd } from "../lifecycle/plan-runtime.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
@@ -87,24 +88,6 @@ const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
     attempts: [],
     remediation: "Run `lando apps:scratch:start --fork` from a directory containing a Landofile.",
   });
-
-const withProcessCwd = <A, E, R>(
-  dir: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ScratchAppError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(dir);
-        return original;
-      },
-      catch: (cause) =>
-        scratchAppError("plan", `Unable to enter the scratch app directory at ${dir}.`, cause),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
 
 const causeRecord = (cause: unknown): Record<string, unknown> | undefined =>
   typeof cause === "object" && cause !== null ? (cause as Record<string, unknown>) : undefined;
@@ -584,7 +567,14 @@ const makeScratchAppService = (
           ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root)).pipe(
               Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))),
               Effect.zipRight(
-                withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities)),
+                withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities), {
+                  onEnterError: (cause) =>
+                    scratchAppError(
+                      "plan",
+                      `Unable to enter the scratch app directory at ${scratchPaths.root}.`,
+                      cause,
+                    ),
+                }),
               ),
             )
           : planner.plan(forkLandofile, capabilities);
@@ -688,8 +678,17 @@ const makeScratchAppService = (
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      const recipePlan = yield* withProcessCwd(scratchPaths.root, () =>
-        planner.plan(recipeLandofile, capabilities),
+      const recipePlan = yield* withProcessCwd(
+        scratchPaths.root,
+        () => planner.plan(recipeLandofile, capabilities),
+        {
+          onEnterError: (cause) =>
+            scratchAppError(
+              "plan",
+              `Unable to enter the scratch app directory at ${scratchPaths.root}.`,
+              cause,
+            ),
+        },
       ).pipe(
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
