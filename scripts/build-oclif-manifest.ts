@@ -2,10 +2,11 @@
 /**
  * Regenerate `core/oclif.manifest.json` from the OCLIF command tree.
  */
-import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { type Command, Config } from "@oclif/core";
+
+import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const CORE_ROOT = resolve(REPO_ROOT, "core");
@@ -28,7 +29,7 @@ const main = async (): Promise<void> => {
 
   const manifest = { commands, version: config.version };
 
-  await writeFile(OUTPUT, JSON.stringify(manifest, null, 2));
+  await writeFormattedOutput(OUTPUT, `${JSON.stringify(manifest, null, 2)}\n`);
   console.log(`[build-oclif-manifest] wrote ${OUTPUT} (${Object.keys(manifest.commands).length} commands)`);
 };
 

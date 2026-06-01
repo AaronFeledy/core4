@@ -143,7 +143,6 @@ const loadGitRecipe = async (options: InitAppOptions) => {
   });
   const resolved = await resolveGitRecipeSource({
     url: sourceOptions.url ?? "",
-    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
   });
@@ -173,7 +172,6 @@ const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefin
     : undefined;
   const resolved = await resolveTarballRecipeSource({
     url: sourceOptions.url ?? "",
-    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(sourceOptions.checksum === undefined ? {} : { checksum: sourceOptions.checksum }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
@@ -192,7 +190,6 @@ const loadNpmRecipe = async (options: InitAppOptions) => {
   });
   const resolved = await resolveNpmRecipeSource({
     package: sourceOptions.package ?? "",
-    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.npmRegistryClient === undefined ? {} : { registryClient: options.npmRegistryClient }),

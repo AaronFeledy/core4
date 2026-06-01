@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "solr:9";
@@ -50,7 +49,7 @@ export const solr9ServiceType: ServiceTypeShape = {
     const port = service.port ?? DEFAULT_PORT;
     const cores = service.cores ?? [];
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: "solr",
       provider,

@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
@@ -51,7 +50,7 @@ const makeNodeServiceType = (version: SupportedNodeVersion): ServiceTypeShape =>
       host,
       userEnv: service.environment ?? {},
     });
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: serviceType,
       provider,

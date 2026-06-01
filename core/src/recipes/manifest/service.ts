@@ -9,7 +9,7 @@
  *   - `choices:` required and non-empty for `select`/`multiselect`
  *     prompts
  */
-import { type Context, Effect, Either, Layer, ParseResult, Schema } from "effect";
+import { type Context, Effect, Layer, ParseResult } from "effect";
 
 import {
   NotImplementedError,
@@ -19,6 +19,7 @@ import {
 import { RecipeManifest } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
+import { decodeOrFail } from "../../schema/decode.ts";
 import { parseRecipeYaml } from "./parser.ts";
 
 export { RecipeManifestService } from "@lando/sdk/services";
@@ -136,20 +137,15 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
 const validateManifest = (
   source: string,
   parsed: unknown,
-): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError> => {
-  const decoded = Schema.decodeUnknownEither(RecipeManifest)(parsed, {
-    onExcessProperty: "error",
-  });
-  if (Either.isRight(decoded)) return Effect.succeed(decoded.right);
-  const issues = validationIssues(decoded.left);
-  return Effect.fail(
-    new RecipeManifestValidationError({
+): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError> =>
+  decodeOrFail(RecipeManifest, (cause) => {
+    const issues = validationIssues(cause);
+    return new RecipeManifestValidationError({
       message: `recipe.yml is invalid: ${issues.join(", ")}.`,
       source,
       issues,
-    }),
-  );
-};
+    });
+  })(parsed, { onExcessProperty: "error" });
 
 /**
  * Cross-field invariants enforced after strict schema decode succeeds.

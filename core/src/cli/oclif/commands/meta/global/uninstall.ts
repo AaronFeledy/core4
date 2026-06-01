@@ -8,7 +8,7 @@ import {
 } from "../../../../commands/meta/global-uninstall.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-const extractOptions = (input: unknown): GlobalUninstallOptions => {
+export const globalUninstallOptionsFromInput = (input: unknown): GlobalUninstallOptions => {
   if (typeof input !== "object" || input === null) return {};
   const args = (input as { args?: Record<string, unknown> }).args ?? {};
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
@@ -24,7 +24,7 @@ export const metaGlobalUninstallSpec: LandoCommandSpec<GlobalUninstallResult> = 
   namespace: "meta",
   topLevelAlias: "global:uninstall",
   bootstrap: "global",
-  run: (input) => globalUninstall(extractOptions(input)),
+  run: (input) => globalUninstall(globalUninstallOptionsFromInput(input)),
   render: (result) => renderGlobalUninstallResult(result as GlobalUninstallResult),
 };
 

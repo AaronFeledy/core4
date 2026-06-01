@@ -9,5 +9,15 @@
   },
   "include": ["./src/**/*.ts"],
   "exclude": ["./dist", "./node_modules"],
-  "references": [{ "path": "../../sdk" }, { "path": "../provider-lando" }]
+  "references": [
+    {
+      "path": "../../sdk"
+    },
+    {
+      "path": "../../container-runtime"
+    },
+    {
+      "path": "../provider-lando"
+    }
+  ]
 }

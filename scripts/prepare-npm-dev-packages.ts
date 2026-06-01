@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 
+import { writeFormattedOutput } from "./_codegen-output.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
 type JsonObject = Record<string, unknown>;
@@ -44,7 +46,10 @@ export const preparePackageJson = (packageJson: JsonObject, version: string): Js
 const writePreparedPackage = async (relativePath: string, version: string): Promise<void> => {
   const packagePath = resolve(REPO_ROOT, relativePath, "package.json");
   const packageJson = (await Bun.file(packagePath).json()) as JsonObject;
-  await Bun.write(packagePath, `${JSON.stringify(preparePackageJson(packageJson, version), null, 2)}\n`);
+  await writeFormattedOutput(
+    packagePath,
+    `${JSON.stringify(preparePackageJson(packageJson, version), null, 2)}\n`,
+  );
   console.log(`[prepare-npm-dev-packages] ${relativePath} -> ${version}`);
 };
 

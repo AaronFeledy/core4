@@ -1,8 +1,7 @@
-import { Schema } from "effect";
-
-import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "mongo:7";
@@ -33,7 +32,7 @@ export const mongodbServiceType: ServiceTypeShape = {
 
     const port = service.port ?? DEFAULT_PORT;
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: "mongodb",
       provider,

@@ -4,7 +4,7 @@ import type { ScratchGcReport } from "@lando/sdk/services";
 import { renderScratchGcReport, scratchGc } from "../../../../commands/scratch.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-const pruneFromInput = (input: unknown): boolean => {
+export const pruneFromInput = (input: unknown): boolean => {
   if (typeof input !== "object" || input === null) return false;
   const flags = (input as { readonly flags?: Record<string, unknown> }).flags ?? {};
   return flags.prune === true;

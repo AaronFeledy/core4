@@ -30,6 +30,7 @@
     "@lando/sdk": "workspace:*"
   },
   "dependencies": {
+    "@lando/container-runtime": "workspace:*",
     "effect": "^3.21.2"
   },
   "scripts": {
