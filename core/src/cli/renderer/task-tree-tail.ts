@@ -25,6 +25,8 @@
 
 import type { LandoEvent } from "@lando/sdk/services";
 
+import { formatDurationSuffix } from "./format.ts";
+
 /** Fixed ring-buffer depth for the task-detail tail panel. */
 export const TASK_DETAIL_TAIL_CAPACITY = 4 as const;
 
@@ -98,16 +100,11 @@ interface TreeState {
   summary: string | undefined;
   succeeded: number;
   failed: number;
+  durationMs: number | undefined;
 }
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
-
-const formatDurationSuffix = (durationMs: number | undefined): string => {
-  if (durationMs === undefined) return "";
-  if (durationMs < 1000) return ` (${durationMs}ms)`;
-  return ` (${(durationMs / 1000).toFixed(1)}s)`;
-};
 
 export interface LandoTreePainterOptions {
   /** Ring-buffer depth (defaults to {@link TASK_DETAIL_TAIL_CAPACITY}). */
@@ -196,6 +193,7 @@ export class LandoTreePainter {
           summary: undefined,
           succeeded: 0,
           failed: 0,
+          durationMs: undefined,
         };
         return;
       }
@@ -257,6 +255,7 @@ export class LandoTreePainter {
             summary: asString(record.summary),
             succeeded: asNumber(record.succeeded) ?? 0,
             failed: asNumber(record.failed) ?? 0,
+            durationMs: asNumber(record.durationMs),
           };
           return;
         }
@@ -265,6 +264,7 @@ export class LandoTreePainter {
         this.#tree.succeeded = asNumber(record.succeeded) ?? 0;
         this.#tree.failed = asNumber(record.failed) ?? 0;
         this.#tree.label = asString(record.summary) ?? this.#tree.label;
+        this.#tree.durationMs = asNumber(record.durationMs);
         return;
       }
       default:
@@ -285,7 +285,7 @@ export class LandoTreePainter {
     if (tree === undefined) return undefined;
     if (tree.done) {
       const label = tree.summary ?? tree.label;
-      return `▶ ${label} (${tree.succeeded} ✓ · ${tree.failed} ✗)`;
+      return `▶ ${label} (${tree.succeeded} ✓ · ${tree.failed} ✗)${formatDurationSuffix(tree.durationMs)}`;
     }
     return `▼ ${tree.label} (${this.#runningCount()}/${tree.childCount} running)`;
   }

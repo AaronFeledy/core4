@@ -72,13 +72,20 @@ const taskFail = (taskId: string, summary?: string, exitCode?: number, remediati
     timestamp: ts,
   });
 
-const treeComplete = (parentId: string, summary: string, succeeded: number, failed: number): LandoEvent =>
+const treeComplete = (
+  parentId: string,
+  summary: string,
+  succeeded: number,
+  failed: number,
+  durationMs?: number,
+): LandoEvent =>
   Schema.decodeUnknownSync(TaskTreeCompleteEvent)({
     _tag: "task.tree.complete",
     parentId,
     summary,
     succeeded,
     failed,
+    ...(durationMs === undefined ? {} : { durationMs }),
     timestamp: ts,
   });
 
@@ -266,10 +273,12 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
     painter.consume(detail("a", "x"));
     painter.consume(taskComplete("a", "step a", 10));
     painter.consume(taskComplete("b", "step b", 12));
-    const summary = painter.consume(treeComplete("build", "Built app dependencies", 2, 0));
+    const summary = painter.consume(treeComplete("build", "Built app dependencies", 2, 0, 12400));
     const joined = stripCsi(summary);
     expect(joined).toContain("2 ✓");
     expect(joined).toContain("0 ✗");
+    expect(joined).toContain("(12.4s)");
+    expect(painter.snapshot().frameLines[0]).toContain("(12.4s)");
     expect(painter.snapshot().activeTaskIds.length).toBe(0);
   });
 });
