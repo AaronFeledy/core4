@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 
 import { ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import type { ScratchAppError, ScratchAppNotFoundError } from "@lando/sdk/errors";
+import type {
+  ScratchAppError,
+  ScratchAppNotFoundError,
+  ScratchIsolationConflictError,
+} from "@lando/sdk/errors";
 import type { IsolateMode } from "@lando/sdk/schema";
 import type { ScratchGcOptions, ScratchGcReport, ScratchHandle, ScratchSummary } from "@lando/sdk/services";
 import { ScratchAppService } from "@lando/sdk/services";
@@ -17,11 +21,23 @@ export interface ScratchStartOptions {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly isolate?: IsolateMode;
+  readonly mountCwd?: { readonly target?: string };
+  readonly shareGlobalStorage?: boolean;
   readonly signal?: AbortSignal;
 }
 
 export const asIsolateMode = (value: unknown): IsolateMode | undefined =>
   value === "none" || value === "full" ? value : undefined;
+
+const MOUNT_CWD_FLAG = "--mount-cwd";
+
+export const normalizeScratchStartArgv = (argv: ReadonlyArray<string>): ReadonlyArray<string> =>
+  argv.map((arg) => (arg === MOUNT_CWD_FLAG ? `${MOUNT_CWD_FLAG}=` : arg));
+
+const mountCwdFromValue = (value: unknown): { readonly target?: string } | undefined => {
+  if (typeof value !== "string") return undefined;
+  return value.length > 0 ? { target: value } : {};
+};
 
 export interface ScratchStartResult {
   readonly handle: ScratchHandle;
@@ -36,7 +52,7 @@ export interface ScratchLogsResult {
 
 export type ScratchListFormat = "json" | "table";
 
-type ScratchStartError = ScratchSourceUnresolvedError | ScratchAppError;
+type ScratchStartError = ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError;
 type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError | ScratchAppError;
 
 const flagsFromInput = (input: unknown): Record<string, unknown> => {
@@ -86,6 +102,7 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     ...stringArrayFlag(flags, "option"),
   ]);
   const isolate = asIsolateMode(flags.isolate);
+  const mountCwd = mountCwdFromValue(flags["mount-cwd"]);
   const signal = signalFromInput(input);
   return {
     fork: flags.fork === true,
@@ -96,6 +113,8 @@ export const scratchStartOptionsFromInput = (input: unknown): ScratchStartOption
     yes: flags.yes === true,
     nonInteractive: flags["no-interactive"] === true || flags["non-interactive"] === true,
     ...(isolate === undefined ? {} : { isolate }),
+    ...(mountCwd === undefined ? {} : { mountCwd }),
+    ...(flags["share-global-storage"] === true ? { shareGlobalStorage: true } : {}),
     ...(signal === undefined ? {} : { signal }),
   };
 };
@@ -153,6 +172,8 @@ export const scratchStart = (
       ...(options.yes === undefined ? {} : { yes: options.yes }),
       ...(options.nonInteractive === undefined ? {} : { nonInteractive: options.nonInteractive }),
       ...(options.isolate === undefined ? {} : { isolate: options.isolate }),
+      ...(options.mountCwd === undefined ? {} : { mountCwd: options.mountCwd }),
+      ...(options.shareGlobalStorage === undefined ? {} : { shareGlobalStorage: options.shareGlobalStorage }),
     };
 
     if (options.detach === true) {

@@ -87,6 +87,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ScratchSourceUnresolvedError).toBeDefined();
     expect(errors.ScratchAppNotFoundError).toBeDefined();
     expect(errors.ScratchAppIdInvalidError).toBeDefined();
+    expect(errors.ScratchIsolationConflictError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {

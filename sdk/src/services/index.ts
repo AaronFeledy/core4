@@ -72,6 +72,7 @@ import type {
   ScannerError,
   ScratchAppError,
   ScratchAppNotFoundError,
+  ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
   ServiceExecError,
   ServiceNotFoundError,
@@ -275,6 +276,16 @@ export interface ScratchAppPaths {
 
 export type ScratchSource = { readonly kind: "fork" } | { readonly kind: "recipe"; readonly ref: string };
 
+/**
+ * Opt-in to mounting the host current working directory ($PWD) into the
+ * scratch app's primary service. Presence of this object enables the mount;
+ * `target` overrides the container mount point (defaults to the primary
+ * service's appMount destination, or `/app`).
+ */
+export interface ScratchMountCwd {
+  readonly target?: string;
+}
+
 export interface ScratchAcquireInput {
   readonly source: ScratchSource;
   readonly detached: boolean;
@@ -283,6 +294,13 @@ export interface ScratchAcquireInput {
   readonly yes?: boolean;
   readonly nonInteractive?: boolean;
   readonly isolate?: IsolateMode;
+  /** Mount $PWD into the scratch app's primary service (`--mount-cwd`). */
+  readonly mountCwd?: ScratchMountCwd;
+  /**
+   * Join the shared cross-app network and expose the global app's storage
+   * scope (`--share-global-storage`). Explicit opt-in; never inferred.
+   */
+  readonly shareGlobalStorage?: boolean;
 }
 
 export interface ScratchHandle {
@@ -323,7 +341,11 @@ export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppServic
     readonly paths: (id: string) => Effect.Effect<ScratchAppPaths, ScratchAppError>;
     readonly acquire: (
       input: ScratchAcquireInput,
-    ) => Effect.Effect<ScratchHandle, ScratchSourceUnresolvedError | ScratchAppError, Scope.Scope>;
+    ) => Effect.Effect<
+      ScratchHandle,
+      ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError,
+      Scope.Scope
+    >;
     readonly resolveById: (
       id: string,
     ) => Effect.Effect<ScratchHandle, ScratchAppNotFoundError | ScratchAppError>;

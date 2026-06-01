@@ -872,6 +872,8 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
   let yes = false;
   let nonInteractive = false;
   let isolate: ScratchStartOptions["isolate"];
+  let mountCwd: ScratchStartOptions["mountCwd"];
+  let shareGlobalStorage = false;
   const answerValues: string[] = [];
   const optionValues: string[] = [];
 
@@ -892,6 +894,19 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
     }
     if (arg === "--no-interactive" || arg === "--non-interactive") {
       nonInteractive = true;
+      continue;
+    }
+    if (arg === "--share-global-storage") {
+      shareGlobalStorage = true;
+      continue;
+    }
+    if (arg === "--mount-cwd") {
+      mountCwd = {};
+      continue;
+    }
+    if (arg.startsWith("--mount-cwd=")) {
+      const value = arg.slice("--mount-cwd=".length);
+      mountCwd = value.length > 0 ? { target: value } : {};
       continue;
     }
     const fromMatch = parseStringFlag(argv, i, "from");
@@ -934,6 +949,8 @@ export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStart
     ...(from === undefined ? {} : { from }),
     ...(name === undefined ? {} : { name }),
     ...(isolate === undefined ? {} : { isolate }),
+    ...(mountCwd === undefined ? {} : { mountCwd }),
+    ...(shareGlobalStorage ? { shareGlobalStorage: true } : {}),
   };
 };
 
