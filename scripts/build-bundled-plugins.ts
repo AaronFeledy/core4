@@ -16,6 +16,7 @@
 import { resolve } from "node:path";
 
 import { buildConfig } from "../core/build.config.ts";
+import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "core/src/plugins/bundled.ts");
@@ -146,7 +147,7 @@ const main = async (): Promise<void> => {
   const body = renderModuleBody(buildConfig.bundledPlugins);
   const out = `${HEADER}\n${body}`;
 
-  await Bun.write(OUTPUT, out);
+  await writeFormattedOutput(OUTPUT, out);
   console.log(`[build-bundled-plugins] wrote ${OUTPUT} (${buildConfig.bundledPlugins.length} entries)`);
 };
 

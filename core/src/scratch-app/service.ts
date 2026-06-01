@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Cause, type Context, Effect, Either, Layer, Schema } from "effect";
+import { Cause, type Context, Effect, Layer, Schema } from "effect";
 
 import {
   ScratchAppError,
@@ -41,6 +41,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { parseLandofile } from "../landofile/parser.ts";
+import { decodeOrFail } from "../schema/decode.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -158,18 +159,11 @@ const decodeScratchLandofile = (
     Effect.mapError((cause) =>
       scratchAppError("materialize", `Unable to parse the rendered scratch Landofile at ${file}.`, cause),
     ),
-    Effect.flatMap((parsed) => {
-      const decoded = Schema.decodeUnknownEither(LandofileShape)(parsed, { onExcessProperty: "error" });
-      return Either.isRight(decoded)
-        ? Effect.succeed(decoded.right)
-        : Effect.fail(
-            scratchAppError(
-              "materialize",
-              `The rendered scratch Landofile at ${file} is invalid.`,
-              decoded.left,
-            ),
-          );
-    }),
+    Effect.flatMap((parsed) =>
+      decodeOrFail(LandofileShape, (cause) =>
+        scratchAppError("materialize", `The rendered scratch Landofile at ${file} is invalid.`, cause),
+      )(parsed, { onExcessProperty: "error" }),
+    ),
   );
 
 const scratchAppNotFoundError = (id: string): ScratchAppNotFoundError =>

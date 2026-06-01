@@ -1,10 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { Schema } from "effect";
-
-import { PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const DEFAULT_IMAGE = "postgres:16";
@@ -33,7 +32,7 @@ export const postgresServiceType: ServiceTypeShape = {
       userEnv: service.environment ?? {},
     });
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: "postgres",
       provider,

@@ -1,7 +1,7 @@
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 
-import { Effect, Either, ParseResult, Schema } from "effect";
+import { Effect, ParseResult } from "effect";
 
 import {
   BunShellScriptEmptyError,
@@ -10,6 +10,7 @@ import {
 } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter } from "@lando/sdk/schema";
 
+import { decodeOrFail } from "../schema/decode.ts";
 export const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
 export const SCRIPTS_DIRNAME = join(".lando", "scripts");
 
@@ -138,20 +139,17 @@ const validationIssues = (cause: unknown): ReadonlyArray<string> => {
 const decodeFrontMatter = (
   scriptPath: string,
   parsed: Record<string, unknown>,
-): Effect.Effect<BunShellScriptFrontMatter, BunShellScriptFrontMatterError> => {
-  const result = Schema.decodeUnknownEither(BunShellScriptFrontMatter)(parsed, {
-    onExcessProperty: "error",
-  });
-  if (Either.isRight(result)) return Effect.succeed(result.right);
-  return Effect.fail(
-    new BunShellScriptFrontMatterError({
-      message: `.bun.sh front-matter at ${scriptPath} is malformed.`,
-      path: scriptPath,
-      issues: validationIssues(result.left),
-      remediation: FRONT_MATTER_REMEDIATION,
-    }),
-  );
-};
+): Effect.Effect<BunShellScriptFrontMatter, BunShellScriptFrontMatterError> =>
+  decodeOrFail(
+    BunShellScriptFrontMatter,
+    (cause) =>
+      new BunShellScriptFrontMatterError({
+        message: `.bun.sh front-matter at ${scriptPath} is malformed.`,
+        path: scriptPath,
+        issues: validationIssues(cause),
+        remediation: FRONT_MATTER_REMEDIATION,
+      }),
+  )(parsed, { onExcessProperty: "error" });
 
 const detectBetaKey = (parsed: Record<string, unknown>): { key: string; specSection: string } | undefined => {
   for (const entry of BETA_FRONT_MATTER_KEYS) {

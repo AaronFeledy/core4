@@ -1,11 +1,10 @@
 import { homedir } from "node:os";
 import { isAbsolute, resolve as resolvePath } from "node:path";
 
-import { Schema } from "effect";
-
-import { AbsolutePath, PortablePath, ProviderId, ServiceName, ServicePlan } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
 
+import { decodeServicePlan } from "./_schema-helpers.ts";
 import { appNameFor, buildLandoEnv } from "./env.ts";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -166,7 +165,7 @@ export const composeServiceType: ServiceTypeShape = {
       userEnv: service.environment ?? {},
     });
 
-    return Schema.decodeUnknownSync(ServicePlan)({
+    return decodeServicePlan({
       name: ServiceName.make(name),
       type: "compose",
       provider,
