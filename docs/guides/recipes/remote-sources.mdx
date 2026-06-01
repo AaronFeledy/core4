@@ -1,0 +1,35 @@
+---
+id: remote-sources
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, recipes, git]
+---
+
+<Guide>
+  <Scenario id="git-source-command" render={false} reason="The live git clone path can target private or network repositories, so this executable guide documents the CLI surface without cloning during CI">
+    <Step name="command">
+      <Variable name="command" value="lando init --source=git --url=&lt;git-url&gt;" display="Clone a git repository as the recipe source, then read recipe.yml from the clone root" />
+      <Variable name="subpath" value="--path=packages/my-recipe" display="Optional monorepo subdirectory; recipe.yml must live at the top level of that subpath" />
+      <Variable name="scope" value="manifest and prompts" display="US-129 reaches recipe manifest parsing and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="git-source-cache" render={false} reason="Cache behavior is covered by core/test/recipes/git-source.test.ts with a fake cloner and deterministic commit SHA">
+    <Step name="cache">
+      <Variable name="cacheRoot" value="&lt;userDataRoot&gt;/recipe-cache/git/&lt;commitSha&gt;/" display="Git recipes are cached under the Lando user data root, keyed by the resolved HEAD commit SHA" />
+      <Variable name="cloneMode" value="git clone --depth 1" display="The default cloner performs a shallow clone, then runs git rev-parse HEAD to pin the cache directory" />
+      <Variable name="reuse" value="commit-addressed" display="If the commit directory already exists, Lando discards the staging clone and reuses the published cache entry" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="git-source-failures" render={false} reason="Failure modes are unit-tested without network IO so CI never depends on external git hosts">
+    <Step name="failures">
+      <Variable name="missingUrl" value="RecipeSourceError kind=missing-url" display="--source=git requires --url=&lt;git-url&gt;" />
+      <Variable name="unsupportedSource" value="RecipeSourceError kind=unsupported-source" display="Other --source values are rejected until their stories land" />
+      <Variable name="subpathInvalid" value="RecipeSourceError kind=subpath-invalid" display="Absolute paths and .. escapes are rejected before cloning can publish a source" />
+      <Variable name="subpathMissing" value="RecipeSourceError kind=subpath-missing" display="A valid --path that does not contain recipe.yml fails with git-specific remediation" />
+      <Variable name="auth" value="RecipeSourceError kind=auth" display="Interactive git credential prompts are disabled with GIT_TERMINAL_PROMPT=0 so CI fails fast" />
+    </Step>
+  </Scenario>
+</Guide>

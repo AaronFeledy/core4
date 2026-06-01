@@ -10,6 +10,7 @@ import { RecipeManifestService } from "@lando/sdk/services";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { getRecipeCatalog } from "../../recipes/catalog.ts";
+import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source.ts";
 import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
 import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
 import {
@@ -18,7 +19,7 @@ import {
   collectPrompts,
   createStdioPromptIO,
 } from "../../recipes/prompts/index.ts";
-import { resolveRecipeRef } from "../../recipes/source.ts";
+import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source.ts";
 import {
   type ProgressEmitter,
   publishTaskCompleteAsync,
@@ -28,6 +29,7 @@ import {
   publishTreeStartAsync,
 } from "../progress.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
+import { parseInitSourceFlags } from "./init-source.ts";
 
 const APP_NAME_PROMPT = "name";
 const RECIPE_SELECT_PROMPT = "__recipe__";
@@ -71,6 +73,11 @@ export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
+  readonly source?: "git";
+  readonly url?: string;
+  readonly path?: string;
+  readonly userDataRoot?: string;
+  readonly gitRecipeCloner?: GitRecipeCloner;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
   readonly yes?: boolean;
@@ -92,22 +99,40 @@ export interface InitAppResult {
   readonly postInit: PostInitOutcome;
 }
 
-const loadRecipe = async (recipeRef: string, cwd: string) => {
+const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
   const exit = await Effect.runPromiseExit(
-    resolveRecipeRef(recipeRef, { cwd }).pipe(
-      Effect.flatMap((resolved) =>
-        Effect.map(
-          Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
-          (manifest) => ({ resolved, manifest }),
-        ),
-      ),
-      Effect.provide(RecipeManifestServiceLive),
-    ),
+    Effect.map(
+      Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),
+      (manifest) => ({ resolved, manifest }),
+    ).pipe(Effect.provide(RecipeManifestServiceLive)),
   );
   if (Exit.isSuccess(exit)) return exit.value;
   const failure = Cause.failureOption(exit.cause);
   if (failure._tag === "Some") throw failure.value;
   throw new Error(Cause.pretty(exit.cause));
+};
+
+const loadRecipe = async (recipeRef: string, cwd: string) => {
+  const exit = await Effect.runPromiseExit(resolveRecipeRef(recipeRef, { cwd }));
+  if (Exit.isSuccess(exit)) return parseResolvedRecipe(exit.value);
+  const failure = Cause.failureOption(exit.cause);
+  if (failure._tag === "Some") throw failure.value;
+  throw new Error(Cause.pretty(exit.cause));
+};
+
+const loadGitRecipe = async (options: InitAppOptions) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    url: options.url,
+    path: options.path,
+  });
+  const resolved = await resolveGitRecipeSource({
+    url: sourceOptions.url ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
+  });
+  return parseResolvedRecipe(resolved);
 };
 
 const composeAnswers = (options: InitAppOptions): Record<string, string> => {
@@ -127,8 +152,17 @@ const resolveIO = (options: InitAppOptions): PromptIO | undefined => {
 export const initApp = async (options: InitAppOptions): Promise<InitAppResult> => {
   const { cwd } = options;
   const io = resolveIO(options);
-  const recipeRef = await resolveRecipeSelection(options, io, cwd);
-  const { resolved, manifest } = await loadRecipe(recipeRef, cwd);
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    url: options.url,
+    path: options.path,
+  });
+  const recipeRef =
+    sourceOptions.source === "git" && sourceOptions.url !== undefined
+      ? sourceOptions.url
+      : await resolveRecipeSelection(options, io, cwd);
+  const { resolved, manifest } =
+    sourceOptions.source === "git" ? await loadGitRecipe(options) : await loadRecipe(recipeRef, cwd);
 
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
   if (renderer === undefined) {

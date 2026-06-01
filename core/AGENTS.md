@@ -11,6 +11,11 @@ Inherit the root `AGENTS.md` instructions for all core package work.
 
 - `core/test/cli/fixtures/*.json` is NOT in biome's ignore list, so committed JSON fixtures get reformatted to pretty-printed JSON by `bun run lint`. A renderer that emits compact JSON (e.g. `JSON.stringify(value)`) therefore cannot be string-compared against its committed fixture — assert `JSON.parse(rendererOutput)` deep-equals `Bun.file(fixture).json()` instead, so biome formatting of the fixture never diverges from the renderer's whitespace.
 
+## Git recipe source
+
+- `lando init --source=git` is acquisition-only: it shallow-clones through `core/src/recipes/git-source.ts`, publishes by commit SHA under `<userDataRoot>/recipe-cache/git/`, and then uses the existing recipe render path. Non-bundled directory recipe rendering is still the shared Alpha boundary, so do not assume git recipes scaffold end-to-end yet.
+- Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; both OCLIF init and the compiled dispatcher must accept/reject `--source`/`--url`/`--path` identically, and the default git cloner must keep interactive prompts disabled.
+
 ## Renderer task-tree tail (interactive Lando renderer)
 
 - The interactive (TTY) Lando renderer's per-task detail tail lives in `core/src/cli/renderer/task-tree-tail.ts`: `TaskDetailRing` (fixed-capacity, oldest-out) plus `LandoTreePainter`, a pure state machine driven by `task.*` events that returns the CSI byte chunk to write. It uses a **whole-frame redraw** model — it tracks how many rows the previous frame occupied, rewinds the cursor (`ESC[<n>A`), erases downward (`ESC[0J`), and repaints the entire active tree — rather than per-panel cursor accounting, so concurrent stacked sibling panels and collapsing frames work without bespoke choreography. Non-task-tree events route through `painter.passthrough(line)` so plain lines scroll above the live frame without corrupting the cursor.
