@@ -1233,7 +1233,7 @@
         "Lint passes"
       ],
       "priority": 195,
-      "passes": false,
+      "passes": true,
       "notes": "Added during paradigm review (PRD-B-08 §Open Questions item #21 resolution). Ships standalone for IDE/LSP integrations and is wired into doctor --app via shared lint implementation."
     },
     {

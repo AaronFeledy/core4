@@ -21,6 +21,8 @@ describe("@lando/sdk package exports", () => {
     expect(schema.ProviderCapabilities).toBeDefined();
     expect(schema.LandofileShape).toBeDefined();
     expect(schema.GlobalConfig).toBeDefined();
+    expect(schema.ConfigLintViolation).toBeDefined();
+    expect(schema.ConfigLintResult).toBeDefined();
     expect(schema.AppId).toBeDefined();
     expect(schema.ServiceName).toBeDefined();
     expect(schema.ProviderId).toBeDefined();
@@ -45,6 +47,8 @@ describe("@lando/sdk package exports", () => {
       "ProviderCapabilities",
       "LandofileShape",
       "GlobalConfig",
+      "ConfigLintViolation",
+      "ConfigLintResult",
       "AppId",
       "ServiceName",
       "ProviderId",

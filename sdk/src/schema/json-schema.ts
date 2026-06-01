@@ -20,6 +20,7 @@ import {
 import { DeprecationNotice, GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { Transcript } from "../docs/transcript.ts";
 import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
+import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import { GlobalConfig } from "./config.ts";
 import {
   FileSyncEngineCapabilities,
@@ -61,6 +62,8 @@ const JSON_SCHEMA_REGISTRY = {
   ProviderCapabilities,
   LandofileShape,
   GlobalConfig,
+  ConfigLintViolation,
+  ConfigLintResult,
   AppId,
   ServiceName,
   ProviderId,
@@ -129,6 +132,10 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(LandofileShape);
     case "GlobalConfig":
       return JSONSchema.make(GlobalConfig);
+    case "ConfigLintViolation":
+      return JSONSchema.make(ConfigLintViolation);
+    case "ConfigLintResult":
+      return JSONSchema.make(ConfigLintResult);
     case "AppId":
       return JSONSchema.make(AppId);
     case "ServiceName":

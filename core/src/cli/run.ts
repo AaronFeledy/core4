@@ -23,6 +23,11 @@ import type {
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
+import {
+  type AppConfigLintFormat,
+  appConfigLint,
+  renderConfigLintResult,
+} from "./commands/app-config-lint.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
@@ -504,6 +509,40 @@ const runAppConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
+const parseAppConfigLintArgv = (argv: ReadonlyArray<string>): { readonly format: AppConfigLintFormat } => {
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    const formatMatch = parseStringFlag(argv, i, "format");
+    if (formatMatch !== undefined) {
+      const value = formatMatch.value;
+      if (value === "json" || value === "text") return { format: value };
+      i += formatMatch.consumed;
+      continue;
+    }
+    i += 1;
+  }
+  return { format: "text" };
+};
+
+const runAppConfigLint = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const { format } = parseAppConfigLintArgv(argv);
+  const exit = await Effect.runPromiseExit(
+    appConfigLint().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderConfigLintResult(exit.value, format));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
 const runAppCacheRefresh = async (): Promise<void> => {
   const exit = await Effect.runPromiseExit(
     refreshAppCache().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
@@ -520,10 +559,12 @@ const runAppCacheRefresh = async (): Promise<void> => {
 const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const flagProvider = parseProviderFlag(argv);
   const fix = parseFixFlag(argv);
+  const app = argv.some((arg) => arg === "--app");
   const exit = await Effect.runPromiseExit(
     doctorReport({
       ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
       ...(fix ? { fix: true } : {}),
+      ...(app ? { app: true } : {}),
     }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
   );
   if (Exit.isSuccess(exit)) {
@@ -1255,6 +1296,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "logs" || argv[0] === "app:logs") {
     await runLogs(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:config:lint") {
+    await runAppConfigLint(argv.slice(1));
     return;
   }
 

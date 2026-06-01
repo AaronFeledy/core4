@@ -14,12 +14,14 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
-  const flags = (input as { flags?: { provider?: unknown; fix?: unknown } }).flags;
+  const flags = (input as { flags?: { provider?: unknown; fix?: unknown; app?: unknown } }).flags;
   const provider = typeof flags?.provider === "string" ? flags.provider : undefined;
   const fix = flags?.fix === true;
+  const app = flags?.app === true;
   return {
     ...(provider === undefined || provider.length === 0 ? {} : { flagProviderId: provider }),
     ...(fix ? { fix: true } : {}),
+    ...(app ? { app: true } : {}),
   };
 };
 
@@ -50,6 +52,10 @@ export default class MetaDoctorCommand extends LandoCommandBase {
     }),
     fix: Flags.boolean({
       description: "Re-run the setup step of each degraded subsystem whose recovery is safe to automate.",
+      default: false,
+    }),
+    app: Flags.boolean({
+      description: "Also lint the current app's Landofile against the canonical schema.",
       default: false,
     }),
   };

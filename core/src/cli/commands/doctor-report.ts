@@ -6,8 +6,10 @@
  */
 import { Effect } from "effect";
 
+import type { ConfigLintResult } from "@lando/sdk/schema";
 import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { lintLandofile } from "../../landofile/lint.ts";
 import {
   DefaultGlobalAppDoctorLayer,
   type GlobalAppDoctorResult,
@@ -35,7 +37,21 @@ export interface DoctorReport {
   readonly provider: DoctorResult;
   readonly subsystems: SubsystemDoctorResult;
   readonly globalApp: GlobalAppDoctorResult;
+  /** Present only under `lando doctor --app`; reuses the `app:config:lint` pass. */
+  readonly appConfig?: ConfigLintResult;
 }
+
+const appConfigForReport = (): Effect.Effect<ConfigLintResult, never, never> =>
+  lintLandofile().pipe(
+    Effect.catchTag("LandofileNotFoundError", (error) =>
+      Effect.succeed({
+        app: "",
+        file: "(none)",
+        valid: false,
+        violations: [{ path: "", message: error.message }],
+      } satisfies ConfigLintResult),
+    ),
+  );
 
 export const doctorReport = (
   options: DoctorOptions = {},
@@ -46,16 +62,42 @@ export const doctorReport = (
       Effect.provide(DefaultSubsystemDoctorLayer),
     );
     const globalApp = yield* globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer));
-    return { provider, subsystems, globalApp };
+    const appConfig = options.app === true ? yield* appConfigForReport() : undefined;
+    return { provider, subsystems, globalApp, ...(appConfig === undefined ? {} : { appConfig }) };
   });
 
 export const renderDoctorReport = (report: DoctorReport): string => {
   const provider = renderDoctorResult(report.provider);
   const subsystems = renderSubsystemDoctorResult(report.subsystems);
   const globalApp = renderGlobalAppDoctorResult(report.globalApp);
-  const parts = [provider, subsystems, globalApp].filter((part) => part.length > 0);
+  const appConfig = report.appConfig === undefined ? "" : renderAppConfigSection(report.appConfig);
+  const parts = [provider, subsystems, globalApp, appConfig].filter((part) => part.length > 0);
   return parts.join("\n");
 };
+
+const renderAppConfigSection = (result: ConfigLintResult): string => {
+  const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
+  for (const violation of result.violations) {
+    const where = violation.path.length === 0 ? "(root)" : violation.path;
+    lines.push(`  ${where}: ${violation.message}`);
+    if (violation.suggestedFix !== undefined) lines.push(`    fix: ${violation.suggestedFix}`);
+  }
+  return lines.join("\n");
+};
+
+const appConfigCheckLine = (result: ConfigLintResult): string =>
+  JSON.stringify({
+    _tag: "doctor.check",
+    name: "app-config-lint",
+    status: result.valid ? "pass" : "fail",
+    severity: result.valid ? "info" : "error",
+    context: {
+      file: result.file,
+      valid: String(result.valid),
+      violations: String(result.violations.length),
+    },
+    violations: result.violations,
+  });
 
 export interface DoctorReportNdjsonOptions {
   readonly now?: Date;
@@ -76,13 +118,15 @@ export const renderDoctorReportAsNdjson = (
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
     ...checkLinesFromNdjson(renderGlobalAppDoctorResultAsNdjson(report.globalApp, { now })),
   );
+  if (report.appConfig !== undefined) lines.push(appConfigCheckLine(report.appConfig));
   const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
+  const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   lines.push(
     JSON.stringify({
       _tag: "doctor.complete",
       timestamp,
-      checks: checks.length,
-      failed: checks.filter((check) => check.status === "fail").length,
+      checks: checks.length + (report.appConfig === undefined ? 0 : 1),
+      failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
       warned: checks.filter((check) => check.status === "warn").length,
     }),
   );

@@ -44,6 +44,8 @@ const SDK_SCHEMA_NAMES = [
   "ProviderCapabilities",
   "LandofileShape",
   "GlobalConfig",
+  "ConfigLintViolation",
+  "ConfigLintResult",
   "AppId",
   "ServiceName",
   "ProviderId",

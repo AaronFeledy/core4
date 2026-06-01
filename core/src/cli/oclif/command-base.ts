@@ -66,6 +66,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
 const MVP_COMMAND_IDS = new Set([
   "app:cache:refresh",
   "app:config",
+  "app:config:lint",
   "app:destroy",
   "app:exec",
   "app:info",
