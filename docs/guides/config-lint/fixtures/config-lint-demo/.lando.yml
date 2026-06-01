@@ -1,0 +1,6 @@
+name: config-lint-demo
+recipe: lamp
+services:
+  web:
+    type: compose
+    image: nginx:1.27-alpine

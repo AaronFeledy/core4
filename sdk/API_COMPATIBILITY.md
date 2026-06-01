@@ -16,6 +16,8 @@
 - `BunShellScriptFrontMatter`
 - `CertificatePlan`
 - `CommandSpec`
+- `ConfigLintResult`
+- `ConfigLintViolation`
 - `CleanupProps`
 - `DataStoreMountPlan`
 - `defineLandofile`

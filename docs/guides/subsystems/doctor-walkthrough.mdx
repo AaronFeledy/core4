@@ -32,4 +32,14 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
       <Variable name="ndjsonFixture" value="core/test/cli/fixtures/meta-doctor.subsystems.ndjson" display="JSON renderer snapshot covering every subsystem and the failing-state remediations" />
     </Step>
   </Scenario>
+
+  <Scenario id="doctor-app-config-lint" render={false} reason="doctor --app reads the current app Landofile from disk and reuses the app:config:lint implementation; command behavior is covered by doctor-report and app-config-lint tests">
+    <Step name="app-config-lint">
+      <Variable name="command" value="lando doctor --app" display="Adds the app-config-lint section to the combined doctor report" />
+      <Variable name="section" value="app-config-lint: pass | fail" display="The section reports whether the current app's Landofile passes canonical-schema validation" />
+      <Variable name="violationFormat" value="path: message plus optional fix line" display="Violations use the same text formatting as lando app:config:lint" />
+      <Variable name="missingLandofile" value="invalid (none) result" display="A missing Landofile is reported in the app-config-lint section instead of aborting the whole doctor report" />
+    </Step>
+  </Scenario>
+
 </Guide>
