@@ -11,6 +11,12 @@ import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
   makeLogDecoder as makeRuntimeLogDecoder,
 } from "@lando/container-runtime/streams";
+import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import {
+  commonContainerLabels,
+  containerCreateBodyFragment,
+  containerHostConfigFragment,
+} from "@lando/container-runtime/plan";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -27,12 +33,10 @@ import {
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
-  fileSyncVolumeName,
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
-  sameAppMountTarget,
 } from "@lando/sdk/schema";
 import {
   type CommandSpec,
@@ -378,27 +382,11 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
 };
 
 export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: string): ProviderCapabilities =>
-  Schema.decodeSync(ProviderCapabilities)({
-    artifactBuild: false,
-    artifactPull: false,
-    buildSecrets: false,
-    buildSsh: false,
-    multiServiceApply: true,
-    serviceExec: true,
-    serviceLogs: true,
-    serviceHealth: "lando",
-    hostReachability: "emulated",
-    sharedCrossAppNetwork: true,
-    persistentStorage: true,
+  buildProviderCapabilities({
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
-    copyMounts: false,
-    copyOnWriteAppRoot: false,
-    hostPortPublish: "proxy",
-    routeProvider: false,
     tlsCertificates: "none",
     rootless: false,
-    privilegedServices: false,
     composeSpec: "portable",
     providerExtensions: [],
   });
@@ -591,83 +579,24 @@ export const resolveDockerHost = (options: ResolveDockerHostOptions = {}): strin
   return "/var/run/docker.sock";
 };
 
-const serviceEnv = (service: ServicePlan) =>
-  Object.entries(service.environment).map(([key, value]) => `${key}=${value}`);
-
-const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
-
-const normalizeCmd = (cmd: ReadonlyArray<string> | string | undefined): Array<string> | undefined => {
-  if (cmd === undefined) return undefined;
-  if (typeof cmd === "string") return ["sh", "-lc", cmd];
-  return [...cmd];
-};
-
-const normalizeEntrypoint = (
-  entrypoint: ReadonlyArray<string> | string | undefined,
-): Array<string> | undefined => {
-  if (entrypoint === undefined) return undefined;
-  if (typeof entrypoint === "string") return [entrypoint];
-  return [...entrypoint];
-};
-
-const hostConfig = (plan: AppPlan, service: ServicePlan) => {
-  const portBindings = Object.fromEntries(
-    service.endpoints
-      .filter((endpoint) => endpoint.port !== undefined)
-      .map((endpoint) => [
-        `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
-        [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
-      ]),
-  );
-
-  const appMounts =
-    service.appMount === undefined
-      ? []
-      : [
-          `${
-            service.appMount.realization === "accelerated"
-              ? fileSyncVolumeName(plan.name, String(service.name), "app-mount")
-              : service.appMount.source
-          }:${service.appMount.target}${mountSuffix(service.appMount.readOnly)}`,
-        ];
-  const binds = service.mounts.flatMap((mount, index) => {
-    if (mount.type !== "bind") return [];
-    if (sameAppMountTarget(service.appMount, mount)) return [];
-    if (mount.source === undefined) {
+const hostConfig = (plan: AppPlan, service: ServicePlan) =>
+  containerHostConfigFragment(plan, service, {
+    onMissingBindMountSource: (mount) => {
       throw serviceStartFailure(service, "provider-docker bind mounts require a source.", { mount });
-    }
-    const source =
-      mount.realization === "accelerated"
-        ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
-        : mount.source;
-    return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
+    },
   });
-  const allBinds = Array.from(new Set([...appMounts, ...binds]));
 
-  return {
-    ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
-    ...(allBinds.length > 0 ? { Binds: allBinds } : {}),
-  };
-};
-
-const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
-  if (service.artifact?.kind !== "ref") {
-    throw serviceStartFailure(service, "provider-docker apply requires pre-built artifact references.", {
-      artifact: service.artifact,
-    });
-  }
-
-  return {
-    Image: service.artifact.ref,
-    Env: serviceEnv(service),
-    Cmd: normalizeCmd(service.command),
-    Entrypoint: normalizeEntrypoint(service.entrypoint),
-    WorkingDir: service.workingDirectory,
-    Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name, ...scratchLabelsForPlan(plan) },
-    HostConfig: hostConfig(plan, service),
-    NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
-  };
-};
+const createContainerBody = (plan: AppPlan, service: ServicePlan) =>
+  containerCreateBodyFragment(plan, service, {
+    labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+    hostConfig: hostConfig(plan, service),
+    networkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
+    onMissingArtifact: (artifact) => {
+      throw serviceStartFailure(service, "provider-docker apply requires pre-built artifact references.", {
+        artifact,
+      });
+    },
+  });
 
 export const renderCompose = (plan: AppPlan): string => {
   const sharedNetwork = landoSharedNetworkName(plan);

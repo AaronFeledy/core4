@@ -1,3 +1,4 @@
+import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { Effect, Schema, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -131,27 +132,11 @@ export const decodeProviderCapabilities = (input: unknown) =>
   );
 
 export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
-  Schema.decodeSync(ProviderCapabilities)({
-    artifactBuild: false,
-    artifactPull: false,
-    buildSecrets: false,
-    buildSsh: false,
-    multiServiceApply: true,
-    serviceExec: true,
-    serviceLogs: true,
-    serviceHealth: "lando",
-    hostReachability: "emulated",
-    sharedCrossAppNetwork: true,
-    persistentStorage: true,
+  buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
-    copyMounts: false,
-    copyOnWriteAppRoot: false,
-    hostPortPublish: "proxy",
-    routeProvider: false,
     tlsCertificates: "lando",
     rootless: true,
-    privilegedServices: false,
     composeSpec: "portable",
     providerExtensions: [],
   });

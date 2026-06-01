@@ -17,6 +17,7 @@
  */
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 
+import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -252,27 +253,11 @@ const bindMountPerformanceForPlatform = (
  * Podman Desktop VM.
  */
 export const podmanCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
-  Schema.decodeSync(ProviderCapabilities)({
-    artifactBuild: false,
-    artifactPull: false,
-    buildSecrets: false,
-    buildSsh: false,
-    multiServiceApply: true,
-    serviceExec: true,
-    serviceLogs: true,
-    serviceHealth: "lando",
-    hostReachability: "emulated",
-    sharedCrossAppNetwork: true,
-    persistentStorage: true,
+  buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
-    copyMounts: false,
-    copyOnWriteAppRoot: false,
-    hostPortPublish: "proxy",
-    routeProvider: false,
     tlsCertificates: "none",
     rootless: true,
-    privilegedServices: false,
     composeSpec: "portable",
     providerExtensions: [],
   });
