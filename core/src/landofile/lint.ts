@@ -4,7 +4,7 @@
  * `lintLandofile` validates the current app directory's Landofile against the
  * canonical `LandofileShape` JSON Schema and ONLY that — no translators, no
  * doctor checks, no provider probes, and (deliberately) none of the
- * beta-key/expression scanners that `LandofileService.discover` layers on top
+ * gated-key/expression scanners that `LandofileService.discover` layers on top
  * of the decode. Unknown keys surface as excess-property violations rather
  * than `NotImplementedError`, which is exactly what an editor wants.
  *
