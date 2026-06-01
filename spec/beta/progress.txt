@@ -349,3 +349,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (Bugbot, two rounds: running label used the started-count instead of the declared children count; frame clearing counted logical lines instead of physical terminal rows; collapsed interactive summary dropped the tree duration suffix shown by plain output; redraw used a terminal width cached at construction instead of the live width)
 - Merge: merged (squash)
 ---
+
+## Mon Jun 1 2026 02:55 CDT - Babysit
+- PR: #250 https://github.com/AaronFeledy/core4/pull/250
+- CI outcome: pass
+- Review feedback: fixed (resolved merge conflict with main by merging origin/main and reconciling progress.txt/core AGENTS.md; Bugbot EXDEV cache-publish-race finding already addressed pre-merge)
+- Merge: merged (squash)
+---
