@@ -7,6 +7,10 @@ import {
   makeSocketHttpClient,
   normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
+import {
+  makeAttachDecoder as makeRuntimeAttachDecoder,
+  makeLogDecoder as makeRuntimeLogDecoder,
+} from "@lando/container-runtime/streams";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -1082,32 +1086,6 @@ const inspectExec = (api: DockerApiClient, service: ServicePlan, execId: string)
     return exitCode;
   });
 
-const makeAttachDecoder = () => {
-  let buffer = new Uint8Array(0);
-  return (chunk: Uint8Array): ReadonlyArray<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> => {
-    const merged = new Uint8Array(buffer.length + chunk.length);
-    merged.set(buffer);
-    merged.set(chunk, buffer.length);
-    buffer = merged;
-    const decoded: Array<Extract<ExecChunk, { readonly kind: "stdout" | "stderr" }>> = [];
-    while (buffer.length >= 8) {
-      const streamType = buffer[0] ?? 0;
-      const frameLength =
-        (((buffer[4] ?? 0) << 24) | ((buffer[5] ?? 0) << 16) | ((buffer[6] ?? 0) << 8) | (buffer[7] ?? 0)) >>>
-        0;
-      if (buffer.length < 8 + frameLength) {
-        break;
-      }
-      const payload = buffer.slice(8, 8 + frameLength);
-      buffer = buffer.slice(8 + frameLength);
-      if (streamType === 1 || streamType === 2) {
-        decoded.push({ kind: streamType === 1 ? "stdout" : "stderr", chunk: payload });
-      }
-    }
-    return decoded;
-  };
-};
-
 const execStream = (
   plan: AppPlan,
   target: ExecTarget,
@@ -1120,13 +1098,17 @@ const execStream = (
   }
   return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
     Stream.flatMap((execId) => {
-      const decodeChunk = makeAttachDecoder();
+      const decodeChunk = makeRuntimeAttachDecoder();
       return stream(api, "exec", {
         method: "POST",
         path: `/exec/${encodeURIComponent(execId)}/start`,
         body: { Detach: false, Tty: false },
       }).pipe(
-        Stream.flatMap((chunk) => Stream.fromIterable(decodeChunk(chunk))),
+        Stream.flatMap((chunk) =>
+          Stream.fromIterable(
+            decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
+          ),
+        ),
         Stream.concat(
           Stream.fromEffect(inspectExec(api, service, execId).pipe(Effect.map((exitCode) => ({ exitCode })))),
         ),
@@ -1171,87 +1153,8 @@ const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", lin
     : { service: service.name, stream: streamName, line: match[2] ?? "", timestamp };
 };
 
-type LogsDecoderMode = "unknown" | "framed" | "raw";
-
-const parseTextLines = (
-  service: ServicePlan,
-  streamName: "stdout" | "stderr",
-  text: string,
-): { readonly chunks: ReadonlyArray<LogChunk>; readonly remainder: string } => {
-  const lines = text.split(/\r?\n/u);
-  const remainder = lines.pop() ?? "";
-  return {
-    chunks: lines.filter((line) => line.length > 0).map((line) => parseLogLine(service, streamName, line)),
-    remainder,
-  };
-};
-
-const makeLogsDecoder = (service: ServicePlan) => {
-  let mode: LogsDecoderMode = "unknown";
-  let frameBuffer = new Uint8Array(0);
-  let rawBuffer = "";
-
-  const decodeRaw = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
-    mode = "raw";
-    const parsed = parseTextLines(service, "stdout", rawBuffer + textDecoder.decode(bytes));
-    rawBuffer = parsed.remainder;
-    return parsed.chunks;
-  };
-
-  const decodeFramed = (bytes: Uint8Array): ReadonlyArray<LogChunk> => {
-    const merged = new Uint8Array(frameBuffer.length + bytes.length);
-    merged.set(frameBuffer);
-    merged.set(bytes, frameBuffer.length);
-    frameBuffer = merged;
-    mode = "framed";
-
-    const decoded: LogChunk[] = [];
-    while (frameBuffer.length >= 8) {
-      const streamType = frameBuffer[0] ?? 0;
-      const frameLength =
-        (((frameBuffer[4] ?? 0) << 24) |
-          ((frameBuffer[5] ?? 0) << 16) |
-          ((frameBuffer[6] ?? 0) << 8) |
-          (frameBuffer[7] ?? 0)) >>>
-        0;
-      if (frameBuffer.length < 8 + frameLength) {
-        break;
-      }
-
-      const payload = frameBuffer.slice(8, 8 + frameLength);
-      frameBuffer = frameBuffer.slice(8 + frameLength);
-
-      if (streamType === 1 || streamType === 2) {
-        const streamName = streamType === 1 ? "stdout" : "stderr";
-        for (const line of textDecoder
-          .decode(payload)
-          .split(/\r?\n/u)
-          .filter((entry) => entry.length > 0)) {
-          decoded.push(parseLogLine(service, streamName, line));
-        }
-      }
-    }
-
-    return decoded;
-  };
-
-  return (chunk: Uint8Array): ReadonlyArray<LogChunk> => {
-    if (mode === "raw") {
-      return decodeRaw(chunk);
-    }
-
-    if (chunk.length === 0) {
-      return [];
-    }
-
-    if (mode === "unknown" && chunk[0] !== 1 && chunk[0] !== 2) {
-      frameBuffer = new Uint8Array(0);
-      return decodeRaw(chunk);
-    }
-
-    return decodeFramed(chunk);
-  };
-};
+const makeLogsDecoder = (service: ServicePlan) =>
+  makeRuntimeLogDecoder({ parseLine: (streamName, line) => parseLogLine(service, streamName, line) });
 
 const logs = (
   plan: AppPlan,
