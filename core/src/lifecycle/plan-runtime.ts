@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, type Scope } from "effect";
 
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
 
@@ -88,3 +88,46 @@ export const loadPlanFromRenderedFile = <
     });
     return { landofile, landofileForPlan, plan };
   });
+
+interface ApplyPlanWithCleanupBase<A, E, R, CleanupServices> {
+  readonly apply: Effect.Effect<A, E, R>;
+  readonly cleanup?: Effect.Effect<void, never, CleanupServices>;
+  readonly cleanupOnError?: boolean;
+}
+
+export type ApplyPlanWithCleanupInput<A, E, R, CleanupServices> = ApplyPlanWithCleanupBase<
+  A,
+  E,
+  R,
+  CleanupServices
+> & {
+  readonly registerFinalizer?: boolean;
+};
+
+type ScopedServices<R> = Exclude<R, Scope.Scope>;
+
+export function applyPlanWithCleanup<A, E, R = never, CleanupServices = never>(
+  input: ApplyPlanWithCleanupBase<A, E, R, CleanupServices> & { readonly registerFinalizer: true },
+): Effect.Effect<A, E, ScopedServices<R> | CleanupServices | Scope.Scope>;
+export function applyPlanWithCleanup<A, E, R = never, CleanupServices = never>(
+  input: ApplyPlanWithCleanupBase<A, E, R, CleanupServices> & { readonly registerFinalizer: boolean },
+): Effect.Effect<A, E, ScopedServices<R> | CleanupServices | Scope.Scope>;
+export function applyPlanWithCleanup<A, E, R = never, CleanupServices = never>(
+  input: ApplyPlanWithCleanupBase<A, E, R, CleanupServices> & { readonly registerFinalizer?: false },
+): Effect.Effect<A, E, ScopedServices<R> | CleanupServices>;
+export function applyPlanWithCleanup<A, E, R = never, CleanupServices = never>(
+  input: ApplyPlanWithCleanupInput<A, E, R, CleanupServices>,
+): Effect.Effect<A, E, ScopedServices<R> | CleanupServices | Scope.Scope> {
+  return Effect.gen(function* () {
+    const scoped = Effect.scoped(input.apply);
+    const applied =
+      input.cleanup === undefined || input.cleanupOnError === false
+        ? scoped
+        : scoped.pipe(Effect.tapError(() => input.cleanup ?? Effect.void));
+    const result = yield* applied;
+    if (input.cleanup !== undefined && input.registerFinalizer === true) {
+      yield* Effect.addFinalizer(() => input.cleanup ?? Effect.void);
+    }
+    return result;
+  });
+}

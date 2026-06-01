@@ -29,6 +29,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { applyPlanWithCleanup } from "../../../lifecycle/plan-runtime.ts";
 import { globalInstall } from "./global-install.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
 
@@ -173,12 +174,12 @@ export const globalStart = (
       }),
     );
 
-    yield* Effect.scoped(
-      provider.apply(planToApply, {
+    yield* applyPlanWithCleanup({
+      apply: provider.apply(planToApply, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),
-    );
+    });
 
     const servicesStarted = yield* Effect.forEach(services, (service) =>
       provider.inspect({ app: loaded.plan.id, service: service.name, plan: loaded.plan }).pipe(

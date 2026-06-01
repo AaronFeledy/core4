@@ -6,7 +6,11 @@ import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/core/schema";
 
-import { loadPlanFromRenderedFile, withProcessCwd } from "../../src/lifecycle/plan-runtime.ts";
+import {
+  applyPlanWithCleanup,
+  loadPlanFromRenderedFile,
+  withProcessCwd,
+} from "../../src/lifecycle/plan-runtime.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-plan-runtime-")));
@@ -99,5 +103,69 @@ describe("loadPlanFromRenderedFile", () => {
       expect(String(loaded.plan.root)).toBe(dir);
       expect(plannedCwd).toBe(dir);
     });
+  });
+});
+
+describe("applyPlanWithCleanup", () => {
+  test("runs cleanup on apply failure", async () => {
+    const events: string[] = [];
+
+    const exit = await Effect.runPromiseExit(
+      applyPlanWithCleanup({
+        apply: Effect.fail("apply failed"),
+        cleanup: Effect.sync(() => {
+          events.push("cleanup");
+        }),
+      }),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(events).toEqual(["cleanup"]);
+  });
+
+  test("registers cleanup against the ambient scope only after apply succeeds", async () => {
+    const events: string[] = [];
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const value = yield* applyPlanWithCleanup({
+            apply: Effect.sync(() => {
+              events.push("apply");
+              return "started";
+            }),
+            cleanup: Effect.sync(() => {
+              events.push("cleanup");
+            }),
+            registerFinalizer: true,
+          });
+          events.push("inside-scope");
+          return value;
+        }),
+      ),
+    );
+
+    expect(result).toBe("started");
+    expect(events).toEqual(["apply", "inside-scope", "cleanup"]);
+  });
+
+  test("skips the ambient finalizer when registerFinalizer is false", async () => {
+    const events: string[] = [];
+
+    await Effect.runPromise(
+      Effect.scoped(
+        applyPlanWithCleanup({
+          apply: Effect.sync(() => {
+            events.push("apply");
+          }),
+          cleanup: Effect.sync(() => {
+            events.push("cleanup");
+          }),
+          registerFinalizer: false,
+        }),
+      ),
+    );
+
+    expect(events).toEqual(["apply"]);
   });
 });

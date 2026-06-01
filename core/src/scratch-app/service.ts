@@ -36,7 +36,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { parseLandofile } from "../landofile/parser.ts";
-import { loadPlanFromRenderedFile, withProcessCwd } from "../lifecycle/plan-runtime.ts";
+import { applyPlanWithCleanup, loadPlanFromRenderedFile, withProcessCwd } from "../lifecycle/plan-runtime.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
@@ -506,17 +506,15 @@ const makeScratchAppService = (
         ),
       );
       yield* writeCachedPlan(planCache, markedPlan);
-      yield* Effect.scoped(provider.apply(markedPlan, { reconcile: false })).pipe(
-        // A failed start can leave a materialized dir and partial provider state; the scope
-        // finalizer only covers a successful start, so reclaim on the failure path too.
-        Effect.tapError(() => destroyScratchResources),
+      yield* applyPlanWithCleanup({
+        apply: provider.apply(markedPlan, { reconcile: false }),
+        cleanup: destroyScratchResources,
+        registerFinalizer: !detached,
+      }).pipe(
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
         ),
       );
-      if (!detached) {
-        yield* Effect.addFinalizer(() => destroyScratchResources);
-      }
       return {
         id: scratchId,
         app: { kind: "scratch", id: scratchId, root: markedPlan.root },
