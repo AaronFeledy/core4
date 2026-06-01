@@ -87,6 +87,8 @@
 - `RecipePromptChoice`
 - `RecipePromptType`
 - `RecipePromptValidate`
+- `RecipeRegistryResolution`
+- `RecipeRegistryResponse`
 - `RecipeRequires`
 - `RecipeVersion`
 - `RouteInput`

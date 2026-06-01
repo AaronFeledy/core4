@@ -27,6 +27,8 @@ describe("@lando/sdk package exports", () => {
     expect(schema.HostPlatform).toBeDefined();
     expect(schema.ServiceInfo).toBeDefined();
     expect(schema.PluginManifest).toBeDefined();
+    expect(schema.RecipeRegistryResolution).toBeDefined();
+    expect(schema.RecipeRegistryResponse).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
   });

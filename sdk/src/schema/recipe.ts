@@ -144,3 +144,26 @@ export const RecipeManifest = Schema.Struct({
   postInit: Schema.optional(Schema.Array(RecipePostInitAction)),
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
+
+/** Registry resolution result — points a recipe id at an underlying git/tarball source. */
+export const RecipeRegistryResolution = Schema.Union(
+  Schema.Struct({
+    kind: Schema.Literal("git"),
+    url: Schema.String,
+    path: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("tarball"),
+    url: Schema.String,
+    path: Schema.optional(Schema.String),
+    checksum: Schema.optional(Schema.String),
+  }),
+);
+export type RecipeRegistryResolution = typeof RecipeRegistryResolution.Type;
+
+/** Registry response payload for a resolved recipe id. */
+export const RecipeRegistryResponse = Schema.Struct({
+  id: Schema.optional(RecipeId),
+  resolution: RecipeRegistryResolution,
+});
+export type RecipeRegistryResponse = typeof RecipeRegistryResponse.Type;

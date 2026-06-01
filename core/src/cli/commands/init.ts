@@ -20,6 +20,7 @@ import {
   collectPrompts,
   createStdioPromptIO,
 } from "../../recipes/prompts/index.ts";
+import { type RecipeRegistryClient, resolveRegistryRecipeSource } from "../../recipes/registry-source.ts";
 import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source.ts";
 import {
   type TarballRecipeExtractor,
@@ -79,9 +80,10 @@ export interface InitAppOptions {
   readonly cwd: string;
   readonly full: boolean;
   readonly recipe?: string;
-  readonly source?: "git" | "tarball" | "npm";
+  readonly source?: "git" | "tarball" | "npm" | "registry";
   readonly url?: string;
   readonly package?: string;
+  readonly id?: string;
   readonly path?: string;
   readonly checksum?: string;
   readonly registryUrl?: string;
@@ -90,6 +92,7 @@ export interface InitAppOptions {
   readonly tarballRecipeFetcher?: TarballRecipeFetcher;
   readonly tarballRecipeExtractor?: TarballRecipeExtractor;
   readonly npmRegistryClient?: NpmRegistryClient;
+  readonly registryClient?: RecipeRegistryClient;
   readonly name?: string;
   readonly answers?: Readonly<Record<string, string>>;
   readonly yes?: boolean;
@@ -140,7 +143,6 @@ const loadGitRecipe = async (options: InitAppOptions) => {
   });
   const resolved = await resolveGitRecipeSource({
     url: sourceOptions.url ?? "",
-    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
   });
@@ -170,7 +172,6 @@ const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefin
     : undefined;
   const resolved = await resolveTarballRecipeSource({
     url: sourceOptions.url ?? "",
-    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(sourceOptions.checksum === undefined ? {} : { checksum: sourceOptions.checksum }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
@@ -189,12 +190,34 @@ const loadNpmRecipe = async (options: InitAppOptions) => {
   });
   const resolved = await resolveNpmRecipeSource({
     package: sourceOptions.package ?? "",
-    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
     ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
     ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
     ...(options.npmRegistryClient === undefined ? {} : { registryClient: options.npmRegistryClient }),
     ...(options.tarballRecipeFetcher === undefined ? {} : { fetcher: options.tarballRecipeFetcher }),
     ...(options.tarballRecipeExtractor === undefined ? {} : { extractor: options.tarballRecipeExtractor }),
+  });
+  return parseResolvedRecipe(resolved);
+};
+
+const loadRegistryRecipe = async (options: InitAppOptions) => {
+  const sourceOptions = parseInitSourceFlags({
+    source: options.source,
+    id: options.id,
+    path: options.path,
+  });
+  const resolved = await resolveRegistryRecipeSource({
+    id: sourceOptions.id ?? "",
+    ...(sourceOptions.path === undefined ? {} : { path: sourceOptions.path }),
+    ...(options.registryUrl === undefined ? {} : { registryUrl: options.registryUrl }),
+    ...(options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot }),
+    ...(options.registryClient === undefined ? {} : { registryClient: options.registryClient }),
+    ...(options.gitRecipeCloner === undefined ? {} : { gitRecipeCloner: options.gitRecipeCloner }),
+    ...(options.tarballRecipeFetcher === undefined
+      ? {}
+      : { tarballRecipeFetcher: options.tarballRecipeFetcher }),
+    ...(options.tarballRecipeExtractor === undefined
+      ? {}
+      : { tarballRecipeExtractor: options.tarballRecipeExtractor }),
   });
   return parseResolvedRecipe(resolved);
 };
@@ -220,9 +243,10 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     source: options.source,
     url: options.url,
     package: options.package,
+    id: options.id,
     path: options.path,
   });
-  const remoteRef = sourceOptions.url ?? sourceOptions.package;
+  const remoteRef = sourceOptions.url ?? sourceOptions.package ?? sourceOptions.id;
   const recipeRef =
     sourceOptions.source !== undefined && remoteRef !== undefined
       ? remoteRef
@@ -234,7 +258,9 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         ? await loadTarballRecipe(options, io)
         : sourceOptions.source === "npm"
           ? await loadNpmRecipe(options)
-          : await loadRecipe(recipeRef, cwd);
+          : sourceOptions.source === "registry"
+            ? await loadRegistryRecipe(options)
+            : await loadRecipe(recipeRef, cwd);
 
   const renderer = resolved.root === undefined ? lookupRecipeRenderer(manifest.id) : undefined;
   if (renderer === undefined) {
