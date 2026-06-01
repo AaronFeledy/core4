@@ -36,6 +36,7 @@ import {
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { parseLandofile } from "../landofile/parser.ts";
+import { applyPlanWithCleanup, loadPlanFromRenderedFile, withProcessCwd } from "../lifecycle/plan-runtime.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
@@ -87,24 +88,6 @@ const scratchForkUnresolvedError = (): ScratchSourceUnresolvedError =>
     attempts: [],
     remediation: "Run `lando apps:scratch:start --fork` from a directory containing a Landofile.",
   });
-
-const withProcessCwd = <A, E, R>(
-  dir: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ScratchAppError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(dir);
-        return original;
-      },
-      catch: (cause) =>
-        scratchAppError("plan", `Unable to enter the scratch app directory at ${dir}.`, cause),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
 
 const causeRecord = (cause: unknown): Record<string, unknown> | undefined =>
   typeof cause === "object" && cause !== null ? (cause as Record<string, unknown>) : undefined;
@@ -357,14 +340,7 @@ const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
   }
 };
 
-const makeScratchAppService = (
-  fileSystem: Context.Tag.Service<typeof FileSystem>,
-  landofileService: Context.Tag.Service<typeof LandofileService>,
-  planner: Context.Tag.Service<typeof AppPlanner>,
-  providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
-  scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
-  scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
-): Context.Tag.Service<typeof ScratchAppService> => {
+const makeScratchStorage = (fileSystem: Context.Tag.Service<typeof FileSystem>) => {
   const root = Effect.sync(() => AbsolutePath.make(join(resolveUserCacheRoot(), SCRATCH_DIR)));
 
   const ensureRoot = root.pipe(
@@ -422,6 +398,24 @@ const makeScratchAppService = (
         scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
     });
 
+  const copyAppRoot = (source: string, destination: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (await reflinkCopyAppRoot(source, destination)) return;
+        await cp(source, destination, { recursive: true });
+      },
+      catch: (cause) =>
+        scratchAppError(
+          "materialize",
+          `Unable to copy the source app root into the scratch app at ${destination}.`,
+          cause,
+        ),
+    });
+
+  return { root, ensureRoot, synthesizeId, paths, materializeDir, cleanupScratchInstance, copyAppRoot };
+};
+
+const makeScratchPlanCache = (fileSystem: Context.Tag.Service<typeof FileSystem>) => {
   const writeCachedPlan = (planCache: AbsolutePath, plan: AppPlan) =>
     Effect.try({
       try: () => `${JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))}\n`,
@@ -447,7 +441,17 @@ const makeScratchAppService = (
       Effect.catchAll(() => Effect.succeed(undefined)),
     );
 
-  const reapScratch = (input: {
+  return { writeCachedPlan, readCachedPlan };
+};
+
+const makeScratchReaper =
+  (
+    providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+    scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
+    scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
+    cleanupScratchInstance: (path: AbsolutePath) => Effect.Effect<void, ScratchAppError>,
+  ) =>
+  (input: {
     readonly id: string;
     readonly instanceRoot: AbsolutePath;
     readonly keepVolumes?: boolean;
@@ -484,19 +488,18 @@ const makeScratchAppService = (
     );
   };
 
-  const copyAppRoot = (source: string, destination: string) =>
-    Effect.tryPromise({
-      try: async () => {
-        if (await reflinkCopyAppRoot(source, destination)) return;
-        await cp(source, destination, { recursive: true });
-      },
-      catch: (cause) =>
-        scratchAppError(
-          "materialize",
-          `Unable to copy the source app root into the scratch app at ${destination}.`,
-          cause,
-        ),
-    });
+const makeScratchAppService = (
+  fileSystem: Context.Tag.Service<typeof FileSystem>,
+  landofileService: Context.Tag.Service<typeof LandofileService>,
+  planner: Context.Tag.Service<typeof AppPlanner>,
+  providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
+  scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
+): Context.Tag.Service<typeof ScratchAppService> => {
+  const { root, ensureRoot, synthesizeId, paths, materializeDir, cleanupScratchInstance, copyAppRoot } =
+    makeScratchStorage(fileSystem);
+  const { writeCachedPlan, readCachedPlan } = makeScratchPlanCache(fileSystem);
+  const reapScratch = makeScratchReaper(providerRegistry, scratchRegistry, scanner, cleanupScratchInstance);
 
   const startScratchPlan = (
     scratchId: string,
@@ -523,17 +526,15 @@ const makeScratchAppService = (
         ),
       );
       yield* writeCachedPlan(planCache, markedPlan);
-      yield* Effect.scoped(provider.apply(markedPlan, { reconcile: false })).pipe(
-        // A failed start can leave a materialized dir and partial provider state; the scope
-        // finalizer only covers a successful start, so reclaim on the failure path too.
-        Effect.tapError(() => destroyScratchResources),
+      yield* applyPlanWithCleanup({
+        apply: provider.apply(markedPlan, { reconcile: false }),
+        cleanup: destroyScratchResources,
+        registerFinalizer: !detached,
+      }).pipe(
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
         ),
       );
-      if (!detached) {
-        yield* Effect.addFinalizer(() => destroyScratchResources);
-      }
       return {
         id: scratchId,
         app: { kind: "scratch", id: scratchId, root: markedPlan.root },
@@ -584,7 +585,14 @@ const makeScratchAppService = (
           ? copyAppRoot(String(sourcePlan.root), String(scratchPaths.root)).pipe(
               Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))),
               Effect.zipRight(
-                withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities)),
+                withProcessCwd(scratchPaths.root, () => planner.plan(forkLandofile, capabilities), {
+                  onEnterError: (cause) =>
+                    scratchAppError(
+                      "plan",
+                      `Unable to enter the scratch app directory at ${scratchPaths.root}.`,
+                      cause,
+                    ),
+                }),
               ),
             )
           : planner.plan(forkLandofile, capabilities);
@@ -667,35 +675,47 @@ const makeScratchAppService = (
       }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
-      const content = yield* fileSystem.readText(landofilePath).pipe(
-        Effect.mapError((cause) =>
-          scratchAppError(
-            "materialize",
-            `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
-            cause,
-          ),
-        ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
-      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root).pipe(
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
-      const recipeLandofile = { ...landofile, name: scratchId };
-
       const capabilities = yield* providerRegistry.capabilities.pipe(
         Effect.mapError((cause) =>
           scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      const recipePlan = yield* withProcessCwd(scratchPaths.root, () =>
-        planner.plan(recipeLandofile, capabilities),
-      ).pipe(
-        Effect.mapError((cause) =>
-          scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
-        ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
-      );
+      const { plan: recipePlan } = yield* loadPlanFromRenderedFile({
+        file: landofilePath,
+        cwd: scratchPaths.root,
+        read: fileSystem
+          .readText(landofilePath)
+          .pipe(
+            Effect.mapError((cause) =>
+              scratchAppError(
+                "materialize",
+                `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
+                cause,
+              ),
+            ),
+          ),
+        decode: ({ file, content, cwd }) => decodeScratchLandofile(file, content, cwd),
+        prepareLandofile: (landofile) => ({ ...landofile, name: scratchId }),
+        plan: (landofile) =>
+          planner
+            .plan(landofile, capabilities)
+            .pipe(
+              Effect.mapError((cause) =>
+                scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
+              ),
+            ),
+        onEnterCwdError: (cause) =>
+          scratchAppError(
+            "start",
+            `Unable to plan scratch app ${scratchId}.`,
+            scratchAppError(
+              "plan",
+              `Unable to enter the scratch app directory at ${scratchPaths.root}.`,
+              cause,
+            ),
+          ),
+      }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
       const startPlan = yield* applyScratchStartFlags(recipePlan, input, capabilities, hostCwd).pipe(
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );

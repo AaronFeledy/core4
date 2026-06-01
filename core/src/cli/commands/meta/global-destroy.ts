@@ -20,6 +20,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { applyPlanWithCleanup } from "../../../lifecycle/plan-runtime.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalDestroyOptions {
@@ -81,7 +82,9 @@ export const globalDestroy = (
       .reverse()
       .map((service) => String(service.name));
 
-    yield* provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes, removeState: true });
+    yield* applyPlanWithCleanup({
+      apply: provider.destroy({ app: loaded.plan.id, plan: loaded.plan }, { volumes, removeState: true }),
+    });
 
     return { app: loaded.plan.name, materialized: true, servicesDestroyed, volumesRemoved: volumes };
   });

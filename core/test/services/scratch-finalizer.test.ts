@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Exit, Fiber, Layer, Stream } from "effect";
@@ -187,6 +187,30 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
       expect(destroyCalls[0]?.app).toBe(String(appliedPlan.id));
       expect(destroyCalls[0]?.volumes).toBe(true);
       expect(await directoryExists(instanceRoot)).toBe(false);
+    });
+  });
+
+  test("foreground teardown removes only the scratch instance root and preserves the source app root", async () => {
+    await withTempProject(async (dir) => {
+      await writeFile(join(dir, "source-marker.txt"), "source-content");
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const instanceRoot = await Effect.runPromise(
+        Effect.scoped(
+          Effect.flatMap(ScratchAppService, (service) =>
+            Effect.map(service.acquire({ source: { kind: "fork" }, detached: false }), (handle) => handle.id),
+          ),
+        )
+          .pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls)))
+          .pipe(Effect.map((id) => join(process.env.LANDO_USER_CACHE_ROOT ?? "", "scratch", id))),
+      );
+
+      expect(appliedPlans).toHaveLength(1);
+      expect(String(appliedPlans.at(0)?.root)).toBe(dir);
+      expect(destroyCalls).toHaveLength(1);
+      expect(await directoryExists(instanceRoot)).toBe(false);
+      expect(await directoryExists(dir)).toBe(true);
+      expect(await readFile(join(dir, "source-marker.txt"), "utf8")).toBe("source-content");
     });
   });
 
