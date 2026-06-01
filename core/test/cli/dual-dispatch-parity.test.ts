@@ -64,6 +64,13 @@ describe("dual-dispatch argv parser parity", () => {
     });
   });
 
+  test("app:logs drops a non-numeric --tail instead of forwarding a string", () => {
+    const input = compiledInput("app:logs", ["--tail", "abc"]);
+
+    expect((input.flags as { readonly tail?: unknown }).tail).toBeUndefined();
+    expect(logsOptionsFromInput(input)).toEqual({});
+  });
+
   test("apps:scratch:start uses scratchStartOptionsFromInput for recipe and fork flags", () => {
     const input = compiledInput("apps:scratch:start", [
       "--from",
