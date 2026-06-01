@@ -20,8 +20,17 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
-  "keywords": ["lando", "lando-plugin", "lando-provider"],
+  "files": [
+    "./src",
+    "./dist",
+    "!./dist/**/*.tsbuildinfo",
+    "./plugin.yaml"
+  ],
+  "keywords": [
+    "lando",
+    "lando-plugin",
+    "lando-provider"
+  ],
   "lando": {
     "manifest": "./plugin.yaml"
   },
@@ -30,6 +39,7 @@
     "@lando/sdk": "workspace:*"
   },
   "dependencies": {
+    "@lando/container-runtime": "workspace:*",
     "effect": "^3.21.2"
   },
   "scripts": {
