@@ -340,14 +340,7 @@ const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
   }
 };
 
-const makeScratchAppService = (
-  fileSystem: Context.Tag.Service<typeof FileSystem>,
-  landofileService: Context.Tag.Service<typeof LandofileService>,
-  planner: Context.Tag.Service<typeof AppPlanner>,
-  providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
-  scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
-  scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
-): Context.Tag.Service<typeof ScratchAppService> => {
+const makeScratchStorage = (fileSystem: Context.Tag.Service<typeof FileSystem>) => {
   const root = Effect.sync(() => AbsolutePath.make(join(resolveUserCacheRoot(), SCRATCH_DIR)));
 
   const ensureRoot = root.pipe(
@@ -405,6 +398,24 @@ const makeScratchAppService = (
         scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
     });
 
+  const copyAppRoot = (source: string, destination: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        if (await reflinkCopyAppRoot(source, destination)) return;
+        await cp(source, destination, { recursive: true });
+      },
+      catch: (cause) =>
+        scratchAppError(
+          "materialize",
+          `Unable to copy the source app root into the scratch app at ${destination}.`,
+          cause,
+        ),
+    });
+
+  return { root, ensureRoot, synthesizeId, paths, materializeDir, cleanupScratchInstance, copyAppRoot };
+};
+
+const makeScratchPlanCache = (fileSystem: Context.Tag.Service<typeof FileSystem>) => {
   const writeCachedPlan = (planCache: AbsolutePath, plan: AppPlan) =>
     Effect.try({
       try: () => `${JSON.stringify(Schema.encodeSync(AppPlanSchema)(plan))}\n`,
@@ -430,7 +441,17 @@ const makeScratchAppService = (
       Effect.catchAll(() => Effect.succeed(undefined)),
     );
 
-  const reapScratch = (input: {
+  return { writeCachedPlan, readCachedPlan };
+};
+
+const makeScratchReaper =
+  (
+    providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+    scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
+    scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
+    cleanupScratchInstance: (path: AbsolutePath) => Effect.Effect<void, ScratchAppError>,
+  ) =>
+  (input: {
     readonly id: string;
     readonly instanceRoot: AbsolutePath;
     readonly keepVolumes?: boolean;
@@ -467,19 +488,18 @@ const makeScratchAppService = (
     );
   };
 
-  const copyAppRoot = (source: string, destination: string) =>
-    Effect.tryPromise({
-      try: async () => {
-        if (await reflinkCopyAppRoot(source, destination)) return;
-        await cp(source, destination, { recursive: true });
-      },
-      catch: (cause) =>
-        scratchAppError(
-          "materialize",
-          `Unable to copy the source app root into the scratch app at ${destination}.`,
-          cause,
-        ),
-    });
+const makeScratchAppService = (
+  fileSystem: Context.Tag.Service<typeof FileSystem>,
+  landofileService: Context.Tag.Service<typeof LandofileService>,
+  planner: Context.Tag.Service<typeof AppPlanner>,
+  providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
+  scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
+): Context.Tag.Service<typeof ScratchAppService> => {
+  const { root, ensureRoot, synthesizeId, paths, materializeDir, cleanupScratchInstance, copyAppRoot } =
+    makeScratchStorage(fileSystem);
+  const { writeCachedPlan, readCachedPlan } = makeScratchPlanCache(fileSystem);
+  const reapScratch = makeScratchReaper(providerRegistry, scratchRegistry, scanner, cleanupScratchInstance);
 
   const startScratchPlan = (
     scratchId: string,
