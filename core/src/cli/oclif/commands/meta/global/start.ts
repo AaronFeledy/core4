@@ -18,7 +18,7 @@ const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   return typeof value === "string" ? [value] : [];
 };
 
-const extractOptions = (input: unknown): GlobalStartOptions => {
+export const globalStartOptionsFromInput = (input: unknown): GlobalStartOptions => {
   const signal = extractSpecAbortSignal(input);
   if (typeof input !== "object" || input === null) return signal === undefined ? {} : { signal };
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
@@ -35,7 +35,7 @@ export const metaGlobalStartSpec: LandoCommandSpec<GlobalStartResult> = {
   namespace: "meta",
   topLevelAlias: "global:start",
   bootstrap: "global",
-  run: (input) => globalStart(extractOptions(input)),
+  run: (input) => globalStart(globalStartOptionsFromInput(input)),
   render: (result) => renderGlobalStartResult(result as GlobalStartResult),
 };
 

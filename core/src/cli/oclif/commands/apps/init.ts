@@ -15,7 +15,7 @@ import { type InitAppOptions, type InitAppResult, initApp } from "../../../comma
 import { resolveRendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-interface InitFlags {
+export interface InitFlags {
   readonly full: boolean;
   readonly name?: string;
   readonly recipe?: string;
@@ -23,6 +23,23 @@ interface InitFlags {
   readonly "no-interactive"?: boolean;
   readonly yes?: boolean;
 }
+
+export const initOptionsFromInput = (input: unknown): InitAppOptions => {
+  const flags: Partial<InitFlags> =
+    typeof input === "object" && input !== null
+      ? ((input as { readonly flags?: Partial<InitFlags> }).flags ?? {})
+      : {};
+  const answers = parseAnswerFlags(flags.answer ?? []);
+  return {
+    cwd: process.cwd(),
+    full: flags.full === true,
+    answers,
+    yes: flags.yes === true,
+    nonInteractive: flags["no-interactive"] === true,
+    ...(flags.name === undefined ? {} : { name: flags.name }),
+    ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
+  };
+};
 
 export const initSpec: LandoCommandSpec<never> = {
   id: "apps:init",
@@ -81,17 +98,8 @@ export default class InitCommand extends LandoCommandBase {
       throw error;
     }
 
-    const { flags } = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
-    const answers = parseAnswerFlags(flags.answer ?? []);
-    const options: InitAppOptions = {
-      cwd: process.cwd(),
-      full: flags.full,
-      answers,
-      yes: flags.yes === true,
-      nonInteractive: flags["no-interactive"] === true,
-      ...(flags.name === undefined ? {} : { name: flags.name }),
-      ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
-    };
+    const parsed = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
+    const options = initOptionsFromInput(parsed);
 
     let result: InitAppResult;
     try {

@@ -7,7 +7,7 @@ import {
 } from "../../../../commands/meta/global-config.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-const extractFormat = (input: unknown): "json" | "table" => {
+export const globalConfigFormatFromInput = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
   return flags.format === "json" ? "json" : "table";
@@ -20,7 +20,8 @@ export const metaGlobalConfigSpec: LandoCommandSpec<GlobalConfigResult> = {
   topLevelAlias: "global:config",
   bootstrap: "global",
   run: () => globalConfig(),
-  render: (result, input) => renderGlobalConfigResult(result as GlobalConfigResult, extractFormat(input)),
+  render: (result, input) =>
+    renderGlobalConfigResult(result as GlobalConfigResult, globalConfigFormatFromInput(input)),
 };
 
 export default class MetaGlobalConfigCommand extends LandoCommandBase {
