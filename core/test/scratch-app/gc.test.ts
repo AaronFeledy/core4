@@ -184,20 +184,30 @@ describe("ScratchAppServiceLive gc", () => {
       const pruned: string[] = [];
       const layer = makeLayer([], pruned);
 
+      const handle = { id, app: { kind: "scratch", id, root } };
+
       const listed = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.list()).pipe(Effect.provide(layer)),
       );
-      expect(listed).toEqual([{ id, app: { kind: "scratch", id, root } }]);
+      expect(listed).toEqual([
+        {
+          ...handle,
+          source: { kind: "fork" },
+          mode: "none",
+          created: "2026-01-01T00:00:00.000Z",
+          status: "detached",
+        },
+      ]);
 
       const resolved = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.resolveById(id)).pipe(Effect.provide(layer)),
       );
-      expect(resolved).toEqual(listed[0]);
+      expect(resolved).toEqual(handle);
 
       const stopped = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.stop(id)).pipe(Effect.provide(layer)),
       );
-      expect(stopped).toEqual(listed[0]);
+      expect(stopped).toEqual(handle);
       expect(pruned).toEqual([id]);
       await expect(Effect.runPromise(makeScratchRegistry().get(id))).resolves.toBeUndefined();
 
@@ -208,7 +218,7 @@ describe("ScratchAppServiceLive gc", () => {
       const destroyed = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.destroy(id)).pipe(Effect.provide(layer)),
       );
-      expect(destroyed).toEqual(listed[0]);
+      expect(destroyed).toEqual(handle);
     });
   });
 });
