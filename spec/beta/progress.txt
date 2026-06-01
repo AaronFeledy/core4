@@ -334,6 +334,6 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 ## [2026-06-01 01:08] - Babysit
 - PR: #249 https://github.com/AaronFeledy/core4/pull/249
 - CI outcome: pass
-- Review feedback: fixed (Bugbot: task-tail running label used the started-count instead of the declared children count; frame clearing counted logical lines instead of physical terminal rows for wrapped/multiline output)
+- Review feedback: fixed (Bugbot, two rounds: running label used the started-count instead of the declared children count; frame clearing counted logical lines instead of physical terminal rows; collapsed interactive summary dropped the tree duration suffix shown by plain output; redraw used a terminal width cached at construction instead of the live width)
 - Merge: merged (squash)
 ---
