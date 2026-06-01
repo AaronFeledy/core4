@@ -1365,6 +1365,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     let recipe: string | undefined;
     let source: string | undefined;
     let url: string | undefined;
+    let pkg: string | undefined;
     let path: string | undefined;
     let checksum: string | undefined;
     const answerValues: string[] = [];
@@ -1410,6 +1411,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         i += urlMatch.consumed - 1;
         continue;
       }
+      const packageMatch = parseStringFlag(rest, i, "package");
+      if (packageMatch !== undefined) {
+        pkg = packageMatch.value;
+        i += packageMatch.consumed - 1;
+        continue;
+      }
       const pathMatch = parseStringFlag(rest, i, "path");
       if (pathMatch !== undefined) {
         path = pathMatch.value;
@@ -1430,7 +1437,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     }
     const answers = parseAnswerFlags(answerValues);
     try {
-      const sourceOptions = parseInitSourceFlags({ source, url, path, checksum });
+      const sourceOptions = parseInitSourceFlags({ source, url, package: pkg, path, checksum });
       const result = await initApp({
         cwd: process.cwd(),
         full,

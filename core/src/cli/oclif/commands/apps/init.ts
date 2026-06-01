@@ -22,6 +22,7 @@ interface InitFlags {
   readonly recipe?: string;
   readonly source?: string;
   readonly url?: string;
+  readonly package?: string;
   readonly path?: string;
   readonly checksum?: string;
   readonly answer?: ReadonlyArray<string>;
@@ -43,8 +44,11 @@ export default class InitCommand extends LandoCommandBase {
   static override aliases = [...resolveTopLevelAliases(initSpec)];
   static override flags = {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
-    source: Flags.string({ description: "Init source id (cwd, git, tarball, template)." }),
-    url: Flags.string({ description: "Remote recipe source URL." }),
+    source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, template)." }),
+    url: Flags.string({ description: "Remote recipe source URL (for --source=git/tarball)." }),
+    package: Flags.string({
+      description: "npm package spec <name>[@version] (for --source=npm).",
+    }),
     path: Flags.string({ description: "Subdirectory within a remote recipe source." }),
     checksum: Flags.string({
       description: "Expected SHA-256 of a --source=tarball archive (64 hex chars).",
@@ -99,6 +103,7 @@ export default class InitCommand extends LandoCommandBase {
       const sourceOptions = parseInitSourceFlags({
         source: flags.source,
         url: flags.url,
+        package: flags.package,
         path: flags.path,
         checksum: flags.checksum,
       });
