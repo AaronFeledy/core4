@@ -40,7 +40,7 @@ import {
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"] as { readonly id?: string } | undefined;
-  return scratch?.id === plan.id ? { "dev.lando.scratch": "true", "dev.lando.scratch-id": scratch.id } : {};
+  return scratch?.id === plan.id ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratch.id } : {};
 };
 
 const PROVIDER_ID = "docker";

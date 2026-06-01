@@ -25,7 +25,7 @@ const plan = (id: string, extensionId: string | undefined): AppPlan => ({
 describe("provider scratch labels", () => {
   test("docker and lando providers emit scratch labels only when the marker matches the plan id", () => {
     const matching = {
-      "dev.lando.scratch": "true",
+      "dev.lando.scratch": "TRUE",
       "dev.lando.scratch-id": "scratch-app-000001",
     };
 
