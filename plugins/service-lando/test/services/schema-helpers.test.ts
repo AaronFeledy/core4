@@ -54,7 +54,10 @@ describe("service schema helpers", () => {
   });
 
   test("decodeServicePlan throws the same malformed-plan error shape as the raw decoder", () => {
-    const malformedPlanInput = { ...validPlanInput, endpoints: [{ port: "eighty", protocol: "http", name: "web" }] };
+    const malformedPlanInput = {
+      ...validPlanInput,
+      endpoints: [{ port: "eighty", protocol: "http", name: "web" }],
+    };
 
     expect(thrownShape(() => decodeServicePlan(malformedPlanInput))).toEqual(
       thrownShape(() => Schema.decodeUnknownSync(ServicePlan)(malformedPlanInput)),

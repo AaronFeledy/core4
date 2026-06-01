@@ -56,23 +56,25 @@ describe("decodeOrFail", () => {
       });
     };
 
-    expect(await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" }))).toEqual(
-      await errorShape(legacyDecode(LandofileShape, input, onError)),
-    );
+    expect(
+      await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" })),
+    ).toEqual(await errorShape(legacyDecode(LandofileShape, input, onError)));
   });
 
   test("preserves Bun shell front-matter validation error bytes", async () => {
     const input = { service: 7, summary: false };
     const onError = (cause: ParseResult.ParseError) =>
       new BunShellScriptFrontMatterError({
-        message: `.bun.sh front-matter at /app/.lando/scripts/build.bun.sh is malformed.`,
+        message: ".bun.sh front-matter at /app/.lando/scripts/build.bun.sh is malformed.",
         path: "/app/.lando/scripts/build.bun.sh",
         issues: issuesWithMessages(cause, "Invalid .bun.sh front-matter."),
         remediation: "Use only documented .bun.sh front-matter keys: service and summary.",
       });
 
     expect(
-      await errorShape(decodeOrFail(BunShellScriptFrontMatter, onError)(input, { onExcessProperty: "error" })),
+      await errorShape(
+        decodeOrFail(BunShellScriptFrontMatter, onError)(input, { onExcessProperty: "error" }),
+      ),
     ).toEqual(await errorShape(legacyDecode(BunShellScriptFrontMatter, input, onError)));
   });
 
@@ -85,9 +87,9 @@ describe("decodeOrFail", () => {
         cause,
       });
 
-    expect(await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" }))).toEqual(
-      await errorShape(legacyDecode(LandofileShape, input, onError)),
-    );
+    expect(
+      await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" })),
+    ).toEqual(await errorShape(legacyDecode(LandofileShape, input, onError)));
   });
 
   test("preserves RecipeManifest validation error bytes", async () => {
@@ -101,9 +103,9 @@ describe("decodeOrFail", () => {
       });
     };
 
-    expect(await errorShape(decodeOrFail(RecipeManifest, onError)(input, { onExcessProperty: "error" }))).toEqual(
-      await errorShape(legacyDecode(RecipeManifest, input, onError)),
-    );
+    expect(
+      await errorShape(decodeOrFail(RecipeManifest, onError)(input, { onExcessProperty: "error" })),
+    ).toEqual(await errorShape(legacyDecode(RecipeManifest, input, onError)));
   });
 
   test("preserves global Landofile validation error bytes", async () => {
@@ -117,8 +119,8 @@ describe("decodeOrFail", () => {
       });
     };
 
-    expect(await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" }))).toEqual(
-      await errorShape(legacyDecode(LandofileShape, input, onError)),
-    );
+    expect(
+      await errorShape(decodeOrFail(LandofileShape, onError)(input, { onExcessProperty: "error" })),
+    ).toEqual(await errorShape(legacyDecode(LandofileShape, input, onError)));
   });
 });
