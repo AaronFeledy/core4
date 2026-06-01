@@ -14,11 +14,11 @@ const SKIP_TAG_PATTERN = /^Guide-Coverage-Skip:[ \t]*(.*)$/m;
 export const MIN_SKIP_REASON_LENGTH = 24;
 
 export interface GuideDriftDeclaration {
-  /** PRD file path the declaration came from (used in remediation messages). */
+  /** Planning document path the declaration came from (used in remediation messages). */
   readonly source: string;
-  /** Glob patterns describing the CLI/source surface this PRD's guides cover. */
+  /** Glob patterns describing the CLI/source surface covered by this guide declaration. */
   readonly surfacePaths: ReadonlyArray<string>;
-  /** Guide files owned by this PRD (repo-relative `docs/guides/**.mdx` paths). */
+  /** Guide files owned by this declaration (repo-relative `docs/guides/**.mdx` paths). */
   readonly guidePaths: ReadonlyArray<string>;
 }
 
