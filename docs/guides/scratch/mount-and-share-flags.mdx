@@ -1,0 +1,33 @@
+---
+id: mount-and-share-flags
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, scratch, mount, storage]
+---
+
+<Guide>
+  <Scenario id="scratch-mount-cwd" render={false} reason="Mounting the current directory binds a host path into a real container, so this scenario documents the flag surface without booting containers">
+    <Step name="mount-cwd">
+      <Variable name="command" value="apps:scratch:start --fork --mount-cwd" display="Mounts the current working directory ($PWD) into the scratch app's primary service so the scratch serves your live files" />
+      <Variable name="default" value="primary appMount" display="Bare --mount-cwd rebinds the primary service's app mount to $PWD; the container path defaults to the service's app-mount destination (/app)" />
+      <Variable name="target" value="--mount-cwd=/srv/site" display="An explicit container path mounts $PWD at that path as an additional bind mount, leaving the primary app mount in place" />
+      <Variable name="recipe" value="apps:scratch:start --from lamp --mount-cwd" display="Works in recipe mode too: the rendered recipe runs against the scratch root while $PWD is bound into the primary service" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-share-global-storage" render={false} reason="Joining the shared cross-app network touches real provider networking, so this scenario documents the opt-in without booting containers">
+    <Step name="share-global-storage">
+      <Variable name="command" value="apps:scratch:start --fork --share-global-storage" display="Joins the scratch app to the shared cross-app network so it can reach the global app and its storage scope" />
+      <Variable name="optIn" value="explicit only" display="--share-global-storage is never inferred from another flag; without it a scratch app stays isolated from cross-app storage by default" />
+      <Variable name="capability" value="sharedCrossAppNetwork" display="The active provider must support shared cross-app networking; otherwise the start fails with a ScratchAppError explaining the limitation" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="scratch-mount-and-share-together" render={false} reason="The two flags are independent opt-ins that compose; this scenario documents their combined use">
+    <Step name="together">
+      <Variable name="command" value="apps:scratch:start --fork --mount-cwd --share-global-storage" display="The flags are mutually compatible and may be combined to serve $PWD while joining the shared cross-app network" />
+      <Variable name="conflict" value="--mount-cwd + --isolate=full" display="--mount-cwd cannot be combined with --isolate=full; passing both fails fast with ScratchIsolationConflictError" />
+    </Step>
+  </Scenario>
+</Guide>

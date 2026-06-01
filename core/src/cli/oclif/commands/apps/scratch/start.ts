@@ -2,6 +2,7 @@ import { Flags } from "@oclif/core";
 
 import {
   type ScratchStartResult,
+  normalizeScratchStartArgv,
   renderScratchStartResult,
   scratchStart,
   scratchStartOptionsFromInput,
@@ -45,11 +46,22 @@ export default class AppsScratchStartCommand extends LandoCommandBase {
       options: ["none", "full"],
       description: "Fork isolation: 'none' shares the source app root, 'full' uses a content copy.",
     }),
+    "mount-cwd": Flags.string({
+      helpValue: "container-path",
+      description: "Mount the current working directory into the scratch app's primary service.",
+    }),
+    "share-global-storage": Flags.boolean({
+      default: false,
+      description: "Join the shared cross-app network and expose the global app's storage scope.",
+    }),
   };
   static override landoSpec: LandoCommandSpec = appsScratchStartSpec;
   static override bootstrap = appsScratchStartSpec.bootstrap;
 
   override async run(): Promise<void> {
+    // `--mount-cwd` takes an optional value (`--mount-cwd[=<container-path>]`); oclif's string
+    // flag rejects the bare form, so rewrite it to the empty-value form before parsing.
+    this.argv = [...normalizeScratchStartArgv(this.argv)];
     await this.runEffect(appsScratchStartSpec);
   }
 }

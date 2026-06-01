@@ -4,8 +4,23 @@ import { join } from "node:path";
 
 import { Cause, type Context, Effect, Either, Layer, Schema } from "effect";
 
-import { ScratchAppError, ScratchAppNotFoundError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppPlan, AppPlan as AppPlanSchema, LandofileShape } from "@lando/sdk/schema";
+import {
+  ScratchAppError,
+  ScratchAppNotFoundError,
+  ScratchIsolationConflictError,
+  ScratchSourceUnresolvedError,
+} from "@lando/sdk/errors";
+import {
+  AbsolutePath,
+  type AppPlan,
+  AppPlan as AppPlanSchema,
+  LandofileShape,
+  type NetworkingPlan,
+  PortablePath,
+  type ProviderCapabilities,
+  ServiceName,
+  landoNetworkingPlan,
+} from "@lando/sdk/schema";
 import {
   AppPlanner,
   FileSystem,
@@ -189,13 +204,129 @@ export const isUnsafeScratchId = (id: string): boolean =>
 
 const SCRATCH_EXTENSION_KEY = "@lando/core/scratch";
 
+const scratchExtension = (plan: AppPlan): Record<string, unknown> => {
+  const existing = plan.extensions[SCRATCH_EXTENSION_KEY];
+  return typeof existing === "object" && existing !== null ? (existing as Record<string, unknown>) : {};
+};
+
 const markScratchPlan = (plan: AppPlan, scratchId: string): AppPlan => ({
   ...plan,
   extensions: {
     ...plan.extensions,
-    [SCRATCH_EXTENSION_KEY]: { id: scratchId },
+    [SCRATCH_EXTENSION_KEY]: { ...scratchExtension(plan), id: scratchId },
   },
 });
+
+const findPrimaryServiceName = (plan: AppPlan): ServiceName | undefined => {
+  const names = Object.keys(plan.services).map((name) => ServiceName.make(name));
+  return names.find((name) => plan.services[name]?.primary === true) ?? names[0];
+};
+
+const dropAppMountFileSync = (fileSync: AppPlan["fileSync"], serviceName: ServiceName): AppPlan["fileSync"] =>
+  fileSync.filter(
+    (entry) => !(entry.session.service === serviceName && entry.session.mountKey === "app-mount"),
+  );
+
+const applyMountCwd = (plan: AppPlan, target: string | undefined, hostCwd: string): AppPlan | undefined => {
+  const primaryName = findPrimaryServiceName(plan);
+  if (primaryName === undefined) return undefined;
+  const primary = plan.services[primaryName];
+  if (primary === undefined) return undefined;
+  const source = AbsolutePath.make(hostCwd);
+  const appMount = primary.appMount;
+  if (appMount !== undefined && (target === undefined || target === appMount.target)) {
+    const nextPrimary = {
+      ...primary,
+      appMount: { ...appMount, source, realization: "passthrough" as const },
+    };
+    return {
+      ...plan,
+      services: { ...plan.services, [primaryName]: nextPrimary },
+      fileSync: dropAppMountFileSync(plan.fileSync, primaryName),
+    };
+  }
+  const containerTarget = PortablePath.make(target ?? appMount?.target ?? "/app");
+  const nextPrimary = {
+    ...primary,
+    mounts: [
+      ...primary.mounts,
+      {
+        type: "bind" as const,
+        source: String(source),
+        target: containerTarget,
+        readOnly: false,
+        realization: "passthrough" as const,
+      },
+    ],
+  };
+  return { ...plan, services: { ...plan.services, [primaryName]: nextPrimary } };
+};
+
+const applyShareGlobalStorage = (plan: AppPlan): AppPlan => {
+  const built = landoNetworkingPlan({
+    slug: plan.slug,
+    serviceNames: Object.keys(plan.services),
+    sharedCrossAppNetwork: true,
+  });
+  const networking: NetworkingPlan = {
+    perAppBridge: plan.networking?.perAppBridge ?? built.perAppBridge,
+    sharedNetworkMembership: plan.networking?.sharedNetworkMembership ?? built.sharedNetworkMembership,
+  };
+  return {
+    ...plan,
+    networking,
+    extensions: {
+      ...plan.extensions,
+      [SCRATCH_EXTENSION_KEY]: { ...scratchExtension(plan), shareGlobalStorage: true },
+    },
+  };
+};
+
+const applyScratchStartFlags = (
+  plan: AppPlan,
+  input: ScratchAcquireInput,
+  capabilities: ProviderCapabilities,
+  hostCwd: string,
+): Effect.Effect<AppPlan, ScratchAppError> =>
+  Effect.gen(function* () {
+    let next = plan;
+    if (input.mountCwd !== undefined) {
+      const mounted = applyMountCwd(next, input.mountCwd.target, hostCwd);
+      if (mounted === undefined) {
+        return yield* Effect.fail(
+          scratchAppError(
+            "start",
+            "Unable to mount the current working directory: the scratch app has no primary service.",
+            undefined,
+            "Use a recipe or app that declares a primary service before passing --mount-cwd.",
+          ),
+        );
+      }
+      next = mounted;
+    }
+    if (input.shareGlobalStorage === true) {
+      if (!capabilities.sharedCrossAppNetwork) {
+        return yield* Effect.fail(
+          scratchAppError(
+            "start",
+            "The active provider does not support shared cross-app networking, so --share-global-storage cannot be honored.",
+            undefined,
+            "Switch to a provider that supports shared cross-app networking, or omit --share-global-storage.",
+          ),
+        );
+      }
+      next = applyShareGlobalStorage(next);
+    }
+    return next;
+  });
+
+const scratchIsolationConflict = (flags: ReadonlyArray<string>): ScratchIsolationConflictError =>
+  new ScratchIsolationConflictError({
+    message: `${flags.join(" and ")} cannot be combined.`,
+    flags,
+    remediation:
+      "Pass --mount-cwd on its own to serve your current directory, or drop it to keep --isolate=full.",
+  });
 
 const nowIso = (): string => new Date().toISOString();
 
@@ -417,6 +548,7 @@ const makeScratchAppService = (
 
   const acquireFork = (input: ScratchAcquireInput) =>
     Effect.gen(function* () {
+      const hostCwd = yield* Effect.sync(() => process.cwd());
       const landofile = yield* landofileService.discover.pipe(
         Effect.mapError(() => scratchForkUnresolvedError()),
       );
@@ -470,9 +602,12 @@ const makeScratchAppService = (
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
+      const startPlan = yield* applyScratchStartFlags(forkPlan, input, capabilities, hostCwd).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
       return yield* startScratchPlan(
         scratchId,
-        forkPlan,
+        startPlan,
         scratchPaths.instanceRoot,
         scratchPaths.planCache,
         input.detached,
@@ -480,7 +615,7 @@ const makeScratchAppService = (
         Effect.tap(() =>
           scratchRegistry.upsert({
             ...registryEntry,
-            rootPath: String(forkPlan.root),
+            rootPath: String(startPlan.root),
             status: "running",
             updatedAt: nowIso(),
           }),
@@ -489,7 +624,7 @@ const makeScratchAppService = (
           reapScratch({
             id: scratchId,
             instanceRoot: scratchPaths.instanceRoot,
-            plan: markScratchPlan(forkPlan, scratchId),
+            plan: markScratchPlan(startPlan, scratchId),
           }),
         ),
       );
@@ -497,6 +632,7 @@ const makeScratchAppService = (
 
   const acquireRecipe = (input: ScratchAcquireInput, recipeRef: string) =>
     Effect.gen(function* () {
+      const hostCwd = yield* Effect.sync(() => process.cwd());
       const ref = recipeRef.trim();
       if (ref.length === 0) return yield* Effect.fail(scratchSourceUnresolvedError(input));
 
@@ -566,9 +702,12 @@ const makeScratchAppService = (
         ),
         Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
+      const startPlan = yield* applyScratchStartFlags(recipePlan, input, capabilities, hostCwd).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
       return yield* startScratchPlan(
         scratchId,
-        recipePlan,
+        startPlan,
         scratchPaths.instanceRoot,
         scratchPaths.planCache,
         input.detached,
@@ -576,7 +715,7 @@ const makeScratchAppService = (
         Effect.tap(() =>
           scratchRegistry.upsert({
             ...registryEntry,
-            rootPath: String(recipePlan.root),
+            rootPath: String(startPlan.root),
             status: "running",
             updatedAt: nowIso(),
           }),
@@ -585,14 +724,18 @@ const makeScratchAppService = (
           reapScratch({
             id: scratchId,
             instanceRoot: scratchPaths.instanceRoot,
-            plan: markScratchPlan(recipePlan, scratchId),
+            plan: markScratchPlan(startPlan, scratchId),
           }),
         ),
       );
     });
 
-  const acquire = (input: ScratchAcquireInput) =>
-    input.source.kind === "fork" ? acquireFork(input) : acquireRecipe(input, input.source.ref);
+  const acquire = (input: ScratchAcquireInput) => {
+    if (input.mountCwd !== undefined && input.isolate === "full") {
+      return Effect.fail(scratchIsolationConflict(["--mount-cwd", "--isolate=full"]));
+    }
+    return input.source.kind === "fork" ? acquireFork(input) : acquireRecipe(input, input.source.ref);
+  };
   const handleFromEntry = (entry: ScratchRegistryEntry): ScratchHandle => ({
     id: entry.id,
     app: { kind: "scratch", id: entry.id, root: AbsolutePath.make(entry.rootPath) },

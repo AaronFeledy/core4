@@ -289,6 +289,15 @@ export class ScratchAppIdInvalidError extends Schema.TaggedError<ScratchAppIdInv
   },
 ) {}
 
+export class ScratchIsolationConflictError extends Schema.TaggedError<ScratchIsolationConflictError>()(
+  "ScratchIsolationConflictError",
+  {
+    message: Schema.String,
+    flags: Schema.Array(Schema.String),
+    remediation: Schema.String,
+  },
+) {}
+
 export class RecipeError extends Schema.TaggedError<RecipeError>()("RecipeError", {
   message: Schema.String,
   recipe: Schema.String,
