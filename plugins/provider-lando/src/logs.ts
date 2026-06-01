@@ -8,8 +8,6 @@ import type { LogChunk, LogOptions, LogTarget, ProviderError } from "@lando/sdk/
 import type { PodmanApiClient, PodmanHttpRequest } from "./capabilities.ts";
 
 const PROVIDER_ID = "lando";
-const textDecoder = new TextDecoder();
-
 export interface LogsOptions {
   readonly podmanApi?: PodmanApiClient;
 }
