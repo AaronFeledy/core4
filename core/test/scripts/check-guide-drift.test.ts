@@ -9,6 +9,7 @@ import {
   checkGuideDrift,
   checkGuideDriftOnDisk,
   formatDriftDiagnostic,
+  formatGuideDriftSummary,
   parseGuideCoverageSurfacePaths,
 } from "../../../scripts/check-guide-drift.ts";
 
@@ -177,6 +178,17 @@ describe("checkGuideDrift (pure)", () => {
   test("diagnostics format as code: message", () => {
     const formatted = formatDriftDiagnostic({ code: "drift.guide-not-touched", message: "hello" });
     expect(formatted).toBe("drift.guide-not-touched: hello");
+  });
+
+  test("formats a PR check summary that includes a valid skip reason", () => {
+    const reason = "intentional refactor with no guide-visible behavior change";
+    const summary = formatGuideDriftSummary(
+      { diagnostics: [], skip: { reason } },
+      { changedFiles: ["core/src/recipes/git-source.ts"], prBody: `Guide-Coverage-Skip: ${reason}` },
+    );
+    expect(summary).toContain("Status: bypassed via `Guide-Coverage-Skip`.");
+    expect(summary).toContain(`Reason: ${reason}`);
+    expect(summary).toContain("- `core/src/recipes/git-source.ts`");
   });
 });
 

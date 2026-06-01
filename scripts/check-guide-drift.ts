@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { readdir } from "node:fs/promises";
+import { appendFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { extractGuideCoverageSection, parseGuideCoveragePaths } from "./check-guide-coverage.ts";
@@ -165,6 +165,24 @@ export const checkGuideDriftOnDisk = async (
 export const formatDriftDiagnostic = (diagnostic: DriftDiagnostic): string =>
   `${diagnostic.code}: ${diagnostic.message}`;
 
+const formatSummaryFileList = (files: ReadonlyArray<string>): string =>
+  files.length === 0 ? "_No changed files detected._" : files.map((file) => `- \`${file}\``).join("\n");
+
+export const formatGuideDriftSummary = (result: DriftResult, context: DriftContext): string => {
+  const header = "## Guide Drift";
+  const changedFiles = `### Changed Files\n${formatSummaryFileList(context.changedFiles)}`;
+  if (result.skip !== undefined) {
+    return `${header}\n\nStatus: bypassed via \`Guide-Coverage-Skip\`.\n\nReason: ${result.skip.reason}\n\n${changedFiles}\n`;
+  }
+  if (result.diagnostics.length === 0) {
+    return `${header}\n\nStatus: passed. Every touched CLI/source surface has a matching guide change.\n\n${changedFiles}\n`;
+  }
+  const diagnostics = result.diagnostics
+    .map((diagnostic) => `- ${formatDriftDiagnostic(diagnostic)}`)
+    .join("\n");
+  return `${header}\n\nStatus: failed.\n\n### Diagnostics\n${diagnostics}\n\n${changedFiles}\n`;
+};
+
 const splitFileList = (value: string): ReadonlyArray<string> =>
   value
     .split(/\r?\n/)
@@ -210,6 +228,12 @@ export const resolveDriftContext = (env: NodeJS.ProcessEnv = process.env): Drift
   return undefined;
 };
 
+const appendStepSummary = async (summary: string, env: NodeJS.ProcessEnv = process.env): Promise<void> => {
+  const summaryPath = env.GITHUB_STEP_SUMMARY;
+  if (summaryPath === undefined || summaryPath.trim() === "") return;
+  await appendFile(summaryPath, summary.endsWith("\n") ? summary : `${summary}\n`);
+};
+
 const main = async (): Promise<void> => {
   const context = resolveDriftContext();
   if (context === undefined) {
@@ -223,6 +247,8 @@ const main = async (): Promise<void> => {
     changedFiles: context.changedFiles,
     prBody: context.prBody,
   });
+
+  await appendStepSummary(formatGuideDriftSummary(result, context));
 
   if (result.skip !== undefined) {
     process.stdout.write(`Guide-drift gate bypassed via Guide-Coverage-Skip: ${result.skip.reason}\n`);
