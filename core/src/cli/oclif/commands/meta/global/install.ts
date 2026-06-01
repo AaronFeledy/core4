@@ -9,7 +9,7 @@ import {
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-const extractOptions = (input: unknown): GlobalInstallOptions => {
+export const globalInstallOptionsFromInput = (input: unknown): GlobalInstallOptions => {
   if (typeof input !== "object" || input === null) return {};
   const args = (input as { args?: Record<string, unknown> }).args ?? {};
   return typeof args.plugin === "string" ? { plugin: args.plugin } : {};
@@ -21,7 +21,7 @@ export const metaGlobalInstallSpec: LandoCommandSpec<GlobalInstallResult> = {
   namespace: "meta",
   topLevelAlias: "global:install",
   bootstrap: "global",
-  run: (input) => globalInstall(extractOptions(input)),
+  run: (input) => globalInstall(globalInstallOptionsFromInput(input)),
   render: (result) => renderGlobalInstallResult(result as GlobalInstallResult),
 };
 

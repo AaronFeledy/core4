@@ -1,6 +1,6 @@
 import { Command } from "@oclif/core";
 
-import { Cause, Effect, Exit, type Layer } from "effect";
+import { Effect, type Layer } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
@@ -8,6 +8,7 @@ import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import { resolveRendererMode } from "../renderer-selection.ts";
+import { runWithErrorHandling } from "../run-with-error-handling.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
@@ -229,32 +230,23 @@ export abstract class LandoCommandBase extends Command {
       args: (parsed as { args?: Record<string, unknown> }).args ?? {},
       rendererMode,
     };
-    const exit = await Effect.runPromiseExit(
+    await runWithErrorHandling(
       Effect.provide(spec.run(input), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),
+      {
+        render: (value) => spec.render?.(value, input),
+        formatError: (error) =>
+          formatCommandError({
+            error,
+            commandId: spec.id,
+            rendererMode,
+          }),
+        failureMode: rendererMode === "json" ? "stderr" : "throw",
+        stdout: (text) => this.log(text),
+        stderr: (text) => process.stderr.write(`${text}\n`),
+      },
     ).finally(() => {
       process.off("SIGINT", abort);
       process.off("SIGTERM", abort);
     });
-
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      if (failure._tag === "Some") {
-        const text = formatCommandError({
-          error: failure.value,
-          commandId: spec.id,
-          rendererMode,
-        });
-        if (rendererMode === "json") {
-          process.stderr.write(`${text}\n`);
-          process.exitCode = 1;
-          return;
-        }
-        throw new Error(text);
-      }
-      throw new Error(Cause.pretty(exit.cause));
-    }
-
-    const rendered = spec.render?.(exit.value, input);
-    if (rendered !== undefined && rendered.length > 0) this.log(rendered);
   }
 }

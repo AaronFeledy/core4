@@ -16,7 +16,7 @@ import { type InitAppOptions, type InitAppResult, initApp } from "../../../comma
 import { resolveRendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-interface InitFlags {
+export interface InitFlags {
   readonly full: boolean;
   readonly name?: string;
   readonly recipe?: string;
@@ -29,6 +29,31 @@ interface InitFlags {
   readonly "no-interactive"?: boolean;
   readonly yes?: boolean;
 }
+
+export const initOptionsFromInput = (input: unknown): InitAppOptions => {
+  const flags: Partial<InitFlags> =
+    typeof input === "object" && input !== null
+      ? ((input as { readonly flags?: Partial<InitFlags> }).flags ?? {})
+      : {};
+  const answers = parseAnswerFlags(flags.answer ?? []);
+  const sourceOptions = parseInitSourceFlags({
+    source: flags.source,
+    url: flags.url,
+    package: flags.package,
+    path: flags.path,
+    checksum: flags.checksum,
+  });
+  return {
+    cwd: process.cwd(),
+    full: flags.full === true,
+    answers,
+    yes: flags.yes === true,
+    nonInteractive: flags["no-interactive"] === true,
+    ...sourceOptions,
+    ...(flags.name === undefined ? {} : { name: flags.name }),
+    ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
+  };
+};
 
 export const initSpec: LandoCommandSpec<never> = {
   id: "apps:init",
@@ -58,6 +83,7 @@ export default class InitCommand extends LandoCommandBase {
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
     yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
     "no-interactive": Flags.boolean({
+      aliases: ["non-interactive"],
       description:
         "Disable interactive prompting. Missing required answers fail with RecipeMissingAnswerError.",
       default: false,
@@ -95,28 +121,11 @@ export default class InitCommand extends LandoCommandBase {
       throw error;
     }
 
-    const { flags } = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
-    const answers = parseAnswerFlags(flags.answer ?? []);
+    const parsed = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
 
     let result: InitAppResult;
     try {
-      const sourceOptions = parseInitSourceFlags({
-        source: flags.source,
-        url: flags.url,
-        package: flags.package,
-        path: flags.path,
-        checksum: flags.checksum,
-      });
-      const options: InitAppOptions = {
-        cwd: process.cwd(),
-        full: flags.full,
-        answers,
-        yes: flags.yes === true,
-        nonInteractive: flags["no-interactive"] === true,
-        ...sourceOptions,
-        ...(flags.name === undefined ? {} : { name: flags.name }),
-        ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
-      };
+      const options = initOptionsFromInput(parsed);
       result = await initApp(options);
     } catch (error) {
       const text = formatBugReport({

@@ -13,19 +13,19 @@ const stringArrayFlag = (value: unknown): ReadonlyArray<string> => {
   return typeof value === "string" ? [value] : [];
 };
 
-const extractFormat = (input: unknown): "json" | "table" => {
+export const globalStatusFormatFromInput = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
   return flags.format === "json" ? "json" : "table";
 };
 
-const extractOptions = (input: unknown): GlobalStatusOptions => {
+export const globalStatusOptionsFromInput = (input: unknown): GlobalStatusOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
   const services = stringArrayFlag(flags.service).filter((service) => service.length > 0);
   return {
     ...(services.length === 0 ? {} : { services }),
-    format: extractFormat(input),
+    format: globalStatusFormatFromInput(input),
   };
 };
 
@@ -35,8 +35,9 @@ export const metaGlobalStatusSpec: LandoCommandSpec<GlobalStatusResult> = {
   namespace: "meta",
   topLevelAlias: "global:status",
   bootstrap: "global",
-  run: (input) => globalStatus(extractOptions(input)),
-  render: (result, input) => renderGlobalStatusResult(result as GlobalStatusResult, extractFormat(input)),
+  run: (input) => globalStatus(globalStatusOptionsFromInput(input)),
+  render: (result, input) =>
+    renderGlobalStatusResult(result as GlobalStatusResult, globalStatusFormatFromInput(input)),
 };
 
 export default class MetaGlobalStatusCommand extends LandoCommandBase {

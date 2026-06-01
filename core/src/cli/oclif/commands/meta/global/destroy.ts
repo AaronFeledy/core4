@@ -8,7 +8,7 @@ import {
 } from "../../../../commands/meta/global-destroy.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-const extractOptions = (input: unknown): GlobalDestroyOptions => {
+export const globalDestroyOptionsFromInput = (input: unknown): GlobalDestroyOptions => {
   if (typeof input !== "object" || input === null) return {};
   const flags = (input as { flags?: Record<string, unknown> }).flags ?? {};
   return { yes: flags.yes === true, purge: flags.purge === true };
@@ -20,7 +20,7 @@ export const metaGlobalDestroySpec: LandoCommandSpec<GlobalDestroyResult> = {
   namespace: "meta",
   topLevelAlias: "global:destroy",
   bootstrap: "global",
-  run: (input) => globalDestroy(extractOptions(input)),
+  run: (input) => globalDestroy(globalDestroyOptionsFromInput(input)),
   render: (result) => renderGlobalDestroyResult(result as GlobalDestroyResult),
 };
 

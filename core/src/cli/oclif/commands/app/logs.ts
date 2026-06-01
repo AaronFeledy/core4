@@ -6,7 +6,7 @@ import { NotImplementedError } from "@lando/sdk/errors";
 import { type LogsAppResult, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-interface LogsFlags {
+export interface LogsFlags {
   readonly service?: string;
   readonly follow?: boolean;
   readonly tail?: number;
@@ -21,15 +21,38 @@ const deferredLogsError = (message: string, remediation: string): NotImplemented
     remediation,
   });
 
-const LOGS_FOLLOW_DEFERRED = deferredLogsError(
+export const LOGS_FOLLOW_DEFERRED = deferredLogsError(
   "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
   "Drop --follow and rely on --tail <N> for a finite log snapshot.",
 );
 
-const LOGS_SINCE_DEFERRED = deferredLogsError(
+export const LOGS_SINCE_DEFERRED = deferredLogsError(
   "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
   "Drop --since and use --tail <N> for a finite recent snapshot.",
 );
+
+export const logsDeferredErrorFromInput = (input: unknown): NotImplementedError | undefined => {
+  const flags =
+    typeof input === "object" && input !== null
+      ? ((input as { readonly flags?: LogsFlags }).flags ?? {})
+      : {};
+  return flags.follow === true
+    ? LOGS_FOLLOW_DEFERRED
+    : flags.since !== undefined
+      ? LOGS_SINCE_DEFERRED
+      : undefined;
+};
+
+export const logsOptionsFromInput = (input: unknown): Parameters<typeof logsApp>[0] => {
+  const flags =
+    typeof input === "object" && input !== null
+      ? ((input as { readonly flags?: LogsFlags }).flags ?? {})
+      : {};
+  return {
+    ...(flags.service === undefined ? {} : { service: flags.service }),
+    ...(flags.tail === undefined ? {} : { tail: flags.tail }),
+  };
+};
 
 export const logsSpec: LandoCommandSpec<LogsAppResult> = {
   id: "app:logs",
@@ -55,23 +78,14 @@ export default class LogsCommand extends LandoCommandBase {
 
   override async run(): Promise<void> {
     const parsed = (await this.parse(LogsCommand)) as { readonly flags: LogsFlags };
-    const deferredError =
-      parsed.flags.follow === true
-        ? LOGS_FOLLOW_DEFERRED
-        : parsed.flags.since !== undefined
-          ? LOGS_SINCE_DEFERRED
-          : undefined;
+    const deferredError = logsDeferredErrorFromInput(parsed);
     if (deferredError !== undefined) {
       await this.runEffect({ ...logsSpec, run: () => Effect.fail(deferredError) });
       return;
     }
     await this.runEffect({
       ...logsSpec,
-      run: () =>
-        logsApp({
-          ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
-          ...(parsed.flags.tail === undefined ? {} : { tail: parsed.flags.tail }),
-        }),
+      run: () => logsApp(logsOptionsFromInput(parsed)),
     });
   }
 }
