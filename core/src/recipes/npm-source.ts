@@ -195,7 +195,7 @@ const verifyNpmIntegrity = (bytes: Uint8Array, dist: NpmPackageDist, source: str
       });
     }
   }
-  // Neither field present ⇒ no verification (warn-only policy, spec §PRD-B-07).
+  // Neither field present ⇒ nothing to verify against; treat as unverifiable rather than failing closed.
 };
 
 export const resolveNpmRecipeSource = async (
