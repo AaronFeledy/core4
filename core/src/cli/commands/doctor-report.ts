@@ -10,6 +10,7 @@ import type { ConfigLintResult } from "@lando/sdk/schema";
 import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { lintLandofile } from "../../landofile/lint.ts";
+import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 import {
   DefaultGlobalAppDoctorLayer,
   type GlobalAppDoctorResult,
@@ -77,11 +78,7 @@ export const renderDoctorReport = (report: DoctorReport): string => {
 
 const renderAppConfigSection = (result: ConfigLintResult): string => {
   const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
-  for (const violation of result.violations) {
-    const where = violation.path.length === 0 ? "(root)" : violation.path;
-    lines.push(`  ${where}: ${violation.message}`);
-    if (violation.suggestedFix !== undefined) lines.push(`    fix: ${violation.suggestedFix}`);
-  }
+  lines.push(...result.violations.map(renderConfigLintViolation));
   return lines.join("\n");
 };
 

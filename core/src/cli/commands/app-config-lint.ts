@@ -4,6 +4,7 @@ import type { LandofileNotFoundError } from "@lando/sdk/errors";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import { type LintLandofileOptions, lintLandofile } from "../../landofile/lint.ts";
+import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 
 export type AppConfigLintFormat = "text" | "json";
 
@@ -25,12 +26,7 @@ const textRender = (result: ConfigLintResult): string => {
   const header = `${result.file}: ${result.violations.length} canonical-schema violation${
     result.violations.length === 1 ? "" : "s"
   }.`;
-  const lines = result.violations.map((violation) => {
-    const where = violation.path.length === 0 ? "(root)" : violation.path;
-    const body = [`  ${where}: ${violation.message}`];
-    if (violation.suggestedFix !== undefined) body.push(`    fix: ${violation.suggestedFix}`);
-    return body.join("\n");
-  });
+  const lines = result.violations.map(renderConfigLintViolation);
   return [header, ...lines].join("\n");
 };
 
