@@ -165,6 +165,13 @@ const directoryExists = async (path: string): Promise<boolean> => {
   }
 };
 
+const waitForAppliedPlan = (appliedPlans: AppPlan[]) =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 100 && appliedPlans.length === 0; attempt += 1) {
+      yield* Effect.sleep("10 millis");
+    }
+  });
+
 describe("ScratchAppServiceLive scope-bound finalizer", () => {
   test("foreground (detached:false) destroys the scratch when the acquire scope closes", async () => {
     await withTempProject(async () => {
@@ -223,8 +230,7 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
               ),
             ),
           );
-          // Let the acquire complete (apply the plan + register the finalizer) before interrupting.
-          yield* Effect.sleep("50 millis");
+          yield* waitForAppliedPlan(appliedPlans);
           return yield* Fiber.interrupt(fiber);
         }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
       );
@@ -250,7 +256,7 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
         const result = await Effect.runPromise(
           Effect.gen(function* () {
             const fiber = yield* Effect.fork(scratchStart({ fork: true, signal: controller.signal }));
-            yield* Effect.sleep("50 millis");
+            yield* waitForAppliedPlan(appliedPlans);
             yield* Effect.sync(() => controller.abort());
             return yield* Fiber.join(fiber);
           }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
