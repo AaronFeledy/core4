@@ -1,0 +1,38 @@
+{
+  "name": "@lando/container-runtime",
+  "description": "Private provider-agnostic container runtime helpers for Lando providers.",
+  "version": "0.0.0",
+  "author": "Lando Alliance",
+  "license": "MIT",
+  "homepage": "https://github.com/lando-community/core4",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lando-community/core4.git",
+    "directory": "container-runtime"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "bun": ">=1.3.14"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./transport": "./src/transport.ts",
+    "./streams": "./src/streams.ts",
+    "./plan": "./src/plan.ts",
+    "./capabilities": "./src/capabilities.ts"
+  },
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
+  "keywords": ["lando", "container-runtime", "provider"],
+  "dependencies": {
+    "@lando/sdk": "workspace:*",
+    "effect": "^3.21.2"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "clean": "rm -rf dist .tsbuildinfo",
+    "typecheck": "tsc -b"
+  }
+}
