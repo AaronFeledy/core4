@@ -20,7 +20,6 @@ import type {
   ScratchAppService,
 } from "@lando/sdk/services";
 
-import { parseAnswerFlags } from "../recipes/prompts/index.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "./commands/app-cache-refresh.ts";
@@ -47,9 +46,8 @@ import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
 import {
-  type ScratchListFormat,
   type ScratchStartOptions,
-  asIsolateMode,
+  normalizeScratchStartArgv,
   renderScratchDestroyResult,
   renderScratchGcReport,
   renderScratchInfoResult,
@@ -59,19 +57,36 @@ import {
   renderScratchStopResult,
   scratchDestroy,
   scratchGc,
+  scratchIdFromInput,
   scratchInfo,
   scratchList,
+  scratchListFormatFromInput,
   scratchLogs,
   scratchStart,
+  scratchStartOptionsFromInput,
   scratchStop,
 } from "./commands/scratch.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
+import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
+import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
+import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
+import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
+import { globalConfigFormatFromInput } from "./oclif/commands/meta/global/config.ts";
+import { globalDestroyOptionsFromInput } from "./oclif/commands/meta/global/destroy.ts";
+import { globalInstallOptionsFromInput } from "./oclif/commands/meta/global/install.ts";
+import { globalStartOptionsFromInput } from "./oclif/commands/meta/global/start.ts";
+import {
+  globalStatusFormatFromInput,
+  globalStatusOptionsFromInput,
+} from "./oclif/commands/meta/global/status.ts";
+import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/uninstall.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { resolveRendererMode } from "./renderer-selection.ts";
+import { runWithErrorHandling } from "./run-with-error-handling.ts";
 
 const version = "@lando/core/0.0.0";
 
@@ -91,6 +106,118 @@ const commandName = (id: string, command: CompiledCommand): string => {
 
 const findCommand = (name: string): [string, CompiledCommand] | undefined =>
   commandEntries.find(([id, command]) => id === name || command.aliases?.includes(name));
+
+interface CompiledCommandInput {
+  readonly argv: ReadonlyArray<string>;
+  readonly flags: Record<string, unknown>;
+  readonly args: Record<string, unknown>;
+  readonly rendererMode?: RendererMode;
+  readonly signal?: AbortSignal;
+}
+
+type OclifFlagDefinition = {
+  readonly type?: string;
+  readonly char?: string;
+  readonly aliases?: ReadonlyArray<string>;
+  readonly multiple?: boolean;
+};
+
+type OclifArgDefinition = Record<string, unknown>;
+
+const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
+  (compiledCommands as Readonly<Record<string, CompiledCommand>>)[commandId];
+
+const flagDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifFlagDefinition>> =>
+  (command as { flags?: Readonly<Record<string, OclifFlagDefinition>> }).flags ?? {};
+
+const argDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifArgDefinition>> =>
+  (command as { args?: Readonly<Record<string, OclifArgDefinition>> }).args ?? {};
+
+const flagNameByToken = (
+  flags: Readonly<Record<string, OclifFlagDefinition>>,
+): ReadonlyMap<string, string> => {
+  const out = new Map<string, string>();
+  for (const [name, definition] of Object.entries(flags)) {
+    out.set(`--${name}`, name);
+    for (const alias of definition.aliases ?? []) out.set(`--${alias}`, name);
+    if (definition.char !== undefined) out.set(`-${definition.char}`, name);
+  }
+  return out;
+};
+
+const parseFlagValue = (name: string, value: string | boolean): string | number | boolean => {
+  if (name === "tail" && typeof value === "string") {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isNaN(parsed) ? value : parsed;
+  }
+  return value;
+};
+
+const setParsedFlag = (
+  flags: Record<string, unknown>,
+  name: string,
+  value: string | boolean,
+  definition: OclifFlagDefinition,
+): void => {
+  const parsed = parseFlagValue(name, value);
+  if (definition.multiple === true) {
+    const existing = flags[name];
+    flags[name] = Array.isArray(existing) ? [...existing, parsed] : [parsed];
+    return;
+  }
+  flags[name] = parsed;
+};
+
+export const compiledCommandInputFromArgv = (
+  commandId: string,
+  argv: ReadonlyArray<string>,
+  options: { readonly rendererMode?: RendererMode; readonly signal?: AbortSignal } = {},
+): CompiledCommandInput => {
+  const command = commandSpecForId(commandId);
+  if (command === undefined) return { argv, flags: {}, args: {}, ...options };
+  const normalizedArgv = commandId === "apps:scratch:start" ? normalizeScratchStartArgv(argv) : argv;
+  const flagDefinitions = flagDefinitionsForCommand(command);
+  const flagTokens = flagNameByToken(flagDefinitions);
+  const argNames = Object.keys(argDefinitionsForCommand(command));
+  const flags: Record<string, unknown> = {};
+  const positionals: string[] = [];
+
+  for (let index = 0; index < normalizedArgv.length; index += 1) {
+    const arg = normalizedArgv[index];
+    if (arg === undefined) continue;
+    if (arg === "--") {
+      positionals.push(...normalizedArgv.slice(index + 1));
+      break;
+    }
+
+    const equalsIndex = arg.indexOf("=");
+    const token = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+    const flagName = flagTokens.get(token);
+    if (flagName !== undefined) {
+      const definition = flagDefinitions[flagName] ?? {};
+      if (definition.type === "boolean") {
+        setParsedFlag(flags, flagName, true, definition);
+        continue;
+      }
+      const value = equalsIndex === -1 ? normalizedArgv[index + 1] : arg.slice(equalsIndex + 1);
+      if (value === undefined) continue;
+      setParsedFlag(flags, flagName, value, definition);
+      if (equalsIndex === -1) index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("-")) continue;
+    positionals.push(arg);
+  }
+
+  const args: Record<string, unknown> = {};
+  for (const [index, name] of argNames.entries()) {
+    const value = positionals[index];
+    if (value !== undefined) args[name] = value;
+  }
+
+  return { argv: normalizedArgv, flags, args, ...options };
+};
 
 const printRootHelp = (): void => {
   console.log(`Lando v4 core: runtime, planner, OCLIF adapter, and library API.
@@ -323,96 +450,16 @@ const runRebuild = async (): Promise<void> => {
   }
 };
 
-const parseLogsArgv = (
-  argv: ReadonlyArray<string>,
-): {
-  readonly service?: string;
-  readonly follow: boolean;
-  readonly tail?: number;
-  readonly since?: string;
-} => {
-  let service: string | undefined;
-  let follow = false;
-  let tail: number | undefined;
-  let since: string | undefined;
-  let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
-    if (arg === undefined) {
-      i += 1;
-      continue;
-    }
-    const serviceMatch = parseStringFlag(argv, i, "service", "s");
-    if (serviceMatch !== undefined) {
-      service = serviceMatch.value;
-      i += serviceMatch.consumed;
-      continue;
-    }
-    const tailMatch = parseStringFlag(argv, i, "tail");
-    if (tailMatch !== undefined) {
-      const parsed = Number.parseInt(tailMatch.value, 10);
-      if (!Number.isNaN(parsed)) tail = parsed;
-      i += tailMatch.consumed;
-      continue;
-    }
-    const sinceMatch = parseStringFlag(argv, i, "since");
-    if (sinceMatch !== undefined) {
-      since = sinceMatch.value;
-      i += sinceMatch.consumed;
-      continue;
-    }
-    if (arg === "--follow" || arg === "-f") {
-      follow = true;
-      i += 1;
-      continue;
-    }
-    i += 1;
-  }
-  return {
-    ...(service === undefined ? {} : { service }),
-    follow,
-    ...(tail === undefined ? {} : { tail }),
-    ...(since === undefined ? {} : { since }),
-  };
-};
-
 const runLogs = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const parsed = parseLogsArgv(argv);
-  if (parsed.follow) {
-    console.error(
-      commandErrorMessage(
-        new NotImplementedError({
-          message:
-            "`lando logs --follow` streaming output is deferred to Beta. Alpha returns a finite snapshot via `--tail`.",
-          commandId: "app:logs",
-          specSection: "spec/08-cli-and-tooling.md",
-          remediation: "Drop --follow and rely on --tail <N> for a finite log snapshot.",
-        }),
-      ),
-    );
-    process.exitCode = 1;
-    return;
-  }
-  if (parsed.since !== undefined) {
-    console.error(
-      commandErrorMessage(
-        new NotImplementedError({
-          message:
-            "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
-          commandId: "app:logs",
-          specSection: "spec/08-cli-and-tooling.md",
-          remediation: "Drop --since and use --tail <N> for a finite recent snapshot.",
-        }),
-      ),
-    );
+  const input = compiledCommandInputFromArgv("app:logs", argv);
+  const deferredError = logsDeferredErrorFromInput(input);
+  if (deferredError !== undefined) {
+    console.error(commandErrorMessage(deferredError));
     process.exitCode = 1;
     return;
   }
   const exit = await Effect.runPromiseExit(
-    logsApp({
-      ...(parsed.service === undefined ? {} : { service: parsed.service }),
-      ...(parsed.tail === undefined ? {} : { tail: parsed.tail }),
-    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    logsApp(logsOptionsFromInput(input)).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderLogsAppResult(exit.value));
@@ -823,157 +870,27 @@ const globalRuntimeLayer = () =>
     LandoRuntimeBootstrapError
   >;
 
-const parseGlobalServiceFlags = (argv: ReadonlyArray<string>): ReadonlyArray<string> => {
-  const services: string[] = [];
-  for (let i = 0; i < argv.length; i += 1) {
-    const match = parseStringFlag(argv, i, "service", "s");
-    if (match !== undefined) {
-      services.push(match.value);
-      i += match.consumed - 1;
-    }
-  }
-  return services;
-};
-
-const parseTableJsonFormat = (argv: ReadonlyArray<string>): "json" | "table" => {
-  for (let i = 0; i < argv.length; i += 1) {
-    const match = parseStringFlag(argv, i, "format");
-    if (match !== undefined) {
-      if (match.value === "json" || match.value === "table") return match.value;
-      i += match.consumed - 1;
-    }
-  }
-  return "table";
-};
-
 const scratchRuntimeLayer = () =>
   makeLandoRuntime({ bootstrap: "scratch" }) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
 
 const runScratchEffect = async <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
   render: (result: A) => string | undefined,
-): Promise<void> => {
-  const exit = await Effect.runPromiseExit(operation.pipe(Effect.provide(scratchRuntimeLayer())));
-  if (Exit.isSuccess(exit)) {
-    const rendered = render(exit.value);
-    if (rendered !== undefined && rendered.length > 0) console.log(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
-};
+): Promise<void> =>
+  runWithErrorHandling(operation.pipe(Effect.provide(scratchRuntimeLayer())), {
+    render,
+    formatError: (error) => commandErrorMessage(error),
+  });
 
-export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions => {
-  let fork = false;
-  let from: string | undefined;
-  let detach = false;
-  let name: string | undefined;
-  let yes = false;
-  let nonInteractive = false;
-  let isolate: ScratchStartOptions["isolate"];
-  let mountCwd: ScratchStartOptions["mountCwd"];
-  let shareGlobalStorage = false;
-  const answerValues: string[] = [];
-  const optionValues: string[] = [];
+export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
+  scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
 
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === undefined) continue;
-    if (arg === "--fork") {
-      fork = true;
-      continue;
-    }
-    if (arg === "--detach") {
-      detach = true;
-      continue;
-    }
-    if (arg === "--yes" || arg === "-y") {
-      yes = true;
-      continue;
-    }
-    if (arg === "--no-interactive" || arg === "--non-interactive") {
-      nonInteractive = true;
-      continue;
-    }
-    if (arg === "--share-global-storage") {
-      shareGlobalStorage = true;
-      continue;
-    }
-    if (arg === "--mount-cwd") {
-      mountCwd = {};
-      continue;
-    }
-    if (arg.startsWith("--mount-cwd=")) {
-      const value = arg.slice("--mount-cwd=".length);
-      mountCwd = value.length > 0 ? { target: value } : {};
-      continue;
-    }
-    const fromMatch = parseStringFlag(argv, i, "from");
-    if (fromMatch !== undefined) {
-      from = fromMatch.value;
-      i += fromMatch.consumed - 1;
-      continue;
-    }
-    const nameMatch = parseStringFlag(argv, i, "name");
-    if (nameMatch !== undefined) {
-      name = nameMatch.value;
-      i += nameMatch.consumed - 1;
-      continue;
-    }
-    const answerMatch = parseStringFlag(argv, i, "answer");
-    if (answerMatch !== undefined) {
-      answerValues.push(answerMatch.value);
-      i += answerMatch.consumed - 1;
-      continue;
-    }
-    const optionMatch = parseStringFlag(argv, i, "option");
-    if (optionMatch !== undefined) {
-      optionValues.push(optionMatch.value);
-      i += optionMatch.consumed - 1;
-      continue;
-    }
-    const isolateMatch = parseStringFlag(argv, i, "isolate");
-    if (isolateMatch !== undefined) {
-      isolate = asIsolateMode(isolateMatch.value);
-      i += isolateMatch.consumed - 1;
-    }
-  }
-
-  return {
-    fork,
-    detach,
-    yes,
-    nonInteractive,
-    answers: parseAnswerFlags([...answerValues, ...optionValues]),
-    ...(from === undefined ? {} : { from }),
-    ...(name === undefined ? {} : { name }),
-    ...(isolate === undefined ? {} : { isolate }),
-    ...(mountCwd === undefined ? {} : { mountCwd }),
-    ...(shareGlobalStorage ? { shareGlobalStorage: true } : {}),
-  };
-};
-
-const scratchIdFromArgv = (argv: ReadonlyArray<string>): string => {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === undefined) continue;
-    const serviceMatch = parseStringFlag(argv, i, "service", "s");
-    if (serviceMatch !== undefined) {
-      i += serviceMatch.consumed - 1;
-      continue;
-    }
-    for (const flag of ["format", "tail", "since"] as const) {
-      const match = parseStringFlag(argv, i, flag);
-      if (match !== undefined) {
-        i += match.consumed - 1;
-      }
-    }
-    if (arg.startsWith("-")) continue;
-    return arg;
-  }
-  return "";
-};
+const scratchCommandInput = (
+  commandId: string,
+  argv: ReadonlyArray<string>,
+  options: { readonly rendererMode?: RendererMode; readonly signal?: AbortSignal } = {},
+): CompiledCommandInput =>
+  compiledCommandInputFromArgv(commandId, argv, { rendererMode: activeRendererMode, ...options });
 
 const runAppsScratchStart = async (argv: ReadonlyArray<string>): Promise<void> => {
   const controller = new AbortController();
@@ -981,56 +898,63 @@ const runAppsScratchStart = async (argv: ReadonlyArray<string>): Promise<void> =
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
-    await runScratchEffect(
-      scratchStart({ ...parseScratchStartArgv(argv), signal: controller.signal }),
-      renderScratchStartResult,
-    );
+    const input = scratchCommandInput("apps:scratch:start", argv, { signal: controller.signal });
+    await runScratchEffect(scratchStart(scratchStartOptionsFromInput(input)), renderScratchStartResult);
   } finally {
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
   }
 };
 
-const runAppsScratchStop = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchStop(scratchIdFromArgv(argv)), renderScratchStopResult);
+const runAppsScratchStop = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = scratchCommandInput("apps:scratch:stop", argv);
+  await runScratchEffect(scratchStop(scratchIdFromInput(input)), renderScratchStopResult);
+};
 
-const runAppsScratchDestroy = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(
-    scratchDestroy(scratchIdFromArgv(argv), { keepVolumes: argv.includes("--keep-volumes") }),
+const runAppsScratchDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = scratchCommandInput("apps:scratch:destroy", argv);
+  await runScratchEffect(
+    scratchDestroy(scratchIdFromInput(input), { keepVolumes: keepVolumesFromInput(input) }),
     renderScratchDestroyResult,
   );
+};
 
-const scratchListFormatFromArgv = (argv: ReadonlyArray<string>): ScratchListFormat =>
-  activeRendererMode === "json" ? "json" : parseTableJsonFormat(argv);
-
-const runAppsScratchList = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchList(), (result) =>
-    renderScratchListResult(result, scratchListFormatFromArgv(argv)),
+const runAppsScratchList = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = scratchCommandInput("apps:scratch:list", argv);
+  await runScratchEffect(scratchList(), (result) =>
+    renderScratchListResult(result, scratchListFormatFromInput(input)),
   );
+};
 
-const runAppsScratchInfo = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchInfo(scratchIdFromArgv(argv)), (result) =>
-    renderScratchInfoResult(result, scratchListFormatFromArgv(argv)),
+const runAppsScratchInfo = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = scratchCommandInput("apps:scratch:info", argv);
+  await runScratchEffect(scratchInfo(scratchIdFromInput(input)), (result) =>
+    renderScratchInfoResult(result, scratchListFormatFromInput(input)),
   );
+};
 
-const runAppsScratchLogs = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchLogs(scratchIdFromArgv(argv)), renderScratchLogsResult);
+const runAppsScratchLogs = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = scratchCommandInput("apps:scratch:logs", argv);
+  await runScratchEffect(scratchLogs(scratchIdFromInput(input)), renderScratchLogsResult);
+};
 
-const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> =>
-  runScratchEffect(scratchGc({ prune: argv.includes("--prune") }), renderScratchGcReport);
+const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = scratchCommandInput("apps:scratch:gc", argv);
+  await runScratchEffect(scratchGc({ prune: pruneFromInput(input) }), renderScratchGcReport);
+};
 
 const runMetaGlobalStart = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const services = parseGlobalServiceFlags(argv);
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
     const exit = await Effect.runPromiseExit(
-      globalStart({
-        ...(services.length === 0 ? {} : { services }),
-        signal: controller.signal,
-      }).pipe(Effect.provide(globalRuntimeLayer())),
+      globalStart(
+        globalStartOptionsFromInput(
+          compiledCommandInputFromArgv("meta:global:start", argv, { signal: controller.signal }),
+        ),
+      ).pipe(Effect.provide(globalRuntimeLayer())),
     );
     if (Exit.isSuccess(exit)) {
       console.log(renderGlobalStartResult(exit.value));
@@ -1057,13 +981,12 @@ const runMetaGlobalStop = async (): Promise<void> => {
 };
 
 const runMetaGlobalStatus = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const services = parseGlobalServiceFlags(argv);
-  const format = parseTableJsonFormat(argv);
+  const input = compiledCommandInputFromArgv("meta:global:status", argv);
   const exit = await Effect.runPromiseExit(
-    globalStatus(services.length === 0 ? {} : { services }).pipe(Effect.provide(globalRuntimeLayer())),
+    globalStatus(globalStatusOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
   );
   if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalStatusResult(exit.value, format));
+    console.log(renderGlobalStatusResult(exit.value, globalStatusFormatFromInput(input)));
     return;
   }
   const failure = Cause.failureOption(exit.cause);
@@ -1072,10 +995,9 @@ const runMetaGlobalStatus = async (argv: ReadonlyArray<string>): Promise<void> =
 };
 
 const runMetaGlobalDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const yes = argv.includes("--yes") || argv.includes("-y");
-  const purge = argv.includes("--purge");
+  const input = compiledCommandInputFromArgv("meta:global:destroy", argv);
   const exit = await Effect.runPromiseExit(
-    globalDestroy({ yes, purge }).pipe(Effect.provide(globalRuntimeLayer())),
+    globalDestroy(globalDestroyOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderGlobalDestroyResult(exit.value));
@@ -1087,10 +1009,10 @@ const runMetaGlobalDestroy = async (argv: ReadonlyArray<string>): Promise<void> 
 };
 
 const runMetaGlobalConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const format = parseTableJsonFormat(argv);
+  const input = compiledCommandInputFromArgv("meta:global:config", argv);
   const exit = await Effect.runPromiseExit(globalConfig().pipe(Effect.provide(globalRuntimeLayer())));
   if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalConfigResult(exit.value, format));
+    console.log(renderGlobalConfigResult(exit.value, globalConfigFormatFromInput(input)));
     return;
   }
   const failure = Cause.failureOption(exit.cause);
@@ -1099,13 +1021,9 @@ const runMetaGlobalConfig = async (argv: ReadonlyArray<string>): Promise<void> =
 };
 
 const runMetaGlobalUninstall = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const plugin = argv.find((arg) => !arg.startsWith("-"));
-  const purge = argv.includes("--purge");
+  const input = compiledCommandInputFromArgv("meta:global:uninstall", argv);
   const exit = await Effect.runPromiseExit(
-    globalUninstall({
-      ...(plugin === undefined ? {} : { plugin }),
-      purge,
-    }).pipe(Effect.provide(globalRuntimeLayer())),
+    globalUninstall(globalUninstallOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderGlobalUninstallResult(exit.value));
@@ -1117,9 +1035,9 @@ const runMetaGlobalUninstall = async (argv: ReadonlyArray<string>): Promise<void
 };
 
 const runMetaGlobalInstall = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const plugin = argv.find((arg) => !arg.startsWith("-"));
+  const input = compiledCommandInputFromArgv("meta:global:install", argv);
   const exit = await Effect.runPromiseExit(
-    globalInstall(plugin === undefined ? {} : { plugin }).pipe(Effect.provide(globalRuntimeLayer())),
+    globalInstall(globalInstallOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderGlobalInstallResult(exit.value));
@@ -1221,83 +1139,18 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
   process.exitCode = 1;
 };
 
-const CANONICAL_COMMAND_ID_BY_TOKEN: Readonly<Record<string, string>> = {
-  init: "apps:init",
-  "apps:init": "apps:init",
-  start: "app:start",
-  "app:start": "app:start",
-  stop: "app:stop",
-  "app:stop": "app:stop",
-  info: "app:info",
-  "app:info": "app:info",
-  destroy: "app:destroy",
-  "app:destroy": "app:destroy",
-  restart: "app:restart",
-  "app:restart": "app:restart",
-  rebuild: "app:rebuild",
-  "app:rebuild": "app:rebuild",
-  logs: "app:logs",
-  "app:logs": "app:logs",
-  "app:config": "app:config",
-  "app:cache:refresh": "app:cache:refresh",
-  setup: "meta:setup",
-  "meta:setup": "meta:setup",
-  doctor: "meta:doctor",
-  "meta:doctor": "meta:doctor",
-  exec: "app:exec",
-  "app:exec": "app:exec",
-  ssh: "app:ssh",
-  "app:ssh": "app:ssh",
-  shell: "app:shell",
-  "app:shell": "app:shell",
-  list: "apps:list",
-  "apps:list": "apps:list",
-  poweroff: "apps:poweroff",
-  "apps:poweroff": "apps:poweroff",
-  scratch: "apps:scratch:start",
-  "scratch:start": "apps:scratch:start",
-  "apps:scratch:start": "apps:scratch:start",
-  "scratch:stop": "apps:scratch:stop",
-  "apps:scratch:stop": "apps:scratch:stop",
-  "scratch:destroy": "apps:scratch:destroy",
-  "apps:scratch:destroy": "apps:scratch:destroy",
-  "scratch:list": "apps:scratch:list",
-  "apps:scratch:list": "apps:scratch:list",
-  "scratch:info": "apps:scratch:info",
-  "apps:scratch:info": "apps:scratch:info",
-  "scratch:logs": "apps:scratch:logs",
-  "apps:scratch:logs": "apps:scratch:logs",
-  "scratch:gc": "apps:scratch:gc",
-  "apps:scratch:gc": "apps:scratch:gc",
-  config: "meta:config",
-  "meta:config": "meta:config",
-  "global:config": "meta:global:config",
-  "meta:global:config": "meta:global:config",
-  "global:destroy": "meta:global:destroy",
-  "meta:global:destroy": "meta:global:destroy",
-  "global:install": "meta:global:install",
-  "meta:global:install": "meta:global:install",
-  "global:start": "meta:global:start",
-  "meta:global:start": "meta:global:start",
-  "global:status": "meta:global:status",
-  "meta:global:status": "meta:global:status",
-  "global:stop": "meta:global:stop",
-  "meta:global:stop": "meta:global:stop",
-  "global:uninstall": "meta:global:uninstall",
-  "meta:global:uninstall": "meta:global:uninstall",
-  bun: "meta:bun",
-  "meta:bun": "meta:bun",
-  x: "meta:x",
-  "meta:x": "meta:x",
-  "plugin:add": "meta:plugin:add",
-  "meta:plugin:add": "meta:plugin:add",
-  "plugin:remove": "meta:plugin:remove",
-  "meta:plugin:remove": "meta:plugin:remove",
-  shellenv: "meta:shellenv",
-  "meta:shellenv": "meta:shellenv",
-  version: "meta:version",
-  "meta:version": "meta:version",
+const buildCanonicalCommandIdByToken = (): Readonly<Record<string, string>> => {
+  const entries: Array<[string, string]> = [];
+  for (const [id, command] of commandEntries) {
+    const spec = (command as { readonly landoSpec?: { readonly id?: string } }).landoSpec;
+    const canonicalId = spec?.id ?? id;
+    entries.push([id, canonicalId]);
+    for (const alias of command.aliases ?? []) entries.push([alias, canonicalId]);
+  }
+  return Object.fromEntries(entries);
 };
+
+const CANONICAL_COMMAND_ID_BY_TOKEN = buildCanonicalCommandIdByToken();
 
 const resolveCanonicalCommandId = (token: string | undefined): string => {
   if (token === undefined) return "cli:unknown";
@@ -1359,57 +1212,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "init" || argv[0] === "apps:init") {
-    const rest = argv.slice(1);
-    let name: string | undefined;
-    let recipe: string | undefined;
-    const answerValues: string[] = [];
-    let full = false;
-    let yes = false;
-    let nonInteractive = false;
-    for (let i = 0; i < rest.length; i += 1) {
-      const arg = rest[i];
-      if (arg === undefined) continue;
-      if (arg === "--full") {
-        full = true;
-        continue;
-      }
-      if (arg === "--yes" || arg === "-y") {
-        yes = true;
-        continue;
-      }
-      if (arg === "--no-interactive" || arg === "--non-interactive") {
-        nonInteractive = true;
-        continue;
-      }
-      const nameMatch = parseStringFlag(rest, i, "name");
-      if (nameMatch !== undefined) {
-        name = nameMatch.value;
-        i += nameMatch.consumed - 1;
-        continue;
-      }
-      const recipeMatch = parseStringFlag(rest, i, "recipe");
-      if (recipeMatch !== undefined) {
-        recipe = recipeMatch.value;
-        i += recipeMatch.consumed - 1;
-        continue;
-      }
-      const answerMatch = parseStringFlag(rest, i, "answer");
-      if (answerMatch !== undefined) {
-        answerValues.push(answerMatch.value);
-        i += answerMatch.consumed - 1;
-      }
-    }
-    const answers = parseAnswerFlags(answerValues);
     try {
-      const result = await initApp({
-        cwd: process.cwd(),
-        full,
-        ...(name === undefined ? {} : { name }),
-        ...(recipe === undefined ? {} : { recipe }),
-        answers,
-        yes,
-        nonInteractive,
-      });
+      const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
+      const result = await initApp(initOptionsFromInput(input));
       console.log(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
       console.error(commandErrorMessage(error, "apps:init"));
