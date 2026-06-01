@@ -439,3 +439,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Non-zero exit on a "successful but invalid" result is done by the render fn setting `process.exitCode` (mirroring `renderExecAppResult`), NOT by `Effect.fail`. This is the canonical dual-dispatch-safe pattern: both OCLIF (`runWithErrorHandling` calls render on success) and compiled (`console.log(render(...))`) invoke the same render, so exit-code parity is automatic. In unit tests, save/restore `process.exitCode` around a `renderConfigLintResult(invalid)` call or you corrupt the bun test runner's exit code.
   - Executable guides that try to RUN a CLI command in-process (`<Verify command=...>` in a rendered scenario) are fragile for commands the `provider: test` scenario runner doesn't fully drive (fixture-cwd resolution); when the command's behavior is already locked by scenario + unit tests, follow the US-119 precedent and ship a documentation-style guide (all scenarios `render={false}` with `<Variable>` blocks) — it still satisfies `lint:guides` + `check:guide-coverage` and flips the INDEX row to `Shipped`.
 ---
+
+## 2026-06-01 17:40 - Babysit
+- PR: #256 https://github.com/AaronFeledy/core4/pull/256
+- CI outcome: pass
+- Review feedback: fixed (guide-drift: doctor --app config-lint documented in doctor-walkthrough guide; Bugbot: extracted shared config-lint violation renderer)
+- Merge: merged (squash)
+---
