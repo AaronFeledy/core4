@@ -19,12 +19,13 @@
  * and `snapshot()` exposes the current logical frame (no control bytes) for
  * structural assertions. The `Renderer` Live Layer wiring lives in
  * `runtime.ts`; interactive input/expand-collapse and the byte-for-byte
- * first-paint contract are built on top of this seam by later stories.
+ * first-paint contract can be built on top of this seam without changing
+ * the painter core.
  */
 
 import type { LandoEvent } from "@lando/sdk/services";
 
-/** Fixed ring-buffer depth for the Beta task-detail tail panel. */
+/** Fixed ring-buffer depth for the task-detail tail panel. */
 export const TASK_DETAIL_TAIL_CAPACITY = 4 as const;
 
 const ESC = String.fromCharCode(27);
