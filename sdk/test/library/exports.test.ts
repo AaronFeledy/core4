@@ -29,6 +29,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.PluginManifest).toBeDefined();
     expect(schema.RecipeRegistryResolution).toBeDefined();
     expect(schema.RecipeRegistryResponse).toBeDefined();
+    expect(schema.RecipeChoicesFrom).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
   });
@@ -91,6 +92,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ScratchAppIdInvalidError).toBeDefined();
     expect(errors.ScratchIsolationConflictError).toBeDefined();
     expect(errors.RecipeSourceError).toBeDefined();
+    expect(errors.RecipeChoicesError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {

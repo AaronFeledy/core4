@@ -73,12 +73,6 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
         specSection: "§8.8.5",
       };
     }
-    if (Object.hasOwn(prompt, "choicesFrom")) {
-      return {
-        message: `Dynamic prompt \`choicesFrom:\` in prompt "${name}" is not supported in Alpha recipes at ${source}.`,
-        specSection: "§8.8.5",
-      };
-    }
     if (Object.hasOwn(prompt, "deprecated")) {
       return {
         message: `Per-prompt \`deprecated:\` notice in prompt "${name}" is not supported in Alpha recipes at ${source}.`,
@@ -168,12 +162,14 @@ const validateSemantics = (
       seen.add(prompt.name);
     }
 
-    // `choices:` is required and non-empty for `select`/`multiselect`.
+    // `choices:` is required and non-empty for `select`/`multiselect`,
+    // unless `choicesFrom:` supplies them dynamically.
     for (const [index, prompt] of manifest.prompts.entries()) {
       if (prompt.type !== "select" && prompt.type !== "multiselect") continue;
+      if (prompt.choicesFrom !== undefined) continue;
       if (prompt.choices === undefined || prompt.choices.length === 0) {
         issues.push(
-          `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list.`,
+          `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list (or use choicesFrom:).`,
         );
       }
     }

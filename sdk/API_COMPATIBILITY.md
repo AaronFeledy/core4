@@ -75,6 +75,7 @@
 - `PluginName`
 - `PortablePath`
 - `ProviderExtensionConfig`
+- `RecipeChoicesFrom`
 - `RecipeFile`
 - `RecipeId`
 - `RecipeManifest`

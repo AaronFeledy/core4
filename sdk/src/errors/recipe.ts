@@ -99,6 +99,15 @@ export class RecipePromptValidationError extends Schema.TaggedError<RecipePrompt
   },
 ) {}
 
+export class RecipeChoicesError extends Schema.TaggedError<RecipeChoicesError>()("RecipeChoicesError", {
+  message: Schema.String,
+  promptName: Schema.String,
+  command: Schema.String,
+  kind: Schema.Literal("command-failed", "unparseable", "empty"),
+  remediation: Schema.String,
+  exitCode: Schema.optional(Schema.Number),
+}) {}
+
 export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>()("RecipePostInitError", {
   message: Schema.String,
   recipe: Schema.String,

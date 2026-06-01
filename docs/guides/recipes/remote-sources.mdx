@@ -114,4 +114,17 @@ tags: [beta, docs, recipes, git, tarball, npm, registry]
       <Variable name="registryFailed" value="RecipeSourceError kind=registry-failed" display="An unreachable registry or non-OK registry response fails with registry remediation" />
     </Step>
   </Scenario>
+
+  <Scenario id="dynamic-choices-from" render={false} reason="Dynamic choices execute canonical Lando commands at prompt-collection time; runtime behavior is unit-tested with an injected choices runner so guide CI does not spawn nested Lando commands">
+    <Step name="manifest">
+      <Variable name="field" value="choicesFrom" display="A select or multiselect prompt may omit static choices when choicesFrom supplies them dynamically" />
+      <Variable name="shape" value="{ command, args?, parse: 'json' | 'lines' }" display="The command is a canonical Lando command id, args are optional strings, and stdout is parsed as JSON choices or non-empty lines" />
+      <Variable name="answers" value="--answer &lt;prompt&gt;=&lt;value&gt;" display="A supplied answer is accepted directly and does not run the dynamic choices command" />
+    </Step>
+    <Step name="fallback">
+      <Variable name="interactive" value="manual value prompt" display="Command failure, empty output, or unparseable output falls back to asking for a manual value when interactive" />
+      <Variable name="nonInteractive" value="default or RecipeChoicesError" display="With --yes or --no-interactive, Lando uses the prompt default when present; otherwise it fails with dynamic-choice remediation" />
+    </Step>
+  </Scenario>
+
 </Guide>
