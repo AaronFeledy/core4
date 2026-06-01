@@ -165,23 +165,23 @@ const verifyNpmIntegrity = (bytes: Uint8Array, dist: NpmPackageDist, source: str
     const dash = entry.indexOf("-");
     const algorithm = dash > 0 ? entry.slice(0, dash) : "";
     const expected = dash > 0 ? entry.slice(dash + 1) : "";
-    if (algorithm === "" || expected === "") return;
-    let actual: string;
-    try {
-      actual = createHash(algorithm).update(bytes).digest("base64");
-    } catch {
-      return; // unknown algorithm — treat as unverifiable rather than failing closed
+    if (algorithm !== "" && expected !== "") {
+      try {
+        const actual = createHash(algorithm).update(bytes).digest("base64");
+        if (actual !== expected) {
+          throw sourceError({
+            message: `npm tarball ${source} failed ${algorithm} integrity verification.`,
+            source,
+            kind: "integrity-mismatch",
+            remediation:
+              "The downloaded tarball does not match the registry integrity; retry or report the package.",
+          });
+        }
+        return;
+      } catch (cause) {
+        if (cause instanceof RecipeSourceError) throw cause;
+      }
     }
-    if (actual !== expected) {
-      throw sourceError({
-        message: `npm tarball ${source} failed ${algorithm} integrity verification.`,
-        source,
-        kind: "integrity-mismatch",
-        remediation:
-          "The downloaded tarball does not match the registry integrity; retry or report the package.",
-      });
-    }
-    return;
   }
   if (dist.shasum !== undefined && dist.shasum.trim() !== "") {
     const actual = createHash("sha1").update(bytes).digest("hex");

@@ -228,6 +228,29 @@ describe("resolveNpmRecipeSource", () => {
     });
   });
 
+  test("an unusable integrity value falls back to sha1 shasum verification", async () => {
+    await withTempRoot(async (dir) => {
+      const bytes = await makeNpmTarball({ "recipe.yml": VALID_RECIPE });
+      const exit = await Effect.runPromiseExit(
+        Effect.tryPromise({
+          try: () =>
+            resolveNpmRecipeSource({
+              package: "@lando/recipe-foo",
+              userDataRoot: join(dir, "data"),
+              registryClient: clientFor(
+                packumentFor(bytes, { integrity: "sha999-not-a-supported-sri", shasum: "0".repeat(40) }),
+              ),
+              fetcher: fetcherFor(bytes),
+            }),
+          catch: (cause) => cause,
+        }),
+      );
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(RecipeSourceError);
+      if (failure instanceof RecipeSourceError) expect(failure.kind).toBe("integrity-mismatch");
+    });
+  });
+
   test("integrity mismatch fails with RecipeSourceError integrity-mismatch", async () => {
     await withTempRoot(async (dir) => {
       const bytes = await makeNpmTarball({ "recipe.yml": VALID_RECIPE });
