@@ -15,6 +15,7 @@ import { resolve as resolvePath } from "node:path";
 import { RecipeChoicesError, RecipeMissingAnswerError, RecipePromptValidationError } from "@lando/sdk/errors";
 import type { RecipeChoicesFrom, RecipePrompt, RecipePromptChoice } from "@lando/sdk/schema";
 
+import { defaultRunWarning, evaluateRunPermission, runNotAllowedError } from "../run-allowlist.ts";
 import {
   type ChoicesCommandRunner,
   ChoicesParseFailure,
@@ -36,6 +37,7 @@ export interface CollectPromptsOptions {
   readonly cwd?: string;
   readonly io?: PromptIO;
   readonly choicesRunner?: ChoicesCommandRunner;
+  readonly runs?: ReadonlyArray<string>;
 }
 
 const ACCEPTED_BOOL_TRUE = new Set(["y", "yes", "true", "1", "on"]);
@@ -422,10 +424,19 @@ const resolveDynamicChoicesPrompt = async (
     readonly interactive: boolean;
     readonly yes: boolean;
     readonly cwd: string;
+    readonly runs: ReadonlyArray<string> | undefined;
   },
 ): Promise<PromptAnswer> => {
-  const { supplied, runner, io, interactive, yes, cwd } = context;
+  const { supplied, runner, io, interactive, yes, cwd, runs } = context;
   if (supplied !== undefined) return resolveDynamicSupplied(prompt, supplied);
+
+  const permission = evaluateRunPermission(runs, prompt.choicesFrom.command);
+  if (permission.kind === "denied") {
+    throw runNotAllowedError(prompt.choicesFrom.command, permission.allowlist);
+  }
+  if (permission.kind === "warn" && io !== undefined) {
+    io.writeError(`${defaultRunWarning(prompt.choicesFrom.command, permission.allowlist)}\n`);
+  }
 
   const outcome = await runChoicesCommand(runner, prompt.choicesFrom);
   if (outcome.ok) {
@@ -462,6 +473,7 @@ export const collectPrompts = async (options: CollectPromptsOptions): Promise<Pr
         interactive,
         yes,
         cwd,
+        runs: options.runs,
       });
       continue;
     }

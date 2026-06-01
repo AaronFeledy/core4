@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { RecipeChoicesError, RecipeMissingAnswerError } from "@lando/sdk/errors";
+import { RecipeChoicesError, RecipeMissingAnswerError, RecipeRunNotAllowedError } from "@lando/sdk/errors";
 import type { RecipePrompt } from "@lando/sdk/schema";
 
 import type { ChoicesCommandRunner } from "../../../src/recipes/prompts/choices-command.ts";
@@ -19,6 +19,79 @@ const fixedRunner =
   async () => ({ exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr ?? "" });
 
 describe("collectPrompts — dynamic choicesFrom", () => {
+  test("choicesFrom denies a command outside an explicit runs allowlist", async () => {
+    let invoked = 0;
+    const runner: ChoicesCommandRunner = async () => {
+      invoked += 1;
+      return { exitCode: 0, stdout: "8.2\n", stderr: "" };
+    };
+
+    let caught: unknown;
+    try {
+      await collectPrompts({
+        prompts: [dynamicSelect],
+        nonInteractive: true,
+        choicesRunner: runner,
+        runs: ["git"],
+      });
+    } catch (cause) {
+      caught = cause;
+    }
+
+    expect(caught).toBeInstanceOf(RecipeRunNotAllowedError);
+    if (caught instanceof RecipeRunNotAllowedError) {
+      expect(caught.commandId).toBe("services:list");
+      expect(caught.allowlist).toEqual(["git"]);
+    }
+    expect(invoked).toBe(0);
+  });
+
+  test("choicesFrom allows a command listed in runs", async () => {
+    const io = createBufferedPromptIO({ inputs: ["1"], isTTY: true });
+    const runner = fixedRunner({ exitCode: 0, stdout: "8.2\n8.3\n" });
+    const answers = await collectPrompts({
+      prompts: [dynamicSelect],
+      io,
+      choicesRunner: runner,
+      runs: ["services:list"],
+    });
+
+    expect(answers.phpVersion).toBe("8.2");
+  });
+
+  test("default runs warn and proceed for choicesFrom outside the built-in allowlist", async () => {
+    const prompt: RecipePrompt = {
+      ...dynamicSelect,
+      choicesFrom: { command: "pantheon:list-sites", parse: "lines" },
+    };
+    const io = createBufferedPromptIO({ inputs: ["site-a"], isTTY: true });
+    const runner = fixedRunner({ exitCode: 0, stdout: "site-a\nsite-b\n" });
+
+    const answers = await collectPrompts({ prompts: [prompt], io, choicesRunner: runner });
+
+    expect(answers.phpVersion).toBe("site-a");
+    expect(io.stderr()).toContain("default runs allowlist");
+    expect(io.stderr()).toContain("pantheon:list-sites");
+  });
+
+  test("supplied --answer bypasses choicesFrom allowlist gating", async () => {
+    let invoked = 0;
+    const runner: ChoicesCommandRunner = async () => {
+      invoked += 1;
+      return { exitCode: 0, stdout: "8.2\n", stderr: "" };
+    };
+
+    const answers = await collectPrompts({
+      prompts: [dynamicSelect],
+      answers: { phpVersion: "8.1" },
+      nonInteractive: true,
+      choicesRunner: runner,
+      runs: ["git"],
+    });
+
+    expect(answers.phpVersion).toBe("8.1");
+    expect(invoked).toBe(0);
+  });
   test("interactive: fetched choices are presented and resolved by index", async () => {
     const io = createBufferedPromptIO({ inputs: ["2"], isTTY: true });
     const runner = fixedRunner({ exitCode: 0, stdout: "8.2\n8.3\n8.4\n" });

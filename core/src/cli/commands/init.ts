@@ -100,6 +100,7 @@ export interface InitAppOptions {
   readonly nonInteractive?: boolean;
   readonly io?: PromptIO;
   readonly choicesRunner?: ChoicesCommandRunner;
+  readonly postInitCommandRunner?: ChoicesCommandRunner;
   readonly postInitSpawner?: BunSelfSpawner;
   readonly postInitIO?: PostInitIO;
   readonly events?: ProgressEmitter;
@@ -284,6 +285,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     cwd,
     ...(io === undefined ? {} : { io }),
     ...(options.choicesRunner === undefined ? {} : { choicesRunner: options.choicesRunner }),
+    ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
   });
 
   const appNameValue = collected[APP_NAME_PROMPT];
@@ -405,6 +407,10 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
         answers: collected,
         ...(options.postInitIO === undefined ? {} : { io: options.postInitIO }),
         ...(options.postInitSpawner === undefined ? {} : { spawner: options.postInitSpawner }),
+        ...(options.postInitCommandRunner === undefined
+          ? {}
+          : { commandRunner: options.postInitCommandRunner }),
+        ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
       });
     } catch (cause) {
       await publishTaskFailAsync(events, {

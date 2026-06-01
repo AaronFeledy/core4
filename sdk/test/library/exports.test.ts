@@ -97,6 +97,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ScratchIsolationConflictError).toBeDefined();
     expect(errors.RecipeSourceError).toBeDefined();
     expect(errors.RecipeChoicesError).toBeDefined();
+    expect(errors.RecipeRunNotAllowedError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {

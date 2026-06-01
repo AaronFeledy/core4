@@ -36,12 +36,6 @@ interface BetaFinding {
 const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
   const obj = parsed as Record<string, unknown>;
-  if (Object.hasOwn(obj, "runs")) {
-    return {
-      message: `Top-level \`runs:\` allowlist is not supported in Alpha recipes at ${source}.`,
-      specSection: "§8.8.14",
-    };
-  }
   if (Object.hasOwn(obj, "fetchAllowlist")) {
     return {
       message: `Top-level \`fetchAllowlist:\` is not supported in Alpha recipes at ${source}.`,

@@ -108,6 +108,17 @@ export class RecipeChoicesError extends Schema.TaggedError<RecipeChoicesError>()
   exitCode: Schema.optional(Schema.Number),
 }) {}
 
+export class RecipeRunNotAllowedError extends Schema.TaggedError<RecipeRunNotAllowedError>()(
+  "RecipeRunNotAllowedError",
+  {
+    message: Schema.String,
+    commandId: Schema.String,
+    allowlist: Schema.Array(Schema.String),
+    remediation: Schema.String,
+    recipe: Schema.optional(Schema.String),
+  },
+) {}
+
 export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>()("RecipePostInitError", {
   message: Schema.String,
   recipe: Schema.String,

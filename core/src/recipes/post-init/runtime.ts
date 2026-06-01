@@ -9,6 +9,8 @@ import {
   childEnv as buildChildEnv,
   defaultBunSelfSpawner,
 } from "../../cli/commands/bun-self-runner.ts";
+import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command.ts";
+import { createRecipeRunContext } from "../run-allowlist.ts";
 
 export interface PostInitIO {
   readonly out: (line: string) => void;
@@ -45,6 +47,8 @@ export interface RunPostInitOptions {
   readonly spawner?: BunSelfSpawner;
   readonly env?: NodeJS.ProcessEnv;
   readonly execPath?: string;
+  readonly runs?: ReadonlyArray<string>;
+  readonly commandRunner?: ChoicesCommandRunner;
 }
 
 const REDACTED = "[REDACTED]";
@@ -189,14 +193,36 @@ const rejectGitInit = (index: number): never => {
   });
 };
 
-const rejectCommand = (index: number): never => {
-  throw new NotImplementedError({
-    message: `postInit[${index}] (command): post-init canonical command dispatch is deferred to the Beta release.`,
-    commandId: "apps:init",
-    specSection: "§8.8.8",
-    remediation:
-      "Use `message:` to instruct the user, or invoke the desired Lando command manually after `lando init`.",
+const runCommand = async (
+  action: Extract<RecipePostInitAction, { type: "command" }>,
+  index: number,
+  options: RunPostInitOptions,
+): Promise<void> => {
+  const io = options.io ?? createStdioPostInitIO();
+  const ctx = createRecipeRunContext({
+    runs: options.runs,
+    runner: options.commandRunner ?? createDefaultChoicesCommandRunner(),
+    onWarn: (message) => io.err(message),
+    recipe: options.recipeId,
   });
+  const result = await ctx.run(action.cmd, action.args);
+
+  if (result.exitCode !== 0) {
+    const stderr = redactBunOutput(result.stderr.trim());
+    const stdout = redactBunOutput(result.stdout.trim());
+    const details = [stderr, stdout].filter((line) => line !== "").join(" ");
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (command ${action.cmd}) failed with exit code ${result.exitCode}.`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "command",
+      kind: "exit",
+      remediation: redactBunOutput(
+        `Command \`${action.cmd}\` exited with code ${result.exitCode}.${details === "" ? "" : ` Output: ${details}`} Fix the command or remove it from the recipe postInit action.`,
+      ),
+      exitCode: result.exitCode,
+    });
+  }
 };
 
 const rejectWhen = (index: number, action: RecipePostInitAction): never => {
@@ -234,7 +260,8 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
         break;
       }
       case "command": {
-        rejectCommand(index);
+        await runCommand(action, index, options);
+        executed.push({ index, type: "command" });
         break;
       }
       default: {
