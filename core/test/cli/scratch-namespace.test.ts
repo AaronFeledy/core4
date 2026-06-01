@@ -1,5 +1,8 @@
+import { afterEach, beforeEach } from "bun:test";
 import { describe, expect, test } from "bun:test";
-import { resolve } from "node:path";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { Effect } from "effect";
 
@@ -19,6 +22,49 @@ import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 
+let cacheRoot = "";
+let dataRoot = "";
+let confRoot = "";
+let previousCacheRoot: string | undefined;
+let previousDataRoot: string | undefined;
+let previousConfRoot: string | undefined;
+
+beforeEach(async () => {
+  cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-cli-cache-")));
+  dataRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-cli-data-")));
+  confRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-cli-conf-")));
+  previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+  previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  previousConfRoot = process.env.LANDO_USER_CONF_ROOT;
+  process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+  process.env.LANDO_USER_DATA_ROOT = dataRoot;
+  process.env.LANDO_USER_CONF_ROOT = confRoot;
+});
+
+afterEach(async () => {
+  if (previousCacheRoot === undefined) {
+    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+    delete process.env.LANDO_USER_CACHE_ROOT;
+  } else {
+    process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+  }
+  if (previousDataRoot === undefined) {
+    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+    delete process.env.LANDO_USER_DATA_ROOT;
+  } else {
+    process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+  }
+  if (previousConfRoot === undefined) {
+    // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+    delete process.env.LANDO_USER_CONF_ROOT;
+  } else {
+    process.env.LANDO_USER_CONF_ROOT = previousConfRoot;
+  }
+  await rm(cacheRoot, { recursive: true, force: true });
+  await rm(dataRoot, { recursive: true, force: true });
+  await rm(confRoot, { recursive: true, force: true });
+});
+
 interface RunResult {
   readonly exitCode: number;
   readonly stdout: string;
@@ -31,6 +77,12 @@ const runSource = async (args: ReadonlyArray<string>): Promise<RunResult> => {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
+    env: {
+      ...process.env,
+      LANDO_USER_CACHE_ROOT: cacheRoot,
+      LANDO_USER_DATA_ROOT: dataRoot,
+      LANDO_USER_CONF_ROOT: confRoot,
+    },
   });
   const [exitCode, stdout, stderr] = await Promise.all([
     proc.exited,
@@ -71,7 +123,7 @@ describe("apps:scratch:* command operations", () => {
     expect(renderScratchGcReport(result)).toBe("inspected: 0\nreaped: 0\nerrors: 0");
   });
 
-  test("id-addressed operations return ScratchAppNotFoundError until the registry lands", async () => {
+  test("id-addressed operations return ScratchAppNotFoundError for unknown ids", async () => {
     const id = "scratch-nope-000000";
     for (const operation of [scratchInfo(id), scratchLogs(id), scratchStop(id), scratchDestroy(id)]) {
       await expect(failureTag(operation)).resolves.toBe("ScratchAppNotFoundError");

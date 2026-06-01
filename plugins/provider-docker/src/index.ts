@@ -38,6 +38,10 @@ import {
 } from "@lando/sdk/services";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
+export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
+  const scratch = plan.extensions["@lando/core/scratch"] as { readonly id?: string } | undefined;
+  return scratch?.id === plan.id ? { "dev.lando.scratch": "true", "dev.lando.scratch-id": scratch.id } : {};
+};
 
 const PROVIDER_ID = "docker";
 const textDecoder = new TextDecoder();
@@ -888,7 +892,7 @@ const createContainerBody = (plan: AppPlan, service: ServicePlan) => {
     Cmd: normalizeCmd(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
-    Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name },
+    Labels: { "dev.lando.app": plan.id, "dev.lando.service": service.name, ...scratchLabelsForPlan(plan) },
     HostConfig: hostConfig(plan, service),
     NetworkingConfig: { EndpointsConfig: { [networkName(plan)]: {} } },
   };

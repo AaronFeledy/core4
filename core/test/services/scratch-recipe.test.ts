@@ -10,6 +10,8 @@ import { RuntimeProviderRegistry, type RuntimeProviderShape, ScratchAppService }
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
+import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -117,7 +119,14 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(provider),
   });
-  const scratchDeps = Layer.mergeAll(FileSystemLive, LandofileServiceLive, plannerLive, registryLive);
+  const scratchDeps = Layer.mergeAll(
+    FileSystemLive,
+    LandofileServiceLive,
+    plannerLive,
+    registryLive,
+    ScratchRegistryLive,
+    ScratchResourceScannerLive,
+  );
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
 };
 
@@ -227,7 +236,9 @@ describe("ScratchAppServiceLive recipe acquire", () => {
           "Provide it with --answer php=<value> or --option php=<value>.",
         );
       }
-      expect(await readdir(join(cacheRoot, "scratch"))).toEqual([]);
+      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+        [],
+      );
     });
   });
 
@@ -252,7 +263,9 @@ describe("ScratchAppServiceLive recipe acquire", () => {
           "Verify the recipe reference and try again, e.g. `lando apps:scratch:start --from empty`.",
         );
       }
-      expect(await readdir(join(cacheRoot, "scratch"))).toEqual([]);
+      expect((await readdir(join(cacheRoot, "scratch"))).filter((entry) => entry !== "registry.bin")).toEqual(
+        [],
+      );
     });
   });
 });

@@ -151,6 +151,7 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 |---|---|---|---|
 | US-122 | fork mode (`apps:scratch:start --fork=<app>`) | `docs/guides/scratch/fork-existing-app.mdx` | Required at story acceptance |
 | US-123 | scratch mode (`apps:scratch:start --recipe=<id>`) | `docs/guides/scratch/scratch-from-recipe.mdx` | Required at story acceptance |
+| US-126 | scratch registry garbage collection (`apps:scratch:gc`) | `docs/guides/scratch/scratch-gc.mdx` | Required at story acceptance |
 | US-127 | `--mount-cwd` + `--share-global-storage` flags | `docs/guides/scratch/mount-and-share-flags.mdx` | Required at story acceptance |
 | US-128 | `apps:scratch:list` + `apps:scratch:info` | `docs/guides/scratch/list-and-info.mdx` | Required at story acceptance |
 

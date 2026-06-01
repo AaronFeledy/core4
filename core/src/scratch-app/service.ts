@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { cp, rm } from "node:fs/promises";
+import { cp, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Cause, type Context, Effect, Either, Layer, Schema } from "effect";
@@ -14,11 +14,14 @@ import {
   type ScratchAcquireInput,
   ScratchAppService,
   type ScratchHandle,
+  type ScratchSummary,
 } from "@lando/sdk/services";
 
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { parseLandofile } from "../landofile/parser.ts";
+import { ScratchRegistry, type ScratchRegistryEntry } from "./registry.ts";
+import { ScratchResourceScanner } from "./scanner.ts";
 
 const RECIPE_RESOLUTION_ERROR_TAGS = new Set([
   "RecipeManifestNotFoundError",
@@ -180,14 +183,61 @@ const sanitizeBase = (base: string): string => {
 
 // Security: reject ids that `join` could use to escape `<userCacheRoot>/scratch/<id>/`
 // — path separators, NUL, or a pure-dot segment (`.`, `..`).
-const isUnsafeScratchId = (id: string): boolean =>
+export const isUnsafeScratchId = (id: string): boolean =>
   id.length === 0 || /[/\\\0]/u.test(id) || /^\.+$/u.test(id);
+
+const SCRATCH_EXTENSION_KEY = "@lando/core/scratch";
+
+const markScratchPlan = (plan: AppPlan, scratchId: string): AppPlan => ({
+  ...plan,
+  extensions: {
+    ...plan.extensions,
+    [SCRATCH_EXTENSION_KEY]: { id: scratchId },
+  },
+});
+
+const nowIso = (): string => new Date().toISOString();
+
+const makeRegistryEntry = (input: {
+  readonly id: string;
+  readonly source: ScratchAcquireInput["source"];
+  readonly isolate: "none" | "full";
+  readonly detached: boolean;
+  readonly rootPath: string;
+  readonly status: ScratchRegistryEntry["status"];
+  readonly createdAt?: string;
+}): ScratchRegistryEntry => {
+  const timestamp = nowIso();
+  return {
+    id: input.id,
+    source: input.source,
+    isolate: input.isolate,
+    detached: input.detached,
+    ...(input.detached ? {} : { ownerPid: process.pid }),
+    rootPath: input.rootPath,
+    status: input.status,
+    createdAt: input.createdAt ?? timestamp,
+    updatedAt: timestamp,
+  };
+};
+
+const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
+  if (entry.detached || entry.ownerPid === undefined) return false;
+  try {
+    process.kill(entry.ownerPid, 0);
+    return false;
+  } catch (cause) {
+    return (cause as { readonly code?: unknown }).code === "ESRCH";
+  }
+};
 
 const makeScratchAppService = (
   fileSystem: Context.Tag.Service<typeof FileSystem>,
   landofileService: Context.Tag.Service<typeof LandofileService>,
   planner: Context.Tag.Service<typeof AppPlanner>,
-  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  providerRegistry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
+  scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
 ): Context.Tag.Service<typeof ScratchAppService> => {
   const root = Effect.sync(() => AbsolutePath.make(join(resolveUserCacheRoot(), SCRATCH_DIR)));
 
@@ -246,6 +296,39 @@ const makeScratchAppService = (
         scratchAppError("cleanup", `Unable to remove the failed scratch app directory at ${path}.`, cause),
     });
 
+  const reapScratch = (input: {
+    readonly id: string;
+    readonly instanceRoot: AbsolutePath;
+    readonly plan?: AppPlan;
+  }): Effect.Effect<void, ScratchAppError> => {
+    const pruneProvider =
+      input.plan === undefined
+        ? scanner.pruneScratch(input.id)
+        : providerRegistry.select(input.plan).pipe(
+            Effect.mapError((cause) =>
+              scratchAppError("destroy", `Unable to select a provider for scratch app ${input.id}.`, cause),
+            ),
+            Effect.flatMap((provider) => {
+              const plan = input.plan;
+              if (plan === undefined) return Effect.void;
+              return provider.destroy({ app: plan.id, plan }, { volumes: true, removeState: true });
+            }),
+            Effect.mapError((cause) =>
+              scratchAppError(
+                "destroy",
+                `Unable to destroy provider resources for scratch app ${input.id}.`,
+                cause,
+              ),
+            ),
+          );
+
+    return pruneProvider.pipe(
+      Effect.catchAll(() => Effect.void),
+      Effect.zipRight(cleanupScratchInstance(input.instanceRoot).pipe(Effect.catchAll(() => Effect.void))),
+      Effect.zipRight(scratchRegistry.remove(input.id)),
+    );
+  };
+
   const copyAppRoot = (source: string, destination: string) =>
     Effect.tryPromise({
       try: async () => {
@@ -267,8 +350,9 @@ const makeScratchAppService = (
     detached: boolean,
   ) =>
     Effect.gen(function* () {
-      const provider = yield* registry
-        .select(plan)
+      const markedPlan = markScratchPlan(plan, scratchId);
+      const provider = yield* providerRegistry
+        .select(markedPlan)
         .pipe(
           Effect.mapError((cause) =>
             scratchAppError("start", `Unable to select a provider for scratch app ${scratchId}.`, cause),
@@ -277,25 +361,12 @@ const makeScratchAppService = (
       // Security: tears down `instanceRoot` (always under `<userCacheRoot>/scratch/<id>/`),
       // never `plan.root` — an `--isolate=none` fork plans against the source cwd, so removing
       // `plan.root` would delete the user's own app.
-      const destroyScratchResources = provider
-        .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
-        .pipe(
-          Effect.catchAllCause((cause) =>
-            Effect.logWarning(
-              `Unable to destroy provider resources for scratch app ${scratchId} during cleanup: ${Cause.pretty(cause)}`,
-            ),
-          ),
-          Effect.zipRight(
-            cleanupScratchInstance(instanceRoot).pipe(
-              Effect.catchAllCause((cause) =>
-                Effect.logWarning(
-                  `Unable to remove the scratch app directory for ${scratchId} during cleanup: ${Cause.pretty(cause)}`,
-                ),
-              ),
-            ),
-          ),
-        );
-      yield* Effect.scoped(provider.apply(plan, { reconcile: false })).pipe(
+      const destroyScratchResources = reapScratch({ id: scratchId, instanceRoot, plan: markedPlan }).pipe(
+        Effect.catchAllCause((cause) =>
+          Effect.logWarning(`Unable to reap scratch app ${scratchId} during cleanup: ${Cause.pretty(cause)}`),
+        ),
+      );
+      yield* Effect.scoped(provider.apply(markedPlan, { reconcile: false })).pipe(
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
         Effect.tapError(() => destroyScratchResources),
@@ -308,7 +379,7 @@ const makeScratchAppService = (
       }
       return {
         id: scratchId,
-        app: { kind: "scratch", id: scratchId, root: plan.root },
+        app: { kind: "scratch", id: scratchId, root: markedPlan.root },
       } satisfies ScratchHandle;
     });
 
@@ -317,7 +388,7 @@ const makeScratchAppService = (
       const landofile = yield* landofileService.discover.pipe(
         Effect.mapError(() => scratchForkUnresolvedError()),
       );
-      const capabilities = yield* registry.capabilities.pipe(
+      const capabilities = yield* providerRegistry.capabilities.pipe(
         Effect.mapError((cause) =>
           scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
         ),
@@ -332,9 +403,22 @@ const makeScratchAppService = (
       const base = input.name ?? landofile.name ?? sourcePlan.name;
       const scratchId = yield* synthesizeId(base);
       const scratchPaths = yield* paths(scratchId);
+      const registryEntry = makeRegistryEntry({
+        id: scratchId,
+        source: input.source,
+        isolate: input.isolate ?? "none",
+        detached: input.detached,
+        rootPath: String(scratchPaths.root),
+        status: "acquiring",
+      });
+      yield* scratchRegistry.upsert(registryEntry);
 
-      yield* materializeDir(scratchPaths.instanceRoot);
-      yield* materializeDir(scratchPaths.root);
+      yield* materializeDir(scratchPaths.instanceRoot).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
+      yield* materializeDir(scratchPaths.root).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
 
       const forkLandofile = { ...landofile, name: scratchId };
       const planForkPlan =
@@ -352,8 +436,14 @@ const makeScratchAppService = (
             ? cause
             : scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
         ),
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      return yield* startScratchPlan(scratchId, forkPlan, scratchPaths.instanceRoot, input.detached);
+      return yield* startScratchPlan(scratchId, forkPlan, scratchPaths.instanceRoot, input.detached).pipe(
+        Effect.tap(() =>
+          scratchRegistry.upsert({ ...registryEntry, status: "running", updatedAt: nowIso() }),
+        ),
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
     });
 
   const acquireRecipe = (input: ScratchAcquireInput, recipeRef: string) =>
@@ -364,9 +454,22 @@ const makeScratchAppService = (
       const base = input.name ?? ref;
       const scratchId = yield* synthesizeId(base);
       const scratchPaths = yield* paths(scratchId);
+      const registryEntry = makeRegistryEntry({
+        id: scratchId,
+        source: input.source,
+        isolate: input.isolate ?? "none",
+        detached: input.detached,
+        rootPath: String(scratchPaths.root),
+        status: "acquiring",
+      });
+      yield* scratchRegistry.upsert(registryEntry);
 
-      yield* materializeDir(scratchPaths.instanceRoot);
-      yield* materializeDir(scratchPaths.root);
+      yield* materializeDir(scratchPaths.instanceRoot).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
+      yield* materializeDir(scratchPaths.root).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
 
       yield* Effect.tryPromise({
         try: () =>
@@ -382,27 +485,29 @@ const makeScratchAppService = (
             ...(input.nonInteractive === undefined ? {} : { nonInteractive: input.nonInteractive }),
           }),
         catch: (cause) => mapInitError(input, cause),
-      }).pipe(Effect.tapError(() => Effect.ignore(cleanupScratchInstance(scratchPaths.instanceRoot))));
+      }).pipe(Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })));
 
       const landofilePath = join(scratchPaths.root, ".lando.yml");
-      const content = yield* fileSystem
-        .readText(landofilePath)
-        .pipe(
-          Effect.mapError((cause) =>
-            scratchAppError(
-              "materialize",
-              `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
-              cause,
-            ),
+      const content = yield* fileSystem.readText(landofilePath).pipe(
+        Effect.mapError((cause) =>
+          scratchAppError(
+            "materialize",
+            `Unable to read the rendered scratch Landofile at ${landofilePath}.`,
+            cause,
           ),
-        );
-      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root);
+        ),
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
+      const landofile = yield* decodeScratchLandofile(landofilePath, content, scratchPaths.root).pipe(
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
       const recipeLandofile = { ...landofile, name: scratchId };
 
-      const capabilities = yield* registry.capabilities.pipe(
+      const capabilities = yield* providerRegistry.capabilities.pipe(
         Effect.mapError((cause) =>
           scratchAppError("acquire", "Unable to resolve provider capabilities for the scratch app.", cause),
         ),
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
       const recipePlan = yield* withProcessCwd(scratchPaths.root, () =>
         planner.plan(recipeLandofile, capabilities),
@@ -410,18 +515,118 @@ const makeScratchAppService = (
         Effect.mapError((cause) =>
           scratchAppError("start", `Unable to plan scratch app ${scratchId}.`, cause),
         ),
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
       );
-      return yield* startScratchPlan(scratchId, recipePlan, scratchPaths.instanceRoot, input.detached);
+      return yield* startScratchPlan(scratchId, recipePlan, scratchPaths.instanceRoot, input.detached).pipe(
+        Effect.tap(() =>
+          scratchRegistry.upsert({ ...registryEntry, status: "running", updatedAt: nowIso() }),
+        ),
+        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+      );
     });
 
   const acquire = (input: ScratchAcquireInput) =>
     input.source.kind === "fork" ? acquireFork(input) : acquireRecipe(input, input.source.ref);
-  const resolveById = (id: string) => Effect.fail(scratchAppNotFoundError(id));
-  const list = () => Effect.succeed([]);
+  const handleFromEntry = (entry: ScratchRegistryEntry): ScratchHandle => ({
+    id: entry.id,
+    app: { kind: "scratch", id: entry.id, root: AbsolutePath.make(entry.rootPath) },
+  });
+
+  const resolveById = (id: string) =>
+    scratchRegistry
+      .get(id)
+      .pipe(
+        Effect.flatMap((entry) =>
+          entry === undefined
+            ? Effect.fail(scratchAppNotFoundError(id))
+            : Effect.succeed(handleFromEntry(entry)),
+        ),
+      );
+
+  const list = (): Effect.Effect<ReadonlyArray<ScratchSummary>, ScratchAppError> =>
+    scratchRegistry.list().pipe(
+      Effect.map((entries) =>
+        entries.map((entry) => ({
+          id: entry.id,
+          app: { kind: "scratch", id: entry.id, root: AbsolutePath.make(entry.rootPath) },
+        })),
+      ),
+    );
+
   const start = (id: string) => resolveById(id);
-  const stop = (id: string) => resolveById(id);
-  const destroy = (id: string) => resolveById(id);
-  const gc = () => Effect.succeed({ inspected: 0, reaped: [], errors: [] });
+
+  const destroy = (id: string) =>
+    Effect.gen(function* () {
+      const entry = yield* scratchRegistry.get(id);
+      if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
+      const scratchPaths = yield* paths(id);
+      const handle = handleFromEntry(entry);
+      yield* scratchRegistry
+        .upsert({ ...entry, status: "stopping", updatedAt: nowIso() })
+        .pipe(Effect.zipRight(reapScratch({ id, instanceRoot: scratchPaths.instanceRoot })));
+      return handle;
+    });
+
+  const stop = (id: string) => destroy(id);
+
+  const diskScratchIds = root.pipe(
+    Effect.flatMap((base) =>
+      Effect.tryPromise({
+        try: async () => {
+          const entries = await readdir(base, { withFileTypes: true });
+          return entries
+            .filter((entry) => entry.isDirectory())
+            .map((entry) => entry.name)
+            .filter((id) => !isUnsafeScratchId(id));
+        },
+        catch: (cause) =>
+          scratchAppError("gc", `Unable to inspect scratch app directories under ${base}.`, cause),
+      }).pipe(
+        Effect.catchIf(
+          (error) =>
+            typeof error.cause === "object" &&
+            error.cause !== null &&
+            (error.cause as { readonly code?: unknown }).code === "ENOENT",
+          () => Effect.succeed([]),
+        ),
+      ),
+    ),
+  );
+
+  const gc = (options?: { readonly prune?: boolean }) =>
+    Effect.gen(function* () {
+      const entries = yield* scratchRegistry.list();
+      const registryIds = new Set(entries.map((entry) => entry.id));
+      const dirIds = new Set(yield* diskScratchIds);
+      const labelIds = new Set(yield* scanner.listScratchIds);
+      const allIds = [...new Set([...registryIds, ...dirIds, ...labelIds])].sort();
+      const byId = new Map(entries.map((entry) => [entry.id, entry]));
+      const candidates = allIds.filter((id) => {
+        const entry = byId.get(id);
+        const hasRegistry = entry !== undefined;
+        const hasDir = dirIds.has(id);
+        const hasLabel = labelIds.has(id);
+        const registryStale = hasRegistry && !hasDir && !hasLabel;
+        const directoryOrphan = hasDir && !hasRegistry;
+        const providerLabelOrphan = hasLabel && !hasRegistry;
+        const deadOwner = entry !== undefined && ownerPidIsDead(entry);
+        return registryStale || directoryOrphan || providerLabelOrphan || deadOwner;
+      });
+
+      if (options?.prune !== true) return { inspected: allIds.length, reaped: [], errors: [] };
+
+      const reaped: string[] = [];
+      const errors: string[] = [];
+      for (const id of candidates) {
+        const scratchPaths = yield* paths(id);
+        const result = yield* reapScratch({ id, instanceRoot: scratchPaths.instanceRoot }).pipe(
+          Effect.either,
+        );
+        if (result._tag === "Right") reaped.push(id);
+        else errors.push(`${id}: ${result.left.message}`);
+      }
+      return { inspected: allIds.length, reaped, errors };
+    });
 
   return {
     kind: "scratch",
@@ -445,7 +650,16 @@ export const ScratchAppServiceLive = Layer.effect(
     const fileSystem = yield* FileSystem;
     const landofileService = yield* LandofileService;
     const planner = yield* AppPlanner;
-    const registry = yield* RuntimeProviderRegistry;
-    return makeScratchAppService(fileSystem, landofileService, planner, registry);
+    const providerRegistry = yield* RuntimeProviderRegistry;
+    const scratchRegistry = yield* ScratchRegistry;
+    const scanner = yield* ScratchResourceScanner;
+    return makeScratchAppService(
+      fileSystem,
+      landofileService,
+      planner,
+      providerRegistry,
+      scratchRegistry,
+      scanner,
+    );
   }),
 );
