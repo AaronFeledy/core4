@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer, Stream } from "effect";
 
+import { ScratchAppError } from "@lando/core/errors";
 import { type AppPlan, type ProviderCapabilities, ProviderId, landoAppNetworkName } from "@lando/core/schema";
 import {
   AppPlanner,
@@ -16,7 +17,7 @@ import {
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
+import { ScratchRegistry, ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
@@ -115,7 +116,11 @@ interface DestroyCall {
   readonly removeState: boolean | undefined;
 }
 
-const makeScratchForkLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[] = []) => {
+const makeScratchForkLayer = (
+  appliedPlans: AppPlan[],
+  destroyCalls: DestroyCall[] = [],
+  options: { readonly failSecondRegistryUpsert?: boolean } = {},
+) => {
   const provider: RuntimeProviderShape = {
     id: String(providerId),
     displayName: "Scratch Fork Test Provider",
@@ -161,12 +166,33 @@ const makeScratchForkLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall
     capabilities: Effect.succeed(capabilities),
     select: () => Effect.succeed(provider),
   });
+  const scratchRegistryLive = (() => {
+    if (options.failSecondRegistryUpsert !== true) return ScratchRegistryLive;
+    const registry = makeScratchRegistry();
+    let upsertCount = 0;
+    return Layer.succeed(ScratchRegistry, {
+      ...registry,
+      upsert: (entry) => {
+        upsertCount += 1;
+        if (upsertCount === 2) {
+          return Effect.fail(
+            new ScratchAppError({
+              operation: "registry.write",
+              message: "injected registry upsert failure",
+              cause: undefined,
+            }),
+          );
+        }
+        return registry.upsert(entry);
+      },
+    });
+  })();
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     LandofileServiceLive,
     plannerLive,
     registryLive,
-    ScratchRegistryLive,
+    scratchRegistryLive,
     ScratchResourceScannerLive,
   );
 
@@ -248,13 +274,44 @@ describe("ScratchAppServiceLive fork acquire", () => {
           );
           const resolved = yield* service.resolveById(handle.id);
           const stopped = yield* service.stop(handle.id);
-          return { handle, resolved, stopped };
+          const keepHandle = yield* Effect.scoped(
+            service.acquire({ source: { kind: "fork" }, detached: true, isolate: "none" }),
+          );
+          const destroyed = yield* service.destroy(keepHandle.id, { keepVolumes: true });
+          return { destroyed, handle, keepHandle, resolved, stopped };
         }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, destroyCalls))),
       );
       expect(String(appliedPlans.at(0)?.root)).toBe(dir);
       expect(result.resolved).toEqual(result.handle);
       expect(result.stopped).toEqual(result.handle);
-      expect(destroyCalls).toEqual([{ app: result.handle.id, volumes: true, removeState: true }]);
+      expect(result.destroyed).toEqual(result.keepHandle);
+      expect(destroyCalls).toEqual([
+        { app: result.handle.id, volumes: true, removeState: true },
+        { app: result.keepHandle.id, volumes: false, removeState: true },
+      ]);
+    });
+  });
+
+  test("detached acquire reaps provider resources when the running registry update fails", async () => {
+    await withTempProject(forkLandofile, async () => {
+      const appliedPlans: AppPlan[] = [];
+      const destroyCalls: DestroyCall[] = [];
+      const outcome = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
+        ).pipe(
+          Effect.provide(
+            makeScratchForkLayer(appliedPlans, destroyCalls, { failSecondRegistryUpsert: true }),
+          ),
+          Effect.either,
+        ),
+      );
+
+      expect(outcome._tag).toBe("Left");
+      expect(appliedPlans).toHaveLength(1);
+      expect(destroyCalls).toEqual([
+        { app: String(appliedPlans.at(0)?.id), volumes: true, removeState: true },
+      ]);
     });
   });
 

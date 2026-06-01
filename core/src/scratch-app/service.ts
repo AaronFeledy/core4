@@ -13,6 +13,7 @@ import {
   RuntimeProviderRegistry,
   type ScratchAcquireInput,
   ScratchAppService,
+  type ScratchDestroyOptions,
   type ScratchHandle,
   type ScratchSummary,
 } from "@lando/sdk/services";
@@ -324,6 +325,7 @@ const makeScratchAppService = (
   const reapScratch = (input: {
     readonly id: string;
     readonly instanceRoot: AbsolutePath;
+    readonly keepVolumes?: boolean;
     readonly plan?: AppPlan;
   }): Effect.Effect<void, ScratchAppError> => {
     const pruneProvider =
@@ -336,7 +338,10 @@ const makeScratchAppService = (
             Effect.flatMap((provider) => {
               const plan = input.plan;
               if (plan === undefined) return Effect.void;
-              return provider.destroy({ app: plan.id, plan }, { volumes: true, removeState: true });
+              return provider.destroy(
+                { app: plan.id, plan },
+                { volumes: input.keepVolumes !== true, removeState: true },
+              );
             }),
             Effect.mapError((cause) =>
               scratchAppError(
@@ -480,7 +485,13 @@ const makeScratchAppService = (
             updatedAt: nowIso(),
           }),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          reapScratch({
+            id: scratchId,
+            instanceRoot: scratchPaths.instanceRoot,
+            plan: markScratchPlan(forkPlan, scratchId),
+          }),
+        ),
       );
     });
 
@@ -570,7 +581,13 @@ const makeScratchAppService = (
             updatedAt: nowIso(),
           }),
         ),
-        Effect.tapError(() => reapScratch({ id: scratchId, instanceRoot: scratchPaths.instanceRoot })),
+        Effect.tapError(() =>
+          reapScratch({
+            id: scratchId,
+            instanceRoot: scratchPaths.instanceRoot,
+            plan: markScratchPlan(recipePlan, scratchId),
+          }),
+        ),
       );
     });
 
@@ -604,7 +621,7 @@ const makeScratchAppService = (
 
   const start = (id: string) => resolveById(id);
 
-  const destroy = (id: string) =>
+  const destroy = (id: string, options: ScratchDestroyOptions = {}) =>
     Effect.gen(function* () {
       const entry = yield* scratchRegistry.get(id);
       if (entry === undefined) return yield* Effect.fail(scratchAppNotFoundError(id));
@@ -616,6 +633,7 @@ const makeScratchAppService = (
           reapScratch({
             id,
             instanceRoot: scratchPaths.instanceRoot,
+            ...(options.keepVolumes === undefined ? {} : { keepVolumes: options.keepVolumes }),
             ...(cachedPlan === undefined ? {} : { plan: cachedPlan }),
           }),
         ),
@@ -674,6 +692,10 @@ const makeScratchAppService = (
       const reaped: string[] = [];
       const errors: string[] = [];
       for (const id of candidates) {
+        if (isUnsafeScratchId(id)) {
+          errors.push(`${id}: unsafe scratch id`);
+          continue;
+        }
         const scratchPaths = yield* paths(id);
         const cachedPlan = yield* readCachedPlan(scratchPaths.planCache);
         const result = yield* reapScratch({

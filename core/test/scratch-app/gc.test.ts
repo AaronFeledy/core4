@@ -136,18 +136,19 @@ describe("ScratchAppServiceLive gc", () => {
       const deadOwner = "scratch-dead-000002";
       const labelOrphan = "scratch-label-000003";
       const registryStaleWithLabel = "scratch-stale-label-000005";
+      const unsafeLabel = "../scratch-unsafe";
       await mkdir(join(scratchBase, directoryOrphan, "root"), { recursive: true });
       await mkdir(join(scratchBase, deadOwner, "root"), { recursive: true });
       await Effect.runPromise(makeScratchRegistry().upsert(registryEntry(cacheRoot, deadOwner)));
       await Effect.runPromise(makeScratchRegistry().upsert(registryEntry(cacheRoot, registryStaleWithLabel)));
 
       const pruned: string[] = [];
-      const layer = makeLayer([labelOrphan, registryStaleWithLabel], pruned);
+      const layer = makeLayer([labelOrphan, registryStaleWithLabel, unsafeLabel], pruned);
 
       const dryRun = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc()).pipe(Effect.provide(layer)),
       );
-      expect(dryRun).toEqual({ inspected: 4, reaped: [], errors: [] });
+      expect(dryRun).toEqual({ inspected: 5, reaped: [], errors: [] });
 
       const prunedRun = await Effect.runPromise(
         Effect.flatMap(ScratchAppService, (service) => service.gc({ prune: true })).pipe(
@@ -155,9 +156,9 @@ describe("ScratchAppServiceLive gc", () => {
         ),
       );
       expect(prunedRun).toEqual({
-        inspected: 4,
+        inspected: 5,
         reaped: [deadOwner, directoryOrphan, labelOrphan, registryStaleWithLabel],
-        errors: [],
+        errors: [`${unsafeLabel}: unsafe scratch id`],
       });
       expect(pruned).toEqual([deadOwner, directoryOrphan, labelOrphan, registryStaleWithLabel]);
       await expect(Effect.runPromise(makeScratchRegistry().get(deadOwner))).resolves.toBeUndefined();
