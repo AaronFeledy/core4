@@ -172,6 +172,18 @@ describe("parseExpression paths and literals", () => {
     ]);
   });
 
+  for (const [label, newline] of [
+    ["CRLF", "\r\n"],
+    ["lone CR", "\r"],
+    ["lone LF", "\n"],
+  ] as const) {
+    test(`preserves raw ${label} inside string literals`, () => {
+      const expression = interpolationExpression(`{{ "before${newline}after" }}`);
+
+      expect(expression).toEqual({ kind: "Literal", value: `before${newline}after` });
+    });
+  }
+
   test("parses scalar, array, and object literals", () => {
     const expression = interpolationExpression(
       '{{ ["x", 1, true, false, null, { k: service.name, "x-key": vars["my-key"] }] }}',

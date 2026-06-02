@@ -275,8 +275,7 @@ class ExpressionLexer {
         continue;
       }
 
-      value += char;
-      this.cursor.advance(1);
+      value += this.cursor.advance(1);
     }
 
     throw parseError(this.context, "Unterminated string literal in expression.", position, this.source);
