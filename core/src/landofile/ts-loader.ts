@@ -16,6 +16,7 @@ export const TS_TIMEOUT_ENV = "LANDO_LANDOFILE_TS_TIMEOUT_MS";
 
 const SANDBOX_REMEDIATION =
   "Remove the disallowed import or call. Programmatic Landofiles must not perform host shell-outs, remote module fetches, or filesystem access outside the app root. See spec/07-landofile-and-config.md §7.1.1.";
+const SANDBOX_PARSE_VIOLATION = "lando:parse-error";
 
 const TIMEOUT_REMEDIATION = `Reduce work in the Landofile or raise the timeout via the ${TS_TIMEOUT_ENV} environment variable. See spec/07-landofile-and-config.md §7.1.1.`;
 
@@ -133,7 +134,7 @@ export const sandboxScan = (
             cause instanceof Error ? cause.message : String(cause)
           }`,
           filePath,
-          violation: "parse",
+          violation: SANDBOX_PARSE_VIOLATION,
           remediation: SANDBOX_REMEDIATION,
           cause,
         }),
@@ -160,6 +161,9 @@ export const sandboxScan = (
 
     return Effect.void;
   });
+
+export const isSandboxParseFailure = (cause: LandofileSandboxError): boolean =>
+  cause.violation === SANDBOX_PARSE_VIOLATION;
 
 export const resolveTimeoutMs = (): number => {
   const raw = process.env[TS_TIMEOUT_ENV];
@@ -211,18 +215,18 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
   if (typeof exported === "function") {
     const ctx = buildContext(filePath);
     const result = (exported as (ctx: LandofileContext) => unknown)(ctx);
-    return await resolveLandofileResult(result);
+    return await resolveTsModuleResult(result);
   }
-  return await resolveLandofileResult(exported);
+  return await resolveTsModuleResult(exported);
 };
 
-const resolveLandofileResult = async (result: unknown): Promise<unknown> => {
+export const resolveTsModuleResult = async (result: unknown): Promise<unknown> => {
   if (result === null || typeof result !== "object") return result;
   if (Effect.isEffect(result)) {
     return await Effect.runPromise(result as Effect.Effect<unknown, unknown>);
   }
   if (typeof (result as { then?: unknown }).then === "function") {
-    return await resolveLandofileResult(await (result as Promise<unknown>));
+    return await resolveTsModuleResult(await (result as Promise<unknown>));
   }
   return result;
 };

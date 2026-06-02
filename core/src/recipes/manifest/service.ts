@@ -107,13 +107,15 @@ const rejectBetaSections = (source: string, parsed: unknown): Effect.Effect<unkn
   );
 };
 
-const validationIssues = (cause: unknown): ReadonlyArray<string> => {
+const recipeSourceLabel = (source: string): string => source.split(/[\\/]/).filter(Boolean).at(-1) ?? source;
+
+const validationIssues = (source: string, cause: unknown): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {
     return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
       issue.path.length === 0 ? issue.message : `${issue.path.join(".")}: ${issue.message}`,
     );
   }
-  return [cause instanceof Error ? cause.message : "Invalid recipe.yml."];
+  return [cause instanceof Error ? cause.message : `Invalid ${recipeSourceLabel(source)}.`];
 };
 
 const validateManifest = (
@@ -121,9 +123,10 @@ const validateManifest = (
   parsed: unknown,
 ): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError> =>
   decodeOrFail(RecipeManifest, (cause) => {
-    const issues = validationIssues(cause);
+    const label = recipeSourceLabel(source);
+    const issues = validationIssues(source, cause);
     return new RecipeManifestValidationError({
-      message: `recipe.yml is invalid: ${issues.join(", ")}.`,
+      message: `${label} is invalid: ${issues.join(", ")}.`,
       source,
       issues,
     });
@@ -164,14 +167,24 @@ const validateSemantics = (
   }
 
   if (issues.length === 0) return Effect.succeed(manifest);
+  const label = recipeSourceLabel(source);
   return Effect.fail(
     new RecipeManifestValidationError({
-      message: `recipe.yml is invalid: ${issues.join(", ")}.`,
+      message: `${label} is invalid: ${issues.join(", ")}.`,
       source,
       issues,
     }),
   );
 };
+
+const validateRecipeManifestObject = (
+  source: string,
+  parsed: unknown,
+): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError | NotImplementedError> =>
+  rejectBetaSections(source, parsed).pipe(
+    Effect.flatMap((value) => validateManifest(source, value)),
+    Effect.flatMap((manifest) => validateSemantics(source, manifest)),
+  );
 
 const parseRecipe = (
   source: string,
@@ -181,9 +194,7 @@ const parseRecipe = (
   RecipeManifestParseError | RecipeManifestValidationError | NotImplementedError
 > =>
   parseRecipeYaml({ source, content }).pipe(
-    Effect.flatMap((parsed) => rejectBetaSections(source, parsed)),
-    Effect.flatMap((parsed) => validateManifest(source, parsed)),
-    Effect.flatMap((manifest) => validateSemantics(source, manifest)),
+    Effect.flatMap((parsed) => validateRecipeManifestObject(source, parsed)),
   );
 
 const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> = {
@@ -192,4 +203,4 @@ const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> =
 
 export const RecipeManifestServiceLive = Layer.succeed(RecipeManifestService, recipeManifestService);
 
-export { parseRecipe };
+export { parseRecipe, validateRecipeManifestObject };

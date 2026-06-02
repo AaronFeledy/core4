@@ -37,7 +37,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-07 | US-129 | remote recipe sources (git, tarball, npm, registry) | `docs/guides/recipes/remote-sources.mdx` | Shipped |
 | PRD-07 | US-134 | `runs:` allowlist + ctx.run | `docs/guides/recipes/authoring-runs-allowlist.mdx` | Shipped |
 | PRD-07 | US-135 | `fetchAllowlist:` + ctx.fetch | `docs/guides/recipes/authoring-fetch-allowlist.mdx` | Shipped |
-| PRD-07 | US-136 | programmatic recipe.ts | `docs/guides/recipes/programmatic-recipe.mdx` | Planned |
+| PRD-07 | US-136 | programmatic recipe.ts | `docs/guides/recipes/programmatic-recipe.mdx` | Shipped |
 | PRD-08 | US-139 | `includes:` + .lando.lock.yml | `docs/guides/landofile/includes-and-lockfile.mdx` | Planned |
 | PRD-08 | US-142 | configuration expressions (parser + evaluator) | `docs/guides/landofile/expressions.mdx` | Planned |
 | PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Planned |

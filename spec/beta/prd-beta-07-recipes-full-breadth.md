@@ -126,7 +126,7 @@ Depends on: **Alpha PRD-04** (recipe parser + cwd source) — listed as Alpha de
 - FR-1: Recipe source resolvers cover `cwd` (Alpha), `git`, `tarball`, `npm`, and `registry`; each source resolves to a local directory containing `recipe.yml` or `recipe.ts`.
 - FR-2: Dynamic `choicesFrom:` is gated by the same `runs:` allowlist that protects `ctx.run`.
 - FR-3: `ctx.fetch` enforces the `fetchAllowlist:` glob match including redirects.
-- FR-4: `recipe.ts` is a peer to `recipe.yml`; precedence: `recipe.ts` wins when both exist (with a warning).
+- FR-4: `recipe.ts` is a peer to `recipe.yml`; the two forms are mutually exclusive within a recipe directory (a recipe ships one or the other, never both), matching the §8.8.14 contract and the `.lando.ts`/`.lando.yml` precedent (§7.1.1). A directory carrying both is rejected at resolution.
 - FR-5: Every `postInit:` `bun:` verb (`install`, `script`, `add`, `create`, `run`, `x`) is supported and runs through the renderer task tree.
 
 ## Non-Goals
