@@ -336,16 +336,16 @@ const runBun = async (
     }
     case "create": {
       const template = substituteAnswers(action.template, index, action.verb, options);
-      if (template.startsWith("-")) {
+      if (template.trim() === "" || template.startsWith("-")) {
         throw new RecipePostInitError({
-          message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not begin with "-".`,
+          message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not be empty or begin with "-".`,
           recipe: options.recipeId,
           actionIndex: index,
           actionType: "bun",
           actionVerb: "create",
           kind: "invalid-argv",
           remediation:
-            "Ensure the `template:` value (after answer substitution) is a package or template name, not a flag.",
+            "Ensure the `template:` value (after answer substitution) is a package or template name, not empty or a flag.",
         });
       }
       const dest =

@@ -557,6 +557,35 @@ describe("runPostInit — bun.create", () => {
       expect(calls.length).toBe(0);
     });
   });
+
+  test("rejects a template that resolves to empty after answer substitution", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "create", template: "${answers.tpl}" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: { tpl: "" },
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("invalid-argv");
+        expect(caught.message).toContain("must not be empty");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
 });
 
 describe("runPostInit — bun.run", () => {
