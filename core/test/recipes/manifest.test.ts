@@ -363,10 +363,11 @@ mystery: yes
 description: missing title.
 version: 0.0.1
 `;
-    const exit = await runParse("test://missing-title", yaml);
+    const exit = await runParse("/recipes/missing-title/recipe.yml", yaml);
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
+      expect(error.message).toContain("recipe.yml is invalid");
       expect(error.issues.some((i) => i.includes("title"))).toBe(true);
     }
   });

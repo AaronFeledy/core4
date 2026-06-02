@@ -92,6 +92,11 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
       const exit = await runResolve("./bad-recipe", dir);
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(RecipeManifestValidationError);
+      if (failure instanceof RecipeManifestValidationError) {
+        expect(failure.source).toBe(join(recipeDir, "recipe.ts"));
+        expect(failure.message).toContain("recipe.ts is invalid");
+        expect(failure.message).not.toContain("recipe.yml is invalid");
+      }
     });
   });
 
@@ -116,6 +121,38 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
       if (failure instanceof RecipeManifestValidationError) {
         expect(failure.message).toContain('"wrong-id"');
         expect(failure.message).toContain('"expected-id"');
+      }
+    });
+  });
+
+  test("recipe.ts semantic validation errors use the TypeScript file label", async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "missing-choices");
+      await Bun.write(
+        join(recipeDir, "recipe.ts"),
+        [
+          "export default {",
+          '  id: "missing-choices",',
+          '  title: "Missing choices",',
+          '  description: "select prompt without choices.",',
+          '  version: "0.0.1",',
+          "  prompts: [",
+          '    { name: "framework", type: "select", message: "Framework?" },',
+          "  ],",
+          "};",
+          "",
+        ].join("\n"),
+      );
+      const exit = await runResolve("./missing-choices", dir);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(RecipeManifestValidationError);
+      if (failure instanceof RecipeManifestValidationError) {
+        expect(failure.source).toBe(join(recipeDir, "recipe.ts"));
+        expect(failure.message).toContain("recipe.ts is invalid");
+        expect(failure.message).not.toContain("recipe.yml is invalid");
+        expect(failure.issues.some((issue) => issue.includes("framework") && issue.includes("choices"))).toBe(
+          true,
+        );
       }
     });
   });
