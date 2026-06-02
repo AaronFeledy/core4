@@ -622,3 +622,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Lockfile fixtures in tests must use a checksum containing hex letters (e.g. `"a".repeat(64)`), NOT all-digits like `"0".repeat(64)`: the Landofile YAML subset parser coerces an unquoted all-digit scalar to a number, so `parseLockEntries`' `lockScalar` stringifies a 64-zero checksum back to `"0"` and the round-trip silently corrupts it. Real sha256 values are letter-bearing so this never bites production, only degenerate test fixtures.
   - PUSH NOTE (guide-drift): US-141 owns no guide (AC requires none; PRD-08 Guide Coverage lists only US-139/US-142). The commit touches `core/src/landofile/includes.ts`, which matches PRD-08's `core/src/landofile/**` drift surface, so the PR will fail `check:guide-drift` without a `Guide-Coverage-Skip: <reason>` body line (drift gate runs on pull_request only) — same situation as US-133/US-137/US-139.
 ---
+
+## 2026-06-02 10:58 - Babysit
+- PR: #266 https://github.com/AaronFeledy/core4/pull/266
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate: documented `app:includes:verify` in includes-and-lockfile.mdx)
+- Merge: merged (squash)
+---
