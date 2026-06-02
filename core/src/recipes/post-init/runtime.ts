@@ -336,7 +336,8 @@ const runBun = async (
     }
     case "create": {
       const template = substituteAnswers(action.template, index, action.verb, options);
-      if (template.trim() === "" || template.startsWith("-")) {
+      const trimmedTemplate = template.trim();
+      if (trimmedTemplate === "" || trimmedTemplate.startsWith("-")) {
         throw new RecipePostInitError({
           message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not be empty or begin with "-".`,
           recipe: options.recipeId,
