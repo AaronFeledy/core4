@@ -133,6 +133,20 @@ export const renderJsonLine = (event: LandoEvent): string | null => {
   return stableStringify(event);
 };
 
+/**
+ * Verbose line: the human-readable head plus a full payload trace of every
+ * event — including events `plain` does not surface (e.g. `log.line`).
+ */
+export const renderVerboseLine = (event: LandoEvent): string => {
+  const payload = stableStringify(event);
+  const human = formatPlainEvent(event as RenderableEvent);
+  if (human === null) {
+    const tag = (event as { readonly _tag?: string })._tag ?? "event";
+    return `· ${tag} ${payload}`;
+  }
+  return `${human}\n  ⋯ ${payload}`;
+};
+
 export const isRenderableTaskTreeEvent = isTaskTreeEvent;
 export const isRenderableMessageEvent = isMessageEvent;
 export const isRenderablePaintBannerEvent = isPaintBannerEvent;

@@ -2,7 +2,7 @@ import { Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
 
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
-import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine } from "./format.ts";
+import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
 import type { RendererIO } from "./io.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
 import { LandoTreePainter } from "./task-tree-tail.ts";
@@ -51,6 +51,22 @@ export const makePlainRendererLive = (io: RendererIO): Layer.Layer<never, never,
 
 export const makeJsonRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderJsonLine, io, "stderr");
+
+const makeVerboseTtyRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> => {
+  const painter = new LandoTreePainter({
+    getTerminalColumns: () => io.terminalColumns,
+    getTerminalRows: () => io.terminalRows,
+  });
+  const display = makeEventConsumerRendererLive((event) => {
+    io.writeStdout(painter.passthrough(renderVerboseLine(event)));
+    if (isRenderableTaskTreeEvent(event)) io.writeStdout(painter.consume(event));
+  });
+  if (io.subscribeInput === undefined) return display;
+  return Layer.merge(display, makeTaskTreeInputLive(io, painter));
+};
+
+export const makeVerboseRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+  io.isTTY === true ? makeVerboseTtyRendererLive(io) : makeRendererLive(renderVerboseLine, io, "stdout");
 
 const makeTaskTreeInputLive = (
   io: RendererIO,

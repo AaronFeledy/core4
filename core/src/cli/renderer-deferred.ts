@@ -6,8 +6,10 @@
  * `NotImplementedError` objects so callers see the deferred remediation
  * instead of a silent no-op or a generic `RendererSelectionError`.
  *
- * Deferred surfaces include the `task.detail` tail control flag, user-configurable
- * expand/collapse control flags for the task tree, and the `verbose` renderer mode.
+ * Deferred surfaces include the `task.detail` tail control flag and the
+ * user-configurable expand/collapse control flags for the task tree. The
+ * `verbose` renderer mode has shipped, so no renderer mode values are
+ * currently deferred — the mode table is retained for future modes.
  *
  * Wiring:
  *   - `core/src/cli/renderer-selection.ts` consults this module from
@@ -27,7 +29,6 @@ interface DeferredRendererSurface {
   readonly remediation: string;
 }
 
-const PHASE_3_BETA_DESCRIPTOR = '"full breadth"';
 const PHASE_4_RC_DESCRIPTOR = '"hardening + governance"';
 
 /**
@@ -36,18 +37,7 @@ const PHASE_4_RC_DESCRIPTOR = '"hardening + governance"';
  * tagged `NotImplementedError` instead of falling through to the generic
  * `RendererSelectionError` ("Unsupported renderer value") path.
  */
-export const DEFERRED_RENDERER_MODES: ReadonlyMap<string, DeferredRendererSurface> = new Map([
-  [
-    "verbose",
-    {
-      feature: "renderer mode 'verbose' (full debug output inline with task progress)",
-      phase: "Phase 3 Beta",
-      roadmapDescriptor: PHASE_3_BETA_DESCRIPTOR,
-      remediation:
-        "Renderer mode 'verbose' lands in Phase 3 Beta with the broader renderer plugin surface (spec/ROADMAP.md Phase 3 \"full breadth\" and spec/08-cli-and-tooling.md §8.9). Alpha ships `--renderer=lando|json|plain`; use `--renderer=json` for structured NDJSON debugging.",
-    },
-  ],
-]);
+export const DEFERRED_RENDERER_MODES: ReadonlyMap<string, DeferredRendererSurface> = new Map();
 
 /**
  * Deferred renderer-related top-level flags. These are surfaces a user

@@ -13,12 +13,13 @@ import {
 } from "../../src/cli/renderer-deferred.ts";
 import { extractRendererFlag, resolveRendererMode } from "../../src/cli/renderer-selection.ts";
 
-describe("DEFERRED_RENDERER_MODES (US-040 contract)", () => {
-  test("contains the verbose renderer mode named in spec/08-cli-and-tooling.md §8.9", () => {
-    expect(DEFERRED_RENDERER_MODES.has("verbose")).toBe(true);
+describe("DEFERRED_RENDERER_MODES", () => {
+  test("no renderer mode is currently deferred (verbose has shipped)", () => {
+    expect(DEFERRED_RENDERER_MODES.has("verbose")).toBe(false);
+    expect(DEFERRED_RENDERER_MODES.size).toBe(0);
   });
 
-  test("every entry carries a Phase 3 Beta or Phase 4 RC remediation pointing at spec/ROADMAP.md", () => {
+  test("any future entry must carry a Phase 3 Beta or Phase 4 RC remediation pointing at spec/ROADMAP.md", () => {
     for (const [name, surface] of DEFERRED_RENDERER_MODES.entries()) {
       expect(["Phase 3 Beta", "Phase 4 RC"]).toContain(surface.phase);
       expect(surface.remediation).toContain(surface.phase);
@@ -29,8 +30,8 @@ describe("DEFERRED_RENDERER_MODES (US-040 contract)", () => {
     }
   });
 
-  test("isDeferredRendererMode is true only for entries in the table", () => {
-    expect(isDeferredRendererMode("verbose")).toBe(true);
+  test("isDeferredRendererMode is false for every shipped renderer mode", () => {
+    expect(isDeferredRendererMode("verbose")).toBe(false);
     expect(isDeferredRendererMode("lando")).toBe(false);
     expect(isDeferredRendererMode("json")).toBe(false);
     expect(isDeferredRendererMode("plain")).toBe(false);
@@ -68,21 +69,8 @@ describe("DEFERRED_RENDERER_FLAGS (US-040 contract)", () => {
 });
 
 describe("deferredRendererModeError", () => {
-  test("returns a tagged NotImplementedError with spec section and phase remediation", () => {
-    const err = deferredRendererModeError("verbose", "flag");
-    expect(err).toBeInstanceOf(NotImplementedError);
-    expect(err._tag).toBe("NotImplementedError");
-    expect(err.commandId).toBe("cli:renderer-selection");
-    expect(err.specSection).toBe(RENDERER_DEFERRED_SPEC_SECTION);
-    expect(err.message).toContain("verbose");
-    expect(err.message).toContain("flag");
-    expect(err.remediation).toContain("Phase 3 Beta");
-    expect(err.remediation).toContain("spec/ROADMAP.md");
-  });
-
-  test("source label changes per origin (flag, env, config)", () => {
-    expect(deferredRendererModeError("verbose", "env").message).toContain("env");
-    expect(deferredRendererModeError("verbose", "config").message).toContain("config");
+  test("throws the internal guard for a mode value that is not registered as deferred", () => {
+    expect(() => deferredRendererModeError("verbose", "flag")).toThrow(/no deferred surface registered/u);
   });
 });
 
@@ -149,40 +137,22 @@ describe("renderer-selection integration with deferred surfaces", () => {
     }
   });
 
-  test("resolveRendererMode throws NotImplementedError for --renderer=verbose (flag source)", () => {
-    try {
-      resolveRendererMode({ argv: ["--renderer=verbose"] });
-      throw new Error("expected throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(NotImplementedError);
-      if (!(error instanceof NotImplementedError)) return;
-      expect(error.message).toContain("flag");
-      expect(error.remediation).toContain("Phase 3 Beta");
-    }
+  test("resolveRendererMode accepts --renderer=verbose as a shipped mode (flag source)", () => {
+    const result = resolveRendererMode({ argv: ["--renderer=verbose"] });
+    expect(result.mode).toBe("verbose");
+    expect(result.source).toBe("flag");
   });
 
-  test("resolveRendererMode throws NotImplementedError for LANDO_RENDERER=verbose (env source)", () => {
-    try {
-      resolveRendererMode({ argv: [], env: { LANDO_RENDERER: "verbose" } });
-      throw new Error("expected throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(NotImplementedError);
-      if (!(error instanceof NotImplementedError)) return;
-      expect(error.message).toContain("env");
-      expect(error.remediation).toContain("Phase 3 Beta");
-    }
+  test("resolveRendererMode accepts LANDO_RENDERER=verbose (env source)", () => {
+    const result = resolveRendererMode({ argv: [], env: { LANDO_RENDERER: "verbose" } });
+    expect(result.mode).toBe("verbose");
+    expect(result.source).toBe("env");
   });
 
-  test("resolveRendererMode throws NotImplementedError when configValue is a deferred mode", () => {
-    try {
-      resolveRendererMode({ argv: [], configValue: "verbose" });
-      throw new Error("expected throw");
-    } catch (error) {
-      expect(error).toBeInstanceOf(NotImplementedError);
-      if (!(error instanceof NotImplementedError)) return;
-      expect(error.message).toContain("config");
-      expect(error.remediation).toContain("Phase 3 Beta");
-    }
+  test("resolveRendererMode accepts a verbose configValue (config source)", () => {
+    const result = resolveRendererMode({ argv: [], configValue: "verbose" });
+    expect(result.mode).toBe("verbose");
+    expect(result.source).toBe("config");
   });
 
   test("non-deferred invalid renderer values still raise RendererSelectionError (existing behavior preserved)", () => {
