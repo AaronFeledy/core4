@@ -684,3 +684,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The `@lando/sdk/expressions` AST is NOT compatibility-locked by any test — `sdk/test/library/sdk-backward-compatibility.test.ts` only freezes `@lando/sdk/schema` exports + service-tag signatures; root namespaces (`Expressions`), subpaths (`./expressions`), and error exports are untracked there. So US-143 can extend the AST (e.g. add a member/index-access node that wraps an arbitrary base expression) with ZERO backward-compat churn. New public ERRORS still belong in `sdk/API_COMPATIBILITY.md` "Additive Alpha errors" by convention even though no test enforces that section.
   - US-143 (evaluator + load() sandbox) MUST extend the expression AST to represent postfix member/index access on non-Path bases before the §7.3 strict-walk extraction `(load(...) | json).engines.node` / `(value).a.b.c` can be supported. Today the AST's `Path` node is identifier-rooted only; the parser's appendMember/appendIndex deliberately reject non-Path targets. Plan an `Access`/member node (or generalize Path's head to an expression) as part of that story.
 ---
+
+## [2026-06-02 13:55 CDT] - Babysit
+- PR: #267 https://github.com/AaronFeledy/core4/pull/267
+- CI outcome: pass
+- Review feedback: fixed (resolved origin/main merge conflict in progress.txt keeping both sides; added Guide-Coverage-Skip for the Planned expressions guide to clear the guide-drift gate; fixed Bugbot CRLF bug in expressions parser readString — `value += this.cursor.advance(1)` preserves `\r\n`, with regression tests)
+- Merge: merged (squash)
+---
