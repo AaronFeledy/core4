@@ -136,6 +136,7 @@
 
 ## Additive Alpha errors
 
+- `LandofileExpressionParseError`
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`
 - `RecipeRunNotAllowedError`

@@ -17,3 +17,4 @@ export * as Schema from "./schema/index.ts";
 export * as Errors from "./errors/index.ts";
 export * as Services from "./services/index.ts";
 export * as Events from "./events/index.ts";
+export * as Expressions from "./expressions/index.ts";
