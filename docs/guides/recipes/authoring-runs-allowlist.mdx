@@ -46,4 +46,12 @@ tags: [beta, docs, recipes, runs, allowlist]
       <Variable name="answerBypass" value="--answer phpVersion=8.3" display="A supplied answer bypasses choicesFrom execution and therefore does not trigger the allowlist gate" />
     </Step>
   </Scenario>
+
+  <Scenario id="bun-post-init-verbs" render={false} reason="bun postInit execution and argv rejection are covered by recipe post-init unit tests with a fake bun spawner">
+    <Step name="bun-post-init">
+      <Variable name="verbs" value="bun:script, bun:add, bun:create, bun:run" display="Recipe postInit may run bundled scripts, add packages, scaffold from a template, or run package scripts through bun" />
+      <Variable name="manifest" value="postInit: [{ type: bun, verb: create, template: ${answers.template} }]" display="bun create templates can interpolate prompt answers before the bun argv is built" />
+      <Variable name="argvSafety" value="empty and flag-like operands" display="Substituted bun create templates and package operands are rejected before bun is spawned" />
+    </Step>
+  </Scenario>
 </Guide>
