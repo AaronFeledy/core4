@@ -26,7 +26,7 @@ export { RecipeManifestService } from "@lando/sdk/services";
 
 const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
 
-const REJECTED_BUN_VERBS = new Set(["script", "add", "create", "run", "x"]);
+const REJECTED_BUN_VERBS = new Set(["x"]);
 
 interface BetaFinding {
   readonly message: string;
@@ -162,6 +162,37 @@ const validateSemantics = (
         issues.push(
           `prompts[${index}] ("${prompt.name}", type: ${prompt.type}): choices must be a non-empty list (or use choicesFrom:).`,
         );
+      }
+    }
+  }
+
+  if (manifest.postInit !== undefined) {
+    for (const [index, action] of manifest.postInit.entries()) {
+      if (action.type !== "bun") continue;
+      if (action.verb === "add") {
+        const categories = [
+          action.dependencies,
+          action.devDependencies,
+          action.peerDependencies,
+          action.optionalDependencies,
+        ];
+        const specs = categories.flatMap((category) => category ?? []);
+        if (specs.length === 0) {
+          issues.push(`postInit[${index}] (bun add): at least one dependency category must be non-empty.`);
+        }
+        for (const spec of specs) {
+          if (spec.trim() === "" || spec.trim().startsWith("-")) {
+            issues.push(
+              `postInit[${index}] (bun add): package spec "${spec}" is invalid; flags and empty specs are not allowed.`,
+            );
+          }
+        }
+      }
+      if (action.verb === "create" && action.template.trim() === "") {
+        issues.push(`postInit[${index}] (bun create): template must not be empty.`);
+      }
+      if ((action.verb === "run" || action.verb === "script") && action.script.trim() === "") {
+        issues.push(`postInit[${index}] (bun ${action.verb}): script must not be empty.`);
       }
     }
   }

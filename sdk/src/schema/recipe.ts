@@ -114,14 +114,65 @@ export const RecipePostInitCommand = Schema.Struct({
   when: Schema.optional(Schema.String),
 });
 
-/** Recipe post-init `bun` action — supported verbs only. */
-export const RecipePostInitBun = Schema.Struct({
+/** `bun install` — resolve `package.json` and write `node_modules/` in `cwd:`. */
+const RecipePostInitBunInstall = Schema.Struct({
   type: Schema.Literal("bun"),
-  /** Other verbs are rejected before decode. */
   verb: Schema.Literal("install"),
   cwd: Schema.optional(Schema.String),
   when: Schema.optional(Schema.String),
 });
+
+/** `bun script` — run a recipe-bundled `.bun.sh` script resolved under the recipe source tree. */
+const RecipePostInitBunScript = Schema.Struct({
+  type: Schema.Literal("bun"),
+  verb: Schema.Literal("script"),
+  script: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** `bun add` — add explicit packages across dependency categories. */
+const RecipePostInitBunAdd = Schema.Struct({
+  type: Schema.Literal("bun"),
+  verb: Schema.Literal("add"),
+  dependencies: Schema.optional(Schema.Array(Schema.String)),
+  devDependencies: Schema.optional(Schema.Array(Schema.String)),
+  peerDependencies: Schema.optional(Schema.Array(Schema.String)),
+  optionalDependencies: Schema.optional(Schema.Array(Schema.String)),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** `bun create` — run `bun create <template> <dest>` into a path under the recipe destination. */
+const RecipePostInitBunCreate = Schema.Struct({
+  type: Schema.Literal("bun"),
+  verb: Schema.Literal("create"),
+  template: Schema.String,
+  dest: Schema.optional(Schema.String),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** `bun run` — run a `package.json#scripts` entry from `cwd:`. */
+const RecipePostInitBunRun = Schema.Struct({
+  type: Schema.Literal("bun"),
+  verb: Schema.Literal("run"),
+  script: Schema.String,
+  args: Schema.optional(Schema.Array(Schema.String)),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `bun` action — one of the allowlisted verbs; `x` is rejected before decode. */
+export const RecipePostInitBun = Schema.Union(
+  RecipePostInitBunInstall,
+  RecipePostInitBunScript,
+  RecipePostInitBunAdd,
+  RecipePostInitBunCreate,
+  RecipePostInitBunRun,
+);
+export type RecipePostInitBun = typeof RecipePostInitBun.Type;
 
 /** Recipe post-init action — discriminated by `type`. */
 export const RecipePostInitAction = Schema.Union(

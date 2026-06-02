@@ -327,22 +327,137 @@ version: 0.0.1
     }
   });
 
-  for (const verb of ["script", "add", "create", "run", "x"]) {
-    test(`postInit bun verb \`${verb}\` is rejected with §8.8.8 remediation`, async () => {
-      const yaml = `${baseHeader}postInit:
+  test("postInit bun verb `x` is rejected with §8.8.8 remediation", async () => {
+    const yaml = `${baseHeader}postInit:
   - type: bun
-    verb: ${verb}
+    verb: x
 `;
-      const exit = await runParse(`test://beta-bun-${verb}`, yaml);
-      const error = expectFailure(exit);
-      expect(error).toBeInstanceOf(NotImplementedError);
-      if (error instanceof NotImplementedError) {
-        expect(error.specSection).toBe("§8.8.8");
-        expect(error.message).toContain(verb);
-        expect(error.remediation).toContain("Beta");
-      }
-    });
-  }
+    const exit = await runParse("test://beta-bun-x", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(NotImplementedError);
+    if (error instanceof NotImplementedError) {
+      expect(error.specSection).toBe("§8.8.8");
+      expect(error.message).toContain("x");
+      expect(error.remediation).toContain("Beta");
+    }
+  });
+});
+
+describe("RecipeManifestService.parse — postInit bun verbs (§8.8.8)", () => {
+  const baseHeader = `id: bun-verbs
+title: Bun verbs
+description: Exercises each supported bun verb.
+version: 0.0.1
+`;
+
+  test("bun `script` decodes with script path and args", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: script
+    script: templates/setup.bun.sh
+    args:
+      - --quiet
+`;
+    const exit = await runParse("test://bun-script", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const action = exit.value.postInit?.[0];
+    expect(action?.type).toBe("bun");
+    if (action?.type === "bun" && action.verb === "script") {
+      expect(action.script).toBe("templates/setup.bun.sh");
+      expect(action.args).toEqual(["--quiet"]);
+    }
+  });
+
+  test("bun `add` decodes across dependency categories", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: add
+    dependencies:
+      - react
+    devDependencies:
+      - typescript
+`;
+    const exit = await runParse("test://bun-add", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const action = exit.value.postInit?.[0];
+    if (action?.type === "bun" && action.verb === "add") {
+      expect(action.dependencies).toEqual(["react"]);
+      expect(action.devDependencies).toEqual(["typescript"]);
+    }
+  });
+
+  test("bun `create` decodes with template and dest", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: create
+    template: vite
+    dest: client
+`;
+    const exit = await runParse("test://bun-create", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const action = exit.value.postInit?.[0];
+    if (action?.type === "bun" && action.verb === "create") {
+      expect(action.template).toBe("vite");
+      expect(action.dest).toBe("client");
+    }
+  });
+
+  test("bun `run` decodes with a package.json script name", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: run
+    script: build
+`;
+    const exit = await runParse("test://bun-run", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const action = exit.value.postInit?.[0];
+    if (action?.type === "bun" && action.verb === "run") {
+      expect(action.script).toBe("build");
+    }
+  });
+
+  test("bun `add` with no dependency category is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: add
+`;
+    const exit = await runParse("test://bun-add-empty", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("add"))).toBe(true);
+    }
+  });
+
+  test("bun `add` with a flag-like package spec is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: add
+    dependencies:
+      - --global
+`;
+    const exit = await runParse("test://bun-add-flag", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("--global"))).toBe(true);
+    }
+  });
+
+  test("bun `install` with a stray verb-specific field is rejected by strict decode", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: install
+    template: vite
+`;
+    const exit = await runParse("test://bun-install-excess", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+  });
 });
 
 describe("RecipeManifestService.parse — validation/parse errors", () => {
