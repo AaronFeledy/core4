@@ -2,6 +2,8 @@ import { Effect } from "effect";
 
 import type {
   AppIdReservedError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -32,6 +34,8 @@ type AppConfigError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NotImplementedError;
 
 type AppConfigServices = LandofileService;

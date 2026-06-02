@@ -1,0 +1,8 @@
+services:
+  web:
+    type: node
+    port: 3000
+tooling:
+  node-version:
+    service: web
+    cmd: node --version

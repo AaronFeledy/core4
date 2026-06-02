@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { type Context, Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -40,5 +44,26 @@ describe("user-app reserved-id guard", () => {
     const result = await Effect.runPromise(loadUserLandofile(fakeLandofileService(landofile("myapp"))));
 
     expect(result.name).toBe("myapp");
+  });
+});
+
+describe("loadUserLandofile includes", () => {
+  test("resolves a local include before returning and applying the reserved-id guard", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-includes-"));
+    const previous = process.cwd();
+    try {
+      await writeFile(join(dir, ".lando.yml"), "name: myapp\n", "utf8");
+      await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
+      process.chdir(dir);
+
+      const result = await Effect.runPromise(
+        loadUserLandofile(fakeLandofileService({ name: "myapp", includes: ["./fragment.yml"] })),
+      );
+
+      expect(result).toEqual({ name: "myapp", services: { web: { type: "node" } } });
+    } finally {
+      process.chdir(previous);
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 });

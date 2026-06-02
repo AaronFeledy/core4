@@ -13,6 +13,8 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   LandoCommandError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -61,6 +63,8 @@ type StopAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NotImplementedError
   | CapabilityError
   | LandoCommandError

@@ -399,7 +399,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     expect(error.remediation.toLowerCase()).toContain("beta");
   };
 
-  test("rejects top-level `includes:` with NotImplementedError + Beta remediation", async () => {
+  test("allows top-level `includes:` through raw discovery for the include resolver", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -416,12 +416,8 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
       process.chdir(dir);
 
       const exit = await discoverExit();
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, "§7.7");
-      }
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) expect(exit.value.includes).toEqual(["./fragment.yml"]);
     });
   });
 

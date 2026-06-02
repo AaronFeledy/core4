@@ -209,7 +209,7 @@ const extractTarballToDirImpl = async (
   }
 };
 
-const defaultTarballRecipeExtractor: TarballRecipeExtractor = {
+export const defaultTarballRecipeExtractor: TarballRecipeExtractor = {
   extract: (archiveBytes, destDir) => extractTarballToDirImpl(archiveBytes, destDir, "tarball"),
 };
 

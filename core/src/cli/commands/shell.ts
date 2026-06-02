@@ -12,6 +12,8 @@ import { Effect } from "effect";
 import {
   type AppIdReservedError,
   type CapabilityError,
+  type LandofileIncludeError,
+  type LandofileLockMismatchError,
   type LandofileNotFoundError,
   type LandofileParseError,
   type LandofileSandboxError,
@@ -65,6 +67,8 @@ export type ShellAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError

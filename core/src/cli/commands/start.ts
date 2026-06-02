@@ -16,6 +16,8 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   LandoCommandError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -78,6 +80,8 @@ type StartAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NotImplementedError
   | CapabilityError
   | GlobalAutoStartError

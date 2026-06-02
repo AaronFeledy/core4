@@ -1,0 +1,7 @@
+name: includes-lockfile-demo
+runtime: 4
+includes:
+  - ./fragments/web.yml
+services:
+  web:
+    primary: true

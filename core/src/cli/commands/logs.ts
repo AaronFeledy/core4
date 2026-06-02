@@ -9,6 +9,8 @@ import type {
   AppIdReservedError,
   CapabilityError,
   LandoCommandError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -56,6 +58,8 @@ type LogsAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NotImplementedError
   | CapabilityError
   | LandoCommandError

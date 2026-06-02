@@ -510,7 +510,7 @@ describe("LandofileServiceLive — TS form appRoot boundary (PR #106 regression)
 });
 
 describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
-  test("TS export with top-level `includes:` surfaces NotImplementedError matching the YAML path", async () => {
+  test("TS export with top-level `includes:` is accepted by raw discovery", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.ts"),
@@ -525,13 +525,8 @@ describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
       );
       process.chdir(dir);
       const exit = await discoverExit();
-      const failure = failureFromExit(exit);
-      expect(failure).toBeInstanceOf(NotImplementedError);
-      if (failure instanceof NotImplementedError) {
-        expect(failure.specSection).toBe("§7.7");
-        expect(failure.commandId).toBe("landofile.parse");
-        expect(failure.remediation).toContain("Beta");
-      }
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) expect(exit.value.includes).toEqual(["foo"]);
     });
   });
 

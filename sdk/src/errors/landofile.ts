@@ -54,3 +54,34 @@ export class LandofileTimeoutError extends Schema.TaggedError<LandofileTimeoutEr
     remediation: Schema.String,
   },
 ) {}
+
+export class LandofileLockMismatchError extends Schema.TaggedError<LandofileLockMismatchError>()(
+  "LandofileLockMismatchError",
+  {
+    message: Schema.String,
+    lockfile: Schema.String,
+    source: Schema.String,
+    expected: Schema.String,
+    actual: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export class LandofileIncludeError extends Schema.TaggedError<LandofileIncludeError>()(
+  "LandofileIncludeError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    kind: Schema.Literal(
+      "source-unresolved",
+      "fetch-failed",
+      "parse-failed",
+      "forbidden-field",
+      "outside-root",
+      "cycle",
+      "max-depth",
+      "subpath-invalid",
+    ),
+    remediation: Schema.String,
+  },
+) {}
