@@ -101,9 +101,7 @@ describe("verbose renderer registration (selection)", () => {
 describe("renderVerboseLine — human line + full event payload", () => {
   test("renderable event: keeps the human-readable line and appends the full payload trace", () => {
     const line = renderVerboseLine(infoEvent);
-    // Human-readable head retained from the plain/lando formatting.
     expect(line).toContain("ℹ fetched 3 plugins");
-    // Full event payload appended as a trace so debugging users see every field.
     expect(line).toContain('"_tag":"message.info"');
     expect(line).toContain('"body":"fetched 3 plugins"');
     expect(line).toContain(`"timestamp":"${fixedTimestamp}"`);
