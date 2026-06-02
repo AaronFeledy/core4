@@ -187,6 +187,20 @@ describe("TaskTreeInputController", () => {
     expect(painter.expandedTaskId).toBeUndefined();
   });
 
+  test("Esc emits collapse for the expanded task after focus moves", () => {
+    const { painter, controller } = make(["a", "b"]);
+    controller.handleKey("down");
+    controller.handleKey("enter");
+    expect(painter.expandedTaskId).toBe("b");
+    controller.handleKey("up");
+    expect(controller.focusedTaskId).toBe("a");
+    const result = controller.handleKey("esc");
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0]?._tag).toBe("task.detail.collapse");
+    expect((result.events[0] as { taskId: string }).taskId).toBe("b");
+    expect(painter.expandedTaskId).toBeUndefined();
+  });
+
   test("Esc when not expanded is a no-op (no event, no change)", () => {
     const { controller } = make(["a"]);
     const result = controller.handleKey("esc");

@@ -114,7 +114,7 @@ export class TaskTreeInputController {
 
   #collapse(): KeyHandleResult {
     if (!this.#expanded) return NO_CHANGE;
-    const taskId = this.focusedTaskId ?? this.#painter.expandedTaskId;
+    const taskId = this.#painter.expandedTaskId ?? this.focusedTaskId;
     const redraw = this.#painter.collapse();
     this.#expanded = false;
     if (taskId === undefined) return { events: [], changed: true, redraw };
