@@ -72,6 +72,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ProviderCapabilityError).toBeDefined();
     expect(errors.LandofileParseError).toBeDefined();
     expect(errors.LandofileExpressionParseError).toBeDefined();
+    expect(errors.LandofileExpressionForbiddenError).toBeDefined();
+    expect(errors.LandofileExpressionEvalError).toBeDefined();
     expect(errors.LandofileLockMismatchError).toBeDefined();
     expect(errors.LandofileIncludeError).toBeDefined();
     expect(errors.PluginLoadError).toBeDefined();
