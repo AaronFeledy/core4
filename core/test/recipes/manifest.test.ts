@@ -71,6 +71,24 @@ runs:
     expect(exit.value.runs).toEqual(["git", "composer"]);
   });
 
+  test("fetchAllowlist: URL globs decode and are preserved", async () => {
+    const yaml = `id: fetch-allowlist
+title: Fetch allowlist
+description: Recipe declares the hosts it may fetch from.
+version: 0.1.0
+fetchAllowlist:
+  - https://api.example.com/**
+  - https://registry.lando.dev/recipes/*
+`;
+    const exit = await runParse("test://fetch", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.fetchAllowlist).toEqual([
+      "https://api.example.com/**",
+      "https://registry.lando.dev/recipes/*",
+    ]);
+  });
+
   test("prompts: each Alpha prompt type decodes", async () => {
     const yaml = `id: prompts-cover
 title: Prompts
@@ -226,19 +244,6 @@ title: Beta rejection
 description: Trigger one Beta surface per case.
 version: 0.0.1
 `;
-
-  test("top-level `fetchAllowlist:` is rejected with §8.8.14 remediation", async () => {
-    const yaml = `${baseHeader}fetchAllowlist:
-  - https://api.example.com
-`;
-    const exit = await runParse("test://beta-fetch", yaml);
-    const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§8.8.14");
-      expect(error.message).toContain("fetchAllowlist");
-    }
-  });
 
   test("prompt type `editor` is rejected with §8.8.5 remediation", async () => {
     const yaml = `${baseHeader}prompts:
