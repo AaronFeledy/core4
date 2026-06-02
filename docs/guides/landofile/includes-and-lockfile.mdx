@@ -25,6 +25,8 @@ tags: [beta, docs, landofile, includes, lockfile]
       <Variable name="remediation" value="lando app:includes:update" display="Lock drift fails closed with LandofileLockMismatchError and points at the update command" />
       <Variable name="refresh" value="lando app:includes:update" display="Re-resolves every remote include, recomputes SHA-256 checksums, rewrites .lando.lock.yml only when drift exists, and prunes stale lock entries" />
       <Variable name="check" value="lando app:includes:update --check" display="Runs the same refresh comparison without writing; if drift is found, the rendered result sets exit code 1 and tells you to run app:includes:update" />
+      <Variable name="verify" value="lando app:includes:verify" display="Runs the refresh comparison without writing so CI can fail when .lando.lock.yml is missing, stale, or mismatched" />
+      <Variable name="verifyReport" value="{ ok, entries, mismatches }" display="Text and JSON output report ok, mismatch, missing, and stale statuses; non-ok results set exit code 1" />
       <Variable name="report" value="{ added, updated, unchanged, removed, drift, wrote, checkMode }" display="Text and JSON output report per-include added, updated, and unchanged statuses, removed stale sources, whether drift exists, whether the lockfile was written, and whether --check was used" />
     </Step>
   </Scenario>
