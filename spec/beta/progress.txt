@@ -601,6 +601,14 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - A command that only needs the `includes:` list + app root should discover+parse the Landofile directly (like `app:config:lint`/`lintLandofile`) rather than `LandofileService.discover`. That keeps it at `minimal` bootstrap (R=never), avoids the `.discover` canary, and needs no new `makeLandoRuntime` overload (`LandofileService` is only provided at `tooling`+).
   - Render functions that set `process.exitCode = 1` as a side effect (the `renderExecAppResult`/`renderConfigLintResult` pattern) bleed the exit code across scenario-test files in one Bun process. The `restoreExitCode` test guard must restore `previous ?? 0` (not bare `previous`) — restoring `undefined` does NOT clear a prior `1` in Bun, so the file exits 1 despite all assertions passing. Adding a second such render (`renderIncludesUpdateResult`) surfaced this in `app-config-lint.scenario.test.ts`.
 
+## [2026-06-02 09:27 CDT] - US-152 (agent2)
+- Implemented the first-paint task-tree skeleton in the interactive Lando renderer. `LandoTreePainter` now seeds a `"pending"` placeholder for every declared `task.tree.start` child (rendered as `  ◌ <id>`) on the very first paint — before any child `task.start` runs — and transitions each placeholder to its running panel in place when its `task.start` arrives, leaving siblings pending. Pending lines are plain text (no CSI), so the first paint carries zero control bytes; `focusableTaskIds()` excludes pending so keyboard focus only lands on started tasks, while the running denominator and `activeTaskIds` still count running only. Added `core/test/cli/renderer-first-paint.test.ts`: a byte-for-byte skeleton assertion on the pure painter plus a fake-terminal recorder driving the Live TTY renderer (`makeLandoRendererLive`) that asserts the exact first recorded write. The §8.9.1 banner/no-pre-import canary remains covered by `paint-banner.test.ts` + `fast-path.test.ts`.
+- Verification: typecheck, lint pass; the 7 renderer test files (77 tests) and full `core/test/cli` (550 pass) green. Manual CLI QA drove the production Live renderer through a fake TTY: first paint = `▼ Starting app (0/3 running)` + three `◌` placeholders with no control bytes, then `task.start` flipped one child to `·` running with siblings still pending. Whole-suite `bun test` = 2558 pass / 27 skip / 3 fail, where the 3 failures (`@lando/core/cli/operations` + `@lando/core/testing` package-export resolution) are pre-existing on main (fail identically with my change stashed) and unrelated to the renderer.
+- **Learnings for future iterations:**
+  - The interactive renderer's first paint must contain NO control bytes — the `renderer-task-tree-tail` "first paint emits no cursor-up" test asserts the chunk has no `ESC[` at all, so skeleton placeholders (and anything new on first paint) must stay plain text, never dimmed/styled.
+  - A "fake terminal recorder" for byte-for-byte renderer assertions is just a `RendererIO` whose `writeStdout` pushes each chunk into an array; drive `makeLandoRendererLive(io)` with `isTTY: true` and publish a single `task.tree.start` to capture the exact first-paint bytes the terminal receives — no real TTY needed.
+---
+
 ## [2026-06-02 09:35 CDT] - US-140 Review
 - Reviewed `app:includes:update` against PRD-B-08 US-140 ACs. All four ACs satisfied: refresh re-resolves every include + recomputes SHA + atomic rewrite (`writeFileAtomicViaRename`), `--check` computes the report without writing (verified by `check mode reports drift without rewriting` unit test reading the lockfile back byte-identical), pin/refresh share `resolveTree` so the load-path fail-closed invariant is preserved, and both dispatch paths parse `--check`/`--format` for the valid value set. No code changes — implementation is correct and follows established conventions. Gates green: typecheck, lint, and the includes-update + parity-probe/deferred/renderer/canary suites all pass.
 - Review notes (rejected): Oracle flagged the compiled dispatcher silently defaulting an *invalid* `--format` value (e.g. `--format=xml`) to text while OCLIF rejects it via `options: [text,json]`, calling it a compiled-parity blocker. Rejected as out-of-scope/false-positive: this lenient pattern is the codebase-wide compiled-dispatch convention — `parseAppConfigArgv`, `parseAppConfigLintArgv`, and apps:list (`run.ts` 487–538, 872) all fall through to their default on an unrecognized `--format` and none reject it. It is a pre-existing accepted dual-dispatch divergence (AGENTS.md / spec §8.4.1), not a regression introduced by this story; "fixing" only this command would make it inconsistent with the rest of the compiled router. Valid-value behavior (`--check`, `--format=json`, `--format json`) is identical across both paths, which is the parity the AC requires.
@@ -611,6 +619,12 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - CI outcome: pass
 - Review feedback: fixed (guide-drift gate flagged core/src/landofile/includes.ts surface change with no owned-guide update; documented app:includes:update + --check/drift behavior in docs/guides/landofile/includes-and-lockfile.mdx)
 - Merge: merged (squash)
+---
+
+## [2026-06-02 10:39 CDT] - US-152 Review
+- Reviewed the first-paint task-tree skeleton against PRD-B-09 US-152 and §8.9.1. No in-scope code blocker was confirmed: the painter seeds byte-for-byte pending placeholders on the first `task.tree.start`, the Live TTY renderer records that skeleton as the first write, and the existing banner/pre-import canaries still cover the pre-bootstrap half of the story.
+- Review notes (rejected/deferred): broader CLI command-boundary renderer wiring / production `paint.banner` handoff is real context but belongs to US-157 in the same PRD, not this US-152 skeleton story; rejected as out-of-scope for this review fix.
+- Verification: typecheck and lint passed; focused renderer/fast-path tests passed; full `bun test` still fails only in the documented pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`) unrelated to US-152.
 ---
 
 ## [2026-06-02 10:55 CDT] - US-141
@@ -628,6 +642,13 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - PR: #266 https://github.com/AaronFeledy/core4/pull/266
 - CI outcome: pass
 - Review feedback: fixed (guide-drift gate: documented `app:includes:verify` in includes-and-lockfile.mdx)
+- Merge: merged (squash)
+---
+
+## [2026-06-02 11:44 CDT] - Babysit
+- PR: #264 https://github.com/AaronFeledy/core4/pull/264
+- CI outcome: pass
+- Review feedback: fixed (resolved two Bugbot task-tree issues and two merge-conflict rounds against main)
 - Merge: merged (squash)
 ---
 
