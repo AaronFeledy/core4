@@ -643,3 +643,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (guide-drift gate: documented `app:includes:verify` in includes-and-lockfile.mdx)
 - Merge: merged (squash)
 ---
+
+## [2026-06-02 11:44 CDT] - Babysit
+- PR: #264 https://github.com/AaronFeledy/core4/pull/264
+- CI outcome: pass
+- Review feedback: fixed (resolved two Bugbot task-tree issues and two merge-conflict rounds against main)
+- Merge: merged (squash)
+---
