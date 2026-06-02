@@ -489,3 +489,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - When a Beta PRD's terse `## Functional Requirements` summary contradicts a detailed `spec/0X-*.md §` section, the detailed §-section + the shipped sibling pattern win — verify against both before "fixing" code to match a one-line FR. The `recipe.ts`/`recipe.yml` and `.lando.ts`/`.lando.yml` pairs are BOTH mutually-exclusive-reject, not merge-with-precedence.
   - `core/src/recipes/ts-loader.ts` reuses `sandboxScan` from `core/src/landofile/ts-loader.ts`, whose `LandofileSandboxError.violation` is `"parse"` for transpiler/syntax failures and the import path otherwise. Any consumer remapping that error MUST branch on `violation === "parse"` or it will mislabel syntax errors as disallowed imports.
 ---
+
+## 2026-06-01 21:55 CDT - Babysit
+- PR: #259 https://github.com/AaronFeledy/core4/pull/259
+- CI outcome: pass
+- Review feedback: fixed (Bugbot triage: fixed real sentinel-collision bug where require("parse") was mislabeled as a TS parse error — distinct internal transpiler sentinel + shared predicate, plus regression test; earlier label/dup-resolver comments already fixed by prior commits; unused-export nit rejected as internal core exports kept for landofile-loader symmetry)
+- Merge: merged (squash)
+---
