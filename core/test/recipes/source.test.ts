@@ -154,7 +154,7 @@ version: 0.0.1
       expect(failure).toBeInstanceOf(RecipeManifestNotFoundError);
       if (failure instanceof RecipeManifestNotFoundError) {
         expect(failure.source).toBe(resolve(recipeDir, "recipe.yml"));
-        expect(failure.message).toContain("recipe.yml not found");
+        expect(failure.message).toContain("recipe.ts");
       }
     });
   });

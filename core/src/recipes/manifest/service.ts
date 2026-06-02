@@ -173,6 +173,15 @@ const validateSemantics = (
   );
 };
 
+const validateRecipeManifestObject = (
+  source: string,
+  parsed: unknown,
+): Effect.Effect<typeof RecipeManifest.Type, RecipeManifestValidationError | NotImplementedError> =>
+  rejectBetaSections(source, parsed).pipe(
+    Effect.flatMap((value) => validateManifest(source, value)),
+    Effect.flatMap((manifest) => validateSemantics(source, manifest)),
+  );
+
 const parseRecipe = (
   source: string,
   content: string,
@@ -181,9 +190,7 @@ const parseRecipe = (
   RecipeManifestParseError | RecipeManifestValidationError | NotImplementedError
 > =>
   parseRecipeYaml({ source, content }).pipe(
-    Effect.flatMap((parsed) => rejectBetaSections(source, parsed)),
-    Effect.flatMap((parsed) => validateManifest(source, parsed)),
-    Effect.flatMap((manifest) => validateSemantics(source, manifest)),
+    Effect.flatMap((parsed) => validateRecipeManifestObject(source, parsed)),
   );
 
 const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> = {
@@ -192,4 +199,4 @@ const recipeManifestService: Context.Tag.Service<typeof RecipeManifestService> =
 
 export const RecipeManifestServiceLive = Layer.succeed(RecipeManifestService, recipeManifestService);
 
-export { parseRecipe };
+export { parseRecipe, validateRecipeManifestObject };

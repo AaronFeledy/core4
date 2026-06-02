@@ -156,6 +156,21 @@ export const RecipeManifest = Schema.Struct({
 });
 export type RecipeManifest = typeof RecipeManifest.Type;
 
+/** Author-facing recipe value — what a programmatic `recipe.ts` default-exports. */
+export type Recipe = RecipeManifest;
+
+/** Context passed to a `recipe.ts` factory. */
+export interface RecipeContext {
+  readonly cwd: string;
+  readonly env: Readonly<Record<string, string | undefined>>;
+}
+
+/** A `recipe.ts` factory — receives a {@link RecipeContext} and returns a {@link Recipe}. */
+export type RecipeFactory = (ctx: RecipeContext) => Recipe | Promise<Recipe>;
+
+/** Identity helper pinning a `recipe.ts` default export to the {@link Recipe}/{@link RecipeFactory} shape. */
+export const defineRecipe = <const T extends Recipe | RecipeFactory>(value: T): T => value;
+
 /** Registry resolution result — points a recipe id at an underlying git/tarball source. */
 export const RecipeRegistryResolution = Schema.Union(
   Schema.Struct({

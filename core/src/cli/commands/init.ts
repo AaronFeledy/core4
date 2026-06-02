@@ -118,6 +118,7 @@ export interface InitAppResult {
 }
 
 const parseResolvedRecipe = async (resolved: ResolvedRecipe) => {
+  if (resolved.manifest !== undefined) return { resolved, manifest: resolved.manifest };
   const exit = await Effect.runPromiseExit(
     Effect.map(
       Effect.flatMap(RecipeManifestService, (svc) => svc.parse(resolved.source, resolved.manifestYaml)),

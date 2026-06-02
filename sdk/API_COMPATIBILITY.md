@@ -21,6 +21,7 @@
 - `CleanupProps`
 - `DataStoreMountPlan`
 - `defineLandofile`
+- `defineRecipe`
 - `DataStorePlan`
 - `DependencyPlan`
 - `DeprecationNotice`
