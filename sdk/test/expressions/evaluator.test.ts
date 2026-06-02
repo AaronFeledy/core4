@@ -93,6 +93,10 @@ describe("evaluateExpression happy paths", () => {
     expect(evaluateExpressionValue('{{ upper(trim(" hi ")) }}')).toBe("HI");
   });
 
+  test("replaces every string occurrence", () => {
+    expect(evaluateExpressionValue('{{ replace("a-b-c", "-", "_") }}')).toBe("a_b_c");
+  });
+
   test("evaluates comparator calls and ternaries", () => {
     expect(
       evaluateExpressionValue('{{ app.replicas >= 2 ? "many" : "one" }}', { app: { replicas: 3 } }),
@@ -185,6 +189,15 @@ describe("evaluateExpression eval errors", () => {
     expect(evaluateExpressionFailure("{{ required(env.NOT_SET) }}", { env: {} })._tag).toBe(
       "LandofileExpressionEvalError",
     );
+  });
+
+  test("uses required helper custom messages", () => {
+    const error = evaluateExpressionFailure('{{ required(env.NOT_SET, "APP_ENV is required") }}', {
+      env: {},
+    });
+
+    expect(error._tag).toBe("LandofileExpressionEvalError");
+    expect(error.message).toContain("APP_ENV is required");
   });
 
   test("rejects missing required shell parameters", () => {

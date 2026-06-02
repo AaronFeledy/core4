@@ -684,7 +684,9 @@ const HELPERS: Record<string, Helper> = {
     assertArgCount("required", args, state, 1, 2);
     const value = args[0];
     if (isUnavailable(value) || value === null || value === "") {
-      throw evalError("Required expression value is missing.", state.options);
+      const message =
+        args.length === 2 ? asString("required", args[1], state) : "Required expression value is missing.";
+      throw evalError(message, state.options);
     }
     return requireResolved(value, state);
   },
@@ -767,7 +769,7 @@ const HELPERS: Record<string, Helper> = {
   },
   replace: (args, state) => {
     assertArgCount("replace", args, state, 3);
-    return asString("replace", args[0], state).replace(
+    return asString("replace", args[0], state).replaceAll(
       asString("replace", args[1], state),
       asString("replace", args[2], state),
     );
