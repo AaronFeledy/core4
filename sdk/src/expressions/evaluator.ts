@@ -224,6 +224,18 @@ const resolvePath = (
   return resolveSegments(head, node.segments, state);
 };
 
+const resolveObjectLiteral = (
+  node: Extract<ExpressionNode, { readonly kind: "ObjectLiteral" }>,
+  state: EvaluationState,
+): Record<string, unknown> => {
+  const output: Record<string, unknown> = {};
+  for (const entry of node.entries) {
+    ensureAllowedKey(entry.key, state);
+    output[entry.key] = requireResolved(resolveNode(entry.value, state), state);
+  }
+  return output;
+};
+
 const resolveNode = (node: ExpressionNode, state: EvaluationState): ResolvedValue => {
   switch (node.kind) {
     case "Literal":
@@ -231,9 +243,7 @@ const resolveNode = (node: ExpressionNode, state: EvaluationState): ResolvedValu
     case "ArrayLiteral":
       return node.elements.map((element) => requireResolved(resolveNode(element, state), state));
     case "ObjectLiteral":
-      return Object.fromEntries(
-        node.entries.map((entry) => [entry.key, requireResolved(resolveNode(entry.value, state), state)]),
-      );
+      return resolveObjectLiteral(node, state);
     case "Path":
       return resolvePath(node, state);
     case "Access": {

@@ -254,6 +254,12 @@ describe("evaluateExpression eval errors", () => {
     );
   });
 
+  test("blocks unsafe object literal keys", () => {
+    expect(evaluateExpressionFailure('{{ { "__proto__": { polluted: true } } }}')._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
   test("blocks constructor keys even when present in context", () => {
     expect(evaluateExpressionFailure("{{ env.constructor }}", { env: { constructor: "owned" } })._tag).toBe(
       "LandofileExpressionEvalError",
