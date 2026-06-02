@@ -1,5 +1,5 @@
 /**
- * First-paint contract (§8.9.1) for the default Lando TTY renderer.
+ * First-paint contract for the default Lando TTY renderer.
  *
  * The renderer must initialize the concurrent task-tree skeleton — the parent
  * line plus one pending placeholder per declared child — on `task.tree.start`,
@@ -69,7 +69,7 @@ const createFakeTerminalRecorder = (
   };
 };
 
-describe("LandoTreePainter — first-paint skeleton (§8.9.1)", () => {
+describe("LandoTreePainter — first-paint skeleton", () => {
   test("paints the parent line plus one pending placeholder per declared child, byte-for-byte", () => {
     const painter = new LandoTreePainter();
     const firstPaint = painter.consume(treeStart("build", "Building", ["web", "db", "cache"]));
@@ -87,9 +87,7 @@ describe("LandoTreePainter — first-paint skeleton (§8.9.1)", () => {
     const painter = new LandoTreePainter();
     painter.consume(treeStart("build", "Building", ["a", "b", "c"]));
     const frame = painter.snapshot().frameLines;
-    // Parent + 3 pending placeholders, nothing else.
     expect(frame).toEqual(["▼ Building (0/3 running)", "  ◌ a", "  ◌ b", "  ◌ c"]);
-    // No child has started, so no running spinner placeholder and no indented panel.
     expect(frame.some((line) => line.includes("·"))).toBe(false);
     expect(frame.some((line) => /^\s{4,}/.test(line))).toBe(false);
     expect(painter.snapshot().activeTaskIds).toEqual([]);
@@ -101,7 +99,6 @@ describe("LandoTreePainter — first-paint skeleton (§8.9.1)", () => {
     painter.consume(taskStart("web", "web service", "build"));
     const frame = painter.snapshot().frameLines;
     const joined = frame.join("\n");
-    // web is now running (· marker), db/cache remain pending (◌).
     expect(joined).toContain("· web service");
     expect(joined).toContain("◌ db");
     expect(joined).toContain("◌ cache");
