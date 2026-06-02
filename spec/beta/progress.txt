@@ -514,3 +514,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Verification: typecheck, lint (749 files), recipe suite (274 pass), sdk suite (255 pass incl. backward-compat), and full `bun test` (2492 pass / 27 skip / 0 fail) all green.
 - **Learnings for future iterations:**
   - For any postInit path validation, resolve the user-supplied relative path against the SAME base the spawn uses as `cwd` (not a different anchor), and realpath the nearest EXISTING ancestor — a `?? lexicalPath` realpath fallback on a not-yet-created leaf silently disables symlink-escape protection for the existing parents.
+
+## 2026-06-01 23:35 CDT - Babysit
+- PR: #261 https://github.com/AaronFeledy/core4/pull/261
+- CI outcome: pass (one transient provider-integration registry-pull timeout cleared on re-run)
+- Review feedback: fixed (documented the four bun postInit verbs in authoring-runs-allowlist.mdx to clear the guide-drift gate; added runtime empty-after-substitution + trim-before-flag-prefix guards for `bun create` with regression tests, resolving Bugbot's Low and new Medium findings)
+- Merge: merged (squash)
+---
