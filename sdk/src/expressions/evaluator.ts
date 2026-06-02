@@ -104,6 +104,19 @@ const assertArgCount = (
   }
 };
 
+const callNodeArg = (
+  helper: string,
+  nodes: ReadonlyArray<ExpressionNode>,
+  state: EvaluationState,
+  index: number,
+): ExpressionNode => {
+  const node = nodes[index];
+  if (node === undefined) {
+    throw evalError(`Helper "${helper}" received an unsupported number of arguments.`, state.options);
+  }
+  return node;
+};
+
 const requireResolved = (
   value: ResolvedValue,
   state: EvaluationState,
@@ -258,6 +271,26 @@ const evaluateCall = (
   const helper = HELPERS[callee];
   if (helper === undefined) {
     throw evalError(`Unknown expression helper "${callee}".`, state.options);
+  }
+
+  if (callee === "default") {
+    assertArgCount("default", nodes, state, 2);
+    const value = resolveNode(callNodeArg("default", nodes, state, 0), state);
+    return isUnavailable(value)
+      ? requireResolved(resolveNode(callNodeArg("default", nodes, state, 1), state), state)
+      : value;
+  }
+
+  if (callee === "and") {
+    assertArgCount("and", nodes, state, 2);
+    const left = requireResolved(resolveNode(callNodeArg("and", nodes, state, 0), state), state);
+    return isTruthy(left) ? resolveNode(callNodeArg("and", nodes, state, 1), state) : left;
+  }
+
+  if (callee === "or") {
+    assertArgCount("or", nodes, state, 2);
+    const left = requireResolved(resolveNode(callNodeArg("or", nodes, state, 0), state), state);
+    return isTruthy(left) ? left : resolveNode(callNodeArg("or", nodes, state, 1), state);
   }
 
   return helper(

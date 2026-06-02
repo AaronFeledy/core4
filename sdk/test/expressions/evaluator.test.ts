@@ -75,6 +75,42 @@ describe("evaluateExpression happy paths", () => {
     ).toBe("local");
   });
 
+  test("does not evaluate default fallback when the value is set", () => {
+    expect(
+      evaluateExpressionValue("{{ default(env.APP_ENV, required(env.NOT_SET)) }}", {
+        env: { APP_ENV: "local" },
+      }),
+    ).toBe("local");
+  });
+
+  test("evaluates default fallback when the value is missing", () => {
+    expect(evaluateExpressionValue('{{ default(env.NOT_SET, "fallback") }}', { env: {} })).toBe("fallback");
+  });
+
+  test("short-circuits false and expressions", () => {
+    expect(evaluateExpressionValue("{{ false && required(env.NOT_SET) }}", { env: {} })).toBe(false);
+  });
+
+  test("evaluates true and expression right operands", () => {
+    expect(evaluateExpressionFailure("{{ true && required(env.NOT_SET) }}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  test("short-circuits true or expressions", () => {
+    expect(
+      evaluateExpressionValue("{{ env.APP_ENV || required(env.NOT_SET) }}", {
+        env: { APP_ENV: "local" },
+      }),
+    ).toBe("local");
+  });
+
+  test("evaluates false or expression right operands", () => {
+    expect(evaluateExpressionFailure("{{ false || required(env.NOT_SET) }}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
   test("resolves secret references from the expression context", () => {
     expect(evaluateTemplateValue("${secret:API_KEY}", { secrets: { API_KEY: "s3cr3t" } })).toBe("s3cr3t");
   });
@@ -198,6 +234,12 @@ describe("evaluateExpression eval errors", () => {
 
     expect(error._tag).toBe("LandofileExpressionEvalError");
     expect(error.message).toContain("APP_ENV is required");
+  });
+
+  test("evaluates default fallback expressions when the value is missing", () => {
+    expect(
+      evaluateExpressionFailure("{{ default(env.NOT_SET, required(env.MISSING)) }}", { env: {} })._tag,
+    ).toBe("LandofileExpressionEvalError");
   });
 
   test("rejects missing required shell parameters", () => {
