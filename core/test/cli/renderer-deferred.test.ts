@@ -87,13 +87,15 @@ describe("deferredRendererModeError", () => {
 });
 
 describe("deferredRendererFlagError", () => {
-  test("returns a tagged NotImplementedError with Phase 4 RC remediation for --no-expand", () => {
+  test("returns a tagged NotImplementedError with Phase 4 RC remediation for --no-expand configuration", () => {
     const err = deferredRendererFlagError("--no-expand");
     expect(err).toBeInstanceOf(NotImplementedError);
     expect(err._tag).toBe("NotImplementedError");
     expect(err.commandId).toBe("cli:renderer-selection");
     expect(err.specSection).toBe(RENDERER_DEFERRED_SPEC_SECTION);
     expect(err.message).toContain("--no-expand");
+    expect(err.remediation).toContain("default Enter/Esc task-detail expand/collapse keybindings");
+    expect(err.remediation).toContain("User-configurable expand/collapse control flags are deferred");
     expect(err.remediation).toContain("Phase 4 RC");
     expect(err.remediation).toContain("spec/ROADMAP.md");
   });

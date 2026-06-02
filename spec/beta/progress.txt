@@ -520,6 +520,28 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - CI outcome: pass (one transient provider-integration registry-pull timeout cleared on re-run)
 - Review feedback: fixed (documented the four bun postInit verbs in authoring-runs-allowlist.mdx to clear the guide-drift gate; added runtime empty-after-substitution + trim-before-flag-prefix guards for `bun create` with regression tests, resolving Bugbot's Low and new Medium findings)
 - Merge: merged (squash)
+
+## 2026-06-01 - US-151 (agent2)
+- Added expand/collapse keybindings to the interactive Lando TTY renderer task tree. Up/Down move focus across visible children, Enter expands the focused task to its whole streaming tail (bounded by terminal rows, tree hidden), Esc restores the bounded 4-line ring. New `keybindings.ts` carries `parseKey` (raw stdin -> key token, lone Esc kept distinct from CSI arrows), `DEFAULT_KEYMAP`, and a pure `TaskTreeInputController` wrapping the painter. The painter (`task-tree-tail.ts`) gained a per-task full-stream buffer plus focus/expanded state with terminal-rows bounding; default (unfocused/collapsed) rendering is byte-identical so existing tail tests pass unchanged.
+- The renderer now publishes additive `task.detail.expand` / `task.detail.collapse` events on EventService (so screen-recording / guide-transcript subscribers can capture the interaction). These events are deliberately non-renderable (absent from format.ts), so plain/json/lando display emit nothing for them and no publish->consume echo occurs. Input is wired inside the renderer Live Layer via a new `RendererIO.subscribeInput` seam (stdin raw mode for real stdio; `injectKey` on buffered IO for fake-TTY tests).
+- Verification: typecheck, lint, tests passed (SDK event tests, renderer keybindings/controller/io-input unit tests, and an end-to-end fake-TTY runtime test driving the real EventService + renderer wiring). Manual QA drove the real `makeLandoRendererLive` with synthetic Enter/Esc and confirmed the expanded full tail, the restored 4-line ring, and both published events. The 5 pre-existing `app:config:lint` failures in the /tmp clone exist on clean origin/main and are unrelated.
+- **Learnings for future iterations:**
+  - Adding members to the `LandoEvent` union is purely additive and safe: events are not in `sdk/test/fixtures/schema-snapshot.json` nor `sdk-mvp-surface.json` (backward-compat freezes only `schemaNames` + `serviceTags`), so no fixture churn — but keep new TTY-input events out of `format.ts` `isRenderableEvent`.
+  - A union-typed schema parameter (`typeof A | typeof B`) breaks `Schema.decodeUnknownSync(schema)(...)` typing; decode each event with its own concrete schema instead of sharing a generic helper.
+  - To publish from a renderer's stdin callback, capture `EventService` + `Effect.runtime()` in the scoped Live Layer and `Runtime.runFork(runtime)(events.publish(ev))`; the service method's `R` is `never`, so a `never`-context runtime suffices.
+---
+
+## [2026-06-02 06:04 CDT] - US-151 Review
+- Reviewed task detail expand/collapse against PRD-B-09 and review-work probes. Fixed a confirmed telemetry bug: after expanding one task and moving focus, `Esc` now emits `task.detail.collapse` for the expanded task instead of the newly focused task. Also corrected stale deferred-renderer remediation so user-facing `--expand`/`--collapse` errors distinguish the shipped default Enter/Esc keybindings from still-deferred user-configurable flags.
+- Review notes (deferred/rejected): alt-screen/transcript-backed scrollback, Tab tree cycling, and post-completion expansion are broader §8.9 follow-up work beyond the narrow US-151 review fix; the PRD story only required expand/collapse keybindings, bounded expanded tail, fake-TTY state-machine tests, and green host-safe checks. The 1000-line expanded retention cap was left as the current bounded-memory Beta tradeoff because terminal-row rendering still bounds the visible expanded tail.
+- Verification: typecheck and lint passed; focused renderer/SDK tests passed. Full `bun test` failed only in unrelated package-export tests (`cli-operations`/`core-testing` workspace resolution and packed `fast-check` dependency), not in US-151 coverage.
+---
+
+## [2026-06-02 06:48 CDT] - Babysit
+- PR: #260 https://github.com/AaronFeledy/core4/pull/260
+- CI outcome: pass
+- Review feedback: fixed (kept task-detail expansion state synchronized for non-running/completed tasks and cleared the merge conflict with current main)
+- Merge: merged (squash)
 ---
 
 ## [2026-06-02 06:35 CDT] - US-138

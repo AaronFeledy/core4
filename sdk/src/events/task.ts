@@ -31,6 +31,26 @@ export const TaskDetailEvent = Schema.TaggedStruct("task.detail", {
 });
 export type TaskDetailEvent = typeof TaskDetailEvent.Type;
 
+/**
+ * Renderer-emitted TTY input event published when the user expands a focused
+ * task to its full streaming tail. Emitted by the renderer, never by callers.
+ */
+export const TaskDetailExpandEvent = Schema.TaggedStruct("task.detail.expand", {
+  taskId: Schema.String,
+  timestamp: Timestamp,
+});
+export type TaskDetailExpandEvent = typeof TaskDetailExpandEvent.Type;
+
+/**
+ * Renderer-emitted TTY input event published when the user collapses an
+ * expanded task back to the bounded tail. Emitted by the renderer, never by callers.
+ */
+export const TaskDetailCollapseEvent = Schema.TaggedStruct("task.detail.collapse", {
+  taskId: Schema.String,
+  timestamp: Timestamp,
+});
+export type TaskDetailCollapseEvent = typeof TaskDetailCollapseEvent.Type;
+
 export const TaskCompleteEvent = Schema.TaggedStruct("task.complete", {
   taskId: Schema.String,
   summary: Schema.optional(Schema.String),
