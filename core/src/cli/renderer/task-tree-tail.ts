@@ -81,7 +81,7 @@ export class TaskDetailRing {
   }
 }
 
-type TaskStatus = "running" | "done" | "failed";
+type TaskStatus = "pending" | "running" | "done" | "failed";
 
 interface TaskState {
   readonly id: string;
@@ -133,6 +133,9 @@ export interface LandoTreePainterSnapshot {
 
 const CHILD_INDENT = "  ";
 const PANEL_INDENT = "      ";
+
+/** Marker for a declared-but-not-yet-started child in the first-paint skeleton. */
+const PENDING_MARKER = "◌";
 
 const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
 
@@ -191,7 +194,10 @@ export class LandoTreePainter {
   }
 
   focusableTaskIds(): ReadonlyArray<string> {
-    return this.#order.filter((id) => this.#tasks.has(id));
+    return this.#order.filter((id) => {
+      const task = this.#tasks.get(id);
+      return task !== undefined && task.status !== "pending";
+    });
   }
 
   canExpandTask(taskId: string): boolean {
@@ -232,9 +238,18 @@ export class LandoTreePainter {
     const record = event as unknown as Record<string, unknown>;
     switch (event._tag) {
       case "task.tree.start": {
+        const rawChildren = Array.isArray(record.children)
+          ? record.children.filter((child): child is string => typeof child === "string")
+          : [];
+        const seenChildren = new Set<string>();
+        const children = rawChildren.filter((child) => {
+          if (seenChildren.has(child)) return false;
+          seenChildren.add(child);
+          return true;
+        });
         this.#tree = {
           parentId: asString(record.parentId) ?? "tree",
-          childCount: Array.isArray(record.children) ? record.children.length : 0,
+          childCount: children.length,
           label: asString(record.label) ?? "tasks",
           done: false,
           summary: undefined,
@@ -242,6 +257,21 @@ export class LandoTreePainter {
           failed: 0,
           durationMs: undefined,
         };
+        for (const childId of children) {
+          if (this.#tasks.has(childId)) continue;
+          this.#order.push(childId);
+          this.#tasks.set(childId, {
+            id: childId,
+            label: childId,
+            status: "pending",
+            summary: undefined,
+            durationMs: undefined,
+            exitCode: undefined,
+            remediation: undefined,
+            ring: new TaskDetailRing(this.#detailCapacity),
+            fullStream: new TaskDetailRing(this.#expandedCapacity),
+          });
+        }
         return;
       }
       case "task.start": {
@@ -387,6 +417,11 @@ export class LandoTreePainter {
     for (const id of this.#order) {
       const task = this.#tasks.get(id);
       if (task === undefined) continue;
+      if (task.status === "pending") {
+        if (this.#tree?.done === true) continue;
+        lines.push(`${CHILD_INDENT}${PENDING_MARKER} ${task.label}`);
+        continue;
+      }
       if (task.status === "running") {
         lines.push(`${CHILD_INDENT}· ${task.label}`);
         for (const detail of task.ring.lines()) {
