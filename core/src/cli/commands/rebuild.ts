@@ -14,6 +14,8 @@ import type {
   FileSyncStopError,
   GlobalAutoStartError,
   LandoCommandError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -59,6 +61,8 @@ type RebuildAppError =
   | LandofileSandboxError
   | LandofileTimeoutError
   | LandofileValidationError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NotImplementedError
   | CapabilityError
   | GlobalAutoStartError

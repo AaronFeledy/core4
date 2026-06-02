@@ -57,6 +57,7 @@
 - `HostAliasPlan`
 - `HostArchitecture`
 - `InlineProps`
+- `IncludeEntry`
 - `InspectProps`
 - `IsolateMode`
 - `LANDO_SHARED_CROSS_APP_NETWORK`
@@ -129,8 +130,14 @@
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
 
+## Additive Beta schema fields
+
+- `LandofileShape.includes`
+
 ## Additive Alpha errors
 
+- `LandofileIncludeError`
+- `LandofileLockMismatchError`
 - `RecipeRunNotAllowedError`
 - `RecipeFetchNotAllowedError`
 

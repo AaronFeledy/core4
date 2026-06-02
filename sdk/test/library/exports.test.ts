@@ -20,6 +20,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.ServicePlan).toBeDefined();
     expect(schema.ProviderCapabilities).toBeDefined();
     expect(schema.LandofileShape).toBeDefined();
+    expect(schema.IncludeEntry).toBeDefined();
     expect(schema.GlobalConfig).toBeDefined();
     expect(schema.ConfigLintViolation).toBeDefined();
     expect(schema.ConfigLintResult).toBeDefined();
@@ -70,6 +71,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.LandoRuntimeBootstrapError).toBeDefined();
     expect(errors.ProviderCapabilityError).toBeDefined();
     expect(errors.LandofileParseError).toBeDefined();
+    expect(errors.LandofileLockMismatchError).toBeDefined();
+    expect(errors.LandofileIncludeError).toBeDefined();
     expect(errors.PluginLoadError).toBeDefined();
     expect(errors.NoProviderInstalledError).toBeDefined();
     expect(errors.ConfigError).toBeDefined();

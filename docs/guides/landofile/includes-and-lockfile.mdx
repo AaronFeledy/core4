@@ -1,0 +1,28 @@
+---
+id: includes-and-lockfile
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, includes, lockfile]
+---
+
+<Guide>
+  <Scenario id="local-include-merge" render>
+    <Step name="scaffold">
+      <UseFixture name="includes-lockfile-demo" />
+      <Variable name="include" value="./fragments/web.yml" display="A local relative Landofile fragment merged before the app's inline keys" />
+      <Variable name="lockfile" value=".lando.lock.yml" display="Remote git and npm includes are locked by resolved revision and SHA-256 content hash; local includes are not locked" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="remote-lock-remediation" render={false} reason="git and npm includes require network access; unit tests cover lock creation, byte-stable no-op reads, and drift failures.">
+    <Step name="lock">
+      <Variable name="gitLock" value="commit SHA + sha256(fragment bytes)" display="git includes record the resolved commit SHA and fragment content hash" />
+      <Variable name="npmLock" value="package version + sha256(fragment bytes)" display="npm includes record the resolved package version and fragment content hash" />
+      <Variable name="remediation" value="lando app:includes:update" display="Lock drift fails closed with LandofileLockMismatchError and points at the update command" />
+    </Step>
+  </Scenario>
+</Guide>

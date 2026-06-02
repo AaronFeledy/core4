@@ -34,7 +34,6 @@ const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   specSection: string;
   description: string;
 }> = [
-  { key: "includes", specSection: "§7.7", description: "Landofile includes/fragments" },
   { key: "secrets", specSection: "§4.2/§7.4", description: "Landofile secrets" },
   { key: "env_file", specSection: "§7.6", description: "Landofile env file overrides" },
   { key: "toolingDefaults", specSection: "§8.5", description: "Tooling defaults" },
@@ -222,6 +221,13 @@ const findLandofile = async (cwd: string): Promise<DiscoveredLandofile> => {
     message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched: ${searched.join(", ")}`,
     cwd,
   });
+};
+
+export const findDiscoveredLandofilePath = async (
+  cwd: string,
+): Promise<{ readonly filePath: string; readonly appRoot: string }> => {
+  const discovered = await findLandofile(cwd);
+  return { filePath: discovered.filePath, appRoot: dirname(discovered.filePath) };
 };
 
 const extractFailure = <E>(cause: Cause.Cause<E>): E | undefined => {

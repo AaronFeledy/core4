@@ -251,10 +251,22 @@ export const BunShellScriptFrontMatter = Schema.Struct({
 });
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 
+export const IncludeEntry = Schema.Union(
+  Schema.String,
+  Schema.Struct({
+    source: Schema.String,
+    kind: Schema.optional(Schema.Literal("landofile")),
+    path: Schema.optional(Schema.String),
+    version: Schema.optional(Schema.String),
+    checksum: Schema.optional(Schema.String),
+  }),
+);
+export type IncludeEntry = typeof IncludeEntry.Type;
+
 /**
  * LandofileShape — the authored Landofile shape.
  * Excludes fields not modeled here: toolingDefaults:, toolingIncludes:,
- * commandAliases:, events:, env_file:, keys:, includes:, volumes:, networks:,
+ * commandAliases:, events:, env_file:, keys:, volumes:, networks:,
  * configs:, secrets:, include:, x-* extensions, plugins:, pluginDirs:.
  */
 export const LandofileShape = Schema.Struct({
@@ -263,6 +275,7 @@ export const LandofileShape = Schema.Struct({
   recipe: Schema.optional(Schema.String),
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
+  includes: Schema.optional(Schema.Array(IncludeEntry)),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
