@@ -56,6 +56,21 @@ requires:
     expect(manifest.requires?.hostTools).toEqual(["git"]);
   });
 
+  test("runs: explicit allowlist decodes and is preserved", async () => {
+    const yaml = `id: run-allowlist
+title: Run allowlist
+description: Recipe declares canonical commands it may run.
+version: 0.1.0
+runs:
+  - git
+  - composer
+`;
+    const exit = await runParse("test://runs", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.runs).toEqual(["git", "composer"]);
+  });
+
   test("prompts: each Alpha prompt type decodes", async () => {
     const yaml = `id: prompts-cover
 title: Prompts
@@ -211,20 +226,6 @@ title: Beta rejection
 description: Trigger one Beta surface per case.
 version: 0.0.1
 `;
-
-  test("top-level `runs:` is rejected with §8.8.14 remediation", async () => {
-    const yaml = `${baseHeader}runs:
-  - pantheon:list-sites
-`;
-    const exit = await runParse("test://beta-runs", yaml);
-    const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§8.8.14");
-      expect(error.message).toContain("runs");
-      expect(error.remediation).toContain("Beta");
-    }
-  });
 
   test("top-level `fetchAllowlist:` is rejected with §8.8.14 remediation", async () => {
     const yaml = `${baseHeader}fetchAllowlist:

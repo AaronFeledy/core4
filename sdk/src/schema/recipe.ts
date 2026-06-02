@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 
 // Recipe manifest schema with prompt and post-init action shapes.
-// Unsupported fields (`runs:`, `fetchAllowlist:`,
-// `editor` prompt type, non-`install` `bun:` verbs) are intentionally absent
+// Unsupported fields (`fetchAllowlist:`, `editor` prompt type,
+// non-`install` `bun:` verbs) are intentionally absent
 // from the schema and are rejected before strict decode so users see a
 // targeted remediation instead of a generic excess-property error.
 
@@ -132,7 +132,7 @@ export const RecipePostInitAction = Schema.Union(
 );
 export type RecipePostInitAction = typeof RecipePostInitAction.Type;
 
-/** Recipe requires — supported pre-conditions (`runs:` / `fetchAllowlist:` are rejected before decode). */
+/** Recipe requires — supported pre-conditions (`fetchAllowlist:` is rejected before decode). */
 export const RecipeRequires = Schema.Struct({
   lando: Schema.optional(Schema.String),
   hostTools: Schema.optional(Schema.Array(Schema.String)),
@@ -148,6 +148,7 @@ export const RecipeManifest = Schema.Struct({
   authors: Schema.optional(Schema.Array(Schema.String)),
   tags: Schema.optional(Schema.Array(Schema.String)),
   requires: Schema.optional(RecipeRequires),
+  runs: Schema.optional(Schema.Array(Schema.String)),
   prompts: Schema.optional(Schema.Array(RecipePrompt)),
   files: Schema.optional(Schema.Array(RecipeFile)),
   postInit: Schema.optional(Schema.Array(RecipePostInitAction)),

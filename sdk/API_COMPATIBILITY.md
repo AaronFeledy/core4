@@ -128,6 +128,10 @@
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
 
+## Additive Alpha errors
+
+- `RecipeRunNotAllowedError`
+
 ## Additive Alpha service tags
 
 - `CertificateAuthority`

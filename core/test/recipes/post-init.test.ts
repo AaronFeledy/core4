@@ -3,10 +3,11 @@ import { mkdir, mkdtemp, realpath, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
+import { NotImplementedError, RecipePostInitError, RecipeRunNotAllowedError } from "@lando/sdk/errors";
 
 import type { BunSelfSpawner, BunSelfSpawnerOptions } from "../../src/cli/commands/bun-self-runner.ts";
 import { type PostInitIO, redactBunOutput, runPostInit } from "../../src/recipes/post-init/runtime.ts";
+import type { ChoicesCommandInput, ChoicesCommandRunner } from "../../src/recipes/prompts/choices-command.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-post-init-")));
@@ -352,25 +353,108 @@ describe("runPostInit — Beta-deferred action types", () => {
       }
     });
   });
+});
 
-  test("command returns Beta NotImplementedError without dispatching anything", async () => {
+describe("runPostInit — command", () => {
+  const makeCommandRunner = (exitCode = 0) => {
+    const calls: ChoicesCommandInput[] = [];
+    const runner: ChoicesCommandRunner = async (input) => {
+      calls.push(input);
+      return { exitCode, stdout: "", stderr: "" };
+    };
+    return { runner, calls };
+  };
+
+  test("runs allowlisted command through the injected command runner", async () => {
     await withTempDir(async (dir) => {
+      const { runner, calls } = makeCommandRunner();
+      const outcome = await runPostInit({
+        actions: [{ type: "command", cmd: "git", args: ["status", "--short"] }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        runs: ["git"],
+        commandRunner: runner,
+      });
+
+      expect(outcome.executed).toEqual([{ index: 0, type: "command" }]);
+      expect(calls).toEqual([{ command: "git", args: ["status", "--short"] }]);
+    });
+  });
+
+  test("denies command outside an explicit runs allowlist", async () => {
+    await withTempDir(async (dir) => {
+      const { runner, calls } = makeCommandRunner();
       let caught: unknown;
       try {
         await runPostInit({
-          actions: [{ type: "command", cmd: "app:start" }],
+          actions: [{ type: "command", cmd: "rm", args: ["-rf", "."] }],
           destination: dir,
           recipeId: "fixture",
           appName: "fixture",
           answers: {},
+          runs: ["git"],
+          commandRunner: runner,
         });
-      } catch (err) {
-        caught = err;
+      } catch (cause) {
+        caught = cause;
       }
-      expect(caught).toBeInstanceOf(NotImplementedError);
-      if (caught instanceof NotImplementedError) {
-        expect(caught.message).toContain("command");
-        expect(caught.message).toContain("Beta");
+
+      expect(caught).toBeInstanceOf(RecipeRunNotAllowedError);
+      if (caught instanceof RecipeRunNotAllowedError) {
+        expect(caught.commandId).toBe("rm");
+        expect(caught.allowlist).toEqual(["git"]);
+      }
+      expect(calls).toEqual([]);
+    });
+  });
+
+  test("warns and proceeds for a command outside the default runs allowlist", async () => {
+    await withTempDir(async (dir) => {
+      const { runner, calls } = makeCommandRunner();
+      const io = makeBufferedIO();
+      const outcome = await runPostInit({
+        actions: [{ type: "command", cmd: "rsync", args: ["--version"] }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        io,
+        commandRunner: runner,
+      });
+
+      expect(outcome.executed).toEqual([{ index: 0, type: "command" }]);
+      expect(calls).toEqual([{ command: "rsync", args: ["--version"] }]);
+      expect(io.errLines).toHaveLength(1);
+      expect(io.errLines[0]).toContain("rsync");
+      expect(io.errLines[0]).toContain("outside the default runs allowlist");
+    });
+  });
+
+  test("non-zero command exits as RecipePostInitError", async () => {
+    await withTempDir(async (dir) => {
+      const { runner } = makeCommandRunner(7);
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "command", cmd: "git", args: ["status"] }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          runs: ["git"],
+          commandRunner: runner,
+        });
+      } catch (cause) {
+        caught = cause;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("exit");
+        expect(caught.actionType).toBe("command");
+        expect(caught.exitCode).toBe(7);
       }
     });
   });
