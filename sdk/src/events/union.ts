@@ -42,7 +42,9 @@ import {
 import { PaintBannerEvent } from "./renderer.ts";
 import {
   TaskCompleteEvent,
+  TaskDetailCollapseEvent,
   TaskDetailEvent,
+  TaskDetailExpandEvent,
   TaskFailEvent,
   TaskStartEvent,
   TaskTreeCompleteEvent,
@@ -88,6 +90,8 @@ export const LandoEvent = Schema.Union(
   TaskTreeStartEvent,
   TaskStartEvent,
   TaskDetailEvent,
+  TaskDetailExpandEvent,
+  TaskDetailCollapseEvent,
   TaskCompleteEvent,
   TaskFailEvent,
   TaskTreeCompleteEvent,
