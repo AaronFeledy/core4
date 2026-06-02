@@ -7,11 +7,6 @@
       "specSection": "spec/07-landofile-and-config.md"
     },
     {
-      "id": "app:includes:verify",
-      "phase": "Phase 3 Beta",
-      "specSection": "spec/07-landofile-and-config.md"
-    },
-    {
       "id": "meta:global:info",
       "phase": "Phase 3 Beta",
       "specSection": "spec/18-global-app.md"

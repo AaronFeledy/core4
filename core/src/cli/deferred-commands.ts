@@ -20,15 +20,6 @@ export interface DeferredCommandPlan {
   readonly remediation: string;
 }
 
-const APP_INCLUDES_PLAN: DeferredCommandPlan = {
-  phase: "Phase 3 Beta",
-  specSection: "spec/07-landofile-and-config.md",
-  summary:
-    "Landofile `includes:` resolution and the `.lando.lock.yml` workflow are Phase 3 Beta deliverables (spec §7.7).",
-  remediation:
-    'Landofile `includes:` lands in Phase 3 Beta. Inline the fragments you would have included into the Landofile until Beta. See spec/ROADMAP.md Phase 3 "full breadth" and spec/07-landofile-and-config.md §7.7.',
-};
-
 const APP_CONFIG_TRANSLATE_PLAN: DeferredCommandPlan = {
   phase: "Phase 3 Beta",
   specSection: "spec/07-landofile-and-config.md",
@@ -110,7 +101,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   string,
   DeferredCommandPlan
 >([
-  ["app:includes:verify", APP_INCLUDES_PLAN],
   ["app:config:translate", APP_CONFIG_TRANSLATE_PLAN],
   ["meta:global:info", META_GLOBAL_PLAN],
   ["meta:global:list", META_GLOBAL_PLAN],

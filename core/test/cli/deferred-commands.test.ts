@@ -111,7 +111,7 @@ const expectPhaseTaggedRemediation = (stderr: string, entry: FixtureEntry): void
 describe("deferred command remediation contract (US-037)", () => {
   test("fixture covers every command surface in the AC list", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
-    const requiredPrefixes = ["meta:global:", "app:includes:"];
+    const requiredPrefixes = ["meta:global:"];
     const requiredExactIds = [
       "app:config:translate",
       "meta:plugin:new",
