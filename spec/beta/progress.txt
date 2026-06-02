@@ -586,3 +586,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The interactive renderer's first paint must contain NO control bytes — the `renderer-task-tree-tail` "first paint emits no cursor-up" test asserts the chunk has no `ESC[` at all, so skeleton placeholders (and anything new on first paint) must stay plain text, never dimmed/styled.
   - A "fake terminal recorder" for byte-for-byte renderer assertions is just a `RendererIO` whose `writeStdout` pushes each chunk into an array; drive `makeLandoRendererLive(io)` with `isTTY: true` and publish a single `task.tree.start` to capture the exact first-paint bytes the terminal receives — no real TTY needed.
 ---
+
+## [2026-06-02 10:39 CDT] - US-152 Review
+- Reviewed the first-paint task-tree skeleton against PRD-B-09 US-152 and §8.9.1. No in-scope code blocker was confirmed: the painter seeds byte-for-byte pending placeholders on the first `task.tree.start`, the Live TTY renderer records that skeleton as the first write, and the existing banner/pre-import canaries still cover the pre-bootstrap half of the story.
+- Review notes (rejected/deferred): broader CLI command-boundary renderer wiring / production `paint.banner` handoff is real context but belongs to US-157 in the same PRD, not this US-152 skeleton story; rejected as out-of-scope for this review fix.
+- Verification: typecheck and lint passed; focused renderer/fast-path tests passed; full `bun test` still fails only in the documented pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`) unrelated to US-152.
+---
