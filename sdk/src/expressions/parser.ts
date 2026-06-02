@@ -376,9 +376,9 @@ class ExpressionParser {
   }
 
   private parseRelational(): ExpressionNode {
-    // Precedence is low-to-high per §7.3.1: ternary, ||, &&, equality,
-    // relational, unary, pipe, postfix, primary. Pipe binds tighter than
-    // comparators, so `a == b | f` desugars to `eq(a, f(b))`.
+    // Precedence is low-to-high: ternary, ||, &&, equality, relational,
+    // unary, pipe, postfix, primary. Pipe binds tighter than comparators,
+    // so `a == b | f` desugars to `eq(a, f(b))`.
     let expression = this.parseUnary();
     while (
       this.current.kind === "symbol" &&
