@@ -107,7 +107,6 @@ describe("LandoTreePainter — expand / collapse", () => {
     expect(painter.expandedTaskId).toBe("a");
     const panelLines = painter.snapshot().frameLines.filter((l) => /^\s{4,}/.test(l));
     expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
-    // Earliest retained line is now visible.
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(true);
     expect(panelLines.some((l) => l.includes("line-9"))).toBe(true);
   });
@@ -117,10 +116,8 @@ describe("LandoTreePainter — expand / collapse", () => {
     seed(painter, "a", 30);
     painter.expandTask("a");
     const panelLines = painter.snapshot().frameLines.filter((l) => /^\s{4,}/.test(l));
-    // Bounded well under the 30 retained lines by the 6-row terminal.
     expect(panelLines.length).toBeLessThanOrEqual(6);
     expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
-    // Most-recent lines are kept when bounded.
     expect(panelLines.some((l) => l.includes("line-29"))).toBe(true);
   });
 
@@ -157,7 +154,6 @@ describe("TaskTreeInputController", () => {
     expect(controller.focusedTaskId).toBe("b");
     controller.handleKey("down");
     expect(controller.focusedTaskId).toBe("c");
-    // Clamp at the end.
     expect(controller.handleKey("down").changed).toBe(false);
     expect(controller.focusedTaskId).toBe("c");
     controller.handleKey("up");

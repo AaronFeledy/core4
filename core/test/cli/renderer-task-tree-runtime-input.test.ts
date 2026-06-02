@@ -74,11 +74,9 @@ describe("makeLandoRendererLive — TTY keybindings", () => {
       Effect.scoped(program.pipe(Effect.provide(layer))),
     );
 
-    // Expanded redraw surfaces the whole stream tail (earliest retained line visible).
     expect(stripCsi(afterExpand)).toContain("line-0");
     expect(stripCsi(afterExpand)).toContain("line-9");
 
-    // Collapsed redraw restores the bounded 4-line ring (earliest lines dropped).
     expect(stripCsi(afterCollapse)).not.toContain("line-0");
     expect(stripCsi(afterCollapse)).toContain("line-9");
 

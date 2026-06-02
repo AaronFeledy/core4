@@ -18,9 +18,8 @@
  * The painter is pure: `consume(event)` returns the exact byte chunk to write,
  * and `snapshot()` exposes the current logical frame (no control bytes) for
  * structural assertions. The `Renderer` Live Layer wiring lives in
- * `runtime.ts`; interactive input/expand-collapse and the byte-for-byte
- * first-paint contract can be built on top of this seam without changing
- * the painter core.
+ * `runtime.ts`; the painter core stays deterministic while runtime wiring
+ * handles input subscription and event publication.
  */
 
 import type { LandoEvent } from "@lando/sdk/services";
