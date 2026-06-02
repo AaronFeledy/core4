@@ -76,6 +76,12 @@ describe("LandoTreePainter — first-paint skeleton", () => {
     expect(firstPaint).toBe("▼ Building (0/3 running)\n  ◌ web\n  ◌ db\n  ◌ cache\n");
   });
 
+  test("deduplicates declared children before counting and painting placeholders", () => {
+    const painter = new LandoTreePainter();
+    const firstPaint = painter.consume(treeStart("build", "Building", ["web", "db", "web"]));
+    expect(firstPaint).toBe("▼ Building (0/2 running)\n  ◌ web\n  ◌ db\n");
+  });
+
   test("first paint emits no control sequences (skeleton is plain text)", () => {
     const painter = new LandoTreePainter();
     const firstPaint = painter.consume(treeStart("build", "Building", ["a", "b"]));

@@ -238,9 +238,15 @@ export class LandoTreePainter {
     const record = event as unknown as Record<string, unknown>;
     switch (event._tag) {
       case "task.tree.start": {
-        const children = Array.isArray(record.children)
+        const rawChildren = Array.isArray(record.children)
           ? record.children.filter((child): child is string => typeof child === "string")
           : [];
+        const seenChildren = new Set<string>();
+        const children = rawChildren.filter((child) => {
+          if (seenChildren.has(child)) return false;
+          seenChildren.add(child);
+          return true;
+        });
         this.#tree = {
           parentId: asString(record.parentId) ?? "tree",
           childCount: children.length,
@@ -412,6 +418,7 @@ export class LandoTreePainter {
       const task = this.#tasks.get(id);
       if (task === undefined) continue;
       if (task.status === "pending") {
+        if (this.#tree?.done === true) continue;
         lines.push(`${CHILD_INDENT}${PENDING_MARKER} ${task.label}`);
         continue;
       }

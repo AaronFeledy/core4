@@ -295,6 +295,18 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
     expect(painter.snapshot().frameLines[0]).toContain("(12.4s)");
     expect(painter.snapshot().activeTaskIds.length).toBe(0);
   });
+
+  test("tree.complete hides pending placeholders for children that never started", () => {
+    const painter = new LandoTreePainter();
+    painter.consume(treeStart("build", "Building", ["a", "b"]));
+    painter.consume(taskStart("a", "step a", "build"));
+    painter.consume(taskFail("a", "step a failed", 1));
+    painter.consume(treeComplete("build", "Build failed", 0, 1, 50));
+    expect(painter.snapshot().frameLines).toEqual([
+      "▶ Build failed (0 ✓ · 1 ✗) (50ms)",
+      "  ✗ step a failed (exit 1)",
+    ]);
+  });
 });
 
 describe("makeLandoRendererLive — TTY vs non-TTY selection", () => {

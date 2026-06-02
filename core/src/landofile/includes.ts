@@ -62,6 +62,7 @@ interface ResolveContext {
   readonly lockfilePath: string;
   readonly deps: LandofileIncludeDeps;
   readonly maxDepth: number;
+  readonly mode: "pin" | "refresh";
   readonly lockEntries: ReadonlyMap<string, LockEntry>;
   readonly stagedLocks: Map<string, LockEntry>;
 }
@@ -524,26 +525,34 @@ const resolveTree = (
       fragments.push(nested as Record<string, unknown>);
       if (fragment.locked && fragment.resolved !== undefined) {
         const actual = sha256(fragment.content);
-        const locked = ctx.lockEntries.get(fragment.sourceId);
-        if (locked !== undefined) {
-          if (locked.checksum !== actual || locked.resolved !== fragment.resolved) {
-            return yield* Effect.fail(
-              new LandofileLockMismatchError({
-                message: `Landofile include lock mismatch for ${fragment.sourceId}.`,
-                lockfile: ctx.lockfilePath,
-                source: fragment.sourceId,
-                expected: `${locked.resolved}:${locked.checksum}`,
-                actual: `${fragment.resolved}:${actual}`,
-                remediation: LOCK_REMEDIATION,
-              }),
-            );
-          }
-        } else {
+        if (ctx.mode === "refresh") {
           ctx.stagedLocks.set(fragment.sourceId, {
             source: fragment.sourceId,
             resolved: fragment.resolved,
             checksum: actual,
           });
+        } else {
+          const locked = ctx.lockEntries.get(fragment.sourceId);
+          if (locked !== undefined) {
+            if (locked.checksum !== actual || locked.resolved !== fragment.resolved) {
+              return yield* Effect.fail(
+                new LandofileLockMismatchError({
+                  message: `Landofile include lock mismatch for ${fragment.sourceId}.`,
+                  lockfile: ctx.lockfilePath,
+                  source: fragment.sourceId,
+                  expected: `${locked.resolved}:${locked.checksum}`,
+                  actual: `${fragment.resolved}:${actual}`,
+                  remediation: LOCK_REMEDIATION,
+                }),
+              );
+            }
+          } else {
+            ctx.stagedLocks.set(fragment.sourceId, {
+              source: fragment.sourceId,
+              resolved: fragment.resolved,
+              checksum: actual,
+            });
+          }
         }
       }
     }
@@ -642,6 +651,7 @@ export const resolveLandofileIncludes = (
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
+      mode: "pin",
       lockEntries: yield* parseLockEntries(lockfilePath),
       stagedLocks: new Map(),
     };
@@ -658,3 +668,95 @@ export const resolveLandofileIncludes = (
     return resolved;
   });
 };
+
+export type IncludeUpdateStatus = "added" | "updated" | "unchanged";
+
+export interface IncludeUpdateEntry {
+  readonly source: string;
+  readonly resolved: string;
+  readonly checksum: string;
+  readonly status: IncludeUpdateStatus;
+}
+
+export interface IncludeUpdateReport {
+  readonly lockfilePath: string;
+  readonly entries: ReadonlyArray<IncludeUpdateEntry>;
+  readonly removed: ReadonlyArray<string>;
+  readonly drift: boolean;
+  readonly wrote: boolean;
+  readonly checkMode: boolean;
+}
+
+export interface UpdateLandofileIncludesOptions {
+  readonly landofile: LandofileShape;
+  readonly appRoot: string;
+  readonly cacheRoot?: string;
+  readonly lockfilePath?: string;
+  readonly deps?: LandofileIncludeDeps;
+  readonly maxDepth?: number;
+  readonly check?: boolean;
+}
+
+const byCodepointString = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
+
+export const updateLandofileIncludes = (
+  options: UpdateLandofileIncludesOptions,
+): Effect.Effect<
+  IncludeUpdateReport,
+  LandofileIncludeError | LandofileLockMismatchError | LandofileParseError,
+  never
+> =>
+  Effect.gen(function* () {
+    const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
+    const checkMode = options.check === true;
+    const existing = yield* parseLockEntries(lockfilePath);
+    const includes = options.landofile.includes ?? [];
+
+    const ctx: ResolveContext = {
+      appRoot: options.appRoot,
+      cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
+      lockfilePath,
+      deps: options.deps ?? {},
+      maxDepth: options.maxDepth ?? 8,
+      mode: "refresh",
+      lockEntries: existing,
+      stagedLocks: new Map(),
+    };
+
+    if (includes.length > 0) {
+      yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
+    }
+
+    const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
+      .sort((left, right) => byCodepointString(left.source, right.source))
+      .map((entry) => {
+        const prev = existing.get(entry.source);
+        const status: IncludeUpdateStatus =
+          prev === undefined
+            ? "added"
+            : prev.resolved !== entry.resolved || prev.checksum !== entry.checksum
+              ? "updated"
+              : "unchanged";
+        return { source: entry.source, resolved: entry.resolved, checksum: entry.checksum, status };
+      });
+    const removed = [...existing.keys()]
+      .filter((source) => !ctx.stagedLocks.has(source))
+      .sort(byCodepointString);
+    const drift = entries.some((entry) => entry.status !== "unchanged") || removed.length > 0;
+
+    let wrote = false;
+    if (!checkMode && drift) {
+      yield* Effect.tryPromise({
+        try: () => writeFileAtomicViaRename(lockfilePath, renderLockfile([...ctx.stagedLocks.values()])),
+        catch: (cause) =>
+          includeError({
+            message: `Could not write include lockfile ${lockfilePath}: ${causeMessage(cause)}`,
+            source: lockfilePath,
+            kind: "fetch-failed",
+          }),
+      });
+      wrote = true;
+    }
+
+    return { lockfilePath, entries, removed, drift, wrote, checkMode };
+  });

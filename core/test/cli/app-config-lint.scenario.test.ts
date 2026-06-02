@@ -46,7 +46,7 @@ describe("renderConfigLintResult", () => {
     try {
       return run();
     } finally {
-      process.exitCode = previous;
+      process.exitCode = previous ?? 0;
     }
   };
 
