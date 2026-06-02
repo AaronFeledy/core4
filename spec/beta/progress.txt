@@ -604,3 +604,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Reviewed `app:includes:update` against PRD-B-08 US-140 ACs. All four ACs satisfied: refresh re-resolves every include + recomputes SHA + atomic rewrite (`writeFileAtomicViaRename`), `--check` computes the report without writing (verified by `check mode reports drift without rewriting` unit test reading the lockfile back byte-identical), pin/refresh share `resolveTree` so the load-path fail-closed invariant is preserved, and both dispatch paths parse `--check`/`--format` for the valid value set. No code changes — implementation is correct and follows established conventions. Gates green: typecheck, lint, and the includes-update + parity-probe/deferred/renderer/canary suites all pass.
 - Review notes (rejected): Oracle flagged the compiled dispatcher silently defaulting an *invalid* `--format` value (e.g. `--format=xml`) to text while OCLIF rejects it via `options: [text,json]`, calling it a compiled-parity blocker. Rejected as out-of-scope/false-positive: this lenient pattern is the codebase-wide compiled-dispatch convention — `parseAppConfigArgv`, `parseAppConfigLintArgv`, and apps:list (`run.ts` 487–538, 872) all fall through to their default on an unrecognized `--format` and none reject it. It is a pre-existing accepted dual-dispatch divergence (AGENTS.md / spec §8.4.1), not a regression introduced by this story; "fixing" only this command would make it inconsistent with the rest of the compiled router. Valid-value behavior (`--check`, `--format=json`, `--format json`) is identical across both paths, which is the parity the AC requires.
 - Verification: typecheck, lint, includes-update unit + scenario tests, and the deferred/parity/renderer/canary CLI bundle all pass.
+
+## 2026-06-02 09:50 - Babysit
+- PR: #265 https://github.com/AaronFeledy/core4/pull/265
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate flagged core/src/landofile/includes.ts surface change with no owned-guide update; documented app:includes:update + --check/drift behavior in docs/guides/landofile/includes-and-lockfile.mdx)
+- Merge: merged (squash)
+---
