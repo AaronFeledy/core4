@@ -182,7 +182,7 @@ export abstract class LandoCommandBase extends Command {
    * to the command Effect.
    */
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
-    let rendererMode: "lando" | "json" | "plain";
+    let rendererMode: RendererMode;
     try {
       const resolution = resolveRendererMode({
         argv: this.argv,
