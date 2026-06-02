@@ -16,6 +16,19 @@ export class LandofileParseError extends Schema.TaggedError<LandofileParseError>
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class LandofileExpressionParseError extends Schema.TaggedError<LandofileExpressionParseError>()(
+  "LandofileExpressionParseError",
+  {
+    message: Schema.String,
+    filePath: Schema.String,
+    line: Schema.UndefinedOr(Schema.Number),
+    column: Schema.UndefinedOr(Schema.Number),
+    expression: Schema.optional(Schema.String),
+    remediation: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 export class LandofileValidationError extends Schema.TaggedError<LandofileValidationError>()(
   "LandofileValidationError",
   {
