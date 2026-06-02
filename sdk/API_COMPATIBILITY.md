@@ -131,6 +131,7 @@
 ## Additive Alpha errors
 
 - `RecipeRunNotAllowedError`
+- `RecipeFetchNotAllowedError`
 
 ## Additive Alpha service tags
 

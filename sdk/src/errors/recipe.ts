@@ -119,6 +119,18 @@ export class RecipeRunNotAllowedError extends Schema.TaggedError<RecipeRunNotAll
   },
 ) {}
 
+export class RecipeFetchNotAllowedError extends Schema.TaggedError<RecipeFetchNotAllowedError>()(
+  "RecipeFetchNotAllowedError",
+  {
+    message: Schema.String,
+    url: Schema.String,
+    allowlist: Schema.Array(Schema.String),
+    remediation: Schema.String,
+    recipe: Schema.optional(Schema.String),
+    viaRedirect: Schema.optional(Schema.Boolean),
+  },
+) {}
+
 export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>()("RecipePostInitError", {
   message: Schema.String,
   recipe: Schema.String,

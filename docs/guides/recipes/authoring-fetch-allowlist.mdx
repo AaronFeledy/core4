@@ -1,0 +1,49 @@
+---
+id: authoring-fetch-allowlist
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, recipes, fetch, allowlist]
+---
+
+<Guide>
+  <Scenario id="declaring-fetch-allowlist" render={false} reason="Manifest parsing is covered by recipe manifest unit tests, so CI documents the authoring shape without contacting the network">
+    <Step name="recipe-yml">
+      <Variable name="field" value="fetchAllowlist: [https://api.example.com/**]" display="Declare the URL globs a recipe may contact from ctx.fetch" />
+      <Variable name="placement" value="top-level recipe.yml" display="The allowlist sits next to requires, runs, prompts, files, and postInit in the recipe manifest" />
+      <Variable name="glob" value="https://api.example.com/** matches any path; https://registry.lando.dev/recipes/* matches one segment" display="* matches within a single path segment; ** matches across path segments" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ctx-fetch-allowed" render={false} reason="ctx.fetch execution is unit-tested with an injected fetch impl so executable guide CI does not make network calls">
+    <Step name="ctx-fetch">
+      <Variable name="manifest" value="fetchAllowlist: [https://api.example.com/**]" display="The recipe explicitly permits the api.example.com host" />
+      <Variable name="call" value="ctx.fetch(&quot;https://api.example.com/v1/data&quot;)" display="A URL matching the allowlist is fetched through the platform fetch" />
+      <Variable name="result" value="Response" display="ctx.fetch resolves with the platform Response so recipe code can read the body" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ctx-fetch-denied" render={false} reason="Denied fetch behavior is covered by fetch-allowlist tests with an injected fetch impl">
+    <Step name="explicit-deny">
+      <Variable name="manifest" value="fetchAllowlist: [https://api.example.com/**]" display="The recipe permits only the api.example.com host" />
+      <Variable name="call" value="ctx.fetch(&quot;https://evil.example.com/steal&quot;)" display="A URL outside the allowlist is rejected before the platform fetch runs" />
+      <Variable name="error" value="RecipeFetchNotAllowedError" display="The tagged error includes url, allowlist, remediation, and recipe when available" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="redirect-out-of-allowlist" render={false} reason="Redirect-target checking is covered by fetch-allowlist tests using canned 302 responses">
+    <Step name="redirect-check">
+      <Variable name="behavior" value="redirect: manual" display="ctx.fetch follows redirects itself so each hop can be checked against the allowlist" />
+      <Variable name="hop" value="https://api.example.com/old -> https://evil.example.com/gotcha" display="A redirect whose target leaves the allowlist is rejected before the redirect is followed" />
+      <Variable name="error" value="RecipeFetchNotAllowedError (viaRedirect: true)" display="The tagged error marks viaRedirect so authors can tell a redirect target failed the allowlist" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="default-warn-proceed" render={false} reason="The permissive default warning is covered by fetch-allowlist tests that capture warnings deterministically">
+    <Step name="permissive-default">
+      <Variable name="manifest" value="fetchAllowlist omitted" display="A recipe without fetchAllowlist allows all hosts but warns on each fetch" />
+      <Variable name="warning" value="Recipe fetched ... with no fetchAllowlist declared" display="Each fetch surfaces a warning naming the contacted URL" />
+      <Variable name="tighten" value="add fetchAllowlist: to silence the warning" display="Declare a fetchAllowlist to scope the recipe to known hosts and stop the warning" />
+    </Step>
+  </Scenario>
+</Guide>

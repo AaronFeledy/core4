@@ -98,6 +98,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.RecipeSourceError).toBeDefined();
     expect(errors.RecipeChoicesError).toBeDefined();
     expect(errors.RecipeRunNotAllowedError).toBeDefined();
+    expect(errors.RecipeFetchNotAllowedError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
