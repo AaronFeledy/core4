@@ -536,3 +536,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review notes (deferred/rejected): alt-screen/transcript-backed scrollback, Tab tree cycling, and post-completion expansion are broader §8.9 follow-up work beyond the narrow US-151 review fix; the PRD story only required expand/collapse keybindings, bounded expanded tail, fake-TTY state-machine tests, and green host-safe checks. The 1000-line expanded retention cap was left as the current bounded-memory Beta tradeoff because terminal-row rendering still bounds the visible expanded tail.
 - Verification: typecheck and lint passed; focused renderer/SDK tests passed. Full `bun test` failed only in unrelated package-export tests (`cli-operations`/`core-testing` workspace resolution and packed `fast-check` dependency), not in US-151 coverage.
 ---
+
+## [2026-06-02 06:48 CDT] - Babysit
+- PR: #260 https://github.com/AaronFeledy/core4/pull/260
+- CI outcome: pass
+- Review feedback: fixed (kept task-detail expansion state synchronized for non-running/completed tasks and cleared the merge conflict with current main)
+- Merge: merged (squash)
+---
