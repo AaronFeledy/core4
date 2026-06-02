@@ -127,6 +127,3 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, io, "stderr", events);
-
-export const renderVerbose = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
-  drainRendererSync(renderVerboseLine, io, "stdout", events);
