@@ -16,7 +16,7 @@ import { Duration, Effect } from "effect";
 import { RecipeManifestParseError } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
 
-import { sandboxScan } from "../landofile/ts-loader.ts";
+import { resolveTsModuleResult, sandboxScan } from "../landofile/ts-loader.ts";
 
 export const DEFAULT_RECIPE_TS_TIMEOUT_MS = 30_000;
 export const RECIPE_TS_TIMEOUT_ENV = "LANDO_RECIPE_TS_TIMEOUT_MS";
@@ -43,17 +43,6 @@ const buildContext = (filePath: string): RecipeContext => ({
   env: process.env,
 });
 
-const resolveFactoryResult = async (result: unknown): Promise<unknown> => {
-  if (result === null || typeof result !== "object") return result;
-  if (Effect.isEffect(result)) {
-    return await Effect.runPromise(result as Effect.Effect<unknown, unknown>);
-  }
-  if (typeof (result as { then?: unknown }).then === "function") {
-    return await resolveFactoryResult(await (result as Promise<unknown>));
-  }
-  return result;
-};
-
 const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown> => {
   if (module === null || typeof module !== "object") {
     throw parseError(filePath, `recipe.ts at ${filePath} did not export a module object.`);
@@ -64,9 +53,9 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
   }
   if (typeof exported === "function") {
     const ctx = buildContext(filePath);
-    return await resolveFactoryResult((exported as (ctx: RecipeContext) => unknown)(ctx));
+    return await resolveTsModuleResult((exported as (ctx: RecipeContext) => unknown)(ctx));
   }
-  return await resolveFactoryResult(exported);
+  return await resolveTsModuleResult(exported);
 };
 
 const evaluateImport = (filePath: string): Effect.Effect<unknown, RecipeManifestParseError> =>

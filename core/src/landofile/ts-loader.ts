@@ -211,18 +211,18 @@ const unwrapDefault = async (filePath: string, module: unknown): Promise<unknown
   if (typeof exported === "function") {
     const ctx = buildContext(filePath);
     const result = (exported as (ctx: LandofileContext) => unknown)(ctx);
-    return await resolveLandofileResult(result);
+    return await resolveTsModuleResult(result);
   }
-  return await resolveLandofileResult(exported);
+  return await resolveTsModuleResult(exported);
 };
 
-const resolveLandofileResult = async (result: unknown): Promise<unknown> => {
+export const resolveTsModuleResult = async (result: unknown): Promise<unknown> => {
   if (result === null || typeof result !== "object") return result;
   if (Effect.isEffect(result)) {
     return await Effect.runPromise(result as Effect.Effect<unknown, unknown>);
   }
   if (typeof (result as { then?: unknown }).then === "function") {
-    return await resolveLandofileResult(await (result as Promise<unknown>));
+    return await resolveTsModuleResult(await (result as Promise<unknown>));
   }
   return result;
 };
