@@ -760,3 +760,122 @@ export const updateLandofileIncludes = (
 
     return { lockfilePath, entries, removed, drift, wrote, checkMode };
   });
+
+export type IncludeVerifyStatus = "ok" | "mismatch" | "missing" | "stale";
+
+export interface IncludeVerifyEntry {
+  readonly source: string;
+  readonly status: IncludeVerifyStatus;
+  readonly expected: string | null;
+  readonly actual: string | null;
+}
+
+export interface IncludeVerifyMismatch {
+  readonly _tag: "LandofileLockMismatchError";
+  readonly message: string;
+  readonly lockfile: string;
+  readonly source: string;
+  readonly expected: string;
+  readonly actual: string;
+  readonly remediation: string;
+}
+
+export interface IncludeVerifyReport {
+  readonly lockfilePath: string;
+  readonly entries: ReadonlyArray<IncludeVerifyEntry>;
+  readonly mismatches: ReadonlyArray<IncludeVerifyMismatch>;
+  readonly ok: boolean;
+}
+
+export interface VerifyLandofileIncludesOptions {
+  readonly landofile: LandofileShape;
+  readonly appRoot: string;
+  readonly cacheRoot?: string;
+  readonly lockfilePath?: string;
+  readonly deps?: LandofileIncludeDeps;
+  readonly maxDepth?: number;
+}
+
+const MISSING_LOCK_VALUE = "<missing>";
+
+const lockValue = (entry: LockEntry): string => `${entry.resolved}:${entry.checksum}`;
+
+const encodeLockMismatch = Schema.encodeSync(LandofileLockMismatchError);
+
+const verifyMismatchMessage = (source: string, status: IncludeVerifyStatus): string => {
+  if (status === "missing") return `Landofile include ${source} is not recorded in the lockfile.`;
+  if (status === "stale") return `Lockfile entry ${source} no longer matches a resolved include.`;
+  return `Landofile include lock mismatch for ${source}.`;
+};
+
+/**
+ * Read-only verification that `.lando.lock.yml` matches the resolved include
+ * tree. Re-resolves every fragment via the refresh-mode machinery but never
+ * writes the lockfile and never fails the effect on drift: each fragment's
+ * status (and any mismatch, in the `LandofileLockMismatchError` schema) is
+ * returned as data so callers can render the full picture and gate on exit code.
+ */
+export const verifyLandofileIncludes = (
+  options: VerifyLandofileIncludesOptions,
+): Effect.Effect<
+  IncludeVerifyReport,
+  LandofileIncludeError | LandofileLockMismatchError | LandofileParseError,
+  never
+> =>
+  Effect.gen(function* () {
+    const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
+    const existing = yield* parseLockEntries(lockfilePath);
+    const includes = options.landofile.includes ?? [];
+
+    const ctx: ResolveContext = {
+      appRoot: options.appRoot,
+      cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
+      lockfilePath,
+      deps: options.deps ?? {},
+      maxDepth: options.maxDepth ?? 8,
+      mode: "refresh",
+      lockEntries: existing,
+      stagedLocks: new Map(),
+    };
+
+    if (includes.length > 0) {
+      yield* resolveTree(options.landofile, ctx, 0, [options.appRoot]);
+    }
+
+    const staged = ctx.stagedLocks;
+    const sources = [...new Set([...existing.keys(), ...staged.keys()])].sort(byCodepointString);
+
+    const entries: IncludeVerifyEntry[] = [];
+    const mismatches: IncludeVerifyMismatch[] = [];
+    for (const source of sources) {
+      const lock = existing.get(source);
+      const fresh = staged.get(source);
+      const expected = lock === undefined ? null : lockValue(lock);
+      const actual = fresh === undefined ? null : lockValue(fresh);
+      const status: IncludeVerifyStatus =
+        lock !== undefined && fresh !== undefined
+          ? lock.resolved === fresh.resolved && lock.checksum === fresh.checksum
+            ? "ok"
+            : "mismatch"
+          : fresh !== undefined
+            ? "missing"
+            : "stale";
+      entries.push({ source, status, expected, actual });
+      if (status !== "ok") {
+        mismatches.push(
+          encodeLockMismatch(
+            new LandofileLockMismatchError({
+              message: verifyMismatchMessage(source, status),
+              lockfile: lockfilePath,
+              source,
+              expected: expected ?? MISSING_LOCK_VALUE,
+              actual: actual ?? MISSING_LOCK_VALUE,
+              remediation: LOCK_REMEDIATION,
+            }),
+          ),
+        );
+      }
+    }
+
+    return { lockfilePath, entries, mismatches, ok: mismatches.length === 0 };
+  });

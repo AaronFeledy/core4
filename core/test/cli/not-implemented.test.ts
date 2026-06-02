@@ -69,7 +69,7 @@ describe("non-MVP OCLIF commands", () => {
     const probes: ReadonlyArray<{ readonly args: ReadonlyArray<string>; readonly commandId: string }> = [
       { args: ["app:config:translate", "--detect"], commandId: "app:config:translate" },
       { args: ["meta:global:list", "--check"], commandId: "meta:global:list" },
-      { args: ["app:includes:verify", "--format", "json"], commandId: "app:includes:verify" },
+      { args: ["meta:recipes:list", "--format", "json"], commandId: "meta:recipes:list" },
     ];
 
     for (const probe of probes) {
