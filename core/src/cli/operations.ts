@@ -72,6 +72,7 @@ export * from "./commands/config.ts";
 export * from "./commands/meta/global-install.ts";
 export * from "./commands/app-config.ts";
 export * from "./commands/app-config-lint.ts";
+export * from "./commands/app-includes-update.ts";
 export * from "./commands/app-cache-refresh.ts";
 export * from "./commands/version.ts";
 export * from "./commands/update.ts";

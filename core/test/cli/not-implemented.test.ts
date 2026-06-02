@@ -68,7 +68,7 @@ describe("non-MVP OCLIF commands", () => {
   test("return structured remediation even when invoked with unknown flags", async () => {
     const probes: ReadonlyArray<{ readonly args: ReadonlyArray<string>; readonly commandId: string }> = [
       { args: ["app:config:translate", "--detect"], commandId: "app:config:translate" },
-      { args: ["app:includes:update", "--check"], commandId: "app:includes:update" },
+      { args: ["meta:global:list", "--check"], commandId: "meta:global:list" },
       { args: ["app:includes:verify", "--format", "json"], commandId: "app:includes:verify" },
     ];
 

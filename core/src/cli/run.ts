@@ -29,6 +29,11 @@ import {
   renderConfigLintResult,
 } from "./commands/app-config-lint.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
+import {
+  type AppIncludesUpdateFormat,
+  appIncludesUpdate,
+  renderIncludesUpdateResult,
+} from "./commands/app-includes-update.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
@@ -540,6 +545,40 @@ const runAppConfigLint = async (argv: ReadonlyArray<string>): Promise<void> => {
   );
   if (Exit.isSuccess(exit)) {
     console.log(renderConfigLintResult(exit.value, format));
+    return;
+  }
+  const failure = Cause.failureOption(exit.cause);
+  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  process.exitCode = 1;
+};
+
+const parseAppIncludesUpdateArgv = (
+  argv: ReadonlyArray<string>,
+): { readonly check: boolean; readonly format: AppIncludesUpdateFormat } => {
+  const check = argv.some((arg) => arg === "--check");
+  let format: AppIncludesUpdateFormat = "text";
+  let i = 0;
+  while (i < argv.length) {
+    const match = parseStringFlag(argv, i, "format");
+    if (match !== undefined) {
+      if (match.value === "json" || match.value === "text") {
+        format = match.value;
+      }
+      i += match.consumed;
+      continue;
+    }
+    i += 1;
+  }
+  return { check, format };
+};
+
+const runAppIncludesUpdate = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const { check, format } = parseAppIncludesUpdateArgv(argv);
+  const exit = await Effect.runPromiseExit(
+    appIncludesUpdate({ check }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  );
+  if (Exit.isSuccess(exit)) {
+    console.log(renderIncludesUpdateResult(exit.value, format));
     return;
   }
   const failure = Cause.failureOption(exit.cause);
@@ -1305,6 +1344,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "app:config:lint") {
     await runAppConfigLint(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "app:includes:update") {
+    await runAppIncludesUpdate(argv.slice(1));
     return;
   }
 
