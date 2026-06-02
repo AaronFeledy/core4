@@ -10,7 +10,12 @@ import {
   defaultBunSelfSpawner,
 } from "../../cli/commands/bun-self-runner.ts";
 import { type ChoicesCommandRunner, createDefaultChoicesCommandRunner } from "../prompts/choices-command.ts";
-import { createRecipeRunContext } from "../run-allowlist.ts";
+import {
+  createRecipeRunContext,
+  defaultRunWarning,
+  evaluateRunPermission,
+  runNotAllowedError,
+} from "../run-allowlist.ts";
 
 export interface PostInitIO {
   readonly out: (line: string) => void;
@@ -365,6 +370,30 @@ const runBun = async (
     case "script": {
       const scriptPath = await resolveScriptPath(action.script, index, options);
       await spawnBun(["run", scriptPath, ...(action.args ?? [])], cwd, index, action.verb, options);
+      return;
+    }
+    case "x": {
+      const spec = action.spec.trim();
+      if (spec === "" || spec.startsWith("-")) {
+        throw new RecipePostInitError({
+          message: `postInit[${index}] (bun x): spec "${action.spec}" is invalid; it must not be empty or begin with "-".`,
+          recipe: options.recipeId,
+          actionIndex: index,
+          actionType: "bun",
+          actionVerb: "x",
+          kind: "invalid-argv",
+          remediation: "Set `spec:` to a package spec (e.g. `prettier`), not empty or a flag.",
+        });
+      }
+      const permission = evaluateRunPermission(options.runs, spec);
+      if (permission.kind === "denied") {
+        throw runNotAllowedError(spec, permission.allowlist, options.recipeId);
+      }
+      if (permission.kind === "warn") {
+        const io = options.io ?? createStdioPostInitIO();
+        io.err(defaultRunWarning(spec, permission.allowlist));
+      }
+      await spawnBun(["x", spec, ...(action.argv ?? [])], cwd, index, action.verb, options);
       return;
     }
     default: {

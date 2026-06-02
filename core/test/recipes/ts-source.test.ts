@@ -194,23 +194,23 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
     });
   });
 
-  test("recipe.ts is held to the same Beta-rejection pipeline as recipe.yml (unsupported bun verb)", async () => {
+  test("recipe.ts is held to the same Beta-rejection pipeline as recipe.yml (deferred editor prompt)", async () => {
     await withTempCwd(async (dir) => {
-      const recipeDir = join(dir, "beta-verb");
+      const recipeDir = join(dir, "beta-prompt");
       await Bun.write(
         join(recipeDir, "recipe.ts"),
         [
           "export default {",
-          '  id: "beta-verb",',
-          '  title: "Beta verb",',
-          '  description: "Uses a deferred bun verb.",',
+          '  id: "beta-prompt",',
+          '  title: "Beta prompt",',
+          '  description: "Uses a deferred prompt type.",',
           '  version: "0.0.1",',
-          '  postInit: [{ type: "bun", verb: "x" }],',
+          '  prompts: [{ name: "notes", type: "editor", message: "Edit notes" }],',
           "};",
           "",
         ].join("\n"),
       );
-      const exit = await runResolve("./beta-verb", dir);
+      const exit = await runResolve("./beta-prompt", dir);
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(NotImplementedError);
     });

@@ -49,9 +49,10 @@ tags: [beta, docs, recipes, runs, allowlist]
 
   <Scenario id="bun-post-init-verbs" render={false} reason="bun postInit execution and argv rejection are covered by recipe post-init unit tests with a fake bun spawner">
     <Step name="bun-post-init">
-      <Variable name="verbs" value="bun:script, bun:add, bun:create, bun:run" display="Recipe postInit may run bundled scripts, add packages, scaffold from a template, or run package scripts through bun" />
+      <Variable name="verbs" value="bun:script, bun:add, bun:create, bun:run, bun:x" display="Recipe postInit may run bundled scripts, add packages, scaffold from a template, run package scripts, or run a one-shot package via bunx (bun:x)" />
       <Variable name="manifest" value="postInit: [{ type: bun, verb: create, template: ${answers.template} }]" display="bun create templates can interpolate prompt answers before the bun argv is built" />
-      <Variable name="argvSafety" value="empty and flag-like operands" display="Substituted bun create templates and package operands are rejected before bun is spawned" />
+      <Variable name="bunx" value="postInit: [{ type: bun, verb: x, spec: prettier, argv: [--write, .] }]" display="bun:x runs a one-shot package; when a recipe declares runs:, the spec must be in the allowlist, otherwise x runs by default" />
+      <Variable name="argvSafety" value="empty and flag-like operands" display="Substituted bun create templates, package operands, and bun x specs are rejected before bun is spawned" />
     </Step>
   </Scenario>
 </Guide>

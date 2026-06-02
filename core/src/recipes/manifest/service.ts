@@ -26,7 +26,10 @@ export { RecipeManifestService } from "@lando/sdk/services";
 
 const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
 
-const REJECTED_BUN_VERBS = new Set(["x"]);
+// Forward-compat verb gate: every shipped `bun:` verb is supported, so this
+// set is empty. A future deferred verb is added here to fail loudly before
+// strict decode instead of as an opaque union mismatch.
+const REJECTED_BUN_VERBS = new Set<string>();
 
 interface BetaFinding {
   readonly message: string;
@@ -204,6 +207,15 @@ const validateSemantics = (
         issues.push(
           `postInit[${index}] (bun run): script "${action.script}" is invalid; it must not begin with "-".`,
         );
+      }
+      if (action.verb === "x") {
+        if (action.spec.trim() === "") {
+          issues.push(`postInit[${index}] (bun x): spec must not be empty.`);
+        } else if (action.spec.trim().startsWith("-")) {
+          issues.push(
+            `postInit[${index}] (bun x): spec "${action.spec}" is invalid; it must not begin with "-".`,
+          );
+        }
       }
     }
   }

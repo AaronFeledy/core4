@@ -1,10 +1,9 @@
 import { Schema } from "effect";
 
 // Recipe manifest schema with prompt and post-init action shapes.
-// Unsupported fields (`editor` prompt type, non-`install` `bun:` verbs)
-// are intentionally absent from the schema and are rejected before
-// strict decode so users see a targeted remediation instead of a
-// generic excess-property error.
+// Unsupported fields (the `editor` prompt type) are intentionally absent
+// from the schema and are rejected before strict decode so users see a
+// targeted remediation instead of a generic excess-property error.
 
 const KEBAB_CASE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 const SEMVER_PATTERN =
@@ -164,13 +163,24 @@ const RecipePostInitBunRun = Schema.Struct({
   when: Schema.optional(Schema.String),
 });
 
-/** Recipe post-init `bun` action — one of the allowlisted verbs; `x` is rejected before decode. */
+/** `bun x` — run a one-shot package via `bun x <spec> [argv...]` (bunx-equivalent). */
+const RecipePostInitBunX = Schema.Struct({
+  type: Schema.Literal("bun"),
+  verb: Schema.Literal("x"),
+  spec: Schema.String,
+  argv: Schema.optional(Schema.Array(Schema.String)),
+  cwd: Schema.optional(Schema.String),
+  when: Schema.optional(Schema.String),
+});
+
+/** Recipe post-init `bun` action — one of the supported verbs. */
 export const RecipePostInitBun = Schema.Union(
   RecipePostInitBunInstall,
   RecipePostInitBunScript,
   RecipePostInitBunAdd,
   RecipePostInitBunCreate,
   RecipePostInitBunRun,
+  RecipePostInitBunX,
 );
 export type RecipePostInitBun = typeof RecipePostInitBun.Type;
 

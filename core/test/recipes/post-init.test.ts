@@ -760,6 +760,132 @@ describe("runPostInit — bun.script", () => {
   });
 });
 
+describe("runPostInit — bun.x", () => {
+  test("spawns `x <spec> <argv...>` in the destination cwd and sets BUN_BE_BUN", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      const outcome = await runPostInit({
+        actions: [{ type: "bun", verb: "x", spec: "prettier", argv: ["--write", "."] }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(outcome.executed).toEqual([{ index: 0, type: "bun", verb: "x" }]);
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "x", "prettier", "--write", "."]);
+      expect(calls[0]?.cwd).toBe(dir);
+      expect(calls[0]?.env.BUN_BE_BUN).toBe("1");
+    });
+  });
+
+  test("allows an `x` spec listed in an explicit runs allowlist", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      await runPostInit({
+        actions: [{ type: "bun", verb: "x", spec: "degit", argv: ["user/repo"] }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        runs: ["degit"],
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "x", "degit", "user/repo"]);
+    });
+  });
+
+  test("denies an `x` spec outside an explicit runs allowlist", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "x", spec: "rimraf", argv: ["/"] }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          runs: ["degit"],
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipeRunNotAllowedError);
+      if (caught instanceof RecipeRunNotAllowedError) {
+        expect(caught.commandId).toBe("rimraf");
+        expect(caught.allowlist).toEqual(["degit"]);
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+
+  test("warns and proceeds for an `x` spec when no runs allowlist is declared (allow by default)", async () => {
+    await withTempDir(async (dir) => {
+      const io = makeBufferedIO();
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      await runPostInit({
+        actions: [{ type: "bun", verb: "x", spec: "prettier" }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        io,
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "x", "prettier"]);
+      expect(io.errLines).toHaveLength(1);
+      expect(io.errLines[0]).toContain("prettier");
+      expect(io.errLines[0]).toContain("outside the default runs allowlist");
+    });
+  });
+
+  test("rejects a flag-like `x` spec with invalid-argv before spawning", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "x", spec: "--evil" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("invalid-argv");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+});
+
 describe("runPostInit — message", () => {
   test("writes text to io.out", async () => {
     await withTempDir(async (dir) => {
