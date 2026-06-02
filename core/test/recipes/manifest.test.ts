@@ -327,18 +327,18 @@ version: 0.0.1
     }
   });
 
-  test("postInit bun verb `x` is rejected with §8.8.8 remediation", async () => {
-    const yaml = `${baseHeader}postInit:
-  - type: bun
-    verb: x
+  test("prompt type `editor` is still rejected with §8.8.5 remediation", async () => {
+    const yaml = `${baseHeader}prompts:
+  - name: notes
+    type: editor
+    message: Edit notes
 `;
-    const exit = await runParse("test://beta-bun-x", yaml);
+    const exit = await runParse("test://beta-prompt-editor", yaml);
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(NotImplementedError);
     if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§8.8.8");
-      expect(error.message).toContain("x");
-      expect(error.remediation).toContain("Beta");
+      expect(error.specSection).toBe("§8.8.5");
+      expect(error.message).toContain("editor");
     }
   });
 });
@@ -512,6 +512,70 @@ version: 0.0.1
     script: --watch
 `;
     const exit = await runParse("test://bun-run-flag", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("must not begin"))).toBe(true);
+    }
+  });
+
+  test("bun `x` decodes with a package spec and argv", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: x
+    spec: prettier
+    argv:
+      - --write
+      - .
+`;
+    const exit = await runParse("test://bun-x", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const action = exit.value.postInit?.[0];
+    expect(action?.type).toBe("bun");
+    if (action?.type === "bun" && action.verb === "x") {
+      expect(action.spec).toBe("prettier");
+      expect(action.argv).toEqual(["--write", "."]);
+    }
+  });
+
+  test("bun `x` decodes with just a spec (argv optional)", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: x
+    spec: "@astrojs/cli"
+`;
+    const exit = await runParse("test://bun-x-spec-only", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    const action = exit.value.postInit?.[0];
+    if (action?.type === "bun" && action.verb === "x") {
+      expect(action.spec).toBe("@astrojs/cli");
+      expect(action.argv).toBeUndefined();
+    }
+  });
+
+  test("bun `x` with an empty spec is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: x
+    spec: "   "
+`;
+    const exit = await runParse("test://bun-x-empty", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("spec must not be empty"))).toBe(true);
+    }
+  });
+
+  test("bun `x` with a flag-like spec is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: x
+    spec: --help
+`;
+    const exit = await runParse("test://bun-x-flag", yaml);
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(RecipeManifestValidationError);
     if (error instanceof RecipeManifestValidationError) {
