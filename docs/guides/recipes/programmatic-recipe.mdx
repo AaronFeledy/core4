@@ -1,0 +1,41 @@
+---
+id: programmatic-recipe
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, recipes, typescript, programmatic]
+---
+
+<Guide>
+  <Scenario id="static-recipe-ts" render={false} reason="recipe.ts loading and schema validation are covered by recipe ts-source unit tests, so CI documents the authoring shape without invoking the recipe render path">
+    <Step name="define-recipe">
+      <Variable name="import" value="import { type Recipe, defineRecipe } from &quot;@lando/sdk&quot;" display="Recipe, RecipeContext, RecipeFactory, and the defineRecipe identity helper are published from @lando/sdk" />
+      <Variable name="export" value="export default defineRecipe({ id, title, description, version, prompts, files, postInit })" display="A recipe.ts default-exports a static Recipe object — the same shape recipe.yml decodes to" />
+      <Variable name="compile" value="Bun native TypeScript" display="recipe.ts loads through Bun's native TS loader; no tsc step runs at recipe-load time" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="factory-recipe-ts" render={false} reason="The async factory form is unit-tested with a generated temp-dir recipe.ts so guide CI does not execute author code">
+    <Step name="factory-export">
+      <Variable name="factory" value="export default async (ctx) => ({ id, title, description, version, ... })" display="A recipe.ts may default-export an async (ctx) => Recipe factory instead of a static object" />
+      <Variable name="ctx" value="ctx = { cwd, env }" display="The factory receives the recipe directory cwd and the process environment" />
+      <Variable name="validation" value="canonical RecipeManifest schema" display="A factory result is decoded through the same schema as recipe.yml; an invalid shape fails with RecipeManifestValidationError" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mutually-exclusive" render={false} reason="Mutual exclusivity is covered by ts-source resolution tests with fixture directories">
+    <Step name="one-form-per-dir">
+      <Variable name="rule" value="recipe.ts XOR recipe.yml" display="A recipe directory ships recipe.ts or recipe.yml, never both (spec §8.8.14, mirroring .lando.ts vs .lando.yml)" />
+      <Variable name="both" value="RecipeManifestValidationError" display="A directory carrying both forms is rejected at resolution: one or the other, never both" />
+      <Variable name="id" value="id must equal directory basename" display="As with recipe.yml, a recipe.ts manifest id must match the recipe directory name" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="sandbox-rules" render={false} reason="Import sandbox scanning is covered by ts-loader unit tests using the shared sandbox scanner">
+    <Step name="forbidden-imports">
+      <Variable name="scan" value="top-level imports are sandbox-scanned" display="Before evaluation, recipe.ts imports are scanned; host shell-outs, remote module fetches, and filesystem access outside the recipe directory are rejected" />
+      <Variable name="example" value="import { execSync } from &quot;node:child_process&quot; → RecipeManifestParseError" display="A disallowed import fails to load with a clear disallowed-import message" />
+      <Variable name="timeout" value="LANDO_RECIPE_TS_TIMEOUT_MS (default 30000)" display="Module evaluation is bounded by a timeout so a runaway factory cannot hang init indefinitely" />
+    </Step>
+  </Scenario>
+</Guide>

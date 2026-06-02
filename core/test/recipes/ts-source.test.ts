@@ -192,6 +192,23 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
     });
   });
 
+  test("syntactically invalid recipe.ts surfaces a parse error, not a disallowed-import error", async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "broken-recipe");
+      await Bun.write(
+        join(recipeDir, "recipe.ts"),
+        ["export default {", '  id: "broken-recipe",', "  this is not valid typescript <<<", ""].join("\n"),
+      );
+      const exit = await runResolve("./broken-recipe", dir);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(RecipeManifestParseError);
+      if (failure instanceof RecipeManifestParseError) {
+        expect(failure.message).toContain("could not be parsed");
+        expect(failure.message).not.toContain("disallowed import");
+      }
+    });
+  });
+
   test("recipe.ts importing a forbidden node built-in is rejected", async () => {
     await withTempCwd(async (dir) => {
       const recipeDir = join(dir, "shell-recipe");

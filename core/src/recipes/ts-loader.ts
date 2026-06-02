@@ -98,11 +98,19 @@ export const loadRecipeTs = (
   Effect.gen(function* () {
     yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
       Effect.mapError((cause) =>
-        parseError(
-          options.filePath,
-          `recipe.ts at ${options.filePath} has a disallowed import: ${cause.violation}. Programmatic recipes must not perform host shell-outs, remote module fetches, or filesystem access outside the recipe directory.`,
-          cause,
-        ),
+        cause.violation === "parse"
+          ? parseError(
+              options.filePath,
+              `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${
+                cause.cause instanceof Error ? cause.cause.message : String(cause.cause)
+              }`,
+              cause,
+            )
+          : parseError(
+              options.filePath,
+              `recipe.ts at ${options.filePath} has a disallowed import: ${cause.violation}. Programmatic recipes must not perform host shell-outs, remote module fetches, or filesystem access outside the recipe directory.`,
+              cause,
+            ),
       ),
     );
     const timeoutMs = options.timeoutMs ?? resolveRecipeTimeoutMs();
