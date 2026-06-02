@@ -660,3 +660,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Adding a renderer mode means widening FOUR mode typings in lockstep or `tsc -b` breaks: the canonical `RendererMode` in `renderer-selection.ts` (the `RENDERER_MODES` tuple), the SEPARATE `RendererMode` union in `core/src/cli/bug-report.ts` (used by `formatBugReport` + `run.ts`'s `activeRendererMode`/`setActiveRendererMode`), and the two INLINE literal annotations `let rendererMode: "lando" | "json" | "plain"` in `core/src/cli/oclif/command-base.ts` and `oclif/commands/apps/init.ts`. Prefer referencing the exported `RendererMode` type at those inline sites (done here) so the next mode addition only touches the two union declarations. `run.ts` needs no inline change — it already types `activeRendererMode` via the bug-report `RendererMode`.
   - The renderer mode is NOT yet wired to an actual Live Layer at the CLI command boundary (still US-157), so `--renderer=verbose` is accepted and selected but does not yet swap the active renderer at runtime — the `version`/fast-path commands show identical output. The verbose renderer LAYER is proven via `makeVerboseRendererLive` unit tests, and the SELECTION is proven via CLI QA; full runtime swap lands with US-157's `Renderer` Live Layer.
 ---
+
+## [2026-06-02 13:43 CDT] - US-153 Review
+- Reviewed the verbose renderer against PRD-B-09 US-153 and fixed the confirmed blocker: TTY `verbose` now preserves the Lando live task tree while printing full event payload traces above the live frame, instead of degrading to a flat plain-style stream.
+- Review notes (deferred/rejected): broader command-boundary Live Layer selection remains US-157 and is out of scope for this story; the selection path and renderer layer are the US-153 deliverables.
+- Verification: typecheck, lint, and full `bun test` passed.
+---

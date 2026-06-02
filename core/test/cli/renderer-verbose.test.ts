@@ -1,13 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { MessageInfoEvent } from "@lando/sdk/events";
+import {
+  type LandoEvent,
+  MessageInfoEvent,
+  TaskDetailEvent,
+  TaskStartEvent,
+  TaskTreeStartEvent,
+} from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
 import { RENDERER_MODES, isRendererMode, resolveRendererMode } from "../../src/cli/renderer-selection.ts";
 import { renderVerboseLine } from "../../src/cli/renderer/format.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeVerboseRendererLive } from "../../src/cli/renderer/runtime.ts";
+import { csi } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
@@ -17,6 +24,38 @@ const infoEvent = Schema.decodeUnknownSync(MessageInfoEvent)({
   body: "fetched 3 plugins",
   timestamp: fixedTimestamp,
 });
+
+const treeStart = (parentId: string, label: string, children: ReadonlyArray<string>): LandoEvent =>
+  Schema.decodeUnknownSync(TaskTreeStartEvent)({
+    _tag: "task.tree.start",
+    parentId,
+    label,
+    children,
+    timestamp: fixedTimestamp,
+  });
+
+const taskStart = (taskId: string, label: string, parentId: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskStartEvent)({
+    _tag: "task.start",
+    taskId,
+    parentId,
+    label,
+    timestamp: fixedTimestamp,
+  });
+
+const detail = (taskId: string, line: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskDetailEvent)({
+    _tag: "task.detail",
+    taskId,
+    stream: "stdout",
+    line,
+    timestamp: fixedTimestamp,
+  });
+
+const stripCsi = (text: string): string => {
+  const esc = String.fromCharCode(27);
+  return text.replace(new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g"), "");
+};
 
 describe("verbose renderer registration (selection)", () => {
   test("verbose is a registered renderer mode alongside lando, json, plain", () => {
@@ -99,5 +138,28 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     expect(stdout).toContain("ℹ fetched 3 plugins");
     expect(stdout).toContain('"_tag":"message.info"');
     expect(io.stderr()).toBe("");
+  });
+
+  test("TTY mode keeps the Lando task tree while tracing every event payload above the live frame", async () => {
+    const io = createBufferedRendererIO({ isTTY: true });
+    const program = Effect.gen(function* () {
+      const events = yield* EventService;
+      yield* events.publish(treeStart("build", "Building", ["a"]));
+      yield* events.publish(taskStart("a", "step a", "build"));
+      yield* events.publish(detail("a", "hello"));
+      yield* Effect.sleep("20 millis");
+    });
+    const layer = Layer.provideMerge(makeVerboseRendererLive(io), EventServiceLive);
+    await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
+
+    const stdout = io.stdout();
+    const logical = stripCsi(stdout);
+    expect(stdout).toContain(csi.eraseDown);
+    expect(logical).toContain('"_tag":"task.tree.start"');
+    expect(logical).toContain('"_tag":"task.start"');
+    expect(logical).toContain('"_tag":"task.detail"');
+    expect(logical).toContain("▼ Building (1/1 running)");
+    expect(logical).toContain("  · step a");
+    expect(logical).toContain("      hello");
   });
 });
