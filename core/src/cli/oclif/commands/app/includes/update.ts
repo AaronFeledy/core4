@@ -1,23 +1,55 @@
-/**
- */
-import { Effect } from "effect";
+import { Flags } from "@oclif/core";
 
+import type { IncludeUpdateReport } from "../../../../../landofile/includes.ts";
+import {
+  type AppIncludesUpdateFormat,
+  appIncludesUpdate,
+  renderIncludesUpdateResult,
+} from "../../../../commands/app-includes-update.ts";
 import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
-export const appIncludesUpdateSpec: LandoCommandSpec<never> = {
+export const appIncludesUpdateSpec: LandoCommandSpec<IncludeUpdateReport> = {
   id: "app:includes:update",
-  summary: "Refresh one or more includes lockfile entries.",
+  summary: "Refresh every includes lockfile entry to its latest source-resolved version.",
   namespace: "app",
   bootstrap: "minimal",
-  run: () => Effect.die("not yet implemented: app:includes:update"),
+  run: (input) => appIncludesUpdate({ check: checkFromInput(input) }),
+  render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport),
 };
+
+const checkFromInput = (input: unknown): boolean =>
+  typeof input === "object" && input !== null && "flags" in input
+    ? (input as { flags?: { check?: boolean } }).flags?.check === true
+    : false;
+
+const formatFromFlag = (value: unknown): AppIncludesUpdateFormat => (value === "json" ? "json" : "text");
 
 export default class AppIncludesUpdateCommand extends LandoCommandBase {
   static override description = appIncludesUpdateSpec.summary;
+  static override flags = {
+    check: Flags.boolean({
+      description: "Report would-be lockfile drift without writing.",
+      default: false,
+    }),
+    format: Flags.string({
+      description: "Output format.",
+      options: ["text", "json"],
+      default: "text",
+    }),
+  };
   static override landoSpec: LandoCommandSpec = appIncludesUpdateSpec;
   static override bootstrap = appIncludesUpdateSpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(appIncludesUpdateSpec);
+    const parsed = (await this.parse(AppIncludesUpdateCommand)) as {
+      readonly flags: { readonly check?: boolean; readonly format?: string };
+    };
+    const format = formatFromFlag(parsed.flags.format);
+    const check = parsed.flags.check === true;
+    await this.runEffect({
+      ...appIncludesUpdateSpec,
+      run: () => appIncludesUpdate({ check }),
+      render: (result) => renderIncludesUpdateResult(result as IncludeUpdateReport, format),
+    });
   }
 }

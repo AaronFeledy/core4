@@ -110,7 +110,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   string,
   DeferredCommandPlan
 >([
-  ["app:includes:update", APP_INCLUDES_PLAN],
   ["app:includes:verify", APP_INCLUDES_PLAN],
   ["app:config:translate", APP_CONFIG_TRANSLATE_PLAN],
   ["meta:global:info", META_GLOBAL_PLAN],

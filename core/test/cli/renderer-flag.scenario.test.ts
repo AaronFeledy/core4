@@ -148,7 +148,7 @@ describe("--renderer flag (source CLI)", () => {
 
   test("rejects --renderer=tui even on a Beta-deferred command (validation happens first)", async () => {
     const result = await runCommand(
-      [process.execPath, sourceCliPath, "app:includes:update", "--renderer=tui"],
+      [process.execPath, sourceCliPath, "app:includes:verify", "--renderer=tui"],
       isolationEnv(),
     );
     expect(result.exitCode).not.toBe(0);

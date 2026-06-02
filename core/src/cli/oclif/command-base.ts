@@ -69,6 +69,7 @@ const MVP_COMMAND_IDS = new Set([
   "app:config:lint",
   "app:destroy",
   "app:exec",
+  "app:includes:update",
   "app:info",
   "app:logs",
   "app:rebuild",
