@@ -40,6 +40,7 @@ export const DEFAULT_KEYMAP: Readonly<Record<KeyToken, KeyAction | null>> = {
 export interface KeyHandleResult {
   readonly events: ReadonlyArray<LandoEvent>;
   readonly changed: boolean;
+  readonly redraw: string;
 }
 
 export interface TaskTreeInputControllerOptions {
@@ -47,14 +48,13 @@ export interface TaskTreeInputControllerOptions {
   readonly now?: () => string;
 }
 
-const NO_CHANGE: KeyHandleResult = { events: [], changed: false };
+const NO_CHANGE: KeyHandleResult = { events: [], changed: false, redraw: "" };
 
-const makeKeybindingEvent = (
-  schema: typeof TaskDetailExpandEvent | typeof TaskDetailCollapseEvent,
-  tag: "task.detail.expand" | "task.detail.collapse",
-  taskId: string,
-  timestamp: string,
-): LandoEvent => Schema.decodeUnknownSync(schema)({ _tag: tag, taskId, timestamp }) as LandoEvent;
+const expandEvent = (taskId: string, timestamp: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskDetailExpandEvent)({ _tag: "task.detail.expand", taskId, timestamp });
+
+const collapseEvent = (taskId: string, timestamp: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskDetailCollapseEvent)({ _tag: "task.detail.collapse", taskId, timestamp });
 
 export class TaskTreeInputController {
   readonly #painter: LandoTreePainter;
@@ -100,30 +100,24 @@ export class TaskTreeInputController {
     const next = Math.max(0, Math.min(count - 1, this.#focusIndex + delta));
     if (next === this.#focusIndex) return NO_CHANGE;
     this.#focusIndex = next;
-    return { events: [], changed: true };
+    return { events: [], changed: true, redraw: "" };
   }
 
   #expand(): KeyHandleResult {
     if (this.#expanded) return NO_CHANGE;
     const taskId = this.focusedTaskId;
     if (taskId === undefined) return NO_CHANGE;
-    this.#painter.expandTask(taskId);
+    const redraw = this.#painter.expandTask(taskId);
     this.#expanded = true;
-    return {
-      events: [makeKeybindingEvent(TaskDetailExpandEvent, "task.detail.expand", taskId, this.#now())],
-      changed: true,
-    };
+    return { events: [expandEvent(taskId, this.#now())], changed: true, redraw };
   }
 
   #collapse(): KeyHandleResult {
     if (!this.#expanded) return NO_CHANGE;
     const taskId = this.focusedTaskId ?? this.#painter.expandedTaskId;
-    this.#painter.collapse();
+    const redraw = this.#painter.collapse();
     this.#expanded = false;
-    if (taskId === undefined) return { events: [], changed: true };
-    return {
-      events: [makeKeybindingEvent(TaskDetailCollapseEvent, "task.detail.collapse", taskId, this.#now())],
-      changed: true,
-    };
+    if (taskId === undefined) return { events: [], changed: true, redraw };
+    return { events: [collapseEvent(taskId, this.#now())], changed: true, redraw };
   }
 }

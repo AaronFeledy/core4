@@ -1,18 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import {
-  type LandoEvent,
-  TaskDetailEvent,
-  TaskStartEvent,
-  TaskTreeStartEvent,
-} from "@lando/sdk/events";
+import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 
-import { DEFAULT_KEYMAP, parseKey, TaskTreeInputController } from "../../src/cli/renderer/keybindings.ts";
-import {
-  LandoTreePainter,
-  TASK_DETAIL_TAIL_CAPACITY,
-} from "../../src/cli/renderer/task-tree-tail.ts";
+import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "../../src/cli/renderer/keybindings.ts";
+import { LandoTreePainter, TASK_DETAIL_TAIL_CAPACITY } from "../../src/cli/renderer/task-tree-tail.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
 
@@ -142,7 +134,7 @@ describe("LandoTreePainter — expand / collapse", () => {
     expect(panelLines.length).toBe(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
   });
-})
+});
 
 describe("TaskTreeInputController", () => {
   const fixedClock = () => "2026-05-19T12:00:00.000Z";
@@ -224,4 +216,4 @@ describe("TaskTreeInputController", () => {
     expect(result.events[0]?._tag).toBe("task.detail.expand");
     expect(painter.expandedTaskId).toBe("a");
   });
-})
+});
