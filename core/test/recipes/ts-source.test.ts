@@ -205,7 +205,7 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
           '  title: "Beta verb",',
           '  description: "Uses a deferred bun verb.",',
           '  version: "0.0.1",',
-          '  postInit: [{ type: "bun", verb: "add" }],',
+          '  postInit: [{ type: "bun", verb: "x" }],',
           "};",
           "",
         ].join("\n"),

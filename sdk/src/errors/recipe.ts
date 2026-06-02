@@ -139,8 +139,10 @@ export class RecipePostInitError extends Schema.TaggedError<RecipePostInitError>
   actionVerb: Schema.optional(Schema.String),
   kind: Schema.Literal(
     "outside-destination",
+    "outside-recipe",
     "missing-package-json",
     "unsupported-action",
+    "invalid-argv",
     "exit",
     "when-not-supported",
   ),

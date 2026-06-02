@@ -313,6 +313,453 @@ describe("runPostInit — bun.install", () => {
   });
 });
 
+describe("runPostInit — bun.add", () => {
+  test("spawns one `add` invocation per non-empty dependency category with the right flags", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      const outcome = await runPostInit({
+        actions: [
+          {
+            type: "bun",
+            verb: "add",
+            dependencies: ["lodash", "zod"],
+            devDependencies: ["typescript"],
+            peerDependencies: ["react"],
+            optionalDependencies: ["fsevents"],
+          },
+        ],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(outcome.executed).toEqual([{ index: 0, type: "bun", verb: "add" }]);
+      expect(calls.map((c) => c.cmd)).toEqual([
+        ["/fake/bun", "add", "lodash", "zod"],
+        ["/fake/bun", "add", "--dev", "typescript"],
+        ["/fake/bun", "add", "--peer", "react"],
+        ["/fake/bun", "add", "--optional", "fsevents"],
+      ]);
+      expect(calls.every((c) => c.cwd === dir)).toBe(true);
+      expect(calls.every((c) => c.env.BUN_BE_BUN === "1")).toBe(true);
+    });
+  });
+
+  test("fails fast on a non-zero exit and does not run later categories", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(1);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "add", dependencies: ["lodash"], devDependencies: ["typescript"] }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("exit");
+        expect(caught.actionVerb).toBe("add");
+        expect(caught.exitCode).toBe(1);
+      }
+      expect(calls.length).toBe(1);
+    });
+  });
+});
+
+describe("runPostInit — bun.create", () => {
+  test("spawns `create <template> <dest>` in the destination cwd", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      const outcome = await runPostInit({
+        actions: [{ type: "bun", verb: "create", template: "react-app", dest: "site" }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(outcome.executed).toEqual([{ index: 0, type: "bun", verb: "create" }]);
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "create", "react-app", join(dir, "site")]);
+      expect(calls[0]?.cwd).toBe(dir);
+    });
+  });
+
+  test("substitutes `${answers.<name>}` references in the template", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      await runPostInit({
+        actions: [{ type: "bun", verb: "create", template: "${answers.framework}-app" }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: { framework: "vue" },
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "create", "vue-app"]);
+    });
+  });
+
+  test("rejects an unknown `${answers.<name>}` reference with invalid-argv", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "create", template: "${answers.missing}-app" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("invalid-argv");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+
+  test("rejects a dest that escapes the destination", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "create", template: "react-app", dest: "../escape" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("outside-destination");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+
+  test("resolves a relative dest against the execution cwd, not just the destination", async () => {
+    await withTempDir(async (dir) => {
+      await mkdir(join(dir, "sub"), { recursive: true });
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      await runPostInit({
+        actions: [{ type: "bun", verb: "create", template: "react-app", dest: "app", cwd: "sub" }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(calls[0]?.cwd).toBe(join(dir, "sub"));
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "create", "react-app", join(dir, "sub", "app")]);
+    });
+  });
+
+  test("rejects a dest whose symlinked parent escapes the destination", async () => {
+    await withTempDir(async (dir) => {
+      await withTempDir(async (outside) => {
+        await symlink(outside, join(dir, "link"));
+        const { spawner, calls } = makeFakeSpawner(0);
+
+        let caught: unknown;
+        try {
+          await runPostInit({
+            actions: [{ type: "bun", verb: "create", template: "react-app", dest: "link/app" }],
+            destination: dir,
+            recipeId: "fixture",
+            appName: "fixture",
+            answers: {},
+            spawner,
+            execPath: "/fake/bun",
+            env: { PATH: "/usr/bin" },
+          });
+        } catch (err) {
+          caught = err;
+        }
+
+        expect(caught).toBeInstanceOf(RecipePostInitError);
+        if (caught instanceof RecipePostInitError) {
+          expect(caught.kind).toBe("outside-destination");
+        }
+        expect(calls.length).toBe(0);
+      });
+    });
+  });
+
+  test("rejects a template that resolves to a flag after answer substitution", async () => {
+    for (const tpl of ["--evil", "  --evil"]) {
+      await withTempDir(async (dir) => {
+        const { spawner, calls } = makeFakeSpawner(0);
+
+        let caught: unknown;
+        try {
+          await runPostInit({
+            actions: [{ type: "bun", verb: "create", template: "${answers.tpl}" }],
+            destination: dir,
+            recipeId: "fixture",
+            appName: "fixture",
+            answers: { tpl },
+            spawner,
+            execPath: "/fake/bun",
+            env: { PATH: "/usr/bin" },
+          });
+        } catch (err) {
+          caught = err;
+        }
+
+        expect(caught).toBeInstanceOf(RecipePostInitError);
+        if (caught instanceof RecipePostInitError) {
+          expect(caught.kind).toBe("invalid-argv");
+        }
+        expect(calls.length).toBe(0);
+      });
+    }
+  });
+
+  test("rejects a template that resolves to empty after answer substitution", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "create", template: "${answers.tpl}" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: { tpl: "" },
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("invalid-argv");
+        expect(caught.message).toContain("must not be empty");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+});
+
+describe("runPostInit — bun.run", () => {
+  test("spawns `run <script>` with args and requires package.json", async () => {
+    await withTempDir(async (dir) => {
+      await writePackageJson(dir);
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      const outcome = await runPostInit({
+        actions: [{ type: "bun", verb: "run", script: "build", args: ["--prod"] }],
+        destination: dir,
+        recipeId: "fixture",
+        appName: "fixture",
+        answers: {},
+        spawner,
+        execPath: "/fake/bun",
+        env: { PATH: "/usr/bin" },
+      });
+
+      expect(outcome.executed).toEqual([{ index: 0, type: "bun", verb: "run" }]);
+      expect(calls[0]?.cmd).toEqual(["/fake/bun", "run", "build", "--prod"]);
+    });
+  });
+
+  test("rejects when package.json is missing", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "run", script: "build" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("missing-package-json");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+});
+
+describe("runPostInit — bun.script", () => {
+  test("runs a recipe-bundled script resolved under recipeRoot", async () => {
+    await withTempDir(async (dir) => {
+      await withTempDir(async (recipeRoot) => {
+        await mkdir(join(recipeRoot, "templates"), { recursive: true });
+        const scriptPath = join(recipeRoot, "templates", "setup.bun.sh");
+        await writeFile(scriptPath, "console.log('ok')\n");
+        const { spawner, calls } = makeFakeSpawner(0);
+
+        const outcome = await runPostInit({
+          actions: [{ type: "bun", verb: "script", script: "templates/setup.bun.sh", args: ["--flag"] }],
+          destination: dir,
+          recipeRoot,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+
+        expect(outcome.executed).toEqual([{ index: 0, type: "bun", verb: "script" }]);
+        expect(calls[0]?.cmd).toEqual(["/fake/bun", "run", scriptPath, "--flag"]);
+        expect(calls[0]?.cwd).toBe(dir);
+      });
+    });
+  });
+
+  test("rejects a script path that escapes the recipe root", async () => {
+    await withTempDir(async (dir) => {
+      await withTempDir(async (recipeRoot) => {
+        const { spawner, calls } = makeFakeSpawner(0);
+
+        let caught: unknown;
+        try {
+          await runPostInit({
+            actions: [{ type: "bun", verb: "script", script: "../escape.bun.sh" }],
+            destination: dir,
+            recipeRoot,
+            recipeId: "fixture",
+            appName: "fixture",
+            answers: {},
+            spawner,
+            execPath: "/fake/bun",
+            env: { PATH: "/usr/bin" },
+          });
+        } catch (err) {
+          caught = err;
+        }
+
+        expect(caught).toBeInstanceOf(RecipePostInitError);
+        if (caught instanceof RecipePostInitError) {
+          expect(caught.kind).toBe("outside-recipe");
+        }
+        expect(calls.length).toBe(0);
+      });
+    });
+  });
+
+  test("rejects when no recipeRoot is available (e.g. bundled in-binary recipe)", async () => {
+    await withTempDir(async (dir) => {
+      const { spawner, calls } = makeFakeSpawner(0);
+
+      let caught: unknown;
+      try {
+        await runPostInit({
+          actions: [{ type: "bun", verb: "script", script: "templates/setup.bun.sh" }],
+          destination: dir,
+          recipeId: "fixture",
+          appName: "fixture",
+          answers: {},
+          spawner,
+          execPath: "/fake/bun",
+          env: { PATH: "/usr/bin" },
+        });
+      } catch (err) {
+        caught = err;
+      }
+
+      expect(caught).toBeInstanceOf(RecipePostInitError);
+      if (caught instanceof RecipePostInitError) {
+        expect(caught.kind).toBe("invalid-argv");
+      }
+      expect(calls.length).toBe(0);
+    });
+  });
+
+  test("rejects when the resolved script file does not exist", async () => {
+    await withTempDir(async (dir) => {
+      await withTempDir(async (recipeRoot) => {
+        const { spawner, calls } = makeFakeSpawner(0);
+
+        let caught: unknown;
+        try {
+          await runPostInit({
+            actions: [{ type: "bun", verb: "script", script: "templates/missing.bun.sh" }],
+            destination: dir,
+            recipeRoot,
+            recipeId: "fixture",
+            appName: "fixture",
+            answers: {},
+            spawner,
+            execPath: "/fake/bun",
+            env: { PATH: "/usr/bin" },
+          });
+        } catch (err) {
+          caught = err;
+        }
+
+        expect(caught).toBeInstanceOf(RecipePostInitError);
+        if (caught instanceof RecipePostInitError) {
+          expect(caught.kind).toBe("invalid-argv");
+        }
+        expect(calls.length).toBe(0);
+      });
+    });
+  });
+});
+
 describe("runPostInit — message", () => {
   test("writes text to io.out", async () => {
     await withTempDir(async (dir) => {

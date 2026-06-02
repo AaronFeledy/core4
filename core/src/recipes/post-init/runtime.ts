@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
@@ -49,6 +49,7 @@ export interface RunPostInitOptions {
   readonly execPath?: string;
   readonly runs?: ReadonlyArray<string>;
   readonly commandRunner?: ChoicesCommandRunner;
+  readonly recipeRoot?: string;
 }
 
 const REDACTED = "[REDACTED]";
@@ -71,6 +72,21 @@ const realpathOrUndefined = async (path: string): Promise<string | undefined> =>
   }
 };
 
+// Security: a `bun create` dest leaf does not exist yet, so realpath(target)
+// fails; falling back to the lexical path would skip symlink resolution of the
+// existing parents and let a recipe-shipped symlink ancestor escape the
+// destination. Realpath the nearest EXISTING parent to close that gap.
+const nearestExistingRealpath = async (target: string): Promise<string> => {
+  let current = target;
+  for (;;) {
+    const resolved = await realpathOrUndefined(current);
+    if (resolved !== undefined) return resolved;
+    const parent = dirname(current);
+    if (parent === current) return current;
+    current = parent;
+  }
+};
+
 const isInside = (parent: string, candidate: string): boolean =>
   candidate === parent || candidate.startsWith(`${parent}${sep}`);
 
@@ -79,16 +95,17 @@ const resolveBunCwd = async (
   destination: string,
   recipe: string,
   index: number,
+  verb: string,
 ): Promise<string> => {
   const raw = typeof rawCwd === "string" && rawCwd.length > 0 ? rawCwd : ".";
 
   if (raw.split(/[\\/]/u).some((segment) => segment === "..")) {
     throw new RecipePostInitError({
-      message: `postInit[${index}] (bun install): cwd "${raw}" must not contain ".." segments.`,
+      message: `postInit[${index}] (bun ${verb}): cwd "${raw}" must not contain ".." segments.`,
       recipe,
       actionIndex: index,
       actionType: "bun",
-      actionVerb: "install",
+      actionVerb: verb,
       kind: "outside-destination",
       remediation:
         "Set `cwd:` to the recipe destination or a subdirectory of it. Path traversal via `..` is rejected.",
@@ -102,11 +119,11 @@ const resolveBunCwd = async (
 
   if (!isInside(resolvedDestination, resolvedCwd)) {
     throw new RecipePostInitError({
-      message: `postInit[${index}] (bun install): cwd "${raw}" resolves outside the recipe destination (${resolvedDestination}).`,
+      message: `postInit[${index}] (bun ${verb}): cwd "${raw}" resolves outside the recipe destination (${resolvedDestination}).`,
       recipe,
       actionIndex: index,
       actionType: "bun",
-      actionVerb: "install",
+      actionVerb: verb,
       kind: "outside-destination",
       remediation:
         "Set `cwd:` to the recipe destination or a subdirectory of it. Symlinks that escape the destination are rejected.",
@@ -116,63 +133,244 @@ const resolveBunCwd = async (
   return resolvedCwd;
 };
 
-const ensurePackageJson = async (cwd: string, recipe: string, index: number): Promise<void> => {
+const ensurePackageJson = async (cwd: string, recipe: string, index: number, verb: string): Promise<void> => {
   const pkgPath = `${cwd}${sep}package.json`;
   const exists = await Bun.file(pkgPath).exists();
   if (exists) return;
   throw new RecipePostInitError({
-    message: `postInit[${index}] (bun install): no package.json found at ${pkgPath}.`,
+    message: `postInit[${index}] (bun ${verb}): no package.json found at ${pkgPath}.`,
     recipe,
     actionIndex: index,
     actionType: "bun",
-    actionVerb: "install",
+    actionVerb: verb,
     kind: "missing-package-json",
-    remediation:
-      "Author a recipe that writes package.json before the bun install action runs, or remove the action.",
+    remediation: `Author a recipe that writes package.json before the bun ${verb} action runs, or remove the action.`,
   });
 };
 
-const runBunInstall = async (
+const spawnBun = async (
+  argv: ReadonlyArray<string>,
+  cwd: string,
+  index: number,
+  verb: string,
+  options: RunPostInitOptions,
+): Promise<void> => {
+  const spawner = options.spawner ?? defaultBunSelfSpawner;
+  const execPath = options.execPath ?? process.execPath;
+  const childEnv = buildChildEnv(options.env ?? process.env);
+
+  const result = await spawner.spawn({ cmd: [execPath, ...argv], env: childEnv, cwd });
+
+  if (result.exitCode !== 0) {
+    const detail =
+      verb === "install"
+        ? `Network access is required to fetch packages; lifecycle scripts in dependencies run as the invoking user. Retry with: rm -rf ${cwd}${sep}node_modules && lando bun install (run from ${cwd}). Generated files were NOT removed; inspect the destination and re-run when the cause is resolved.`
+        : "Generated files were NOT removed; inspect the destination and re-run when the cause is resolved.";
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun ${verb}) failed with exit code ${result.exitCode}.`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: verb,
+      kind: "exit",
+      remediation: redactBunOutput(
+        `\`bun ${verb}\` exited with code ${result.exitCode} in ${cwd}. ${detail}`,
+      ),
+      exitCode: result.exitCode,
+    });
+  }
+};
+
+const ANSWER_REFERENCE_PATTERN = /\$\{answers\.([A-Za-z0-9_-]+)\}/gu;
+
+const substituteAnswers = (
+  template: string,
+  index: number,
+  verb: string,
+  options: RunPostInitOptions,
+): string =>
+  template.replace(ANSWER_REFERENCE_PATTERN, (_match, name: string) => {
+    const value = options.answers[name];
+    if (value === undefined || value === null || typeof value === "object") {
+      throw new RecipePostInitError({
+        message: `postInit[${index}] (bun ${verb}): template references unknown answer "${name}".`,
+        recipe: options.recipeId,
+        actionIndex: index,
+        actionType: "bun",
+        actionVerb: verb,
+        kind: "invalid-argv",
+        remediation: `Declare a prompt named "${name}" (or pass --answer ${name}=<value>) before the bun ${verb} action runs.`,
+      });
+    }
+    return String(value);
+  });
+
+const resolveCreateDest = async (
+  rawDest: string,
+  destination: string,
+  cwd: string,
+  index: number,
+  options: RunPostInitOptions,
+): Promise<string> => {
+  if (rawDest.split(/[\\/]/u).some((segment) => segment === "..")) {
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun create): dest "${rawDest}" must not contain ".." segments.`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: "create",
+      kind: "outside-destination",
+      remediation:
+        "Set `dest:` to a path inside the recipe destination. Path traversal via `..` is rejected.",
+    });
+  }
+  // Resolve `dest` against the execution `cwd` (where `bun create` actually
+  // writes it), then verify the realpathed nearest existing parent stays inside
+  // the recipe destination. Returning the absolute resolved path keeps the
+  // validated path and the spawned argv in lockstep.
+  const resolvedDest = isAbsolute(rawDest) ? rawDest : resolve(cwd, rawDest);
+  const resolvedDestination = (await realpathOrUndefined(destination)) ?? destination;
+  const anchor = await nearestExistingRealpath(resolvedDest);
+  if (!isInside(resolvedDestination, anchor)) {
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun create): dest "${rawDest}" resolves outside the recipe destination (${resolvedDestination}).`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: "create",
+      kind: "outside-destination",
+      remediation:
+        "Set `dest:` to a path inside the recipe destination. Absolute paths and symlinks that escape it are rejected.",
+    });
+  }
+  return resolvedDest;
+};
+
+const resolveScriptPath = async (
+  rawScript: string,
+  index: number,
+  options: RunPostInitOptions,
+): Promise<string> => {
+  const recipeRoot = options.recipeRoot;
+  if (recipeRoot === undefined) {
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun script): no recipe source tree is available to resolve "${rawScript}".`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: "script",
+      kind: "invalid-argv",
+      remediation:
+        "The `script` verb requires a recipe with an on-disk source tree (`templates/` or `assets/`); bundled in-binary recipes cannot use it.",
+    });
+  }
+  if (rawScript.split(/[\\/]/u).some((segment) => segment === "..")) {
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun script): script "${rawScript}" must not contain ".." segments.`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: "script",
+      kind: "outside-recipe",
+      remediation: "Set `script:` to a path under the recipe's `templates/` or `assets/` tree.",
+    });
+  }
+  const initial = isAbsolute(rawScript) ? rawScript : resolve(recipeRoot, rawScript);
+  const resolvedRoot = (await realpathOrUndefined(recipeRoot)) ?? recipeRoot;
+  const resolvedScript = await realpathOrUndefined(initial);
+  if (resolvedScript === undefined) {
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun script): script file "${rawScript}" was not found under the recipe source tree.`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: "script",
+      kind: "invalid-argv",
+      remediation:
+        "Ship the script under the recipe's `templates/` or `assets/` tree, or fix the `script:` path.",
+    });
+  }
+  if (!isInside(resolvedRoot, resolvedScript)) {
+    throw new RecipePostInitError({
+      message: `postInit[${index}] (bun script): script "${rawScript}" resolves outside the recipe source tree (${resolvedRoot}).`,
+      recipe: options.recipeId,
+      actionIndex: index,
+      actionType: "bun",
+      actionVerb: "script",
+      kind: "outside-recipe",
+      remediation:
+        "Set `script:` to a path inside the recipe's `templates/` or `assets/` tree. Symlinks that escape it are rejected.",
+    });
+  }
+  return resolvedScript;
+};
+
+const ADD_CATEGORY_FLAGS = [
+  { key: "dependencies", flag: undefined },
+  { key: "devDependencies", flag: "--dev" },
+  { key: "peerDependencies", flag: "--peer" },
+  { key: "optionalDependencies", flag: "--optional" },
+] as const;
+
+const runBun = async (
   action: Extract<RecipePostInitAction, { type: "bun" }>,
   index: number,
   options: RunPostInitOptions,
 ): Promise<void> => {
-  // Production default: re-exec the running Lando binary with BUN_BE_BUN=1
-  // (mirrors the BunSelfRunner pattern). Tests inject a fake spawner.
-  const spawner = options.spawner ?? defaultBunSelfSpawner;
+  const cwd = await resolveBunCwd(action.cwd, options.destination, options.recipeId, index, action.verb);
 
-  const cwd = await resolveBunCwd(action.cwd, options.destination, options.recipeId, index);
-  await ensurePackageJson(cwd, options.recipeId, index);
-
-  const execPath = options.execPath ?? process.execPath;
-  const parentEnv = options.env ?? process.env;
-  const childEnv = buildChildEnv(parentEnv);
-
-  const argv = ["install"];
-
-  const result = await spawner.spawn({
-    cmd: [execPath, ...argv],
-    env: childEnv,
-    cwd,
-  });
-
-  if (result.exitCode !== 0) {
-    const remediation = [
-      `\`bun install\` exited with code ${result.exitCode} in ${cwd}.`,
-      "Network access is required to fetch packages; lifecycle scripts in dependencies run as the invoking user.",
-      `Retry with: rm -rf ${cwd}${sep}node_modules && lando bun install (run from ${cwd}).`,
-      "Generated files were NOT removed; inspect the destination and re-run when the cause is resolved.",
-    ].join(" ");
-    throw new RecipePostInitError({
-      message: `postInit[${index}] (bun install) failed with exit code ${result.exitCode}.`,
-      recipe: options.recipeId,
-      actionIndex: index,
-      actionType: "bun",
-      actionVerb: "install",
-      kind: "exit",
-      remediation: redactBunOutput(remediation),
-      exitCode: result.exitCode,
-    });
+  switch (action.verb) {
+    case "install": {
+      await ensurePackageJson(cwd, options.recipeId, index, action.verb);
+      await spawnBun(["install"], cwd, index, action.verb, options);
+      return;
+    }
+    case "add": {
+      for (const { key, flag } of ADD_CATEGORY_FLAGS) {
+        const packages = action[key] ?? [];
+        if (packages.length === 0) continue;
+        const argv = flag === undefined ? ["add", ...packages] : ["add", flag, ...packages];
+        await spawnBun(argv, cwd, index, action.verb, options);
+      }
+      return;
+    }
+    case "create": {
+      const template = substituteAnswers(action.template, index, action.verb, options);
+      const trimmedTemplate = template.trim();
+      if (trimmedTemplate === "" || trimmedTemplate.startsWith("-")) {
+        throw new RecipePostInitError({
+          message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not be empty or begin with "-".`,
+          recipe: options.recipeId,
+          actionIndex: index,
+          actionType: "bun",
+          actionVerb: "create",
+          kind: "invalid-argv",
+          remediation:
+            "Ensure the `template:` value (after answer substitution) is a package or template name, not empty or a flag.",
+        });
+      }
+      const dest =
+        action.dest === undefined
+          ? undefined
+          : await resolveCreateDest(action.dest, options.destination, cwd, index, options);
+      const argv = dest === undefined ? ["create", template] : ["create", template, dest];
+      await spawnBun(argv, cwd, index, action.verb, options);
+      return;
+    }
+    case "run": {
+      await ensurePackageJson(cwd, options.recipeId, index, action.verb);
+      await spawnBun(["run", action.script, ...(action.args ?? [])], cwd, index, action.verb, options);
+      return;
+    }
+    case "script": {
+      const scriptPath = await resolveScriptPath(action.script, index, options);
+      await spawnBun(["run", scriptPath, ...(action.args ?? [])], cwd, index, action.verb, options);
+      return;
+    }
+    default: {
+      const _exhaustive: never = action;
+      void _exhaustive;
+    }
   }
 };
 
@@ -251,7 +449,7 @@ export const runPostInit = async (options: RunPostInitOptions): Promise<PostInit
         break;
       }
       case "bun": {
-        await runBunInstall(action, index, options);
+        await runBun(action, index, options);
         executed.push({ index, type: "bun", verb: action.verb });
         break;
       }

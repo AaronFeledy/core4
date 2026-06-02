@@ -412,6 +412,7 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
           ? {}
           : { commandRunner: options.postInitCommandRunner }),
         ...(manifest.runs === undefined ? {} : { runs: manifest.runs }),
+        ...(resolved.root === undefined ? {} : { recipeRoot: resolved.root }),
       });
     } catch (cause) {
       await publishTaskFailAsync(events, {

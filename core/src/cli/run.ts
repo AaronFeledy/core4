@@ -150,10 +150,12 @@ const flagNameByToken = (
   return out;
 };
 
-const parseFlagValue = (name: string, value: string | boolean): string | number | boolean => {
+const parseFlagValue = (name: string, value: string | boolean): string | number | boolean | undefined => {
   if (name === "tail" && typeof value === "string") {
     const parsed = Number.parseInt(value, 10);
-    return Number.isNaN(parsed) ? value : parsed;
+    // Drop a non-numeric --tail (undefined) instead of forwarding a string:
+    // matches the OCLIF integer flag and the prior bespoke compiled parser.
+    return Number.isNaN(parsed) ? undefined : parsed;
   }
   return value;
 };
@@ -165,6 +167,8 @@ const setParsedFlag = (
   definition: OclifFlagDefinition,
 ): void => {
   const parsed = parseFlagValue(name, value);
+  // undefined means the value was unparseable (e.g. non-numeric --tail): leave the flag unset.
+  if (parsed === undefined) return;
   if (definition.multiple === true) {
     const existing = flags[name];
     flags[name] = Array.isArray(existing) ? [...existing, parsed] : [parsed];
