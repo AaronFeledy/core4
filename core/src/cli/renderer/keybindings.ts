@@ -80,6 +80,7 @@ export class TaskTreeInputController {
   }
 
   handleKey(token: KeyToken): KeyHandleResult {
+    this.#syncExpandedState();
     switch (this.#keymap[token]) {
       case "focus.up":
         return this.#moveFocus(-1);
@@ -94,6 +95,10 @@ export class TaskTreeInputController {
     }
   }
 
+  #syncExpandedState(): void {
+    if (this.#expanded && this.#painter.expandedTaskId === undefined) this.#expanded = false;
+  }
+
   #moveFocus(delta: number): KeyHandleResult {
     const count = this.#painter.focusableTaskIds().length;
     if (count === 0) return NO_CHANGE;
@@ -106,7 +111,7 @@ export class TaskTreeInputController {
   #expand(): KeyHandleResult {
     if (this.#expanded) return NO_CHANGE;
     const taskId = this.focusedTaskId;
-    if (taskId === undefined) return NO_CHANGE;
+    if (taskId === undefined || !this.#painter.canExpandTask(taskId)) return NO_CHANGE;
     const redraw = this.#painter.expandTask(taskId);
     this.#expanded = true;
     return { events: [expandEvent(taskId, this.#now())], changed: true, redraw };

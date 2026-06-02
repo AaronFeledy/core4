@@ -194,8 +194,12 @@ export class LandoTreePainter {
     return this.#order.filter((id) => this.#tasks.has(id));
   }
 
+  canExpandTask(taskId: string): boolean {
+    return this.#tasks.get(taskId)?.status === "running";
+  }
+
   expandTask(taskId: string): string {
-    if (!this.#tasks.has(taskId)) return "";
+    if (!this.canExpandTask(taskId)) return "";
     this.#expandedTaskId = taskId;
     return this.#repaint();
   }
@@ -277,6 +281,7 @@ export class LandoTreePainter {
         task.status = "done";
         task.summary = asString(record.summary);
         task.durationMs = asNumber(record.durationMs);
+        if (this.#expandedTaskId === id) this.#expandedTaskId = undefined;
         return;
       }
       case "task.fail": {
@@ -289,6 +294,7 @@ export class LandoTreePainter {
         task.durationMs = asNumber(record.durationMs);
         task.exitCode = asNumber(record.exitCode);
         task.remediation = asString(record.remediation);
+        if (this.#expandedTaskId === id) this.#expandedTaskId = undefined;
         return;
       }
       case "task.tree.complete": {

@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
+import {
+  type LandoEvent,
+  TaskCompleteEvent,
+  TaskDetailEvent,
+  TaskStartEvent,
+  TaskTreeStartEvent,
+} from "@lando/sdk/events";
 
 import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "../../src/cli/renderer/keybindings.ts";
 import { LandoTreePainter, TASK_DETAIL_TAIL_CAPACITY } from "../../src/cli/renderer/task-tree-tail.ts";
@@ -32,6 +38,13 @@ const detail = (taskId: string, line: string): LandoEvent =>
     taskId,
     stream: "stdout",
     line,
+    timestamp: ts,
+  });
+
+const taskComplete = (taskId: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskCompleteEvent)({
+    _tag: "task.complete",
+    taskId,
     timestamp: ts,
   });
 
@@ -131,6 +144,24 @@ describe("LandoTreePainter — expand / collapse", () => {
     expect(panelLines.length).toBe(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
   });
+
+  test("finished tasks cannot be expanded", () => {
+    const painter = new LandoTreePainter();
+    seed(painter, "a", 10);
+    painter.consume(taskComplete("a"));
+    expect(painter.canExpandTask("a")).toBe(false);
+    expect(painter.expandTask("a")).toBe("");
+    expect(painter.expandedTaskId).toBeUndefined();
+  });
+
+  test("completion clears the expanded task", () => {
+    const painter = new LandoTreePainter();
+    seed(painter, "a", 10);
+    painter.expandTask("a");
+    expect(painter.expandedTaskId).toBe("a");
+    painter.consume(taskComplete("a"));
+    expect(painter.expandedTaskId).toBeUndefined();
+  });
 });
 
 describe("TaskTreeInputController", () => {
@@ -210,6 +241,28 @@ describe("TaskTreeInputController", () => {
     const second = controller.handleKey("enter");
     expect(second.changed).toBe(false);
     expect(second.events).toHaveLength(0);
+  });
+
+  test("Enter on a finished task is a no-op", () => {
+    const { painter, controller } = make(["a"]);
+    painter.consume(taskComplete("a"));
+    const result = controller.handleKey("enter");
+    expect(result.changed).toBe(false);
+    expect(result.events).toHaveLength(0);
+    expect(painter.expandedTaskId).toBeUndefined();
+  });
+
+  test("completion unlocks the controller for another expansion", () => {
+    const { painter, controller } = make(["a", "b"]);
+    controller.handleKey("enter");
+    expect(painter.expandedTaskId).toBe("a");
+    painter.consume(taskComplete("a"));
+    controller.handleKey("down");
+    const result = controller.handleKey("enter");
+    expect(result.changed).toBe(true);
+    expect(result.events[0]?._tag).toBe("task.detail.expand");
+    expect((result.events[0] as { taskId: string }).taskId).toBe("b");
+    expect(painter.expandedTaskId).toBe("b");
   });
 
   test("unknown keys are a no-op", () => {
