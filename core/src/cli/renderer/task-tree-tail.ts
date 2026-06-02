@@ -30,6 +30,9 @@ import { formatDurationSuffix } from "./format.ts";
 /** Fixed ring-buffer depth for the task-detail tail panel. */
 export const TASK_DETAIL_TAIL_CAPACITY = 4 as const;
 
+/** Retained depth of the expandable full-stream tail (bounded by terminal scroll on render). */
+export const TASK_DETAIL_EXPANDED_CAPACITY = 1000 as const;
+
 const ESC = String.fromCharCode(27);
 
 /**
@@ -90,6 +93,7 @@ interface TaskState {
   exitCode: number | undefined;
   remediation: string | undefined;
   readonly ring: TaskDetailRing;
+  readonly fullStream: TaskDetailRing;
 }
 
 interface TreeState {
@@ -109,10 +113,16 @@ const asNumber = (value: unknown): number | undefined => (typeof value === "numb
 export interface LandoTreePainterOptions {
   /** Ring-buffer depth (defaults to {@link TASK_DETAIL_TAIL_CAPACITY}). */
   readonly detailCapacity?: number;
+  /** Retained full-stream depth for the expanded view (defaults to {@link TASK_DETAIL_EXPANDED_CAPACITY}). */
+  readonly expandedCapacity?: number;
   /** Terminal columns used to count wrapped physical rows for frame clearing. */
   readonly terminalColumns?: number | undefined;
   /** Live terminal columns source, read on every redraw. */
   readonly getTerminalColumns?: (() => number | undefined) | undefined;
+  /** Terminal rows used to bound the expanded full-stream tail. */
+  readonly terminalRows?: number | undefined;
+  /** Live terminal rows source, read on every redraw. */
+  readonly getTerminalRows?: (() => number | undefined) | undefined;
 }
 
 export interface LandoTreePainterSnapshot {
@@ -152,21 +162,47 @@ const physicalRowsForFrame = (frame: ReadonlyArray<string>, terminalColumns: num
  */
 export class LandoTreePainter {
   readonly #detailCapacity: number;
+  readonly #expandedCapacity: number;
   readonly #terminalColumns: number | undefined;
   readonly #getTerminalColumns: (() => number | undefined) | undefined;
+  readonly #terminalRows: number | undefined;
+  readonly #getTerminalRows: (() => number | undefined) | undefined;
   readonly #tasks = new Map<string, TaskState>();
   readonly #order: string[] = [];
   #tree: TreeState | undefined;
+  #expandedTaskId: string | undefined;
   #lastFrame: ReadonlyArray<string> = [];
 
   constructor(options: LandoTreePainterOptions = {}) {
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
+    this.#expandedCapacity = options.expandedCapacity ?? TASK_DETAIL_EXPANDED_CAPACITY;
     this.#terminalColumns = options.terminalColumns;
     this.#getTerminalColumns = options.getTerminalColumns;
+    this.#terminalRows = options.terminalRows;
+    this.#getTerminalRows = options.getTerminalRows;
   }
 
   consume(event: LandoEvent): string {
     this.#apply(event);
+    return this.#repaint();
+  }
+
+  get expandedTaskId(): string | undefined {
+    return this.#expandedTaskId;
+  }
+
+  focusableTaskIds(): ReadonlyArray<string> {
+    return this.#order.filter((id) => this.#tasks.has(id));
+  }
+
+  expandTask(taskId: string): string {
+    if (!this.#tasks.has(taskId)) return "";
+    this.#expandedTaskId = taskId;
+    return this.#repaint();
+  }
+
+  collapse(): string {
+    this.#expandedTaskId = undefined;
     return this.#repaint();
   }
 
@@ -218,6 +254,7 @@ export class LandoTreePainter {
           exitCode: undefined,
           remediation: undefined,
           ring: new TaskDetailRing(this.#detailCapacity),
+          fullStream: new TaskDetailRing(this.#expandedCapacity),
         });
         return;
       }
@@ -228,7 +265,9 @@ export class LandoTreePainter {
         if (task === undefined || task.status !== "running") return;
         const stream = asString(record.stream);
         const line = asString(record.line) ?? "";
-        task.ring.push(stream === "stderr" ? `! ${line}` : line);
+        const rendered = stream === "stderr" ? `! ${line}` : line;
+        task.ring.push(rendered);
+        task.fullStream.push(rendered);
         return;
       }
       case "task.complete": {
@@ -307,8 +346,36 @@ export class LandoTreePainter {
     return `${CHILD_INDENT}✗ ${label}${exitSuffix}${formatDurationSuffix(task.durationMs)}`;
   }
 
+  #expandedRunningTask(): TaskState | undefined {
+    if (this.#expandedTaskId === undefined) return undefined;
+    const task = this.#tasks.get(this.#expandedTaskId);
+    return task !== undefined && task.status === "running" ? task : undefined;
+  }
+
+  #currentTerminalRows(): number | undefined {
+    return this.#getTerminalRows?.() ?? this.#terminalRows;
+  }
+
+  #expandedPanelLines(task: TaskState): ReadonlyArray<string> {
+    const all = task.fullStream.lines();
+    const rows = this.#currentTerminalRows();
+    if (rows === undefined) return all;
+    const budget = Math.max(1, rows - 1);
+    return all.length <= budget ? all : all.slice(all.length - budget);
+  }
+
+  #renderExpandedFrame(task: TaskState): ReadonlyArray<string> {
+    const lines: string[] = [`${CHILD_INDENT}· ${task.label}`];
+    for (const detail of this.#expandedPanelLines(task)) {
+      lines.push(`${PANEL_INDENT}${detail}`);
+    }
+    return lines;
+  }
+
   // Logical frame: human content, no control bytes.
   #renderLogicalFrame(): ReadonlyArray<string> {
+    const expanded = this.#expandedRunningTask();
+    if (expanded !== undefined) return this.#renderExpandedFrame(expanded);
     const lines: string[] = [];
     const parent = this.#parentLine();
     if (parent !== undefined) lines.push(parent);
