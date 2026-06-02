@@ -246,6 +246,33 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
     });
   });
 
+  test('recipe.ts require("parse") is reported as disallowed require(), not a TS parse failure', async () => {
+    await withTempCwd(async (dir) => {
+      const recipeDir = join(dir, "require-parse");
+      await Bun.write(
+        join(recipeDir, "recipe.ts"),
+        [
+          'const parser = require("parse");',
+          "export default {",
+          '  id: "require-parse",',
+          '  title: "Require Parse",',
+          '  description: "Uses require with a sentinel-like package name.",',
+          '  version: "0.0.1",',
+          "};",
+          "",
+        ].join("\n"),
+      );
+      const exit = await runResolve("./require-parse", dir);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(RecipeManifestParseError);
+      if (failure instanceof RecipeManifestParseError) {
+        expect(failure.message).toContain("disallowed import");
+        expect(failure.message).toContain("parse");
+        expect(failure.message).not.toContain("could not be parsed");
+      }
+    });
+  });
+
   test("recipe.ts importing a forbidden node built-in is rejected", async () => {
     await withTempCwd(async (dir) => {
       const recipeDir = join(dir, "shell-recipe");

@@ -16,7 +16,7 @@ import { Duration, Effect } from "effect";
 import { RecipeManifestParseError } from "@lando/sdk/errors";
 import type { RecipeContext } from "@lando/sdk/schema";
 
-import { resolveTsModuleResult, sandboxScan } from "../landofile/ts-loader.ts";
+import { isSandboxParseFailure, resolveTsModuleResult, sandboxScan } from "../landofile/ts-loader.ts";
 
 export const DEFAULT_RECIPE_TS_TIMEOUT_MS = 30_000;
 export const RECIPE_TS_TIMEOUT_ENV = "LANDO_RECIPE_TS_TIMEOUT_MS";
@@ -87,7 +87,7 @@ export const loadRecipeTs = (
   Effect.gen(function* () {
     yield* sandboxScan(options.filePath, options.recipeRoot, options.content).pipe(
       Effect.mapError((cause) =>
-        cause.violation === "parse"
+        isSandboxParseFailure(cause)
           ? parseError(
               options.filePath,
               `recipe.ts at ${options.filePath} could not be parsed as TypeScript: ${
