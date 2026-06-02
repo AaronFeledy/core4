@@ -1,5 +1,5 @@
 import { realpath } from "node:fs/promises";
-import { isAbsolute, resolve, sep } from "node:path";
+import { dirname, isAbsolute, resolve, sep } from "node:path";
 
 import { NotImplementedError, RecipePostInitError } from "@lando/sdk/errors";
 import type { RecipePostInitAction } from "@lando/sdk/schema";
@@ -69,6 +69,21 @@ const realpathOrUndefined = async (path: string): Promise<string | undefined> =>
     return await realpath(path);
   } catch {
     return undefined;
+  }
+};
+
+// Security: a `bun create` dest leaf does not exist yet, so realpath(target)
+// fails; falling back to the lexical path would skip symlink resolution of the
+// existing parents and let a recipe-shipped symlink ancestor escape the
+// destination. Realpath the nearest EXISTING parent to close that gap.
+const nearestExistingRealpath = async (target: string): Promise<string> => {
+  let current = target;
+  for (;;) {
+    const resolved = await realpathOrUndefined(current);
+    if (resolved !== undefined) return resolved;
+    const parent = dirname(current);
+    if (parent === current) return current;
+    current = parent;
   }
 };
 
@@ -193,6 +208,7 @@ const substituteAnswers = (
 const resolveCreateDest = async (
   rawDest: string,
   destination: string,
+  cwd: string,
   index: number,
   options: RunPostInitOptions,
 ): Promise<string> => {
@@ -208,10 +224,14 @@ const resolveCreateDest = async (
         "Set `dest:` to a path inside the recipe destination. Path traversal via `..` is rejected.",
     });
   }
-  const initial = isAbsolute(rawDest) ? rawDest : resolve(destination, rawDest);
+  // Resolve `dest` against the execution `cwd` (where `bun create` actually
+  // writes it), then verify the realpathed nearest existing parent stays inside
+  // the recipe destination. Returning the absolute resolved path keeps the
+  // validated path and the spawned argv in lockstep.
+  const resolvedDest = isAbsolute(rawDest) ? rawDest : resolve(cwd, rawDest);
   const resolvedDestination = (await realpathOrUndefined(destination)) ?? destination;
-  const resolvedDest = (await realpathOrUndefined(initial)) ?? initial;
-  if (!isInside(resolvedDestination, resolvedDest)) {
+  const anchor = await nearestExistingRealpath(resolvedDest);
+  if (!isInside(resolvedDestination, anchor)) {
     throw new RecipePostInitError({
       message: `postInit[${index}] (bun create): dest "${rawDest}" resolves outside the recipe destination (${resolvedDestination}).`,
       recipe: options.recipeId,
@@ -220,10 +240,10 @@ const resolveCreateDest = async (
       actionVerb: "create",
       kind: "outside-destination",
       remediation:
-        "Set `dest:` to a path inside the recipe destination. Absolute paths outside it are rejected.",
+        "Set `dest:` to a path inside the recipe destination. Absolute paths and symlinks that escape it are rejected.",
     });
   }
-  return rawDest;
+  return resolvedDest;
 };
 
 const resolveScriptPath = async (
@@ -316,10 +336,22 @@ const runBun = async (
     }
     case "create": {
       const template = substituteAnswers(action.template, index, action.verb, options);
+      if (template.startsWith("-")) {
+        throw new RecipePostInitError({
+          message: `postInit[${index}] (bun create): template "${template}" is invalid; it must not begin with "-".`,
+          recipe: options.recipeId,
+          actionIndex: index,
+          actionType: "bun",
+          actionVerb: "create",
+          kind: "invalid-argv",
+          remediation:
+            "Ensure the `template:` value (after answer substitution) is a package or template name, not a flag.",
+        });
+      }
       const dest =
         action.dest === undefined
           ? undefined
-          : await resolveCreateDest(action.dest, options.destination, index, options);
+          : await resolveCreateDest(action.dest, options.destination, cwd, index, options);
       const argv = dest === undefined ? ["create", template] : ["create", template, dest];
       await spawnBun(argv, cwd, index, action.verb, options);
       return;

@@ -188,11 +188,22 @@ const validateSemantics = (
           }
         }
       }
-      if (action.verb === "create" && action.template.trim() === "") {
-        issues.push(`postInit[${index}] (bun create): template must not be empty.`);
+      if (action.verb === "create") {
+        if (action.template.trim() === "") {
+          issues.push(`postInit[${index}] (bun create): template must not be empty.`);
+        } else if (action.template.trim().startsWith("-")) {
+          issues.push(
+            `postInit[${index}] (bun create): template "${action.template}" is invalid; it must not begin with "-".`,
+          );
+        }
       }
       if ((action.verb === "run" || action.verb === "script") && action.script.trim() === "") {
         issues.push(`postInit[${index}] (bun ${action.verb}): script must not be empty.`);
+      }
+      if (action.verb === "run" && action.script.trim().startsWith("-")) {
+        issues.push(
+          `postInit[${index}] (bun run): script "${action.script}" is invalid; it must not begin with "-".`,
+        );
       }
     }
   }

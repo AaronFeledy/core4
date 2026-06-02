@@ -448,6 +448,77 @@ version: 0.0.1
     }
   });
 
+  test("bun `add` with present-but-empty dependency categories is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: add
+    dependencies: []
+    devDependencies: []
+`;
+    const exit = await runParse("test://bun-add-empty-arrays", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("at least one dependency category"))).toBe(true);
+    }
+  });
+
+  test("bun `create` with an empty template is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: create
+    template: "   "
+`;
+    const exit = await runParse("test://bun-create-empty", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("template must not be empty"))).toBe(true);
+    }
+  });
+
+  test("bun `create` with a flag-like template is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: create
+    template: --help
+`;
+    const exit = await runParse("test://bun-create-flag", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("must not begin"))).toBe(true);
+    }
+  });
+
+  test("bun `run` with an empty script is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: run
+    script: ""
+`;
+    const exit = await runParse("test://bun-run-empty", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("script must not be empty"))).toBe(true);
+    }
+  });
+
+  test("bun `run` with a flag-like script is rejected at validate time", async () => {
+    const yaml = `${baseHeader}postInit:
+  - type: bun
+    verb: run
+    script: --watch
+`;
+    const exit = await runParse("test://bun-run-flag", yaml);
+    const error = expectFailure(exit);
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("must not begin"))).toBe(true);
+    }
+  });
+
   test("bun `install` with a stray verb-specific field is rejected by strict decode", async () => {
     const yaml = `${baseHeader}postInit:
   - type: bun
