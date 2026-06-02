@@ -571,3 +571,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Remote include identity must encode (source + subpath); keying a lock entry on the repo/package alone collides whenever one source contributes multiple fragments. npm already does this implicitly because its sourceId string carries the subpath — git did not.
   - Honoring a pinned git ref for `includes:` (and recipes) needs the PRD-07 `GitRecipeCloner` interface widened with an optional ref + a checkout step; until then `version:`/`@ref` on a git include is recorded in the lock's `resolved` SHA but does not control which commit is fetched (default HEAD).
 ---
+
+## 2026-06-02 08:30 - Babysit
+- PR: #263 https://github.com/AaronFeledy/core4/pull/263
+- CI outcome: pass (guide-drift gate initially failed on incidental shell.ts/tarball-source.ts surface changes)
+- Review feedback: fixed (added Guide-Coverage-Skip PR body line — changes are type-only error-union widening + an export reuse; includes feature ships its own guide)
+- Merge: merged (squash)
+---
