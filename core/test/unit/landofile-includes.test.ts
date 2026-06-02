@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,7 +103,7 @@ describe("resolveLandofileIncludes", () => {
     const fragment = "services:\n  database:\n    type: postgres\n";
     const checksum = new Bun.CryptoHasher("sha256").update(fragment).digest("hex");
     const path = join(appRoot, ".lando.lock.yml");
-    const locked = lockfile("github:acme/fragments", "abc123", checksum);
+    const locked = lockfile("github:acme/fragments/postgres.yml", "abc123", checksum);
     await writeFile(path, locked, "utf8");
     const cloner: GitIncludeCloner = {
       clone: async ({ stagingDir }) => {
@@ -129,7 +129,7 @@ describe("resolveLandofileIncludes", () => {
   test("fails closed with LandofileLockMismatchError when a git lock checksum drifts", async () => {
     await writeFile(
       join(appRoot, ".lando.lock.yml"),
-      lockfile("github:acme/fragments", "abc123", "0".repeat(64)),
+      lockfile("github:acme/fragments/postgres.yml", "abc123", "0".repeat(64)),
       "utf8",
     );
     const cloner: GitIncludeCloner = {
@@ -157,6 +157,39 @@ describe("resolveLandofileIncludes", () => {
 
     expect(error._tag).toBe("LandofileLockMismatchError");
     expect(error.remediation).toContain("app:includes:update");
+  });
+
+  test("records distinct lock entries for two fragments from one git repo", async () => {
+    const cloner: GitIncludeCloner = {
+      clone: async ({ stagingDir }) => {
+        await mkdir(stagingDir, { recursive: true });
+        await writeFile(join(stagingDir, "db.yml"), "services:\n  db:\n    type: postgres\n", "utf8");
+        await writeFile(join(stagingDir, "cache.yml"), "services:\n  cache:\n    type: redis\n", "utf8");
+        return { commitSha: "abc123" };
+      },
+    };
+    const landofile: LandofileShape = {
+      includes: [
+        { source: "github:acme/fragments", path: "db.yml" },
+        { source: "github:acme/fragments", path: "cache.yml" },
+      ],
+    };
+
+    const result = await Effect.runPromise(
+      resolveLandofileIncludes({ landofile, appRoot, cacheRoot, deps: { gitCloner: cloner } }),
+    );
+    expect(result.services?.db?.type).toBe("postgres");
+    expect(result.services?.cache?.type).toBe("redis");
+
+    const written = await readFile(join(appRoot, ".lando.lock.yml"), "utf8");
+    expect(written).toContain("source: github:acme/fragments/db.yml");
+    expect(written).toContain("source: github:acme/fragments/cache.yml");
+
+    const second = await Effect.runPromise(
+      resolveLandofileIncludes({ landofile, appRoot, cacheRoot, deps: { gitCloner: cloner } }),
+    );
+    expect(second.services?.db?.type).toBe("postgres");
+    expect(await readFile(join(appRoot, ".lando.lock.yml"), "utf8")).toBe(written);
   });
 
   test("creates an npm include lock entry with resolved version and checksum", async () => {
@@ -247,6 +280,37 @@ describe("resolveLandofileIncludes", () => {
 
     expect(error._tag).toBe("LandofileIncludeError");
     expect(error.kind).toBe("outside-root");
+  });
+
+  test("rejects a git fragment path that escapes the cloned repo via a symlink", async () => {
+    const secretDir = await mkdtemp(join(tmpdir(), "lando-includes-secret-"));
+    await writeFile(join(secretDir, "secret.yml"), "services:\n  leak:\n    type: node\n", "utf8");
+    const cloner: GitIncludeCloner = {
+      clone: async ({ stagingDir }) => {
+        await mkdir(stagingDir, { recursive: true });
+        await symlink(join(secretDir, "secret.yml"), join(stagingDir, "postgres.yml"));
+        return { commitSha: "abc123" };
+      },
+    };
+
+    try {
+      const error = await Effect.runPromise(
+        Effect.flip(
+          resolveLandofileIncludes({
+            landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
+            appRoot,
+            cacheRoot,
+            deps: { gitCloner: cloner },
+          }),
+        ),
+      );
+
+      expect(error._tag).toBe("LandofileIncludeError");
+      expect(error.kind).toBe("outside-root");
+      expect(await exists(join(appRoot, ".lando.lock.yml"))).toBe(false);
+    } finally {
+      await rm(secretDir, { recursive: true, force: true });
+    }
   });
 
   test("rejects fragments that declare a forbidden top-level name", async () => {
