@@ -13,7 +13,7 @@ import { parseAnswerFlags } from "../../../../recipes/prompts/index.ts";
 import { formatBugReport } from "../../../bug-report.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
-import { resolveRendererMode } from "../../../renderer-selection.ts";
+import { type RendererMode, resolveRendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export interface InitFlags {
@@ -111,7 +111,7 @@ export default class InitCommand extends LandoCommandBase {
   override async run(): Promise<void> {
     // Remove --renderer before parsing because this command overrides run() and
     // never passes through runEffect, so the flag would be rejected.
-    let rendererMode: "lando" | "json" | "plain";
+    let rendererMode: RendererMode;
     try {
       const resolution = resolveRendererMode({ argv: this.argv, env: process.env });
       rendererMode = resolution.mode;

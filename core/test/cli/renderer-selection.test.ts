@@ -12,8 +12,8 @@ import {
 } from "../../src/cli/renderer-selection.ts";
 
 describe("renderer-selection constants", () => {
-  test("RENDERER_MODES is lando, json, plain", () => {
-    expect(RENDERER_MODES).toEqual(["lando", "json", "plain"]);
+  test("RENDERER_MODES is lando, json, plain, verbose", () => {
+    expect(RENDERER_MODES).toEqual(["lando", "json", "plain", "verbose"]);
   });
 
   test("DEFAULT_RENDERER_MODE is lando", () => {
@@ -28,9 +28,10 @@ describe("renderer-selection constants", () => {
     expect(isRendererMode("lando")).toBe(true);
     expect(isRendererMode("json")).toBe(true);
     expect(isRendererMode("plain")).toBe(true);
-    expect(isRendererMode("verbose")).toBe(false);
+    expect(isRendererMode("verbose")).toBe(true);
     expect(isRendererMode("")).toBe(false);
     expect(isRendererMode("LANDO")).toBe(false);
+    expect(isRendererMode("tui")).toBe(false);
   });
 });
 

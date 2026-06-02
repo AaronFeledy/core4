@@ -22,7 +22,7 @@
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import { redactDetails, redactString } from "./redact.ts";
 
-export type RendererMode = "lando" | "plain" | "json";
+export type RendererMode = "lando" | "plain" | "json" | "verbose";
 
 export interface BugReportContext {
   readonly commandId: string;

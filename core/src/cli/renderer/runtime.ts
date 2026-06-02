@@ -2,7 +2,7 @@ import { Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
 
 import { EventService, type LandoEvent } from "@lando/sdk/services";
 
-import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine } from "./format.ts";
+import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
 import type { RendererIO } from "./io.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
 import { LandoTreePainter } from "./task-tree-tail.ts";
@@ -51,6 +51,9 @@ export const makePlainRendererLive = (io: RendererIO): Layer.Layer<never, never,
 
 export const makeJsonRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderJsonLine, io, "stderr");
+
+export const makeVerboseRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+  makeRendererLive(renderVerboseLine, io, "stdout");
 
 const makeTaskTreeInputLive = (
   io: RendererIO,
@@ -111,3 +114,6 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, io, "stderr", events);
+
+export const renderVerbose = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
+  drainRendererSync(renderVerboseLine, io, "stdout", events);
