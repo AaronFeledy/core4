@@ -6,8 +6,8 @@
  * `NotImplementedError` objects so callers see the deferred remediation
  * instead of a silent no-op or a generic `RendererSelectionError`.
  *
- * Deferred surfaces include the `task.detail` tail control flag, expand and
- * collapse controls for the task tree, and the `verbose` renderer mode.
+ * Deferred surfaces include the `task.detail` tail control flag, user-configurable
+ * expand/collapse control flags for the task tree, and the `verbose` renderer mode.
  *
  * Wiring:
  *   - `core/src/cli/renderer-selection.ts` consults this module from
@@ -51,7 +51,7 @@ export const DEFERRED_RENDERER_MODES: ReadonlyMap<string, DeferredRendererSurfac
 
 /**
  * Deferred renderer-related top-level flags. These are surfaces a user
- * might reach for to control task-tree expand/collapse behavior or the
+ * might reach for to configure task-tree expand/collapse behavior or the
  * bare `task.detail` streaming-tail toggle. Each is intercepted at the
  * top level so the user sees the deferred remediation instead of OCLIF's
  * generic "unknown flag" message or a silent pass-through.
@@ -82,11 +82,11 @@ export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurfac
     return [
       flag,
       {
-        feature: `renderer task tree ${kind} control flag`,
+        feature: `renderer task tree ${kind} configuration flag`,
         phase: "Phase 4 RC",
         roadmapDescriptor: PHASE_4_RC_DESCRIPTOR,
         remediation:
-          'Renderer task-tree expand/collapse (interactive TTY input with the alt-screen full-tail view and `task.detail.expand` / `task.detail.collapse` events) is deferred to Phase 4 RC (spec/ROADMAP.md Phase 4 "hardening + governance" and spec/08-cli-and-tooling.md §8.9.2). Alpha does not provide TTY input handling for the task tree; use `--renderer=json` for structured NDJSON or `--renderer=plain` for non-interactive output.',
+          'The TTY `lando` renderer now supports default Enter/Esc task-detail expand/collapse keybindings and publishes `task.detail.expand` / `task.detail.collapse` events. User-configurable expand/collapse control flags are deferred to Phase 4 RC (spec/ROADMAP.md Phase 4 "hardening + governance" and spec/08-cli-and-tooling.md §8.9.2); use the default keybindings in TTY mode, or `--renderer=json` for structured NDJSON and `--renderer=plain` for non-interactive output.',
       },
     ];
   }) as ReadonlyArray<readonly [string, DeferredRendererSurface]>,

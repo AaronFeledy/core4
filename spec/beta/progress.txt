@@ -506,3 +506,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - A union-typed schema parameter (`typeof A | typeof B`) breaks `Schema.decodeUnknownSync(schema)(...)` typing; decode each event with its own concrete schema instead of sharing a generic helper.
   - To publish from a renderer's stdin callback, capture `EventService` + `Effect.runtime()` in the scoped Live Layer and `Runtime.runFork(runtime)(events.publish(ev))`; the service method's `R` is `never`, so a `never`-context runtime suffices.
 ---
+
+## [2026-06-02 06:04 CDT] - US-151 Review
+- Reviewed task detail expand/collapse against PRD-B-09 and review-work probes. Fixed a confirmed telemetry bug: after expanding one task and moving focus, `Esc` now emits `task.detail.collapse` for the expanded task instead of the newly focused task. Also corrected stale deferred-renderer remediation so user-facing `--expand`/`--collapse` errors distinguish the shipped default Enter/Esc keybindings from still-deferred user-configurable flags.
+- Review notes (deferred/rejected): alt-screen/transcript-backed scrollback, Tab tree cycling, and post-completion expansion are broader §8.9 follow-up work beyond the narrow US-151 review fix; the PRD story only required expand/collapse keybindings, bounded expanded tail, fake-TTY state-machine tests, and green host-safe checks. The 1000-line expanded retention cap was left as the current bounded-memory Beta tradeoff because terminal-row rendering still bounds the visible expanded tail.
+- Verification: typecheck and lint passed; focused renderer/SDK tests passed. Full `bun test` failed only in unrelated package-export tests (`cli-operations`/`core-testing` workspace resolution and packed `fast-check` dependency), not in US-151 coverage.
+---
