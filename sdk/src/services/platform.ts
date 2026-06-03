@@ -8,6 +8,7 @@ import type {
   PortCollisionError,
   ProxyError,
   ScannerError,
+  SecretNotFoundError,
   SshError,
 } from "../errors/index.ts";
 import type { AppId, HealthcheckPlan, RoutePlan, ServiceName } from "../schema/index.ts";
@@ -188,11 +189,17 @@ export class UpdateService extends Context.Tag("@lando/core/UpdateService")<
 /**
  * SecretStore — resolve `${secret:...}` references in Landofiles.
  *
- * Default: env-var store.
+ * Default: env-var store. Pluggable via the `secretStores:` contribution
+ * surface (Vault, 1Password CLI, AWS SM, …). `get` fails with
+ * `SecretNotFoundError` (carrying the secret id) when a secret is absent; `has`
+ * and `list` are total. Resolved values MUST be redacted from log/event output
+ * (see `@lando/sdk/secrets`).
  */
-export class SecretStore extends Context.Tag("@lando/core/SecretStore")<
-  SecretStore,
-  {
-    readonly id: string;
-  }
->() {}
+export interface SecretStoreShape {
+  readonly id: string;
+  readonly get: (secret: string) => Effect.Effect<string, SecretNotFoundError>;
+  readonly has: (secret: string) => Effect.Effect<boolean>;
+  readonly list: Effect.Effect<ReadonlyArray<string>>;
+}
+
+export class SecretStore extends Context.Tag("@lando/core/SecretStore")<SecretStore, SecretStoreShape>() {}

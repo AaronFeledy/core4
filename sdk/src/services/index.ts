@@ -44,6 +44,7 @@ import type {
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
   ScratchSourceUnresolvedError,
+  SecretNotFoundError,
   ShellExecError,
   ToolingExecError,
 } from "../errors/index.ts";
@@ -511,6 +512,9 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
   SecretStore,
   {
     readonly id: string;
+    readonly get: (secret: string) => Effect.Effect<string, SecretNotFoundError>;
+    readonly has: (secret: string) => Effect.Effect<boolean>;
+    readonly list: Effect.Effect<ReadonlyArray<string>>;
   }
 >() {}
 

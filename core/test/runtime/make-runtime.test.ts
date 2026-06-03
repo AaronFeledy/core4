@@ -11,6 +11,7 @@ import {
   Logger,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  SecretStore,
 } from "@lando/sdk/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
@@ -23,6 +24,7 @@ describe("makeLandoRuntime", () => {
     expect(Option.isSome(Context.getOption(context, Logger))).toBe(true);
     expect(Option.isSome(Context.getOption(context, ConfigService))).toBe(true);
     expect(Option.isSome(Context.getOption(context, FileSystem))).toBe(true);
+    expect(Option.isSome(Context.getOption(context, SecretStore))).toBe(true);
     expect(Option.isNone(Context.getOption(context, RuntimeProvider))).toBe(true);
   });
 

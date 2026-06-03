@@ -145,6 +145,7 @@
 - `LandofileLockMismatchError`
 - `RecipeRunNotAllowedError`
 - `RecipeFetchNotAllowedError`
+- `SecretNotFoundError`
 
 ## Additive Alpha service tags
 
