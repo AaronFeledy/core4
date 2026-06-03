@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import corePackage from "../../package.json";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const cliEntry = resolve(repoRoot, "core/src/cli/index.ts");
 const binaryEntry = resolve(repoRoot, "core/bin/lando.ts");
 const canaryPreload = resolve(dirname(fileURLToPath(import.meta.url)), "fast-path-canary-preload.ts");
 
@@ -39,7 +38,7 @@ const runCommand = async (cmd: ReadonlyArray<string>, env: NodeJS.ProcessEnv = {
 };
 
 const runCli = async (arg: string, extraArgs: ReadonlyArray<string> = []): Promise<RunResult> =>
-  runCommand([process.execPath, ...extraArgs, cliEntry, arg]);
+  runCommand([process.execPath, ...extraArgs, binaryEntry, arg]);
 
 const buildBundledCli = async (): Promise<{
   readonly path: string;

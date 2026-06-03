@@ -19,6 +19,8 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 
 const providerId = ProviderId.make("lando");
 
@@ -265,30 +267,36 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     expect(calls[0]?.user).toBe("www-data");
   });
 
-  test("writes captured stderr to process.stderr so the CLI user sees it verbatim", async () => {
+  test("writes captured stderr to the renderer stderr so the CLI user sees it verbatim", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider } = makeProvider([{ exitCode: 1, stdout: "", stderr: "boom\n" }]);
 
-    const writes: string[] = [];
-    const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
-    (process.stderr as unknown as { write: typeof process.stderr.write }).write = ((
-      chunk: string | Uint8Array,
-    ) => {
-      writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
-      return true;
-    }) as typeof process.stderr.write;
-
-    try {
-      const result = await Effect.runPromise(
-        execApp({ service: "appserver", command: ["sh", "-c", "exit 1"] }).pipe(
-          Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+    const io = createBufferedRendererIO();
+    const result = await Effect.runPromise(
+      execApp({ service: "appserver", command: ["sh", "-c", "exit 1"] }).pipe(
+        Effect.provide(
+          Layer.merge(
+            makeLayer({ landofile: { name: "scenario" }, plan, provider }),
+            makePlainRendererServiceLive(io),
+          ),
         ),
-      );
-      expect(result.exitCode).toBe(1);
-      expect(writes.join("")).toContain("boom\n");
-    } finally {
-      (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
-    }
+      ),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(io.stderr()).toContain("boom\n");
+  });
+
+  test("provider stderr is returned in the typed result for library callers without a renderer", async () => {
+    const plan = makePlan([makeService("appserver", true)]);
+    const { provider } = makeProvider([{ exitCode: 1, stdout: "", stderr: "boom\n" }]);
+
+    const result = await Effect.runPromise(
+      execApp({ service: "appserver", command: ["sh", "-c", "exit 1"] }).pipe(
+        Effect.provide(makeLayer({ landofile: { name: "scenario" }, plan, provider })),
+      ),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("boom\n");
   });
 
   test("threads --cwd through to provider.exec spec", async () => {

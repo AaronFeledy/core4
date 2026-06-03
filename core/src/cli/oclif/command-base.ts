@@ -3,12 +3,17 @@ import { Command } from "@oclif/core";
 import { Effect, type Layer } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import type { Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
-import { resolveRendererMode } from "../renderer-selection.ts";
-import { runWithErrorHandling } from "../run-with-error-handling.ts";
+import {
+  makeRendererServiceLiveForMode,
+  resolveCliRendererMode,
+  runWithRendererHandling,
+  writeDiagnosticLine,
+} from "../renderer-boundary.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
@@ -185,7 +190,7 @@ export abstract class LandoCommandBase extends Command {
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     let rendererMode: RendererMode;
     try {
-      const resolution = resolveRendererMode({
+      const resolution = await resolveCliRendererMode({
         argv: this.argv,
         env: process.env,
       });
@@ -206,7 +211,9 @@ export abstract class LandoCommandBase extends Command {
         rendererMode,
       });
       if (rendererMode === "json") {
-        process.stderr.write(`${text}\n`);
+        await Effect.runPromise(
+          writeDiagnosticLine(text).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
+        );
         process.exitCode = 1;
         return;
       }
@@ -234,21 +241,17 @@ export abstract class LandoCommandBase extends Command {
       args: (parsed as { args?: Record<string, unknown> }).args ?? {},
       rendererMode,
     };
-    await runWithErrorHandling(
-      Effect.provide(spec.run(input), runtime as Layer.Layer<R, LandoRuntimeBootstrapError>),
-      {
-        render: (value) => spec.render?.(value, input),
-        formatError: (error) =>
-          formatCommandError({
-            error,
-            commandId: spec.id,
-            rendererMode,
-          }),
-        failureMode: rendererMode === "json" ? "stderr" : "throw",
-        stdout: (text) => this.log(text),
-        stderr: (text) => process.stderr.write(`${text}\n`),
-      },
-    ).finally(() => {
+    await runWithRendererHandling(spec.run(input), {
+      runtime: runtime as Layer.Layer<Exclude<R, Renderer>, LandoRuntimeBootstrapError>,
+      rendererMode,
+      render: (value) => spec.render?.(value, input),
+      formatError: (error) =>
+        formatCommandError({
+          error,
+          commandId: spec.id,
+          rendererMode,
+        }),
+    }).finally(() => {
       process.off("SIGINT", abort);
       process.off("SIGTERM", abort);
     });

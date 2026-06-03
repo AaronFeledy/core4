@@ -2,6 +2,7 @@ import { Effect } from "effect";
 
 import type { NotImplementedError } from "@lando/sdk/errors";
 
+import { emitOptionalStdout } from "../renderer-boundary.ts";
 import { type BunSelfSpawner, bunSelfRun, bunSelfX } from "./bun-self-runner.ts";
 
 export interface MetaBunOptions {
@@ -47,7 +48,7 @@ export const metaX = (options: MetaXOptions): Effect.Effect<MetaXResult, NotImpl
   Effect.gen(function* () {
     const banner = `Running ${options.spec}`;
     if (options.onBanner !== undefined) options.onBanner(banner);
-    else process.stdout.write(`${banner}\n`);
+    else yield* emitOptionalStdout(`${banner}\n`);
     const result = yield* bunSelfX({
       spec: options.spec,
       argv: options.argv,

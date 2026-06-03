@@ -43,7 +43,7 @@ export interface PromptIO {
 const createLineReader = (stream: NodeJS.ReadableStream) => {
   let buffer = "";
   let done = false;
-  const iterator = stream[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
+  let iterator: AsyncIterator<Buffer | string> | undefined;
 
   const readLine = async (): Promise<string> => {
     while (true) {
@@ -59,6 +59,7 @@ const createLineReader = (stream: NodeJS.ReadableStream) => {
         buffer = "";
         return tail;
       }
+      iterator ??= stream[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
       const { value, done: streamDone } = await iterator.next();
       if (streamDone) {
         done = true;
