@@ -54,6 +54,27 @@ describe("detectTemplateDirective", () => {
   test("the plural `templates:` key is not matched", () => {
     expect(detectTemplateDirective("templates: foo\nname: x")).toBeUndefined();
   });
+
+  test("detects a directive on a CRLF (Windows) Landofile", () => {
+    expect(detectTemplateDirective("template: handlebars\r\nname: x\r\n")).toEqual({
+      engineId: "handlebars",
+      lineIndex: 0,
+    });
+  });
+
+  test("detects a directive after a CRLF comment + blank lines", () => {
+    expect(detectTemplateDirective("# c\r\n\r\ntemplate: mustache\r\nname: x")).toEqual({
+      engineId: "mustache",
+      lineIndex: 2,
+    });
+  });
+
+  test("detects a directive on a BOM-prefixed first line", () => {
+    expect(detectTemplateDirective("\uFEFFtemplate: handlebars\nname: x")).toEqual({
+      engineId: "handlebars",
+      lineIndex: 0,
+    });
+  });
 });
 
 describe("renderLandofileTemplate (bundled engines)", () => {
@@ -79,6 +100,16 @@ describe("renderLandofileTemplate (bundled engines)", () => {
     );
     expect(Either.isRight(result)).toBe(true);
     if (Either.isRight(result)) expect(result.right).toBe("\nname: demo");
+  });
+
+  test("renders a CRLF (Windows) handlebars Landofile end to end", async () => {
+    const result = await render(
+      "/app/.lando.yml",
+      "template: handlebars\r\nname: {{env.APP}}\r\n",
+      ctx({ APP: "demo" }),
+    );
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) expect(result.right).toBe("\nname: demo\r\n");
   });
 
   test("default none: content without a directive is returned unchanged", async () => {

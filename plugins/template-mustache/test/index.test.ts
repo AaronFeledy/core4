@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Either, Layer } from "effect";
+import Mustache from "mustache";
 
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import { TemplateCompileError } from "@lando/sdk/template";
@@ -51,6 +52,10 @@ describe("@lando/template-mustache plugin exports", () => {
     const rendered = await Effect.runPromise(engine.render(compiled, baseContext({ APP: "demo" })));
     // No HTML escaping — `&&` survives untouched.
     expect(rendered).toBe("name: demo\nflag: a && b");
+  });
+
+  test("importing the plugin does not mutate the process-global Mustache.escape", () => {
+    expect(Mustache.render("{{x}}", { x: "&" })).toBe("&amp;");
   });
 
   test("missing key renders empty (logic-less, no strict mode)", async () => {

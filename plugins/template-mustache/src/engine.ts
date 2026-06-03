@@ -5,11 +5,12 @@
  * a user already maintains in Mustache form.
  *
  * HTML escaping is DISABLED: Mustache escapes `&`, `<`, `>`, `"` by default,
- * which would corrupt YAML config values. Since this engine is only used to
- * render config files, we override the (process-global) `Mustache.escape` to a
- * pass-through. Mustache has no strict mode, so a missing key renders empty
- * (its documented logic-less behavior); only malformed tags fail, at compile
- * time, with a template-source location.
+ * which would corrupt YAML config values. Since this engine renders config
+ * files, we pass a pass-through `escape` via the per-render config (NOT the
+ * process-global `Mustache.escape`, which would disable escaping for every
+ * other Mustache user in the process). Mustache has no strict mode, so a
+ * missing key renders empty (its documented logic-less behavior); only
+ * malformed tags fail, at compile time, with a template-source location.
  */
 import { Effect } from "effect";
 import Mustache from "mustache";
@@ -26,8 +27,7 @@ import {
 const ENGINE_ID = "mustache" as const;
 const EXTENSIONS = [".mustache"] as const;
 
-// Config-file rendering must not HTML-escape values.
-Mustache.escape = (value: string): string => value;
+const noEscape = (value: string): string => value;
 
 interface SourceLocation {
   readonly line?: number | undefined;
@@ -68,7 +68,9 @@ const compile = (input: TemplateCompileInput): Effect.Effect<CompiledTemplate, T
       // Eagerly parse so malformed tags surface now with a source location.
       Mustache.parse(input.source);
       const run = (context: TemplateRenderContext): string =>
-        Mustache.render(input.source, context as unknown as Record<string, unknown>);
+        Mustache.render(input.source, context as unknown as Record<string, unknown>, undefined, {
+          escape: noEscape,
+        });
       return { engineId: ENGINE_ID, sourceId: input.id, run };
     },
     catch: (cause) => {

@@ -62,7 +62,10 @@ export const detectTemplateDirective = (content: string): TemplateDirective | un
     const trimmed = raw.trim();
     if (trimmed === "") continue;
     if (trimmed.startsWith("#")) continue;
-    const match = raw.match(DIRECTIVE_PATTERN);
+    // `split("\n")` leaves a trailing `\r` on CRLF files and a BOM on line 0;
+    // strip both so a Windows-authored directive still matches (column-0 intact).
+    const candidate = (index === 0 ? raw.replace(/^\uFEFF/, "") : raw).replace(/\r$/, "");
+    const match = candidate.match(DIRECTIVE_PATTERN);
     if (match === null) return undefined;
     return { engineId: match[1] as string, lineIndex: index };
   }
