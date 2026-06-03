@@ -133,7 +133,7 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
       expect(compiled.exitCode).toBe(0);
       expect(source.exitCode).toBe(0);
       expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
-    });
+    }, 30_000);
 
     test("S2 deferred id: identical exit code and byte-identical JSON envelope", async () => {
       const source = await runSource([DEFERRED_ID, "--renderer=json"]);
@@ -146,7 +146,7 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
       expect(compiledEnvelope).toEqual(sourceEnvelope);
       expect(sourceEnvelope.code).toBe("NotImplementedError");
       expect(sourceEnvelope.commandId).toBe(DEFERRED_ID);
-    });
+    }, 30_000);
 
     test("S2 deferred id (plain): same tagged error code on both paths", async () => {
       const source = await runSource([DEFERRED_ID]);
@@ -154,7 +154,7 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(errorCodeFromStderr(compiled.stderr)).toBe("NotImplementedError");
       expect(errorCodeFromStderr(source.stderr)).toBe("NotImplementedError");
-    });
+    }, 30_000);
 
     test("S3 app:start with no Landofile: byte-identical JSON envelope", async () => {
       const cwd = mkdtempSync(join(tmpdir(), "lando-spike-nostart-"));
@@ -171,7 +171,7 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
       } finally {
         rmSync(cwd, { recursive: true, force: true });
       }
-    });
+    }, 30_000);
 
     test("S4 meta:setup (host-safe): identical exit code and tagged error fields", async () => {
       // PATH=/no-such-path + temp roots + an explicit provider that fails fast at
@@ -201,6 +201,6 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
         rmSync(confRoot, { recursive: true, force: true });
         rmSync(dataRoot, { recursive: true, force: true });
       }
-    });
+    }, 30_000);
   });
 });

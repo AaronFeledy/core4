@@ -805,3 +805,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The reusable harness (subprocess spawn + `parity/normalize.ts`) is the substrate the dual-dispatch
     parity-test-layer story should build on.
 ---
+
+## [2026-06-03 00:45 CDT] - US-155 Review
+- Reviewed the CLI dispatch unification spike against PRD-B-09 US-155 and the `review-work` lanes. Fixed one real in-scope test-harness bug: the subprocess parity tests used Bun's default 5s timeout, so `meta:bun --version` could time out and kill the compiled child even though both source and compiled commands succeed manually. Widened the shipping-path subprocess parity tests to 30s each; no runtime dispatch behavior changed.
+- Review notes (rejected/deferred): no PRD blockers or security/code-quality defects found in the spike implementation. The follow-up option-b application remains US-156 by design, not a US-155 review blocker.
+- Verification: typecheck passed; lint passed; focused dispatch spike suite passed (7/7). Full `bun test` ran and still fails only in the documented pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`), unrelated to US-155.
+---
