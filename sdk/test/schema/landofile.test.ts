@@ -38,16 +38,16 @@ describe("LandofileShape — Beta schema gate", () => {
     const schema = getJsonSchema("LandofileShape") as { readonly properties?: Record<string, unknown> };
     const properties = schema.properties ?? {};
 
-    for (const key of ["includes", "template", "secrets", "services", "tooling"] as const) {
+    for (const key of ["includes", "secrets", "services", "tooling"] as const) {
       expect(properties).toHaveProperty(key);
     }
+    expect(properties).not.toHaveProperty("template");
   });
 
-  test("strict decoding accepts template selection and top-level Compose secrets", () => {
+  test("strict decoding accepts top-level Compose secrets", () => {
     const result = Schema.decodeUnknownEither(LandofileShape)(
       {
         name: "myapp",
-        template: "handlebars",
         secrets: {
           db_password: { file: "./.secrets/db-password" },
           api_token: { environment: "LANDO_SECRET_API_TOKEN" },
@@ -57,6 +57,24 @@ describe("LandofileShape — Beta schema gate", () => {
     );
 
     expect(Either.isRight(result)).toBe(true);
+  });
+
+  test("strict decoding rejects non-directive top-level template keys", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      {
+        name: "myapp",
+        template: "handlebars",
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      const rejectionRow = issues.find((row) => row.path.includes("template"));
+      expect(rejectionRow).toBeDefined();
+      expect(rejectionRow?._tag).toBe("Unexpected");
+    }
   });
 });
 

@@ -263,9 +263,6 @@ export const IncludeEntry = Schema.Union(
 );
 export type IncludeEntry = typeof IncludeEntry.Type;
 
-export const TemplateDirectiveValue = Schema.String;
-export type TemplateDirectiveValue = typeof TemplateDirectiveValue.Type;
-
 export const ComposeSecretConfig = Schema.Struct({
   file: Schema.optional(Schema.String),
   environment: Schema.optional(Schema.String),
@@ -287,7 +284,6 @@ export const LandofileShape = Schema.Struct({
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
   includes: Schema.optional(Schema.Array(IncludeEntry)),
-  template: Schema.optional(TemplateDirectiveValue),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),

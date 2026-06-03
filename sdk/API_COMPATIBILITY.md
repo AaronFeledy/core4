@@ -111,7 +111,6 @@
 - `TabsProps`
 - `TelemetryConfig`
 - `TemplateRenderContext`
-- `TemplateDirectiveValue`
 - `ToolingTaskShape`
 - `ToolingVar`
 - `ToolingVarDefault`
@@ -138,7 +137,6 @@
 - `ConfigLintViolation.column`
 - `LandofileShape.includes`
 - `LandofileShape.secrets`
-- `LandofileShape.template`
 
 ## Additive Alpha errors
 
