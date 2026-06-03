@@ -184,7 +184,7 @@ describe("ci workflow", () => {
       '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
     expect(providerIntegration).toContain(
-      '          echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"',
+      '          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"',
     );
     expect(providerIntegration).toContain("      - name: Configure Docker socket");
     expect(providerIntegration).toContain("          test -S /var/run/docker.sock");
