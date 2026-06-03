@@ -84,6 +84,7 @@ import {
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
+import { version as versionOperation } from "./commands/version.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
@@ -1279,6 +1280,17 @@ const resolveCanonicalCommandId = (token: string | undefined): string => {
   return CANONICAL_COMMAND_ID_BY_TOKEN[token] ?? token;
 };
 
+const runMetaVersion = async (): Promise<void> => {
+  const result = await Effect.runPromise(versionOperation);
+  console.log(`@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`);
+};
+
+const runMetaShellenv = (): void => {
+  const installDir = dirname(process.execPath);
+  console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
+  console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
+};
+
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   const rawHead = rawArgv[0];
   const isBunOrXPassthrough =
@@ -1477,6 +1489,16 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "config" || argv[0] === "meta:config") {
     await runMetaConfig(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "meta:version") {
+    await runMetaVersion();
+    return;
+  }
+
+  if (argv[0] === "meta:shellenv") {
+    runMetaShellenv();
     return;
   }
 
