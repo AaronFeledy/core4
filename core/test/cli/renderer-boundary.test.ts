@@ -62,19 +62,24 @@ describe("runWithRendererHandling", () => {
 
   test("writes formatError to stderr and sets exitCode=1 on typed failure", async () => {
     const io = createBufferedRendererIO();
+    let exitCode: number | undefined;
     await runWithRendererHandling(Effect.fail("boom"), {
       runtime: Layer.empty,
       rendererMode: "lando",
       io,
       formatError: (e) => `error: ${String(e)}`,
+      setExitCode: (code) => {
+        exitCode = code;
+      },
     });
     expect(io.stderr()).toBe("error: boom\n");
     expect(io.stdout()).toBe("");
-    expect(process.exitCode).toBe(1);
+    expect(exitCode).toBe(1);
   });
 
   test("captures a runtime layer build failure as a diagnostic", async () => {
     const io = createBufferedRendererIO();
+    let exitCode: number | undefined;
     const failingRuntime = Layer.effect(
       Renderer,
       Effect.fail("layer-build-failed"),
@@ -84,9 +89,12 @@ describe("runWithRendererHandling", () => {
       rendererMode: "lando",
       io,
       formatError: (e) => `boot: ${String(e)}`,
+      setExitCode: (code) => {
+        exitCode = code;
+      },
     });
     expect(io.stderr()).toContain("boot: layer-build-failed");
-    expect(process.exitCode).toBe(1);
+    expect(exitCode).toBe(1);
   });
 });
 

@@ -894,3 +894,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Tests that mocked `console.error`/`console.log` to capture compiled-path output must now capture `process.stderr.write`/`process.stdout.write` (the renderer's stdio sink); tests calling `scratchStart`/`execApp`/command effects directly must provide a renderer layer (`makePlainRendererServiceLive(createBufferedRendererIO())`) and assert via the buffered IO, since output is no-op without a renderer.
   - `process.exitCode` is global across the bun test process; a failing test elsewhere sets it to 1 and pollutes `expect(process.exitCode).toBeUndefined()`/`.not.toBe(1)` assertions in later files. Assert stdout/stderr instead, or only assert exitCode for the explicit failure case.
 ---
+
+## [2026-06-03 14:56 CDT] - US-157 Review
+- Reviewed renderer command-boundary wiring against PRD-B-09 US-157. Fixed the real review blocker where renderer-boundary failure-path tests set `process.exitCode = 1` in-process, causing Bun to exit non-zero despite all assertions passing; `runWithRendererHandling` now keeps production behavior by default while tests can inject an exit-code sink.
+- Review notes (rejected/deferred): broader direct-write matches outside `core/src/cli` (`postInit` IO adapter, generated recipe scaffold text, scenario keep-dir debug output) are not a US-157 blocker because US-157's shipped boundary canary covers the CLI command boundary and US-158 owns the §13.4 repo-wide lint gate.
+- Verification: typecheck passed; lint passed; focused US-157 renderer suite passed. Full `bun test` still fails only in the documented pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`), unrelated to US-157.
+---

@@ -67,6 +67,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly io?: RendererIO;
   readonly render?: (value: A) => string | undefined;
   readonly formatError: (error: unknown) => string;
+  readonly setExitCode?: (code: number) => void;
 }
 
 export const runWithRendererHandling = async <A, E, R, RE>(
@@ -86,7 +87,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(exit.cause);
     yield* writeDiagnosticLine(message);
     yield* Effect.sync(() => {
-      process.exitCode = 1;
+      (
+        options.setExitCode ??
+        ((code) => {
+          process.exitCode = code;
+        })
+      )(1);
     });
   });
   await Effect.runPromise(program.pipe(Effect.provide(rendererLayer)));

@@ -42,14 +42,18 @@ describe("command result vs message routing under --renderer=json", () => {
 
   test("a command failure diagnostic is written to stderr and exit code is 1", async () => {
     const io = createBufferedRendererIO();
+    let exitCode: number | undefined;
     await runWithRendererHandling(Effect.fail("nope"), {
       runtime: Layer.empty,
       rendererMode: "json",
       io,
       formatError: (error) => `diagnostic: ${String(error)}`,
+      setExitCode: (code) => {
+        exitCode = code;
+      },
     });
     expect(io.stderr()).toBe("diagnostic: nope\n");
     expect(io.stdout()).toBe("");
-    expect(process.exitCode).toBe(1);
+    expect(exitCode).toBe(1);
   });
 });
