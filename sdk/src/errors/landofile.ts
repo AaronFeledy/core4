@@ -29,6 +29,28 @@ export class LandofileExpressionParseError extends Schema.TaggedError<LandofileE
   },
 ) {}
 
+export class LandofileExpressionForbiddenError extends Schema.TaggedError<LandofileExpressionForbiddenError>()(
+  "LandofileExpressionForbiddenError",
+  {
+    message: Schema.String,
+    helper: Schema.String,
+    filePath: Schema.optional(Schema.String),
+    remediation: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
+export class LandofileExpressionEvalError extends Schema.TaggedError<LandofileExpressionEvalError>()(
+  "LandofileExpressionEvalError",
+  {
+    message: Schema.String,
+    filePath: Schema.optional(Schema.String),
+    expression: Schema.optional(Schema.String),
+    remediation: Schema.String,
+    cause: Schema.optional(Schema.Unknown),
+  },
+) {}
+
 export class LandofileValidationError extends Schema.TaggedError<LandofileValidationError>()(
   "LandofileValidationError",
   {

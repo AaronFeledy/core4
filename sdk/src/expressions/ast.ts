@@ -48,6 +48,12 @@ export interface PathExpressionNode {
   readonly segments: ReadonlyArray<PathSegment>;
 }
 
+export interface AccessExpressionNode {
+  readonly kind: "Access";
+  readonly target: ExpressionNode;
+  readonly segments: ReadonlyArray<PathSegment>;
+}
+
 export interface CallExpressionNode {
   readonly kind: "Call";
   readonly callee: string;
@@ -66,6 +72,7 @@ export type ExpressionNode =
   | ArrayLiteralExpressionNode
   | ObjectLiteralExpressionNode
   | PathExpressionNode
+  | AccessExpressionNode
   | CallExpressionNode
   | ConditionalExpressionNode;
 
@@ -165,6 +172,12 @@ export const PathExpressionNode: Schema.Schema<PathExpressionNode> = Schema.Stru
   segments: Schema.Array(PathSegment),
 });
 
+export const AccessExpressionNode: Schema.Schema<AccessExpressionNode> = Schema.Struct({
+  kind: Schema.Literal("Access"),
+  target: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
+  segments: Schema.Array(PathSegment),
+});
+
 export const CallExpressionNode: Schema.Schema<CallExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Call"),
   callee: Schema.String,
@@ -185,6 +198,7 @@ export const ExpressionNode: Schema.Schema<ExpressionNode> = Schema.suspend(
       ArrayLiteralExpressionNode,
       ObjectLiteralExpressionNode,
       PathExpressionNode,
+      AccessExpressionNode,
       CallExpressionNode,
       ConditionalExpressionNode,
     ),

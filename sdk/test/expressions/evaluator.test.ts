@@ -1,0 +1,320 @@
+import { describe, expect, test } from "bun:test";
+import { Either } from "effect";
+
+import {
+  type ExpressionContext,
+  type ExpressionNode,
+  type ExpressionTemplate,
+  evaluateExpressionEither,
+  evaluateTemplateEither,
+  parseExpressionEither,
+} from "@lando/sdk/expressions";
+
+const filePath = "/app/.lando.yml";
+
+const parseTemplate = (source: string): ExpressionTemplate => {
+  const result = parseExpressionEither(source, { filePath });
+  if (Either.isLeft(result)) {
+    throw result.left;
+  }
+  return result.right;
+};
+
+const interpolationExpression = (source: string): ExpressionNode => {
+  const template = parseTemplate(source);
+  const segment = template.segments[0];
+  expect(segment?.kind).toBe("InterpolationSegment");
+  if (segment?.kind !== "InterpolationSegment") {
+    throw new Error("expected interpolation segment");
+  }
+  return segment.expression;
+};
+
+const evaluateExpressionValue = (source: string, context: ExpressionContext = {}): unknown => {
+  const result = evaluateExpressionEither(interpolationExpression(source), context, { filePath });
+  if (Either.isLeft(result)) {
+    throw result.left;
+  }
+  return result.right;
+};
+
+const evaluateTemplateValue = (source: string, context: ExpressionContext = {}): unknown => {
+  const result = evaluateTemplateEither(parseTemplate(source), context, { filePath });
+  if (Either.isLeft(result)) {
+    throw result.left;
+  }
+  return result.right;
+};
+
+const evaluateExpressionFailure = (source: string, context: ExpressionContext = {}) => {
+  const result = evaluateExpressionEither(interpolationExpression(source), context, { filePath });
+  expect(Either.isLeft(result)).toBe(true);
+  if (Either.isRight(result)) {
+    throw new Error("expected evaluation failure");
+  }
+  return result.left;
+};
+
+const evaluateTemplateFailure = (source: string, context: ExpressionContext = {}) => {
+  const result = evaluateTemplateEither(parseTemplate(source), context, { filePath });
+  expect(Either.isLeft(result)).toBe(true);
+  if (Either.isRight(result)) {
+    throw new Error("expected template evaluation failure");
+  }
+  return result.left;
+};
+
+describe("evaluateExpression happy paths", () => {
+  test("uses default for an unset env read", () => {
+    expect(evaluateExpressionValue('{{ default(env.NOT_SET, "fallback") }}', { env: {} })).toBe("fallback");
+  });
+
+  test("keeps a set env value before default", () => {
+    expect(
+      evaluateExpressionValue('{{ default(env.APP_ENV, "fallback") }}', { env: { APP_ENV: "local" } }),
+    ).toBe("local");
+  });
+
+  test("does not evaluate default fallback when the value is set", () => {
+    expect(
+      evaluateExpressionValue("{{ default(env.APP_ENV, required(env.NOT_SET)) }}", {
+        env: { APP_ENV: "local" },
+      }),
+    ).toBe("local");
+  });
+
+  test("evaluates default fallback when the value is missing", () => {
+    expect(evaluateExpressionValue('{{ default(env.NOT_SET, "fallback") }}', { env: {} })).toBe("fallback");
+  });
+
+  test("short-circuits false and expressions", () => {
+    expect(evaluateExpressionValue("{{ false && required(env.NOT_SET) }}", { env: {} })).toBe(false);
+  });
+
+  test("evaluates true and expression right operands", () => {
+    expect(evaluateExpressionFailure("{{ true && required(env.NOT_SET) }}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  test("short-circuits true or expressions", () => {
+    expect(
+      evaluateExpressionValue("{{ env.APP_ENV || required(env.NOT_SET) }}", {
+        env: { APP_ENV: "local" },
+      }),
+    ).toBe("local");
+  });
+
+  test("evaluates false or expression right operands", () => {
+    expect(evaluateExpressionFailure("{{ false || required(env.NOT_SET) }}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  test("resolves secret references from the expression context", () => {
+    expect(evaluateTemplateValue("${secret:API_KEY}", { secrets: { API_KEY: "s3cr3t" } })).toBe("s3cr3t");
+  });
+
+  test("reads app scope values", () => {
+    expect(evaluateExpressionValue("{{ app.name }}", { app: { name: "demo" } })).toBe("demo");
+  });
+
+  test("gets a collection member", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "port") }}', { vars: { config: { port: 80 } } }),
+    ).toBe(80);
+  });
+
+  test("gets nested values by dotted path", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "config.platform.php", "8.3") }}', {
+        vars: { config: { config: { platform: { php: "8.4" } } } },
+      }),
+    ).toBe("8.4");
+  });
+
+  test("gets fallback values for missing dotted path segments", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "config.platform.php", "8.3") }}', {
+        vars: { config: { config: {} } },
+      }),
+    ).toBe("8.3");
+  });
+
+  test("gets null for missing paths without a fallback", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "missing.path") }}', { vars: { config: {} } }),
+    ).toBeNull();
+  });
+
+  test("gets bracket-escaped keys with dots", () => {
+    expect(
+      evaluateExpressionValue(`{{ get(vars.pkg, 'exports["./index.js"]') }}`, {
+        vars: { pkg: { exports: { "./index.js": "./dist/index.js" } } },
+      }),
+    ).toBe("./dist/index.js");
+  });
+
+  test("gets values by array path", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, ["a", "b", "c"]) }}', {
+        vars: { config: { a: { b: { c: 42 } } } },
+      }),
+    ).toBe(42);
+  });
+
+  test("reads regex capture groups through get", () => {
+    expect(evaluateExpressionValue('{{ regexMatch("php 8.3", "^php (.+)$", "m") | get(1) }}')).toBe("8.3");
+  });
+
+  test("applies string helpers", () => {
+    expect(evaluateExpressionValue('{{ upper(trim(" hi ")) }}')).toBe("HI");
+  });
+
+  test("replaces every string occurrence", () => {
+    expect(evaluateExpressionValue('{{ replace("a-b-c", "-", "_") }}')).toBe("a_b_c");
+  });
+
+  test("evaluates comparator calls and ternaries", () => {
+    expect(
+      evaluateExpressionValue('{{ app.replicas >= 2 ? "many" : "one" }}', { app: { replicas: 3 } }),
+    ).toBe("many");
+  });
+
+  test("preserves whole-template numbers", () => {
+    expect(evaluateTemplateValue("{{ 42 }}")).toBe(42);
+  });
+
+  test("preserves whole-template booleans", () => {
+    expect(evaluateTemplateValue("{{ true }}")).toBe(true);
+  });
+
+  test("preserves whole-template arrays", () => {
+    expect(evaluateTemplateValue("{{ [1, 2] }}")).toEqual([1, 2]);
+  });
+
+  test("preserves whole-template objects", () => {
+    expect(evaluateTemplateValue("{{ { answer: 42 } }}")).toEqual({ answer: 42 });
+  });
+
+  test("renders mixed templates as strings", () => {
+    expect(evaluateTemplateValue("answer={{ 42 }}")).toBe("answer=42");
+  });
+
+  test("expands plain shell parameters from context.env", () => {
+    expect(evaluateTemplateValue("$APP_ENV", { env: { APP_ENV: "local" } })).toBe("local");
+  });
+
+  test("renders unset plain shell parameters as empty strings", () => {
+    expect(evaluateTemplateValue("$NOT_SET", { env: {} })).toBe("");
+  });
+
+  test("uses default-empty shell words for empty values", () => {
+    expect(evaluateTemplateValue("${EMPTY:-fallback}", { env: { EMPTY: "" } })).toBe("fallback");
+  });
+
+  test("keeps set-but-empty values for default-unset shell words", () => {
+    expect(evaluateTemplateValue("${EMPTY-fallback}", { env: { EMPTY: "" } })).toBe("");
+  });
+
+  test("uses alt shell words for set non-empty values", () => {
+    expect(evaluateTemplateValue("${APP_ENV:+alt}", { env: { APP_ENV: "local" } })).toBe("alt");
+  });
+
+  test("renders alt shell words as empty for unset values", () => {
+    expect(evaluateTemplateValue("${NOT_SET:+alt}", { env: {} })).toBe("");
+  });
+
+  test("evaluates member access on a call result", () => {
+    expect(evaluateExpressionValue(`{{ (fromJson('{"a":1}')).a }}`)).toBe(1);
+  });
+});
+
+describe("evaluateExpression forbidden helpers", () => {
+  for (const [helper, source] of [
+    ["load", '{{ load("./x.json") }}'],
+    ["import", '{{ import("./x.ts") }}'],
+    ["which", '{{ which("docker") }}'],
+    ["glob", '{{ glob("*.yml") }}'],
+    ["fs.exists", '{{ fs.exists("./.lando.yml") }}'],
+  ] as const) {
+    test(`rejects ${helper}`, () => {
+      const error = evaluateExpressionFailure(source);
+
+      expect(error._tag).toBe("LandofileExpressionForbiddenError");
+      if (error._tag === "LandofileExpressionForbiddenError") {
+        expect(error.helper).toBe(helper);
+      }
+    });
+  }
+});
+
+describe("evaluateExpression eval errors", () => {
+  test("rejects unknown helpers", () => {
+    expect(evaluateExpressionFailure("{{ nope() }}")._tag).toBe("LandofileExpressionEvalError");
+  });
+
+  for (const helper of ["yaml", "fromYaml", "fromToml"] as const) {
+    test(`rejects unsupported ${helper} decoder`, () => {
+      const error = evaluateExpressionFailure(`{{ ${helper}("x") }}`);
+
+      expect(error._tag).toBe("LandofileExpressionEvalError");
+      expect(error.message).toContain("not supported");
+    });
+  }
+
+  test("rejects missing required helper values", () => {
+    expect(evaluateExpressionFailure("{{ required(env.NOT_SET) }}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  test("uses required helper custom messages", () => {
+    const error = evaluateExpressionFailure('{{ required(env.NOT_SET, "APP_ENV is required") }}', {
+      env: {},
+    });
+
+    expect(error._tag).toBe("LandofileExpressionEvalError");
+    expect(error.message).toContain("APP_ENV is required");
+  });
+
+  test("evaluates default fallback expressions when the value is missing", () => {
+    expect(
+      evaluateExpressionFailure("{{ default(env.NOT_SET, required(env.MISSING)) }}", { env: {} })._tag,
+    ).toBe("LandofileExpressionEvalError");
+  });
+
+  test("rejects missing required shell parameters", () => {
+    expect(evaluateTemplateFailure("${NOT_SET:?required}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  test("blocks proto-pollution traversal", () => {
+    expect(evaluateExpressionFailure("{{ env.__proto__ }}", { env: {} })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  for (const key of ["__proto__", "prototype", "constructor"] as const) {
+    test(`blocks unsafe object literal key ${key}`, () => {
+      expect(evaluateExpressionFailure(`{{ { "${key}": { polluted: true } } }}`)._tag).toBe(
+        "LandofileExpressionEvalError",
+      );
+    });
+  }
+
+  test("blocks constructor keys even when present in context", () => {
+    expect(evaluateExpressionFailure("{{ env.constructor }}", { env: { constructor: "owned" } })._tag).toBe(
+      "LandofileExpressionEvalError",
+    );
+  });
+
+  test("does not leak secret values through errors", () => {
+    const secret = "super-secret-value";
+    const error = evaluateExpressionFailure("{{ nope(secrets.TOKEN) }}", { secrets: { TOKEN: secret } });
+
+    expect(JSON.stringify(error)).not.toContain(secret);
+    expect(String(error)).not.toContain(secret);
+  });
+});

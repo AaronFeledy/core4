@@ -172,6 +172,47 @@ describe("parseExpression paths and literals", () => {
     ]);
   });
 
+  test("parses member access on a call result as an Access node", () => {
+    const expression = interpolationExpression(`{{ (fromJson('{"a":1}')).a }}`);
+
+    expect(expression).toEqual({
+      kind: "Access",
+      target: {
+        kind: "Call",
+        callee: "fromJson",
+        args: [{ kind: "Literal", value: '{"a":1}' }],
+      },
+      segments: [{ type: "prop", name: "a" }],
+    });
+  });
+
+  test("parses chained member access after a parenthesized pipe as one Access node", () => {
+    const expression = interpolationExpression("{{ (x | f).a.b }}");
+
+    expect(expression).toEqual({
+      kind: "Access",
+      target: {
+        kind: "Call",
+        callee: "f",
+        args: [{ kind: "Path", head: "x", segments: [] }],
+      },
+      segments: [
+        { type: "prop", name: "a" },
+        { type: "prop", name: "b" },
+      ],
+    });
+  });
+
+  test("parses bracket access on a parenthesized path as an Access node", () => {
+    const expression = interpolationExpression("{{ (arr)[0] }}");
+
+    expect(expression).toEqual({
+      kind: "Access",
+      target: { kind: "Path", head: "arr", segments: [] },
+      segments: [{ type: "index", index: 0 }],
+    });
+  });
+
   for (const [label, newline] of [
     ["CRLF", "\r\n"],
     ["lone CR", "\r"],

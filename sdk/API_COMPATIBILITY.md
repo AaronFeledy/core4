@@ -136,6 +136,8 @@
 
 ## Additive Alpha errors
 
+- `LandofileExpressionEvalError`
+- `LandofileExpressionForbiddenError`
 - `LandofileExpressionParseError`
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`

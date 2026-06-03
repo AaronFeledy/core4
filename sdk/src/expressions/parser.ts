@@ -293,6 +293,7 @@ class ExpressionLexer {
 interface ExpressionPostfixValue {
   readonly type: "expression";
   readonly expression: ExpressionNode;
+  readonly forceAccess: boolean;
 }
 
 interface NamespacePostfixValue {
@@ -304,9 +305,10 @@ interface NamespacePostfixValue {
 
 type PostfixValue = ExpressionPostfixValue | NamespacePostfixValue;
 
-const expressionValue = (expression: ExpressionNode): ExpressionPostfixValue => ({
+const expressionValue = (expression: ExpressionNode, forceAccess = false): ExpressionPostfixValue => ({
   type: "expression",
   expression,
+  forceAccess,
 });
 
 const literalNode = (value: string | number | boolean | null): ExpressionNode => ({ kind: "Literal", value });
@@ -484,7 +486,7 @@ class ExpressionParser {
     if (this.consumeSymbol("(")) {
       const expression = this.parseTernary();
       this.expectSymbol(")");
-      return expressionValue(expression);
+      return expressionValue(expression, true);
     }
 
     this.fail("Expected expression.");
@@ -571,25 +573,29 @@ class ExpressionParser {
       return { ...value, parts: [...value.parts, member] };
     }
 
-    if (value.expression.kind !== "Path") {
-      this.fail("Member access is only supported on paths.");
-    }
-
-    return expressionValue({
-      ...value.expression,
-      segments: [...value.expression.segments, { type: "prop", name: member }],
-    });
+    return this.appendAccessSegment(value, { type: "prop", name: member });
   }
 
   private appendIndex(value: PostfixValue): PostfixValue {
-    if (value.type !== "expression" || value.expression.kind !== "Path") {
-      this.fail("Bracket access is only supported on paths.");
+    if (value.type !== "expression") {
+      this.fail("Bracket access is only supported on expressions.");
     }
 
     const keyExpression = this.parseTernary();
     this.expectSymbol("]");
-    const segment = this.pathSegmentFromIndexExpression(keyExpression);
-    return expressionValue({ ...value.expression, segments: [...value.expression.segments, segment] });
+    return this.appendAccessSegment(value, this.pathSegmentFromIndexExpression(keyExpression));
+  }
+
+  private appendAccessSegment(value: ExpressionPostfixValue, segment: PathSegment): PostfixValue {
+    if (value.expression.kind === "Path" && !value.forceAccess) {
+      return expressionValue({ ...value.expression, segments: [...value.expression.segments, segment] });
+    }
+
+    if (value.expression.kind === "Access") {
+      return expressionValue({ ...value.expression, segments: [...value.expression.segments, segment] });
+    }
+
+    return expressionValue({ kind: "Access", target: value.expression, segments: [segment] });
   }
 
   private pathSegmentFromIndexExpression(expression: ExpressionNode): PathSegment {

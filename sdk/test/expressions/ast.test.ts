@@ -31,7 +31,18 @@ describe("ExpressionTemplate schema", () => {
             },
             consequent: {
               kind: "ArrayLiteral",
-              elements: [{ kind: "Literal", value: 1 }],
+              elements: [
+                { kind: "Literal", value: 1 },
+                {
+                  kind: "Access",
+                  target: {
+                    kind: "Call",
+                    callee: "fromJson",
+                    args: [{ kind: "Literal", value: '{"a":1}' }],
+                  },
+                  segments: [{ type: "prop", name: "a" }],
+                },
+              ],
             },
             alternate: {
               kind: "ObjectLiteral",
