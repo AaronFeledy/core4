@@ -1,8 +1,8 @@
 /**
  * `@lando/core/cli` — programmatic CLI runner entry point.
  *
- * **Required behavior** (PRD-02 FR-4): this module must not statically import
- * OCLIF or Effect. ESM hoists static imports/re-exports ahead of the module
+ * This module must not statically import OCLIF or Effect. ESM hoists
+ * static imports/re-exports ahead of the module
  * body, so this file:
  *   - Uses a dynamic `await import("./run.ts")` for the OCLIF runner.
  *   - Contains NO static `export *` re-exports that would transitively pull

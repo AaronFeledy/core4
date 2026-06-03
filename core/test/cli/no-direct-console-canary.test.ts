@@ -4,8 +4,6 @@ import { join, relative, resolve } from "node:path";
 
 const cliRoot = resolve(import.meta.dirname, "../../src/cli");
 
-// The first-paint carve-out (spec §2.4). `core/bin/lando.ts` is the other
-// carve-out but lives outside core/src/cli.
 const CARVE_OUTS = new Set([resolve(cliRoot, "oclif/pre-renderer.ts")]);
 
 const DIRECT_WRITE = /\bconsole\.(log|error|warn|info|debug)\b|\bprocess\.(stdout|stderr)\.write\b/;
