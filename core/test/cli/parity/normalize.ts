@@ -11,7 +11,7 @@
  * compared for equality.
  *
  * This module is intentionally framework-agnostic (no test runner imports) so
- * the parity-test layer can reuse it as the divergence-surface contract.
+ * future parity checks can reuse it as the divergence-surface contract.
  */
 
 const ESC = 27;

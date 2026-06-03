@@ -1,24 +1,21 @@
 /**
- * CLI dispatch unification spike.
+ * CLI dispatch parity coverage.
  *
  * Two arms:
  *
  *   Arm A (experiment) — attempts to get `@oclif/core`'s `execute()` to dispatch
  *   inside a `bun build --compile` single-file binary against the static command
- *   registry, the way the "unify on OCLIF" option would require. The probe
- *   (`parity/oclif-static-probe.ts`) is compiled to its own outfile and run from
- *   OUTSIDE the source tree so `Config.load()` → `findRoot()` cannot reach the
- *   repo `package.json` — a faithful deployed-`$bunfs` reproduction. Its observed
- *   failure is the evidence that the naive OCLIF-in-binary path is not reachable
- *   through any supported public API.
+ *   registry. The probe (`parity/oclif-static-probe.ts`) is compiled to its own
+ *   outfile and run from OUTSIDE the source tree so `Config.load()` → `findRoot()`
+ *   cannot reach the repo `package.json` — a faithful deployed-`$bunfs`
+ *   reproduction. Its observed failure is the evidence that the naive
+ *   OCLIF-in-binary path is not reachable through any supported public API.
  *
  *   Arm B (parity) — proves the two SHIPPING dispatch paths (source-mode OCLIF
  *   `execute()` and the compiled hand-rolled `runCompiledCli`) produce
- *   semantically identical results for the four spike target commands. This is
- *   the divergence-surface contract that makes "accept dual dispatch as
- *   permanent" (option b) safe, and the harness a later story inherits.
- *
- * Conclusion is recorded in `spec/14-appendices.md` §D.1.
+ *   semantically identical results for the target commands. This defines the
+ *   divergence-surface contract that future dual-dispatch parity coverage can
+ *   reuse.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -33,7 +30,7 @@ const sourceCli = resolve(coreRoot, "bin/lando.ts");
 const compiledBinary = resolve(coreRoot, "dist/lando");
 const probeSource = resolve(coreRoot, "test/cli/parity/oclif-static-probe.ts");
 
-/** A still-deferred Phase 4 RC canonical id (kept off `MVP_COMMAND_IDS`). */
+/** A command id that remains in the deferred-command registry. */
 const DEFERRED_ID = "meta:plugin:new";
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
@@ -126,7 +123,7 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
     });
   });
 
-  describe("Arm B — source ↔ compiled dispatch parity (option-b divergence contract)", () => {
+  describe("Arm B — source ↔ compiled dispatch parity", () => {
     test("S1 meta:bun --version passthrough: identical exit code and stdout", async () => {
       const source = await runSource(["meta:bun", "--version"]);
       const compiled = await runCompiled(["meta:bun", "--version"]);
