@@ -1,8 +1,8 @@
 /**
- * `@lando/sdk/template` — pluggable template-engine contracts (§7.3.2).
+ * `@lando/sdk/template` — pluggable template-engine contracts.
  *
  * Whole-file template rendering is pluggable. Core ships the `lando` engine
- * (the §7.3.1 expression language, built in) as the default; the bundled
+ * (the built-in expression language) as the default; the bundled
  * `@lando/template-handlebars` and `@lando/template-mustache` plugins provide
  * whole-file rendering of users' existing `.hbs` / `.mustache` templates.
  *
@@ -16,7 +16,7 @@ import { type Effect, Schema } from "effect";
 
 import type { TemplateRenderContext } from "../schema/index.ts";
 
-/** Capability flags a template engine declares (§7.3.2). */
+/** Capability flags a template engine declares. */
 export interface TemplateEngineCapabilities {
   /** Multi-line render with control flow. */
   readonly wholeFile: boolean;
@@ -28,7 +28,7 @@ export interface TemplateEngineCapabilities {
   readonly stringInterpolation: boolean;
   /** Engine supports named partials. */
   readonly partials: boolean;
-  /** Engine cannot guarantee §7.3.1 purity (disabled by default when `true`). */
+  /** Engine cannot guarantee expression-language purity (disabled by default when `true`). */
   readonly unsafe: boolean;
 }
 
@@ -55,7 +55,7 @@ export interface CompiledTemplate {
 }
 
 /**
- * A pluggable template engine. The canonical shape from spec §7.3.2.
+ * A pluggable template engine — the canonical pluggable engine shape.
  *
  * `compile` parses the source eagerly so syntax errors surface with
  * template-source line/column. `render` evaluates a compiled template against

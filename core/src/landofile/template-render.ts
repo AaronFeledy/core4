@@ -1,5 +1,5 @@
 /**
- * Pre-parse Landofile template rendering (§7.3.2).
+ * Pre-parse Landofile template rendering.
  *
  * A Landofile MAY opt into whole-file template rendering by declaring a
  * template engine on its first content line:
@@ -116,7 +116,7 @@ const stringEnv = (): Record<string, string> => {
   return env;
 };
 
-/** Minimal pre-planning render context — no `service.*` / `info.*` (§7.3.2). */
+/** Minimal pre-planning render context — no `service.*` / `info.*`. */
 const defaultRenderContext = (): TemplateRenderContext => ({
   bootstrapLevel: "app",
   env: stringEnv(),
