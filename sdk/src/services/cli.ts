@@ -10,6 +10,12 @@ import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
  * Every user-facing message flows through the `message` contract rather than
  * `console.log`; each renderer formats `info`/`warn`/`error` for its own
  * output mode (human glyphs, NDJSON, verbose payload trace).
+ *
+ * The `output` channel is the raw, unformatted escape hatch for command
+ * *results* (already-formatted strings — tables, `--format=json` documents)
+ * and process-level diagnostics. Unlike `message.*`, it performs no glyph or
+ * newline injection: results go to `output.stdout`, failure diagnostics go to
+ * `output.stderr`, regardless of the active mode.
  */
 export class Renderer extends Context.Tag("@lando/core/Renderer")<
   Renderer,
@@ -19,6 +25,10 @@ export class Renderer extends Context.Tag("@lando/core/Renderer")<
       readonly info: (body: string) => Effect.Effect<void, EventError>;
       readonly warn: (body: string) => Effect.Effect<void, EventError>;
       readonly error: (body: string, remediation?: string) => Effect.Effect<void, EventError>;
+    };
+    readonly output: {
+      readonly stdout: (chunk: string) => Effect.Effect<void>;
+      readonly stderr: (chunk: string) => Effect.Effect<void>;
     };
   }
 >() {}
