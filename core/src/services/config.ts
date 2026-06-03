@@ -76,36 +76,78 @@ const parseConfigYaml = (text: string, path: string): Record<string, unknown> =>
   return root;
 };
 
-const booleanEnv = (value: string): boolean => value === "1" || value.toLowerCase() === "true";
+const ENV_OVERLAY_PREFIX = "LANDO_CONFIG__";
 
-const envOverlay = (): Record<string, unknown> => {
-  const overlay: Record<string, unknown> = {};
-  if (process.env.LANDO_USER_DATA_ROOT !== undefined) overlay.userDataRoot = process.env.LANDO_USER_DATA_ROOT;
-  if (process.env.LANDO_USER_CONF_ROOT !== undefined) overlay.userConfRoot = process.env.LANDO_USER_CONF_ROOT;
-  if (process.env.LANDO_DEFAULT_PROVIDER_ID !== undefined) {
-    overlay.defaultProviderId =
-      process.env.LANDO_DEFAULT_PROVIDER_ID === "" ? null : process.env.LANDO_DEFAULT_PROVIDER_ID;
+// `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.
+const segmentToKey = (segment: string): string =>
+  segment.toLowerCase().replace(/_+([a-z0-9])/g, (_match, char: string) => char.toUpperCase());
+
+// JSON-parseable values become objects/arrays/numbers/booleans/null; anything
+// else (e.g. a bare `podman`) is kept verbatim as a string.
+const parseOverlayValue = (raw: string): unknown => {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    return raw;
   }
-  if (process.env.LANDO_TELEMETRY_ENABLED !== undefined) {
-    overlay.telemetry = { enabled: booleanEnv(process.env.LANDO_TELEMETRY_ENABLED) };
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const assignDeep = (target: Record<string, unknown>, path: ReadonlyArray<string>, value: unknown): void => {
+  let cursor = target;
+  for (let index = 0; index < path.length - 1; index += 1) {
+    const key = path[index] as string;
+    const existing = cursor[key];
+    if (!isPlainObject(existing)) {
+      const nested: Record<string, unknown> = {};
+      cursor[key] = nested;
+      cursor = nested;
+    } else {
+      cursor = existing;
+    }
+  }
+  cursor[path[path.length - 1] as string] = value;
+};
+
+const deepMerge = (
+  base: Record<string, unknown>,
+  overlay: Record<string, unknown>,
+): Record<string, unknown> => {
+  const result: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(overlay)) {
+    const existing = result[key];
+    result[key] = isPlainObject(existing) && isPlainObject(value) ? deepMerge(existing, value) : value;
+  }
+  return result;
+};
+
+/**
+ * Generic `LANDO_CONFIG__path__to__value` overlay (§7.6) — replaces the
+ * earlier hard-coded set of single-purpose env vars with one delimiter-driven
+ * mechanism that can target any config path.
+ */
+const envOverlay = (env: Record<string, string | undefined> = process.env): Record<string, unknown> => {
+  const overlay: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(env)) {
+    if (value === undefined || !name.startsWith(ENV_OVERLAY_PREFIX)) continue;
+    const rawPath = name.slice(ENV_OVERLAY_PREFIX.length);
+    const segments = rawPath.split("__").filter((segment) => segment.length > 0);
+    if (segments.length === 0) continue;
+    assignDeep(overlay, segments.map(segmentToKey), parseOverlayValue(value));
   }
   return overlay;
 };
 
-const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string, unknown>): unknown => ({
-  userDataRoot: resolveUserDataRoot(),
-  defaultProviderId: "lando",
-  ...fileConfig,
-  ...overlay,
-  telemetry: {
-    ...((typeof fileConfig.telemetry === "object" && fileConfig.telemetry !== null
-      ? fileConfig.telemetry
-      : {}) as Record<string, unknown>),
-    ...((typeof overlay.telemetry === "object" && overlay.telemetry !== null
-      ? overlay.telemetry
-      : {}) as Record<string, unknown>),
-  },
-});
+const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string, unknown>): unknown => {
+  const base: Record<string, unknown> = {
+    userDataRoot: resolveUserDataRoot(),
+    userConfRoot: resolveUserConfRoot(),
+    defaultProviderId: "lando",
+  };
+  return deepMerge(deepMerge(base, fileConfig), overlay);
+};
 
 const loadConfig = async (): Promise<GlobalConfig> => {
   const userConfRoot = resolveUserConfRoot();
