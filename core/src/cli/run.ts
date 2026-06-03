@@ -29,11 +29,6 @@ import {
   appConfigLint,
   renderConfigLintResult,
 } from "./commands/app-config-lint.ts";
-import {
-  type AppConfigTranslateFormat,
-  appConfigTranslate,
-  renderConfigTranslateResult,
-} from "./commands/app-config-translate.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import {
   type AppIncludesUpdateFormat,
@@ -535,47 +530,12 @@ const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const parseAppConfigTranslateArgv = (
-  argv: ReadonlyArray<string>,
-): { readonly write: boolean; readonly format: AppConfigTranslateFormat } => {
-  let write = false;
-  let format: AppConfigTranslateFormat = "text";
-  let i = 0;
-  while (i < argv.length) {
-    const arg = argv[i];
-    if (arg === undefined) {
-      i += 1;
-      continue;
-    }
-    if (arg === "--write") {
-      write = true;
-      i += 1;
-      continue;
-    }
-    const formatMatch = parseStringFlag(argv, i, "format");
-    if (formatMatch !== undefined) {
-      if (formatMatch.value === "json" || formatMatch.value === "text") format = formatMatch.value;
-      i += formatMatch.consumed;
-      continue;
-    }
-    i += 1;
-  }
-  return { write, format };
-};
-
-const runAppConfigTranslate = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const { write, format } = parseAppConfigTranslateArgv(argv);
-  const exit = await Effect.runPromiseExit(
-    appConfigTranslate({ write }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+const runAppConfigTranslate = (): Promise<void> =>
+  runCompiledCommand(
+    Effect.fail(notImplementedErrorForCommand("app:config:translate")),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    () => undefined,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderConfigTranslateResult(exit.value, format));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
-};
 
 const parseAppIncludesUpdateArgv = (
   argv: ReadonlyArray<string>,
@@ -1309,7 +1269,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "app:config:translate") {
-    await runAppConfigTranslate(argv.slice(1));
+    await runAppConfigTranslate();
     return;
   }
 
