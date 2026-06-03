@@ -392,11 +392,9 @@ Feature-complete against the spec. From here on, no new feature surface — only
 - Import-boundary test enforces no OCLIF in default entry
 - Library mode defaults: silent logger, json renderer, no auto-discovery, no telemetry
 
-**CLI dispatch unification (spike — informs §14.2 decision):**
-- Spike: can `@oclif/core`'s `execute()` dispatch reliably inside `bun build --compile` against `oclif.manifest.json` + `core/src/cli/oclif/compiled-commands.ts`? Drive a representative slice (`app:start`, `meta:setup`, `meta:bun --version` passthrough, one deferred command) and verify exit code, stderr remediation, and JSON-renderer parity against the existing `runCompiledCli` output.
-- If the spike succeeds: delete `runCompiledCli` in `core/src/cli/run.ts`, drop the relaxed-import rule in spec §8.4.1, fold §8.4.1 into a brief historical note, and close §14.2 "Compiled-binary CLI dispatch unification" with option (a).
-- If the spike fails: promote §8.4.1's parity rules to normative, close §14.2 with option (b), and add a compiled-binary parity test layer to §13.1 covering every canonical command id in `MVP_COMMAND_IDS` plus the §17.1 stage-7 deferred-command set.
-- Either outcome: update AGENTS.md's three interim notes (Dual CLI dispatch / Single source of truth / Compiled CLI test coverage).
+**CLI dispatch unification (resolved — §14.2 closed as option (b)):**
+- ~~Spike: can `@oclif/core`'s `execute()` dispatch reliably inside `bun build --compile`?~~ **Done.** The spike (§14 Appendix D.1) proved it cannot through any supported public API (`Config.load` → `findRoot` and the `module-loader` runtime `import()` both break inside `$bunfs`).
+- **Outcome — option (b): dual dispatch is permanent.** §8.4.1's parity rules are now normative; the compiled-binary dispatch parity test layer ships in §13.1 (`core/test/cli/parity/`), covering every canonical command id in `MVP_COMMAND_IDS` plus the §17.1 stage-7 deferred-command set; §14.2 "Compiled-binary CLI dispatch unification" is closed; AGENTS.md's three dual-dispatch notes are promoted from interim to permanent.
 
 **Renderer wiring at the CLI command boundary (closes §14.2 row + §2.4 lint-gate prohibition):**
 - Wire the `Renderer` Live Layer at the CLI command boundary per §8.9; commands stop writing through `console.log`/`console.error` in `core/src/cli/run.ts` and per-command `render` helpers.
