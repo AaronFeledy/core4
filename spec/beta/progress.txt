@@ -935,11 +935,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - When adding future stdio adapters under scanned roots, avoid direct `process.std*.write` call expressions; bind the stream object first or route through the renderer boundary when user-facing command output is involved.
 ---
 
-## [2026-06-03 18:09 CDT] - US-158
-- Shipped the §13.4 renderer boundary lint gate.  now scans  and  with explicit first-byte carve-outs, flags direct / writes and any  call through an AST pass, and is wired into the root  script plus CI .
-- Updated the renderer-boundary guidance in AGENTS.md now that the gate is enforced, and removed the remaining direct process stdio-write call shapes from core source helpers without changing behavior.
-- Verification: RED missing-checker test captured; GREEN focused checker test + real Renderer boundary check passed.; typecheck and lint passed; full bun test v1.3.14 (0d9b296a) passed on rerun (2774 pass / 27 skip / 0 fail). A later full rerun reproduced the documented packed-package export flake; the failing packed-package test passed in isolation. Reviewer gate returned unconditional approval.
-- **Learnings for future iterations:**
-  - The renderer-boundary gate should remain AST-based, not literal grep: recipe/scaffold strings can legitimately contain examples like , while actual source calls must be rejected.
-  - When adding future stdio adapters under scanned roots, avoid direct  call expressions; bind the stream object first or route through the renderer boundary when user-facing command output is involved.
+## [2026-06-03 18:42 CDT] - US-158 Review
+- Reviewed the §13.4 renderer lint gate against PRD-B-09. Fixed two blockers `review-work` (Oracle) surfaced: (1) the acceptance-required §2.4 revert was incomplete — `spec/02-toolchain.md` §2.4 still carried the "lint gate has not shipped / prohibition becomes enforceable once…" interim caveat (only AGENTS.md had been updated), now reverted to the enforced prohibition; (2) two pre-existing direct stdio writes had been hidden from the AST gate by aliasing `process.stdout`/`stderr` to a local var. Replaced both with honest seams: `createStdioPostInitIO` now takes injected `stdout`/`stderr` params (default `process.std*`) matching the established `createStdioRendererIO`/`createStdioPromptIO` adapter convention, and the scenario-context keep-dir diagnostic now routes through Effect `Console.log` instead of a raw stdout alias.
+- Also removed a corrupted duplicate US-158 progress entry (backtick placeholders had been stripped to blanks by a shell expansion during the build-step append).
+- Review notes (rejected): did NOT expand the gate into dataflow alias-tracking (catching `const c = console`, destructured `{stdout}=process`, computed access) — the spec defines §13.4 as catching literal `console.*`/`process.std*.write`, so deeper tracking is out of scope.
+- Verification: typecheck, lint, renderer-boundary gate (+ its own test 2/2), post-init suite (284), scenario-context/post-init/gate/canary suite (62) all pass. Full `bun test` = 2922 pass / 27 skip / 1 fail; the lone failure (`core/test/build/compile.test.ts`) was a concurrent-build race on `core/dist/lando` and passes in isolation (1/1, exit 0); `bun run build` succeeds standalone.
 ---

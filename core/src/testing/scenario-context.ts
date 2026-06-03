@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { type Cause, Chunk, Context, Effect, Exit, Schema, type Scope, Stream } from "effect";
+import { type Cause, Chunk, Console, Context, Effect, Exit, Schema, type Scope, Stream } from "effect";
 
 import { Transcript, type TranscriptFrame } from "@lando/sdk/docs/components";
 import {
@@ -749,12 +749,9 @@ const withScenarioContextInternal = <A, E, R>(
       ),
       (testDir) =>
         process.env.KEEP_SCENARIO_DIRS === "1"
-          ? Effect.sync(() => {
-              if (process.env.LANDO_DOCS_SCENARIO_KEEP === "1") {
-                const stdout = process.stdout;
-                stdout.write(`Scenario temp dir: ${testDir}\n`);
-              }
-            })
+          ? process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
+            ? Console.log(`Scenario temp dir: ${testDir}`)
+            : Effect.void
           : Effect.promise(() => rm(testDir, { recursive: true, force: true })),
     ).pipe(
       Effect.flatMap((testDir) => {

@@ -22,13 +22,14 @@ export interface PostInitIO {
   readonly err: (line: string) => void;
 }
 
-export const createStdioPostInitIO = (): PostInitIO => ({
+export const createStdioPostInitIO = (
+  stdout: NodeJS.WriteStream = process.stdout,
+  stderr: NodeJS.WriteStream = process.stderr,
+): PostInitIO => ({
   out: (line) => {
-    const stdout = process.stdout;
     stdout.write(`${line}\n`);
   },
   err: (line) => {
-    const stderr = process.stderr;
     stderr.write(`${line}\n`);
   },
 });

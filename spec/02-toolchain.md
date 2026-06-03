@@ -269,7 +269,7 @@ Public schemas and their public fields MUST carry useful Effect Schema annotatio
 1. `bin/lando.ts` MAY write directly to `process.stdout` / `process.stderr` for level-`none` argv shapes — at that point no `Renderer` exists.
 2. `src/cli/oclif/pre-renderer.ts` MAY write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner — its purpose is to emit the first-paint line before the `Renderer` Layer is forced. It MUST NOT import Effect, `@oclif/core`, the `Renderer` service, or any plugin code.
 
-These are the only two modules in core that touch raw stdio. Anywhere else, direct `process.stdout.write` / `console.*` calls are forbidden and will be caught by the lint gate in §13.4. *(Interim through Alpha/Alpha2: the `Renderer` is not yet wired at the CLI command boundary — commands in `core/src/cli/run.ts` and per-command `render` helpers write to stdout/stderr directly, and the §13.4 lint gate has not shipped. The prohibition becomes enforceable once the Beta deliverable in [ROADMAP.md](./ROADMAP.md) Phase 3 — "Renderer — full contract" — lands and the §14.2 row "Renderer wiring at the CLI command boundary" closes.)*
+These are the only two modules in core that touch raw stdio. Anywhere else, direct `process.stdout.write` / `console.*` calls are forbidden and are caught by the lint gate in §13.4 (`scripts/check-renderer-boundary.ts`, run in CI via `bun run check:renderer-boundary`), which scans `core/src/**` and `plugins/**` with only the two carve-out files above allowlisted.
 
 ### 2.5 Schema validation: Effect Schema
 
