@@ -25,6 +25,7 @@
     "./services": "./src/services/index.ts",
     "./events": "./src/events/index.ts",
     "./expressions": "./src/expressions/index.ts",
+    "./template": "./src/template/index.ts",
     "./test": "./src/test/index.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],

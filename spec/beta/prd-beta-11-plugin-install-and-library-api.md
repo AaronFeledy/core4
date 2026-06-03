@@ -164,7 +164,9 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 
 **CLI / source surface paths covered (drift gate input):**
 
-- `core/src/plugins/**`
+- `core/src/plugins/manifest.ts`
+- `core/src/plugins/registry.ts`
+- `core/src/plugins/source/**`
 - `core/src/cli/commands/meta/plugin/**`
 - `sdk/src/plugin-api/**`
 - `core/src/library/**`

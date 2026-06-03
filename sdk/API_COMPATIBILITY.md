@@ -132,6 +132,8 @@
 
 ## Additive Beta schema fields
 
+- `ConfigLintViolation.line`
+- `ConfigLintViolation.column`
 - `LandofileShape.includes`
 
 ## Additive Alpha errors

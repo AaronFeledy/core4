@@ -135,6 +135,19 @@ describe("lando app:config:lint (source dispatch)", () => {
     });
   });
 
+  test("--format=json preserves template render diagnostic locations", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "template: definitely-missing\nname: bad-app\n");
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      expect(result.exitCode).not.toBe(0);
+      const parsed = JSON.parse(result.stdout) as ConfigLintResult;
+      const violation = parsed.violations[0];
+      expect(violation?.path).toBe("");
+      expect(violation?.line).toBe(1);
+      expect(violation?.column).toBe(1);
+    });
+  });
+
   test("a missing Landofile fails with init remediation", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["app:config:lint"], dir);

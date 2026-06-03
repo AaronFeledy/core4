@@ -20,7 +20,7 @@ tags: [beta, docs, landofile, config, lint]
   <Scenario id="json-output" render={false} reason="The --format=json shape is a stable LSP contract covered by the SDK schema snapshot and the app-config-lint scenario tests">
     <Step name="json">
       <Variable name="command" value="lando app:config:lint --format=json" display="Emit a stable JSON ConfigLintResult for editor / LSP integrations" />
-      <Variable name="shape" value="{ app, file, valid, violations: [{ path, message, suggestedFix? }] }" display="The ConfigLintResult JSON shape (frozen by the schema-snapshot gate)" />
+      <Variable name="shape" value="{ app, file, valid, violations: [{ path, message, suggestedFix?, line?, column? }] }" display="The ConfigLintResult JSON shape (frozen by the schema-snapshot gate)" />
       <Variable name="defaultFormat" value="text" display="--format defaults to text (human-readable); pass --format=json for machine output" />
     </Step>
   </Scenario>
