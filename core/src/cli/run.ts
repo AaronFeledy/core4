@@ -29,6 +29,11 @@ import {
   appConfigLint,
   renderConfigLintResult,
 } from "./commands/app-config-lint.ts";
+import {
+  type AppConfigTranslateFormat,
+  appConfigTranslate,
+  renderConfigTranslateResult,
+} from "./commands/app-config-translate.ts";
 import { appConfig, renderAppConfigResult } from "./commands/app-config.ts";
 import {
   type AppIncludesUpdateFormat,
@@ -530,12 +535,42 @@ const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const runAppConfigTranslate = (): Promise<void> =>
-  runCompiledCommand(
-    Effect.fail(notImplementedErrorForCommand("app:config:translate")),
+const parseAppConfigTranslateArgv = (
+  argv: ReadonlyArray<string>,
+): { readonly write: boolean; readonly format: AppConfigTranslateFormat } => {
+  let write = false;
+  let format: AppConfigTranslateFormat = "text";
+  let i = 0;
+  while (i < argv.length) {
+    const arg = argv[i];
+    if (arg === undefined) {
+      i += 1;
+      continue;
+    }
+    if (arg === "--write") {
+      write = true;
+      i += 1;
+      continue;
+    }
+    const formatMatch = parseStringFlag(argv, i, "format");
+    if (formatMatch !== undefined) {
+      if (formatMatch.value === "json" || formatMatch.value === "text") format = formatMatch.value;
+      i += formatMatch.consumed;
+      continue;
+    }
+    i += 1;
+  }
+  return { write, format };
+};
+
+const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
+  const { write, format } = parseAppConfigTranslateArgv(argv);
+  return runCompiledCommand(
+    appConfigTranslate({ write }),
     makeLandoRuntime({ bootstrap: "minimal" }),
-    () => undefined,
+    (value) => renderConfigTranslateResult(value, format),
   );
+};
 
 const parseAppIncludesUpdateArgv = (
   argv: ReadonlyArray<string>,
@@ -1269,7 +1304,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "app:config:translate") {
-    await runAppConfigTranslate();
+    await runAppConfigTranslate(argv.slice(1));
     return;
   }
 
