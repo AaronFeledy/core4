@@ -185,6 +185,7 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 |---|---|---|---|
 | US-139 | `includes:` + .lando.lock.yml | `docs/guides/landofile/includes-and-lockfile.mdx` | Required at story acceptance |
 | US-142 | configuration expressions (parser + evaluator) | `docs/guides/landofile/expressions.mdx` | Required at story acceptance |
+| US-144 | bundled template engines — Handlebars + Mustache | `docs/guides/landofile/template-engines.mdx` | Required at story acceptance |
 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Required at story acceptance |
 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Required at story acceptance |
 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Required at story acceptance |
@@ -192,6 +193,9 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 **CLI / source surface paths covered (drift gate input):**
 
 - `core/src/landofile/**`
+- `core/src/plugins/bundled.ts`
+- `plugins/template-*/**`
+- `sdk/src/template/**`
 - `core/src/cli/commands/app/config/**`
 - `core/src/cli/commands/app/includes/**`
 - `sdk/src/landofile/**`
