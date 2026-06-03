@@ -421,6 +421,11 @@ export declare class Renderer extends Context.Tag("@lando/core/Renderer")<
   Renderer,
   {
     readonly id: string;
+    readonly message: {
+      readonly info: (body: string) => Effect.Effect<void, EventError>;
+      readonly warn: (body: string) => Effect.Effect<void, EventError>;
+      readonly error: (body: string, remediation?: string) => Effect.Effect<void, EventError>;
+    };
   }
 >() {}
 

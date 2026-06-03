@@ -1,6 +1,7 @@
-import { Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
+import { DateTime, Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
 
-import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
 import type { RendererIO } from "./io.ts";
@@ -127,3 +128,67 @@ export const renderPlain = (io: RendererIO, events: ReadonlyArray<LandoEvent>): 
 
 export const renderJson = (io: RendererIO, events: ReadonlyArray<LandoEvent>): void =>
   drainRendererSync(renderJsonLine, io, "stderr", events);
+
+const nowTimestamp = (): DateTime.Utc => DateTime.unsafeMake(new Date().toISOString());
+
+/**
+ * Build a renderer's `message.{info,warn,error}` contract: each severity is
+ * encoded as the canonical `message.*` event, formatted by the mode's line
+ * formatter, and written to the mode's destination stream. The output is
+ * byte-identical to the event-consumer path so imperative and published
+ * messages render the same way.
+ */
+const makeMessageContract = (formatter: LineFormatter, io: RendererIO, destination: "stdout" | "stderr") => {
+  const write = destination === "stderr" ? io.writeStderr : io.writeStdout;
+  const emit = (event: LandoEvent): Effect.Effect<void> =>
+    Effect.sync(() => {
+      const line = formatter(event);
+      if (line !== null) write(`${line}\n`);
+    });
+  return {
+    info: (body: string): Effect.Effect<void> =>
+      emit(MessageInfoEvent.make({ body, timestamp: nowTimestamp() })),
+    warn: (body: string): Effect.Effect<void> =>
+      emit(MessageWarnEvent.make({ body, timestamp: nowTimestamp() })),
+    error: (body: string, remediation?: string): Effect.Effect<void> =>
+      emit(
+        MessageErrorEvent.make(
+          remediation === undefined
+            ? { body, timestamp: nowTimestamp() }
+            : { body, remediation, timestamp: nowTimestamp() },
+        ),
+      ),
+  };
+};
+
+export const makePlainRenderer = (io: RendererIO) => ({
+  id: "plain" as const,
+  message: makeMessageContract(renderPlainLine, io, "stdout"),
+});
+
+export const makeJsonRenderer = (io: RendererIO) => ({
+  id: "json" as const,
+  message: makeMessageContract(renderJsonLine, io, "stderr"),
+});
+
+export const makeVerboseRenderer = (io: RendererIO) => ({
+  id: "verbose" as const,
+  message: makeMessageContract(renderVerboseLine, io, "stdout"),
+});
+
+export const makeLandoRenderer = (io: RendererIO) => ({
+  id: "lando" as const,
+  message: makeMessageContract(renderPlainLine, io, "stdout"),
+});
+
+export const makePlainRendererServiceLive = (io: RendererIO): Layer.Layer<Renderer> =>
+  Layer.succeed(Renderer, makePlainRenderer(io));
+
+export const makeJsonRendererServiceLive = (io: RendererIO): Layer.Layer<Renderer> =>
+  Layer.succeed(Renderer, makeJsonRenderer(io));
+
+export const makeVerboseRendererServiceLive = (io: RendererIO): Layer.Layer<Renderer> =>
+  Layer.succeed(Renderer, makeVerboseRenderer(io));
+
+export const makeLandoRendererServiceLive = (io: RendererIO): Layer.Layer<Renderer> =>
+  Layer.succeed(Renderer, makeLandoRenderer(io));
