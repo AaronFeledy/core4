@@ -15,6 +15,8 @@
  */
 
 const ESC = 27;
+const CSI_FINAL_BYTE_MIN = 0x40;
+const CSI_FINAL_BYTE_MAX = 0x7e;
 const ISO_TIMESTAMP_PATTERN = /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z/g;
 const VERSION_TRIPLE_PATTERN = /\d+\.\d+\.\d+\s+[a-z0-9]+-[a-z0-9]+\s+node-v?[\d.]+/gi;
 const SEMVER_PATTERN = /\bv?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\b/g;
@@ -27,7 +29,11 @@ export const stripAnsi = (value: string): string => {
   for (let index = 0; index < value.length; index += 1) {
     if (value.charCodeAt(index) === ESC && value[index + 1] === "[") {
       index += 2;
-      while (index < value.length && value[index] !== "m") index += 1;
+      while (index < value.length) {
+        const code = value.charCodeAt(index);
+        if (code >= CSI_FINAL_BYTE_MIN && code <= CSI_FINAL_BYTE_MAX) break;
+        index += 1;
+      }
       continue;
     }
     output += value[index];
