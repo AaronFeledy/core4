@@ -38,6 +38,18 @@ const requireRenderer = Effect.serviceOption(Renderer).pipe(
 export const writeStdout = (chunk: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(chunk)));
 
+const optionalRenderer = Effect.serviceOption(Renderer);
+
+export const emitOptionalStdout = (chunk: string): Effect.Effect<void> =>
+  optionalRenderer.pipe(
+    Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stdout(chunk) : Effect.void)),
+  );
+
+export const emitOptionalStderr = (chunk: string): Effect.Effect<void> =>
+  optionalRenderer.pipe(
+    Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stderr(chunk) : Effect.void)),
+  );
+
 export const writeResultLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(`${text}\n`)));
 

@@ -13,6 +13,8 @@ import {
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { createStdioPromptIO } from "../../recipes/prompts/io.ts";
+
 export interface PluginAddSpawner {
   readonly install: (request: {
     readonly spec: string;
@@ -192,15 +194,13 @@ const defaultSpawner: PluginAddSpawner = {
 
 const defaultPrompter: PluginAddPrompter = {
   confirmTrust: async ({ pluginName }) => {
-    if (process.stdin.isTTY !== true) return false;
-    process.stdout.write(
+    const io = createStdioPromptIO();
+    if (!io.isTTY) return false;
+    io.write(
       `Plugin ${pluginName} will run as TRUSTED HOST CODE.\nTrust this plugin for the current Lando session? [y/N] `,
     );
-    for await (const chunk of process.stdin) {
-      const line = (chunk as Buffer).toString("utf8").trim().toLowerCase();
-      return line === "y" || line === "yes";
-    }
-    return false;
+    const line = (await io.readLine()).trim().toLowerCase();
+    return line === "y" || line === "yes";
   },
 };
 

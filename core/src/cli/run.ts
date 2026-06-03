@@ -1043,7 +1043,9 @@ const runMetaGlobalInstall = (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 const runMetaBun = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const exit = await Effect.runPromiseExit(metaBun({ argv: argv.slice() }));
+  const exit = await Effect.runPromiseExit(
+    metaBun({ argv: argv.slice() }).pipe(Effect.provide(makeRendererServiceLiveForMode(activeRendererMode))),
+  );
   if (Exit.isSuccess(exit)) {
     if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
     const rendered = renderMetaBunResult(exit.value);
@@ -1062,7 +1064,9 @@ const runMetaX = async (argv: ReadonlyArray<string>): Promise<void> => {
     process.exitCode = 1;
     return;
   }
-  const exit = await Effect.runPromiseExit(metaX({ spec, argv: rest }));
+  const exit = await Effect.runPromiseExit(
+    metaX({ spec, argv: rest }).pipe(Effect.provide(makeRendererServiceLiveForMode(activeRendererMode))),
+  );
   if (Exit.isSuccess(exit)) {
     if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
     const rendered = renderMetaXResult(exit.value);

@@ -57,7 +57,7 @@ export default class MetaXCommand extends LandoCommandBase {
     if (spec === undefined) {
       throw new Error("meta:x requires a package spec as the first positional argument.");
     }
-    const exit = await Effect.runPromiseExit(metaX({ spec, argv: args }));
+    const exit = await Effect.runPromiseExit(metaX({ spec, argv: args, onBanner: (line) => this.log(line) }));
     if (Exit.isSuccess(exit)) {
       if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
       const rendered = renderMetaXResult(exit.value);

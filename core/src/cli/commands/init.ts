@@ -164,8 +164,7 @@ const loadTarballRecipe = async (options: InitAppOptions, io: PromptIO | undefin
   });
   const interactive = options.nonInteractive !== true && options.yes !== true && io !== undefined;
   const warn = (message: string): void => {
-    if (io !== undefined) io.writeError(`${message}\n`);
-    else process.stderr.write(`${message}\n`);
+    (io ?? createStdioPromptIO()).writeError(`${message}\n`);
   };
   const confirmUnverified = interactive
     ? async (): Promise<boolean> => {
