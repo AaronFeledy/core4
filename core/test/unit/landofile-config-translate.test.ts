@@ -73,9 +73,7 @@ describe("runConfigTranslators", () => {
     const result = await Effect.runPromise(
       runConfigTranslators([makeTranslator("a"), makeTranslator("b")], baseInput),
     );
-    // declared order: a then b -> b wins on shared `name` key
     expect(result.fragment).toEqual({ name: "b" });
-    // diagnostics concatenated in declared order
     expect(result.diagnostics.map((diagnostic) => diagnostic.message)).toEqual([
       "a generated",
       "b generated",
