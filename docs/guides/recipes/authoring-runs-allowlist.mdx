@@ -53,6 +53,7 @@ tags: [beta, docs, recipes, runs, allowlist]
       <Variable name="manifest" value="postInit: [{ type: bun, verb: create, template: ${answers.template} }]" display="bun create templates can interpolate prompt answers before the bun argv is built" />
       <Variable name="bunx" value="postInit: [{ type: bun, verb: x, spec: prettier, argv: [--write, .] }]" display="bun:x runs a one-shot package; when a recipe declares runs:, the spec must be in the allowlist, otherwise x runs by default" />
       <Variable name="argvSafety" value="empty and flag-like operands" display="Substituted bun create templates, package operands, and bun x specs are rejected before bun is spawned" />
+      <Variable name="stdio" value="injected stdout/stderr" display="Recipe post-init output flows through an injectable IO seam so tests can capture or silence the same lines without mutating global process streams" />
     </Step>
   </Scenario>
 </Guide>
