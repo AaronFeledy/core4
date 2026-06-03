@@ -9,6 +9,8 @@ import { RuntimeProviderRegistry, type RuntimeProviderShape, ScratchAppService }
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
@@ -252,30 +254,26 @@ describe("ScratchAppServiceLive scope-bound finalizer", () => {
     await withTempProject(async () => {
       const appliedPlans: AppPlan[] = [];
       const destroyCalls: DestroyCall[] = [];
-      const logged: string[] = [];
-      const originalLog = console.log;
-      console.log = (...args: unknown[]) => {
-        logged.push(args.map(String).join(" "));
-      };
+      const io = createBufferedRendererIO();
       const controller = new AbortController();
-      try {
-        const result = await Effect.runPromise(
-          Effect.gen(function* () {
-            const fiber = yield* Effect.fork(scratchStart({ fork: true, signal: controller.signal }));
-            yield* waitUntil(() => logged.some((line) => line.startsWith("started:")));
-            yield* Effect.sync(() => controller.abort());
-            return yield* Fiber.join(fiber);
-          }).pipe(Effect.provide(makeRecordingLayer(appliedPlans, destroyCalls))),
-        );
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const fiber = yield* Effect.fork(scratchStart({ fork: true, signal: controller.signal }));
+          yield* waitUntil(() => io.stdout().includes("started:"));
+          yield* Effect.sync(() => controller.abort());
+          return yield* Fiber.join(fiber);
+        }).pipe(
+          Effect.provide(
+            Layer.merge(makeRecordingLayer(appliedPlans, destroyCalls), makePlainRendererServiceLive(io)),
+          ),
+        ),
+      );
 
-        expect(result.detached).toBe(false);
-        expect(result.rendered).toBe(true);
-        expect(appliedPlans).toHaveLength(1);
-        expect(destroyCalls).toHaveLength(1);
-        expect(logged.some((line) => line.startsWith(`started: ${result.handle.id}`))).toBe(true);
-      } finally {
-        console.log = originalLog;
-      }
+      expect(result.detached).toBe(false);
+      expect(result.rendered).toBe(true);
+      expect(appliedPlans).toHaveLength(1);
+      expect(destroyCalls).toHaveLength(1);
+      expect(io.stdout()).toContain(`started: ${result.handle.id}`);
     });
   });
 
