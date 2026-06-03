@@ -1,23 +1,52 @@
-/**
- */
-import { Effect } from "effect";
+import { Flags } from "@oclif/core";
 
-import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
+import {
+  type AppConfigTranslateFormat,
+  type AppConfigTranslateResult,
+  appConfigTranslate,
+  renderConfigTranslateResult,
+} from "../../../../commands/app-config-translate.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-export const appConfigTranslateSpec: LandoCommandSpec<never> = {
+export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   id: "app:config:translate",
-  summary: "Run config translators and optionally apply generated Landofile fragments.",
+  summary: "Translate a non-canonical config file into a canonical v4 Landofile.",
   namespace: "app",
-  bootstrap: "app",
-  run: () => Effect.die("not yet implemented: app:config:translate"),
+  topLevelAlias: false,
+  bootstrap: "minimal",
+  run: () => appConfigTranslate(),
+  render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult),
 };
+
+const formatFromFlag = (value: unknown): AppConfigTranslateFormat => (value === "json" ? "json" : "text");
 
 export default class AppConfigTranslateCommand extends LandoCommandBase {
   static override description = appConfigTranslateSpec.summary;
+  static override aliases = [...resolveTopLevelAliases(appConfigTranslateSpec)];
+  static override flags = {
+    write: Flags.boolean({
+      description: "Overwrite the input Landofile in place (a .bak backup is kept).",
+      default: false,
+    }),
+    format: Flags.string({
+      description: "Output format.",
+      options: ["text", "json"],
+      default: "text",
+    }),
+  };
   static override landoSpec: LandoCommandSpec = appConfigTranslateSpec;
   static override bootstrap = appConfigTranslateSpec.bootstrap;
 
   override async run(): Promise<void> {
-    await this.runEffect(appConfigTranslateSpec);
+    const parsed = (await this.parse(AppConfigTranslateCommand)) as {
+      readonly flags: { readonly write?: boolean; readonly format?: string };
+    };
+    const write = parsed.flags.write === true;
+    const format = formatFromFlag(parsed.flags.format);
+    await this.runEffect({
+      ...appConfigTranslateSpec,
+      run: () => appConfigTranslate({ write }),
+      render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, format),
+    });
   }
 }

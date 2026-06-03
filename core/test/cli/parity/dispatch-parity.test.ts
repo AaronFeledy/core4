@@ -200,7 +200,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral (§
   });
 
   describe("deferred canonical ids defer identically on both paths", () => {
-    const probeIds = ["meta:recipes:list", "meta:events:follow", "app:config:translate"] as const;
+    const probeIds = ["meta:recipes:list", "meta:events:follow", "meta:uninstall"] as const;
     for (const id of probeIds) {
       test(`${id}: both paths emit NotImplementedError with matching tagged fields`, async () => {
         const source = await runSourceCli([id, "--renderer=json"]);
