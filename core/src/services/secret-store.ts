@@ -23,7 +23,8 @@ export interface EnvSecretStoreOptions {
 export const makeEnvSecretStore = (
   options: EnvSecretStoreOptions = {},
 ): Context.Tag.Service<typeof SecretStore> => {
-  const prefix = options.prefix ?? DEFAULT_SECRET_ENV_PREFIX;
+  const prefix =
+    options.prefix === "" || options.prefix === undefined ? DEFAULT_SECRET_ENV_PREFIX : options.prefix;
   const env = options.env ?? process.env;
 
   const readValue = (secret: string): string | undefined => env[`${prefix}${secret}`];

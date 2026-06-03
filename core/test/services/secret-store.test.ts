@@ -81,6 +81,28 @@ describe("env-backed SecretStoreLive", () => {
     expect(value).toBe("v");
   });
 
+  test("empty custom prefix falls back to the default prefix", async () => {
+    const env = {
+      KEY: "unscoped",
+      LANDO_SECRET_KEY: "scoped",
+      PATH: "/usr/bin",
+    };
+
+    const value = await Effect.runPromise(
+      Effect.flatMap(SecretStore, (store) => store.get("KEY")).pipe(
+        Effect.provide(makeEnvSecretStoreLive({ prefix: "", env })),
+      ),
+    );
+    const ids = await Effect.runPromise(
+      Effect.flatMap(SecretStore, (store) => store.list).pipe(
+        Effect.provide(makeEnvSecretStoreLive({ prefix: "", env })),
+      ),
+    );
+
+    expect(value).toBe("scoped");
+    expect(ids).toEqual(["KEY"]);
+  });
+
   test("the store identifies itself as the env store", async () => {
     const id = await run(
       Effect.map(SecretStore, (store) => store.id),
