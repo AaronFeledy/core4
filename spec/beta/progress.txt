@@ -725,3 +725,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The `@lando/sdk/expressions` subpath (AST + parser + context + evaluator) is NOT covered by `sdk-backward-compatibility.test.ts`; only new public ERRORS need an `API_COMPATIBILITY.md` "Additive Alpha errors" line + an `exports.test.ts` presence assertion. AST nodes and the `ExpressionContext` shape are free to grow.
   - Do NOT wire this into `core/src/landofile/discover` yet — un-gating expressions in Landofile discovery + staged/bootstrap-level `DeferredExpression` resolution is a later ConfigService wiring story, deliberately out of this one.
 ---
+
+## 2026-06-02 18:55 - Babysit
+- PR: #269 https://github.com/AaronFeledy/core4/pull/269
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: blocked object-literal keys now rejected, `get` supports dotted/bracket/array paths, `regexMatch` returns match data for capture groups; replace/required/short-circuit findings confirmed already-correct false positives)
+- Merge: merged (squash)
+---
