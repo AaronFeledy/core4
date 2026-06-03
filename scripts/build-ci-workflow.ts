@@ -269,7 +269,7 @@ jobs:
           done
           test -S /tmp/podman.sock
           echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"
-          echo "LANDO_DEFAULT_PROVIDER_ID=lando" >> "$GITHUB_ENV"
+          echo "LANDO_CONFIG__default_provider_id=lando" >> "$GITHUB_ENV"
 
       - name: Configure Docker socket
         run: |

@@ -11,17 +11,23 @@ import { ConfigServiceLive } from "../../src/services/config.ts";
 const withTempConfigRoot = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-config-service-"));
   const previousRoot = process.env.LANDO_USER_CONF_ROOT;
-  const previousProvider = process.env.LANDO_DEFAULT_PROVIDER_ID;
+  const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  const previousOverride = process.env.LANDO_CONFIG__default_provider_id;
   try {
     process.env.LANDO_USER_CONF_ROOT = dir;
+    // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
+    delete process.env.LANDO_USER_DATA_ROOT;
     return await run(dir);
   } finally {
     // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
     if (previousRoot === undefined) delete process.env.LANDO_USER_CONF_ROOT;
     else process.env.LANDO_USER_CONF_ROOT = previousRoot;
     // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
-    if (previousProvider === undefined) delete process.env.LANDO_DEFAULT_PROVIDER_ID;
-    else process.env.LANDO_DEFAULT_PROVIDER_ID = previousProvider;
+    if (previousDataRoot === undefined) delete process.env.LANDO_USER_DATA_ROOT;
+    else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+    // biome-ignore lint/performance/noDelete: process.env delete is required for correct cleanup on Windows (Bun sets undefined as string "undefined" otherwise)
+    if (previousOverride === undefined) delete process.env.LANDO_CONFIG__default_provider_id;
+    else process.env.LANDO_CONFIG__default_provider_id = previousOverride;
     await rm(dir, { recursive: true, force: true });
   }
 };
@@ -34,7 +40,7 @@ const loadConfig = () =>
   );
 
 describe("ConfigServiceLive", () => {
-  test("loads config.yml and applies LANDO_DEFAULT_PROVIDER_ID overlay", async () => {
+  test("loads config.yml and applies the LANDO_CONFIG__ overlay", async () => {
     await withTempConfigRoot(async (dir) => {
       await writeFile(
         join(dir, "config.yml"),
@@ -46,7 +52,7 @@ describe("ConfigServiceLive", () => {
           "",
         ].join("\n"),
       );
-      process.env.LANDO_DEFAULT_PROVIDER_ID = "lando";
+      process.env.LANDO_CONFIG__default_provider_id = "lando";
 
       const config = await loadConfig();
 
@@ -113,7 +119,7 @@ describe("ConfigServiceLive", () => {
   test("get returns values from the merged config", async () => {
     await withTempConfigRoot(async (dir) => {
       await writeFile(join(dir, "config.yml"), "defaultProviderId: docker\n");
-      process.env.LANDO_DEFAULT_PROVIDER_ID = "lando";
+      process.env.LANDO_CONFIG__default_provider_id = "lando";
 
       const value = await Effect.runPromise(
         Effect.flatMap(ConfigService, (configService) => configService.get("defaultProviderId")).pipe(

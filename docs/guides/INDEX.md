@@ -41,7 +41,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-08 | US-139 | `includes:` + .lando.lock.yml | `docs/guides/landofile/includes-and-lockfile.mdx` | Shipped |
 | PRD-08 | US-142 | configuration expressions (parser + evaluator) | `docs/guides/landofile/expressions.mdx` | Planned |
 | PRD-08 | US-144 | bundled template engines — Handlebars + Mustache | `docs/guides/landofile/template-engines.mdx` | Shipped |
-| PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Planned |
+| PRD-08 | US-145 | env overrides | `docs/guides/landofile/env-overrides.mdx` | Shipped |
 | PRD-08 | US-148 | `app:config:translate` command | `docs/guides/landofile/config-translate.mdx` | Planned |
 | PRD-08 | US-195 | `app:config:lint` command (IDE / standalone) | `docs/guides/landofile/config-lint.mdx` | Shipped |
 | PRD-10 | US-159 | tooling bootstrap level + cache-only app-plan read | `docs/guides/tooling/composer-php.mdx` | Planned |

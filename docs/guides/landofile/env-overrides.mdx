@@ -1,0 +1,37 @@
+---
+id: env-overrides
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, config, env]
+---
+
+<Guide>
+  <Scenario id="generic-overlay" render={false} reason="The LANDO_CONFIG__ overlay is read from process.env at config load and verified by the env-overrides service tests; this documents the user-facing contract">
+    <Step name="overlay">
+      <Variable name="prefix" value="LANDO_CONFIG__" display="Prefix that marks an env var as a config overlay" />
+      <Variable name="delimiter" value="__" display="Double underscore separates path segments (a.b.c)" />
+      <Variable name="example" value="LANDO_CONFIG__telemetry__enabled=true" display="Sets telemetry.enabled to true with no edits to config.yml" />
+      <Variable name="camelCase" value="LANDO_CONFIG__default_provider_id" display="A single underscore inside a segment maps to a camelCase key (defaultProviderId)" />
+      <Variable name="jsonValue" value='LANDO_CONFIG__providers=&#123;"podman":&#123;"machine":"lando"&#125;&#125;' display="JSON-parseable values are parsed into objects and arrays" />
+      <Variable name="rawValue" value="LANDO_CONFIG__default_provider_id=podman" display="Values that are not valid JSON are kept verbatim as strings" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="precedence" render={false} reason="The precedence chain is enforced across the config loader (env over file over defaults) and the provider-selection resolver (flag over env); both are covered by unit tests">
+    <Step name="chain">
+      <Variable name="order" value="command flag > env > .lando.local.yml > main Landofile > defaults" display="Highest-precedence source wins for any given value" />
+      <Variable name="envOverFile" value="config.yml says docker; LANDO_CONFIG__default_provider_id=podman wins" display="An env overlay overrides the on-disk config value" />
+      <Variable name="flagOverEnv" value="lando <cmd> --provider=docker beats LANDO_PROVIDER=podman" display="A command flag overrides an env-resolved value" />
+      <Variable name="localOverMain" value=".lando.local.yml overrides .lando.yml" display="A local Landofile overrides the main Landofile during merge" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="inspect" render={false} reason="lando config reads the resolved GlobalConfig (including any env overlay) and is covered by the config CLI scenario tests">
+    <Step name="view">
+      <Variable name="view" value="lando config" display="Print the resolved global config (env overlay already applied)" />
+      <Variable name="get" value="lando config get defaultProviderId" display="Read a single resolved value to confirm an override took effect" />
+      <Variable name="json" value="lando config --format=json" display="Emit the resolved config as JSON for scripts" />
+    </Step>
+  </Scenario>
+</Guide>

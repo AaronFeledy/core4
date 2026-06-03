@@ -66,7 +66,7 @@ Use the same Podman socket pattern as CI:
 ```bash
 podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
 export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
-export LANDO_DEFAULT_PROVIDER_ID=lando
+export LANDO_CONFIG__default_provider_id=lando
 export LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock
 ```
 
