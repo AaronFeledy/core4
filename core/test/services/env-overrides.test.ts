@@ -88,6 +88,14 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     });
   });
 
+  test("an empty defaultProviderId overlay clears the provider default", async () => {
+    await withEnv({ LANDO_CONFIG__default_provider_id: "" }, async (dir) => {
+      await writeConfig(dir, ["defaultProviderId: docker"]);
+      const config = await loadConfig();
+      expect(config.defaultProviderId).toBeNull();
+    });
+  });
+
   test("non-JSON values are kept as raw strings", async () => {
     await withEnv({ LANDO_CONFIG__default_provider_id: "podman" }, async () => {
       const config = await loadConfig();

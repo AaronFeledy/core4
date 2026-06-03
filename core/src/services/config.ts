@@ -84,7 +84,8 @@ const segmentToKey = (segment: string): string =>
 
 // JSON-parseable values become objects/arrays/numbers/booleans/null; anything
 // else (e.g. a bare `podman`) is kept verbatim as a string.
-const parseOverlayValue = (raw: string): unknown => {
+const parseOverlayValue = (raw: string, path: ReadonlyArray<string>): unknown => {
+  if (raw === "" && path.length === 1 && path[0] === "defaultProviderId") return null;
   try {
     return JSON.parse(raw) as unknown;
   } catch {
@@ -135,7 +136,8 @@ const envOverlay = (env: Record<string, string | undefined> = process.env): Reco
     const rawPath = name.slice(ENV_OVERLAY_PREFIX.length);
     const segments = rawPath.split("__").filter((segment) => segment.length > 0);
     if (segments.length === 0) continue;
-    assignDeep(overlay, segments.map(segmentToKey), parseOverlayValue(value));
+    const path = segments.map(segmentToKey);
+    assignDeep(overlay, path, parseOverlayValue(value, path));
   }
   return overlay;
 };
