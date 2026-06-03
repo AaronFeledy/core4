@@ -124,9 +124,9 @@ const deepMerge = (
 };
 
 /**
- * Generic `LANDO_CONFIG__path__to__value` overlay (§7.6) — replaces the
- * earlier hard-coded set of single-purpose env vars with one delimiter-driven
- * mechanism that can target any config path.
+ * Generic `LANDO_CONFIG__path__to__value` overlay: a single delimiter-driven
+ * mechanism that can target any config path, replacing the earlier set of
+ * single-purpose env vars.
  */
 const envOverlay = (env: Record<string, string | undefined> = process.env): Record<string, unknown> => {
   const overlay: Record<string, unknown> = {};

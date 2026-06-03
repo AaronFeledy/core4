@@ -49,7 +49,7 @@ const loadConfig = () =>
     ),
   );
 
-describe("LANDO_CONFIG__ generic env overlay (§7.6)", () => {
+describe("LANDO_CONFIG__ generic env overlay", () => {
   test("env overlay overrides a scalar from config.yml (env > file)", async () => {
     await withEnv({ LANDO_CONFIG__default_provider_id: "podman" }, async (dir) => {
       await writeConfig(dir, ["defaultProviderId: docker"]);
@@ -120,7 +120,7 @@ describe("LANDO_CONFIG__ generic env overlay (§7.6)", () => {
   });
 });
 
-describe("precedence chain: command flag > env (§7.6)", () => {
+describe("precedence chain: command flag > env", () => {
   test("a command flag wins over an env-resolved provider", () => {
     const resolution = resolveProviderSelection({
       flag: "docker",
