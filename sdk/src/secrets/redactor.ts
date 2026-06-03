@@ -1,6 +1,6 @@
 /**
  * Secret value redactor — the single source of truth for masking resolved
- * `${secret:…}` values out of renderer / log / event output (spec §7.3.1).
+ * `${secret:…}` values out of renderer / log / event output.
  *
  * This is a pure, dependency-free function: callers (renderers, loggers, event
  * formatters) feed it the set of secret values resolved by the active

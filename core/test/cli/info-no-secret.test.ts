@@ -16,7 +16,7 @@ import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/co
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 /**
- * Regression guard for US-146 AC3: secret values MUST NOT appear in `lando info`
+ * Regression guard: secret values MUST NOT appear in `lando info`
  * output (text or JSON). `infoApp` serializes only provider-neutral runtime
  * facts (service/status/endpoints) — never service `environment` or any resolved
  * `${secret:…}` value. This test locks that invariant so a future info JSON
