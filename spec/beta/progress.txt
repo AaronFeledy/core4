@@ -811,3 +811,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review notes (rejected/deferred): no PRD blockers or security/code-quality defects found in the spike implementation. The follow-up option-b application remains US-156 by design, not a US-155 review blocker.
 - Verification: typecheck passed; lint passed; focused dispatch spike suite passed (7/7). Full `bun test` ran and still fails only in the documented pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`), unrelated to US-155.
 ---
+
+## [2026-06-03 01:55 CDT] - Babysit
+- PR: #273 https://github.com/AaronFeledy/core4/pull/273
+- CI outcome: pass (build-linux-x64, bundled-codegen, guide-scenarios-linux-x64, library-api-tests, provider-integration-linux-x64, recipe-tests, schema-snapshot, static-checks)
+- Review feedback: fixed (Cursor Bugbot flagged `stripAnsi` consuming the rest of the string on any non-`m`-terminated CSI sequence; the skip now stops at the first ANSI final byte 0x40-0x7E and drops truncated tails, with regression coverage added). Bugbot re-ran clean.
+- Merge: merged (squash)
+---
