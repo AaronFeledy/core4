@@ -1,37 +1,21 @@
-import { CORE_VERSION } from "../version.ts";
-
-if (import.meta.main) {
-  const argv = Bun.argv.slice(2);
-  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
-    console.log(CORE_VERSION);
-    process.exit(0);
-  }
-
-  if (argv.length === 1 && argv[0] === "shellenv") {
-    const { fileURLToPath } = await import("node:url");
-    const installDir = fileURLToPath(new URL("../..", import.meta.url)).replace(/[\\/]$/, "");
-
-    console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
-    console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
-    process.exit(0);
-  }
-}
-
 /**
  * `@lando/core/cli` — programmatic CLI runner entry point.
  *
- * **Required behavior** (PRD-02 FR-4): the pre-OCLIF fast path at the top
- * of this file MUST run before any `import` of OCLIF or Effect. ESM hoists
- * static imports/re-exports ahead of the module body, so this file:
+ * **Required behavior** (PRD-02 FR-4): this module must not statically import
+ * OCLIF or Effect. ESM hoists static imports/re-exports ahead of the module
+ * body, so this file:
  *   - Uses a dynamic `await import("./run.ts")` for the OCLIF runner.
  *   - Contains NO static `export *` re-exports that would transitively pull
  *     in `effect` (the built-in command operations live in
  *     `@lando/core/cli/operations` instead).
  *
+ * The pre-OCLIF version/shellenv fast path lives only in the binary entry
+ * (`bin/lando.ts`), which is the package `bin` and the `bun build --compile`
+ * target; it short-circuits before this module is ever loaded.
+ *
  * Two consumers:
  *   1. The `lando` binary (`bin/lando.ts`) imports `runCli` here to wire
- *      OCLIF + the bootstrap. The binary mirrors the same fast path so the
- *      compiled artifact short-circuits before this module is loaded.
+ *      OCLIF + the bootstrap.
  *   2. Embedding hosts that want to invoke built-in command operations
  *      (`startApp`, `stopApp`, `infoApp`, …) without parsing argv or
  *      pulling OCLIF into the host bundle import from
