@@ -37,6 +37,12 @@
     },
     {
       "path": "./plugins/file-sync-mutagen"
+    },
+    {
+      "path": "./plugins/template-handlebars"
+    },
+    {
+      "path": "./plugins/template-mustache"
     }
   ]
 }

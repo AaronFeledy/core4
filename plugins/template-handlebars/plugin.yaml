@@ -1,0 +1,22 @@
+# @lando/template-handlebars — Handlebars whole-file template engine.
+
+name: "@lando/template-handlebars"
+version: "0.0.0"
+api: 4
+description: "Handlebars whole-file template engine for Lando v4."
+enabled: true
+updateable: true
+
+provides:
+  templateEngines:
+    - id: handlebars
+      module: ./src/engine.ts
+      extensions: [".hbs", ".handlebars"]
+      capabilities:
+        wholeFile: true
+        stringInterpolation: false
+        partials: true
+        unsafe: false
+
+requires:
+  "@lando/core": "^4.0.0"

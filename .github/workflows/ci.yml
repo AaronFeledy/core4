@@ -11,6 +11,8 @@
 #   - @lando/logger-pretty
 #   - @lando/file-sync-mutagen
 #   - @lando/proxy-traefik
+#   - @lando/template-handlebars
+#   - @lando/template-mustache
 name: ci
 
 on:

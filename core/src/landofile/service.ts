@@ -15,6 +15,7 @@ import { LandofileService } from "@lando/sdk/services";
 
 import { decodeOrFail } from "../schema/decode.ts";
 import { parseLandofile } from "./parser.ts";
+import { renderLandofileTemplate } from "./template-render.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
@@ -365,6 +366,7 @@ const loadYamlLandofile = (
   filePath: string,
 ): Effect.Effect<unknown, LandofileParseError | NotImplementedError> =>
   readFileContent(filePath).pipe(
+    Effect.flatMap((content) => renderLandofileTemplate({ filePath, content })),
     Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
     Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),

@@ -20,6 +20,7 @@ import { type ConfigLintResult, type ConfigLintViolation, LandofileShape } from 
 
 import { LANDOFILE_NAME, findLandofilePath } from "./discovery.ts";
 import { parseLandofile } from "./parser.ts";
+import { renderLandofileTemplate } from "./template-render.ts";
 
 export interface LintLandofileOptions {
   /** Directory to search upward from for a Landofile. Defaults to `process.cwd()`. */
@@ -55,11 +56,25 @@ const appNameOf = (parsed: unknown): string => {
   return typeof name === "string" ? name : "";
 };
 
-const singleViolationResult = (file: string, message: string): ConfigLintResult => ({
+const singleViolationResult = (
+  file: string,
+  message: string,
+  location: { readonly line: number | undefined; readonly column: number | undefined } = {
+    line: undefined,
+    column: undefined,
+  },
+): ConfigLintResult => ({
   app: "",
   file,
   valid: false,
-  violations: [{ path: "", message }],
+  violations: [
+    {
+      path: "",
+      message,
+      ...(location.line === undefined ? {} : { line: location.line }),
+      ...(location.column === undefined ? {} : { column: location.column }),
+    },
+  ],
 });
 
 /**
@@ -89,13 +104,23 @@ export const lintLandofile = (
       return singleViolationResult(filePath, message);
     }
 
+    const renderedEither = yield* renderLandofileTemplate({
+      filePath,
+      content: contentEither.right,
+    }).pipe(Effect.either);
+    if (Either.isLeft(renderedEither)) {
+      const error = renderedEither.left;
+      return singleViolationResult(filePath, error.message, { line: error.line, column: error.column });
+    }
+
     const parsedEither = yield* parseLandofile({
       file: filePath,
-      content: contentEither.right,
+      content: renderedEither.right,
       cwd: dirname(filePath),
     }).pipe(Effect.either);
     if (Either.isLeft(parsedEither)) {
-      return singleViolationResult(filePath, parsedEither.left.message);
+      const error = parsedEither.left;
+      return singleViolationResult(filePath, error.message, { line: error.line, column: error.column });
     }
 
     const parsed = parsedEither.right;

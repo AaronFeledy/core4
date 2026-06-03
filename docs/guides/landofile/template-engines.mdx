@@ -1,0 +1,29 @@
+---
+id: template-engines
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, template, handlebars, mustache]
+---
+
+<Guide>
+  <Scenario id="handlebars-directive" render={false} reason="The render path is covered by landofile-template-render tests; this guide documents the user-facing directive contract.">
+    <Step name="author">
+      <Variable name="directive" value="template: handlebars" display="Put a column-0 Handlebars directive on the first content line of .lando.yml" />
+      <Variable name="context" value="env, bootstrapLevel, scope" display="Template engines receive the pre-planning Landofile render context" />
+      <Variable name="default" value="template: none" display="No directive, or template: none, leaves the Landofile as raw YAML" />
+    </Step>
+    <Step name="render">
+      <Variable name="order" value="template render -> YAML parse -> includes resolve -> expression evaluate" display="Whole-file template rendering happens before strict Landofile parsing" />
+      <Variable name="lineNumbers" value="template-source line numbers" display="Syntax and render errors point at the authored template source, not the post-render YAML" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="mustache-directive" render={false} reason="Mustache rendering is covered by the same template-render contract tests; this guide documents the authoring surface.">
+    <Step name="author">
+      <Variable name="directive" value="template: mustache" display="Use the bundled Mustache engine for whole-file Landofile rendering" />
+      <Variable name="escaping" value="raw YAML output" display="The bundled Mustache engine does not HTML-escape rendered YAML values" />
+      <Variable name="plugins" value="@lando/template-handlebars, @lando/template-mustache" display="Both engines ship as bundled template-engine plugins and are available in compiled binaries" />
+    </Step>
+  </Scenario>
+</Guide>

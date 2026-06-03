@@ -149,6 +149,34 @@
         "version": "0.0.0"
       },
       "name": "@lando/service-lando"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
+          "templateEngines": ["handlebars"]
+        },
+        "description": "Handlebars whole-file template engine for Lando v4.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/template-handlebars",
+        "version": "0.0.0"
+      },
+      "name": "@lando/template-handlebars"
+    },
+    {
+      "manifest": {
+        "api": 4,
+        "contributes": {
+          "templateEngines": ["mustache"]
+        },
+        "description": "Mustache whole-file template engine for Lando v4.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/template-mustache",
+        "version": "0.0.0"
+      },
+      "name": "@lando/template-mustache"
     }
   ],
   "generatedBy": "scripts/build-schema-snapshot.ts",
@@ -160,7 +188,9 @@
       "@lando/provider-lando",
       "@lando/provider-podman",
       "@lando/proxy-traefik",
-      "@lando/service-lando"
+      "@lando/service-lando",
+      "@lando/template-handlebars",
+      "@lando/template-mustache"
     ],
     "sdkSchemas": [
       "DeprecationNotice",
@@ -944,6 +974,12 @@
           "items": {
             "additionalProperties": false,
             "properties": {
+              "column": {
+                "type": "number"
+              },
+              "line": {
+                "type": "number"
+              },
               "message": {
                 "type": "string"
               },
@@ -967,6 +1003,12 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "column": {
+          "type": "number"
+        },
+        "line": {
+          "type": "number"
+        },
         "message": {
           "type": "string"
         },

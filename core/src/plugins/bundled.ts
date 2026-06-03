@@ -16,6 +16,7 @@ import { Effect, type Layer } from "effect";
 
 import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceTypeShape } from "@lando/sdk/services";
+import type { TemplateEngine } from "@lando/sdk/template";
 
 import * as plugin5 from "@lando/file-sync-mutagen";
 import * as plugin4 from "@lando/logger-pretty";
@@ -24,6 +25,8 @@ import * as plugin0 from "@lando/provider-lando";
 import * as plugin2 from "@lando/provider-podman";
 import * as plugin6 from "@lando/proxy-traefik";
 import * as plugin3 from "@lando/service-lando";
+import * as plugin7 from "@lando/template-handlebars";
+import * as plugin8 from "@lando/template-mustache";
 interface BundledPluginModule {
   readonly [key: string]: unknown;
 }
@@ -56,12 +59,31 @@ const globalServicesFrom = (
 ): { readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect> } =>
   isGlobalServiceMap(module.globalServices) ? { globalServices: module.globalServices } : {};
 
+const isTemplateEngine = (value: unknown): value is TemplateEngine =>
+  typeof value === "object" &&
+  value !== null &&
+  "id" in value &&
+  typeof value.id === "string" &&
+  "compile" in value &&
+  typeof value.compile === "function" &&
+  "render" in value &&
+  typeof value.render === "function";
+
+const isTemplateEngineMap = (value: unknown): value is ReadonlyMap<string, TemplateEngine> =>
+  value instanceof Map && [...value.values()].every(isTemplateEngine);
+
+const templateEnginesFrom = (
+  module: BundledPluginModule,
+): { readonly templateEngines?: ReadonlyMap<string, TemplateEngine> } =>
+  isTemplateEngineMap(module.templateEngines) ? { templateEngines: module.templateEngines } : {};
+
 export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly name: string;
   readonly layer: BundledLayer;
   readonly manifest: PluginManifest;
   readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;
+  readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
 }> = [
   {
     name: "@lando/provider-lando",
@@ -69,6 +91,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin0.manifest,
     ...serviceTypesFrom({ ...plugin0 }),
     ...globalServicesFrom({ ...plugin0 }),
+    ...templateEnginesFrom({ ...plugin0 }),
   },
   {
     name: "@lando/provider-docker",
@@ -76,6 +99,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin1.manifest,
     ...serviceTypesFrom({ ...plugin1 }),
     ...globalServicesFrom({ ...plugin1 }),
+    ...templateEnginesFrom({ ...plugin1 }),
   },
   {
     name: "@lando/provider-podman",
@@ -83,6 +107,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin2.manifest,
     ...serviceTypesFrom({ ...plugin2 }),
     ...globalServicesFrom({ ...plugin2 }),
+    ...templateEnginesFrom({ ...plugin2 }),
   },
   {
     name: "@lando/service-lando",
@@ -90,6 +115,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin3.manifest,
     ...serviceTypesFrom({ ...plugin3 }),
     ...globalServicesFrom({ ...plugin3 }),
+    ...templateEnginesFrom({ ...plugin3 }),
   },
   {
     name: "@lando/logger-pretty",
@@ -97,6 +123,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin4.manifest,
     ...serviceTypesFrom({ ...plugin4 }),
     ...globalServicesFrom({ ...plugin4 }),
+    ...templateEnginesFrom({ ...plugin4 }),
   },
   {
     name: "@lando/file-sync-mutagen",
@@ -104,6 +131,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin5.manifest,
     ...serviceTypesFrom({ ...plugin5 }),
     ...globalServicesFrom({ ...plugin5 }),
+    ...templateEnginesFrom({ ...plugin5 }),
   },
   {
     name: "@lando/proxy-traefik",
@@ -111,5 +139,22 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     manifest: plugin6.manifest,
     ...serviceTypesFrom({ ...plugin6 }),
     ...globalServicesFrom({ ...plugin6 }),
+    ...templateEnginesFrom({ ...plugin6 }),
+  },
+  {
+    name: "@lando/template-handlebars",
+    layer: plugin7.templateEngine,
+    manifest: plugin7.manifest,
+    ...serviceTypesFrom({ ...plugin7 }),
+    ...globalServicesFrom({ ...plugin7 }),
+    ...templateEnginesFrom({ ...plugin7 }),
+  },
+  {
+    name: "@lando/template-mustache",
+    layer: plugin8.templateEngine,
+    manifest: plugin8.manifest,
+    ...serviceTypesFrom({ ...plugin8 }),
+    ...globalServicesFrom({ ...plugin8 }),
+    ...templateEnginesFrom({ ...plugin8 }),
   },
 ];

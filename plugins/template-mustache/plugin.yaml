@@ -1,0 +1,22 @@
+# @lando/template-mustache — Mustache whole-file template engine.
+
+name: "@lando/template-mustache"
+version: "0.0.0"
+api: 4
+description: "Mustache whole-file template engine for Lando v4."
+enabled: true
+updateable: true
+
+provides:
+  templateEngines:
+    - id: mustache
+      module: ./src/engine.ts
+      extensions: [".mustache"]
+      capabilities:
+        wholeFile: true
+        stringInterpolation: false
+        partials: false
+        unsafe: false
+
+requires:
+  "@lando/core": "^4.0.0"
