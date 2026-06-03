@@ -750,3 +750,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Verification: typecheck, lint pass; affected + core/plugin tests green in isolation. The intermittent compiled-`$bunfs`/codegen/dev:guides full-suite failures are the documented parallel-load flakes (different set each run; all pass in isolation and `bun run build` exits 0 with both template plugins bundled).
 - **Learnings for future iterations:** pre-parse text seams that scan column-0 directives must normalize CRLF/BOM since Landofiles are read raw (`Bun.file().text()`, no line-ending normalization); a Windows-authored config is a realistic input. Plugin engines wrapping a singleton third-party lib (Mustache) must avoid module-load global mutation — bundled plugins are statically imported at core startup, so the side effect is process-wide even when the engine is never selected.
 ---
+
+## [2026-06-02 22:05 CDT] - Babysit
+- PR: #271 https://github.com/AaronFeledy/core4/pull/271
+- CI outcome: pass (after triage; initial run failed guide-scenarios-linux-x64 at check:guide-drift)
+- Review feedback: fixed — attributed US-144 template-engine surfaces to PRD-08 with a shipped template-engines guide (narrowed PRD-11 drift surface), and preserved line/column in lintLandofile render/parse violations (added optional ConfigLintViolation line/column + schema snapshot regen) per Bugbot finding
+- Merge: merged (squash)
+---
