@@ -16,6 +16,7 @@
 - `BunShellScriptFrontMatter`
 - `CertificatePlan`
 - `CommandSpec`
+- `ComposeSecretConfig`
 - `ConfigLintResult`
 - `ConfigLintViolation`
 - `CleanupProps`
@@ -135,6 +136,7 @@
 - `ConfigLintViolation.line`
 - `ConfigLintViolation.column`
 - `LandofileShape.includes`
+- `LandofileShape.secrets`
 
 ## Additive Alpha errors
 

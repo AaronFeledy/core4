@@ -12,6 +12,7 @@ import {
   ServiceName,
   ToolingTaskShape,
   ToolingVar,
+  getJsonSchema,
 } from "@lando/sdk/schema";
 
 const ALPHA_TOOLING_FIELDS = ["service", "description", "summary", "cmd", "cmds", "vars"] as const;
@@ -31,6 +32,51 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
     },
   },
 };
+
+describe("LandofileShape — Beta schema gate", () => {
+  test("JSON Schema exposes every shipped Beta top-level Landofile key", () => {
+    const schema = getJsonSchema("LandofileShape") as { readonly properties?: Record<string, unknown> };
+    const properties = schema.properties ?? {};
+
+    for (const key of ["includes", "secrets", "services", "tooling"] as const) {
+      expect(properties).toHaveProperty(key);
+    }
+    expect(properties).not.toHaveProperty("template");
+  });
+
+  test("strict decoding accepts top-level Compose secrets", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      {
+        name: "myapp",
+        secrets: {
+          db_password: { file: "./.secrets/db-password" },
+          api_token: { environment: "LANDO_SECRET_API_TOKEN" },
+        },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isRight(result)).toBe(true);
+  });
+
+  test("strict decoding rejects non-directive top-level template keys", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      {
+        name: "myapp",
+        template: "handlebars",
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      const rejectionRow = issues.find((row) => row.path.includes("template"));
+      expect(rejectionRow).toBeDefined();
+      expect(rejectionRow?._tag).toBe("Unexpected");
+    }
+  });
+});
 
 describe("LandofileShape (MVP)", () => {
   test("decodes a minimal Landofile with one app name + one service block + Compose-subset keys", () => {

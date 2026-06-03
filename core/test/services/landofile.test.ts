@@ -447,7 +447,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     });
   });
 
-  test("rejects top-level `secrets:` with NotImplementedError + Beta remediation", async () => {
+  test("accepts top-level Compose `secrets:` through canonical discovery", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -465,11 +465,9 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
       process.chdir(dir);
 
       const exit = await discoverExit();
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, "§4.2/§7.4");
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.secrets?.db_password).toEqual({ file: "./.secrets/db" });
       }
     });
   });
