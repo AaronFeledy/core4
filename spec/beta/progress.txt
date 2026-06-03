@@ -876,3 +876,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - US-147 is framework-only: the `ConfigTranslator` tag is published like `FileSyncEngine` (a single Effect Service tag for the contract); the multiplicity ("multiple translators run in declared order") lives in the core resolver, not the tag. US-148 (`app:config:translate` command) sources translators from the plugin registry, does real file read, applies the full §7.2 `mergeLandofiles` + schema validation + atomic write — `runConfigTranslators` here intentionally does a shallow ordered last-wins merge as the framework seam, not the full merge.
   - A NEW additive SDK service tag must be declared TWICE for the backward-compat gate: the real `Context.Tag` in its service file (runtime VALUE, surfaced via `export * from`) AND an `export declare class <Tag> extends Context.Tag(...)<Tag, <Shape>>() {}` MIRROR in `sdk/src/services/index.ts`. The `sdk-backward-compatibility` test parses `index.ts`'s AST for `export declare class ... Context.Tag` declarations, so a tag added ONLY to its service file is invisible to the additive-tags gate (the `documentedNames("Additive Alpha service tags")` list must equal the index.ts-declared tag set minus the 13 frozen). The mirror's shape can be a `Shape`-type reference imported from the service file (like `FileSyncEngineShape`) — additive tags are name-checked only, signatures are NOT frozen, so the imported-reference resolving to `[]` members in the parser is fine. Also add the tag name to `API_COMPATIBILITY.md` "Additive Alpha service tags" and a presence assertion in `sdk/test/library/exports.test.ts`.
 ---
+
+## 2026-06-03 12:58 - Babysit
+- PR: #276 https://github.com/AaronFeledy/core4/pull/276
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate: added docs/guides/landofile/config-translate.mdx covering the ConfigTranslator/runConfigTranslators framework, flipped its INDEX.md row Planned→Shipped)
+- Merge: merged (squash)
+---
