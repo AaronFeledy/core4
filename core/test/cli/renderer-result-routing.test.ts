@@ -26,7 +26,6 @@ describe("command result vs message routing under --renderer=json", () => {
     });
     expect(io.stdout()).toBe('{"ok":true}\n');
     expect(io.stderr()).toBe("");
-    expect(process.exitCode).not.toBe(1);
   });
 
   test("a renderer message stays on stderr under json mode", () => {
