@@ -10,10 +10,10 @@ import { type BugReportContext, type RendererMode, formatBugReport } from "../bu
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import {
   makeRendererServiceLiveForMode,
+  resolveCliRendererMode,
   runWithRendererHandling,
   writeDiagnosticLine,
 } from "../renderer-boundary.ts";
-import { resolveRendererMode } from "../renderer-selection.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 
 /**
@@ -189,7 +189,7 @@ export abstract class LandoCommandBase extends Command {
   protected async runEffect<A, E, R>(spec: LandoCommandSpec<A, E, R>): Promise<void> {
     let rendererMode: RendererMode;
     try {
-      const resolution = resolveRendererMode({
+      const resolution = await resolveCliRendererMode({
         argv: this.argv,
         env: process.env,
       });

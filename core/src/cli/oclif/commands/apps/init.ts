@@ -15,10 +15,11 @@ import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
 import {
   makeRendererServiceLiveForMode,
+  resolveCliRendererMode,
   writeDiagnosticLine,
   writeResultLine,
 } from "../../../renderer-boundary.ts";
-import { type RendererMode, resolveRendererMode } from "../../../renderer-selection.ts";
+import type { RendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export interface InitFlags {
@@ -118,7 +119,7 @@ export default class InitCommand extends LandoCommandBase {
     // never passes through runEffect, so the flag would be rejected.
     let rendererMode: RendererMode;
     try {
-      const resolution = resolveRendererMode({ argv: this.argv, env: process.env });
+      const resolution = await resolveCliRendererMode({ argv: this.argv, env: process.env });
       rendererMode = resolution.mode;
       this.argv.length = 0;
       this.argv.push(...resolution.remainingArgv);

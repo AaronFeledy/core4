@@ -104,11 +104,11 @@ import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import {
   makeRendererServiceLiveForMode,
+  resolveCliRendererMode,
   runWithRendererHandling,
   writeDiagnosticLine,
   writeResultLine,
 } from "./renderer-boundary.ts";
-import { resolveRendererMode } from "./renderer-selection.ts";
 
 const version = "@lando/core/0.0.0";
 
@@ -1163,7 +1163,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   let argv: ReadonlyArray<string> = rawArgv;
   if (!isBunOrXPassthrough) {
     try {
-      const resolution = resolveRendererMode({ argv: rawArgv, env: process.env });
+      const resolution = await resolveCliRendererMode({ argv: rawArgv, env: process.env });
       argv = resolution.remainingArgv;
       setActiveRendererMode(resolution.mode);
     } catch (error) {
@@ -1449,7 +1449,7 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
   if (!isBunOrXPassthrough) {
     try {
-      const resolution = resolveRendererMode({ argv: args, env: process.env });
+      const resolution = await resolveCliRendererMode({ argv: args, env: process.env });
       setActiveRendererMode(resolution.mode);
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {

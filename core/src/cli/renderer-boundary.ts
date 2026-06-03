@@ -1,8 +1,13 @@
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { Renderer } from "@lando/sdk/services";
+import { ConfigService, Renderer } from "@lando/sdk/services";
 
-import type { RendererMode } from "./renderer-selection.ts";
+import { ConfigServiceLive } from "../services/config.ts";
+import {
+  type RendererMode,
+  type ResolveRendererModeResult,
+  resolveRendererMode,
+} from "./renderer-selection.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
 import {
   makeJsonRendererServiceLive,
@@ -85,4 +90,33 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     });
   });
   await Effect.runPromise(program.pipe(Effect.provide(rendererLayer)));
+};
+
+export const readConfigRendererValue = async (): Promise<string | undefined> => {
+  const value = await Effect.runPromise(
+    Effect.flatMap(ConfigService, (config) => config.load).pipe(
+      Effect.map((config) => config.renderer),
+      Effect.provide(ConfigServiceLive),
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    ),
+  );
+  return typeof value === "string" ? value : undefined;
+};
+
+export interface ResolveCliRendererModeOptions {
+  readonly argv: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly loadConfigRenderer?: () => Promise<string | undefined>;
+}
+
+export const resolveCliRendererMode = async (
+  options: ResolveCliRendererModeOptions,
+): Promise<ResolveRendererModeResult> => {
+  const initial = resolveRendererMode({ argv: options.argv, env: options.env });
+  if (initial.source === "flag" || initial.source === "env") return initial;
+  const configValue = await (options.loadConfigRenderer ?? readConfigRendererValue)();
+  if (configValue !== undefined && configValue !== "") {
+    return resolveRendererMode({ argv: options.argv, env: options.env, configValue });
+  }
+  return initial;
 };
