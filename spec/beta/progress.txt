@@ -859,3 +859,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Widening a non-frozen additive service tag is zero-churn: `sdk-mvp-surface.json` freezes only 13 named serviceTags (SecretStore not among them) and the additive-tags gate checks only the NAME list in `API_COMPATIBILITY.md` (SecretStore already listed). New tagged errors need only a presence assertion in `sdk/test/library/exports.test.ts`; the `## Additive Alpha errors` list in `API_COMPATIBILITY.md` is documentation-only (not gated) but new errors are appended there for consistency.
   - Core unit tests import a Live layer by RELATIVE path (`../../src/services/<x>.ts`) and the SDK tag from `@lando/core/services`; there is no per-file `@lando/core/services/<x>` subpath export. New `@lando/sdk` subpaths need three edits: `sdk/package.json` `exports`, `export * as <Ns>` in `sdk/src/index.ts`, and a presence test — they resolve via the workspace symlink with no `bun install`.
   - `process.env` deletes in tests trip biome `lint/performance/noDelete`; use the existing `// biome-ignore lint/performance/noDelete: …` convention (see `config.test.ts`). `delete process.env[var]` (computed) is NOT flagged, only static `delete process.env.NAME`.
+
+## [2026-06-03 12:30 CDT] - Babysit
+- PR: #275 https://github.com/AaronFeledy/core4/pull/275
+- CI outcome: pass
+- Review feedback: fixed (resolved origin/main merge conflict; fixed Bugbot empty-prefix isolation bypass in secret-store.ts by defaulting empty prefix to LANDO_SECRET_, with regression test)
+- Merge: merged (squash)
+---
