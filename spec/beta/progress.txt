@@ -918,3 +918,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The column-0 `template:` directive is still stripped before runtime strict decode by `renderLandofileTemplate`; adding it to `LandofileShape` is for the published schema/editor surface, not a change to template-render ordering.
   - Dev-guides tests can leave generated guide artifacts referencing removed temporary guides; clean both `docs/guides/dev-guides-*.mdx` and `test/scenarios/generated/guides/dev-guides-*` before rerunning codegen/full-suite gates.
 ---
+
+## 2026-06-03 16:58 CDT - Babysit
+- PR: #279 https://github.com/AaronFeledy/core4/pull/279
+- CI outcome: pass (after fixes; initial guide-scenarios-linux-x64 fail)
+- Review feedback: fixed (merged origin/main to clear phantom recipes guide-drift, added Guide-Coverage-Skip PR body line for the legit landofile drift, and dropped `template` from LandofileShape so misplaced template keys fail strict decode per Bugbot)
+- Merge: merged (squash)
+---
