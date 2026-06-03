@@ -35,7 +35,6 @@ const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   specSection: string;
   description: string;
 }> = [
-  { key: "secrets", specSection: "§4.2/§7.4", description: "Landofile secrets" },
   { key: "env_file", specSection: "§7.6", description: "Landofile env file overrides" },
   { key: "toolingDefaults", specSection: "§8.5", description: "Tooling defaults" },
   { key: "toolingIncludes", specSection: "§8.5.8", description: "Tooling includes" },

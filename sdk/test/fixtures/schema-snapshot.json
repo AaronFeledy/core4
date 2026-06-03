@@ -1864,6 +1864,30 @@
           "enum": [4],
           "type": "number"
         },
+        "secrets": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "environment": {
+                "type": "string"
+              },
+              "external": {
+                "type": "boolean"
+              },
+              "file": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
         "services": {
           "additionalProperties": {
             "additionalProperties": false,
@@ -2253,6 +2277,9 @@
           "properties": {},
           "required": [],
           "type": "object"
+        },
+        "template": {
+          "type": "string"
         },
         "tooling": {
           "additionalProperties": {

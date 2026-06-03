@@ -263,11 +263,22 @@ export const IncludeEntry = Schema.Union(
 );
 export type IncludeEntry = typeof IncludeEntry.Type;
 
+export const TemplateDirectiveValue = Schema.String;
+export type TemplateDirectiveValue = typeof TemplateDirectiveValue.Type;
+
+export const ComposeSecretConfig = Schema.Struct({
+  file: Schema.optional(Schema.String),
+  environment: Schema.optional(Schema.String),
+  external: Schema.optional(Schema.Boolean),
+  name: Schema.optional(Schema.String),
+});
+export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
+
 /**
  * LandofileShape — the authored Landofile shape.
  * Excludes fields not modeled here: toolingDefaults:, toolingIncludes:,
  * commandAliases:, events:, env_file:, keys:, volumes:, networks:,
- * configs:, secrets:, include:, x-* extensions, plugins:, pluginDirs:.
+ * configs:, include:, x-* extensions, plugins:, pluginDirs:.
  */
 export const LandofileShape = Schema.Struct({
   name: Schema.optional(Schema.String),
@@ -276,6 +287,8 @@ export const LandofileShape = Schema.Struct({
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
   includes: Schema.optional(Schema.Array(IncludeEntry)),
+  template: Schema.optional(TemplateDirectiveValue),
+  secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),

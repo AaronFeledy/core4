@@ -893,3 +893,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - `emitLandofileYaml` is the canonical Landofile→YAML writer; reuse it for any future story that materializes a `LandofileShape` to disk rather than hand-rolling another emitter. It deliberately quotes number-/bool-/null-looking strings (e.g. a version `"8.0"`) so they survive the round-trip — the parser coerces unquoted `8.0` to a number.
   - The `app:config:translate` translate path is framework-only in Beta: there is NO `configTranslators:` plugin-contribution surface yet (that, plus concrete translators, is post-GA). The injectable `translators` param on `appConfigTranslate` is the test seam AND the forward-compatible slot the post-GA plugin-registry sourcing will populate — wire registry sourcing there without changing the command's `R=never` signature.
 ---
+
+## [2026-06-03 16:14 CDT] - US-149
+- Shipped the Landofile schema gate for the remaining Beta top-level schema surface: the public SDK schema and generated JSON Schema now expose `template:` and top-level Compose `secrets:` alongside the existing Landofile keys, and canonical discovery accepts `secrets:` instead of treating it as a deferred Beta-only section.
+- Verification: typecheck, lint, focused schema/service/snapshot/compatibility tests passed; build passed; full test suite completed with 2739 pass / 27 skip / 0 fail. Reviewer gate approved unconditionally.
+- **Learnings for future iterations:**
+  - The column-0 `template:` directive is still stripped before runtime strict decode by `renderLandofileTemplate`; adding it to `LandofileShape` is for the published schema/editor surface, not a change to template-render ordering.
+  - Dev-guides tests can leave generated guide artifacts referencing removed temporary guides; clean both `docs/guides/dev-guides-*.mdx` and `test/scenarios/generated/guides/dev-guides-*` before rerunning codegen/full-suite gates.
+---
