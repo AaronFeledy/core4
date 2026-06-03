@@ -374,6 +374,106 @@ const optionalString = (value: ResolvedValue, state: EvaluationState, helper: st
   return asString(helper, value, state);
 };
 
+const getPathParseError = (state: EvaluationState): LandofileExpressionEvalError =>
+  evalError('Helper "get" received an invalid path.', state.options);
+
+const readQuotedGetPathKey = (
+  path: string,
+  state: EvaluationState,
+  start: number,
+): { readonly key: string; readonly next: number } => {
+  const quote = path[start];
+  if (quote !== '"' && quote !== "'") throw getPathParseError(state);
+
+  let key = "";
+  let index = start + 1;
+  while (index < path.length) {
+    const char = path[index];
+    if (char === "\\") {
+      const next = path[index + 1];
+      if (next === undefined) throw getPathParseError(state);
+      key += next;
+      index += 2;
+      continue;
+    }
+    if (char === quote) return { key, next: index + 1 };
+    key += char;
+    index += 1;
+  }
+
+  throw getPathParseError(state);
+};
+
+const parseGetPathBracket = (
+  path: string,
+  state: EvaluationState,
+  start: number,
+): { readonly segment: PathSegment; readonly next: number } => {
+  const first = path[start + 1];
+  if (first === '"' || first === "'") {
+    const { key, next } = readQuotedGetPathKey(path, state, start + 1);
+    if (path[next] !== "]") throw getPathParseError(state);
+    return { segment: { type: "key", key }, next: next + 1 };
+  }
+
+  const close = path.indexOf("]", start + 1);
+  if (close === -1) throw getPathParseError(state);
+  const rawIndex = path.slice(start + 1, close);
+  if (!/^\d+$/.test(rawIndex)) throw getPathParseError(state);
+  return { segment: { type: "index", index: Number(rawIndex) }, next: close + 1 };
+};
+
+const parseGetPathString = (path: string, state: EvaluationState): ReadonlyArray<PathSegment> => {
+  const segments: PathSegment[] = [];
+  let current = "";
+  let index = 0;
+
+  const pushCurrent = (): void => {
+    if (current === "") throw getPathParseError(state);
+    segments.push({ type: "prop", name: current });
+    current = "";
+  };
+
+  while (index < path.length) {
+    const char = path[index];
+    if (char === ".") {
+      pushCurrent();
+      index += 1;
+      continue;
+    }
+    if (char === "[") {
+      if (current !== "") pushCurrent();
+      const bracket = parseGetPathBracket(path, state, index);
+      segments.push(bracket.segment);
+      index = bracket.next;
+      continue;
+    }
+    if (char === "]") throw getPathParseError(state);
+    current += char;
+    index += 1;
+  }
+
+  if (current !== "") pushCurrent();
+  if (segments.length === 0) throw getPathParseError(state);
+  return segments;
+};
+
+const getPathSegmentFromValue = (value: unknown, state: EvaluationState): PathSegment => {
+  if (typeof value === "number") {
+    if (!Number.isInteger(value) || value < 0) throw getPathParseError(state);
+    return { type: "index", index: value };
+  }
+  if (typeof value === "string") return { type: "key", key: value };
+  throw getPathParseError(state);
+};
+
+const getPathSegments = (value: unknown, state: EvaluationState): ReadonlyArray<PathSegment> => {
+  if (typeof value === "number") return [getPathSegmentFromValue(value, state)];
+  if (typeof value === "string") return parseGetPathString(value, state);
+  if (Array.isArray(value)) return value.map((segment) => getPathSegmentFromValue(segment, state));
+  throw getPathParseError(state);
+};
+
 const safeObjectEntries = (
   _helper: string,
   value: Record<string, unknown>,
@@ -820,10 +920,11 @@ const HELPERS: Record<string, Helper> = {
   regexMatch: (args, state) => {
     assertArgCount("regexMatch", args, state, 2, 3);
     try {
-      return new RegExp(
+      const match = new RegExp(
         asString("regexMatch", args[1], state),
         optionalString(args[2], state, "regexMatch"),
-      ).test(asString("regexMatch", args[0], state));
+      ).exec(asString("regexMatch", args[0], state));
+      return match === null ? null : match.map((value) => value ?? null);
     } catch {
       throw evalError('Helper "regexMatch" received an invalid regular expression.', state.options);
     }
@@ -861,13 +962,10 @@ const HELPERS: Record<string, Helper> = {
   },
   get: (args, state) => {
     assertArgCount("get", args, state, 2, 3);
-    const fallback = args.length === 3 ? args[2] : MISSING;
+    const fallback = args.length === 3 ? args[2] : null;
     if (isUnavailable(args[0])) return fallback;
     const key = requireResolved(args[1], state, 'Helper "get" key resolved to a missing value.');
-    const result =
-      typeof key === "number"
-        ? readIndex(args[0], key, state)
-        : readOwnEnumerable(args[0], String(key), state);
+    const result = resolveSegments(args[0], getPathSegments(key, state), state);
     return isMissing(result) ? fallback : result;
   },
   merge: (args, state) => {

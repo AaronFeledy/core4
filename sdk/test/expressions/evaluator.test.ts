@@ -125,6 +125,48 @@ describe("evaluateExpression happy paths", () => {
     ).toBe(80);
   });
 
+  test("gets nested values by dotted path", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "config.platform.php", "8.3") }}', {
+        vars: { config: { config: { platform: { php: "8.4" } } } },
+      }),
+    ).toBe("8.4");
+  });
+
+  test("gets fallback values for missing dotted path segments", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "config.platform.php", "8.3") }}', {
+        vars: { config: { config: {} } },
+      }),
+    ).toBe("8.3");
+  });
+
+  test("gets null for missing paths without a fallback", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, "missing.path") }}', { vars: { config: {} } }),
+    ).toBeNull();
+  });
+
+  test("gets bracket-escaped keys with dots", () => {
+    expect(
+      evaluateExpressionValue(`{{ get(vars.pkg, 'exports["./index.js"]') }}`, {
+        vars: { pkg: { exports: { "./index.js": "./dist/index.js" } } },
+      }),
+    ).toBe("./dist/index.js");
+  });
+
+  test("gets values by array path", () => {
+    expect(
+      evaluateExpressionValue('{{ get(vars.config, ["a", "b", "c"]) }}', {
+        vars: { config: { a: { b: { c: 42 } } } },
+      }),
+    ).toBe(42);
+  });
+
+  test("reads regex capture groups through get", () => {
+    expect(evaluateExpressionValue('{{ regexMatch("php 8.3", "^php (.+)$", "m") | get(1) }}')).toBe("8.3");
+  });
+
   test("applies string helpers", () => {
     expect(evaluateExpressionValue('{{ upper(trim(" hi ")) }}')).toBe("HI");
   });
