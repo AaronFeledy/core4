@@ -40,7 +40,7 @@ export const MountInput = Schema.Union(
 );
 export type MountInput = typeof MountInput.Type;
 
-/** Storage input — named volume reference (long form coming later). */
+/** Storage input — named volume reference. */
 export const StorageInput = Schema.Union(
   Schema.String,
   Schema.Struct({
