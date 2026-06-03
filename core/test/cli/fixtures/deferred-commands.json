@@ -2,11 +2,6 @@
   "_doc": "Per US-037: every Phase-2-Alpha-deferred canonical command surface. The deferred-commands snapshot test asserts each entry returns NotImplementedError with phase-tagged remediation in both source OCLIF and compiled $bunfs paths.",
   "commands": [
     {
-      "id": "app:config:translate",
-      "phase": "Phase 3 Beta",
-      "specSection": "spec/07-landofile-and-config.md"
-    },
-    {
       "id": "meta:global:info",
       "phase": "Phase 3 Beta",
       "specSection": "spec/18-global-app.md"

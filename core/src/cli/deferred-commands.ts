@@ -20,14 +20,6 @@ export interface DeferredCommandPlan {
   readonly remediation: string;
 }
 
-const APP_CONFIG_TRANSLATE_PLAN: DeferredCommandPlan = {
-  phase: "Phase 3 Beta",
-  specSection: "spec/07-landofile-and-config.md",
-  summary: "Config translator plugins ship in Phase 3 Beta (spec §7, §14 appendix C).",
-  remediation:
-    'Config translators land in Phase 3 Beta. Hand-author the Landofile until Beta. See spec/ROADMAP.md Phase 3 "full breadth" and spec/07-landofile-and-config.md.',
-};
-
 const META_GLOBAL_PLAN: DeferredCommandPlan = {
   phase: "Phase 3 Beta",
   specSection: "spec/18-global-app.md",
@@ -101,7 +93,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   string,
   DeferredCommandPlan
 >([
-  ["app:config:translate", APP_CONFIG_TRANSLATE_PLAN],
   ["meta:global:info", META_GLOBAL_PLAN],
   ["meta:global:list", META_GLOBAL_PLAN],
   ["meta:global:logs", META_GLOBAL_PLAN],

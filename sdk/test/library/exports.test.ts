@@ -109,6 +109,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.SecretNotFoundError).toBeDefined();
     expect(errors.ConfigTranslateError).toBeDefined();
     expect(errors.ConfigTranslatorConflictError).toBeDefined();
+    expect(errors.ConfigTranslateNoTranslatorsError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
