@@ -16,6 +16,7 @@ import type {
   FileSystem,
   GlobalAppService,
   PluginRegistry,
+  Renderer,
   RuntimeProviderRegistry,
   ScratchAppService,
 } from "@lando/sdk/services";
@@ -101,8 +102,13 @@ import {
 import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/uninstall.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
+import {
+  makeRendererServiceLiveForMode,
+  runWithRendererHandling,
+  writeDiagnosticLine,
+  writeResultLine,
+} from "./renderer-boundary.ts";
 import { resolveRendererMode } from "./renderer-selection.ts";
-import { runWithErrorHandling } from "./run-with-error-handling.ts";
 
 const version = "@lando/core/0.0.0";
 
@@ -240,7 +246,8 @@ export const compiledCommandInputFromArgv = (
 };
 
 const printRootHelp = (): void => {
-  console.log(`Lando v4 core: runtime, planner, OCLIF adapter, and library API.
+  const lines = [
+    `Lando v4 core: runtime, planner, OCLIF adapter, and library API.
 
 VERSION
   ${version} ${process.platform}-${process.arch} node-${process.version}
@@ -253,17 +260,19 @@ TOPICS
   apps  Discover and operate across Lando apps on the host.
   meta  Operate on Lando itself: config, plugins, host setup.
 
-COMMANDS`);
+COMMANDS`,
+  ];
   for (const [id, command] of commandEntries) {
     const name = commandName(id, command);
     if (!name.includes(":")) {
-      console.log(`  ${name.padEnd(22)} ${command.description ?? ""}`);
+      lines.push(`  ${name.padEnd(22)} ${command.description ?? ""}`);
     }
   }
+  emitResultLine(lines.join("\n"));
 };
 
 const printCommandHelp = (id: string, command: CompiledCommand): void => {
-  console.log(`${command.description ?? command.summary ?? id}
+  emitResultLine(`${command.description ?? command.summary ?? id}
 
 USAGE
   $ lando ${commandName(id, command)}
@@ -288,67 +297,61 @@ const commandErrorMessage = (error: unknown, commandId: string = activeCommandId
   return formatBugReport({ error, context, rendererMode: activeRendererMode });
 };
 
+const emitResultLine = (text: string): void => {
+  Effect.runSync(
+    writeResultLine(text).pipe(Effect.provide(makeRendererServiceLiveForMode(activeRendererMode))),
+  );
+};
+
+const emitDiagnosticLine = (text: string): void => {
+  Effect.runSync(
+    writeDiagnosticLine(text).pipe(Effect.provide(makeRendererServiceLiveForMode(activeRendererMode))),
+  );
+};
+
+const runCompiledCommand = <A, E, R, RE>(
+  operation: Effect.Effect<A, E, R>,
+  runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
+  render: (value: A) => string | undefined,
+): Promise<void> =>
+  runWithRendererHandling(operation, {
+    runtime,
+    rendererMode: activeRendererMode,
+    render,
+    formatError: (error) => commandErrorMessage(error),
+  });
+
 const runStart = async (): Promise<void> => {
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
-    const exit = await Effect.runPromiseExit(
-      startApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    await runCompiledCommand(
+      startApp({ signal: controller.signal }),
+      makeLandoRuntime({ bootstrap: "app" }),
+      renderStartAppResult,
     );
-    if (Exit.isSuccess(exit)) {
-      console.log(renderStartAppResult(exit.value));
-      return;
-    }
-    const failure = Cause.failureOption(exit.cause);
-    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-    process.exitCode = 1;
   } finally {
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
   }
 };
 
-const runStop = async (): Promise<void> => {
-  const exit = await Effect.runPromiseExit(
-    stopApp().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
-  );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderStopAppResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
-};
+const runStop = (): Promise<void> =>
+  runCompiledCommand(stopApp(), makeLandoRuntime({ bootstrap: "app" }), renderStopAppResult);
 
-const runInfo = async (): Promise<void> => {
-  const exit = await Effect.runPromiseExit(
-    infoApp().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
-  );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderInfoAppResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
-};
+const runInfo = (): Promise<void> =>
+  runCompiledCommand(infoApp(), makeLandoRuntime({ bootstrap: "app" }), renderInfoAppResult);
 
-const runDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const volumes = argv.includes("--volumes");
   const yes = argv.includes("--yes") || argv.includes("-y");
-  const exit = await Effect.runPromiseExit(
-    destroyApp({ volumes, yes }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  return runCompiledCommand(
+    destroyApp({ volumes, yes }),
+    makeLandoRuntime({ bootstrap: "app" }),
+    renderDestroyAppResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderDestroyAppResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
@@ -395,7 +398,7 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   const skipFileSync = parseSkipFileSyncFlag(argv);
   const hostProxy = parseHostProxyFlag(argv);
   if (hostProxy === "invalid") {
-    console.error("Invalid --host-proxy value. Expected one of: auto, none.");
+    emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
     process.exitCode = 1;
     return;
   }
@@ -413,16 +416,14 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   );
   if (Exit.isSuccess(exit)) {
     const rendered = setupSpec.render?.(exit.value);
-    if (rendered !== undefined) console.log(rendered);
+    if (rendered !== undefined) emitResultLine(rendered);
     return;
   }
   const failure = Cause.failureOption(exit.cause);
   const message = failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause);
-  if (activeRendererMode === "json") {
-    console.error(message);
-  } else {
-    console.error(`${message}\nLANDO_INSTALL_DIR="${installDir}"`);
-  }
+  emitDiagnosticLine(
+    activeRendererMode === "json" ? message : `${message}\nLANDO_INSTALL_DIR="${installDir}"`,
+  );
   process.exitCode = 1;
 };
 
@@ -432,16 +433,11 @@ const runRestart = async (): Promise<void> => {
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
-    const exit = await Effect.runPromiseExit(
-      restartApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    await runCompiledCommand(
+      restartApp({ signal: controller.signal }),
+      makeLandoRuntime({ bootstrap: "app" }),
+      renderRestartAppResult,
     );
-    if (Exit.isSuccess(exit)) {
-      console.log(renderRestartAppResult(exit.value));
-      return;
-    }
-    const failure = Cause.failureOption(exit.cause);
-    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-    process.exitCode = 1;
   } finally {
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
@@ -454,40 +450,30 @@ const runRebuild = async (): Promise<void> => {
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
-    const exit = await Effect.runPromiseExit(
-      rebuildApp({ signal: controller.signal }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    await runCompiledCommand(
+      rebuildApp({ signal: controller.signal }),
+      makeLandoRuntime({ bootstrap: "app" }),
+      renderRebuildAppResult,
     );
-    if (Exit.isSuccess(exit)) {
-      console.log(renderRebuildAppResult(exit.value));
-      return;
-    }
-    const failure = Cause.failureOption(exit.cause);
-    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-    process.exitCode = 1;
   } finally {
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
   }
 };
 
-const runLogs = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("app:logs", argv);
   const deferredError = logsDeferredErrorFromInput(input);
   if (deferredError !== undefined) {
-    console.error(commandErrorMessage(deferredError));
+    emitDiagnosticLine(commandErrorMessage(deferredError));
     process.exitCode = 1;
-    return;
+    return Promise.resolve();
   }
-  const exit = await Effect.runPromiseExit(
-    logsApp(logsOptionsFromInput(input)).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  return runCompiledCommand(
+    logsApp(logsOptionsFromInput(input)),
+    makeLandoRuntime({ bootstrap: "app" }),
+    renderLogsAppResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderLogsAppResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const parseAppConfigArgv = (argv: ReadonlyArray<string>): { readonly format: "json" | "table" } => {
@@ -510,18 +496,11 @@ const parseAppConfigArgv = (argv: ReadonlyArray<string>): { readonly format: "js
   return { format: "table" };
 };
 
-const runAppConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runAppConfig = (argv: ReadonlyArray<string>): Promise<void> => {
   const { format } = parseAppConfigArgv(argv);
-  const exit = await Effect.runPromiseExit(
-    appConfig().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+  return runCompiledCommand(appConfig(), makeLandoRuntime({ bootstrap: "app" }), (value) =>
+    renderAppConfigResult(value, format),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderAppConfigResult(exit.value, format));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const parseAppConfigLintArgv = (argv: ReadonlyArray<string>): { readonly format: AppConfigLintFormat } => {
@@ -544,18 +523,11 @@ const parseAppConfigLintArgv = (argv: ReadonlyArray<string>): { readonly format:
   return { format: "text" };
 };
 
-const runAppConfigLint = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => {
   const { format } = parseAppConfigLintArgv(argv);
-  const exit = await Effect.runPromiseExit(
-    appConfigLint().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  return runCompiledCommand(appConfigLint(), makeLandoRuntime({ bootstrap: "minimal" }), (value) =>
+    renderConfigLintResult(value, format),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderConfigLintResult(exit.value, format));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const parseAppIncludesUpdateArgv = (
@@ -578,18 +550,13 @@ const parseAppIncludesUpdateArgv = (
   return { check, format };
 };
 
-const runAppIncludesUpdate = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runAppIncludesUpdate = (argv: ReadonlyArray<string>): Promise<void> => {
   const { check, format } = parseAppIncludesUpdateArgv(argv);
-  const exit = await Effect.runPromiseExit(
-    appIncludesUpdate({ check }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  return runCompiledCommand(
+    appIncludesUpdate({ check }),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    (value) => renderIncludesUpdateResult(value, format),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderIncludesUpdateResult(exit.value, format));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const parseAppIncludesVerifyArgv = (
@@ -611,53 +578,30 @@ const parseAppIncludesVerifyArgv = (
   return { format };
 };
 
-const runAppIncludesVerify = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runAppIncludesVerify = (argv: ReadonlyArray<string>): Promise<void> => {
   const { format } = parseAppIncludesVerifyArgv(argv);
-  const exit = await Effect.runPromiseExit(
-    appIncludesVerify().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  return runCompiledCommand(appIncludesVerify(), makeLandoRuntime({ bootstrap: "minimal" }), (value) =>
+    renderIncludesVerifyResult(value, format),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderIncludesVerifyResult(exit.value, format));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
-const runAppCacheRefresh = async (): Promise<void> => {
-  const exit = await Effect.runPromiseExit(
-    refreshAppCache().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
-  );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderAppCacheRefreshResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
-};
+const runAppCacheRefresh = (): Promise<void> =>
+  runCompiledCommand(refreshAppCache(), makeLandoRuntime({ bootstrap: "app" }), renderAppCacheRefreshResult);
 
 const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const flagProvider = parseProviderFlag(argv);
   const fix = parseFixFlag(argv);
   const app = argv.some((arg) => arg === "--app");
-  const exit = await Effect.runPromiseExit(
+  await runCompiledCommand(
     doctorReport({
       ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
       ...(fix ? { fix: true } : {}),
       ...(app ? { app: true } : {}),
-    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider" }))),
+    }),
+    makeLandoRuntime({ bootstrap: "provider" }),
+    (value) =>
+      activeRendererMode === "json" ? renderDoctorReportAsNdjson(value) : renderDoctorReport(value),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(
-      activeRendererMode === "json" ? renderDoctorReportAsNdjson(exit.value) : renderDoctorReport(exit.value),
-    );
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 interface ParsedExecArgv {
@@ -743,24 +687,18 @@ const parseExecArgv = (argv: ReadonlyArray<string>): ParsedExecArgv => {
   };
 };
 
-const runExec = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runExec = (argv: ReadonlyArray<string>): Promise<void> => {
   const parsed = parseExecArgv(argv);
-  const exit = await Effect.runPromiseExit(
+  return runCompiledCommand(
     execApp({
       command: parsed.command,
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
       ...(parsed.user === undefined ? {} : { user: parsed.user }),
       ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
-    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    }),
+    makeLandoRuntime({ bootstrap: "app" }),
+    renderExecAppResult,
   );
-  if (Exit.isSuccess(exit)) {
-    const rendered = renderExecAppResult(exit.value);
-    if (rendered !== undefined) console.log(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 interface ParsedSshArgv {
@@ -846,33 +784,27 @@ const sshDeferred = (kind: "subsystem" | "sidecar"): string =>
 const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
   const parsed = parseSshArgv(argv);
   if (parsed.subsystem !== undefined) {
-    console.error(sshDeferred("subsystem"));
+    emitDiagnosticLine(sshDeferred("subsystem"));
     process.exitCode = 1;
     return;
   }
   if (parsed.sidecar) {
-    console.error(sshDeferred("sidecar"));
+    emitDiagnosticLine(sshDeferred("sidecar"));
     process.exitCode = 1;
     return;
   }
   const command = parsed.command.length === 0 ? ["sh", "-l"] : parsed.command;
-  const exit = await Effect.runPromiseExit(
+  await runCompiledCommand(
     execApp({
       command,
       interactive: true,
       tty: true,
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
       ...(parsed.user === undefined ? {} : { user: parsed.user }),
-    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    }),
+    makeLandoRuntime({ bootstrap: "app" }),
+    renderExecAppResult,
   );
-  if (Exit.isSuccess(exit)) {
-    const rendered = renderExecAppResult(exit.value);
-    if (rendered !== undefined) console.log(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const parseShellService = (argv: ReadonlyArray<string>): string | undefined => {
@@ -890,21 +822,15 @@ const parseShellService = (argv: ReadonlyArray<string>): string | undefined => {
   return undefined;
 };
 
-const runShell = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runShell = (argv: ReadonlyArray<string>): Promise<void> => {
   const service = parseShellService(argv);
-  const exit = await Effect.runPromiseExit(
+  return runCompiledCommand(
     shellApp({
       ...(service === undefined ? {} : { service }),
-    }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "app" }))),
+    }),
+    makeLandoRuntime({ bootstrap: "app" }),
+    renderShellAppResult,
   );
-  if (Exit.isSuccess(exit)) {
-    const rendered = renderShellAppResult(exit.value);
-    if (rendered !== undefined) console.log(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
@@ -916,34 +842,20 @@ const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
       i += m.consumed - 1;
     }
   }
-  const exit = await Effect.runPromiseExit(
-    listServices().pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  return runCompiledCommand(listServices(), makeLandoRuntime({ bootstrap: "minimal" }), (value) =>
+    renderAppsListResult(value, format),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderAppsListResult(exit.value, format));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {
   const keepGlobal = argv.includes("--keep-global");
   const keepScratch = argv.includes("--keep-scratch");
   const yes = argv.includes("--yes") || argv.includes("-y");
-  const exit = await Effect.runPromiseExit(
-    poweroff({ keepGlobal, keepScratch, yes }).pipe(
-      Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })),
-    ),
+  return runCompiledCommand(
+    poweroff({ keepGlobal, keepScratch, yes }),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    renderPoweroffResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderPoweroffResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
@@ -970,21 +882,16 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
     if (!arg.startsWith("-")) positionals.push(arg);
   }
   const [subcommand, key] = positionals;
-  const exit = await Effect.runPromiseExit(
+  return runCompiledCommand(
     config({
       ...(subcommand === "get" || subcommand === "view" ? { subcommand } : {}),
       ...(key === undefined ? {} : { key }),
       ...(path === undefined ? {} : { path }),
       format,
-    } as Parameters<typeof config>[0]).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+    } as Parameters<typeof config>[0]),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    renderConfigResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderConfigResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const globalRuntimeLayer = () =>
@@ -996,11 +903,13 @@ const globalRuntimeLayer = () =>
 const scratchRuntimeLayer = () =>
   makeLandoRuntime({ bootstrap: "scratch" }) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
 
-const runScratchEffect = async <A>(
+const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
   render: (result: A) => string | undefined,
 ): Promise<void> =>
-  runWithErrorHandling(operation.pipe(Effect.provide(scratchRuntimeLayer())), {
+  runWithRendererHandling(operation, {
+    runtime: scratchRuntimeLayer(),
+    rendererMode: activeRendererMode,
     render,
     formatError: (error) => commandErrorMessage(error),
   });
@@ -1072,103 +981,65 @@ const runMetaGlobalStart = async (argv: ReadonlyArray<string>): Promise<void> =>
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
-    const exit = await Effect.runPromiseExit(
+    await runCompiledCommand(
       globalStart(
         globalStartOptionsFromInput(
           compiledCommandInputFromArgv("meta:global:start", argv, { signal: controller.signal }),
         ),
-      ).pipe(Effect.provide(globalRuntimeLayer())),
+      ),
+      globalRuntimeLayer(),
+      renderGlobalStartResult,
     );
-    if (Exit.isSuccess(exit)) {
-      console.log(renderGlobalStartResult(exit.value));
-      return;
-    }
-    const failure = Cause.failureOption(exit.cause);
-    console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-    process.exitCode = 1;
   } finally {
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
   }
 };
 
-const runMetaGlobalStop = async (): Promise<void> => {
-  const exit = await Effect.runPromiseExit(globalStop().pipe(Effect.provide(globalRuntimeLayer())));
-  if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalStopResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
-};
+const runMetaGlobalStop = (): Promise<void> =>
+  runCompiledCommand(globalStop(), globalRuntimeLayer(), renderGlobalStopResult);
 
-const runMetaGlobalStatus = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runMetaGlobalStatus = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:status", argv);
-  const exit = await Effect.runPromiseExit(
-    globalStatus(globalStatusOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
+  return runCompiledCommand(
+    globalStatus(globalStatusOptionsFromInput(input)),
+    globalRuntimeLayer(),
+    (value) => renderGlobalStatusResult(value, globalStatusFormatFromInput(input)),
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalStatusResult(exit.value, globalStatusFormatFromInput(input)));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
-const runMetaGlobalDestroy = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runMetaGlobalDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:destroy", argv);
-  const exit = await Effect.runPromiseExit(
-    globalDestroy(globalDestroyOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
+  return runCompiledCommand(
+    globalDestroy(globalDestroyOptionsFromInput(input)),
+    globalRuntimeLayer(),
+    renderGlobalDestroyResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalDestroyResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
-const runMetaGlobalConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runMetaGlobalConfig = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:config", argv);
-  const exit = await Effect.runPromiseExit(globalConfig().pipe(Effect.provide(globalRuntimeLayer())));
-  if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalConfigResult(exit.value, globalConfigFormatFromInput(input)));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
+  return runCompiledCommand(globalConfig(), globalRuntimeLayer(), (value) =>
+    renderGlobalConfigResult(value, globalConfigFormatFromInput(input)),
+  );
 };
 
-const runMetaGlobalUninstall = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runMetaGlobalUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:uninstall", argv);
-  const exit = await Effect.runPromiseExit(
-    globalUninstall(globalUninstallOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
+  return runCompiledCommand(
+    globalUninstall(globalUninstallOptionsFromInput(input)),
+    globalRuntimeLayer(),
+    renderGlobalUninstallResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalUninstallResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
-const runMetaGlobalInstall = async (argv: ReadonlyArray<string>): Promise<void> => {
+const runMetaGlobalInstall = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:install", argv);
-  const exit = await Effect.runPromiseExit(
-    globalInstall(globalInstallOptionsFromInput(input)).pipe(Effect.provide(globalRuntimeLayer())),
+  return runCompiledCommand(
+    globalInstall(globalInstallOptionsFromInput(input)),
+    globalRuntimeLayer(),
+    renderGlobalInstallResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderGlobalInstallResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const runMetaBun = async (argv: ReadonlyArray<string>): Promise<void> => {
@@ -1176,18 +1047,18 @@ const runMetaBun = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (Exit.isSuccess(exit)) {
     if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
     const rendered = renderMetaBunResult(exit.value);
-    if (rendered !== undefined) console.log(rendered);
+    if (rendered !== undefined) emitResultLine(rendered);
     return;
   }
   const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  emitDiagnosticLine(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
   process.exitCode = 1;
 };
 
 const runMetaX = async (argv: ReadonlyArray<string>): Promise<void> => {
   const [spec, ...rest] = argv;
   if (spec === undefined) {
-    console.error("meta:x requires a package spec as the first positional argument.");
+    emitDiagnosticLine("meta:x requires a package spec as the first positional argument.");
     process.exitCode = 1;
     return;
   }
@@ -1195,11 +1066,11 @@ const runMetaX = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (Exit.isSuccess(exit)) {
     if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
     const rendered = renderMetaXResult(exit.value);
-    if (rendered !== undefined) console.log(rendered);
+    if (rendered !== undefined) emitResultLine(rendered);
     return;
   }
   const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
+  emitDiagnosticLine(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
   process.exitCode = 1;
 };
 
@@ -1207,7 +1078,7 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
   const trust = argv.includes("--trust") || argv.includes("--yes") || argv.includes("-y");
   const spec = argv.find((arg) => !arg.startsWith("-"));
   if (spec === undefined) {
-    console.error(
+    emitDiagnosticLine(
       commandErrorMessage(
         new NotImplementedError({
           message: "meta:plugin:add requires a plugin spec argument.",
@@ -1220,24 +1091,17 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
     process.exitCode = 1;
     return;
   }
-  const exit = await Effect.runPromiseExit(
-    pluginAdd({ spec, trust, nonInteractive: process.stdin.isTTY !== true }).pipe(
-      Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })),
-    ),
+  await runCompiledCommand(
+    pluginAdd({ spec, trust, nonInteractive: process.stdin.isTTY !== true }),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    renderPluginAddResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderPluginAddResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv.find((arg) => !arg.startsWith("-"));
   if (name === undefined) {
-    console.error(
+    emitDiagnosticLine(
       commandErrorMessage(
         new NotImplementedError({
           message: "meta:plugin:remove requires a plugin name argument.",
@@ -1250,16 +1114,11 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
     process.exitCode = 1;
     return;
   }
-  const exit = await Effect.runPromiseExit(
-    pluginRemove({ name }).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "minimal" }))),
+  await runCompiledCommand(
+    pluginRemove({ name }),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    renderPluginRemoveResult,
   );
-  if (Exit.isSuccess(exit)) {
-    console.log(renderPluginRemoveResult(exit.value));
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  console.error(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
 };
 
 const buildCanonicalCommandIdByToken = (): Readonly<Record<string, string>> => {
@@ -1282,13 +1141,14 @@ const resolveCanonicalCommandId = (token: string | undefined): string => {
 
 const runMetaVersion = async (): Promise<void> => {
   const result = await Effect.runPromise(versionOperation);
-  console.log(`@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`);
+  emitResultLine(`@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`);
 };
 
 const runMetaShellenv = (): void => {
   const installDir = dirname(process.execPath);
-  console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
-  console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
+  emitResultLine(
+    `export LANDO_INSTALL_DIR="${installDir}"\nexport PATH="\${LANDO_INSTALL_DIR}/bin:\${PATH}"`,
+  );
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
@@ -1305,7 +1165,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         setActiveCommandId("cli:renderer-selection");
-        console.error(commandErrorMessage(error));
+        emitDiagnosticLine(commandErrorMessage(error));
         process.exitCode = 1;
         return;
       }
@@ -1341,7 +1201,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     argv[0] !== "x" &&
     argv[0] !== "meta:x"
   ) {
-    console.log(`${version} ${process.platform}-${process.arch} node-${process.version}`);
+    emitResultLine(`${version} ${process.platform}-${process.arch} node-${process.version}`);
     return;
   }
 
@@ -1349,9 +1209,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     try {
       const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
       const result = await initApp(initOptionsFromInput(input));
-      console.log(`Created ${result.appName} at ${result.directory}`);
+      emitResultLine(`Created ${result.appName} at ${result.directory}`);
     } catch (error) {
-      console.error(commandErrorMessage(error, "apps:init"));
+      emitDiagnosticLine(commandErrorMessage(error, "apps:init"));
       process.exitCode = 1;
     }
     return;
@@ -1562,7 +1422,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 
-  console.error(commandErrorMessage(notImplementedErrorForCommand(found[0])));
+  emitDiagnosticLine(commandErrorMessage(notImplementedErrorForCommand(found[0])));
   process.exitCode = 1;
 };
 
@@ -1590,7 +1450,7 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         setActiveCommandId("cli:renderer-selection");
-        console.error(commandErrorMessage(error));
+        emitDiagnosticLine(commandErrorMessage(error));
         process.exitCode = 1;
         return;
       }

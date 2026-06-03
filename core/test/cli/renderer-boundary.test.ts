@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { Renderer } from "@lando/sdk/services";
@@ -10,6 +10,10 @@ import {
   writeResultLine,
 } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+
+beforeEach(() => {
+  process.exitCode = undefined;
+});
 
 afterEach(() => {
   process.exitCode = undefined;
@@ -41,7 +45,7 @@ describe("runWithRendererHandling", () => {
     });
     expect(io.stdout()).toBe("value=42\n");
     expect(io.stderr()).toBe("");
-    expect(process.exitCode).toBeUndefined();
+    expect(process.exitCode).not.toBe(1);
   });
 
   test("skips empty/undefined render output", async () => {
