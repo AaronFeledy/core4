@@ -73,6 +73,20 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     });
   });
 
+  for (const [value, expected] of [
+    ["1", true],
+    ["0", false],
+    ["true", true],
+    ["false", false],
+  ] as const) {
+    test(`telemetry.enabled env overlay ${value} resolves to ${expected}`, async () => {
+      await withEnv({ LANDO_CONFIG__telemetry__enabled: value }, async () => {
+        const config = await loadConfig();
+        expect(config.telemetry.enabled).toBe(expected);
+      });
+    });
+  }
+
   test("JSON-parseable values are parsed into objects", async () => {
     await withEnv({ LANDO_CONFIG__telemetry: '{"enabled":true}' }, async () => {
       const config = await loadConfig();

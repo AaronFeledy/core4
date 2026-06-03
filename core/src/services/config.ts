@@ -84,8 +84,14 @@ const segmentToKey = (segment: string): string =>
 
 // JSON-parseable values become objects/arrays/numbers/booleans/null; anything
 // else (e.g. a bare `podman`) is kept verbatim as a string.
+const isTelemetryEnabledPath = (path: ReadonlyArray<string>): boolean =>
+  path.length === 2 && path[0] === "telemetry" && path[1] === "enabled";
+
+const parseTelemetryEnabledOverlay = (raw: string): boolean => raw === "1" || raw.toLowerCase() === "true";
+
 const parseOverlayValue = (raw: string, path: ReadonlyArray<string>): unknown => {
   if (raw === "" && path.length === 1 && path[0] === "defaultProviderId") return null;
+  if (isTelemetryEnabledPath(path)) return parseTelemetryEnabledOverlay(raw);
   try {
     return JSON.parse(raw) as unknown;
   } catch {
