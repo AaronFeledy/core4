@@ -57,6 +57,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "",
     'import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";',
     'import type { ServiceTypeShape } from "@lando/sdk/services";',
+    'import type { TemplateEngine } from "@lando/sdk/template";',
     "",
   ];
   const pluginImports: Array<{ readonly name: string; readonly statement: string }> = [];
@@ -74,6 +75,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
         `    manifest: ${moduleName}.manifest,`,
         `    ...serviceTypesFrom({ ...${moduleName} }),`,
         `    ...globalServicesFrom({ ...${moduleName} }),`,
+        `    ...templateEnginesFrom({ ...${moduleName} }),`,
         "  },",
       ].join("\n"),
     );
@@ -118,12 +120,31 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "): { readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect> } =>",
     "  isGlobalServiceMap(module.globalServices) ? { globalServices: module.globalServices } : {};",
     "",
+    "const isTemplateEngine = (value: unknown): value is TemplateEngine =>",
+    '  typeof value === "object" &&',
+    "  value !== null &&",
+    '  "id" in value &&',
+    '  typeof value.id === "string" &&',
+    '  "compile" in value &&',
+    '  typeof value.compile === "function" &&',
+    '  "render" in value &&',
+    '  typeof value.render === "function";',
+    "",
+    "const isTemplateEngineMap = (value: unknown): value is ReadonlyMap<string, TemplateEngine> =>",
+    "  value instanceof Map && [...value.values()].every(isTemplateEngine);",
+    "",
+    "const templateEnginesFrom = (",
+    "  module: BundledPluginModule,",
+    "): { readonly templateEngines?: ReadonlyMap<string, TemplateEngine> } =>",
+    "  isTemplateEngineMap(module.templateEngines) ? { templateEngines: module.templateEngines } : {};",
+    "",
     "export const BUNDLED_PLUGINS: ReadonlyArray<{",
     "  readonly name: string;",
     "  readonly layer: BundledLayer;",
     "  readonly manifest: PluginManifest;",
     "  readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape>;",
     "  readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;",
+    "  readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;",
     "}> = [",
     tableRows.join("\n"),
     "];",
@@ -133,12 +154,13 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
 
 const layerExportFor = (
   entry: (typeof buildConfig.bundledPlugins)[number],
-): "provider" | "services" | "logger" | "engine" | "proxy" => {
+): "provider" | "services" | "logger" | "engine" | "proxy" | "templateEngine" => {
   if (entry.contributes?.providers !== undefined) return "provider";
   if (entry.contributes?.serviceTypes !== undefined) return "services";
   if (entry.contributes?.loggers !== undefined) return "logger";
   if (entry.contributes?.fileSyncEngines !== undefined) return "engine";
   if (entry.contributes?.proxies !== undefined) return "proxy";
+  if (entry.contributes?.templateEngines !== undefined) return "templateEngine";
 
   throw new Error(`Bundled plugin ${entry.name} does not declare a supported layer contribution.`);
 };

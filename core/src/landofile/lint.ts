@@ -20,6 +20,7 @@ import { type ConfigLintResult, type ConfigLintViolation, LandofileShape } from 
 
 import { LANDOFILE_NAME, findLandofilePath } from "./discovery.ts";
 import { parseLandofile } from "./parser.ts";
+import { renderLandofileTemplate } from "./template-render.ts";
 
 export interface LintLandofileOptions {
   /** Directory to search upward from for a Landofile. Defaults to `process.cwd()`. */
@@ -89,9 +90,17 @@ export const lintLandofile = (
       return singleViolationResult(filePath, message);
     }
 
+    const renderedEither = yield* renderLandofileTemplate({
+      filePath,
+      content: contentEither.right,
+    }).pipe(Effect.either);
+    if (Either.isLeft(renderedEither)) {
+      return singleViolationResult(filePath, renderedEither.left.message);
+    }
+
     const parsedEither = yield* parseLandofile({
       file: filePath,
-      content: contentEither.right,
+      content: renderedEither.right,
       cwd: dirname(filePath),
     }).pipe(Effect.either);
     if (Either.isLeft(parsedEither)) {

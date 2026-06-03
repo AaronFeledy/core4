@@ -145,6 +145,14 @@ describe("@lando/sdk package exports", () => {
     expect(services.ShellRunner).toBeDefined();
   });
 
+  test("template entry point exports the pluggable engine contract surface", async () => {
+    const template = await import("@lando/sdk/template");
+
+    expect(template.TemplateCompileError).toBeDefined();
+    expect(template.TemplateRenderError).toBeDefined();
+    expect(template.TemplateEngineUnresolvedError).toBeDefined();
+  });
+
   test("test entry point exports provider contract helpers", async () => {
     const sdkTest = await import("@lando/sdk/test");
 

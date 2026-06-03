@@ -11,6 +11,8 @@ import * as providerLando from "@lando/provider-lando";
 import * as providerPodman from "@lando/provider-podman";
 import * as proxyTraefik from "@lando/proxy-traefik";
 import * as serviceLando from "@lando/service-lando";
+import * as templateHandlebars from "@lando/template-handlebars";
+import * as templateMustache from "@lando/template-mustache";
 
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 import { PluginRegistry, PluginRegistryLive } from "../../src/plugins/registry.ts";
@@ -27,6 +29,16 @@ const EXPECTED_BUNDLED_PLUGINS = [
     manifest: fileSyncMutagen.manifest,
   },
   { name: "@lando/proxy-traefik", layer: proxyTraefik.proxy, manifest: proxyTraefik.manifest },
+  {
+    name: "@lando/template-handlebars",
+    layer: templateHandlebars.templateEngine,
+    manifest: templateHandlebars.manifest,
+  },
+  {
+    name: "@lando/template-mustache",
+    layer: templateMustache.templateEngine,
+    manifest: templateMustache.manifest,
+  },
 ];
 
 const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundled.ts");
@@ -34,7 +46,7 @@ const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundl
 
 describe("BUNDLED_PLUGINS", () => {
   test("exports all bundled plugins with real layer and manifest references", () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(7);
+    expect(BUNDLED_PLUGINS).toHaveLength(9);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
     );
@@ -54,6 +66,15 @@ describe("BUNDLED_PLUGINS", () => {
     const serviceLandoEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/service-lando");
     expect(serviceLandoEntry?.globalServices?.get("mailpit")).toBe(
       serviceLando.globalServices.get("mailpit"),
+    );
+
+    const handlebarsEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/template-handlebars");
+    expect(handlebarsEntry?.templateEngines?.get("handlebars")).toBe(
+      templateHandlebars.templateEngines.get("handlebars"),
+    );
+    const mustacheEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/template-mustache");
+    expect(mustacheEntry?.templateEngines?.get("mustache")).toBe(
+      templateMustache.templateEngines.get("mustache"),
     );
   });
 

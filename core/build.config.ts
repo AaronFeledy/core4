@@ -25,6 +25,7 @@ export interface BundledPluginEntry {
     readonly fileSyncEngines?: ReadonlyArray<string>;
     readonly proxies?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
+    readonly templateEngines?: ReadonlyArray<string>;
   };
 }
 
@@ -72,6 +73,16 @@ export const buildConfig: BuildConfig = {
       name: "@lando/proxy-traefik",
       path: "plugins/proxy-traefik",
       contributes: { proxies: ["traefik"], globalServices: ["traefik"] },
+    },
+    {
+      name: "@lando/template-handlebars",
+      path: "plugins/template-handlebars",
+      contributes: { templateEngines: ["handlebars"] },
+    },
+    {
+      name: "@lando/template-mustache",
+      path: "plugins/template-mustache",
+      contributes: { templateEngines: ["mustache"] },
     },
   ],
   bundledRecipes: [
