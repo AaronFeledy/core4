@@ -1,0 +1,30 @@
+---
+id: config-translate
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, landofile, config, translate]
+---
+
+<Guide>
+  <Scenario id="translator-contract" render={false} reason="The framework contract is covered by the config-translator SDK surface tests and landofile-config-translate unit tests; this documents the plugin-author surface until app:config:translate lands.">
+    <Step name="register">
+      <Variable name="service" value="ConfigTranslator" display="SDK service tag plugin authors register to contribute a config translator" />
+      <Variable name="shape" value="id, summary, inputKinds, detect(input), translate(input)" display="Every translator declares a stable id, user-facing summary, supported input kinds, and Effect-powered detect/translate hooks" />
+      <Variable name="detectInput" value="{ appRoot, files? }" display="detect receives the app root plus optional candidate file paths and returns translator matches with confidence" />
+    </Step>
+    <Step name="translate">
+      <Variable name="runner" value="runConfigTranslators" display="Core runs resolved translators in declared order" />
+      <Variable name="translateInput" value="{ appRoot, files, current, options }" display="translate receives the app root, selected files, current Landofile, and command/plugin options" />
+      <Variable name="result" value="{ fragment, diagnostics }" display="Each translator returns a partial canonical Landofile fragment plus generated/unsupported/non-portable/needs-review diagnostics" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="deterministic-resolution" render={false} reason="Conflict handling and deterministic ordering are covered by landofile-config-translate unit tests; this scenario records the user-facing rules.">
+    <Step name="order">
+      <Variable name="order" value="declared plugin order" display="Distinct translator ids keep their declared order during detect and translate" />
+      <Variable name="merge" value="later fragment keys override earlier fragment keys" display="runConfigTranslators merges partial Landofile fragments in execution order while appending diagnostics" />
+      <Variable name="conflict" value="ConfigTranslatorConflictError" display="Duplicate translator ids fail before any translator runs" />
+    </Step>
+  </Scenario>
+</Guide>
