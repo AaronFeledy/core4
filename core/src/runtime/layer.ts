@@ -98,6 +98,7 @@ const GlobalConfigOverrides = Schema.Struct({
       enabled: Schema.optional(Schema.Boolean),
     }),
   ),
+  renderer: Schema.optional(Schema.String),
 });
 
 /** Runtime options bag. */

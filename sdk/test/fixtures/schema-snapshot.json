@@ -1435,6 +1435,9 @@
             }
           ]
         },
+        "renderer": {
+          "type": "string"
+        },
         "telemetry": {
           "additionalProperties": false,
           "properties": {

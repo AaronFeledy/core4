@@ -31,8 +31,23 @@ describe("OCLIF init hook", () => {
   test("minimal bootstrap does not provide runtime provider services", async () => {
     resetEvents();
 
-    await expect(dispatch("minimal")).rejects.toThrow("RuntimeProvider");
-    process.exitCode = 0;
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
+    (process.stderr as unknown as { write: typeof process.stderr.write }).write = ((
+      chunk: string | Uint8Array,
+    ) => {
+      writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      // Missing-service failures now surface as a stderr diagnostic + exit code, not a throw.
+      await dispatch("minimal");
+      expect(writes.join("")).toContain("RuntimeProvider");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
+      process.exitCode = 0;
+    }
     expect(events).toEqual(["minimal-command", "minimal-effect"]);
   });
 

@@ -17,14 +17,18 @@ export type TelemetryConfig = typeof TelemetryConfig.Type;
  * GlobalConfig — host-root fields resolved at the `global` bootstrap level.
  * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
  * systemPluginRoot, providers, plugins, pluginDirs, disablePlugins,
- * bindAddress, routing, network, logger, renderer, toolingEngine,
+ * bindAddress, routing, network, logger, toolingEngine,
  * commandAliases, pluginConfig, keys, maxKeyWarning, scanner, healthcheck,
  * build, logLevelConsole, experimental, stats) is modeled elsewhere.
+ *
+ * `renderer` selects the CLI output mode (`lando`/`json`/`plain`/`verbose`)
+ * with precedence flag > env > config > default.
  */
 export const GlobalConfig = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
   userConfRoot: Schema.optional(AbsolutePath),
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: false }) }),
+  renderer: Schema.optional(Schema.String),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

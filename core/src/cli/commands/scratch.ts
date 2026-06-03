@@ -18,6 +18,7 @@ import type {
 import { ScratchAppService } from "@lando/sdk/services";
 
 import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
+import { emitOptionalStdout } from "../renderer-boundary.ts";
 
 export interface ScratchStartOptions {
   readonly fork?: boolean;
@@ -194,9 +195,7 @@ export const scratchStart = (
     return yield* Effect.scoped(
       Effect.gen(function* () {
         const handle = yield* service.acquire({ ...acquireBase, detached: false });
-        yield* Effect.sync(() => {
-          console.log(`started: ${handle.id} (press Ctrl-C to stop and destroy)`);
-        });
+        yield* emitOptionalStdout(`started: ${handle.id} (press Ctrl-C to stop and destroy)\n`);
         yield* waitForAbortSignal(options.signal);
         return { handle, detached: false, rendered: true } satisfies ScratchStartResult;
       }),

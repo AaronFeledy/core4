@@ -27,6 +27,7 @@ import {
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
+import { emitOptionalStderr } from "../renderer-boundary.ts";
 
 export interface ExecAppOptions {
   /**
@@ -167,9 +168,7 @@ export const execApp = (
     const result = yield* provider.exec(target, spec);
 
     if (result.stderr.length > 0) {
-      yield* Effect.sync(() => {
-        process.stderr.write(result.stderr);
-      });
+      yield* emitOptionalStderr(result.stderr);
     }
 
     return {

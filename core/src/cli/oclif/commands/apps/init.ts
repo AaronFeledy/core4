@@ -13,7 +13,13 @@ import { parseAnswerFlags } from "../../../../recipes/prompts/index.ts";
 import { formatBugReport } from "../../../bug-report.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
-import { type RendererMode, resolveRendererMode } from "../../../renderer-selection.ts";
+import {
+  makeRendererServiceLiveForMode,
+  resolveCliRendererMode,
+  writeDiagnosticLine,
+  writeResultLine,
+} from "../../../renderer-boundary.ts";
+import type { RendererMode } from "../../../renderer-selection.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export interface InitFlags {
@@ -113,7 +119,7 @@ export default class InitCommand extends LandoCommandBase {
     // never passes through runEffect, so the flag would be rejected.
     let rendererMode: RendererMode;
     try {
-      const resolution = resolveRendererMode({ argv: this.argv, env: process.env });
+      const resolution = await resolveCliRendererMode({ argv: this.argv, env: process.env });
       rendererMode = resolution.mode;
       this.argv.length = 0;
       this.argv.push(...resolution.remainingArgv);
@@ -142,12 +148,18 @@ export default class InitCommand extends LandoCommandBase {
         rendererMode,
       });
       if (rendererMode === "json") {
-        process.stderr.write(`${text}\n`);
+        await Effect.runPromise(
+          writeDiagnosticLine(text).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
+        );
         process.exitCode = 1;
         return;
       }
       throw new Error(text);
     }
-    this.log(`Created ${result.appName} at ${result.directory}`);
+    await Effect.runPromise(
+      writeResultLine(`Created ${result.appName} at ${result.directory}`).pipe(
+        Effect.provide(makeRendererServiceLiveForMode(rendererMode)),
+      ),
+    );
   }
 }

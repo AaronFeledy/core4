@@ -161,24 +161,38 @@ const makeMessageContract = (formatter: LineFormatter, io: RendererIO, destinati
   };
 };
 
+/**
+ * Raw `output.{stdout,stderr}` channel: chunks are written verbatim (no glyph
+ * or newline injection), unlike `message.*`. Carries already-formatted command
+ * results (stdout) and process-level failure diagnostics (stderr).
+ */
+const makeOutputChannel = (io: RendererIO) => ({
+  stdout: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStdout(chunk)),
+  stderr: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
+});
+
 export const makePlainRenderer = (io: RendererIO) => ({
   id: "plain" as const,
   message: makeMessageContract(renderPlainLine, io, "stdout"),
+  output: makeOutputChannel(io),
 });
 
 export const makeJsonRenderer = (io: RendererIO) => ({
   id: "json" as const,
   message: makeMessageContract(renderJsonLine, io, "stderr"),
+  output: makeOutputChannel(io),
 });
 
 export const makeVerboseRenderer = (io: RendererIO) => ({
   id: "verbose" as const,
   message: makeMessageContract(renderVerboseLine, io, "stdout"),
+  output: makeOutputChannel(io),
 });
 
 export const makeLandoRenderer = (io: RendererIO) => ({
   id: "lando" as const,
   message: makeMessageContract(renderPlainLine, io, "stdout"),
+  output: makeOutputChannel(io),
 });
 
 export const makePlainRendererServiceLive = (io: RendererIO): Layer.Layer<Renderer> =>

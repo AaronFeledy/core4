@@ -63,21 +63,24 @@ describe("lando init git source dispatch parity", () => {
   test("compiled dispatch reports the shared --source=git missing --url message", async () => {
     const { runCli } = await import("../../src/cli/run.ts");
     const writes: string[] = [];
-    const originalError = console.error;
+    const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
     const previousExitCode = process.exitCode;
     try {
-      console.error = (value?: unknown) => {
-        writes.push(String(value));
-      };
+      (process.stderr as unknown as { write: typeof process.stderr.write }).write = ((
+        chunk: string | Uint8Array,
+      ) => {
+        writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+        return true;
+      }) as typeof process.stderr.write;
       process.exitCode = undefined;
       await runCli({
         argv: ["init", "--source=git", "--no-interactive"],
         rootUrl: "file:///$bunfs/lando.ts",
       });
       expect(process.exitCode).toBe(1);
-      expect(writes.join("\n")).toContain("lando init --source=git requires --url=<git-url>.");
+      expect(writes.join("")).toContain("lando init --source=git requires --url=<git-url>.");
     } finally {
-      console.error = originalError;
+      (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
       process.exitCode = previousExitCode;
     }
   });
