@@ -50,6 +50,7 @@ import type {
 } from "../errors/index.ts";
 
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
+import type { ConfigTranslatorShape } from "./config-translator.ts";
 import type { LandoEvent } from "./events.ts";
 import type { FileSyncEngineShape } from "./file-sync.ts";
 import type { FileStat, FileSystemError } from "./file-system.ts";
@@ -107,6 +108,7 @@ import type {
 
 export * from "./cache.ts";
 export * from "./cli.ts";
+export * from "./config-translator.ts";
 export * from "./config.ts";
 export * from "./events.ts";
 export * from "./file-sync.ts";
@@ -521,4 +523,9 @@ export declare class SecretStore extends Context.Tag("@lando/core/SecretStore")<
 export declare class FileSyncEngine extends Context.Tag("@lando/core/FileSyncEngine")<
   FileSyncEngine,
   FileSyncEngineShape
+>() {}
+
+export declare class ConfigTranslator extends Context.Tag("@lando/core/ConfigTranslator")<
+  ConfigTranslator,
+  ConfigTranslatorShape
 >() {}

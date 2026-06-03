@@ -107,6 +107,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.RecipeRunNotAllowedError).toBeDefined();
     expect(errors.RecipeFetchNotAllowedError).toBeDefined();
     expect(errors.SecretNotFoundError).toBeDefined();
+    expect(errors.ConfigTranslateError).toBeDefined();
+    expect(errors.ConfigTranslatorConflictError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
@@ -145,6 +147,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.FileSystem).toBeDefined();
     expect(services.ProcessRunner).toBeDefined();
     expect(services.ShellRunner).toBeDefined();
+    expect(services.ConfigTranslator).toBeDefined();
   });
 
   test("secrets entry point exports the single value redactor", async () => {

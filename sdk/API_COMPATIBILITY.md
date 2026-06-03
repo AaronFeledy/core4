@@ -138,6 +138,8 @@
 
 ## Additive Alpha errors
 
+- `ConfigTranslateError`
+- `ConfigTranslatorConflictError`
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`
 - `LandofileExpressionParseError`
@@ -152,6 +154,7 @@
 - `CertificateAuthority`
 - `CommandFramework`
 - `CommandRegistry`
+- `ConfigTranslator`
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`
