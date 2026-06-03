@@ -139,6 +139,7 @@
 ## Additive Alpha errors
 
 - `ConfigTranslateError`
+- `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`

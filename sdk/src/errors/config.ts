@@ -34,3 +34,17 @@ export class ConfigTranslatorConflictError extends Schema.TaggedError<ConfigTran
     remediation: Schema.optional(Schema.String),
   },
 ) {}
+
+/**
+ * Raised by `app:config:translate` when no `ConfigTranslator` is registered, so
+ * there is nothing to translate the input configuration with. Concrete
+ * translators ship as plugins (post-GA), so the remediation points the user at
+ * the plugin install path.
+ */
+export class ConfigTranslateNoTranslatorsError extends Schema.TaggedError<ConfigTranslateNoTranslatorsError>()(
+  "ConfigTranslateNoTranslatorsError",
+  {
+    message: Schema.String,
+    remediation: Schema.optional(Schema.String),
+  },
+) {}

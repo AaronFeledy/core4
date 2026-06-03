@@ -7,7 +7,7 @@ tags: [beta, docs, landofile, config, translate]
 ---
 
 <Guide>
-  <Scenario id="translator-contract" render={false} reason="The framework contract is covered by the config-translator SDK surface tests and landofile-config-translate unit tests; this documents the plugin-author surface until app:config:translate lands.">
+  <Scenario id="translator-contract" render={false} reason="The framework contract is covered by the config-translator SDK surface tests and landofile-config-translate unit tests; this documents the plugin-author surface the command consumes.">
     <Step name="register">
       <Variable name="service" value="ConfigTranslator" display="SDK service tag plugin authors register to contribute a config translator" />
       <Variable name="shape" value="id, summary, inputKinds, detect(input), translate(input)" display="Every translator declares a stable id, user-facing summary, supported input kinds, and Effect-powered detect/translate hooks" />
@@ -25,6 +25,22 @@ tags: [beta, docs, landofile, config, translate]
       <Variable name="order" value="declared plugin order" display="Distinct translator ids keep their declared order during detect and translate" />
       <Variable name="merge" value="later fragment keys override earlier fragment keys" display="runConfigTranslators merges partial Landofile fragments in execution order while appending diagnostics" />
       <Variable name="conflict" value="ConfigTranslatorConflictError" display="Duplicate translator ids fail before any translator runs" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="command-surface" render={false} reason="app:config:translate writes files next to the user's Landofile and the canonical-write path needs at least one registered translator; the file IO, --write backup, and zero-translator remediation are covered by app-config-translate unit tests, so this scenario records the user-facing command behavior.">
+    <Step name="run">
+      <Variable name="command" value="lando app:config:translate" display="Run from an app directory to translate the discovered .lando.yml into a canonical v4 Landofile via registered translators" />
+      <Variable name="output" value=".lando.yml.canonical" display="By default the canonical Landofile is written next to the input as .lando.yml.canonical, leaving the original untouched" />
+      <Variable name="format" value="--format text|json" display="--format json prints the structured result (paths + diagnostics); text is the default human-readable summary" />
+    </Step>
+    <Step name="write">
+      <Variable name="write" value="lando app:config:translate --write" display="--write overwrites the input Landofile in place" />
+      <Variable name="backup" value=".lando.yml.bak" display="The original Landofile is preserved as .lando.yml.bak before the input is overwritten" />
+    </Step>
+    <Step name="no-translators">
+      <Variable name="error" value="ConfigTranslateNoTranslatorsError" display="With zero translators registered the command exits non-zero before touching any file" />
+      <Variable name="remediation" value="lando plugin:add <translator-plugin>" display="The remediation points at the plugin install path; concrete translators ship as plugins" />
     </Step>
   </Scenario>
 </Guide>
