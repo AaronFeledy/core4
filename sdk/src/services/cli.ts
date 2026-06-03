@@ -1,16 +1,25 @@
 import { Context, type Effect } from "effect";
 
-import type { ToolingExecError } from "../errors/index.ts";
+import type { EventError, ToolingExecError } from "../errors/index.ts";
 import type { AppPlan } from "../schema/index.ts";
 import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
 
 /**
  * Renderer — CLI output strategy.
+ *
+ * Every user-facing message flows through the `message` contract rather than
+ * `console.log`; each renderer formats `info`/`warn`/`error` for its own
+ * output mode (human glyphs, NDJSON, verbose payload trace).
  */
 export class Renderer extends Context.Tag("@lando/core/Renderer")<
   Renderer,
   {
     readonly id: string;
+    readonly message: {
+      readonly info: (body: string) => Effect.Effect<void, EventError>;
+      readonly warn: (body: string) => Effect.Effect<void, EventError>;
+      readonly error: (body: string, remediation?: string) => Effect.Effect<void, EventError>;
+    };
   }
 >() {}
 
