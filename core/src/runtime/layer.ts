@@ -52,6 +52,7 @@ import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { FileSystemLive } from "../services/file-system.ts";
 import { AppPlannerLive } from "../services/planner.ts";
+import { SecretStoreLive } from "../services/secret-store.ts";
 import { ProviderExecToolingEngineLive } from "../services/tooling-engine.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
 
@@ -226,7 +227,13 @@ const collectEmbeddingPluginLayers = (
 };
 
 const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(LoggerLive({ mode: loggerMode }), ConfigServiceLive, CacheServiceLive, FileSystemLive);
+  Layer.mergeAll(
+    LoggerLive({ mode: loggerMode }),
+    ConfigServiceLive,
+    CacheServiceLive,
+    FileSystemLive,
+    SecretStoreLive,
+  );
 
 const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);

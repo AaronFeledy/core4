@@ -8,6 +8,7 @@ describe("@lando/sdk package exports", () => {
     expect(sdk.Errors.LandoRuntimeBootstrapError).toBeDefined();
     expect(sdk.Events.LandoEvent).toBeDefined();
     expect(sdk.Services.RuntimeProvider).toBeDefined();
+    expect(sdk.Secrets.createSecretRedactor).toBeDefined();
   });
 
   test("schema entry point exports the canonical contract surface", async () => {
@@ -105,6 +106,7 @@ describe("@lando/sdk package exports", () => {
     expect(errors.RecipeChoicesError).toBeDefined();
     expect(errors.RecipeRunNotAllowedError).toBeDefined();
     expect(errors.RecipeFetchNotAllowedError).toBeDefined();
+    expect(errors.SecretNotFoundError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
@@ -143,6 +145,27 @@ describe("@lando/sdk package exports", () => {
     expect(services.FileSystem).toBeDefined();
     expect(services.ProcessRunner).toBeDefined();
     expect(services.ShellRunner).toBeDefined();
+  });
+
+  test("secrets entry point exports the single value redactor", async () => {
+    const secrets = await import("@lando/sdk/secrets");
+
+    expect(secrets.createSecretRedactor).toBeDefined();
+    expect(secrets.REDACTED).toBeDefined();
+  });
+
+  test("root entry point exposes the Secrets namespace", async () => {
+    const sdk = await import("@lando/sdk");
+
+    expect(sdk.Secrets.createSecretRedactor).toBeDefined();
+    expect(sdk.Secrets.REDACTED).toBeDefined();
+  });
+
+  test("secrets entry point exports the single value-redactor", async () => {
+    const secrets = await import("@lando/sdk/secrets");
+
+    expect(secrets.createSecretRedactor).toBeDefined();
+    expect(secrets.REDACTED).toBeDefined();
   });
 
   test("template entry point exports the pluggable engine contract surface", async () => {

@@ -13,6 +13,7 @@ export * from "./recipe.ts";
 export * from "./runtime.ts";
 export * from "./scanner.ts";
 export * from "./scratch.ts";
+export * from "./secret.ts";
 export * from "./service.ts";
 export * from "./shell.ts";
 export * from "./ssh.ts";
