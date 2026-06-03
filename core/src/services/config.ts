@@ -142,13 +142,20 @@ const envOverlay = (env: Record<string, string | undefined> = process.env): Reco
   return overlay;
 };
 
+const rootEnvOverlay = (env: Record<string, string | undefined> = process.env): Record<string, unknown> => {
+  const overlay: Record<string, unknown> = {};
+  if (env.LANDO_USER_DATA_ROOT !== undefined) overlay.userDataRoot = env.LANDO_USER_DATA_ROOT;
+  if (env.LANDO_USER_CONF_ROOT !== undefined) overlay.userConfRoot = env.LANDO_USER_CONF_ROOT;
+  return overlay;
+};
+
 const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string, unknown>): unknown => {
   const base: Record<string, unknown> = {
     userDataRoot: resolveUserDataRoot(),
     userConfRoot: resolveUserConfRoot(),
     defaultProviderId: "lando",
   };
-  return deepMerge(deepMerge(base, fileConfig), overlay);
+  return deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
 };
 
 const loadConfig = async (): Promise<GlobalConfig> => {

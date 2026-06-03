@@ -16,7 +16,7 @@ import { ConfigServiceLive } from "../../src/services/config.ts";
  */
 const withEnv = async <T>(vars: Record<string, string>, body: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-env-overrides-"));
-  const touched = new Set<string>(["LANDO_USER_CONF_ROOT", ...Object.keys(vars)]);
+  const touched = new Set<string>(["LANDO_USER_CONF_ROOT", "LANDO_USER_DATA_ROOT", ...Object.keys(vars)]);
   // Also clear any pre-existing LANDO_CONFIG__ vars so the test is hermetic.
   for (const name of Object.keys(process.env)) {
     if (name.startsWith("LANDO_CONFIG__")) touched.add(name);
@@ -124,6 +124,15 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     await withEnv({}, async (dir) => {
       const config = await loadConfig();
       expect(config.userConfRoot === dir).toBe(true);
+    });
+  });
+
+  test("root env vars override config.yml root values", async () => {
+    await withEnv({ LANDO_USER_DATA_ROOT: "/tmp/lando-env-data" }, async (dir) => {
+      await writeConfig(dir, ["userDataRoot: /tmp/lando-file-data", "userConfRoot: /tmp/lando-file-conf"]);
+      const config = await loadConfig();
+      expect(config.userDataRoot).toBe("/tmp/lando-env-data");
+      expect(config.userConfRoot).toBe(dir);
     });
   });
 });
