@@ -751,7 +751,8 @@ const withScenarioContextInternal = <A, E, R>(
         process.env.KEEP_SCENARIO_DIRS === "1"
           ? Effect.sync(() => {
               if (process.env.LANDO_DOCS_SCENARIO_KEEP === "1") {
-                process.stdout.write(`Scenario temp dir: ${testDir}\n`);
+                const stdout = process.stdout;
+                stdout.write(`Scenario temp dir: ${testDir}\n`);
               }
             })
           : Effect.promise(() => rm(testDir, { recursive: true, force: true })),

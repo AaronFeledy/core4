@@ -24,10 +24,12 @@ export interface PostInitIO {
 
 export const createStdioPostInitIO = (): PostInitIO => ({
   out: (line) => {
-    process.stdout.write(`${line}\n`);
+    const stdout = process.stdout;
+    stdout.write(`${line}\n`);
   },
   err: (line) => {
-    process.stderr.write(`${line}\n`);
+    const stderr = process.stderr;
+    stderr.write(`${line}\n`);
   },
 });
 
