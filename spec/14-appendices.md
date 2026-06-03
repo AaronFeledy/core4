@@ -198,6 +198,42 @@ The decisive factor is the plugin ecosystem maturity: Lando v4 *is* a plugin pla
 
 The `CommandFramework` abstraction exists so that if `@effect/cli` reaches feature parity for plugin platforms, a Lando distribution can swap in an alternate adapter without touching core domain logic.
 
+#### D.1 Compiled-binary dispatch spike
+
+Source mode routes through `@oclif/core`'s `execute()`; the compiled `$bunfs` binary forks to the hand-rolled `runCompiledCli` (§8.4.1). The §14.2 open decision "Compiled-binary CLI dispatch unification" asks whether that fork can be removed — option (a): make `execute()` dispatch reliably inside `bun build --compile` against the static `oclif.manifest.json` + `core/src/cli/oclif/compiled-commands.ts`, then delete `runCompiledCli` and the §8.4.1 relaxations; option (b): accept dual dispatch as permanent, promote §8.4.1's parity rules to normative, and add a compiled-binary parity test layer.
+
+This spike ran both arms (`core/test/cli/dispatch-unification-spike.test.ts`; probe `core/test/cli/parity/oclif-static-probe.ts`; shared normalizer `core/test/cli/parity/normalize.ts`).
+
+**Recommended conclusion: option (b).** The application of this outcome is a separate story and is tracked as a still-open §14.2 row.
+
+**Arm A — can `execute()` dispatch in the compiled binary?** No, not through any supported public API. A probe importing only `@oclif/core` and calling `execute()` was compiled with `bun build --compile` to its own outfile and run from a directory outside the source tree (a faithful relocated-deployment reproduction). It fails before any command runs:
+
+```
+Error: could not find package.json with {
+  isRoot: true,
+  pjson: undefined,
+  root: '<binary path>'
+}
+```
+
+Two filesystem boundaries break, neither addressable on the `$bunfs` virtual disk:
+
+1. `Config.load(dir)` → `findRoot()` walks up from the entry path reading `package.json`. Next to a relocated single-file binary there is none, so `Config` throws (above) or mis-roots — losing the `oclif` topics, `flexibleTaxonomy`, hooks, and help plugin.
+2. Even with a static manifest, command dispatch still resolves the target to an absolute path and does a runtime `import(pathToFileURL(filePath))` (`@oclif/core` `module-loader`). `bun build --compile` embeds only statically analyzable imports, so a runtime-computed path is not embedded and the module does not exist on real disk → `ModuleLoadError`. The `init` hook and `@oclif/plugin-help` load the same way.
+
+OCLIF v4's `explicit`/`single` command-discovery strategies read an in-memory command map structurally identical to `compiled-commands.ts`, but they too resolve and `import()` their target file from disk, so they do not clear boundary 2. The only way to dispatch through OCLIF in-binary is to construct `Config`/`Plugin` programmatically and pre-populate private internals (`Plugin.commandCache`, `.manifest`, `.commands`, the plugins `Map`) so neither `findRoot` nor `module-loader` runs. That pins Lando to `@oclif/core` private implementation across patch releases — a fragility cost rejected here, bought only cosmetic gains (flexible-taxonomy space forms and byte-identical help, both already listed as accepted §8.4.1 divergences).
+
+**Arm B — are the two shipping paths already at parity?** Yes. For the four target commands, source-mode `execute()` and the compiled `runCompiledCli` produce semantically identical results:
+
+| Scenario | Command | Exit | Parity asserted |
+|---|---|---|---|
+| S1 happy | `meta:bun --version` (passthrough) | 0 | stdout equal after version normalization |
+| S2 deferred | `meta:plugin:new --renderer=json` | 1 | JSON envelope byte-identical (modulo `timestamp`); `code = NotImplementedError` |
+| S3 error | `app:start` (no Landofile) `--renderer=json` | 1 | JSON envelope byte-identical (modulo `timestamp`/temp path); `code = LandofileNotFoundError` |
+| S4 setup | `meta:setup --provider=podman` (`PATH=/no-such-path`, temp roots) | 1 | exit + tagged `code = ProviderUnavailableError` + `commandId` equal |
+
+The headline finding answers §8.4.1's open question on parity granularity: **the `json` renderer's event envelope is byte-identical across both paths**, while plain/`lando` stderr differs only in presentation — source-mode OCLIF prefixes `Error:` and wraps at terminal width, the compiled path prints the raw block and appends `logsDir`/`cacheDir`. The parity contract is therefore byte-identical on the JSON envelope and identical tagged-error fields (`code`, `commandId`, `remediation`, `specSection`) on plain output — not byte-for-byte on plain stderr. Green parity here is the evidence that promoting §8.4.1 to a normative, test-enforced contract (option b) is safe; that promotion and the compiled-binary parity test layer are the work of the follow-up §14.2 application story.
+
 ### E. Glossary
 
 - **Adapter** — A plugin Layer that implements a port (abstraction).

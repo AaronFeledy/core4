@@ -773,3 +773,41 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (resolved merge conflict with origin/main in spec/beta/progress.txt)
 - Merge: merged (squash)
 ---
+
+## [2026-06-02 23:55 CDT] - US-155 (agent2)
+- Ran the CLI dispatch unification spike. Two arms, both committed as one gated test
+  (`core/test/cli/dispatch-unification-spike.test.ts`) plus a reusable normalizer and a standalone
+  probe under `core/test/cli/parity/`.
+  - Experiment arm: compiled a probe that calls `@oclif/core` `execute()` and ran it from outside the
+    source tree (faithful relocated-`$bunfs` deployment). It fails before dispatch — `Config.load`'s
+    `findRoot` cannot locate `package.json`, and OCLIF's module-loader would then runtime-`import()` a
+    path the bundler never embedded. Conclusion: routing the compiled binary through OCLIF is not
+    reachable via any supported public API (only by pinning to OCLIF private internals).
+  - Parity arm: proved source-mode OCLIF and the compiled `runCompiledCli` are semantically identical for
+    `meta:bun --version`, the deferred `meta:plugin:new`, `app:start` (no Landofile), and a host-safe
+    `meta:setup`. Headline finding: the `--renderer=json` envelope is byte-identical across both paths;
+    plain stderr differs only in presentation, so parity is byte-identical on JSON and identical tagged
+    fields on plain.
+- Recorded the evidence-backed conclusion (recommended option b) in `spec/14-appendices.md` §D.1 and
+  annotated the §14.2 open-decision row as spike-complete. The row stays OPEN — applying the outcome is a
+  separate story.
+- Verification: typecheck, lint, tests passed; manual CLI runs of all four commands plus the probe
+  captured in both dispatch modes.
+- **Learnings for future iterations:**
+  - A faithful compiled-`$bunfs` test must run the binary from OUTSIDE the repo, or `findRoot` walks up to
+    the repo `package.json` and resolves on-disk commands, masking the real deployment failure.
+  - Host-safe `meta:setup` parity: env `PATH=/no-such-path` + temp `LANDO_USER_*_ROOT` + `--provider=podman`
+    fails fast at capability detection with no network fetch and no host mutation. The default `lando`
+    provider instead attempts a network bundle download.
+  - For source↔compiled parity, compare the JSON envelope byte-for-byte but plain stderr only on extracted
+    tagged-error fields — source-mode OCLIF adds an `Error:` prefix and terminal-width wrapping the compiled
+    path does not.
+  - The reusable harness (subprocess spawn + `parity/normalize.ts`) is the substrate the dual-dispatch
+    parity-test-layer story should build on.
+---
+
+## [2026-06-03 00:45 CDT] - US-155 Review
+- Reviewed the CLI dispatch unification spike against PRD-B-09 US-155 and the `review-work` lanes. Fixed one real in-scope test-harness bug: the subprocess parity tests used Bun's default 5s timeout, so `meta:bun --version` could time out and kill the compiled child even though both source and compiled commands succeed manually. Widened the shipping-path subprocess parity tests to 30s each; no runtime dispatch behavior changed.
+- Review notes (rejected/deferred): no PRD blockers or security/code-quality defects found in the spike implementation. The follow-up option-b application remains US-156 by design, not a US-155 review blocker.
+- Verification: typecheck passed; lint passed; focused dispatch spike suite passed (7/7). Full `bun test` ran and still fails only in the documented pre-existing package-export/packed-install cases (`@lando/core/cli/operations`, `@lando/core/testing`, packed `fast-check`), unrelated to US-155.
+---
