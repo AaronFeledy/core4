@@ -164,8 +164,14 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
   return deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
 };
 
+const resolveConfigFileRoot = (overlay: Record<string, unknown>): string => {
+  const roots = deepMerge({ userConfRoot: resolveUserConfRoot() }, deepMerge(rootEnvOverlay(), overlay));
+  return typeof roots.userConfRoot === "string" ? roots.userConfRoot : resolveUserConfRoot();
+};
+
 const loadConfig = async (): Promise<GlobalConfig> => {
-  const userConfRoot = resolveUserConfRoot();
+  const overlay = envOverlay();
+  const userConfRoot = resolveConfigFileRoot(overlay);
   const path = join(userConfRoot, "config.yml");
   const file = Bun.file(path);
   let fileConfig: Record<string, unknown> = {};
@@ -179,7 +185,7 @@ const loadConfig = async (): Promise<GlobalConfig> => {
     }
   }
 
-  const merged = mergeConfig(fileConfig, envOverlay());
+  const merged = mergeConfig(fileConfig, overlay);
   try {
     return Schema.decodeUnknownSync(GlobalConfig)(merged);
   } catch (cause) {

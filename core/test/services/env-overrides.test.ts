@@ -149,6 +149,24 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
       expect(config.userConfRoot).toBe(dir);
     });
   });
+
+  test("LANDO_CONFIG__user_conf_root selects the config.yml root and reported root", async () => {
+    await withEnv({ LANDO_CONFIG__user_conf_root: "" }, async (envRoot) => {
+      const overlayRoot = await mkdtemp(join(tmpdir(), "lando-env-overrides-overlay-"));
+      try {
+        process.env.LANDO_CONFIG__user_conf_root = overlayRoot;
+        await writeConfig(envRoot, ["defaultProviderId: docker"]);
+        await writeConfig(overlayRoot, ["defaultProviderId: podman"]);
+
+        const config = await loadConfig();
+
+        expect(config.userConfRoot).toBe(overlayRoot);
+        expect(config.defaultProviderId).toBe("podman");
+      } finally {
+        await rm(overlayRoot, { recursive: true, force: true });
+      }
+    });
+  });
 });
 
 describe("precedence chain: command flag > env", () => {
