@@ -56,11 +56,25 @@ const appNameOf = (parsed: unknown): string => {
   return typeof name === "string" ? name : "";
 };
 
-const singleViolationResult = (file: string, message: string): ConfigLintResult => ({
+const singleViolationResult = (
+  file: string,
+  message: string,
+  location: { readonly line: number | undefined; readonly column: number | undefined } = {
+    line: undefined,
+    column: undefined,
+  },
+): ConfigLintResult => ({
   app: "",
   file,
   valid: false,
-  violations: [{ path: "", message }],
+  violations: [
+    {
+      path: "",
+      message,
+      ...(location.line === undefined ? {} : { line: location.line }),
+      ...(location.column === undefined ? {} : { column: location.column }),
+    },
+  ],
 });
 
 /**
@@ -95,7 +109,8 @@ export const lintLandofile = (
       content: contentEither.right,
     }).pipe(Effect.either);
     if (Either.isLeft(renderedEither)) {
-      return singleViolationResult(filePath, renderedEither.left.message);
+      const error = renderedEither.left;
+      return singleViolationResult(filePath, error.message, { line: error.line, column: error.column });
     }
 
     const parsedEither = yield* parseLandofile({
@@ -104,7 +119,8 @@ export const lintLandofile = (
       cwd: dirname(filePath),
     }).pipe(Effect.either);
     if (Either.isLeft(parsedEither)) {
-      return singleViolationResult(filePath, parsedEither.left.message);
+      const error = parsedEither.left;
+      return singleViolationResult(filePath, error.message, { line: error.line, column: error.column });
     }
 
     const parsed = parsedEither.right;

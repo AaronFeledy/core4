@@ -69,6 +69,19 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("a template render error preserves template-source line and column", async () => {
+    await write("template: definitely-missing\nname: myapp\n");
+    const exit = await lint(dir);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(false);
+      const violation = exit.value.violations[0];
+      expect(violation?.path).toBe("");
+      expect(violation?.line).toBe(1);
+      expect(violation?.column).toBe(1);
+    }
+  });
+
   test("a missing Landofile fails with LandofileNotFoundError", async () => {
     const exit = await lint(dir);
     expect(Exit.isFailure(exit)).toBe(true);
