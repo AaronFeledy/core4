@@ -956,6 +956,13 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - `tooling` was already present in `BootstrapLevel`/`BOOTSTRAP_RANK` and `runtimeLayerFor`; the missing public seam was the `makeLandoRuntime({ bootstrap: "tooling" })` overload plus explicit absence tests for provider/app-planner services.
 ---
 
+## [2026-06-03 20:35 CDT] - US-160
+- Shipped cache-first AppPlan resolution for tooling execution. Tooling commands now derive a tooling hot-path app-plan cache key from the resolved Landofile, provider id, plugin manifests, and app root before touching provider runtime services; warm hits execute without re-planning or early provider selection, while misses or stale keys fall back to the existing planner and repopulate the cache.
+- Verification: RED test failed on a warm cache because `AppPlanner.plan` was still called; focused cache hit/miss/stale/plugin-registry-failure tooling tests pass; runtime tooling-layer coverage passes; typecheck, lint, build, and targeted story suites pass. Full `bun test` passed on rerun (2933 pass / 27 skip / 0 fail); the earlier unrelated compiled-binary build/parity flake passed in isolation after cleanup. Manual QA invoked `runTooling` against a temp app with a prewritten bundled-plugin-manifest cache key and proved provider exec output without planner fallback or early provider selection.
+- **Learnings for future iterations:**
+  - Tooling cache tests can inject `cacheRoot` through `runTooling` to avoid relying on global `LANDO_USER_CACHE_ROOT`; keep the production default at `resolveUserCacheRoot()` for CLI callers.
+---
+
 ## 2026-06-03 21:55 - US-188 (agent2)
 - Embedded the generated OCLIF manifest as a static TypeScript asset and wired `loadCompiledManifest()` to use it, keeping the JSON manifest and embedded module regenerated together by the manifest codegen step.
 - Added compiled-asset boundary coverage for the OCLIF manifest, bundled recipes, and SDK schema registry so compiled-runtime modules do not read generated assets from disk.

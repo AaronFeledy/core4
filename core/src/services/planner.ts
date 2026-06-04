@@ -39,7 +39,12 @@ import {
   resolveProviderSelection,
 } from "../providers/precedence.ts";
 
-import { deriveAppPlanCacheKey, readCachedAppPlan, writeCachedAppPlan } from "../cache/app-plan.ts";
+import {
+  deriveAppPlanCacheKey,
+  readAppPlanSourceFingerprint,
+  readCachedAppPlan,
+  writeCachedAppPlan,
+} from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -449,11 +454,15 @@ const planApp = (
     const fileSyncEngineId =
       providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
+    const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot).pipe(
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    );
     const cacheKey = deriveAppPlanCacheKey({
       appRoot,
       landofile: { ...landofile, provider },
       providerCapabilities,
       pluginManifests: manifests,
+      ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
     });
     if (cacheService !== undefined) {
       const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
