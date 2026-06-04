@@ -195,6 +195,29 @@ describe("ci workflow", () => {
     );
   });
 
+  test("runs the tooling hot-path perf budget as a branch-protectable Linux x64 gate", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const perfBudget = findIndentedBlock(jobs, "perf-budget-linux-x64", 2);
+
+    expect(perfBudget).toContain("    needs: [build-linux-x64]");
+    expect(perfBudget).toContain("    runs-on: ubuntu-24.04");
+    expect(perfBudget).toContain("      - name: Download Linux x64 binary artifact");
+    expect(perfBudget).toContain("          name: lando-linux-x64");
+    expect(perfBudget).toContain("          path: dist");
+    expect(perfBudget).toContain("      - name: Restore binary executable bit");
+    expect(perfBudget).toContain("        run: chmod +x dist/lando");
+    expect(perfBudget).toContain("      - name: Run tooling hot-path benchmark");
+    expect(perfBudget).toContain("        run: bun run bench:tooling-hot-path -- --binary dist/lando");
+
+    expect(perfBudget.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
+      perfBudget.indexOf("Restore binary executable bit"),
+    );
+    expect(perfBudget.indexOf("Restore binary executable bit")).toBeLessThan(
+      perfBudget.indexOf("Run tooling hot-path benchmark"),
+    );
+  });
+
   test("runs provider integration tests against a private Podman socket", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");

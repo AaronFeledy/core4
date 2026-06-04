@@ -491,6 +491,40 @@ jobs:
         if: always()
         run: echo "::notice title=ci-timing::build-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
+  perf-budget-linux-x64:
+    needs: [build-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download Linux x64 binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando
+
+      - name: Run tooling hot-path benchmark
+        run: bun run bench:tooling-hot-path -- --binary dist/lando
+
+      - name: Report job timing
+        if: always()
+        run: echo "::notice title=ci-timing::perf-budget-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
+
   provider-integration-darwin-arm64:
     needs: [build-darwin-arm64]
     runs-on: macos-15

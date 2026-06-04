@@ -52,6 +52,15 @@ bun run build
 
 Each build job emits a `::notice title=ci-timing::...` line and has a timeout cap (30 minutes for Unix targets, 35 minutes for Windows). If a build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-<platform> > Artifacts > lando-<platform>`; for example, `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
 
+## Tooling hot-path perf budget
+
+CI runs the Linux x64 benchmark gate against the built binary artifact. The tracked warm p50 baseline and regression budget live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code.
+
+```bash
+bun run build
+bun run bench:tooling-hot-path -- --binary core/dist/lando
+```
+
 ## npm dev package publishing
 
 The release workflow publishes `@lando/core@4.0.0-alpha.N` to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
@@ -111,6 +120,7 @@ Protect `main` in GitHub with required status checks enabled. All required statu
 - `build-linux-arm64`
 - `build-linux-x64`
 - `build-win32-x64`
+- `perf-budget-linux-x64`
 - `provider-integration-darwin-arm64`
 - `provider-integration-darwin-x64`
 - `provider-integration-linux-arm64`

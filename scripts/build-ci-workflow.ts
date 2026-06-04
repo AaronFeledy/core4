@@ -195,6 +195,32 @@ ${setupBunSteps}
 ${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
 `;
 
+const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
+    needs: [build-linux-x64]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Download Linux x64 binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando
+
+      - name: Run tooling hot-path benchmark
+        run: bun run bench:tooling-hot-path -- --binary dist/lando
+
+${timingNoticeStep("perf-budget-linux-x64", 10)}
+`;
+
 const linuxProviderSetupSteps = `      - name: Install Podman
         run: |
           sudo apt-get update
@@ -312,6 +338,7 @@ export const renderCiWorkflow = (input: CiWorkflowInput): string => {
   const testIncludeComment = input.testIncludes.map((entry) => `#   - ${entry}`).join("\n");
   const bundledPluginComment = input.bundledPluginNames.map((entry) => `#   - ${entry}`).join("\n");
   const buildJobs = CI_PLATFORMS.map(renderBuildJob).join("\n");
+  const perfBudgetJob = renderPerfBudgetJob();
   const providerIntegrationJobs = CI_PLATFORMS.map(renderProviderIntegrationJob).join("\n");
 
   return `${GENERATED_HEADER}
@@ -453,6 +480,7 @@ ${setupBunSteps}
 ${timingNoticeStep("guide-scenarios-linux-x64", 20)}
 
 ${buildJobs}
+${perfBudgetJob}
 ${providerIntegrationJobs}`;
 };
 
