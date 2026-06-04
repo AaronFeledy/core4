@@ -279,6 +279,50 @@ describe("ci workflow", () => {
     );
   });
 
+  test("keeps Linux arm64 provider integration contract-only", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-arm64", 2);
+
+    expect(providerIntegration).toContain("    needs: [build-linux-arm64]");
+    expect(providerIntegration).toContain("    runs-on: ubuntu-24.04-arm");
+    expect(providerIntegration).toContain("    timeout-minutes: 25");
+    expect(providerIntegration).toContain("      - name: Run provider contract tests");
+    expect(providerIntegration).toContain(
+      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
+    );
+    expect(providerIntegration).toContain(
+      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
+    );
+    expect(providerIntegration).toContain(
+      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
+    );
+    expect(providerIntegration).toContain(
+      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
+    );
+    expect(providerIntegration).toContain("      - name: Restore binary executable bit");
+    expect(providerIntegration).toContain("        run: chmod +x dist/lando");
+    expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
+    expect(providerIntegration).not.toContain("      - name: Install Podman");
+    expect(providerIntegration).not.toContain("      - name: Start Podman socket");
+    expect(providerIntegration).not.toContain("      - name: Configure Docker socket");
+    expect(providerIntegration).not.toContain("      - name: Pre-pull container images");
+    expect(providerIntegration).not.toContain("          docker pull node:22-alpine");
+    expect(providerIntegration).not.toContain("      - name: Run provider integration tests");
+    expect(providerIntegration).not.toContain(
+      '          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario',
+    );
+    expect(providerIntegration).not.toContain(
+      "          bun test plugins/provider-lando/test/*.integration.test.ts",
+    );
+    expect(providerIntegration).not.toContain(
+      "          bun test plugins/provider-docker/test/*.integration.test.ts",
+    );
+    expect(providerIntegration).not.toContain(
+      "          bun test plugins/service-lando/test/*.integration.test.ts",
+    );
+  });
+
   test("generates the Beta multi-platform build and provider integration matrix", async () => {
     const workflow = await readWorkflow();
 

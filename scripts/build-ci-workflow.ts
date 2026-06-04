@@ -48,7 +48,7 @@ const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     binaryName: "lando",
     timeoutMinutes: 30,
     providerTimeoutMinutes: 25,
-    liveProviderIntegration: true,
+    liveProviderIntegration: false,
   },
   {
     id: "linux-x64",
