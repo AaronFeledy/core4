@@ -172,6 +172,32 @@ describe("shellApp — shell modes", () => {
     expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
   });
 
+  test("service mode preserves UTF-8 characters split across exec chunks", async () => {
+    let stdout = "";
+    const provider = fakeProvider({
+      execStream: () =>
+        Stream.make(
+          { kind: "stdout" as const, chunk: new Uint8Array([0x61, 0xe2]) },
+          { kind: "stdout" as const, chunk: new Uint8Array([0x82, 0xac, 0x62]) },
+          { exitCode: 0 },
+        ),
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (chunk) => {
+            stdout += chunk;
+          },
+          writeStderr: () => {},
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(stdout).toBe("a€b");
+  });
+
   test("service mode uses the primary service when no service is requested", async () => {
     const calls: Array<{ service: string; command: ReadonlyArray<string>; tty?: boolean; stdin?: string }> =
       [];

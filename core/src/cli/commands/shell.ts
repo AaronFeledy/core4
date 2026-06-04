@@ -245,6 +245,8 @@ export const shellApp = (
         terminalResize: resizeStream(io),
       };
       let exitCode = 0;
+      const stdoutDecoder = new TextDecoder();
+      const stderrDecoder = new TextDecoder();
       yield* Effect.scoped(
         provider.execStream(target, spec).pipe(
           Stream.runForEach((chunk) => {
@@ -252,11 +254,16 @@ export const shellApp = (
               exitCode = chunk.exitCode;
               return Effect.void;
             }
-            const text = new TextDecoder().decode(chunk.chunk);
+            const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
+            const text = decoder.decode(chunk.chunk, { stream: true });
             return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
           }),
         ),
       );
+      yield* Effect.all([
+        writeStdout(options.io, stdoutDecoder.decode()),
+        writeStderr(options.io, stderrDecoder.decode()),
+      ]);
       return {
         mode: "service" as const,
         app: plan.name,
