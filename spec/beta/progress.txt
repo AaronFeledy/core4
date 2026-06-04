@@ -1004,3 +1004,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - Perf gates for dynamic app tooling need a stable committed fixture cwd plus compiled dispatch fallback for unknown non-canonical command names; do not benchmark `meta:*` fast paths when the story says `lando <tooling-alias>`.
 ---
+
+## 2026-06-04 12:53 PM CDT - Babysit
+- PR: #286 https://github.com/AaronFeledy/core4/pull/286
+- CI outcome: pass
+- Review feedback: fixed (resolved CONFLICTING merge with main — preserved US-162 perf-budget gate alongside incoming multi-platform CI matrix; typecheck/lint/test green)
+- Merge: merged (squash)
+---
