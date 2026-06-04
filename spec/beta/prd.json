@@ -1545,8 +1545,8 @@
         "Lint passes"
       ],
       "priority": 91,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Tooling output streams via the renderer task tree. runTooling opts into progress via renderProgress; emitToolingOutputProgress publishes task.tree.start/task.start/task.detail(stdout|stderr, newline-split)/task.complete|task.fail/task.tree.complete. runWithRendererHandling gates the event-consumer renderer on renderEvents (tooling-only, no regression to other commands); run.ts compiled dispatch passes both flags. plain=flat Alpha stream, lando/verbose=task tree, json=NDJSON on stderr. Guide docs/guides/tooling/output-streaming.mdx added (INDEX Shipped). typecheck+lint+tests+lint:guides+guide-coverage green; manual QA per mode captured."
     },
     {
       "id": "US-165",

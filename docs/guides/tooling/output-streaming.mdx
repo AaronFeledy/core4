@@ -1,0 +1,41 @@
+---
+id: output-streaming
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, tooling, renderer, task-tree]
+---
+
+<Guide>
+  <Scenario id="task-tree-events" render={false} reason="Documents the task-tree event contract without running provider-backed tooling in guide tests">
+    <Step name="publish-events">
+      <Variable name="command" value="lando composer install" display="Run a tooling command from the app root" />
+      <Variable name="treeStart" value="task.tree.start (parentId tooling:composer)" display="A parent task tree opens for the tooling command" />
+      <Variable name="taskStart" value="task.start (taskId tooling:composer:appserver)" display="One child task starts per target service" />
+      <Variable name="detail" value="task.detail (stream stdout/stderr, one event per line)" display="Each output line streams into the child task as a task.detail event" />
+      <Variable name="taskComplete" value="task.complete (summary 'completed with exit code 0')" display="A zero exit closes the child with task.complete" />
+      <Variable name="treeComplete" value="task.tree.complete (succeeded 1, failed 0)" display="The parent tree closes with succeeded/failed counts" />
+    </Step>
+    <Step name="failure">
+      <Variable name="command" value="lando composer install" display="A tooling command that exits non-zero" />
+      <Variable name="stderrDetail" value="task.detail (stream stderr)" display="stderr lines stream as task.detail events on the stderr stream" />
+      <Variable name="taskFail" value="task.fail (summary 'failed with exit code 7', exitCode 7)" display="A non-zero exit closes the child with task.fail carrying the exit code" />
+      <Variable name="treeFail" value="task.tree.complete (succeeded 0, failed 1)" display="The parent tree records the failure in its counts" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="renderer-modes" render={false} reason="Documents how each renderer mode presents the same task-tree events">
+    <Step name="lando-and-verbose">
+      <Variable name="mode" value="lando, verbose" display="The default lando renderer (and verbose) render the concurrent task tree" />
+      <Variable name="tree" value="parent line + indented child line with streamed tail" display="Each child shows a spinner and the most recent task.detail lines" />
+    </Step>
+    <Step name="plain-preserves-alpha">
+      <Variable name="mode" value="plain" display="--renderer=plain produces a flat stream, preserving the Alpha behavior" />
+      <Variable name="flat" value="one [stepId]-prefixed line per task.detail event; no tree, no spinners" display="Plain mode never opens the task tree" />
+    </Step>
+    <Step name="json">
+      <Variable name="mode" value="json" display="--renderer=json emits NDJSON of every task.* event on stderr" />
+      <Variable name="ndjson" value="task.tree.start / task.start / task.detail / task.complete / task.fail / task.tree.complete" display="Embedding hosts and CI consumers get the structured event stream" />
+    </Step>
+  </Scenario>
+</Guide>

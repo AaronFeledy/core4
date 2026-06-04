@@ -15,6 +15,7 @@ import { type Context, DateTime, Effect } from "effect";
 import {
   type LandoEvent,
   TaskCompleteEvent,
+  TaskDetailEvent,
   TaskFailEvent,
   TaskStartEvent,
   TaskTreeCompleteEvent,
@@ -79,6 +80,26 @@ export const publishTaskStart = (events: ProgressEmitter | undefined, args: Task
 
 export const publishTaskStartAsync = (events: ProgressEmitter | undefined, args: TaskStartArgs) =>
   publishEventAsync(events, buildTaskStart(args));
+
+export interface TaskDetailArgs {
+  readonly taskId: string;
+  readonly stream: "stdout" | "stderr";
+  readonly line: string;
+}
+
+const buildTaskDetail = (args: TaskDetailArgs): TaskDetailEvent =>
+  TaskDetailEvent.make({
+    taskId: args.taskId,
+    stream: args.stream,
+    line: args.line,
+    timestamp: nowUtc(),
+  });
+
+export const publishTaskDetail = (events: ProgressEmitter | undefined, args: TaskDetailArgs) =>
+  publishEvent(events, buildTaskDetail(args));
+
+export const publishTaskDetailAsync = (events: ProgressEmitter | undefined, args: TaskDetailArgs) =>
+  publishEventAsync(events, buildTaskDetail(args));
 
 export interface TaskCompleteArgs {
   readonly taskId: string;

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-import { Renderer } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
 import {
   makeRendererServiceLiveForMode,
@@ -58,6 +58,31 @@ describe("runWithRendererHandling", () => {
       formatError: () => "nope",
     });
     expect(io.stdout()).toBe("");
+  });
+
+  test("renders task events published by the command effect", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish({
+          _tag: "task.detail",
+          taskId: "tooling:composer:appserver",
+          stream: "stdout",
+          line: "installing",
+          timestamp: "2026-06-04T00:00:00.000Z",
+        });
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "plain",
+        io,
+        renderEvents: true,
+        render: () => undefined,
+        formatError: () => "should not happen",
+      },
+    );
+    expect(io.stdout()).toBe("[tooling:composer:appserver] installing\n");
   });
 
   test("writes formatError to stderr and sets exitCode=1 on typed failure", async () => {
