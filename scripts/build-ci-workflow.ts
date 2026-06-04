@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 import { resolve } from "node:path";
 
 import { BUNDLED_PLUGINS } from "../core/src/plugins/bundled.ts";
@@ -12,6 +11,64 @@ interface CiWorkflowInput {
   readonly testIncludes: ReadonlyArray<string>;
   readonly bundledPluginNames: ReadonlyArray<string>;
 }
+
+interface CiPlatform {
+  readonly id: string;
+  readonly runsOn: string;
+  readonly bunTarget: string;
+  readonly binaryName: string;
+  readonly timeoutMinutes: number;
+  readonly providerTimeoutMinutes: number;
+  readonly liveProviderIntegration: boolean;
+}
+
+const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
+  {
+    id: "darwin-arm64",
+    runsOn: "macos-15",
+    bunTarget: "bun-darwin-arm64",
+    binaryName: "lando",
+    timeoutMinutes: 30,
+    providerTimeoutMinutes: 20,
+    liveProviderIntegration: false,
+  },
+  {
+    id: "darwin-x64",
+    runsOn: "macos-15-intel",
+    bunTarget: "bun-darwin-x64",
+    binaryName: "lando",
+    timeoutMinutes: 30,
+    providerTimeoutMinutes: 20,
+    liveProviderIntegration: false,
+  },
+  {
+    id: "linux-arm64",
+    runsOn: "ubuntu-24.04-arm",
+    bunTarget: "bun-linux-arm64",
+    binaryName: "lando",
+    timeoutMinutes: 30,
+    providerTimeoutMinutes: 25,
+    liveProviderIntegration: false,
+  },
+  {
+    id: "linux-x64",
+    runsOn: "ubuntu-24.04",
+    bunTarget: "bun-linux-x64",
+    binaryName: "lando",
+    timeoutMinutes: 30,
+    providerTimeoutMinutes: 25,
+    liveProviderIntegration: true,
+  },
+  {
+    id: "win32-x64",
+    runsOn: "windows-latest",
+    bunTarget: "bun-windows-x64",
+    binaryName: "lando.exe",
+    timeoutMinutes: 35,
+    providerTimeoutMinutes: 20,
+    liveProviderIntegration: false,
+  },
+];
 
 const readTestIncludes = async (): Promise<ReadonlyArray<string>> => {
   const bunfig = await Bun.file(resolve(REPO_ROOT, "bunfig.toml")).text();
@@ -28,39 +85,39 @@ const readTestIncludes = async (): Promise<ReadonlyArray<string>> => {
     .map((line) => line.slice(1, -1));
 };
 
-export const renderCiWorkflow = (input: CiWorkflowInput): string => {
-  const testIncludeComment = input.testIncludes.map((entry) => `#   - ${entry}`).join("\n");
-  const bundledPluginComment = input.bundledPluginNames.map((entry) => `#   - ${entry}`).join("\n");
+const platformList = CI_PLATFORMS.map((platform) => platform.id).join(", ");
+const buildNeeds = "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]";
 
-  return `${GENERATED_HEADER}
-# Test globs from bunfig.toml:
-${testIncludeComment}
-# Bundled plugins from BUNDLED_PLUGINS:
-${bundledPluginComment}
-name: ci
+const timingStartStep = `      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"`;
 
-on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
+const timingNoticeStep = (label: string, timeoutMinutes: number): string => `      - name: Report job timing
+        if: always()
+        run: echo "::notice title=ci-timing::${label} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: ${timeoutMinutes}m)"`;
 
-permissions:
-  contents: read
-
-jobs:
-  static-checks:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
+const setupBunSteps = `      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: .bun-version
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile`;
+
+const renderStaticChecks = (): string => `  static-checks-platform:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [${platformList}]
+        include:
+${CI_PLATFORMS.map((platform) => `          - platform: ${platform.id}\n            runs-on: ${platform.runsOn}`).join("\n")}
+    runs-on: \${{ matrix.runs-on }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
 
       - name: Typecheck
         run: bun run typecheck
@@ -71,195 +128,77 @@ jobs:
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
-      - name: Test
+      - name: Unit test layer
         run: bun run test:unit
 
-  schema-snapshot:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
+      - name: Effect service, CLI, and scenario test layers
+        run: bun test core/test/services core/test/cli core/test/scenario
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Regenerate schema snapshot
-        run: bun run codegen:schema-snapshot
-
-      - name: Verify schema snapshot is current
-        run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json
-
-  bundled-codegen:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Regenerate bundled plugins
-        run: bun run codegen:bundled-plugins
-
-      - name: Regenerate bundled recipes
-        run: bun run codegen:bundled-recipes
-
-      - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts
-
-  library-api-tests:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run library API tests
-        run: bun test core/test/library sdk/test/library
-
-  recipe-tests:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Run recipe test layer
+      - name: Recipe test layer
         run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
-  guide-scenarios-linux-x64:
-    needs: [static-checks]
+      - name: Library API test layer
+        run: bun test core/test/library sdk/test/library
+
+${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
+
+  static-checks:
+    needs: [static-checks-platform]
+    if: always()
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Confirm static-checks platform matrix
+        run: |
+          if [[ "\${{ needs.static-checks-platform.result }}" != "success" ]]; then
+            echo "static-checks platform matrix result: \${{ needs.static-checks-platform.result }}"
+            exit 1
+          fi
+          echo "static-checks platform matrix passed"
+`;
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Regenerate guide scenarios
-        run: bun run codegen
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Lint guides
-        run: bun run lint:guides
-
-      - name: Check guide coverage
-        run: bun run check:guide-coverage
-
-      - name: Check guide drift
-        if: \${{ github.event_name == 'pull_request' }}
-        env:
-          GUIDE_DRIFT_BASE_SHA: \${{ github.event.pull_request.base.sha }}
-          GUIDE_DRIFT_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
-          GUIDE_DRIFT_PR_BODY: \${{ github.event.pull_request.body }}
-        run: bun run check:guide-drift
-
-      - name: Run generated guide scenarios
-        run: bun test test/scenarios/generated/guides/**
-
-      - name: Upload guide scenario transcripts
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: guide-scenario-transcripts-\${{ github.run_id }}.zip
-          path: dist/transcripts/guides/**/*.json
-          if-no-files-found: ignore
-          retention-days: 7
-
-  build-linux-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
-    runs-on: ubuntu-24.04
+const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
+    needs: ${buildNeeds}
+    runs-on: ${platform.runsOn}
+    timeout-minutes: ${platform.timeoutMinutes}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
+${timingStartStep}
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+${setupBunSteps}
 
-      - name: Build binary
-        run: bun run build
+      - name: Build OCLIF manifest
+        run: bun run --filter='@lando/core' build:manifest
 
-      - name: Prepare artifact path
+      - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-          cp core/dist/lando dist/lando
+          bun build ./core/bin/lando.ts --compile --target=${platform.bunTarget} --outfile ./dist/${platform.binaryName} --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
       - name: Smoke test binary
         run: |
-          test -f dist/lando
-          ./dist/lando --version
-          ./dist/lando --help
+          test -f dist/${platform.binaryName}
+          ./dist/${platform.binaryName} --version
+          ./dist/${platform.binaryName} --help
 
-      - name: Upload Linux x64 binary
+      - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lando-linux-x64
-          path: dist/lando
+          name: lando-${platform.id}
+          path: dist/${platform.binaryName}
           if-no-files-found: ignore
           retention-days: 7
 
-  provider-integration-linux-x64:
-    needs: [build-linux-x64]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
+${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
+`;
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version-file: .bun-version
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install Podman
+const linuxProviderSetupSteps = `      - name: Install Podman
         run: |
           sudo apt-get update
           sudo apt-get install -y podman
-
-      - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: lando-linux-x64
-          path: dist
-
-      - name: Restore binary executable bit
-        run: chmod +x dist/lando
 
       - name: Start Podman socket
         run: |
@@ -296,13 +235,13 @@ jobs:
           podman pull solr:9
           podman pull traefik:v3.3
           podman pull valkey/valkey:8
-          docker pull node:22-alpine
+          docker pull node:22-alpine`;
 
-      - name: Run provider integration tests
+const liveProviderTestSteps = (platform: CiPlatform): string => `      - name: Run provider integration tests
         run: |
           mkdir -p /tmp/lando-provider-test-logs
           set -o pipefail
-          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
+          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/${platform.binaryName}" bun test core/test/scenario | tee /tmp/lando-provider-test-logs/core-scenario.log
           bun test plugins/provider-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-lando-integration.log
           bun test plugins/provider-docker/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/provider-docker-integration.log
           bun test plugins/service-lando/test/*.integration.test.ts | tee /tmp/lando-provider-test-logs/service-lando-integration.log
@@ -320,22 +259,201 @@ jobs:
         run: |
           mkdir -p provider-diagnostics/test-logs
           cp /tmp/podman-service.log provider-diagnostics/podman-service.log || true
-          cp dist/lando provider-diagnostics/lando || true
+          cp dist/${platform.binaryName} provider-diagnostics/${platform.binaryName} || true
           journalctl --no-pager --since "-30 minutes" > provider-diagnostics/journalctl.log 2>&1 || true
           for log in /tmp/lando-provider-test-logs/*.log; do
             test -f "$log" || continue
             tail -n 100 "$log" > "provider-diagnostics/test-logs/$(basename "$log")"
-          done
+          done`;
+
+const contractProviderTestSteps = `      - name: Run provider contract tests
+        run: |
+          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
+          bun test plugins/provider-lando/test/contract.integration.test.ts
+          bun test plugins/provider-docker/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/contract.integration.test.ts
+          bun test plugins/provider-podman/test/capabilities.test.ts`;
+
+const renderProviderIntegrationJob = (platform: CiPlatform): string => `  provider-integration-${platform.id}:
+    needs: [build-${platform.id}]
+    runs-on: ${platform.runsOn}
+    timeout-minutes: ${platform.providerTimeoutMinutes}
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Download ${platform.id} binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-${platform.id}
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/${platform.binaryName}
+
+${platform.liveProviderIntegration ? `${contractProviderTestSteps}\n\n${linuxProviderSetupSteps}\n\n${liveProviderTestSteps(platform)}` : contractProviderTestSteps}
 
       - name: Upload provider integration diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: provider-integration-diagnostics
+          name: provider-integration-diagnostics-${platform.id}
           path: provider-diagnostics
           if-no-files-found: ignore
           retention-days: 7
+
+${timingNoticeStep(`provider-integration-${platform.id}`, platform.providerTimeoutMinutes)}
 `;
+
+export const renderCiWorkflow = (input: CiWorkflowInput): string => {
+  const testIncludeComment = input.testIncludes.map((entry) => `#   - ${entry}`).join("\n");
+  const bundledPluginComment = input.bundledPluginNames.map((entry) => `#   - ${entry}`).join("\n");
+  const buildJobs = CI_PLATFORMS.map(renderBuildJob).join("\n");
+  const providerIntegrationJobs = CI_PLATFORMS.map(renderProviderIntegrationJob).join("\n");
+
+  return `${GENERATED_HEADER}
+# Test globs from bunfig.toml:
+${testIncludeComment}
+# Bundled plugins from BUNDLED_PLUGINS:
+${bundledPluginComment}
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+
+jobs:
+${renderStaticChecks()}
+  schema-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Regenerate schema snapshot
+        run: bun run codegen:schema-snapshot
+
+      - name: Verify schema snapshot is current
+        run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json
+
+${timingNoticeStep("schema-snapshot", 15)}
+
+  bundled-codegen:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Regenerate bundled plugins
+        run: bun run codegen:bundled-plugins
+
+      - name: Regenerate bundled recipes
+        run: bun run codegen:bundled-recipes
+
+      - name: Verify bundled codegen is current
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts
+
+${timingNoticeStep("bundled-codegen", 15)}
+
+  library-api-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Run library API tests
+        run: bun test core/test/library sdk/test/library
+
+${timingNoticeStep("library-api-tests", 15)}
+
+  recipe-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Run recipe test layer
+        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
+
+${timingNoticeStep("recipe-tests", 15)}
+
+  guide-scenarios-linux-x64:
+    needs: [static-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Regenerate guide scenarios
+        run: bun run codegen
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint guides
+        run: bun run lint:guides
+
+      - name: Check guide coverage
+        run: bun run check:guide-coverage
+
+      - name: Check guide drift
+        if: \${{ github.event_name == 'pull_request' }}
+        env:
+          GUIDE_DRIFT_BASE_SHA: \${{ github.event.pull_request.base.sha }}
+          GUIDE_DRIFT_HEAD_SHA: \${{ github.event.pull_request.head.sha }}
+          GUIDE_DRIFT_PR_BODY: \${{ github.event.pull_request.body }}
+        run: bun run check:guide-drift
+
+      - name: Run generated guide scenarios
+        run: bun test test/scenarios/generated/guides/**
+
+      - name: Upload guide scenario transcripts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guide-scenario-transcripts-\${{ github.run_id }}.zip
+          path: dist/transcripts/guides/**/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+${timingNoticeStep("guide-scenarios-linux-x64", 20)}
+
+${buildJobs}
+${providerIntegrationJobs}`;
 };
 
 const main = async (): Promise<void> => {
