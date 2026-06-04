@@ -88,6 +88,46 @@ ${bunSetupStep}
           if-no-files-found: ignore
           retention-days: 7`;
 
+const distributionRehearsalJob = `
+  distribution-rehearsal-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+${bunSetupStep}
+
+      - name: Build OCLIF manifest
+        run: bun run --filter='@lando/core' build:manifest
+
+      - name: Compile all platform binaries
+        run: |
+          mkdir -p dist/bundle
+          bun build ./core/bin/lando.ts --compile --target=bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --target=bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --target=bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --target=bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --target=bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-x64
+          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-arm64
+          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-x64
+          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-arm64
+          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-windows-x64.exe
+          ./dist/bundle/lando-linux-x64 --version
+
+      - name: Package distribution bundle
+        run: bun run scripts/dist-bundle.ts dist/bundle
+
+      - name: Verify SHA256SUMS match the binaries
+        run: bun run scripts/dist-bundle.ts --verify dist/bundle
+
+      - name: Upload distribution rehearsal bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: lando-dist-rehearsal-v4.0.0-nightly.\${{ github.run_number }}
+          path: dist/bundle
+          if-no-files-found: error
+          retention-days: 14`;
+
 interface NightlyJob {
   readonly id: string;
   readonly runsOn: string;
@@ -111,7 +151,7 @@ ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
 export const renderNightlyWorkflow = (): string => {
-  const jobsYaml = [...JOBS.map(renderJob), providerLandoE2eJob].join("\n");
+  const jobsYaml = [...JOBS.map(renderJob), providerLandoE2eJob, distributionRehearsalJob].join("\n");
 
   return `${GENERATED_HEADER}
 name: nightly

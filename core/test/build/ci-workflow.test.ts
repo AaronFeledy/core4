@@ -82,6 +82,63 @@ describe("ci workflow", () => {
     );
   });
 
+  test("rehearses the distribution flow on Linux x64 without publishing", async () => {
+    const workflow = await readNightlyWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const rehearsal = findIndentedBlock(jobs, "distribution-rehearsal-linux-x64", 2);
+
+    expect(rehearsal).toContain("    runs-on: ubuntu-24.04");
+    expect(rehearsal).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(rehearsal).toContain("          bun-version-file: .bun-version");
+    expect(rehearsal).toContain("        run: bun install --frozen-lockfile");
+    expect(rehearsal).toContain("        run: bun run --filter='@lando/core' build:manifest");
+
+    expect(rehearsal).toContain("      - name: Compile all platform binaries");
+    expect(rehearsal).toContain("          mkdir -p dist/bundle");
+    for (const target of [
+      "bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64",
+      "bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64",
+      "bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64",
+      "bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64",
+      "bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe",
+    ]) {
+      expect(rehearsal).toContain(
+        `          bun build ./core/bin/lando.ts --compile --target=${target} --sourcemap=external`,
+      );
+    }
+    expect(rehearsal).toContain(
+      "          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-x64",
+    );
+    expect(rehearsal).toContain("          ./dist/bundle/lando-linux-x64 --version");
+
+    expect(rehearsal).toContain("      - name: Package distribution bundle");
+    expect(rehearsal).toContain("        run: bun run scripts/dist-bundle.ts dist/bundle");
+    expect(rehearsal).toContain("      - name: Verify SHA256SUMS match the binaries");
+    expect(rehearsal).toContain("        run: bun run scripts/dist-bundle.ts --verify dist/bundle");
+
+    expect(rehearsal).toContain("      - name: Upload distribution rehearsal bundle");
+    expect(rehearsal).toContain("        uses: actions/upload-artifact@v4");
+    expect(rehearsal).toContain(
+      "          name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}",
+    );
+    expect(rehearsal).toContain("          path: dist/bundle");
+    expect(rehearsal).toContain("          if-no-files-found: error");
+    expect(rehearsal).toContain("          retention-days: 14");
+
+    expect(rehearsal).not.toContain("gh release");
+    expect(rehearsal).not.toContain("npm publish");
+
+    expect(rehearsal.indexOf("Compile all platform binaries")).toBeLessThan(
+      rehearsal.indexOf("Package distribution bundle"),
+    );
+    expect(rehearsal.indexOf("Package distribution bundle")).toBeLessThan(
+      rehearsal.indexOf("Verify SHA256SUMS match the binaries"),
+    );
+    expect(rehearsal.indexOf("Verify SHA256SUMS match the binaries")).toBeLessThan(
+      rehearsal.indexOf("Upload distribution rehearsal bundle"),
+    );
+  });
+
   test("runs static checks for pushes and pull requests to main", async () => {
     const workflow = await readWorkflow();
     const triggers = findIndentedBlock(workflow, "on");
