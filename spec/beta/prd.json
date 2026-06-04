@@ -1956,8 +1956,8 @@
         "Lint passes"
       ],
       "priority": 117,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Nightly workflow runs provider-lando e2e on Linux x64 via generated workflow."
     },
     {
       "id": "US-191",
