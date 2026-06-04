@@ -5,8 +5,6 @@
  * at build time and embedded as an asset import. The user's installed
  * plugin manifests are cached at `<userConfRoot>/cache/oclif-manifest.json`
  * and refreshed on `plugin:add` / `plugin:remove`.
- *
- * Status: stub.
  */
 import type { Interfaces } from "@oclif/core";
 
