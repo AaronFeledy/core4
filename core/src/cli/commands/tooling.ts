@@ -23,10 +23,14 @@ import {
   ToolingCompileError,
   ToolingExecError,
 } from "@lando/sdk/errors";
-import type { ToolingTaskShape } from "@lando/sdk/schema";
+import type { AppPlan, LandofileShape, PluginManifest, ToolingTaskShape } from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  CacheService,
+  ConfigService,
   LandofileService,
+  PluginRegistry,
   type ProviderError,
   RuntimeProviderRegistry,
   ToolingEngine,
@@ -35,8 +39,21 @@ import {
 
 import { loadUserLandofile } from "../app-resolution.ts";
 
+import {
+  type AppPlanSourceFingerprint,
+  deriveAppPlanCacheKey,
+  readAppPlanSourceFingerprint,
+  readCachedAppPlan,
+  writeCachedAppPlan,
+} from "../../cache/app-plan.ts";
+import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
+import {
+  CAPABILITY_DEFAULT_PROVIDER_ID,
+  readProviderEnvVar,
+  resolveProviderSelection,
+} from "../../providers/precedence.ts";
 import { runHostScript } from "../../services/host-tooling-engine.ts";
 
 export interface RunToolingOptions {
@@ -45,6 +62,7 @@ export interface RunToolingOptions {
   readonly user?: string;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly cacheRoot?: string;
 }
 
 export interface RunToolingResult {
@@ -77,7 +95,12 @@ type RunToolingError =
   | ToolingCompileError
   | ToolingExecError;
 
-type RunToolingServices = AppPlanner | LandofileService | RuntimeProviderRegistry | ToolingEngine;
+type RunToolingServices =
+  | AppPlanner
+  | ConfigService
+  | LandofileService
+  | RuntimeProviderRegistry
+  | ToolingEngine;
 
 const HOST_SERVICE = ":host";
 
@@ -136,6 +159,112 @@ const findBunShellScriptForName = (
   return scripts.find((script) => script.id === target);
 };
 
+const toolingAppName = (landofile: LandofileShape): string => landofile.name ?? "app";
+
+const toolingPlanCacheKey = (input: {
+  readonly landofile: LandofileShape;
+  readonly appRoot: string;
+  readonly providerId: string;
+  readonly pluginManifests: ReadonlyArray<PluginManifest>;
+  readonly sourceFingerprint?: AppPlanSourceFingerprint;
+}): string =>
+  deriveAppPlanCacheKey({
+    appRoot: input.appRoot,
+    landofile: { ...input.landofile, provider: ProviderId.make(input.providerId) },
+    pluginManifests: input.pluginManifests,
+    ...(input.sourceFingerprint === undefined ? {} : { sourceFingerprint: input.sourceFingerprint }),
+  });
+
+const listPluginManifestsForCache = (): Effect.Effect<ReadonlyArray<PluginManifest> | null> =>
+  Effect.gen(function* () {
+    const pluginRegistry = yield* Effect.serviceOption(PluginRegistry);
+    if (pluginRegistry._tag === "None") return null;
+    return yield* pluginRegistry.value.list.pipe(Effect.catchAll(() => Effect.succeed(null)));
+  });
+
+const readToolingCachedPlan = (input: {
+  readonly landofile: LandofileShape;
+  readonly appRoot: string | undefined;
+  readonly providerId: string;
+  readonly cacheRoot: string;
+}): Effect.Effect<AppPlan | null, never> =>
+  Effect.gen(function* () {
+    if (input.appRoot === undefined) return null;
+    const pluginManifests = yield* listPluginManifestsForCache();
+    if (pluginManifests === null) return null;
+    const sourceFingerprint = yield* readAppPlanSourceFingerprint(input.appRoot).pipe(
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    );
+    const key = toolingPlanCacheKey({
+      landofile: input.landofile,
+      appRoot: input.appRoot,
+      providerId: input.providerId,
+      pluginManifests,
+      ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
+    });
+    return yield* readCachedAppPlan({
+      cacheRoot: input.cacheRoot,
+      appName: toolingAppName(input.landofile),
+      appRoot: input.appRoot,
+      key,
+    }).pipe(Effect.catchAll(() => Effect.succeed(null)));
+  });
+
+const writeToolingCachedPlan = (input: {
+  readonly landofile: LandofileShape;
+  readonly appRoot: string | undefined;
+  readonly providerId: string;
+  readonly cacheRoot: string;
+  readonly plan: AppPlan;
+}): Effect.Effect<void, never> =>
+  Effect.gen(function* () {
+    if (input.appRoot === undefined) return;
+    const cacheService = yield* Effect.serviceOption(CacheService);
+    if (cacheService._tag === "None") return;
+    const pluginManifests = yield* listPluginManifestsForCache();
+    if (pluginManifests === null) return;
+    const sourceFingerprint = yield* readAppPlanSourceFingerprint(input.appRoot).pipe(
+      Effect.catchAll(() => Effect.succeed(undefined)),
+    );
+    const key = toolingPlanCacheKey({
+      landofile: input.landofile,
+      appRoot: input.appRoot,
+      providerId: input.providerId,
+      pluginManifests,
+      ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
+    });
+    yield* writeCachedAppPlan({
+      cacheRoot: input.cacheRoot,
+      appName: toolingAppName(input.landofile),
+      appRoot: input.appRoot,
+      key,
+      plan: input.plan,
+    }).pipe(
+      Effect.provideService(CacheService, cacheService.value),
+      Effect.catchAll(() => Effect.void),
+    );
+  });
+
+const resolveToolingProviderId = (landofile: LandofileShape): Effect.Effect<string> =>
+  Effect.gen(function* () {
+    const configService = yield* Effect.serviceOption(ConfigService);
+    const configProvider =
+      configService._tag === "None"
+        ? undefined
+        : yield* configService.value
+            .get("defaultProviderId")
+            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const envProvider = readProviderEnvVar(process.env);
+    return String(
+      resolveProviderSelection({
+        ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
+        ...(envProvider === undefined ? {} : { env: envProvider }),
+        ...(configProvider === undefined || configProvider === null ? {} : { config: configProvider }),
+        capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+      }).providerId,
+    );
+  });
+
 const runBunShellScript = (
   script: DiscoveredBunShellScript,
   appRoot: string,
@@ -187,9 +316,6 @@ export const runTooling = (
 ): Effect.Effect<RunToolingResult, RunToolingError, RunToolingServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
-    const planner = yield* AppPlanner;
-    const registry = yield* RuntimeProviderRegistry;
-    const engine = yield* ToolingEngine;
 
     const landofile = yield* loadUserLandofile(landofileService);
     const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
@@ -221,8 +347,33 @@ export const runTooling = (
       );
     }
 
-    const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
+    const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+    const providerId = yield* resolveToolingProviderId(landofile);
+    const cachedPlan = yield* readToolingCachedPlan({
+      landofile,
+      appRoot,
+      providerId,
+      cacheRoot,
+    });
+    const plan =
+      cachedPlan ??
+      (yield* Effect.gen(function* () {
+        const planner = yield* AppPlanner;
+        const registry = yield* RuntimeProviderRegistry;
+        const capabilities = yield* registry.capabilities;
+        const planned = yield* planner.plan(landofile, capabilities);
+        yield* writeToolingCachedPlan({
+          landofile,
+          appRoot,
+          providerId: String(planned.provider),
+          cacheRoot,
+          plan: planned,
+        });
+        return planned;
+      }));
+    const registry = yield* RuntimeProviderRegistry;
+    const engine = yield* ToolingEngine;
     const provider = yield* registry.select(plan);
 
     const invocation = buildToolingInvocation(options.name, task, {

@@ -18,11 +18,21 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  ConfigService,
   LandofileService,
+  PluginRegistry,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
 
+import {
+  deriveAppPlanCacheKey,
+  readAppPlanSourceFingerprint,
+  readCachedAppPlan,
+  writeCachedAppPlan,
+} from "../../src/cache/app-plan.ts";
+import { CacheServiceLive } from "../../src/cache/service.ts";
+import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
 
 const providerId = ProviderId.make("lando");
@@ -165,12 +175,16 @@ const makeLayer = (options: {
   readonly landofile: LandofileShape;
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
+  readonly planCalls?: number[];
 }) => {
   const landofileLayer = Layer.succeed(LandofileService, {
     discover: Effect.succeed(options.landofile),
   });
   const plannerLayer = Layer.succeed(AppPlanner, {
-    plan: () => Effect.succeed(options.plan),
+    plan: () => {
+      options.planCalls?.push(1);
+      return Effect.succeed(options.plan);
+    },
   });
   const registryLayer = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
@@ -180,9 +194,362 @@ const makeLayer = (options: {
   return Layer.mergeAll(landofileLayer, plannerLayer, registryLayer, ProviderExecToolingEngineLive);
 };
 
+const emptyPluginRegistry = Layer.succeed(PluginRegistry, {
+  list: Effect.succeed([]),
+  load: () => Effect.die("not used"),
+  loadServiceType: () => Effect.die("not used"),
+});
+
+const withTempToolingApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-tooling-plan-cache-app-"));
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-tooling-plan-cache-root-"));
+  const previousCwd = process.cwd();
+  try {
+    await writeFile(join(root, ".lando.yml"), "name: scenario\n");
+    process.chdir(root);
+    return await run(root, cacheRoot);
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
+};
+
+const cachedPlanKey = async (
+  landofile: LandofileShape,
+  appRoot: string,
+  provider: RuntimeProviderShape,
+): Promise<string> =>
+  deriveAppPlanCacheKey({
+    appRoot,
+    landofile: { ...landofile, provider: String(provider.id) },
+    pluginManifests: [],
+    sourceFingerprint: await Effect.runPromise(readAppPlanSourceFingerprint(appRoot)),
+  });
+
+const bundledPluginPlanKey = async (
+  landofile: LandofileShape,
+  appRoot: string,
+  provider: RuntimeProviderShape,
+): Promise<string> => {
+  const pluginManifests = await Effect.runPromise(
+    Effect.gen(function* () {
+      const pluginRegistry = yield* PluginRegistry;
+      return yield* pluginRegistry.list;
+    }).pipe(Effect.provide(PluginRegistryLive)),
+  );
+  return deriveAppPlanCacheKey({
+    appRoot,
+    landofile: { ...landofile, provider: String(provider.id) },
+    pluginManifests,
+    sourceFingerprint: await Effect.runPromise(readAppPlanSourceFingerprint(appRoot)),
+  });
+};
+
+const cacheAwareLayer = (options: {
+  readonly landofile: LandofileShape;
+  readonly plan: AppPlan;
+  readonly provider: RuntimeProviderShape;
+  readonly planCalls?: number[];
+}) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, CacheServiceLive);
+
+const configLayer = (defaultProviderId: string | null) =>
+  Layer.succeed(ConfigService, {
+    get: (key: string) =>
+      Effect.succeed(
+        key === "defaultProviderId"
+          ? defaultProviderId === null
+            ? null
+            : ProviderId.make(defaultProviderId)
+          : undefined,
+      ),
+  });
+
+const restoreEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) {
+    Reflect.deleteProperty(process.env, key);
+    return;
+  }
+  process.env[key] = value;
+};
+
 const runtimeFor = (layer: Layer.Layer<never, never, never>) => Effect.provide(layer);
 
 describe("runTooling — CLI rendering", () => {
+  test("reads the app plan from cache before falling back to AppPlanner", async () => {
+    await withTempToolingApp(async (root, cacheRoot) => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      try {
+        const cachedPlan = { ...makePlan([makeService("appserver", true)]), root: AbsolutePath.make(root) };
+        const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "cached-plan\n" }]);
+        const landofile: LandofileShape = {
+          name: "scenario",
+          tooling: { composer: { service: "appserver", cmd: "composer" } },
+        };
+        const key = await cachedPlanKey(landofile, root, provider);
+        await Effect.runPromise(
+          writeCachedAppPlan({
+            cacheRoot,
+            appName: "scenario",
+            appRoot: root,
+            key,
+            plan: cachedPlan,
+            now: () => 1,
+          }).pipe(Effect.provide(CacheServiceLive)),
+        );
+
+        const layer = Layer.mergeAll(
+          Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
+          Layer.succeed(AppPlanner, { plan: () => Effect.die("cache hit must not plan") }),
+          Layer.succeed(RuntimeProviderRegistry, {
+            list: Effect.succeed([providerId]),
+            capabilities: Effect.die("cache hit must not read provider capabilities"),
+            select: (planArg?: AppPlan) =>
+              planArg === undefined
+                ? Effect.die("cache hit must not select provider before reading the plan cache")
+                : Effect.succeed(provider),
+          }),
+          ProviderExecToolingEngineLive,
+          emptyPluginRegistry,
+          CacheServiceLive,
+        );
+
+        const result = await Effect.runPromise(
+          runTooling({ name: "composer", cacheRoot }).pipe(runtimeFor(layer)),
+        );
+
+        expect(result.stdout).toBe("cached-plan\n");
+        expect(calls).toHaveLength(1);
+        expect(calls[0]?.service).toBe("appserver");
+      } finally {
+        restoreEnv("LANDO_USER_CACHE_ROOT", previousCacheRoot);
+      }
+    });
+  });
+
+  test("reads planner-compatible cache entries keyed by bundled plugin manifests", async () => {
+    await withTempToolingApp(async (root, cacheRoot) => {
+      const cachedPlan = { ...makePlan([makeService("appserver", true)]), root: AbsolutePath.make(root) };
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "bundled-cache\n" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { composer: { service: "appserver", cmd: "composer" } },
+      };
+      await Effect.runPromise(
+        writeCachedAppPlan({
+          cacheRoot,
+          appName: "scenario",
+          appRoot: root,
+          key: await bundledPluginPlanKey(landofile, root, provider),
+          plan: cachedPlan,
+          now: () => 1,
+        }).pipe(Effect.provide(CacheServiceLive)),
+      );
+      const layer = Layer.mergeAll(
+        Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.die("bundled cache hit must not plan") }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([providerId]),
+          capabilities: Effect.die("bundled cache hit must not read provider capabilities"),
+          select: (planArg?: AppPlan) =>
+            planArg === undefined
+              ? Effect.die("bundled cache hit must not select provider before reading cache")
+              : Effect.succeed(provider),
+        }),
+        ProviderExecToolingEngineLive,
+        PluginRegistryLive,
+        CacheServiceLive,
+      );
+
+      const result = await Effect.runPromise(
+        runTooling({ name: "composer", cacheRoot }).pipe(runtimeFor(layer)),
+      );
+
+      expect(result.stdout).toBe("bundled-cache\n");
+      expect(calls[0]?.service).toBe("appserver");
+    });
+  });
+
+  test("falls back to AppPlanner on cache miss and repopulates the app-plan cache", async () => {
+    await withTempToolingApp(async (root, cacheRoot) => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      try {
+        const planned = { ...makePlan([makeService("appserver", true)]), root: AbsolutePath.make(root) };
+        const { provider } = makeProvider([{ exitCode: 0, stdout: "planned\n" }]);
+        const landofile: LandofileShape = {
+          name: "scenario",
+          tooling: { composer: { service: "appserver", cmd: "composer" } },
+        };
+        const planCalls: number[] = [];
+        const layer = cacheAwareLayer({ landofile, plan: planned, provider, planCalls });
+
+        const result = await Effect.runPromise(
+          runTooling({ name: "composer", cacheRoot }).pipe(runtimeFor(layer)),
+        );
+        const key = await cachedPlanKey(landofile, root, provider);
+        const cached = await Effect.runPromise(
+          readCachedAppPlan({ cacheRoot, appName: "scenario", appRoot: root, key }),
+        );
+
+        expect(result.stdout).toBe("planned\n");
+        expect(planCalls).toHaveLength(1);
+        expect(cached?.name).toBe("scenario");
+      } finally {
+        restoreEnv("LANDO_USER_CACHE_ROOT", previousCacheRoot);
+      }
+    });
+  });
+
+  test("bypasses the app-plan cache when plugin manifests cannot be enumerated", async () => {
+    await withTempToolingApp(async (root, cacheRoot) => {
+      const cachedPlan = { ...makePlan([makeService("cached", true)]), root: AbsolutePath.make(root) };
+      const freshPlan = { ...makePlan([makeService("appserver", true)]), root: AbsolutePath.make(root) };
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "fresh\n" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { composer: { service: "appserver", cmd: "composer" } },
+      };
+      await Effect.runPromise(
+        writeCachedAppPlan({
+          cacheRoot,
+          appName: "scenario",
+          appRoot: root,
+          key: await cachedPlanKey(landofile, root, provider),
+          plan: cachedPlan,
+          now: () => 1,
+        }).pipe(Effect.provide(CacheServiceLive)),
+      );
+      const planCalls: number[] = [];
+      const layer = Layer.mergeAll(
+        makeLayer({ landofile, plan: freshPlan, provider, planCalls }),
+        Layer.succeed(PluginRegistry, {
+          list: Effect.fail(new Error("plugin registry unavailable")),
+          load: () => Effect.die("not used"),
+          loadServiceType: () => Effect.die("not used"),
+        }),
+        CacheServiceLive,
+      );
+
+      const result = await Effect.runPromise(
+        runTooling({ name: "composer", cacheRoot }).pipe(runtimeFor(layer)),
+      );
+
+      expect(result.stdout).toBe("fresh\n");
+      expect(planCalls).toHaveLength(1);
+      expect(calls[0]?.service).toBe("appserver");
+    });
+  });
+
+  test("uses the configured default provider id when reading a warm app-plan cache", async () => {
+    await withTempToolingApp(async (root, cacheRoot) => {
+      const configuredProviderId = ProviderId.make("docker");
+      const cachedPlan = {
+        ...makePlan([makeService("appserver", true)]),
+        root: AbsolutePath.make(root),
+        provider: configuredProviderId,
+      };
+      const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "configured-cache\n" }]);
+      const landofile: LandofileShape = {
+        name: "scenario",
+        tooling: { composer: { service: "appserver", cmd: "composer" } },
+      };
+      const key = deriveAppPlanCacheKey({
+        appRoot: root,
+        landofile: { ...landofile, provider: configuredProviderId },
+        pluginManifests: [],
+        sourceFingerprint: await Effect.runPromise(readAppPlanSourceFingerprint(root)),
+      });
+      await Effect.runPromise(
+        writeCachedAppPlan({
+          cacheRoot,
+          appName: "scenario",
+          appRoot: root,
+          key,
+          plan: cachedPlan,
+          now: () => 1,
+        }).pipe(Effect.provide(CacheServiceLive)),
+      );
+      const layer = Layer.mergeAll(
+        Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
+        Layer.succeed(AppPlanner, { plan: () => Effect.die("config cache hit must not plan") }),
+        Layer.succeed(RuntimeProviderRegistry, {
+          list: Effect.succeed([configuredProviderId]),
+          capabilities: Effect.die("config cache hit must not read provider capabilities"),
+          select: (planArg?: AppPlan) =>
+            planArg === undefined
+              ? Effect.die("config cache hit must not select provider before reading cache")
+              : Effect.succeed(provider),
+        }),
+        ProviderExecToolingEngineLive,
+        emptyPluginRegistry,
+        configLayer("docker"),
+        CacheServiceLive,
+      );
+
+      const result = await Effect.runPromise(
+        runTooling({ name: "composer", cacheRoot }).pipe(runtimeFor(layer)),
+      );
+
+      expect(result.stdout).toBe("configured-cache\n");
+      expect(calls[0]?.service).toBe("appserver");
+    });
+  });
+
+  test("ignores stale app-plan cache entries and replaces them after fallback planning", async () => {
+    await withTempToolingApp(async (root, cacheRoot) => {
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      try {
+        const stalePlan = {
+          ...makePlan([makeService("stale", true)]),
+          root: AbsolutePath.make(root),
+          provider: ProviderId.make("docker"),
+        };
+        const freshPlan = { ...makePlan([makeService("fresh", true)]), root: AbsolutePath.make(root) };
+        const { provider, calls } = makeProvider([{ exitCode: 0, stdout: "fresh\n" }]);
+        const staleLandofile: LandofileShape = {
+          name: "scenario",
+          services: { web: { type: "node", environment: { NODE_ENV: "stale" } } },
+          tooling: { test: { cmd: "bun test" } },
+        };
+        const landofile: LandofileShape = {
+          name: "scenario",
+          tooling: { test: { cmd: "bun test" } },
+        };
+        const staleKey = await cachedPlanKey(staleLandofile, root, provider);
+        await Effect.runPromise(
+          writeCachedAppPlan({
+            cacheRoot,
+            appName: "scenario",
+            appRoot: root,
+            key: staleKey,
+            plan: stalePlan,
+            now: () => 1,
+          }).pipe(Effect.provide(CacheServiceLive)),
+        );
+        const planCalls: number[] = [];
+        const layer = cacheAwareLayer({ landofile, plan: freshPlan, provider, planCalls });
+
+        const result = await Effect.runPromise(
+          runTooling({ name: "test", cacheRoot }).pipe(runtimeFor(layer)),
+        );
+        const freshKey = await cachedPlanKey(landofile, root, provider);
+        const refreshed = await Effect.runPromise(
+          readCachedAppPlan({ cacheRoot, appName: "scenario", appRoot: root, key: freshKey }),
+        );
+
+        expect(result.stdout).toBe("fresh\n");
+        expect(planCalls).toHaveLength(1);
+        expect(calls[0]?.service).toBe("fresh");
+        expect(refreshed?.provider).toBe(providerId);
+      } finally {
+        restoreEnv("LANDO_USER_CACHE_ROOT", previousCacheRoot);
+      }
+    });
+  });
+
   test("returns the verbatim exit code, stdout, and stderr from RuntimeProvider.exec", async () => {
     const plan = makePlan([makeService("appserver", true)]);
     const { provider, calls } = makeProvider([{ exitCode: 5, stdout: "out-1\nout-2\n", stderr: "err-1\n" }]);

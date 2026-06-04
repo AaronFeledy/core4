@@ -278,7 +278,7 @@ describe("CacheServiceLive", () => {
     }
   });
 
-  test("derives app-plan cache keys from Landofile, plugin, and provider inputs", () => {
+  test("derives app-plan cache keys from Landofile, plugin, provider, and app-root inputs", () => {
     const base = {
       appRoot: "/workspace/cache-plan",
       landofile: { name: "cache-plan", services: { [ServiceName.make("web")]: { type: "node" } } },
@@ -323,7 +323,14 @@ describe("CacheServiceLive", () => {
         ...base,
         providerCapabilities: { ...providerCapabilities, bindMounts: false },
       }),
+    ).toBe(key);
+    expect(
+      deriveAppPlanCacheKey({
+        ...base,
+        landofile: { ...base.landofile, provider: ProviderId.make("docker") },
+      }),
     ).not.toBe(key);
+    expect(deriveAppPlanCacheKey({ ...base, includedFragmentShas: ["a".repeat(64)] })).not.toBe(key);
     expect(deriveAppPlanCacheKey({ ...base, appRoot: "/workspace/other-root" })).not.toBe(key);
   });
 

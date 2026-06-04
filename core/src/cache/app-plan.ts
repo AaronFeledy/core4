@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { deserialize, serialize } from "node:v8";
 
 import { Effect, Schema } from "effect";
@@ -31,10 +32,18 @@ interface AppPlanCachePayload {
 export interface AppPlanCacheKeyInput {
   readonly appRoot: string;
   readonly landofile: LandofileShape;
-  readonly providerCapabilities: ProviderCapabilities;
+  readonly providerCapabilities?: ProviderCapabilities;
   readonly pluginManifests: ReadonlyArray<PluginManifest>;
+  readonly sourceFingerprint?: AppPlanSourceFingerprint;
+  readonly includedFragmentShas?: ReadonlyArray<string>;
   readonly config?: unknown;
   readonly serviceInputs?: unknown;
+}
+
+export interface AppPlanSourceFingerprint {
+  readonly landofileContentHash: string | null;
+  readonly includeLockfileHash: string | null;
+  readonly includedFragmentShas: ReadonlyArray<string>;
 }
 
 const sha256 = (payload: Uint8Array | string): Buffer => createHash("sha256").update(payload).digest();
@@ -54,6 +63,58 @@ const stable = (value: unknown): unknown => {
 };
 
 const stableStringify = (value: unknown): string => JSON.stringify(stable(value));
+
+const sha256Hex = (payload: Uint8Array | string): string => sha256(payload).toString("hex");
+
+const readOptionalHash = (path: string): Promise<string | null> =>
+  readFile(path).then(
+    (content) => sha256Hex(content),
+    (cause) => {
+      if (typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT") {
+        return null;
+      }
+      throw cause;
+    },
+  );
+
+const INCLUDE_LOCK_CHECKSUM_PATTERN = /^\s*checksum:\s*['"]?([A-Fa-f0-9]{64})['"]?\s*$/gmu;
+
+const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> =>
+  readFile(path, "utf8").then(
+    (content) =>
+      [...content.matchAll(INCLUDE_LOCK_CHECKSUM_PATTERN)]
+        .map((match) => match[1])
+        .filter((checksum): checksum is string => checksum !== undefined)
+        .map((checksum) => checksum.toLowerCase())
+        .sort(),
+    (cause) => {
+      if (typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT") {
+        return [];
+      }
+      throw cause;
+    },
+  );
+
+export const readAppPlanSourceFingerprint = (
+  appRoot: string,
+): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
+  Effect.tryPromise({
+    try: async () => {
+      const includeLockfilePath = join(appRoot, ".lando.lock.yml");
+      return {
+        landofileContentHash: await readOptionalHash(join(appRoot, ".lando.yml")),
+        includeLockfileHash: await readOptionalHash(includeLockfilePath),
+        includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
+      };
+    },
+    catch: (cause) =>
+      new CacheError({
+        message: `Failed to read app-plan cache source fingerprint for ${appRoot}.`,
+        key: "app-plan",
+        path: appRoot,
+        cause,
+      }),
+  });
 
 const normalizeManifest = (manifest: PluginManifest) => ({
   name: manifest.name,
@@ -82,7 +143,11 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       landoVersion: CORE_VERSION,
       appRoot: input.appRoot,
       landofile: input.landofile,
-      providerCapabilities: input.providerCapabilities,
+      sourceFingerprint: input.sourceFingerprint ?? null,
+      includedFragmentShas: [
+        ...(input.sourceFingerprint?.includedFragmentShas ?? []),
+        ...(input.includedFragmentShas ?? []),
+      ].sort(),
       pluginManifests: sortedManifests,
       config: input.config ?? null,
       serviceInputs: input.serviceInputs ?? input.landofile.services ?? {},

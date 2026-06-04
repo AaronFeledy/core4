@@ -10,6 +10,7 @@ import {
   FileSystem,
   LandofileService,
   Logger,
+  PluginRegistry,
   RuntimeProvider,
   RuntimeProviderRegistry,
   SecretStore,
@@ -46,6 +47,7 @@ describe("makeLandoRuntime", () => {
 
     expect(Option.isSome(Context.getOption(context, LandofileService))).toBe(true);
     expect(Option.isSome(Context.getOption(context, CommandRegistry))).toBe(true);
+    expect(Option.isSome(Context.getOption(context, PluginRegistry))).toBe(true);
     expect(Option.isNone(Context.getOption(context, RuntimeProvider))).toBe(true);
     expect(Option.isNone(Context.getOption(context, RuntimeProviderRegistry))).toBe(true);
     expect(Option.isNone(Context.getOption(context, AppPlanner))).toBe(true);
