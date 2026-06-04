@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { Config } from "@oclif/core";
-import { DateTime, Effect, Layer } from "effect";
+import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
+import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -11,6 +12,8 @@ import {
   type LandofileShape,
   type ProviderCapabilities,
   ProviderId,
+  ServiceName,
+  type ServicePlan,
 } from "@lando/core/schema";
 import {
   AppPlanner,
@@ -22,7 +25,6 @@ import {
 import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const providerId = ProviderId.make("lando");
 
 const capabilities: ProviderCapabilities = {
@@ -50,26 +52,48 @@ const capabilities: ProviderCapabilities = {
   providerExtensions: [],
 };
 
+const metadata = {
+  resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
+  source: "shell.scenario.test",
+  runtime: 4 as const,
+};
+
+const servicePlan = (name: "web"): ServicePlan => ({
+  name: ServiceName.make(name),
+  type: "node",
+  provider: providerId,
+  primary: true,
+  artifact: { kind: "ref", ref: "node:22-alpine" },
+  command: ["node", "server.js"],
+  environment: {},
+  mounts: [],
+  storage: [],
+  endpoints: [],
+  routes: [],
+  dependsOn: [],
+  hostAliases: [],
+  metadata,
+  extensions: {},
+});
+
+const web = servicePlan("web");
+
 const plan: AppPlan = {
   id: AppId.make("shell-scenario"),
   name: "shell-scenario",
   slug: "shell-scenario",
   root: AbsolutePath.make("/tmp/shell-scenario"),
   provider: providerId,
-  services: {} as AppPlan["services"],
+  services: { [web.name]: web },
   routes: [],
   networks: [],
   stores: [],
   fileSync: [],
-  metadata: {
-    resolvedAt: DateTime.unsafeMake("2026-05-18T00:00:00Z"),
-    source: "shell.scenario.test",
-    runtime: 4 as const,
-  },
+  metadata,
   extensions: {},
 };
 
-const fakeProvider: RuntimeProviderShape = {
+const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimeProviderShape => ({
   id: providerId,
   displayName: "Fake",
   version: "0.0.0",
@@ -93,55 +117,263 @@ const fakeProvider: RuntimeProviderShape = {
   logs: () => Effect.die("not used") as never,
   inspect: () => Effect.die("not used"),
   list: () => Effect.succeed([]),
-};
+  ...overrides,
+});
 
-const layer = (landofile: LandofileShape = { name: "shell-scenario" }) =>
+const layer = (
+  landofile: LandofileShape = { name: "shell-scenario" },
+  provider: RuntimeProviderShape = fakeProvider(),
+) =>
   Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
-      select: () => Effect.succeed(fakeProvider),
+      select: () => Effect.succeed(provider),
     }),
   );
 
-interface RunResult {
-  readonly exitCode: number;
-  readonly stdout: string;
-  readonly stderr: string;
-}
+describe("shellApp — shell modes", () => {
+  test("service mode defaults to provider execStream for a requested service", async () => {
+    const calls: Array<{ service: string; command: ReadonlyArray<string>; tty?: boolean; stdin?: string }> =
+      [];
+    let stdout = "";
+    const provider = fakeProvider({
+      execStream: (target, command) => {
+        calls.push({
+          service: String(target.service),
+          command: command.command,
+          tty: command.tty,
+          stdin: command.stdin,
+        });
+        return Stream.make(
+          { kind: "stdout" as const, chunk: new TextEncoder().encode("inside\n") },
+          { exitCode: 0 },
+        );
+      },
+    });
 
-const runCli = async (args: ReadonlyArray<string>, cwd = repoRoot): Promise<RunResult> => {
-  const proc = Bun.spawn({
-    cmd: [process.execPath, cliEntry, ...args],
-    cwd,
-    stdout: "pipe",
-    stderr: "pipe",
+    const result = await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (chunk) => {
+            stdout += chunk;
+          },
+          writeStderr: () => {},
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(result.mode).toBe("service");
+    expect(result.service).toBe("web");
+    expect(result.exitCode).toBe(0);
+    expect(stdout).toBe("inside\n");
+    expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
   });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    proc.exited,
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  return { exitCode, stdout, stderr };
-};
 
-describe("shellApp — host-mode scenarios (US-022)", () => {
-  test("rejects --service with NotImplementedError (Beta-deferred)", async () => {
-    const exit = await Effect.runPromiseExit(shellApp({ service: "web" }).pipe(Effect.provide(layer())));
-    expect(exit._tag).toBe("Failure");
-    if (exit._tag !== "Failure") return;
-    const flat = JSON.stringify(exit.cause);
-    expect(flat).toContain("NotImplementedError");
-    expect(flat).toContain("app:shell");
-    expect(flat).toContain("spec/08-cli-and-tooling.md");
+  test("service mode preserves UTF-8 characters split across exec chunks", async () => {
+    let stdout = "";
+    const provider = fakeProvider({
+      execStream: () =>
+        Stream.make(
+          { kind: "stdout" as const, chunk: new Uint8Array([0x61, 0xe2]) },
+          { kind: "stdout" as const, chunk: new Uint8Array([0x82, 0xac, 0x62]) },
+          { exitCode: 0 },
+        ),
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: (chunk) => {
+            stdout += chunk;
+          },
+          writeStderr: () => {},
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(stdout).toBe("a€b");
+  });
+
+  test("service mode enables raw stdin for interactive TTY and restores it on exit", async () => {
+    let raw = false;
+    let paused = true;
+    const rawModes: boolean[] = [];
+    const provider = fakeProvider({
+      execStream: () =>
+        Stream.fromEffect(
+          Effect.sync(() => {
+            expect(raw).toBe(true);
+            expect(paused).toBe(false);
+            return { exitCode: 0 };
+          }),
+        ),
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: () => {},
+          writeStderr: () => {},
+          stdin: (async function* () {})(),
+          stdinIsTTY: () => true,
+          stdinIsRaw: () => raw,
+          stdinIsPaused: () => paused,
+          setStdinRawMode: (nextRaw) => {
+            rawModes.push(nextRaw);
+            raw = nextRaw;
+          },
+          resumeStdin: () => {
+            paused = false;
+          },
+          pauseStdin: () => {
+            paused = true;
+          },
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(raw).toBe(false);
+    expect(paused).toBe(true);
+    expect(rawModes).toEqual([true, false]);
+  });
+
+  test("service mode restores raw stdin when provider exec fails", async () => {
+    let raw = false;
+    const provider = fakeProvider({
+      execStream: () =>
+        Stream.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "execStream",
+            message: "boom",
+          }),
+        ),
+    });
+
+    await expect(
+      Effect.runPromise(
+        shellApp({
+          service: "web",
+          io: {
+            writeStdout: () => {},
+            writeStderr: () => {},
+            stdin: (async function* () {})(),
+            stdinIsTTY: () => true,
+            stdinIsRaw: () => raw,
+            setStdinRawMode: (nextRaw) => {
+              raw = nextRaw;
+            },
+          },
+        }).pipe(Effect.provide(layer(undefined, provider))),
+      ),
+    ).rejects.toThrow("boom");
+
+    expect(raw).toBe(false);
+  });
+
+  test("service mode uses the primary service when no service is requested", async () => {
+    const calls: Array<{ service: string; command: ReadonlyArray<string>; tty?: boolean; stdin?: string }> =
+      [];
+    const provider = fakeProvider({
+      execStream: (target, command) => {
+        calls.push({
+          service: String(target.service),
+          command: command.command,
+          tty: command.tty,
+          stdin: command.stdin,
+        });
+        return Stream.make({ exitCode: 0 });
+      },
+    });
+
+    const result = await Effect.runPromise(
+      shellApp({
+        io: {
+          writeStdout: () => {},
+          writeStderr: () => {},
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(result.mode).toBe("service");
+    expect(result.service).toBe("web");
+    expect(calls).toEqual([{ service: "web", command: ["sh", "-l"], tty: true, stdin: "inherit" }]);
+  });
+
+  test("service mode forwards AbortSignal and terminal dimensions to provider exec", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const calls: Array<{ signal?: AbortSignal; terminalSize?: { columns: number; rows: number } }> = [];
+    const provider = fakeProvider({
+      execStream: (_target, command) => {
+        calls.push({ signal: command.signal, terminalSize: command.terminalSize });
+        return Stream.make({ exitCode: 0 });
+      },
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        signal: controller.signal,
+        io: {
+          writeStdout: () => {},
+          writeStderr: () => {},
+          terminalSize: () => ({ columns: 132, rows: 43 }),
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(calls[0]?.signal).toBe(controller.signal);
+    expect(calls[0]?.terminalSize).toEqual({ columns: 132, rows: 43 });
+  });
+
+  test("service mode forwards terminal resize events after exec starts", async () => {
+    let resizeListener: (() => void) | undefined;
+    const observedResizeEvents: Array<{ columns: number; rows: number }> = [];
+    const provider = fakeProvider({
+      execStream: (_target, command) =>
+        (command.terminalResize ?? Stream.empty).pipe(
+          Stream.take(1),
+          Stream.map((size) => {
+            observedResizeEvents.push(size);
+            return { exitCode: 0 };
+          }),
+        ),
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: () => {},
+          writeStderr: () => {},
+          terminalSize: () => ({ columns: 101, rows: 33 }),
+          onResize: (listener) => {
+            resizeListener = listener;
+            queueMicrotask(listener);
+            return () => {
+              resizeListener = undefined;
+            };
+          },
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(observedResizeEvents).toEqual([{ columns: 101, rows: 33 }]);
+    expect(resizeListener).toBeUndefined();
   });
 
   test("host mode resolves cwd to the planned app root and propagates exit code from the launcher", async () => {
     const captures: Array<{ shell: string; cwd: string; env: Record<string, string> }> = [];
     const result = await Effect.runPromise(
       shellApp({
+        host: true,
         shellPath: "/bin/sh",
         args: ["-c", "exit 7"],
         launch: async (spec) => {
@@ -168,6 +400,7 @@ describe("shellApp — host-mode scenarios (US-022)", () => {
     let observedCwd = "";
     await Effect.runPromise(
       shellApp({
+        host: true,
         shellPath: "/bin/sh",
         cwd: "/tmp/other",
         args: ["-c", "exit 0"],
@@ -184,6 +417,7 @@ describe("shellApp — host-mode scenarios (US-022)", () => {
     let observedEnv: Record<string, string> = {};
     await Effect.runPromise(
       shellApp({
+        host: true,
         shellPath: "/bin/sh",
         args: ["-c", "exit 0"],
         env: {
@@ -203,7 +437,7 @@ describe("shellApp — host-mode scenarios (US-022)", () => {
   });
 });
 
-describe("lando shell — CLI surface (US-022)", () => {
+describe("lando shell — CLI surface", () => {
   test("registers `shell` and `app:shell` as a top-level alias and OCLIF id", async () => {
     const config = await Config.load({ root: resolve(repoRoot, "core"), ignoreManifest: true });
     const rootPlugin = config.plugins.get(config.pjson.name);
@@ -215,11 +449,7 @@ describe("lando shell — CLI surface (US-022)", () => {
     expect(AppShellCommand.aliases).toContain("shell");
   });
 
-  test("compiled CLI `--service=web` is rejected with NotImplementedError (source CLI parity)", async () => {
-    const result = await runCli(["shell", "--service=web"]);
-    expect(result.exitCode).not.toBe(0);
-    expect(result.stderr).toContain("NotImplementedError");
-    expect(result.stderr).toContain("commandId: app:shell");
-    expect(result.stderr).toContain("specSection: spec/08-cli-and-tooling.md");
+  test("declares --host for host mode", () => {
+    expect(Object.keys(AppShellCommand.flags)).toContain("host");
   });
 });

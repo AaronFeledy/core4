@@ -1,5 +1,6 @@
-import { type Context, Effect, Layer, Stream } from "effect";
+import { type Context, Effect, Layer } from "effect";
 
+import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provider-docker";
 import { makeRuntimeProvider as makeLandoRuntimeProvider } from "@lando/provider-lando";
 import { makeRuntimeProvider as makePodmanRuntimeProvider } from "@lando/provider-podman";
 import {
@@ -8,7 +9,7 @@ import {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { type ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
   EventService,
@@ -26,81 +27,7 @@ import {
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
-const landoCapabilities: ProviderCapabilities = {
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: true,
-  serviceExec: true,
-  serviceLogs: true,
-  serviceHealth: "lando",
-  hostReachability: "emulated",
-  sharedCrossAppNetwork: true,
-  persistentStorage: true,
-  bindMounts: true,
-  bindMountPerformance: "native",
-  copyMounts: true,
-  copyOnWriteAppRoot: false,
-  hostPortPublish: "proxy",
-  routeProvider: false,
-  tlsCertificates: "lando",
-  rootless: true,
-  privilegedServices: false,
-  composeSpec: "portable",
-  providerExtensions: [],
-};
-
-const dockerCapabilities: ProviderCapabilities = {
-  ...landoCapabilities,
-  hostReachability: "native",
-  hostPortPublish: "native",
-  tlsCertificates: "none",
-  composeSpec: "native",
-};
-
-const makeUnavailable = (providerId: string, operation: string) =>
-  new ProviderUnavailableError({
-    providerId,
-    operation,
-    message: `Runtime provider ${providerId} does not implement ${operation} yet.`,
-  });
-
-const makeProvider = (
-  id: "lando" | "docker",
-  displayName: string,
-  capabilities: ProviderCapabilities,
-): RuntimeProviderShape => ({
-  id,
-  displayName,
-  version: "0.0.0",
-  platform: "linux",
-  capabilities,
-  isAvailable: Effect.succeed(true),
-  setup: () => Effect.void,
-  getStatus: Effect.succeed({ running: true, message: "ready" }),
-  getVersions: Effect.succeed({ provider: "0.0.0" }),
-  buildArtifact: () => Effect.fail(makeUnavailable(id, "buildArtifact")),
-  pullArtifact: () => Effect.fail(makeUnavailable(id, "pullArtifact")),
-  removeArtifact: () => Effect.void,
-  apply: () => Effect.succeed({ changed: false }),
-  start: () => Effect.void,
-  stop: () => Effect.void,
-  restart: () => Effect.void,
-  destroy: () => Effect.void,
-  exec: () => Effect.fail(makeUnavailable(id, "exec")),
-  execStream: () => Stream.fail(makeUnavailable(id, "execStream")),
-  run: () => Effect.fail(makeUnavailable(id, "run")),
-  logs: () => Stream.empty,
-  inspect: () => Effect.fail(makeUnavailable(id, "inspect")),
-  list: () => Effect.succeed([]),
-});
-
-const dockerProvider = makeProvider("docker", "Docker Runtime Provider", dockerCapabilities);
-
-const providers: Readonly<Record<string, RuntimeProviderShape>> = {
-  docker: dockerProvider,
-};
+const providers: Readonly<Record<string, RuntimeProviderShape>> = {};
 
 const toProviderUnavailable = (cause: unknown) =>
   new ProviderUnavailableError({
@@ -177,12 +104,14 @@ const makeRuntimeProviderRegistry = (
               ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
               ...(eventService === undefined ? {} : { eventService }),
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
-          : providerIdText === "podman"
-            ? yield* makePodmanRuntimeProvider({
-                ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
-                ...(eventService === undefined ? {} : { eventService }),
-              }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
-            : providers[providerIdText];
+          : providerIdText === "docker"
+            ? yield* makeDockerRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability))
+            : providerIdText === "podman"
+              ? yield* makePodmanRuntimeProvider({
+                  ...(userDataRoot === undefined ? {} : { stateDir: `${userDataRoot}/providers` }),
+                  ...(eventService === undefined ? {} : { eventService }),
+                }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
+              : providers[providerIdText];
 
       if (!installed || provider === undefined) {
         return yield* Effect.fail(
@@ -224,4 +153,7 @@ export const LandoRuntimeProviderLive = Layer.effect(
   RuntimeProvider,
   makeLandoRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability)),
 );
-export const DockerRuntimeProviderLive = Layer.succeed(RuntimeProvider, dockerProvider);
+export const DockerRuntimeProviderLive = Layer.effect(
+  RuntimeProvider,
+  makeDockerRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability)),
+);

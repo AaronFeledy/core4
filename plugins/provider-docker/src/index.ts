@@ -1,4 +1,5 @@
-import { createConnection } from "node:net";
+import { createConnection, isIP } from "node:net";
+import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import {
@@ -17,7 +18,7 @@ import {
   makeSocketHttpClient,
   normalizeNamedPipePath,
 } from "@lando/container-runtime/transport";
-import { Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, type Scope, Stream } from "effect";
 
 import {
   ProviderCapabilityError,
@@ -28,6 +29,7 @@ import {
   ServiceStartError,
 } from "@lando/sdk/errors";
 import {
+  type AppId,
   type AppPlan,
   type HostPlatform,
   PluginManifest,
@@ -95,6 +97,8 @@ export interface DockerHttpRequest {
   readonly method: "GET" | "POST" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly signal?: AbortSignal;
+  readonly stdin?: AsyncIterable<Uint8Array>;
 }
 
 export interface DockerHttpResponse {
@@ -249,6 +253,23 @@ const stream = (
 ): Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError> =>
   api.stream === undefined ? Stream.fail(missingApi(operation)) : api.stream(input);
 
+const abortEffect = (signal: AbortSignal): Effect.Effect<void> =>
+  Effect.async((resume) => {
+    if (signal.aborted) {
+      resume(Effect.void);
+      return;
+    }
+    const listener = () => resume(Effect.void);
+    signal.addEventListener("abort", listener, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", listener));
+  });
+
+const interruptOnAbort = <E, R>(
+  self: Stream.Stream<ExecChunk, E, R>,
+  signal: AbortSignal | undefined,
+): Stream.Stream<ExecChunk, E, R> =>
+  signal === undefined ? self : self.pipe(Stream.interruptWhen(abortEffect(signal)));
+
 const dockerApiFailure = (
   request: DockerHttpRequest,
   cause: unknown,
@@ -281,42 +302,58 @@ async function* streamUnixSocketRequest(
   socketPath: string,
   request: DockerHttpRequest,
 ): AsyncGenerator<Uint8Array> {
-  const args = [
-    "--silent",
-    "--show-error",
-    "--fail",
-    "--no-buffer",
-    "--unix-socket",
-    socketPath,
-    "--request",
-    request.method,
-  ];
-
-  if (request.body !== undefined) {
-    args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(request.body));
-  }
-
-  args.push(`http://localhost/v1.43${request.path}`);
-  const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
-  const stderr = new Response(proc.stderr).text();
-
-  for await (const chunk of proc.stdout) {
-    yield chunk;
-  }
-
-  const [stderrText, exitCode] = await Promise.all([stderr, proc.exited]);
-  if (exitCode !== 0) {
-    throw unavailable("docker-api", `Docker API stream request failed with exit code ${exitCode}.`, {
-      method: request.method,
-      path: request.path,
-      stderr: stderrText,
-    });
-  }
+  const client = makeSocketHttpClient({
+    apiPrefix: "/v1.43",
+    operation: "docker-api",
+    connect: async () => {
+      const socket = createConnection({ path: socketPath });
+      await connectSocket(socket);
+      return socket as unknown as SocketHttpConnection;
+    },
+  });
+  yield* client.stream(request);
 }
 
 async function* streamHttpRequest(baseUrl: string, request: DockerHttpRequest): AsyncGenerator<Uint8Array> {
+  const parsed = new URL(baseUrl);
+  if (request.stdin !== undefined && (parsed.protocol === "http:" || parsed.protocol === "https:")) {
+    const secure = parsed.protocol === "https:";
+    const client = makeSocketHttpClient({
+      apiPrefix: parsed.pathname.replace(/\/+$/u, "") || "/v1.43",
+      operation: "docker-api",
+      hostHeader: parsed.host,
+      connect: async () => {
+        const port = parsed.port === "" ? (secure ? 443 : 80) : Number(parsed.port);
+        const socket = secure
+          ? createTlsConnection({
+              host: parsed.hostname,
+              port,
+              ...(isIP(parsed.hostname) === 0 ? { servername: parsed.hostname } : {}),
+              rejectUnauthorized: process.env.DOCKER_TLS_VERIFY !== "0",
+            })
+          : createConnection({ host: parsed.hostname, port });
+        await connectSocket(socket);
+        return socket as unknown as SocketHttpConnection;
+      },
+    });
+    yield* client.stream(request);
+    return;
+  }
+  if (request.stdin !== undefined) {
+    throw unavailable(
+      "docker-api",
+      "Docker stream transport does not support interactive stdin for this Docker host URL.",
+      {
+        method: request.method,
+        path: request.path,
+        protocol: parsed.protocol,
+      },
+    );
+  }
+
   const response = await fetch(`${baseUrl}${request.path}`, {
     method: request.method,
+    ...(request.signal === undefined ? {} : { signal: request.signal }),
     ...(request.body === undefined
       ? {}
       : { body: JSON.stringify(request.body), headers: { "Content-Type": "application/json" } }),
@@ -964,8 +1001,9 @@ const createExec = (plan: AppPlan, service: ServicePlan, command: CommandSpec, a
       body: {
         AttachStdout: true,
         AttachStderr: true,
+        AttachStdin: command.stdin === "inherit",
         Cmd: command.command,
-        Tty: false,
+        Tty: command.tty === true,
         ...(command.cwd === undefined ? {} : { WorkingDir: command.cwd }),
         ...(command.env === undefined
           ? {}
@@ -1016,12 +1054,31 @@ const inspectExec = (api: DockerApiClient, service: ServicePlan, execId: string)
     return exitCode;
   });
 
+const resizeExec = (
+  api: DockerApiClient,
+  service: ServicePlan,
+  execId: string,
+  size: { readonly columns: number; readonly rows: number },
+): Effect.Effect<void, ProviderError> =>
+  Effect.gen(function* () {
+    const params = new URLSearchParams({ h: String(size.rows), w: String(size.columns) });
+    const response = yield* request(api, "exec", {
+      method: "POST",
+      path: `/exec/${encodeURIComponent(execId)}/resize?${params.toString()}` as `/${string}`,
+    });
+    if (response.status < 200 || response.status >= 300) {
+      return yield* Effect.fail(
+        serviceExecFailure(service, "Docker failed to resize an exec session.", response),
+      );
+    }
+  });
+
 const execStream = (
   plan: AppPlan,
   target: ExecTarget,
   command: CommandSpec,
   api: DockerApiClient,
-): Stream.Stream<ExecChunk, ProviderError> => {
+): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
   const service = plan.services[target.service];
   if (service === undefined) {
     return Stream.fail(missingService("exec", target));
@@ -1029,20 +1086,40 @@ const execStream = (
   return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
     Stream.flatMap((execId) => {
       const decodeChunk = makeRuntimeAttachDecoder();
-      return stream(api, "exec", {
+      const resizeEvents = command.terminalResize ?? Stream.empty;
+      const rawStart = stream(api, "exec", {
         method: "POST",
         path: `/exec/${encodeURIComponent(execId)}/start`,
-        body: { Detach: false, Tty: false },
-      }).pipe(
-        Stream.flatMap((chunk) =>
-          Stream.fromIterable(
-            decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
-          ),
-        ),
+        ...(command.signal === undefined ? {} : { signal: command.signal }),
+        ...(command.stdinStream === undefined ? {} : { stdin: command.stdinStream }),
+        body: { Detach: false, Tty: command.tty === true },
+      });
+      const start = (
+        command.tty === true
+          ? rawStart.pipe(Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk })))
+          : rawStart.pipe(
+              Stream.flatMap((chunk) =>
+                Stream.fromIterable(
+                  decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
+                ),
+              ),
+            )
+      ).pipe(
         Stream.concat(
           Stream.fromEffect(inspectExec(api, service, execId).pipe(Effect.map((exitCode) => ({ exitCode })))),
         ),
       );
+
+      return Stream.fromEffect(
+        Effect.gen(function* () {
+          if (command.terminalSize !== undefined)
+            yield* resizeExec(api, service, execId, command.terminalSize);
+          yield* resizeEvents.pipe(
+            Stream.runForEach((size) => resizeExec(api, service, execId, size)),
+            Effect.forkScoped,
+          );
+        }),
+      ).pipe(Stream.flatMap(() => interruptOnAbort(start, command.signal)));
     }),
   );
 };
@@ -1055,6 +1132,7 @@ const exec = (
 ): Effect.Effect<ExecResult, ProviderError> =>
   execStream(plan, target, command, api).pipe(
     Stream.runCollect,
+    Effect.scoped,
     Effect.map((chunks) => {
       let stdout = "";
       let stderr = "";
@@ -1127,7 +1205,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   });
   const dockerApi =
     options.dockerApi ?? (options.dockerApiFactory ?? makeDockerApiClient)(resolvedDockerHost);
-  const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const capabilities =
+    options.dockerApi === undefined && options.dockerApiFactory === undefined
+      ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
+      : introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+
+  const resolvePlan = (target: { readonly app: AppId; readonly plan?: AppPlan }): AppPlan | undefined =>
+    target.plan ?? plans.get(target.app);
 
   return capabilities.pipe(
     Effect.map(
@@ -1152,7 +1236,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         stop: () => Effect.void,
         restart: () => Effect.void,
         destroy: (target, destroyOptions) => {
-          const plan = plans.get(target.app);
+          const plan = resolvePlan(target);
           return plan === undefined
             ? Effect.void
             : bringDown(plan, dockerApi, { volumes: destroyOptions.volumes }).pipe(
@@ -1160,26 +1244,26 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               );
         },
         exec: (target, command) => {
-          const plan = plans.get(target.app);
+          const plan = resolvePlan(target);
           return plan === undefined
             ? Effect.fail(makeUnavailable("exec"))
             : exec(plan, target, command, dockerApi);
         },
         execStream: (target, command) => {
-          const plan = plans.get(target.app);
+          const plan = resolvePlan(target);
           return plan === undefined
             ? Stream.fail(makeUnavailable("execStream"))
             : execStream(plan, target, command, dockerApi);
         },
         run: () => Effect.fail(makeUnavailable("run")),
         logs: (target, logOptions) => {
-          const plan = plans.get(target.app);
+          const plan = resolvePlan(target);
           return plan === undefined
             ? Stream.fail(makeUnavailable("logs"))
             : logs(plan, target, logOptions, dockerApi);
         },
         inspect: (target) => {
-          const plan = plans.get(target.app);
+          const plan = resolvePlan(target);
           return plan === undefined
             ? Effect.fail(makeUnavailable("inspect"))
             : inspectService(plan, target, dockerApi);

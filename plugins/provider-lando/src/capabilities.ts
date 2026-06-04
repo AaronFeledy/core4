@@ -1,4 +1,10 @@
+import { createConnection } from "node:net";
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import {
+  type SocketHttpConnection,
+  connectSocket,
+  makeSocketHttpClient,
+} from "@lando/container-runtime/transport";
 import { Effect, Schema, Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
@@ -30,6 +36,8 @@ export interface PodmanHttpRequest {
   readonly method: "GET" | "POST" | "DELETE";
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly signal?: AbortSignal;
+  readonly stdin?: AsyncIterable<Uint8Array>;
 }
 
 export interface PodmanHttpResponse {
@@ -66,40 +74,16 @@ async function* streamPodmanRequest(
   socketPath: string,
   request: PodmanHttpRequest,
 ): AsyncGenerator<Uint8Array> {
-  const args = [
-    "--silent",
-    "--show-error",
-    "--fail",
-    "--no-buffer",
-    "--unix-socket",
-    socketPath,
-    "--request",
-    request.method,
-  ];
-
-  if (request.body !== undefined) {
-    args.push("--header", "Content-Type: application/json", "--data", JSON.stringify(request.body));
-  }
-
-  args.push(`http://localhost/v5.0.0${request.path}`);
-
-  const proc = Bun.spawn(["curl", ...args], { stderr: "pipe", stdout: "pipe" });
-  const stderr = new Response(proc.stderr).text();
-
-  for await (const chunk of proc.stdout) {
-    yield chunk;
-  }
-
-  const [stderrText, exitCode] = await Promise.all([stderr, proc.exited]);
-  if (exitCode !== 0) {
-    throw new ProviderUnavailableError({
-      providerId: PROVIDER_ID,
-      operation: "podman-api",
-      message: `Podman API stream request failed with exit code ${exitCode}.`,
-      details: redactDetails({ method: request.method, path: request.path, stderr: stderrText }),
-      remediation: TRANSPORT_REMEDIATION,
-    });
-  }
+  const client = makeSocketHttpClient({
+    apiPrefix: "/v5.0.0",
+    operation: "podman-api",
+    connect: async () => {
+      const socket = createConnection({ path: socketPath });
+      await connectSocket(socket);
+      return socket as unknown as SocketHttpConnection;
+    },
+  });
+  yield* client.stream(request);
 }
 
 export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => ({

@@ -1,15 +1,21 @@
 import { Flags } from "@oclif/core";
 
 import { type ShellAppResult, renderShellAppResult, shellApp } from "../../../commands/shell.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  extractSpecAbortSignal,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 interface ShellFlags {
   readonly service?: string;
+  readonly host?: boolean;
 }
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   id: "app:shell",
-  summary: "Open a host shell scoped to the current Lando app.",
+  summary: "Open an interactive shell in a Lando service.",
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
@@ -24,7 +30,10 @@ export default class AppShellCommand extends LandoCommandBase {
   static override flags = {
     service: Flags.string({
       char: "s",
-      description: "(Beta) Open the shell inside a service via provider-exec; rejected in Alpha.",
+      description: "Service to open a shell in.",
+    }),
+    host: Flags.boolean({
+      description: "Open a host shell scoped to the current app.",
     }),
   };
   static override landoSpec: LandoCommandSpec = appShellSpec;
@@ -34,10 +43,17 @@ export default class AppShellCommand extends LandoCommandBase {
     const parsed = (await this.parse(AppShellCommand)) as { readonly flags: ShellFlags };
     await this.runEffect({
       ...appShellSpec,
-      run: () =>
-        shellApp({
+      run: (input) => {
+        const signal = extractSpecAbortSignal(input);
+        return shellApp({
+          host: parsed.flags.host === true,
+          ...(signal === undefined ? {} : { signal }),
           ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
-        }),
+          ...(parsed.flags.service !== undefined || parsed.flags.host === true || this.argv[0] === undefined
+            ? {}
+            : { service: this.argv[0] }),
+        });
+      },
     });
   }
 }

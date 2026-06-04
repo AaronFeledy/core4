@@ -1,5 +1,5 @@
 import { makeAttachDecoder as makeRuntimeAttachDecoder } from "@lando/container-runtime/streams";
-import { Effect, Stream } from "effect";
+import { Effect, type Scope, Stream } from "effect";
 
 import {
   ProviderInternalError,
@@ -93,8 +93,9 @@ const createExec = (
       body: {
         AttachStdout: true,
         AttachStderr: true,
+        AttachStdin: command.stdin === "inherit",
         Cmd: command.command,
-        Tty: false,
+        Tty: command.tty === true,
         ...(command.cwd === undefined ? {} : { WorkingDir: command.cwd }),
         ...(command.env === undefined
           ? {}
@@ -141,12 +142,42 @@ const inspectExec = (
     return exitCode;
   });
 
+const resizeExec = (
+  api: PodmanApiClient,
+  service: ServicePlan,
+  execId: string,
+  size: { readonly columns: number; readonly rows: number },
+): Effect.Effect<void, ExecError> =>
+  Effect.gen(function* () {
+    const params = new URLSearchParams({ h: String(size.rows), w: String(size.columns) });
+    const response = yield* request(api, {
+      method: "POST",
+      path: `/exec/${encodeURIComponent(execId)}/resize?${params.toString()}` as `/${string}`,
+    });
+    if (response.status < 200 || response.status >= 300) {
+      yield* Effect.fail(execFailure(service, "Podman failed to resize an exec session.", response));
+    }
+  });
+
+const interruptOnSignal = (signal: AbortSignal | undefined): Effect.Effect<void> =>
+  signal === undefined
+    ? Effect.never
+    : Effect.async<void>((resume) => {
+        if (signal.aborted) {
+          resume(Effect.void);
+          return;
+        }
+        const abort = () => resume(Effect.void);
+        signal.addEventListener("abort", abort, { once: true });
+        return Effect.sync(() => signal.removeEventListener("abort", abort));
+      });
+
 export const execStream = (
   plan: AppPlan,
   target: ExecTarget,
   command: CommandSpec,
   options: ExecOptions = {},
-): Stream.Stream<ExecChunk, ProviderError> => {
+): Stream.Stream<ExecChunk, ProviderError, Scope.Scope> => {
   const service = plan.services[target.service];
   if (service === undefined) {
     return Stream.fail(missingService(target));
@@ -160,22 +191,38 @@ export const execStream = (
   return Stream.fromEffect(createExec(plan, service, command, api)).pipe(
     Stream.flatMap((execId) => {
       const decodeChunk = makeRuntimeAttachDecoder();
+      const resizeEvents = command.terminalResize ?? Stream.empty;
       const start = stream(api, {
         method: "POST",
         path: `/exec/${encodeURIComponent(execId)}/start`,
-        body: { Detach: false, Tty: false },
+        ...(command.signal === undefined ? {} : { signal: command.signal }),
+        ...(command.stdinStream === undefined ? {} : { stdin: command.stdinStream }),
+        body: { Detach: false, Tty: command.tty === true },
       }).pipe(
-        Stream.flatMap((chunk) =>
-          Stream.fromIterable(
-            decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
-          ),
-        ),
+        command.tty === true
+          ? Stream.map((chunk): ExecChunk => ({ kind: "stdout", chunk }))
+          : Stream.flatMap((chunk) =>
+              Stream.fromIterable(
+                decodeChunk(chunk).map((frame) => ({ kind: frame.stream, chunk: frame.payload })),
+              ),
+            ),
         Stream.concat(
           Stream.fromEffect(inspectExec(api, service, execId).pipe(Effect.map((exitCode) => ({ exitCode })))),
         ),
+        Stream.interruptWhen(interruptOnSignal(command.signal)),
       );
 
-      return start;
+      return Stream.fromEffect(
+        Effect.gen(function* () {
+          if (command.terminalSize !== undefined) {
+            yield* resizeExec(api, service, execId, command.terminalSize);
+          }
+          yield* resizeEvents.pipe(
+            Stream.runForEach((size) => resizeExec(api, service, execId, size)),
+            Effect.forkScoped,
+          );
+        }),
+      ).pipe(Stream.flatMap(() => start));
     }),
   );
 };
@@ -188,6 +235,7 @@ export const exec = (
 ): Effect.Effect<ExecResult, ProviderError> =>
   execStream(plan, target, command, options).pipe(
     Stream.runCollect,
+    Effect.scoped,
     Effect.map((chunks) => {
       let stdout = "";
       let stderr = "";

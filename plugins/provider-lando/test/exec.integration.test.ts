@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
+import { DateTime, Effect, Fiber, Stream } from "effect";
 
 import { bringDown, bringUp, exec, execStream, makePodmanApiClient } from "@lando/provider-lando";
 import {
@@ -90,6 +90,9 @@ const makeFakeApi = (exitCode: number, stdout: string, stderr = "") => {
         if (request.method === "GET" && request.path === "/exec/exec-1/json") {
           return { status: 200, body: JSON.stringify({ ExitCode: exitCode }) };
         }
+        if (request.method === "POST" && request.path.startsWith("/exec/exec-1/resize?")) {
+          return { status: 200, body: "" };
+        }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
     stream: (request) => {
@@ -130,7 +133,7 @@ describe("provider-lando exec", () => {
         { app: appId, service: node.name },
         { command: ["node", "-e", "console.log('hi')"] },
         { podmanApi: fake.api },
-      ).pipe(Stream.runCollect),
+      ).pipe(Stream.runCollect, Effect.scoped),
     );
     const decoded = decodeChunks(chunks);
 
@@ -138,6 +141,85 @@ describe("provider-lando exec", () => {
     expect(fake.calls.some((call) => call.path === "/exec/exec-1/start" && call.method === "POST")).toBe(
       true,
     );
+  });
+
+  test("passes TTY and inherited stdin settings into exec create/start", async () => {
+    const fake = makeFakeApi(0, "");
+
+    await Effect.runPromise(
+      execStream(
+        plan,
+        { app: appId, service: node.name },
+        { command: ["sh", "-l"], stdin: "inherit", tty: true },
+        { podmanApi: fake.api },
+      ).pipe(Stream.runCollect, Effect.scoped),
+    );
+
+    const create = fake.calls.find((call) => call.path === "/containers/lando-execapp-node/exec");
+    const start = fake.calls.find((call) => call.path === "/exec/exec-1/start");
+    expect(create?.body).toMatchObject({ AttachStdin: true, Tty: true });
+    expect(start?.body).toMatchObject({ Tty: true });
+  });
+
+  test("emits raw stdout chunks for TTY exec streams and forwards stdin and terminal resize events", async () => {
+    const fake = makeFakeApi(0, "ignored");
+    const stdinStream = (async function* () {
+      yield textEncoder.encode("typed\n");
+    })();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
+    };
+
+    const chunks = await Effect.runPromise(
+      execStream(
+        plan,
+        { app: appId, service: node.name },
+        {
+          command: ["sh", "-l"],
+          stdin: "inherit",
+          stdinStream,
+          tty: true,
+          terminalSize: { columns: 132, rows: 43 },
+          terminalResize: Stream.fromIterable([{ columns: 100, rows: 20 }]),
+        },
+        { podmanApi: fake.api },
+      ).pipe(Stream.runCollect, Effect.scoped),
+    );
+    const decoded = decodeChunks(chunks);
+
+    expect(decoded).toEqual({ exitCode: 0, stdout: "raw-tty\n", stderr: "" });
+    expect(fake.calls.find((call) => call.path === "/exec/exec-1/start")?.stdin).toBe(stdinStream);
+    expect(fake.calls.some((call) => call.path === "/exec/exec-1/resize?h=43&w=132")).toBe(true);
+    expect(fake.calls.some((call) => call.path === "/exec/exec-1/resize?h=20&w=100")).toBe(true);
+  });
+
+  test("interrupts provider exec streams when the abort signal fires", async () => {
+    const fake = makeFakeApi(0, "ignored");
+    const controller = new AbortController();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      return Stream.never;
+    };
+
+    const chunks = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* execStream(
+            plan,
+            { app: appId, service: node.name },
+            { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
+            { podmanApi: fake.api },
+          ).pipe(Stream.runCollect, Effect.fork);
+          yield* Effect.sleep("10 millis");
+          controller.abort();
+          return yield* Fiber.join(fiber);
+        }),
+      ),
+    );
+
+    expect(Array.from(chunks)).toEqual([]);
+    expect(fake.calls.find((call) => call.path === "/exec/exec-1/start")?.signal).toBe(controller.signal);
   });
 
   test("resolves nonzero exit as an exit code without stderr", async () => {
@@ -165,7 +247,7 @@ describe("provider-lando exec", () => {
             { app: appId, service: node.name },
             { command: ["node", "-e", "console.log('hi')"] },
             { podmanApi: api },
-          ).pipe(Stream.runCollect),
+          ).pipe(Stream.runCollect, Effect.scoped),
         );
         const streamed = decodeChunks(chunks);
         const failed = await Effect.runPromise(

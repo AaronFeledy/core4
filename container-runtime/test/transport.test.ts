@@ -13,6 +13,10 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const bytes = (value: string): Bytes => encoder.encode(value);
 
+async function* stdinBytes(...values: ReadonlyArray<string>): AsyncGenerator<Bytes> {
+  for (const value of values) yield bytes(value);
+}
+
 class FakeConnection implements SocketHttpConnection {
   readonly writes: Array<string> = [];
   destroyed = false;
@@ -29,6 +33,15 @@ class FakeConnection implements SocketHttpConnection {
 
   async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
     for (const chunk of this.chunks) yield chunk;
+  }
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+class WaitingConnection extends FakeConnection {
+  async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
+    yield bytes("HTTP/1.1 200 OK\r\n\r\n");
+    while (!this.destroyed) await sleep(1);
   }
 }
 
@@ -77,6 +90,39 @@ describe("socket HTTP transport", () => {
     const chunks = await Array.fromAsync(client.stream({ method: "GET", path: "/events" }));
 
     expect(chunks).toEqual([first, second]);
+  });
+
+  test("streams stdin bytes onto hijacked socket requests", async () => {
+    const connection = new FakeConnection([bytes("HTTP/1.1 200 OK\r\n\r\n"), bytes("done")]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+
+    const chunks = await Array.fromAsync(
+      client.stream({
+        method: "POST",
+        path: "/exec/abc/start",
+        body: { Detach: false, Tty: true },
+        stdin: stdinBytes("typed\n"),
+      }),
+    );
+
+    expect(chunks).toEqual([bytes("done")]);
+    expect(connection.writes[0]).toContain("POST /v1.43/exec/abc/start HTTP/1.1\r\n");
+    expect(connection.writes.at(-1)).toBe("typed\n");
+  });
+
+  test("destroys hijacked socket streams when aborted", async () => {
+    const connection = new WaitingConnection([]);
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    const controller = new AbortController();
+
+    const streamed = Array.fromAsync(
+      client.stream({ method: "POST", path: "/exec/abc/start", signal: controller.signal }),
+    );
+    await sleep(1);
+    controller.abort();
+    await streamed;
+
+    expect(connection.destroyed).toBe(true);
   });
 
   test("throws a neutral transport error for malformed status lines", async () => {

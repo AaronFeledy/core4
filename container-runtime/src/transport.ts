@@ -7,6 +7,8 @@ export interface SocketHttpRequest {
   readonly method: string;
   readonly path: `/${string}`;
   readonly body?: unknown;
+  readonly signal?: AbortSignal;
+  readonly stdin?: AsyncIterable<Bytes>;
 }
 
 export interface SocketHttpResponse {
@@ -333,6 +335,22 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
   async function* stream(input: SocketHttpRequest): AsyncGenerator<Bytes> {
     const connection = await connect(options, input);
     writeRequest(connection, input, options);
+    let stdinPump: Promise<void> | undefined;
+    let stdinIterator: AsyncIterator<Bytes> | undefined;
+    const abort = () => connection.destroy();
+    input.signal?.addEventListener("abort", abort, { once: true });
+    if (input.stdin !== undefined) {
+      stdinIterator = input.stdin[Symbol.asyncIterator]();
+      stdinPump = (async () => {
+        while (true) {
+          const next = await stdinIterator?.next();
+          if (next === undefined || next.done === true) return;
+          const chunk = next.value;
+          connection.write(chunk);
+        }
+      })();
+      stdinPump.catch(() => connection.destroy());
+    }
     try {
       const initialChunks: Bytes[] = [];
       let parsed: ParsedHttpHead | undefined;
@@ -390,7 +408,10 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     } catch (cause) {
       throw mapError(options, cause);
     } finally {
+      input.signal?.removeEventListener("abort", abort);
+      void stdinIterator?.return?.();
       connection.destroy();
+      void stdinPump?.catch(() => undefined);
     }
   }
 

@@ -1,13 +1,12 @@
 /**
- * `lando shell` — host-mode shell scoped to the current app.
+ * `lando shell` — host-mode shell scoped to the current app or service-mode
+ * shell inside a running service.
  *
- * Default (no `--service`): spawn a host shell rooted at the app root with
- * `LANDO_APP_NAME` / `LANDO_APP_ROOT` injected into the child env. Stdio is
- * inherited so the user gets a real TTY.
- * `--service <name>` is not implemented yet and fails with `NotImplementedError`.
+ * Service mode runs `sh -l` in the requested service via provider execStream.
+ * Host mode (`--host`) opens a host shell rooted at the app root.
  */
 import { spawn as nodeSpawn } from "node:child_process";
-import { Effect } from "effect";
+import { Chunk, Effect, Stream } from "effect";
 
 import {
   type AppIdReservedError,
@@ -20,27 +19,82 @@ import {
   type LandofileTimeoutError,
   type LandofileValidationError,
   type NoProviderInstalledError,
-  NotImplementedError,
+  type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
   ShellExecError,
+  ToolingExecError,
 } from "@lando/sdk/errors";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import {
+  AppPlanner,
+  type CommandSpec,
+  type ExecTarget,
+  LandofileService,
+  type ProviderError,
+  RuntimeProviderRegistry,
+} from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
+import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary.ts";
 
 export interface ShellAppOptions {
-  /**
-   * When set, fails with `NotImplementedError`.
-   */
+  readonly host?: boolean;
   readonly service?: string;
+  readonly user?: string;
+  readonly signal?: AbortSignal;
   readonly shellPath?: string;
   readonly args?: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly io?: ShellIO;
   /** Test seam: inject a child-process launcher. */
   readonly launch?: ShellLauncher;
 }
+
+export interface ShellTerminalSize {
+  readonly columns: number;
+  readonly rows: number;
+}
+
+export interface ShellIO {
+  readonly writeStdout: (chunk: string) => void;
+  readonly writeStderr: (chunk: string) => void;
+  readonly stdin?: AsyncIterable<Uint8Array>;
+  readonly stdinIsTTY?: () => boolean;
+  readonly stdinIsRaw?: () => boolean;
+  readonly stdinIsPaused?: () => boolean;
+  readonly setStdinRawMode?: (raw: boolean) => void;
+  readonly resumeStdin?: () => void;
+  readonly pauseStdin?: () => void;
+  readonly terminalSize?: () => ShellTerminalSize | undefined;
+  readonly onResize?: (listener: () => void) => () => void;
+}
+
+const processShellIO: ShellIO = {
+  writeStdout: () => {},
+  writeStderr: () => {},
+  stdin: process.stdin as AsyncIterable<Uint8Array>,
+  stdinIsTTY: () => process.stdin.isTTY === true,
+  stdinIsRaw: () => process.stdin.isRaw === true,
+  stdinIsPaused: () => process.stdin.isPaused(),
+  setStdinRawMode: (raw) => process.stdin.setRawMode(raw),
+  resumeStdin: () => {
+    process.stdin.resume();
+  },
+  pauseStdin: () => {
+    process.stdin.pause();
+  },
+  terminalSize: () => {
+    const columns = process.stdout.columns;
+    const rows = process.stdout.rows;
+    return typeof columns === "number" && typeof rows === "number" ? { columns, rows } : undefined;
+  },
+  onResize: (listener) => {
+    process.on("SIGWINCH", listener);
+    return () => process.off("SIGWINCH", listener);
+  },
+};
 
 export interface ShellLaunchSpec {
   readonly shell: string;
@@ -52,10 +106,11 @@ export interface ShellLaunchSpec {
 export type ShellLauncher = (spec: ShellLaunchSpec) => Promise<{ readonly exitCode: number }>;
 
 export interface ShellAppResult {
-  readonly mode: "host";
+  readonly mode: "host" | "service";
   readonly app: string;
   readonly shell: string;
   readonly cwd: string;
+  readonly service?: string;
   readonly exitCode: number;
 }
 
@@ -72,19 +127,12 @@ export type ShellAppError =
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
+  | ProviderError
   | ProviderUnavailableError
-  | ShellExecError;
+  | ShellExecError
+  | ToolingExecError;
 
 export type ShellAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
-
-const SERVICE_SHELL_DEFERRED = new NotImplementedError({
-  message:
-    "Service-targeted `lando shell --service <name>` is deferred to Beta. Use `lando exec --service <name> -- <command>` or `lando ssh --service <name>` for in-service execution in Alpha.",
-  commandId: "app:shell",
-  specSection: "spec/08-cli-and-tooling.md",
-  remediation:
-    "Drop the --service flag for a host shell scoped to the app root, or use `lando ssh --service <name>` for an interactive provider-exec shell inside the service.",
-});
 
 const defaultLauncher: ShellLauncher = (spec) =>
   new Promise((resolve, reject) => {
@@ -113,14 +161,96 @@ const filterStringEnv = (env: NodeJS.ProcessEnv): Record<string, string> => {
   return out;
 };
 
+const availableServiceList = (services: AppPlan["services"]): string =>
+  Object.values(services)
+    .map((service) => String(service.name))
+    .sort()
+    .join(", ");
+
+const unknownServiceError = (requested: string, services: AppPlan["services"]): ToolingExecError => {
+  const list = availableServiceList(services);
+  return new ToolingExecError({
+    message:
+      list.length === 0
+        ? `shell: service ${requested} is not in the app plan.`
+        : `shell: service ${requested} is not in the app plan (available: ${list}).`,
+    tool: "app:shell",
+  });
+};
+
+const noPrimaryServiceError = (services: AppPlan["services"]): ToolingExecError => {
+  const list = availableServiceList(services);
+  return new ToolingExecError({
+    message:
+      list.length === 0
+        ? "shell requires a service: the app has no services."
+        : `shell requires a service: the app has no primary service (available: ${list}).`,
+    tool: "app:shell",
+  });
+};
+
+const resolveService = (
+  serviceName: string | undefined,
+  plan: AppPlan,
+): Effect.Effect<ServicePlan, ToolingExecError> => {
+  if (serviceName === undefined || serviceName.length === 0) {
+    const primary = Object.values(plan.services).find((service) => service.primary === true);
+    return primary === undefined
+      ? Effect.fail(noPrimaryServiceError(plan.services))
+      : Effect.succeed(primary);
+  }
+  const match = Object.values(plan.services).find((service) => String(service.name) === serviceName);
+  return match === undefined
+    ? Effect.fail(unknownServiceError(serviceName, plan.services))
+    : Effect.succeed(match);
+};
+
+const writeStdout = (io: ShellIO | undefined, chunk: string): Effect.Effect<void> =>
+  io === undefined ? emitOptionalStdout(chunk) : Effect.sync(() => io.writeStdout(chunk));
+
+const writeStderr = (io: ShellIO | undefined, chunk: string): Effect.Effect<void> =>
+  io === undefined ? emitOptionalStderr(chunk) : Effect.sync(() => io.writeStderr(chunk));
+
+const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize> => {
+  if (io?.onResize === undefined || io.terminalSize === undefined) return Stream.empty;
+  const onResize = io.onResize;
+  return Stream.async<ShellTerminalSize>((emit) => {
+    const listener = () => {
+      const size = io.terminalSize?.();
+      if (size !== undefined) emit(Effect.succeed(Chunk.of(size)));
+    };
+    return Effect.sync(onResize(listener));
+  });
+};
+
+const currentTerminalSize = (io: ShellIO | undefined): ShellTerminalSize | undefined => io?.terminalSize?.();
+
+const withInteractiveStdinRawMode = <A, E, R>(
+  io: ShellIO,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      if (io.stdin === undefined || io.stdinIsTTY?.() !== true || io.setStdinRawMode === undefined) {
+        return () => {};
+      }
+      const wasRaw = io.stdinIsRaw?.() === true;
+      const wasPaused = io.stdinIsPaused?.() === true;
+      io.setStdinRawMode(true);
+      io.resumeStdin?.();
+      return () => {
+        io.setStdinRawMode?.(wasRaw);
+        if (wasPaused) io.pauseStdin?.();
+      };
+    }),
+    () => effect,
+    (restore) => Effect.sync(restore),
+  );
+
 export const shellApp = (
   options: ShellAppOptions = {},
 ): Effect.Effect<ShellAppResult, ShellAppError, ShellAppServices> =>
   Effect.gen(function* () {
-    if (options.service !== undefined && options.service.length > 0) {
-      return yield* Effect.fail(SERVICE_SHELL_DEFERRED);
-    }
-
     const landofileService = yield* LandofileService;
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
@@ -130,6 +260,61 @@ export const shellApp = (
     const plan = yield* planner.plan(landofile, capabilities);
 
     const shell = options.shellPath ?? process.env.SHELL ?? "/bin/sh";
+    if (!options.host) {
+      const io = options.io ?? processShellIO;
+      const service = yield* resolveService(options.service, plan);
+      const provider = yield* registry.select(plan);
+      const target: ExecTarget = {
+        app: plan.id,
+        service: service.name,
+        plan,
+        ...(options.user === undefined ? {} : { user: options.user }),
+      };
+      const terminalSize = currentTerminalSize(io);
+      const spec: CommandSpec = {
+        command: options.args?.length === 0 || options.args === undefined ? ["sh", "-l"] : options.args,
+        stdin: "inherit",
+        ...(io.stdin === undefined ? {} : { stdinStream: io.stdin }),
+        tty: true,
+        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+        ...(options.env === undefined ? {} : { env: options.env }),
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+        ...(terminalSize === undefined ? {} : { terminalSize }),
+        terminalResize: resizeStream(io),
+      };
+      let exitCode = 0;
+      const stdoutDecoder = new TextDecoder();
+      const stderrDecoder = new TextDecoder();
+      yield* withInteractiveStdinRawMode(
+        io,
+        Effect.scoped(
+          provider.execStream(target, spec).pipe(
+            Stream.runForEach((chunk) => {
+              if ("exitCode" in chunk) {
+                exitCode = chunk.exitCode;
+                return Effect.void;
+              }
+              const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
+              const text = decoder.decode(chunk.chunk, { stream: true });
+              return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
+            }),
+          ),
+        ),
+      );
+      yield* Effect.all([
+        writeStdout(options.io, stdoutDecoder.decode()),
+        writeStderr(options.io, stderrDecoder.decode()),
+      ]);
+      return {
+        mode: "service" as const,
+        app: plan.name,
+        service: String(service.name),
+        shell: "sh",
+        cwd: options.cwd ?? "/app",
+        exitCode,
+      };
+    }
+
     const cwd = options.cwd ?? String(plan.root);
     const env: Record<string, string> = {
       ...filterStringEnv(process.env),

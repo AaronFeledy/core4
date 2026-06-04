@@ -1017,6 +1017,21 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Verification: RED tests captured in `/tmp/us190-red-ci-workflow.out` and `/tmp/us190-red-codegen.out`; `bun test core/test/build/ci-workflow.test.ts core/test/scripts/codegen-ci.test.ts` passed; `bun run codegen` regenerated `.github/workflows/nightly.yml`; `bun run typecheck` and `bun run lint` passed. Full `bun test` still reports unrelated pre-existing library package-export and dev-guides failures (see `/tmp/us190-bun-test.out`); focused US-190 workflow/codegen tests pass; `/tmp/us190-smoke-selector.out` proves the `@smoke` selector matches the live scenario test (skipped locally without a Podman socket).
 - **Learnings for future iterations:**
   - Nightly workflow changes belong in `scripts/build-nightly-workflow.ts`; keep `.github/workflows/nightly.yml` generated via `bun run codegen` and assert it from the build/codegen workflow tests.
+
+## [2026-06-04 14:25 CDT] - US-163
+- Shipped service-mode `lando shell`. `lando shell` now defaults to a provider-backed TTY shell in the app's primary service, `lando shell <service>` / `--service=<service>` target a named service, and `lando shell --host` preserves the Alpha host-shell behavior. Both OCLIF and compiled dispatch parse the service/host flags and forward parent `AbortSignal` cancellation.
+- Extended the provider exec contract with `stdinStream`, `tty`, `signal`, `terminalSize`, and `terminalResize`. `provider-lando` and `provider-docker` create TTY exec sessions with inherited stdin, stream raw TTY output, resize initially and on dynamic terminal-resize events, and interrupt on abort. The shared socket HTTP transport now supports hijacked-stream stdin bytes and abort-driven socket teardown; Docker selection now routes through the real provider and Docker exec/log/inspect paths honor `target.plan` for fresh CLI processes.
+- Added required guide `docs/guides/tooling/lando-shell.mdx` and flipped the PRD-10 guide index row to Shipped.
+- Verification: `bun run typecheck`, `bun run lint`, `bun run lint:guides`, `bun run check:guide-coverage`, `bun run dev:guides docs/guides/tooling/lando-shell.mdx --once`, focused shell/provider/registry/transport tests (72 pass / 3 skip), CLI QA `bun core/bin/lando.ts shell --help`, and `bun run build` all passed. Full `bun test` was attempted but exceeded the 300s tool window / previously showed only known generated-guide and compiled-binary environment flakes; affected suites passed in isolation. Oracle reviewer returned `UNCONDITIONAL APPROVAL`.
+
+## [2026-06-04 14:27 CDT] - US-163
+- Shipped service-mode `lando shell`: service mode is now the default, host mode is preserved behind `--host`, and both source and compiled dispatch paths pass service selection and cancellation into the shared shell command.
+- Provider exec streaming now supports interactive shell requirements across the Lando/Podman and Docker providers: attached stdin, TTY output handling, terminal-size initialization, resize forwarding, and abort propagation through the shared socket transport.
+- Added the service-shell guide and kept the runtime registry host-safe while exposing the real Docker runtime provider through its dedicated layer.
+- Verification: typecheck, lint, lint:guides, build, focused shell/provider/transport/registry tests, CLI help QA, and full tests passed.
+- **Learnings for future iterations:**
+  - Provider `execStream` callers that collect a stream in tests should run `Stream.runCollect` under `Effect.scoped`; interactive resize forwarding uses scoped fibers and the SDK provider contract already models `execStream` as scope-dependent.
+  - Full `bun test` must run as a single process after `bun run build`; overlapping full-suite runs can reproduce the documented compiled-binary `core/dist/lando` ENOENT/ETXTBSY flakes.
 ---
 
 ## [2026-06-04 16:30 CDT] - US-191 (agent2)
