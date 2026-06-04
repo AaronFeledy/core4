@@ -179,8 +179,6 @@ const flagNameByToken = (
 const parseFlagValue = (name: string, value: string | boolean): string | number | boolean | undefined => {
   if (name === "tail" && typeof value === "string") {
     const parsed = Number.parseInt(value, 10);
-    // Drop a non-numeric --tail (undefined) instead of forwarding a string:
-    // matches the OCLIF integer flag and the prior bespoke compiled parser.
     return Number.isNaN(parsed) ? undefined : parsed;
   }
   return value;
@@ -1262,13 +1260,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if (
-    (argv.includes("--version") || argv.includes("-v")) &&
-    argv[0] !== "bun" &&
-    argv[0] !== "meta:bun" &&
-    argv[0] !== "x" &&
-    argv[0] !== "meta:x"
-  ) {
+  if ((argv.includes("--version") || argv.includes("-v")) && !isBunOrX) {
     emitResultLine(`${version} ${process.platform}-${process.arch} node-${process.version}`);
     return;
   }

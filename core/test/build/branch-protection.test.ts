@@ -33,11 +33,11 @@ const extractRequiredCheckList = (section: string): ReadonlyArray<string> =>
     .filter((check): check is string => check !== undefined);
 
 const extractWorkflowJobIds = (workflow: string): ReadonlyArray<string> => {
-  const jobsStart = workflow.split("\n").findIndex((line) => line === "jobs:");
+  const lines = workflow.split("\n");
+  const jobsStart = lines.findIndex((line) => line === "jobs:");
   expect(jobsStart).toBeGreaterThanOrEqual(0);
 
-  return workflow
-    .split("\n")
+  return lines
     .slice(jobsStart + 1)
     .map((line) => line.match(/^ {2}([a-z0-9-]+):$/)?.[1])
     .filter((job): job is string => job !== undefined);
