@@ -68,6 +68,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Renderer boundary lint
+        run: bun run check:renderer-boundary
+
       - name: Test
         run: bun run test:unit
 
