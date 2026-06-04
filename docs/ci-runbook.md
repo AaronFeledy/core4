@@ -41,6 +41,15 @@ bun run build
 
 If the build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
 
+## Tooling hot-path perf budget
+
+CI runs the Linux x64 benchmark gate against the built binary artifact. The tracked warm p50 baseline and regression budget live in `scripts/bench-baselines.json`; deliberate changes to that file are reviewed like code.
+
+```bash
+bun run build
+bun run bench:tooling-hot-path -- --binary core/dist/lando
+```
+
 ## npm dev package publishing
 
 The release workflow publishes `@lando/core@4.0.0-alpha.N` to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
@@ -87,7 +96,7 @@ Default Alpha CI is Linux x64 only. No Windows or linux-arm64 release matrix is 
 
 ## Branch protection
 
-Protect `main` in GitHub with required status checks enabled. All eight required status checks must pass before a pull request can merge to `main`:
+Protect `main` in GitHub with required status checks enabled. All nine required status checks must pass before a pull request can merge to `main`:
 
 - `static-checks`
 - `schema-snapshot`
@@ -96,6 +105,7 @@ Protect `main` in GitHub with required status checks enabled. All eight required
 - `recipe-tests`
 - `guide-scenarios-linux-x64`
 - `build-linux-x64`
+- `perf-budget-linux-x64`
 - `provider-integration-linux-x64`
 
 ## Bun upgrade smoke checks

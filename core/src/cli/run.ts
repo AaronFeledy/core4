@@ -90,6 +90,7 @@ import {
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
+import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
 import { version as versionOperation } from "./commands/version.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
@@ -348,6 +349,16 @@ const runStart = async (): Promise<void> => {
 
 const runStop = (): Promise<void> =>
   runCompiledCommand(stopApp(), makeLandoRuntime({ bootstrap: "app" }), renderStopAppResult);
+
+const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
+  const name = argv[0];
+  if (name === undefined) throw new Error("Missing tooling command name");
+  return runCompiledCommand(
+    runTooling({ name, args: argv.slice(1) }),
+    makeLandoRuntime({ bootstrap: "app" }),
+    renderRunToolingResult,
+  );
+};
 
 const runInfo = (): Promise<void> =>
   runCompiledCommand(infoApp(), makeLandoRuntime({ bootstrap: "app" }), renderInfoAppResult);
@@ -1481,6 +1492,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   const found = findCommand(argv[0] ?? "");
   if (found === undefined) {
+    if (argv[0] !== undefined && !argv[0].includes(":")) {
+      setActiveCommandId(`app:${argv[0]}`);
+      await runDynamicTooling(argv);
+      return;
+    }
     throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 

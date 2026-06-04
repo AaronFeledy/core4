@@ -982,3 +982,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (resolved merge conflict by rebasing onto current main incl. #283; addressed Cursor Bugbot finding by extending the tooling-cache freshness hash to invalidate on `.lando/scripts/**/*.bun.sh` changes + regression test)
 - Merge: merged (squash)
 ---
+## [2026-06-04 12:25 CDT] - US-162
+- Shipped the Linux x64 tooling hot-path benchmark gate. The new benchmark script measures cold and warm runs for a committed host-mode tooling alias fixture, gates warm p50 against a reviewed tracked baseline with a 25% regression threshold, and keeps the 150 ms target documented separately from the current baseline. CI now has a generated `perf-budget-linux-x64` job and branch-protection/runbook coverage for reproducing it locally.
+- Verification: typecheck, lint, focused benchmark/CI/branch-protection/codegen tests passed; manual benchmark against the compiled binary passed and printed `command: bench`. Full `bun test` hit documented unrelated shared-state/build-contention flakes; focused reruns for those failing surfaces passed.
+- **Learnings for future iterations:**
+  - Perf gates for dynamic app tooling need a stable committed fixture cwd plus compiled dispatch fallback for unknown non-canonical command names; do not benchmark `meta:*` fast paths when the story says `lando <tooling-alias>`.
+---

@@ -23,6 +23,7 @@
     "test": "bun test",
     "test:unit": "bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts'",
     "test:changed": "bun test --changed",
+    "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
     "typecheck": "tsc -b",
     "lint": "biome check .",
     "format": "biome format --write .",

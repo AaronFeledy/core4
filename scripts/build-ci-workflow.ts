@@ -232,6 +232,32 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  perf-budget-linux-x64:
+    needs: [build-linux-x64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Download Linux x64 binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando
+
+      - name: Run tooling hot-path benchmark
+        run: bun run bench:tooling-hot-path -- --binary dist/lando
+
   provider-integration-linux-x64:
     needs: [build-linux-x64]
     runs-on: ubuntu-24.04

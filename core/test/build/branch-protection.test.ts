@@ -13,6 +13,7 @@ const requiredChecks = [
   "recipe-tests",
   "guide-scenarios-linux-x64",
   "build-linux-x64",
+  "perf-budget-linux-x64",
   "provider-integration-linux-x64",
 ] as const;
 

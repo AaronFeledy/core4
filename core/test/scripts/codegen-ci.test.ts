@@ -144,7 +144,7 @@ describe("ci workflow codegen", () => {
       const releaseWorkflowGenerator = await readFile(releaseWorkflowGeneratorPath, "utf8");
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(8);
+      expect(versionFileMatches).toBe(9);
       expect(workflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(releaseWorkflow).not.toContain("bun-version: ");
