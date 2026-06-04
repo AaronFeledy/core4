@@ -176,6 +176,7 @@ const makeLayer = (options: {
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
   readonly planCalls?: number[];
+  readonly planCwds?: string[];
 }) => {
   const landofileLayer = Layer.succeed(LandofileService, {
     discover: Effect.succeed(options.landofile),
@@ -183,6 +184,7 @@ const makeLayer = (options: {
   const plannerLayer = Layer.succeed(AppPlanner, {
     plan: () => {
       options.planCalls?.push(1);
+      options.planCwds?.push(process.cwd());
       return Effect.succeed(options.plan);
     },
   });
@@ -251,6 +253,7 @@ const cacheAwareLayer = (options: {
   readonly plan: AppPlan;
   readonly provider: RuntimeProviderShape;
   readonly planCalls?: number[];
+  readonly planCwds?: string[];
 }) => Layer.mergeAll(makeLayer(options), emptyPluginRegistry, CacheServiceLive);
 
 const configLayer = (defaultProviderId: string | null) =>
@@ -383,7 +386,11 @@ describe("runTooling — CLI rendering", () => {
           tooling: { composer: { service: "appserver", cmd: "composer" } },
         };
         const planCalls: number[] = [];
-        const layer = cacheAwareLayer({ landofile, plan: planned, provider, planCalls });
+        const planCwds: string[] = [];
+        const subdir = join(root, "subdir");
+        await mkdir(subdir);
+        process.chdir(subdir);
+        const layer = cacheAwareLayer({ landofile, plan: planned, provider, planCalls, planCwds });
 
         const result = await Effect.runPromise(
           runTooling({ name: "composer", cacheRoot }).pipe(runtimeFor(layer)),
@@ -395,6 +402,7 @@ describe("runTooling — CLI rendering", () => {
 
         expect(result.stdout).toBe("planned\n");
         expect(planCalls).toHaveLength(1);
+        expect(planCwds).toEqual([root]);
         expect(cached?.name).toBe("scenario");
       } finally {
         restoreEnv("LANDO_USER_CACHE_ROOT", previousCacheRoot);

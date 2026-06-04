@@ -245,6 +245,28 @@ const writeToolingCachedPlan = (input: {
     );
   });
 
+const withProcessCwd = <A, E, R>(
+  cwd: string,
+  use: () => Effect.Effect<A, E, R>,
+): Effect.Effect<A, E | ToolingCompileError, R> =>
+  Effect.acquireUseRelease(
+    Effect.try({
+      try: () => {
+        const original = process.cwd();
+        process.chdir(cwd);
+        return original;
+      },
+      catch: (cause) =>
+        new ToolingCompileError({
+          message: `Unable to enter the app directory at ${cwd}.`,
+          tool: "tooling",
+          cause,
+        }),
+    }),
+    () => use(),
+    (original) => Effect.sync(() => process.chdir(original)),
+  );
+
 const resolveToolingProviderId = (landofile: LandofileShape): Effect.Effect<string> =>
   Effect.gen(function* () {
     const configService = yield* Effect.serviceOption(ConfigService);
@@ -278,7 +300,9 @@ const resolveToolingPlan = (input: {
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
     const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(input.landofile, capabilities);
+    const plan = yield* input.appRoot === undefined
+      ? planner.plan(input.landofile, capabilities)
+      : withProcessCwd(input.appRoot, () => planner.plan(input.landofile, capabilities));
     yield* writeToolingCachedPlan({ ...input, providerId: String(plan.provider), plan });
     return plan;
   });
