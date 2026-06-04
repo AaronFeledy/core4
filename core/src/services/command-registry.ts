@@ -3,25 +3,23 @@
  *
  * At bootstrap level `tooling` and above, the registry exposes parsed
  * Landofile `tooling.<name>` entries and auto-discovered
- * `.lando/scripts/<name>.bun.sh` script-backed tasks (§8.5.9) as
- * `RegisteredCommand`s. Per §8.7 router bootstrap omits app tooling
- * commands when the Landofile is missing or fails to parse rather than
- * re-raising — the registry therefore swallows discovery errors and
- * returns an empty list. The same swallow-on-error contract applies to
- * `.bun.sh` discovery errors so router-time listing stays best-effort;
- * malformed script-backed tasks surface at invocation time.
+ * `.lando/scripts/<name>.bun.sh` script-backed tasks as
+ * `RegisteredCommand`s. Router bootstrap omits app tooling commands
+ * when the Landofile is missing or fails to parse rather than re-raising
+ * — the registry therefore swallows discovery errors and returns an
+ * empty list. The same swallow-on-error contract applies to `.bun.sh`
+ * discovery errors so router-time listing stays best-effort; malformed
+ * script-backed tasks surface at invocation time.
  *
- * Canonical id derivation matches §8.1.1 / §8.5.1: tooling tasks default
- * to the `app:` namespace, so `tooling.<name>` registers as `app:<name>`.
- * `.lando/scripts/db/wait.bun.sh` registers as `app:db:wait`. A
- * `tooling.<id>:` entry of the same canonical id wins over an
- * auto-discovered script per §8.5.9.
+ * Tooling tasks default to the `app:` namespace, so `tooling.<name>`
+ * registers as `app:<name>`. `.lando/scripts/db/wait.bun.sh` registers
+ * as `app:db:wait`. A `tooling.<id>:` entry of the same canonical id wins
+ * over an auto-discovered script.
  *
- * On the cold path (the first `list` call), this layer also writes the
- * §12.1 plugin and app command index caches via the §12.2 binary
- * encoding. Cache writes are best-effort: a write failure never affects
- * the returned `RegisteredCommand[]`. Hot-path reads of these caches
- * are deferred past Alpha.
+ * On the warm path, this layer reads the app tooling-compilation cache
+ * before rediscovering scripts or recompiling command entries. Cache
+ * writes are best-effort: a write failure never affects the returned
+ * `RegisteredCommand[]`.
  */
 import { Effect, Layer } from "effect";
 
@@ -29,7 +27,11 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import { CommandRegistry, LandofileService, type RegisteredCommand } from "@lando/sdk/services";
 
 import { compileAppCommands } from "../cache/command-compiler.ts";
-import { writeAppCommandCache, writePluginCommandCache } from "../cache/command-index-writer.ts";
+import {
+  readFreshAppCommandCacheForCwd,
+  writeAppCommandCache,
+  writePluginCommandCache,
+} from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
@@ -65,6 +67,11 @@ export const CommandRegistryLive = Layer.effect(
     const landofileService = yield* LandofileService;
     return {
       list: Effect.gen(function* () {
+        const cached = yield* readFreshAppCommandCacheForCwd().pipe(
+          Effect.catchAll(() => Effect.succeed(null)),
+        );
+        if (cached !== null) return toRegisteredCommands(cached.entries);
+
         const landofile = yield* landofileService.discover;
         const scripts = yield* discoverScriptsForCwd(process.cwd());
         const entries = compileAppCommands(landofile, scripts);

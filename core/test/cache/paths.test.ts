@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { appCommandCachePath, pluginCommandCachePath } from "../../src/cache/paths.ts";
+import {
+  appCommandCachePath,
+  appToolingCompilationCachePath,
+  pluginCommandCachePath,
+} from "../../src/cache/paths.ts";
 
 describe("appCommandCachePath", () => {
   test("places the cache under a same-name-safe app directory", () => {
@@ -43,5 +47,13 @@ describe("appCommandCachePath", () => {
 describe("pluginCommandCachePath", () => {
   test("places the cache directly under <cacheRoot>", () => {
     expect(pluginCommandCachePath("/cache")).toBe("/cache/plugin-command-cache.bin");
+  });
+});
+
+describe("appToolingCompilationCachePath", () => {
+  test("keys the tooling cache by app root without needing the app name", () => {
+    expect(appToolingCompilationCachePath("/cache", "/apps/myapp")).toMatch(
+      /^\/cache\/apps\/tooling-[a-f0-9]{12}\/commands\.bin$/u,
+    );
   });
 });

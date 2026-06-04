@@ -24,6 +24,7 @@ export interface AppCommandIndexPayload {
   readonly landoVersion: string;
   readonly appName: string;
   readonly sourceFile: string;
+  readonly sourceContentHash?: string;
   readonly sourceMtimeMs: number;
   readonly sourceSize: number;
   readonly toolingFingerprint?: string;
@@ -75,7 +76,11 @@ export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<
   );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
-  stableFingerprint({ tooling: landofile.tooling ?? null });
+  stableFingerprint({
+    services: landofile.services ?? null,
+    tooling: landofile.tooling ?? null,
+    includes: landofile.includes ?? null,
+  });
 
 export const deriveAppCommandEntriesFingerprint = (entries: ReadonlyArray<CommandIndexEntry>): string =>
   stableFingerprint(entries);
