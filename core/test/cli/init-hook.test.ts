@@ -19,6 +19,25 @@ const dispatch = async (id: string): Promise<void> => {
   await config.runCommand(id, []);
 };
 
+const captureStderr = async (run: () => Promise<void>): Promise<string> => {
+  const writes: string[] = [];
+  const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
+  (process.stderr as unknown as { write: typeof process.stderr.write }).write = ((
+    chunk: string | Uint8Array,
+  ) => {
+    writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  try {
+    await run();
+  } finally {
+    (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
+    process.exitCode = 0;
+  }
+
+  return writes.join("");
+};
+
 describe("OCLIF init hook", () => {
   test("provides a provider runtime before the command runs", async () => {
     resetEvents();
@@ -31,24 +50,25 @@ describe("OCLIF init hook", () => {
   test("minimal bootstrap does not provide runtime provider services", async () => {
     resetEvents();
 
-    const writes: string[] = [];
-    const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
-    (process.stderr as unknown as { write: typeof process.stderr.write }).write = ((
-      chunk: string | Uint8Array,
-    ) => {
-      writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
-      return true;
-    }) as typeof process.stderr.write;
-    try {
-      // Missing-service failures now surface as a stderr diagnostic + exit code, not a throw.
+    const stderr = await captureStderr(async () => {
       await dispatch("minimal");
-      expect(writes.join("")).toContain("RuntimeProvider");
       expect(process.exitCode).toBe(1);
-    } finally {
-      (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
-      process.exitCode = 0;
-    }
+    });
+
+    expect(stderr).toContain("RuntimeProvider");
     expect(events).toEqual(["minimal-command", "minimal-effect"]);
+  });
+
+  test("tooling bootstrap provides command discovery without runtime provider services", async () => {
+    resetEvents();
+
+    const stderr = await captureStderr(async () => {
+      await dispatch("tooling");
+      expect(process.exitCode).toBe(1);
+    });
+
+    expect(stderr).toContain("RuntimeProvider");
+    expect(events).toEqual(["tooling-command", "tooling-effect", "tooling-command-registry"]);
   });
 
   test("fails when the command class is missing static bootstrap", async () => {

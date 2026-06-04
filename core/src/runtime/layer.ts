@@ -337,6 +337,10 @@ export function makeLandoRuntime(options: { readonly bootstrap: "minimal" }): La
   MinimalRuntimeServices,
   LandoRuntimeBootstrapError
 >;
+export function makeLandoRuntime(options: { readonly bootstrap: "tooling" }): Layer.Layer<
+  ToolingRuntimeServices,
+  LandoRuntimeBootstrapError
+>;
 export function makeLandoRuntime(options: { readonly bootstrap: "provider" }): Layer.Layer<
   ProviderRuntimeServices,
   LandoRuntimeBootstrapError
