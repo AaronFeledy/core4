@@ -67,7 +67,7 @@ describe("dist-bundle sha256 packaging", () => {
     expect(parseSha256Sums(content)).toHaveLength(2);
 
     const result = await verifySums(dir, content);
-    expect(result).toEqual({ ok: true, mismatches: [], missing: [] });
+    expect(result).toEqual({ ok: true, mismatches: [], missing: [], unexpected: [] });
   });
 
   test("writeSha256Sums fails loudly when no binaries are present", async () => {
@@ -84,6 +84,20 @@ describe("dist-bundle sha256 packaging", () => {
     expect(result.ok).toBe(false);
     expect(result.mismatches).toEqual(["lando-linux-x64"]);
     expect(result.missing).toEqual([]);
+    expect(result.unexpected).toEqual([]);
+  });
+
+  test("verifySums reports an unexpected binary omitted from the sums", async () => {
+    await writeFile(resolve(dir, "lando-linux-x64"), "binary-a");
+    const content = await writeSha256Sums(dir);
+
+    await writeFile(resolve(dir, "lando-darwin-x64"), "binary-b");
+
+    const result = await verifySums(dir, content);
+    expect(result.ok).toBe(false);
+    expect(result.unexpected).toEqual(["lando-darwin-x64"]);
+    expect(result.missing).toEqual([]);
+    expect(result.mismatches).toEqual([]);
   });
 
   test("verifySums reports a missing binary listed in the sums", async () => {
@@ -93,5 +107,6 @@ describe("dist-bundle sha256 packaging", () => {
     expect(result.ok).toBe(false);
     expect(result.missing).toEqual(["lando-darwin-arm64"]);
     expect(result.mismatches).toEqual([]);
+    expect(result.unexpected).toEqual([]);
   });
 });

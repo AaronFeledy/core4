@@ -26,6 +26,7 @@ export interface VerifyResult {
   readonly ok: boolean;
   readonly mismatches: ReadonlyArray<string>;
   readonly missing: ReadonlyArray<string>;
+  readonly unexpected: ReadonlyArray<string>;
 }
 
 export const computeSha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -85,6 +86,8 @@ export const writeSha256Sums = async (dir: string): Promise<string> => {
 
 export const verifySums = async (dir: string, sumsContent: string): Promise<VerifyResult> => {
   const entries = parseSha256Sums(sumsContent);
+  const expectedNames = new Set(entries.map((entry) => entry.name));
+  const unexpected = (await listBundleBinaries(dir)).filter((name) => !expectedNames.has(name));
   const mismatches: Array<string> = [];
   const missing: Array<string> = [];
 
@@ -99,7 +102,12 @@ export const verifySums = async (dir: string, sumsContent: string): Promise<Veri
     }
   }
 
-  return { ok: mismatches.length === 0 && missing.length === 0, mismatches, missing };
+  return {
+    ok: mismatches.length === 0 && missing.length === 0 && unexpected.length === 0,
+    mismatches,
+    missing,
+    unexpected,
+  };
 };
 
 const main = async (): Promise<void> => {
@@ -122,6 +130,9 @@ const main = async (): Promise<void> => {
       }
       for (const name of result.missing) {
         console.error(`[dist-bundle] missing file: ${name}`);
+      }
+      for (const name of result.unexpected) {
+        console.error(`[dist-bundle] unexpected file: ${name}`);
       }
       process.exit(1);
     }
