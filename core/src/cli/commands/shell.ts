@@ -61,6 +61,12 @@ export interface ShellIO {
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
   readonly stdin?: AsyncIterable<Uint8Array>;
+  readonly stdinIsTTY?: () => boolean;
+  readonly stdinIsRaw?: () => boolean;
+  readonly stdinIsPaused?: () => boolean;
+  readonly setStdinRawMode?: (raw: boolean) => void;
+  readonly resumeStdin?: () => void;
+  readonly pauseStdin?: () => void;
   readonly terminalSize?: () => ShellTerminalSize | undefined;
   readonly onResize?: (listener: () => void) => () => void;
 }
@@ -69,6 +75,16 @@ const processShellIO: ShellIO = {
   writeStdout: () => {},
   writeStderr: () => {},
   stdin: process.stdin as AsyncIterable<Uint8Array>,
+  stdinIsTTY: () => process.stdin.isTTY === true,
+  stdinIsRaw: () => process.stdin.isRaw === true,
+  stdinIsPaused: () => process.stdin.isPaused(),
+  setStdinRawMode: (raw) => process.stdin.setRawMode(raw),
+  resumeStdin: () => {
+    process.stdin.resume();
+  },
+  pauseStdin: () => {
+    process.stdin.pause();
+  },
   terminalSize: () => {
     const columns = process.stdout.columns;
     const rows = process.stdout.rows;
@@ -209,6 +225,28 @@ const resizeStream = (io: ShellIO | undefined): Stream.Stream<ShellTerminalSize>
 
 const currentTerminalSize = (io: ShellIO | undefined): ShellTerminalSize | undefined => io?.terminalSize?.();
 
+const withInteractiveStdinRawMode = <A, E, R>(
+  io: ShellIO,
+  effect: Effect.Effect<A, E, R>,
+): Effect.Effect<A, E, R> =>
+  Effect.acquireUseRelease(
+    Effect.sync(() => {
+      if (io.stdin === undefined || io.stdinIsTTY?.() !== true || io.setStdinRawMode === undefined) {
+        return () => {};
+      }
+      const wasRaw = io.stdinIsRaw?.() === true;
+      const wasPaused = io.stdinIsPaused?.() === true;
+      io.setStdinRawMode(true);
+      io.resumeStdin?.();
+      return () => {
+        io.setStdinRawMode?.(wasRaw);
+        if (wasPaused) io.pauseStdin?.();
+      };
+    }),
+    () => effect,
+    (restore) => Effect.sync(restore),
+  );
+
 export const shellApp = (
   options: ShellAppOptions = {},
 ): Effect.Effect<ShellAppResult, ShellAppError, ShellAppServices> =>
@@ -247,17 +285,20 @@ export const shellApp = (
       let exitCode = 0;
       const stdoutDecoder = new TextDecoder();
       const stderrDecoder = new TextDecoder();
-      yield* Effect.scoped(
-        provider.execStream(target, spec).pipe(
-          Stream.runForEach((chunk) => {
-            if ("exitCode" in chunk) {
-              exitCode = chunk.exitCode;
-              return Effect.void;
-            }
-            const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
-            const text = decoder.decode(chunk.chunk, { stream: true });
-            return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
-          }),
+      yield* withInteractiveStdinRawMode(
+        io,
+        Effect.scoped(
+          provider.execStream(target, spec).pipe(
+            Stream.runForEach((chunk) => {
+              if ("exitCode" in chunk) {
+                exitCode = chunk.exitCode;
+                return Effect.void;
+              }
+              const decoder = chunk.kind === "stdout" ? stdoutDecoder : stderrDecoder;
+              const text = decoder.decode(chunk.chunk, { stream: true });
+              return chunk.kind === "stdout" ? writeStdout(options.io, text) : writeStderr(options.io, text);
+            }),
+          ),
         ),
       );
       yield* Effect.all([

@@ -4,6 +4,7 @@ import { Config } from "@oclif/core";
 import { DateTime, Effect, Layer, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
+import { ProviderUnavailableError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -196,6 +197,84 @@ describe("shellApp — shell modes", () => {
     );
 
     expect(stdout).toBe("a€b");
+  });
+
+  test("service mode enables raw stdin for interactive TTY and restores it on exit", async () => {
+    let raw = false;
+    let paused = true;
+    const rawModes: boolean[] = [];
+    const provider = fakeProvider({
+      execStream: () =>
+        Stream.fromEffect(
+          Effect.sync(() => {
+            expect(raw).toBe(true);
+            expect(paused).toBe(false);
+            return { exitCode: 0 };
+          }),
+        ),
+    });
+
+    await Effect.runPromise(
+      shellApp({
+        service: "web",
+        io: {
+          writeStdout: () => {},
+          writeStderr: () => {},
+          stdin: (async function* () {})(),
+          stdinIsTTY: () => true,
+          stdinIsRaw: () => raw,
+          stdinIsPaused: () => paused,
+          setStdinRawMode: (nextRaw) => {
+            rawModes.push(nextRaw);
+            raw = nextRaw;
+          },
+          resumeStdin: () => {
+            paused = false;
+          },
+          pauseStdin: () => {
+            paused = true;
+          },
+        },
+      }).pipe(Effect.provide(layer(undefined, provider))),
+    );
+
+    expect(raw).toBe(false);
+    expect(paused).toBe(true);
+    expect(rawModes).toEqual([true, false]);
+  });
+
+  test("service mode restores raw stdin when provider exec fails", async () => {
+    let raw = false;
+    const provider = fakeProvider({
+      execStream: () =>
+        Stream.fail(
+          new ProviderUnavailableError({
+            providerId: "lando",
+            operation: "execStream",
+            message: "boom",
+          }),
+        ),
+    });
+
+    await expect(
+      Effect.runPromise(
+        shellApp({
+          service: "web",
+          io: {
+            writeStdout: () => {},
+            writeStderr: () => {},
+            stdin: (async function* () {})(),
+            stdinIsTTY: () => true,
+            stdinIsRaw: () => raw,
+            setStdinRawMode: (nextRaw) => {
+              raw = nextRaw;
+            },
+          },
+        }).pipe(Effect.provide(layer(undefined, provider))),
+      ),
+    ).rejects.toThrow("boom");
+
+    expect(raw).toBe(false);
   });
 
   test("service mode uses the primary service when no service is requested", async () => {
