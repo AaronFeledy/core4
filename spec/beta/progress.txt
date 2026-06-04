@@ -978,3 +978,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - Generated CI matrix changes should update `core/test/scripts/codegen-ci.test.ts`, `core/test/build/ci-workflow.test.ts`, `core/test/build/branch-protection.test.ts`, and `docs/ci-runbook.md` together; full codegen tests may need a larger timeout because several cases run `bun run codegen` repeatedly.
 ---
+
+## [2026-06-04 03:27 CDT] - Babysit
+- PR: #285 https://github.com/AaronFeledy/core4/pull/285
+- CI outcome: pass
+- Review feedback: none
+- Merge: deferred (unresolved Cursor Bugbot ARM Docker-socket review thread remains; two delegated triage attempts timed out without changes or push)
+---
