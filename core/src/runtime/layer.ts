@@ -255,6 +255,7 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
 const makeToolingRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     makeMinimalRuntimeLive(loggerMode),
+    PluginRegistryLive,
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
   );
