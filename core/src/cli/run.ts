@@ -107,6 +107,7 @@ import {
 import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/uninstall.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
+import { loadCompiledManifest } from "./oclif/manifest.ts";
 import {
   makeRendererServiceLiveForMode,
   resolveCliRendererMode,
@@ -122,6 +123,8 @@ type CompiledCommand = Command.Class;
 const commandEntries: Array<[string, CompiledCommand]> = Object.entries(compiledCommands).sort(
   ([left], [right]) => left.localeCompare(right),
 );
+
+const compiledManifest = loadCompiledManifest();
 
 const commandName = (id: string, command: CompiledCommand): string => {
   const aliases = command.aliases;
@@ -1174,6 +1177,14 @@ const buildCanonicalCommandIdByToken = (): Readonly<Record<string, string>> => {
     const canonicalId = spec?.id ?? id;
     entries.push([id, canonicalId]);
     for (const alias of command.aliases ?? []) entries.push([alias, canonicalId]);
+  }
+  for (const [id, command] of Object.entries(compiledManifest.commands)) {
+    const spec = (command as { readonly landoSpec?: { readonly id?: string } }).landoSpec;
+    const canonicalId = spec?.id ?? id;
+    entries.push([id, canonicalId]);
+    for (const alias of command.aliases ?? []) entries.push([alias, canonicalId]);
+    for (const alias of command.aliasPermutations ?? []) entries.push([alias, canonicalId]);
+    for (const permutation of command.permutations ?? []) entries.push([permutation, canonicalId]);
   }
   return Object.fromEntries(entries);
 };

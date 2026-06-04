@@ -962,3 +962,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - Tooling cache tests can inject `cacheRoot` through `runTooling` to avoid relying on global `LANDO_USER_CACHE_ROOT`; keep the production default at `resolveUserCacheRoot()` for CLI callers.
 ---
+
+## 2026-06-03 21:55 - US-188 (agent2)
+- Embedded the generated OCLIF manifest as a static TypeScript asset and wired `loadCompiledManifest()` to use it, keeping the JSON manifest and embedded module regenerated together by the manifest codegen step.
+- Added compiled-asset boundary coverage for the OCLIF manifest, bundled recipes, and SDK schema registry so compiled-runtime modules do not read generated assets from disk.
+- Verification: red tests captured for the missing embedded manifest; focused tests, typecheck, lint, build, codegen, and binary metadata smoke passed, including a manifest-only permutation (`cache:refresh:app`) inside `core/dist/lando`. Full `bun test` still reports the existing workspace-resolution/packed-export failures reproduced on `origin/main`.
+- **Learnings for future iterations:**
+  - OCLIF manifest codegen now has two committed outputs: `core/oclif.manifest.json` for package metadata and `core/src/cli/oclif/compiled-manifest.ts` for compiled-binary embedding. Regenerate both with `bun run codegen:oclif-manifest` or full `bun run codegen`.
+---
