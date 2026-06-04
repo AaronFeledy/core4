@@ -4,7 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { ServiceStartError } from "@lando/sdk/errors";
-import { Cause, DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Fiber, Stream } from "effect";
 
 import {
   type DockerApiClient,
@@ -130,6 +130,13 @@ const makeFakeApi = () => {
             return { status: 404, body: "" };
           }
           return { status: 200, body: JSON.stringify({ ExitCode: execs.get(execId) }) };
+        }
+        if (
+          request.path.startsWith("/exec/") &&
+          request.path.includes("/resize?") &&
+          request.method === "POST"
+        ) {
+          return { status: 200, body: "" };
         }
         if (request.path.startsWith("/containers/create?name=")) {
           const name = decodeURIComponent(request.path.slice("/containers/create?name=".length));
@@ -450,6 +457,115 @@ describe("provider-docker RuntimeProvider contract", () => {
       "DELETE /containers/lando-myapp-web?force=true",
       "DELETE /networks/lando-myapp",
     ]);
+  });
+
+  test("passes TTY and inherited stdin settings into exec create/start", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan(makeService());
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    await Effect.runPromise(
+      provider
+        .execStream(
+          { app: appId, service: serviceName },
+          { command: ["sh", "-l"], stdin: "inherit", tty: true },
+        )
+        .pipe(Stream.runCollect, Effect.scoped),
+    );
+
+    const create = fake.calls.find((call) => call.path === "/containers/lando-myapp-web/exec");
+    const start = fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start");
+    expect(create?.body).toMatchObject({ AttachStdin: true, Tty: true });
+    expect(start?.body).toMatchObject({ Tty: true });
+  });
+
+  test("emits raw stdout chunks for TTY exec streams and forwards stdin and terminal resize events", async () => {
+    const fake = makeFakeApi();
+    const stdinStream = (async function* () {
+      yield textEncoder.encode("typed\n");
+    })();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) {
+        return Stream.fromIterable([textEncoder.encode("raw-tty\n")]);
+      }
+      return Stream.empty;
+    };
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan(makeService());
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const chunks = await Effect.runPromise(
+      provider
+        .execStream(
+          { app: appId, service: serviceName },
+          {
+            command: ["sh", "-l"],
+            stdin: "inherit",
+            stdinStream,
+            tty: true,
+            terminalSize: { columns: 132, rows: 43 },
+            terminalResize: Stream.fromIterable([{ columns: 100, rows: 20 }]),
+          },
+        )
+        .pipe(Stream.runCollect, Effect.scoped),
+    );
+
+    const stdout = Array.from(chunks)
+      .filter((chunk) => "kind" in chunk && chunk.kind === "stdout")
+      .map((chunk) => ("chunk" in chunk ? textDecoder.decode(chunk.chunk) : ""))
+      .join("");
+    expect(stdout).toBe("raw-tty\n");
+    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.stdin).toBe(
+      stdinStream,
+    );
+    expect(fake.calls.some((call) => call.path === "/exec/lando-myapp-web-exec/resize?h=43&w=132")).toBe(
+      true,
+    );
+    expect(fake.calls.some((call) => call.path === "/exec/lando-myapp-web-exec/resize?h=20&w=100")).toBe(
+      true,
+    );
+  });
+
+  test("interrupts provider exec streams when the abort signal fires", async () => {
+    const fake = makeFakeApi();
+    const controller = new AbortController();
+    fake.api.stream = (request) => {
+      fake.calls.push(request);
+      if (request.path.startsWith("/exec/") && request.path.endsWith("/start")) return Stream.never;
+      return Stream.empty;
+    };
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const plan = makePlan(makeService());
+
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
+    const chunks = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const fiber = yield* provider
+            .execStream(
+              { app: appId, service: serviceName },
+              { command: ["sh", "-l"], stdin: "inherit", tty: true, signal: controller.signal },
+            )
+            .pipe(Stream.runCollect, Effect.fork);
+          yield* Effect.sleep("10 millis");
+          controller.abort();
+          return yield* Fiber.join(fiber);
+        }),
+      ),
+    );
+
+    expect(Array.from(chunks)).toEqual([]);
+    expect(fake.calls.find((call) => call.path === "/exec/lando-myapp-web-exec/start")?.signal).toBe(
+      controller.signal,
+    );
   });
 
   test("decodes raw Docker log bytes", async () => {

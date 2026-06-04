@@ -505,15 +505,21 @@ export const COMPILED_OCLIF_MANIFEST = {
     "app:shell": {
       aliases: ["shell"],
       args: {},
-      description: "Open a host shell scoped to the current Lando app.",
+      description: "Open an interactive shell in a Lando service.",
       flags: {
         service: {
           char: "s",
-          description: "(Beta) Open the shell inside a service via provider-exec; rejected in Alpha.",
+          description: "Service to open a shell in.",
           name: "service",
           hasDynamicHelp: false,
           multiple: false,
           type: "option",
+        },
+        host: {
+          description: "Open the Alpha host shell scoped to the current app.",
+          name: "host",
+          allowNo: false,
+          type: "boolean",
         },
       },
       hasDynamicHelp: false,
@@ -527,7 +533,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:shell",
-        summary: "Open a host shell scoped to the current Lando app.",
+        summary: "Open an interactive shell in a Lando service.",
         namespace: "app",
         topLevelAlias: true,
         bootstrap: "app",

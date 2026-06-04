@@ -1,0 +1,38 @@
+---
+id: lando-shell
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, tooling, shell]
+---
+
+<Guide>
+  <Scenario id="service-shell-default" render={false} reason="Documents service-mode shell behavior without opening an interactive TTY in guide tests">
+    <Step name="default-service-mode">
+      <Variable name="command" value="lando shell appserver" display="Open an interactive shell in the appserver service" />
+      <Variable name="defaultMode" value="service" display="Passing a service name uses provider exec instead of the host shell" />
+      <Variable name="shell" value="sh -l" display="The service shell starts as a login shell in the selected container" />
+    </Step>
+    <Step name="primary-service-shortcut">
+      <Variable name="command" value="lando shell" display="Open a shell in the app's primary service" />
+      <Variable name="selection" value="primary service" display="When no service is named, Lando uses the app plan's primary service" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="host-mode-opt-in" render={false} reason="Documents the Alpha host-shell escape hatch without spawning a host shell in guide tests">
+    <Step name="host-shell">
+      <Variable name="command" value="lando shell --host" display="Open the host shell scoped to the app root" />
+      <Variable name="mode" value="host" display="Host mode remains available, but it is now opt-in" />
+      <Variable name="env" value="LANDO_APP_NAME and LANDO_APP_ROOT" display="The host shell receives the app-scoped Lando environment" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="interactive-contract">
+    <Step name="terminal-forwarding">
+      <Variable name="stdin" value="attached" display="stdin is forwarded to the provider exec stream" />
+      <Variable name="stdoutStderr" value="streamed" display="stdout and stderr stream back to the CLI renderer" />
+      <Variable name="resize" value="SIGWINCH -> provider exec resize" display="terminal resize events update the running service shell" />
+      <Variable name="cancel" value="Ctrl-C -> AbortSignal" display="parent CLI cancellation aborts the provider exec stream" />
+    </Step>
+  </Scenario>
+</Guide>

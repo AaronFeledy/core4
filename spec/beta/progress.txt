@@ -1011,3 +1011,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (resolved CONFLICTING merge with main — preserved US-162 perf-budget gate alongside incoming multi-platform CI matrix; typecheck/lint/test green)
 - Merge: merged (squash)
 ---
+
+## [2026-06-04 14:25 CDT] - US-163
+- Shipped service-mode `lando shell`. `lando shell` now defaults to a provider-backed TTY shell in the app's primary service, `lando shell <service>` / `--service=<service>` target a named service, and `lando shell --host` preserves the Alpha host-shell behavior. Both OCLIF and compiled dispatch parse the service/host flags and forward parent `AbortSignal` cancellation.
+- Extended the provider exec contract with `stdinStream`, `tty`, `signal`, `terminalSize`, and `terminalResize`. `provider-lando` and `provider-docker` create TTY exec sessions with inherited stdin, stream raw TTY output, resize initially and on dynamic terminal-resize events, and interrupt on abort. The shared socket HTTP transport now supports hijacked-stream stdin bytes and abort-driven socket teardown; Docker selection now routes through the real provider and Docker exec/log/inspect paths honor `target.plan` for fresh CLI processes.
+- Added required guide `docs/guides/tooling/lando-shell.mdx` and flipped the PRD-10 guide index row to Shipped.
+- Verification: `bun run typecheck`, `bun run lint`, `bun run lint:guides`, `bun run check:guide-coverage`, `bun run dev:guides docs/guides/tooling/lando-shell.mdx --once`, focused shell/provider/registry/transport tests (72 pass / 3 skip), CLI QA `bun core/bin/lando.ts shell --help`, and `bun run build` all passed. Full `bun test` was attempted but exceeded the 300s tool window / previously showed only known generated-guide and compiled-binary environment flakes; affected suites passed in isolation. Oracle reviewer returned `UNCONDITIONAL APPROVAL`.

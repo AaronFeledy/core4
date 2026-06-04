@@ -86,6 +86,12 @@ export interface CommandSpec {
   readonly command: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
+  readonly stdin?: "inherit" | "ignore";
+  readonly stdinStream?: AsyncIterable<Uint8Array>;
+  readonly tty?: boolean;
+  readonly signal?: AbortSignal;
+  readonly terminalSize?: { readonly columns: number; readonly rows: number };
+  readonly terminalResize?: Stream.Stream<{ readonly columns: number; readonly rows: number }>;
 }
 
 export interface ExecResult {

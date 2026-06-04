@@ -861,7 +861,11 @@ const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-const parseShellService = (argv: ReadonlyArray<string>): string | undefined => {
+const parseShellArgv = (
+  argv: ReadonlyArray<string>,
+): { readonly service?: string; readonly host: boolean } => {
+  let service: string | undefined;
+  let host = false;
   let i = 0;
   while (i < argv.length) {
     const arg = argv[i];
@@ -869,18 +873,35 @@ const parseShellService = (argv: ReadonlyArray<string>): string | undefined => {
       i += 1;
       continue;
     }
+    if (arg === "--host") {
+      host = true;
+      i += 1;
+      continue;
+    }
     const match = parseStringFlag(argv, i, "service", "s");
-    if (match !== undefined) return match.value;
+    if (match !== undefined) {
+      service = match.value;
+      i += match.consumed;
+      continue;
+    }
+    if (!arg.startsWith("-") && service === undefined) {
+      service = arg;
+    }
     i += 1;
   }
-  return undefined;
+  return { ...(service === undefined ? {} : { service }), host };
 };
 
-const runShell = (argv: ReadonlyArray<string>): Promise<void> => {
-  const service = parseShellService(argv);
+const runShell = (
+  argv: ReadonlyArray<string>,
+  options: { readonly signal?: AbortSignal } = {},
+): Promise<void> => {
+  const parsed = parseShellArgv(argv);
   return runCompiledCommand(
     shellApp({
-      ...(service === undefined ? {} : { service }),
+      host: parsed.host,
+      ...(parsed.service === undefined ? {} : { service: parsed.service }),
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     }),
     makeLandoRuntime({ bootstrap: "app" }),
     renderShellAppResult,
@@ -1363,7 +1384,16 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "shell" || argv[0] === "app:shell") {
-    await runShell(argv.slice(1));
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    process.once("SIGINT", abort);
+    process.once("SIGTERM", abort);
+    try {
+      await runShell(argv.slice(1), { signal: controller.signal });
+    } finally {
+      process.off("SIGINT", abort);
+      process.off("SIGTERM", abort);
+    }
     return;
   }
 
