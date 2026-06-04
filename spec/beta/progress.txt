@@ -970,3 +970,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - OCLIF manifest codegen now has two committed outputs: `core/oclif.manifest.json` for package metadata and `core/src/cli/oclif/compiled-manifest.ts` for compiled-binary embedding. Regenerate both with `bun run codegen:oclif-manifest` or full `bun run codegen`.
 ---
+
+## 2026-06-04 01:18 - US-189 (agent2)
+- Shipped the Beta PR CI matrix: generated CI now runs static checks across darwin-arm64, darwin-x64, linux-arm64, linux-x64, and win32-x64, builds/smokes one binary artifact per platform, and provides platform-specific provider integration gates.
+- Added CI timing notices and documented timeout caps plus the expanded branch-protection checklist in the CI runbook.
+- Verification: RED workflow-generator test captured, focused/affected workflow tests passed, codegen surface verified, typecheck/lint/build passed. Full `bun test` was attempted; unrelated library export/package-install failures reproduce on `origin/main` in `/tmp/lando4-main-check`.
+- **Learnings for future iterations:**
+  - Generated CI matrix changes should update `core/test/scripts/codegen-ci.test.ts`, `core/test/build/ci-workflow.test.ts`, `core/test/build/branch-protection.test.ts`, and `docs/ci-runbook.md` together; full codegen tests may need a larger timeout because several cases run `bun run codegen` repeatedly.
+---
