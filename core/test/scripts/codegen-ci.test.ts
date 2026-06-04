@@ -147,6 +147,8 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("provider-lando-e2e-linux-x64:");
       expect(firstWorkflow).toContain("Run smoke e2e scenarios");
       expect(firstWorkflow).toContain("Run non-smoke e2e scenarios");
+      expect(firstWorkflow).toContain("distribution-rehearsal-linux-x64:");
+      expect(firstWorkflow).toContain("Verify SHA256SUMS match the binaries");
 
       await runCodegen();
 
@@ -170,7 +172,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(17);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(5);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(6);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(releaseWorkflow).not.toContain("bun-version: ");
