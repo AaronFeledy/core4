@@ -101,9 +101,24 @@ bun test plugins/service-lando/test --filter=integration
 
 Provider integration also runs as platform-specific jobs (`provider-integration-<platform>`). Every provider job runs the provider contract layer first; `provider-integration-linux-x64` then runs the live Podman/Docker integration path above, while linux-arm64, macOS, and Windows targets stop after contract coverage so they do not require host sockets or mutate the host. Each provider job emits a `::notice title=ci-timing::...` line and has a timeout cap (25 minutes for Linux jobs, 20 minutes for macOS/Windows contract-only targets). If a provider integration job fails, download diagnostics from `Actions > ci > provider-integration-<platform> > Artifacts > provider-integration-diagnostics-<platform>`; for example, `Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64`.
 
+## Nightly provider-lando e2e
+
+The nightly workflow keeps host-mutating provider-lando e2e coverage out of the per-PR gate. The `provider-lando-e2e-linux-x64` job installs Podman on `ubuntu-24.04`, sets `net.ipv4.ip_unprivileged_port_start=0` for rootless low-port binds, provisions a private Podman socket, builds the Linux x64 compiled binary, then runs smoke and non-smoke scenario tests against that binary:
+
+```bash
+sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
+export LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock
+export LANDO_CONFIG__default_provider_id=lando
+LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun test core/test/scenario --test-name-pattern="@smoke"
+LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/core/dist/lando" bun test core/test/scenario --test-name-pattern="^(?!.*@smoke).*$"
+```
+
+Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
+
 ## Alpha platform scope
 
-Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron and weekly provider matrix remain separate follow-up workflows.
+Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix remains a separate follow-up workflow.
 
 ## Branch protection
 

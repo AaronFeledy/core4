@@ -21,6 +21,73 @@ const contractTestStep = (platform: string): string => `
         env:
           LANDO_TEST_FILE_SYNC_LIVE: "1"`;
 
+const providerLandoE2eJob = `
+  provider-lando-e2e-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+${bunSetupStep}
+
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+          sudo sysctl net.ipv4.ip_unprivileged_port_start=0
+
+      - name: Start Podman socket
+        run: |
+          podman system service --time=0 unix:///tmp/podman.sock > /tmp/podman-service.log 2>&1 &
+          echo "$!" > /tmp/podman-service.pid
+          for i in {1..30}; do test -S /tmp/podman.sock && exit 0; sleep 1; done
+          cat /tmp/podman-service.log
+          exit 1
+
+      - name: Build Linux x64 binary
+        run: |
+          bun run --filter='@lando/core' build:manifest
+          bun build ./core/bin/lando.ts --compile --target=bun-linux-x64 --outfile ./core/dist/lando --sourcemap=external
+          bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
+          ./core/dist/lando --version
+
+      - name: Run smoke e2e scenarios
+        run: |
+          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/scenario --test-name-pattern="@smoke"
+        env:
+          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
+          LANDO_CONFIG__default_provider_id: lando
+
+      - name: Run non-smoke e2e scenarios
+        run: |
+          LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/core/dist/lando" bun test core/test/scenario --test-name-pattern="^(?!.*@smoke).*$"
+        env:
+          LANDO_TEST_PODMAN_SOCKET: /tmp/podman.sock
+          LANDO_CONFIG__default_provider_id: lando
+
+      - name: Teardown Podman
+        if: always()
+        run: |
+          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
+          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
+          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
+          rm -f /tmp/podman.sock /tmp/podman-service.pid
+
+      - name: Collect provider-lando e2e diagnostics
+        if: failure()
+        run: |
+          mkdir -p provider-lando-e2e-diagnostics
+          cp /tmp/podman-service.log provider-lando-e2e-diagnostics/podman-service.log || true
+          journalctl --no-pager --since "-30 minutes" > provider-lando-e2e-diagnostics/journalctl.log 2>&1 || true
+
+      - name: Upload provider-lando e2e diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: provider-lando-e2e-diagnostics-linux-x64
+          path: provider-lando-e2e-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7`;
+
 interface NightlyJob {
   readonly id: string;
   readonly runsOn: string;
@@ -44,10 +111,10 @@ ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
 export const renderNightlyWorkflow = (): string => {
-  const jobsYaml = JOBS.map(renderJob).join("\n");
+  const jobsYaml = [...JOBS.map(renderJob), providerLandoE2eJob].join("\n");
 
   return `${GENERATED_HEADER}
-name: nightly-file-sync
+name: nightly
 
 on:
   schedule:

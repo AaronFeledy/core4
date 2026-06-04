@@ -1011,3 +1011,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (resolved CONFLICTING merge with main — preserved US-162 perf-budget gate alongside incoming multi-platform CI matrix; typecheck/lint/test green)
 - Merge: merged (squash)
 ---
+
+## [2026-06-04 13:29] - US-190 (agent2)
+- Shipped the generated nightly provider-lando e2e job on Linux x64: the workflow provisions a private Podman socket, builds the compiled Linux binary, runs smoke and non-smoke scenario passes against that binary, and uploads diagnostics on failure.
+- Verification: RED tests captured in `/tmp/us190-red-ci-workflow.out` and `/tmp/us190-red-codegen.out`; `bun test core/test/build/ci-workflow.test.ts core/test/scripts/codegen-ci.test.ts` passed; `bun run codegen` regenerated `.github/workflows/nightly.yml`; `bun run typecheck` and `bun run lint` passed. Full `bun test` still reports unrelated pre-existing library package-export and dev-guides failures (see `/tmp/us190-bun-test.out`); focused US-190 workflow/codegen tests pass; `/tmp/us190-smoke-selector.out` proves the `@smoke` selector matches the live scenario test (skipped locally without a Podman socket).
+- **Learnings for future iterations:**
+  - Nightly workflow changes belong in `scripts/build-nightly-workflow.ts`; keep `.github/workflows/nightly.yml` generated via `bun run codegen` and assert it from the build/codegen workflow tests.
+---

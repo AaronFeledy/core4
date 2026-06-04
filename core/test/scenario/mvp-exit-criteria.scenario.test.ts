@@ -62,7 +62,7 @@ const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 };
 
 describe.skipIf(!canRunLiveSmoke)("MVP exit-criteria smoke test", () => {
-  test("reproduces the full init/start/info/stop flow with the compiled binary", async () => {
+  test("@smoke reproduces the full init/start/info/stop flow with the compiled binary", async () => {
     await withTempDir(async (dir) => {
       if (shouldBuildBinary) {
         const codegen = await runCommand([process.execPath, "run", "codegen"], repoRoot);
