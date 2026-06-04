@@ -1,4 +1,5 @@
-import { createConnection } from "node:net";
+import { createConnection, isIP } from "node:net";
+import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import {
@@ -315,16 +316,22 @@ async function* streamUnixSocketRequest(
 
 async function* streamHttpRequest(baseUrl: string, request: DockerHttpRequest): AsyncGenerator<Uint8Array> {
   const parsed = new URL(baseUrl);
-  if (request.stdin !== undefined && parsed.protocol === "http:") {
+  if (request.stdin !== undefined && (parsed.protocol === "http:" || parsed.protocol === "https:")) {
+    const secure = parsed.protocol === "https:";
     const client = makeSocketHttpClient({
       apiPrefix: parsed.pathname.replace(/\/+$/u, "") || "/v1.43",
       operation: "docker-api",
       hostHeader: parsed.host,
       connect: async () => {
-        const socket = createConnection({
-          host: parsed.hostname,
-          port: parsed.port === "" ? 80 : Number(parsed.port),
-        });
+        const port = parsed.port === "" ? (secure ? 443 : 80) : Number(parsed.port);
+        const socket = secure
+          ? createTlsConnection({
+              host: parsed.hostname,
+              port,
+              ...(isIP(parsed.hostname) === 0 ? { servername: parsed.hostname } : {}),
+              rejectUnauthorized: process.env.DOCKER_TLS_VERIFY !== "0",
+            })
+          : createConnection({ host: parsed.hostname, port });
         await connectSocket(socket);
         return socket as unknown as SocketHttpConnection;
       },
@@ -333,10 +340,15 @@ async function* streamHttpRequest(baseUrl: string, request: DockerHttpRequest): 
     return;
   }
   if (request.stdin !== undefined) {
-    throw unavailable("docker-api", "Docker HTTPS stream transport does not support interactive stdin.", {
-      method: request.method,
-      path: request.path,
-    });
+    throw unavailable(
+      "docker-api",
+      "Docker stream transport does not support interactive stdin for this Docker host URL.",
+      {
+        method: request.method,
+        path: request.path,
+        protocol: parsed.protocol,
+      },
+    );
   }
 
   const response = await fetch(`${baseUrl}${request.path}`, {

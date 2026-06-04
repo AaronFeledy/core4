@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { type Server, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createServer as createTlsServer } from "node:tls";
 import { Effect, Stream } from "effect";
 
 import {
@@ -28,6 +29,50 @@ const listen = (server: Server, socketPath: string): Promise<void> =>
 const close = (server: Server): Promise<void> =>
   new Promise((resolve, reject) => {
     server.close((error) => (error === undefined ? resolve() : reject(error)));
+  });
+
+const createSelfSignedCertificate = async (
+  directory: string,
+): Promise<{ readonly key: string; readonly cert: string }> => {
+  const keyPath = join(directory, "key.pem");
+  const certPath = join(directory, "cert.pem");
+  const proc = Bun.spawn(
+    [
+      "openssl",
+      "req",
+      "-x509",
+      "-newkey",
+      "rsa:2048",
+      "-nodes",
+      "-keyout",
+      keyPath,
+      "-out",
+      certPath,
+      "-subj",
+      "/CN=127.0.0.1",
+      "-days",
+      "1",
+      "-addext",
+      "subjectAltName=IP:127.0.0.1",
+    ],
+    { stdout: "pipe", stderr: "pipe" },
+  );
+  const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+  if (exitCode !== 0) throw new Error(`openssl failed to create test certificate: ${stderr}`);
+  return { key: await Bun.file(keyPath).text(), cert: await Bun.file(certPath).text() };
+};
+
+const listenTcp = (server: Server): Promise<number> =>
+  new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") {
+        reject(new Error("Expected TCP server address"));
+        return;
+      }
+      resolve(address.port);
+    });
   });
 
 describe("provider-docker capabilities", () => {
@@ -280,6 +325,54 @@ describe("provider-docker capabilities", () => {
       await rm(socketDir, { recursive: true, force: true });
     }
   });
+  test("streams attached stdin over HTTPS Docker API sockets", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "lando-provider-docker-https-stream-"));
+    const { key, cert } = await createSelfSignedCertificate(tempDir);
+    const body = new TextEncoder().encode("ok");
+    const requests: string[] = [];
+    const server = createTlsServer({ key, cert }, (socket) => {
+      socket.once("data", (chunk) => {
+        requests.push(chunk.toString());
+        socket.write(`HTTP/1.1 200 OK\r\nContent-Length: ${body.length}\r\n\r\n`);
+        socket.end(body);
+      });
+    });
+    const previousDockerTlsVerify = process.env.DOCKER_TLS_VERIFY;
+
+    try {
+      process.env.DOCKER_TLS_VERIFY = "0";
+      const port = await listenTcp(server);
+      const client = makeDockerApiClient(`https://127.0.0.1:${port}`);
+      if (client.stream === undefined) throw new Error("Expected HTTPS Docker API client to expose stream");
+      const chunks = await Effect.runPromise(
+        client
+          .stream({
+            method: "POST",
+            path: "/exec/session/start",
+            stdin: (async function* () {
+              yield new TextEncoder().encode("typed\n");
+            })(),
+            body: { Detach: false, Tty: true },
+          })
+          .pipe(
+            Stream.runCollect,
+            Effect.map((collected) => Array.from(collected)),
+          ),
+      );
+
+      expect(requests[0]).toStartWith("POST /v1.43/exec/session/start HTTP/1.1");
+      expect(chunks).toEqual([body]);
+    } finally {
+      if (previousDockerTlsVerify === undefined) {
+        process.env.DOCKER_TLS_VERIFY = undefined;
+      } else {
+        process.env.DOCKER_TLS_VERIFY = previousDockerTlsVerify;
+      }
+      await close(server);
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("streams delayed npipe chunked responses over an IPC socket", async () => {
     const socketDir = await mkdtemp(join(tmpdir(), "lando-provider-docker-npipe-stream-delayed-"));
     const socketPath = join(socketDir, "docker.sock");
