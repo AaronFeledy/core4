@@ -33,7 +33,7 @@ export default class AppShellCommand extends LandoCommandBase {
       description: "Service to open a shell in.",
     }),
     host: Flags.boolean({
-      description: "Open the Alpha host shell scoped to the current app.",
+      description: "Open a host shell scoped to the current app.",
     }),
   };
   static override landoSpec: LandoCommandSpec = appShellSpec;

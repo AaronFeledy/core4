@@ -19,7 +19,7 @@ tags: [beta, docs, tooling, shell]
     </Step>
   </Scenario>
 
-  <Scenario id="host-mode-opt-in" render={false} reason="Documents the Alpha host-shell escape hatch without spawning a host shell in guide tests">
+  <Scenario id="host-mode-opt-in" render={false} reason="Documents the host-shell escape hatch without spawning a host shell in guide tests">
     <Step name="host-shell">
       <Variable name="command" value="lando shell --host" display="Open the host shell scoped to the app root" />
       <Variable name="mode" value="host" display="Host mode remains available, but it is now opt-in" />

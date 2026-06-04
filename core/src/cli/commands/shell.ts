@@ -3,7 +3,7 @@
  * shell inside a running service.
  *
  * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode (`--host`) preserves the Alpha host shell rooted at the app root.
+ * Host mode (`--host`) opens a host shell rooted at the app root.
  */
 import { spawn as nodeSpawn } from "node:child_process";
 import { Chunk, Effect, Stream } from "effect";

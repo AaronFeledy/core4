@@ -344,7 +344,7 @@ describe("lando shell — CLI surface", () => {
     expect(AppShellCommand.aliases).toContain("shell");
   });
 
-  test("declares --host for Alpha host mode", () => {
+  test("declares --host for host mode", () => {
     expect(Object.keys(AppShellCommand.flags)).toContain("host");
   });
 });

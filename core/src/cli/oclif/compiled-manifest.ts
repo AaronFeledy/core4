@@ -516,7 +516,7 @@ export const COMPILED_OCLIF_MANIFEST = {
           type: "option",
         },
         host: {
-          description: "Open the Alpha host shell scoped to the current app.",
+          description: "Open a host shell scoped to the current app.",
           name: "host",
           allowNo: false,
           type: "boolean",
