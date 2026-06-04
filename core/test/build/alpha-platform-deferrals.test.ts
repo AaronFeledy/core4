@@ -25,8 +25,8 @@ describe("alpha platform deferrals", () => {
     expect(ciPrd).toContain("Nightly cron and weekly provider matrix");
     expect(ciPrd).toContain("macOS provider-lando validation is manual QA or an explicit opt-in job");
 
-    expect(runbook).toContain("Default Alpha CI is Linux x64 only");
-    expect(runbook).toContain("No Windows or linux-arm64 release matrix is generated in Alpha");
-    expect(runbook).toContain("macOS provider-lando validation is manual QA or an explicit opt-in job");
+    expect(runbook).toContain("Historical Alpha CI was Linux x64 only");
+    expect(runbook).toContain("no Windows or linux-arm64 release matrix was generated in Alpha");
+    expect(runbook).toContain("macOS provider-lando validation was manual QA or an explicit opt-in job");
   });
 });

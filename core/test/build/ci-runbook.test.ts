@@ -37,9 +37,13 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run typecheck");
     expect(runbook).toContain("bun run lint");
     expect(runbook).toContain("bun run test:unit");
+    expect(runbook).toContain("darwin-arm64");
+    expect(runbook).toContain("build-win32-x64");
     expect(runbook).toContain("bun run build");
     expect(runbook).toContain("CI pins Bun via `.bun-version`");
     expect(runbook).toContain("Provider integration tests intentionally stay serial");
+    expect(runbook).toContain("::notice title=ci-timing::");
+    expect(runbook).toContain("timeout cap");
     expect(runbook).toContain("BUN_INSTALL_GLOBAL_STORE=1 bun install --linker=isolated");
     expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario");
     expect(runbook).toContain("podman system service --time=0 unix:///tmp/podman.sock");
@@ -53,7 +57,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("npm install @lando/core@dev");
     expect(runbook).toContain("`latest` dist-tag is unchanged");
     expect(runbook).toContain(
-      "Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics",
+      "Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64",
     );
   });
 
