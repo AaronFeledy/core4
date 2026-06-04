@@ -1,5 +1,6 @@
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 import { Effect } from "effect";
 
@@ -23,7 +24,12 @@ import {
   encodeAppCommandIndex,
   encodePluginCommandIndex,
 } from "./command-index.ts";
-import { appCommandCachePath, pluginCommandCachePath, resolveUserCacheRoot } from "./paths.ts";
+import {
+  appCommandCachePath,
+  appToolingCompilationCachePath,
+  pluginCommandCachePath,
+  resolveUserCacheRoot,
+} from "./paths.ts";
 
 const isMissingFile = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT";
@@ -42,13 +48,36 @@ interface AppCommandCacheSource {
     readonly mtimeMs: number;
     readonly size: number;
   };
+  readonly contentHash?: string;
 }
+
+const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
+  try {
+    return await readFile(path);
+  } catch (cause) {
+    if (isMissingFile(cause)) return null;
+    throw cause;
+  }
+};
+
+const sourceHashFor = (landofileBytes: Uint8Array, includeLockfileBytes: Uint8Array | null): string => {
+  const hash = createHash("sha256");
+  hash.update(landofileBytes);
+  if (includeLockfileBytes !== null) hash.update(includeLockfileBytes);
+  return hash.digest("hex");
+};
 
 const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCacheSource | undefined> => {
   const filePath = await findLandofilePath(cwd);
   if (filePath === undefined) return undefined;
 
-  return { filePath, stats: await stat(filePath) };
+  const appRoot = dirname(filePath);
+  const [stats, bytes, includeLockfileBytes] = await Promise.all([
+    stat(filePath),
+    readFile(filePath),
+    readOptionalFile(join(appRoot, ".lando.lock.yml")),
+  ]);
+  return { filePath, stats, contentHash: sourceHashFor(bytes, includeLockfileBytes) };
 };
 
 const writeAppCommandCacheTask = async (
@@ -63,6 +92,7 @@ const writeAppCommandCacheTask = async (
   const appName = options.landofile.name ?? "unnamed";
   const appRoot = dirname(filePath);
   const cachePath = appCommandCachePath(cacheRoot, appName, appRoot);
+  const toolingCompilationCachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
   const toolingFingerprint = deriveAppCommandToolingFingerprint(options.landofile);
   const entriesFingerprint = deriveAppCommandEntriesFingerprint(options.entries);
 
@@ -73,13 +103,26 @@ const writeAppCommandCacheTask = async (
     entriesFingerprint,
     source,
   });
-  if (cached !== null) return cachePath;
+  if (cached !== null) {
+    const payload: AppCommandIndexPayload = {
+      ...cached,
+      sourceFile: filePath,
+      ...(source.contentHash === undefined ? {} : { sourceContentHash: source.contentHash }),
+      sourceMtimeMs: stats.mtimeMs,
+      sourceSize: stats.size,
+      toolingFingerprint,
+      entriesFingerprint,
+    };
+    await writeFileAtomicViaRename(toolingCompilationCachePath, encodeAppCommandIndex(payload));
+    return cachePath;
+  }
 
   const payload: AppCommandIndexPayload = {
     schemaVersion: 1,
     landoVersion: CORE_VERSION,
     appName,
     sourceFile: filePath,
+    ...(source.contentHash === undefined ? {} : { sourceContentHash: source.contentHash }),
     sourceMtimeMs: stats.mtimeMs,
     sourceSize: stats.size,
     toolingFingerprint,
@@ -89,6 +132,7 @@ const writeAppCommandCacheTask = async (
   };
 
   await writeFileAtomicViaRename(cachePath, encodeAppCommandIndex(payload));
+  await writeFileAtomicViaRename(toolingCompilationCachePath, encodeAppCommandIndex(payload));
   return cachePath;
 };
 
@@ -168,6 +212,8 @@ const readAppCommandCacheTask = async (
     if (payload === null) return null;
     if (payload.landoVersion !== CORE_VERSION) return null;
     if (payload.sourceFile !== filePath) return null;
+    if (payload.sourceContentHash !== undefined && payload.sourceContentHash !== source.contentHash)
+      return null;
     if (payload.sourceMtimeMs !== stats.mtimeMs || payload.sourceSize !== stats.size) return null;
     if (
       payload.toolingFingerprint !==
@@ -181,6 +227,32 @@ const readAppCommandCacheTask = async (
     ) {
       return null;
     }
+    return payload;
+  } catch (cause) {
+    if (isMissingFile(cause)) return null;
+    throw cause;
+  }
+};
+
+const readFreshAppCommandCacheForCwdTask = async (options: {
+  readonly cwd?: string;
+  readonly cacheRoot?: string;
+}): Promise<AppCommandIndexPayload | null> => {
+  const cwd = options.cwd ?? process.cwd();
+  const source = await resolveAppCommandCacheSource(cwd);
+  if (source === undefined) return null;
+  const appRoot = dirname(source.filePath);
+  const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+  const cachePath = appToolingCompilationCachePath(cacheRoot, appRoot);
+
+  try {
+    const payload = decodeAppCommandIndex(new Uint8Array(await readFile(cachePath)));
+    if (payload === null) return null;
+    if (payload.landoVersion !== CORE_VERSION) return null;
+    if (payload.sourceFile !== source.filePath) return null;
+    if (payload.sourceContentHash !== source.contentHash) return null;
+    if (payload.sourceMtimeMs !== source.stats.mtimeMs || payload.sourceSize !== source.stats.size)
+      return null;
     return payload;
   } catch (cause) {
     if (isMissingFile(cause)) return null;
@@ -221,6 +293,22 @@ export const readAppCommandCache = (
 ): Effect.Effect<AppCommandIndexPayload | null, CacheError> =>
   Effect.tryPromise({
     try: () => readAppCommandCacheTask(options),
+    catch: (cause) =>
+      new CacheError({
+        message: "Failed to read app-command cache.",
+        key: "app-command",
+        cause,
+      }),
+  });
+
+export const readFreshAppCommandCacheForCwd = (
+  options: {
+    readonly cwd?: string;
+    readonly cacheRoot?: string;
+  } = {},
+): Effect.Effect<AppCommandIndexPayload | null, CacheError> =>
+  Effect.tryPromise({
+    try: () => readFreshAppCommandCacheForCwdTask(options),
     catch: (cause) =>
       new CacheError({
         message: "Failed to read app-command cache.",

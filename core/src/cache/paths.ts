@@ -33,5 +33,8 @@ const appRootFingerprint = (appRoot: string): string =>
 export const appCommandCachePath = (cacheRoot: string, appName: string, appRoot: string): string =>
   `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}/commands.bin`;
 
+export const appToolingCompilationCachePath = (cacheRoot: string, appRoot: string): string =>
+  `${trimTrailingSlashes(cacheRoot)}/apps/tooling-${appRootFingerprint(appRoot)}/commands.bin`;
+
 export const appPlanCachePath = (cacheRoot: string, appName: string, appRoot: string): string =>
   `${trimTrailingSlashes(cacheRoot)}/apps/${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}/plan.bin`;

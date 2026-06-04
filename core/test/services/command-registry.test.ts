@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect, Layer } from "effect";
@@ -16,7 +16,11 @@ import {
   writePluginCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
 import { decodeAppCommandIndex, decodePluginCommandIndex } from "../../src/cache/command-index.ts";
-import { appCommandCachePath, pluginCommandCachePath } from "../../src/cache/paths.ts";
+import {
+  appCommandCachePath,
+  appToolingCompilationCachePath,
+  pluginCommandCachePath,
+} from "../../src/cache/paths.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { CommandRegistryLive } from "../../src/services/command-registry.ts";
@@ -280,6 +284,166 @@ describe("CommandRegistryLive cold-path cache writes", () => {
 
   afterEach(() => {
     process.chdir(previousCwd);
+  });
+
+  test("reuses a fresh app-command cache without recompiling discovered command entries", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "warm-app", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: warm-app", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:cached-only", summary: "from cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+
+        expect(commands.map((c) => c.id)).toEqual(["app:cached-only"]);
+        expect(commands[0]?.summary).toBe("from cache");
+      });
+    });
+  });
+
+  test("materializes the tooling-compilation cache when only the legacy app-command cache exists", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "legacy-app", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: legacy-app", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:build", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+        const toolingCachePath = appToolingCompilationCachePath(cacheRoot, dir);
+        await unlink(toolingCachePath);
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+        const bytes = new Uint8Array(await readFile(toolingCachePath));
+        const decoded = decodeAppCommandIndex(bytes);
+
+        expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+        expect(decoded?.entries.map((entry) => entry.id)).toEqual(["app:build"]);
+        expect(typeof decoded?.sourceContentHash).toBe("string");
+      });
+    });
+  });
+
+  test("invalidates the app-command cache when services change", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofilePath = join(dir, ".lando.yml");
+        await writeFile(
+          landofilePath,
+          [
+            "name: service-cache",
+            "services:",
+            "  web:",
+            "    type: node",
+            "tooling:",
+            "  build:",
+            "    service: web",
+            "    cmd: make",
+            "",
+          ].join("\n"),
+        );
+        const cachedLandofile = {
+          name: "service-cache",
+          services: { web: { type: "node" } },
+          tooling: { build: { service: "web", cmd: "make" } },
+        };
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile: cachedLandofile,
+            entries: [{ id: "app:stale", summary: "stale", hidden: false, service: "web" }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+        await writeFile(
+          landofilePath,
+          [
+            "name: service-cache",
+            "services:",
+            "  appserver:",
+            "    type: node",
+            "tooling:",
+            "  build:",
+            "    service: appserver",
+            "    cmd: make",
+            "",
+          ].join("\n"),
+        );
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+
+        expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+      });
+    });
+  });
+
+  test("invalidates the app-command cache when include lock content changes", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = {
+          name: "include-cache",
+          includes: [{ source: "./fragment.yml" }],
+          tooling: { build: { cmd: "make" } },
+        };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          [
+            "name: include-cache",
+            "includes:",
+            "  - source: ./fragment.yml",
+            "tooling:",
+            "  build:",
+            "    cmd: make",
+            "",
+          ].join("\n"),
+        );
+        await writeFile(
+          join(dir, ".lando.lock.yml"),
+          "checksum: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:stale", summary: "stale", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+        await writeFile(
+          join(dir, ".lando.lock.yml"),
+          "checksum: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\n",
+        );
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+
+        expect(commands.map((c) => c.id)).toEqual(["app:build"]);
+      });
+    });
   });
 
   test("writes the app-command cache after a successful Landofile discovery", async () => {
