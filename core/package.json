@@ -93,7 +93,7 @@
     }
   },
   "scripts": {
-    "build": "bun run build:compile && bun run build:manifest",
+    "build": "bun run build:manifest && bun run build:compile",
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
     "build:manifest": "bun run ../scripts/build-oclif-manifest.ts",
     "build:compile": "bun build ./bin/lando.ts --compile --outfile ./dist/lando --sourcemap=external && bun run ../scripts/sanitize-compiled-binary.ts ./dist/lando",

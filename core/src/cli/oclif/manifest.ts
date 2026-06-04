@@ -10,13 +10,11 @@
  */
 import type { Interfaces } from "@oclif/core";
 
+import { COMPILED_OCLIF_MANIFEST } from "./compiled-manifest.ts";
+
 /**
- * Load the precomputed `oclif.manifest.json` for the binary build.
- *
- * TODO: once the build pipeline lands, this loads the embedded
- * manifest asset. Until then, returns a synthetic empty manifest.
+ * Load the precomputed manifest for the binary build.
  */
 export const loadCompiledManifest = (): Interfaces.Manifest => {
-  // Synthetic empty manifest until the build pipeline lands.
-  return { version: "0.0.0", commands: {} } satisfies Interfaces.Manifest;
+  return COMPILED_OCLIF_MANIFEST;
 };
