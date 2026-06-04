@@ -5,6 +5,7 @@ import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import {
   AppPlanner,
+  CommandRegistry,
   ConfigService,
   FileSystem,
   LandofileService,
@@ -12,6 +13,7 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
   SecretStore,
+  ToolingEngine,
 } from "@lando/sdk/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
@@ -35,6 +37,19 @@ describe("makeLandoRuntime", () => {
 
     expect(Option.isSome(Context.getOption(context, RuntimeProvider))).toBe(true);
     expect(Option.isSome(Context.getOption(context, RuntimeProviderRegistry))).toBe(true);
+  });
+
+  test("tooling bootstrap satisfies command dispatch services without provider or app planning", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling" }))),
+    );
+
+    expect(Option.isSome(Context.getOption(context, LandofileService))).toBe(true);
+    expect(Option.isSome(Context.getOption(context, CommandRegistry))).toBe(true);
+    expect(Option.isNone(Context.getOption(context, RuntimeProvider))).toBe(true);
+    expect(Option.isNone(Context.getOption(context, RuntimeProviderRegistry))).toBe(true);
+    expect(Option.isNone(Context.getOption(context, AppPlanner))).toBe(true);
+    expect(Option.isNone(Context.getOption(context, ToolingEngine))).toBe(true);
   });
 
   test("app bootstrap satisfies landofile, app planner, and runtime provider", async () => {

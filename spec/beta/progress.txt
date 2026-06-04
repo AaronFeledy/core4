@@ -948,3 +948,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (added Guide-Coverage-Skip PR-body line — the runtime.ts change only parameterizes stdio defaults for the §13.4 renderer-boundary gate, no recipe-guide behavior changed)
 - Merge: merged (squash)
 ---
+## [2026-06-03 19:55 CDT] - US-159
+- Made the `tooling` bootstrap level a typed runtime entry point: `makeLandoRuntime({ bootstrap: "tooling" })` now has its own overload and focused coverage proving it provides command discovery services while omitting provider, provider-registry, app-planner, and tooling-engine services.
+- Added OCLIF init-hook coverage for commands declaring `bootstrap: "tooling"`, and shipped the required Composer/PHP tooling guide with its fixture and coverage-matrix status.
+- Verification: focused runtime/command-registry/init-hook tests passed; guide lint, guide coverage, and `dev:guides` one-shot passed; typecheck, lint, build, compile/build-sensitive tests passed. Full `bun test` still hit documented unrelated flakes under concurrent full-suite load (compiled-binary ETXTBSY/ENOENT and guide-test fixture pollution); affected compiled/build and dev-guides tests pass in isolation after cleanup.
+- **Learnings for future iterations:**
+  - `tooling` was already present in `BootstrapLevel`/`BOOTSTRAP_RANK` and `runtimeLayerFor`; the missing public seam was the `makeLandoRuntime({ bootstrap: "tooling" })` overload plus explicit absence tests for provider/app-planner services.
+---

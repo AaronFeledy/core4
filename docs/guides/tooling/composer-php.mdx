@@ -1,0 +1,28 @@
+---
+id: composer-php
+provider: test
+timeout: 60000
+tags: [beta, docs, tooling, php, composer]
+---
+
+<Guide>
+  <Scenario id="tooling-bootstrap" render={false} reason="The tooling bootstrap contract is covered by runtime and command-registry tests; this guide documents the user-facing Composer alias shape">
+    <Step name="scaffold">
+      <UseFixture name="composer-php-demo" />
+      <Variable name="serviceType" value="php:8.3" display="Use a PHP service as the command target" />
+      <Variable name="toolingAlias" value="composer" display="Declare a top-level tooling alias named composer" />
+      <Variable name="bootstrap" value="tooling" display="Command discovery uses the tooling bootstrap level, not provider or app planning" />
+    </Step>
+    <Step name="run-alias">
+      <Variable name="command" value="lando composer --version" display="Run the Composer alias from the app root" />
+      <Variable name="hotPath" value="Command discovery reads the lightweight tooling runtime before provider-backed execution" display="The CLI can dispatch the alias without constructing provider/app-planner services on the hot path" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="no-provider-discovery" render={false} reason="Provider-free tooling bootstrap is asserted by makeLandoRuntime({ bootstrap: 'tooling' }) tests that check RuntimeProvider, RuntimeProviderRegistry, AppPlanner, and ToolingEngine are absent">
+    <Step name="contract">
+      <Variable name="providedServices" value="LandofileService, CommandRegistry" display="Services available at the tooling bootstrap level" />
+      <Variable name="omittedServices" value="RuntimeProvider, RuntimeProviderRegistry, AppPlanner, ToolingEngine" display="Services intentionally unavailable until a later app/provider path needs them" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -51,6 +51,28 @@ describe("OCLIF init hook", () => {
     expect(events).toEqual(["minimal-command", "minimal-effect"]);
   });
 
+  test("tooling bootstrap provides command discovery without runtime provider services", async () => {
+    resetEvents();
+
+    const writes: string[] = [];
+    const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;
+    (process.stderr as unknown as { write: typeof process.stderr.write }).write = ((
+      chunk: string | Uint8Array,
+    ) => {
+      writes.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+    try {
+      await dispatch("tooling");
+      expect(writes.join("")).toContain("RuntimeProvider");
+      expect(process.exitCode).toBe(1);
+    } finally {
+      (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
+      process.exitCode = 0;
+    }
+    expect(events).toEqual(["tooling-command", "tooling-effect", "tooling-command-registry"]);
+  });
+
   test("fails when the command class is missing static bootstrap", async () => {
     const result = await runCommand("missing", { root: fixtureRoot, ignoreManifest: true });
 

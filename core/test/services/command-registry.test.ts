@@ -62,7 +62,7 @@ const listFromLive = () =>
 const listFromBootstrap = () =>
   Effect.runPromise(
     Effect.flatMap(CommandRegistry, (registry) => registry.list).pipe(
-      Effect.provide(makeLandoRuntime({ bootstrap: "tooling" }) as Layer.Layer<CommandRegistry>),
+      Effect.provide(makeLandoRuntime({ bootstrap: "tooling" })),
     ) as Effect.Effect<ReadonlyArray<RegisteredCommand>, never, never>,
   );
 
