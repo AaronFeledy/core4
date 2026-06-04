@@ -313,6 +313,38 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
+  test("invalidates the warm tooling cache when .bun.sh scripts change", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        const landofile = { name: "script-warm-cache", tooling: { build: { cmd: "make" } } };
+        await writeFile(
+          join(dir, ".lando.yml"),
+          ["name: script-warm-cache", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+        );
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile,
+            entries: [{ id: "app:cached-only", summary: "from cache", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+            now: () => 100,
+          }),
+        );
+        await writeScript(
+          dir,
+          "deploy.bun.sh",
+          ["# ---", "# desc: Deploy the app", "# ---", "console.log('deploy');", ""].join("\n"),
+        );
+        process.chdir(dir);
+
+        const commands = await listFromLive();
+
+        expect(commands.map((c) => c.id).sort()).toEqual(["app:build", "app:deploy"]);
+        expect(commands.find((c) => c.id === "app:deploy")?.summary).toBe("Deploy the app");
+      });
+    });
+  });
+
   test("materializes the tooling-compilation cache when only the legacy app-command cache exists", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {

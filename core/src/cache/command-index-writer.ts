@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { dirname, join, relative, sep } from "node:path";
 
 import { Effect } from "effect";
 
@@ -34,6 +34,9 @@ import {
 const isMissingFile = (cause: unknown): boolean =>
   typeof cause === "object" && cause !== null && (cause as { code?: unknown }).code === "ENOENT";
 
+const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
+const SCRIPTS_DIRNAME = join(".lando", "scripts");
+
 export interface WriteAppCommandCacheOptions {
   readonly landofile: LandofileShape;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
@@ -60,10 +63,62 @@ const readOptionalFile = async (path: string): Promise<Uint8Array | null> => {
   }
 };
 
-const sourceHashFor = (landofileBytes: Uint8Array, includeLockfileBytes: Uint8Array | null): string => {
+interface BunShellScriptSource {
+  readonly relativePath: string;
+  readonly bytes: Uint8Array;
+}
+
+const readBunShellScriptSources = async (appRoot: string): Promise<ReadonlyArray<BunShellScriptSource>> => {
+  const scriptsRoot = join(appRoot, SCRIPTS_DIRNAME);
+  const exists = await stat(scriptsRoot).catch((cause) => {
+    if (isMissingFile(cause)) return undefined;
+    throw cause;
+  });
+  if (exists?.isDirectory() !== true) return [];
+
+  const files: string[] = [];
+  const visit = async (dir: string): Promise<void> => {
+    const entries = await readdir(dir, { withFileTypes: true });
+    entries.sort((a, b) => a.name.localeCompare(b.name));
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const absolutePath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolutePath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (!entry.name.endsWith(BUN_SHELL_SCRIPT_EXTENSION)) continue;
+      files.push(absolutePath);
+    }
+  };
+  await visit(scriptsRoot);
+
+  return Promise.all(
+    files.map(async (absolutePath) => ({
+      relativePath: relative(scriptsRoot, absolutePath).split(sep).join("/"),
+      bytes: await readFile(absolutePath),
+    })),
+  );
+};
+
+const sourceHashFor = (
+  landofileBytes: Uint8Array,
+  includeLockfileBytes: Uint8Array | null,
+  scripts: ReadonlyArray<BunShellScriptSource>,
+): string => {
   const hash = createHash("sha256");
+  hash.update("landofile\0");
   hash.update(landofileBytes);
+  hash.update("\0include-lock\0");
   if (includeLockfileBytes !== null) hash.update(includeLockfileBytes);
+  hash.update("\0bun-shell-scripts\0");
+  for (const script of scripts) {
+    hash.update(script.relativePath);
+    hash.update("\0");
+    hash.update(script.bytes);
+    hash.update("\0");
+  }
   return hash.digest("hex");
 };
 
@@ -72,12 +127,13 @@ const resolveAppCommandCacheSource = async (cwd: string): Promise<AppCommandCach
   if (filePath === undefined) return undefined;
 
   const appRoot = dirname(filePath);
-  const [stats, bytes, includeLockfileBytes] = await Promise.all([
+  const [stats, bytes, includeLockfileBytes, scripts] = await Promise.all([
     stat(filePath),
     readFile(filePath),
     readOptionalFile(join(appRoot, ".lando.lock.yml")),
+    readBunShellScriptSources(appRoot),
   ]);
-  return { filePath, stats, contentHash: sourceHashFor(bytes, includeLockfileBytes) };
+  return { filePath, stats, contentHash: sourceHashFor(bytes, includeLockfileBytes, scripts) };
 };
 
 const writeAppCommandCacheTask = async (
