@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deserialize, serialize } from "node:v8";
 
 import { Cause, DateTime, Effect, Exit, Option, Schema, TestClock, TestContext } from "effect";
 
@@ -35,6 +37,15 @@ const CachedValue = Schema.Struct({
 
 const runWithCache = <A>(effect: Effect.Effect<A, CacheError, CacheService>) =>
   Effect.runPromise(effect.pipe(Effect.provide(CacheServiceLive)));
+
+const expectExitFailure = <A, E>(exit: Exit.Exit<A, E>) => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) throw new Error("expected effect to fail");
+  const failure = Cause.failureOption(exit.cause);
+  expect(Option.isSome(failure)).toBe(true);
+  if (!Option.isSome(failure)) throw new Error("expected effect to fail with a typed failure");
+  return failure.value;
+};
 
 const appPlanFixture: AppPlan = {
   id: AppId.make("cache-plan"),
@@ -139,19 +150,13 @@ describe("CacheServiceLive", () => {
       ).pipe(Effect.provide(CacheServiceLive)),
     );
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(Option.isSome(failure)).toBe(true);
-      if (Option.isSome(failure)) {
-        expect(failure.value).toBeInstanceOf(CacheError);
-        expect(failure.value).toMatchObject({
-          _tag: "CacheError",
-          key: "bad",
-        });
-        expect(failure.value.decodeError).toBeDefined();
-      }
-    }
+    const failure = expectExitFailure(exit);
+    expect(failure).toBeInstanceOf(CacheError);
+    expect(failure).toMatchObject({
+      _tag: "CacheError",
+      key: "bad",
+    });
+    expect(failure.decodeError).toBeDefined();
   });
 
   test("writes, reads, lists, and deletes persistent cwd-app-map entries", async () => {
@@ -248,13 +253,13 @@ describe("CacheServiceLive", () => {
     const original = Buffer.from(await Bun.file(cacheFile).arrayBuffer());
     const header = original.subarray(0, 44);
     const payload = original.subarray(44);
-    const decoded = (await import("node:v8")).deserialize(payload) as {
+    const decoded = deserialize(payload) as {
       landoVersion: string;
       entries: unknown[];
     };
-    const rewritten = (await import("node:v8")).serialize({ ...decoded, landoVersion: "0.0.0-bogus" });
+    const rewritten = serialize({ ...decoded, landoVersion: "0.0.0-bogus" });
     const newHeader = Buffer.from(header);
-    (await import("node:crypto")).createHash("sha256").update(rewritten).digest().copy(newHeader, 12);
+    createHash("sha256").update(rewritten).digest().copy(newHeader, 12);
     await writeFile(cacheFile, Buffer.concat([newHeader, rewritten]));
 
     const listed = await Effect.runPromise(listCwdAppMapEntries(cacheRoot));
@@ -267,15 +272,9 @@ describe("CacheServiceLive", () => {
 
     const exit = await Effect.runPromiseExit(listCwdAppMapEntries(cacheRoot));
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(Option.isSome(failure)).toBe(true);
-      if (Option.isSome(failure)) {
-        expect(failure.value).toBeInstanceOf(CacheError);
-        expect(failure.value.message).toContain("run `lando app:cache:refresh`");
-      }
-    }
+    const failure = expectExitFailure(exit);
+    expect(failure).toBeInstanceOf(CacheError);
+    expect(failure.message).toContain("run `lando app:cache:refresh`");
   });
 
   test("derives app-plan cache keys from Landofile, plugin, provider, and app-root inputs", () => {
@@ -451,7 +450,7 @@ describe("CacheServiceLive", () => {
       randomId: () => "fixed",
       renameFile: async (from, to) => {
         renames.push({ from, to });
-        await (await import("node:fs/promises")).rename(from, to);
+        await rename(from, to);
       },
     });
 

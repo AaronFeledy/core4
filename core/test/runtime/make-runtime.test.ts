@@ -19,6 +19,21 @@ import {
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
+const expectRuntimeBootstrapError = (exit: Exit.Exit<unknown, unknown>): LandoRuntimeBootstrapError => {
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) throw new Error("expected failure");
+
+  const failure = Cause.failureOption(exit.cause);
+  expect(failure._tag).toBe("Some");
+  if (failure._tag !== "Some") throw new Error("expected tagged failure");
+
+  expect(failure.value).toBeInstanceOf(LandoRuntimeBootstrapError);
+  if (!(failure.value instanceof LandoRuntimeBootstrapError)) {
+    throw new Error("expected LandoRuntimeBootstrapError");
+  }
+  return failure.value;
+};
+
 describe("makeLandoRuntime", () => {
   test("minimal bootstrap satisfies logger, config, and filesystem only", async () => {
     const runtime = makeLandoRuntime({ bootstrap: "minimal" });
@@ -68,36 +83,18 @@ describe("makeLandoRuntime", () => {
     const options: unknown = { bootstrap: "bad-level" };
     const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(makeLandoRuntime(options))));
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        expect(failure.value).toBeInstanceOf(LandoRuntimeBootstrapError);
-        if (failure.value instanceof LandoRuntimeBootstrapError) {
-          expect(failure.value._tag).toBe("LandoRuntimeBootstrapError");
-          expect(failure.value.stage).toBe("minimal");
-        }
-      }
-    }
+    const error = expectRuntimeBootstrapError(exit);
+    expect(error._tag).toBe("LandoRuntimeBootstrapError");
+    expect(error.stage).toBe("minimal");
   });
 
   test("malformed options fail with a structured LandoRuntimeBootstrapError", async () => {
     const options: unknown = null;
     const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(makeLandoRuntime(options))));
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        expect(failure.value).toBeInstanceOf(LandoRuntimeBootstrapError);
-        if (failure.value instanceof LandoRuntimeBootstrapError) {
-          expect(failure.value._tag).toBe("LandoRuntimeBootstrapError");
-          expect(failure.value.stage).toBe("minimal");
-        }
-      }
-    }
+    const error = expectRuntimeBootstrapError(exit);
+    expect(error._tag).toBe("LandoRuntimeBootstrapError");
+    expect(error.stage).toBe("minimal");
   });
 
   test("non-Layer entries in plugins.layers fail with LandoRuntimeBootstrapError", async () => {
@@ -107,17 +104,8 @@ describe("makeLandoRuntime", () => {
     };
     const exit = await Effect.runPromiseExit(Effect.scoped(Layer.build(makeLandoRuntime(options))));
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        expect(failure.value).toBeInstanceOf(LandoRuntimeBootstrapError);
-        if (failure.value instanceof LandoRuntimeBootstrapError) {
-          expect(failure.value.message).toContain("plugins.layers[0]");
-          expect(failure.value.message).toContain("Effect Layer");
-        }
-      }
-    }
+    const error = expectRuntimeBootstrapError(exit);
+    expect(error.message).toContain("plugins.layers[0]");
+    expect(error.message).toContain("Effect Layer");
   });
 });

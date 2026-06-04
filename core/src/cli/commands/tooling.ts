@@ -265,6 +265,24 @@ const resolveToolingProviderId = (landofile: LandofileShape): Effect.Effect<stri
     );
   });
 
+const resolveToolingPlan = (input: {
+  readonly landofile: LandofileShape;
+  readonly appRoot: string | undefined;
+  readonly providerId: string;
+  readonly cacheRoot: string;
+}) =>
+  Effect.gen(function* () {
+    const cachedPlan = yield* readToolingCachedPlan(input);
+    if (cachedPlan !== null) return cachedPlan;
+
+    const planner = yield* AppPlanner;
+    const registry = yield* RuntimeProviderRegistry;
+    const capabilities = yield* registry.capabilities;
+    const plan = yield* planner.plan(input.landofile, capabilities);
+    yield* writeToolingCachedPlan({ ...input, providerId: String(plan.provider), plan });
+    return plan;
+  });
+
 const runBunShellScript = (
   script: DiscoveredBunShellScript,
   appRoot: string,
@@ -350,28 +368,12 @@ export const runTooling = (
     const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? process.cwd()));
     const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
     const providerId = yield* resolveToolingProviderId(landofile);
-    const cachedPlan = yield* readToolingCachedPlan({
+    const plan = yield* resolveToolingPlan({
       landofile,
       appRoot,
       providerId,
       cacheRoot,
     });
-    const plan =
-      cachedPlan ??
-      (yield* Effect.gen(function* () {
-        const planner = yield* AppPlanner;
-        const registry = yield* RuntimeProviderRegistry;
-        const capabilities = yield* registry.capabilities;
-        const planned = yield* planner.plan(landofile, capabilities);
-        yield* writeToolingCachedPlan({
-          landofile,
-          appRoot,
-          providerId: String(planned.provider),
-          cacheRoot,
-          plan: planned,
-        });
-        return planned;
-      }));
     const registry = yield* RuntimeProviderRegistry;
     const engine = yield* ToolingEngine;
     const provider = yield* registry.select(plan);
