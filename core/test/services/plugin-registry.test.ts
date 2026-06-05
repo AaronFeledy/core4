@@ -26,9 +26,13 @@ let appRoot: string;
 let originalCwd: string;
 let warnings: Array<string>;
 
-const fakeConfigService = (dataRoot: string) =>
+const fakeConfigService = (dataRoot: string | undefined) =>
   Layer.succeed(ConfigService, {
-    load: Effect.succeed({ userDataRoot: dataRoot, userConfRoot: join(dataRoot, "conf") } as never),
+    load: Effect.succeed(
+      dataRoot === undefined
+        ? ({ userConfRoot: "unused" } as never)
+        : ({ userDataRoot: dataRoot, userConfRoot: join(dataRoot, "conf") } as never),
+    ),
     get: <K extends string>(key: K) =>
       Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
   });
@@ -44,11 +48,11 @@ const fakeLogger = (sink: Array<string>) =>
     error: () => Effect.void,
   });
 
-const pluginRegistryTestLayer = () =>
-  PluginRegistryLive.pipe(Layer.provide(Layer.merge(fakeConfigService(userDataRoot), fakeLogger(warnings))));
+const pluginRegistryTestLayer = (dataRoot: string | undefined) =>
+  PluginRegistryLive.pipe(Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))));
 
 const runWithPluginRegistry = <A, E>(effect: Effect.Effect<A, E, PluginRegistry>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(pluginRegistryTestLayer())));
+  Effect.runPromise(effect.pipe(Effect.provide(pluginRegistryTestLayer(userDataRoot))));
 
 const writeInstalledPlugin = async (
   pluginsRoot: string,
@@ -171,6 +175,27 @@ describe("PluginRegistryLive", () => {
     });
   });
 
+  test("discovers app plugin registry entries when userDataRoot is undefined", async () => {
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@example/app-without-user-root-plugin",
+      version: "2.2.0",
+      description: "app source without user root",
+    });
+
+    const manifests = await Effect.runPromise(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list).pipe(
+        Effect.provide(pluginRegistryTestLayer(undefined)),
+      ),
+    );
+
+    expect(
+      manifests.find((manifest) => manifest.name === "@example/app-without-user-root-plugin"),
+    ).toMatchObject({
+      version: "2.2.0",
+      description: "app source without user root",
+    });
+  });
+
   test("discovers app plugin registry entries from the app root when cwd is nested", async () => {
     await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
       name: "@example/nested-app-plugin",
@@ -220,7 +245,7 @@ describe("PluginRegistryLive", () => {
   test("fails with PluginLoadError for plugins outside the bundled registry", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(PluginRegistry, (registry) => registry.load("not-bundled")).pipe(
-        Effect.provide(pluginRegistryTestLayer()),
+        Effect.provide(pluginRegistryTestLayer(userDataRoot)),
       ),
     );
 

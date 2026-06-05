@@ -92,8 +92,10 @@ const makePluginRegistry = (
     const userDataRoot = yield* configService
       .get("userDataRoot")
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-    if (userDataRoot === undefined) return systemPlugins.map((plugin) => plugin.manifest);
-    const userPlugins = yield* discoverInstalledPlugins("user", join(userDataRoot, "plugins"));
+    const userPlugins =
+      userDataRoot === undefined
+        ? []
+        : yield* discoverInstalledPlugins("user", join(userDataRoot, "plugins"));
     const appRoot = yield* Effect.promise(() => findAppRoot(process.cwd()));
     const appPlugins =
       appRoot === undefined ? [] : yield* discoverInstalledPlugins("app", join(appRoot, ".lando", "plugins"));
