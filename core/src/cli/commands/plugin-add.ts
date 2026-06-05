@@ -259,7 +259,7 @@ const installFromNpm = async (
   }
   const resolvedVersion = resolveNpmPackageVersion(packument, parsed.version, options.spec);
   const dist = packument.versions?.[resolvedVersion]?.dist;
-  if (dist === undefined || dist.tarball.trim() === "") {
+  if (dist === undefined || dist.tarball === undefined || dist.tarball.trim() === "") {
     throw npmInstallFailure(
       `npm package "${parsed.name}@${resolvedVersion}" has no published tarball URL.`,
       options.spec,

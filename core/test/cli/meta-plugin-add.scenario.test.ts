@@ -153,6 +153,33 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
+  test("fails closed when npm metadata omits the tarball URL", async () => {
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor({
+          "dist-tags": { latest: "1.2.3" },
+          versions: {
+            "1.2.3": {
+              dist: {
+                integrity: "sha512-test",
+              },
+            },
+          },
+        } as NpmPackument),
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("has no published tarball URL");
+      expect(cause).not.toContain("TypeError");
+    }
+  });
+
   test("supports exact version pins and re-runs idempotently without re-downloading an installed version", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "2.0.0"),
