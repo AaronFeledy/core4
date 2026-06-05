@@ -208,8 +208,6 @@ export const DefaultGlobalAppDoctorLayer: Layer.Layer<
   FileSystemLive,
 );
 
-// ── renderers ────────────────────────────────────────────────────────────────
-
 const renderCheck = (check: GlobalAppDoctorCheck): ReadonlyArray<string> => {
   const lines: string[] = [`${check.name}: ${check.status}`, `severity: ${check.severity}`];
   for (const [field, value] of Object.entries(check.context)) {
