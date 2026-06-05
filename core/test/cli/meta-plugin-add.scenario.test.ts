@@ -6,9 +6,10 @@ import { dirname, join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
+import { makePluginTrustStore } from "../../src/plugins/trust-store.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
 import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 
@@ -21,6 +22,11 @@ const fakeConfigService = (dataRoot: string) =>
       Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
     getEffective: () => Effect.succeed({} as never),
   } as never);
+
+const pluginAddLayer = (
+  dataRoot: string,
+  trustStore = makePluginTrustStore(join(dataRoot, "plugin-trust.yml")),
+) => Layer.merge(fakeConfigService(dataRoot), Layer.succeed(PluginTrustStore, trustStore));
 
 const writePluginManifest = async (
   packageDir: string,
@@ -273,6 +279,77 @@ describe("meta:plugin:add command", () => {
     expect(result.trusted).toBe(false);
     expect(result.trustSource).toBe("untrusted");
     expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3", "package.json"))).toBe(true);
+  });
+
+  test("trusts postinstall plugins under a persistent authoring root", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-postinstall",
+        version: "1.2.3",
+        scripts: { postinstall: "node postinstall.js" },
+        landoPlugin: {
+          name: "@lando/plugin-postinstall",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "export {};\n",
+      "postinstall.js": "throw new Error('must not run during gated install');\n",
+    });
+    const persistentStore = makePluginTrustStore(join(userDataRoot, "plugin-trust.yml"));
+    await Effect.runPromise(persistentStore.trustAuthoringRoot(pluginsRoot));
+    const trustStore = new Set<string>();
+
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-postinstall",
+        nonInteractive: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore,
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
+    );
+
+    expect(result.trusted).toBe(true);
+    expect(result.trustSource).toBe("persistent");
+    expect(trustStore.has("@lando/plugin-postinstall")).toBe(true);
+  });
+
+  test("removes authoring-root-derived session trust when registry recording cannot write", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-postinstall",
+        version: "1.2.3",
+        scripts: { postinstall: "node postinstall.js" },
+        landoPlugin: {
+          name: "@lando/plugin-postinstall",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "export {};\n",
+      "postinstall.js": "throw new Error('must not run during gated install');\n",
+    });
+    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    const persistentStore = makePluginTrustStore(join(userDataRoot, "plugin-trust.yml"));
+    await Effect.runPromise(persistentStore.trustAuthoringRoot(pluginsRoot));
+    const trustStore = new Set<string>();
+
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-postinstall",
+        nonInteractive: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore,
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3"))).toBe(false);
+    expect(trustStore.has("@lando/plugin-postinstall")).toBe(false);
   });
 
   test("rewrites npm recipe-source remediation for plugin add", async () => {

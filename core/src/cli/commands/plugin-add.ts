@@ -323,6 +323,7 @@ const defaultPrompter: PluginAddPrompter = {
 
 const ensureTrust = async (
   manifest: PluginManifest,
+  packageDir: string,
   options: PluginAddOptions,
   persistentStore?: typeof PersistentPluginTrustStore.Service,
 ): Promise<"flag" | "persistent" | "prompt" | "session"> => {
@@ -330,7 +331,8 @@ const ensureTrust = async (
   if (store.has(manifest.name)) return "session";
   if (
     persistentStore !== undefined &&
-    (await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name)))
+    ((await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name))) ||
+      (await Effect.runPromise(persistentStore.isAuthoringRootTrusted(resolve(packageDir)))))
   ) {
     store.add(manifest.name);
     return "persistent";
@@ -450,14 +452,15 @@ export const pluginAdd = (
           if (trustStoreForRollback.has(manifest.name)) return "session";
           if (
             persistentStore !== undefined &&
-            (await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name)))
+            ((await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name))) ||
+              (await Effect.runPromise(persistentStore.isAuthoringRootTrusted(resolve(packageDir)))))
           ) {
             trustStoreForRollback.add(manifest.name);
             return "persistent";
           }
           return "untrusted";
         }
-        return ensureTrust(manifest, options, persistentStore);
+        return ensureTrust(manifest, packageDir, options, persistentStore);
       },
       catch: (cause) =>
         cause instanceof NotImplementedError
@@ -479,12 +482,7 @@ export const pluginAdd = (
         });
       } catch (cause) {
         if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-        if (
-          !hadTrustBefore &&
-          trustSource !== "session" &&
-          trustSource !== "persistent" &&
-          trustSource !== "untrusted"
-        ) {
+        if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
           trustStoreForRollback.delete(manifest.name);
         }
         throw cause;
