@@ -153,6 +153,29 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
+  test("rewrites npm recipe-source remediation for plugin add", async () => {
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor({
+          "dist-tags": {},
+          versions: {},
+        }),
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("NotImplementedError");
+      expect(cause).toContain("lando plugin:add @lando/plugin-php");
+      expect(cause).not.toContain("--package=");
+      expect(cause).not.toContain("lando init");
+    }
+  });
+
   test("fails closed when npm metadata omits the tarball URL", async () => {
     const exit = await Effect.runPromiseExit(
       pluginAdd({

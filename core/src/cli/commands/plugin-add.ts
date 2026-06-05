@@ -388,16 +388,16 @@ export const pluginAdd = (
         return (await installFromNpm(options, pluginsRoot)).packageDir;
       },
       catch: (cause) =>
-        cause instanceof NotImplementedError ||
-        cause instanceof PluginManifestError ||
         cause instanceof RecipeSourceError
-          ? cause
-          : new NotImplementedError({
-              message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
-              commandId: "meta:plugin:add",
-              specSection: "spec/10-plugins.md",
-              remediation: "Check the plugin package and retry.",
-            }),
+          ? npmInstallFailure(cause.message, options.spec)
+          : cause instanceof NotImplementedError || cause instanceof PluginManifestError
+            ? cause
+            : new NotImplementedError({
+                message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
+                commandId: "meta:plugin:add",
+                specSection: "spec/10-plugins.md",
+                remediation: "Check the plugin package and retry.",
+              }),
     });
 
     const { manifest } = yield* Effect.tryPromise({
