@@ -6,7 +6,7 @@ import { DateTime, Effect, Layer } from "effect";
 
 import { refreshAppCache, renderAppCacheRefreshResult } from "@lando/core/cli/operations";
 import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { CacheError } from "@lando/sdk/errors";
 
 import { appCommandCachePath } from "../../src/cache/paths.ts";
@@ -113,6 +113,11 @@ describe("lando app:cache:refresh", () => {
             }),
           }),
           Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+          Layer.succeed(PluginRegistry, {
+            list: Effect.succeed([]),
+            load: () => Effect.die("plugin load must not run"),
+            loadServiceType: () => Effect.die("service type load must not run"),
+          }),
           Layer.succeed(RuntimeProviderRegistry, {
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(capabilities),
@@ -176,6 +181,11 @@ describe("lando app:cache:refresh", () => {
             }),
           }),
           Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+          Layer.succeed(PluginRegistry, {
+            list: Effect.succeed([]),
+            load: () => Effect.die("plugin load must not run"),
+            loadServiceType: () => Effect.die("service type load must not run"),
+          }),
           Layer.succeed(RuntimeProviderRegistry, {
             list: Effect.succeed([providerId]),
             capabilities: Effect.succeed(capabilities),

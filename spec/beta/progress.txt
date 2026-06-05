@@ -1150,3 +1150,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (Bugbot: undefined userDataRoot wrongly skipped app discovery, and a single malformed user/app plugin manifest aborted all discovery — registry now runs app discovery independent of userDataRoot and isolates per-entry manifest failures so bundled/healthy plugins survive, with regression tests)
 - Merge: merged (squash)
 ---
+
+## [2026-06-05 13:35 CDT] - US-169
+- Shipped the plugin command-index cache metadata and invalidation path. The binary plugin-command cache now records a stable plugin-list SHA plus a per-plugin command-id map, rejects old/stale payloads that lack or mismatch that metadata, and rewrites them on the next cache refresh. `CommandRegistryLive` now writes plugin-command caches from the discovered plugin registry in tooling/app runtime layers, so user/app plugin command contributions participate instead of falling back to bundled-only manifests. Plugin add/remove/trust now invalidate the cache, including stale remove reconciliation.
+- Verification: typecheck, lint, build, focused cache/plugin-command tests, manual CLI trust-cache invalidation QA, reviewer gate, and full `bun test` passed.
+- **Learnings for future iterations:**
+  - When a runtime layer needs `Effect.serviceOption(PluginRegistry)` inside another Live Layer, provide `PluginRegistryLive` directly to that sub-layer; sibling `Layer.mergeAll` entries are not visible during sub-layer construction.
+  - Tests that exercise `ConfigServiceLive` with user plugin discovery must isolate both `LANDO_USER_DATA_ROOT` and `LANDO_USER_CONF_ROOT`, or a malformed real user config can make discovery silently fall back to bundled-only plugins.
+---

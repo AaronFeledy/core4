@@ -263,7 +263,7 @@ const makeToolingRuntimeLive = (loggerMode: LoggerMode) => {
     minimalRuntimeLive,
     pluginRegistryLive,
     LandofileServiceLive,
-    CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
+    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
   );
 };
 
@@ -308,7 +308,7 @@ const makeAppRuntimeLive = (loggerMode: LoggerMode) => {
   return Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
     LandofileServiceLive,
-    CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
+    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
     AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive))),
     ProviderExecToolingEngineLive,
     FileSyncEngineLive,

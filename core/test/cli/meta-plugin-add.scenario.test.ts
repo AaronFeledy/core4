@@ -8,6 +8,7 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
 
+import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { makePluginTrustStore } from "../../src/plugins/trust-store.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
@@ -157,6 +158,31 @@ describe("meta:plugin:add command", () => {
     expect(registryCalls).toEqual(["@lando/plugin-php"]);
     expect(fetchCalls).toHaveLength(1);
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
+  });
+
+  test("invalidates the plugin-command cache after installing a plugin", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
+      "index.js": "export {};\n",
+    });
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-add-cache-"));
+    try {
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+
+      await Effect.runPromise(
+        pluginAdd({
+          spec: "@lando/plugin-php",
+          trust: true,
+          registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
+          fetcher: fetcherFor(bytes),
+          cacheRoot,
+        }).pipe(Effect.provide(pluginAddLayer(userDataRoot))),
+      );
+
+      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
   });
 
   test("removes a newly unpacked npm plugin and new trust when registry recording cannot write", async () => {
