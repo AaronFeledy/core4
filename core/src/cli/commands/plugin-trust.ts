@@ -17,17 +17,13 @@ export interface PluginTrustAuthoringRootResult {
   readonly path: string;
 }
 
-const extractName = (input: { readonly name: string } | string): string =>
-  typeof input === "string" ? input : input.name;
-
-const extractPath = (input: { readonly path: string } | string): string =>
-  typeof input === "string" ? input : input.path;
-
-export const pluginTrust = (
-  input: { readonly name: string } | string,
-): Effect.Effect<PluginTrustResult, ConfigError | NotImplementedError, PluginTrustStore> =>
+export const pluginTrust = (input: { readonly name: string }): Effect.Effect<
+  PluginTrustResult,
+  ConfigError | NotImplementedError,
+  PluginTrustStore
+> =>
   Effect.gen(function* () {
-    const name = extractName(input);
+    const { name } = input;
     if (name.trim() === "" || !REGISTRY_NAME_RE.test(name)) {
       return yield* Effect.fail(
         new NotImplementedError({
@@ -43,11 +39,13 @@ export const pluginTrust = (
     return { kind: "plugin", pluginName: name };
   });
 
-export const pluginTrustAuthoringRoot = (
-  input: { readonly path: string } | string,
-): Effect.Effect<PluginTrustAuthoringRootResult, ConfigError | NotImplementedError, PluginTrustStore> =>
+export const pluginTrustAuthoringRoot = (input: { readonly path: string }): Effect.Effect<
+  PluginTrustAuthoringRootResult,
+  ConfigError | NotImplementedError,
+  PluginTrustStore
+> =>
   Effect.gen(function* () {
-    const path = extractPath(input);
+    const { path } = input;
     if (!isAbsolute(path)) {
       return yield* Effect.fail(
         new NotImplementedError({

@@ -2,12 +2,11 @@
  * Per-command deferral plans for canonical Lando command ids that are not
  * implemented yet.
  *
- * Each plan names the release bucket that owns the command, the user-facing
- * contract reference, a short "why deferred" summary, and remediation safe
- * to print to stderr. The single `notImplementedErrorForCommand()` function
- * below is consumed by both the source OCLIF guard and the compiled `$bunfs`
- * dispatcher so the two paths produce identical remediation text for the
- * same command id.
+ * Each plan names the command grouping, a short "why deferred" summary, and
+ * remediation safe to print to stderr. The single
+ * `notImplementedErrorForCommand()` function below is consumed by both the
+ * source OCLIF guard and the compiled `$bunfs` dispatcher so the two paths
+ * produce identical remediation text for the same command id.
  */
 import { NotImplementedError } from "@lando/sdk/errors";
 
