@@ -242,6 +242,39 @@ describe("meta:plugin:add command", () => {
     expect(registry["@lando/plugin-php"].version).toBe("1.2.3");
   });
 
+  test("installs postinstall plugins as untrusted/inert without requiring interactive trust", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-postinstall",
+        version: "1.2.3",
+        scripts: { postinstall: "node postinstall.js" },
+        landoPlugin: {
+          name: "@lando/plugin-postinstall",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "export {};\n",
+      "postinstall.js": "throw new Error('must not run during gated install');\n",
+    });
+
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-postinstall",
+        nonInteractive: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.pluginName).toBe("@lando/plugin-postinstall");
+    expect(result.trusted).toBe(false);
+    expect(result.trustSource).toBe("untrusted");
+    expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3", "package.json"))).toBe(true);
+  });
+
   test("rewrites npm recipe-source remediation for plugin add", async () => {
     const exit = await Effect.runPromiseExit(
       pluginAdd({

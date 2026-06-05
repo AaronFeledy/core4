@@ -119,8 +119,6 @@ describe("deferred command remediation contract (US-037)", () => {
       "meta:plugin:link",
       "meta:plugin:unlink",
       "meta:plugin:publish",
-      "meta:plugin:trust",
-      "meta:plugin:trust-authoring-root",
     ];
     for (const prefix of requiredPrefixes) {
       const matches = [...ids].filter((id) => id.startsWith(prefix));
@@ -197,7 +195,7 @@ describe("deferred command remediation contract (US-037)", () => {
     const parityProbes: ReadonlyArray<FixtureEntry> = [
       fixture.commands.find((entry) => entry.id === "meta:global:list") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:global:info") as FixtureEntry,
-      fixture.commands.find((entry) => entry.id === "meta:plugin:trust") as FixtureEntry,
+      fixture.commands.find((entry) => entry.id === "meta:plugin:build") as FixtureEntry,
     ];
 
     for (const entry of parityProbes) {

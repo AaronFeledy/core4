@@ -162,6 +162,7 @@
 - `GlobalAppService`
 - `HealthcheckRunner`
 - `PluginSource`
+- `PluginTrustStore`
 - `PrivilegeService`
 - `ProxyService`
 - `RecipeManifestService`

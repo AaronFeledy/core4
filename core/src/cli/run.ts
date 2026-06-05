@@ -63,6 +63,12 @@ import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.
 import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/global-uninstall.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
+import {
+  pluginTrust,
+  pluginTrustAuthoringRoot,
+  renderPluginTrustAuthoringRootResult,
+  renderPluginTrustResult,
+} from "./commands/plugin-trust.ts";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
 import { renderRestartAppResult, restartApp } from "./commands/restart.ts";
@@ -1204,6 +1210,52 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
   );
 };
 
+const runMetaPluginTrust = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const name = argv.find((arg) => !arg.startsWith("-"));
+  if (name === undefined) {
+    emitDiagnosticLine(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:trust requires a plugin name argument.",
+          commandId: "meta:plugin:trust",
+          specSection: "spec/10-plugins.md",
+          remediation: "Pass the plugin name, e.g. `lando plugin:trust @lando/plugin-php`.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  await runCompiledCommand(
+    pluginTrust({ name }),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    renderPluginTrustResult,
+  );
+};
+
+const runMetaPluginTrustAuthoringRoot = async (argv: ReadonlyArray<string>): Promise<void> => {
+  const path = argv.find((arg) => !arg.startsWith("-"));
+  if (path === undefined) {
+    emitDiagnosticLine(
+      commandErrorMessage(
+        new NotImplementedError({
+          message: "meta:plugin:trust-authoring-root requires an absolute path argument.",
+          commandId: "meta:plugin:trust-authoring-root",
+          specSection: "spec/10-plugins.md",
+          remediation: "Pass an absolute path, e.g. `lando plugin:trust-authoring-root /home/me/plugin`.",
+        }),
+      ),
+    );
+    process.exitCode = 1;
+    return;
+  }
+  await runCompiledCommand(
+    pluginTrustAuthoringRoot({ path }),
+    makeLandoRuntime({ bootstrap: "minimal" }),
+    renderPluginTrustAuthoringRootResult,
+  );
+};
+
 const buildCanonicalCommandIdByToken = (): Readonly<Record<string, string>> => {
   const entries: Array<[string, string]> = [];
   for (const [id, command] of commandEntries) {
@@ -1513,6 +1565,16 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "plugin:remove" || argv[0] === "meta:plugin:remove") {
     await runMetaPluginRemove(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "plugin:trust" || argv[0] === "meta:plugin:trust") {
+    await runMetaPluginTrust(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "plugin:trust-authoring-root" || argv[0] === "meta:plugin:trust-authoring-root") {
+    await runMetaPluginTrustAuthoringRoot(argv.slice(1));
     return;
   }
 

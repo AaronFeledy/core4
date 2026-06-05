@@ -30,6 +30,7 @@ import {
   type LandofileService,
   type Logger,
   type PluginRegistry,
+  type PluginTrustStore,
   RuntimeProvider,
   type RuntimeProviderRegistry,
   type ScratchAppService,
@@ -43,6 +44,7 @@ import { GlobalAppServiceLive } from "../global-app/service.ts";
 import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
 import { PluginRegistryLive } from "../plugins/registry.ts";
+import { PluginTrustStoreLive } from "../plugins/trust-store.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
 import { ScratchRegistryLive } from "../scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../scratch-app/scanner.ts";
@@ -123,7 +125,7 @@ export const LandoRuntimeOptions = Schema.Struct({
 });
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
-type MinimalRuntimeServices = Logger | ConfigService | FileSystem | CacheService;
+type MinimalRuntimeServices = Logger | ConfigService | FileSystem | CacheService | PluginTrustStore;
 type ToolingRuntimeServices = MinimalRuntimeServices | LandofileService | CommandRegistry;
 type ProviderRuntimeServices =
   | MinimalRuntimeServices
@@ -231,6 +233,7 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     LoggerLive({ mode: loggerMode }),
     ConfigServiceLive,
+    PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,
     SecretStoreLive,

@@ -14,6 +14,7 @@ import {
   LandofileService,
   Logger,
   PluginRegistry,
+  PluginTrustStore,
   ProcessRunner,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -61,6 +62,18 @@ const EXPECTED_TAGS = [
   { tag: AppPlanner, key: "@lando/core/AppPlanner", methods: ["plan"] },
   { tag: BuildOrchestrator, key: "@lando/core/BuildOrchestrator", methods: ["build"] },
   { tag: PluginRegistry, key: "@lando/core/PluginRegistry", methods: ["list", "load", "loadServiceType"] },
+  {
+    tag: PluginTrustStore,
+    key: "@lando/core/PluginTrustStore",
+    methods: [
+      "read",
+      "isPluginTrusted",
+      "trustPlugin",
+      "untrustPlugin",
+      "isAuthoringRootTrusted",
+      "trustAuthoringRoot",
+    ],
+  },
   { tag: CacheService, key: "@lando/core/CacheService", methods: ["read", "write", "invalidate"] },
   {
     tag: FileSystem,
@@ -132,6 +145,14 @@ describe("Effect service tags", () => {
       ["plan"],
       ["build"],
       ["list", "load", "loadServiceType"],
+      [
+        "read",
+        "isPluginTrusted",
+        "trustPlugin",
+        "untrustPlugin",
+        "isAuthoringRootTrusted",
+        "trustAuthoringRoot",
+      ],
       ["read", "write", "invalidate"],
       [
         "read",

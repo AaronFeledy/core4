@@ -12,7 +12,7 @@ import {
   RecipeSourceError,
 } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
-import { ConfigService } from "@lando/sdk/services";
+import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { publish } from "../../recipes/git-source.ts";
@@ -76,7 +76,7 @@ export interface PluginAddResult {
   readonly pluginsRoot: string;
   readonly entry: string;
   readonly trusted: boolean;
-  readonly trustSource: "flag" | "prompt" | "session";
+  readonly trustSource: "flag" | "persistent" | "prompt" | "session" | "untrusted";
 }
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*(@[^/\s]+)?$/i;
@@ -199,6 +199,19 @@ export const validatePluginManifest = async (
   return { manifest, entry };
 };
 
+const packageDeclaresPostinstall = async (packageDir: string): Promise<boolean> => {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(join(packageDir, "package.json"), "utf8"));
+  } catch {
+    return false;
+  }
+  const scripts = (parsed as { scripts?: unknown }).scripts;
+  if (typeof scripts !== "object" || scripts === null || Array.isArray(scripts)) return false;
+  const postinstall = (scripts as Record<string, unknown>).postinstall;
+  return typeof postinstall === "string" && postinstall.trim() !== "";
+};
+
 interface InstalledPluginPackage {
   readonly created: boolean;
   readonly packageDir: string;
@@ -311,11 +324,20 @@ const defaultPrompter: PluginAddPrompter = {
 const ensureTrust = async (
   manifest: PluginManifest,
   options: PluginAddOptions,
-): Promise<"flag" | "prompt" | "session"> => {
+  persistentStore?: typeof PersistentPluginTrustStore.Service,
+): Promise<"flag" | "persistent" | "prompt" | "session"> => {
   const store = options.trustStore ?? globalTrustStore;
   if (store.has(manifest.name)) return "session";
+  if (
+    persistentStore !== undefined &&
+    (await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name)))
+  ) {
+    store.add(manifest.name);
+    return "persistent";
+  }
   if (options.trust === true) {
     store.add(manifest.name);
+    if (persistentStore !== undefined) await Effect.runPromise(persistentStore.trustPlugin(manifest.name));
     return "flag";
   }
   if (options.nonInteractive === true) {
@@ -333,7 +355,7 @@ export const pluginAdd = (
 ): Effect.Effect<
   PluginAddResult,
   ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | RecipeSourceError,
-  ConfigService
+  ConfigService | PersistentPluginTrustStore
 > =>
   Effect.gen(function* () {
     if (typeof options.spec !== "string" || options.spec.trim().length === 0) {
@@ -416,10 +438,27 @@ export const pluginAdd = (
             }),
     });
 
+    const hasPostinstall = yield* Effect.promise(() => packageDeclaresPostinstall(packageDir));
+    const persistentStoreOption = yield* Effect.serviceOption(PersistentPluginTrustStore);
+    const persistentStore = persistentStoreOption._tag === "Some" ? persistentStoreOption.value : undefined;
+
     const trustStoreForRollback = options.trustStore ?? globalTrustStore;
     const hadTrustBefore = trustStoreForRollback.has(manifest.name);
     const trustSource = yield* Effect.tryPromise({
-      try: () => ensureTrust(manifest, options),
+      try: async () => {
+        if (hasPostinstall && options.trust !== true) {
+          if (trustStoreForRollback.has(manifest.name)) return "session";
+          if (
+            persistentStore !== undefined &&
+            (await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name)))
+          ) {
+            trustStoreForRollback.add(manifest.name);
+            return "persistent";
+          }
+          return "untrusted";
+        }
+        return ensureTrust(manifest, options, persistentStore);
+      },
       catch: (cause) =>
         cause instanceof NotImplementedError
           ? cause
@@ -440,7 +479,14 @@ export const pluginAdd = (
         });
       } catch (cause) {
         if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
-        if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(manifest.name);
+        if (
+          !hadTrustBefore &&
+          trustSource !== "session" &&
+          trustSource !== "persistent" &&
+          trustSource !== "untrusted"
+        ) {
+          trustStoreForRollback.delete(manifest.name);
+        }
         throw cause;
       }
     });
@@ -450,10 +496,14 @@ export const pluginAdd = (
       pluginVersion: manifest.version,
       pluginsRoot,
       entry: packageDir,
-      trusted: true,
+      trusted: trustSource !== "untrusted",
       trustSource,
     };
   });
 
 export const renderPluginAddResult = (result: PluginAddResult): string =>
-  `installed: ${result.pluginName}@${result.pluginVersion}\ntrusted: ${result.trustSource}\nplugins-root: ${result.pluginsRoot}`;
+  `installed: ${result.pluginName}@${result.pluginVersion}\ntrusted: ${result.trustSource}\nplugins-root: ${result.pluginsRoot}${
+    result.trusted
+      ? ""
+      : `\nremediation: run \`lando meta:plugin:trust ${result.pluginName}\` to allow the plugin postinstall path.`
+  }`;
