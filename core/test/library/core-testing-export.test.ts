@@ -51,7 +51,10 @@ describe("@lando/core/testing package export", () => {
     expect(testing.makeTestRuntime).toBeFunction();
     expect(testing.provideTestRuntime).toBeFunction();
     expect(testing.withService).toBeFunction();
-    expect(corePackage.exports["./testing"]).toBe("./src/testing/index.ts");
+    expect(corePackage.exports["./testing"]).toEqual({
+      types: "./src/testing/index.ts",
+      import: "./src/testing/index.ts",
+    });
     expect(await realpath(Bun.resolveSync("@lando/core/testing", repoRoot))).toBe(
       await realpath(join(coreRoot, "src/testing/index.ts")),
     );

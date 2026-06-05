@@ -25,7 +25,10 @@ describe("@lando/core/cli/operations package export", () => {
 
     expect(operations.invokeOperation).toBeFunction();
     expect(operations.listServices).toBeFunction();
-    expect(corePackage.exports["./cli/operations"]).toBe("./src/cli/operations.ts");
+    expect(corePackage.exports["./cli/operations"]).toEqual({
+      types: "./src/cli/operations.ts",
+      import: "./src/cli/operations.ts",
+    });
     expect(await realpath(Bun.resolveSync("@lando/core/cli/operations", repoRoot))).toBe(
       await realpath(join(coreRoot, "src/cli/operations.ts")),
     );
