@@ -211,6 +211,23 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
+  test("preserves plugin files when registry cleanup fails", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(join(pluginsRoot, "registry.json"), "not json");
+
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({
+        name: "@lando/plugin-php",
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(pluginDir)).toBe(true);
+  });
+
   test("removes a default npm-installed plugin from the versioned directory", async () => {
     const bytes = await makeNpmTarball({
       "package.json": JSON.stringify({
@@ -333,6 +350,38 @@ describe("meta:plugin:remove command", () => {
     const updated = JSON.parse(await readFile(manifestPath, "utf8"));
     expect(updated.dependencies).toEqual({ "@lando/plugin-node": "2.0.0" });
     expect(await exists(`${manifestPath}.tmp`)).toBe(false);
+  });
+
+  test("refuses to remove a versioned plugin spec referenced by the active Landofile", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-app-"));
+    const pluginDir = join(userDataRoot, "plugins", "@lando/plugin-php", "1.2.3");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      ["name: versioned-plugin-ref-app", "plugins:", "  - @lando/plugin-php@1.2.3", "services: {}", ""].join(
+        "\n",
+      ),
+    );
+
+    try {
+      const exit = await Effect.runPromiseExit(
+        pluginRemove({
+          name: "@lando/plugin-php",
+          cwd: appRoot,
+        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(await exists(pluginDir)).toBe(true);
+      if (exit._tag === "Failure") {
+        const cause = JSON.stringify(exit.cause);
+        expect(cause).toContain("active Landofile");
+        expect(cause).toContain("versioned-plugin-ref-app");
+      }
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 
   test("refuses to remove a plugin referenced by the active Landofile", async () => {

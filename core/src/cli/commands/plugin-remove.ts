@@ -14,6 +14,7 @@ import { ConfigService } from "@lando/sdk/services";
 
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import { removeInstalledPlugin } from "../../plugins/installed-registry.ts";
+import { parseNpmPackageSpec } from "../../recipes/npm-source.ts";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
 const RESERVED_PLUGIN_ROOT_NAMES = new Set([
@@ -137,6 +138,18 @@ const pluginReferenceTokens = (value: string): ReadonlyArray<string> => {
   return tokens;
 };
 
+const pluginReferenceMatches = (token: string, name: string): boolean => {
+  if (token === name) return true;
+  try {
+    return parseNpmPackageSpec(token).name === name;
+  } catch {
+    return false;
+  }
+};
+
+const pluginReferenceListIncludes = (value: string, name: string): boolean =>
+  pluginReferenceTokens(value).some((token) => pluginReferenceMatches(token, name));
+
 const landofileReferencesPlugin = (content: string, name: string): boolean => {
   const lines = content.split(/\r?\n/u);
   let inPluginsBlock = false;
@@ -149,12 +162,12 @@ const landofileReferencesPlugin = (content: string, name: string): boolean => {
     if (inPluginsBlock && indent <= pluginsIndent) inPluginsBlock = false;
     if (!inPluginsBlock && indent === 0 && text.startsWith("plugins:")) {
       const inlineValue = text.slice("plugins:".length).trim();
-      if (inlineValue !== "" && pluginReferenceTokens(inlineValue).includes(name)) return true;
+      if (inlineValue !== "" && pluginReferenceListIncludes(inlineValue, name)) return true;
       inPluginsBlock = true;
       pluginsIndent = indent;
       continue;
     }
-    if (inPluginsBlock && pluginReferenceTokens(text).includes(name)) return true;
+    if (inPluginsBlock && pluginReferenceListIncludes(text, name)) return true;
   }
   return false;
 };
@@ -264,8 +277,15 @@ export const pluginRemove = (
     );
     if (activeRefusal !== undefined) return yield* Effect.fail(activeRefusal);
 
-    let removed = false;
-    if (existsSync(moduleDir)) {
+    const hasModuleDir = existsSync(moduleDir);
+    const hasVersionedDir = existsSync(versionedDir);
+    if (!hasModuleDir && !hasVersionedDir) {
+      return { pluginName: options.name, removed: false };
+    }
+
+    yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+
+    if (hasModuleDir) {
       const spawner = options.spawner ?? defaultSpawner;
       const { exitCode, stderr } = yield* Effect.promise(() =>
         spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
@@ -275,19 +295,13 @@ export const pluginRemove = (
       }
       yield* Effect.promise(() => updateManagedRootManifest(pluginsRoot, options.name));
       yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
-      removed = true;
     }
-    if (existsSync(versionedDir)) {
+    if (hasVersionedDir) {
       yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
-      removed = true;
-    }
-    if (!removed) {
-      return { pluginName: options.name, removed: false };
     }
 
     const trustStore = options.trustStore;
     if (trustStore !== undefined) trustStore.delete(options.name);
-    yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
     return { pluginName: options.name, removed: true };
   });
 
