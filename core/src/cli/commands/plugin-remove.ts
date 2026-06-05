@@ -109,8 +109,8 @@ export const pluginRemove = (
     const pluginsRoot = options.pluginsRoot ?? join(userDataRoot, "plugins");
     const modulesRoot = resolve(pluginsRoot, "node_modules");
     const moduleDir = resolve(modulesRoot, options.name);
-    const rel = relative(modulesRoot, moduleDir);
-    if (rel === "" || rel.startsWith("..") || resolve(modulesRoot, rel) !== moduleDir) {
+    const moduleRel = relative(modulesRoot, moduleDir);
+    if (moduleRel === "" || moduleRel.startsWith("..") || resolve(modulesRoot, moduleRel) !== moduleDir) {
       return yield* Effect.fail(
         new PluginManifestError({
           message: `Plugin name resolves outside ${modulesRoot}.`,
@@ -119,18 +119,39 @@ export const pluginRemove = (
         }),
       );
     }
-    if (!existsSync(moduleDir)) {
-      return { pluginName: options.name, removed: false };
+    if (existsSync(moduleDir)) {
+      const spawner = options.spawner ?? defaultSpawner;
+      const { exitCode, stderr } = yield* Effect.promise(() =>
+        spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
+      );
+      if (exitCode !== 0) {
+        return yield* Effect.fail(removeFailure(options.name, stderr));
+      }
+      yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+      const trustStore = options.trustStore;
+      if (trustStore !== undefined) trustStore.delete(options.name);
+      return { pluginName: options.name, removed: true };
     }
 
-    const spawner = options.spawner ?? defaultSpawner;
-    const { exitCode, stderr } = yield* Effect.promise(() =>
-      spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
-    );
-    if (exitCode !== 0) {
-      return yield* Effect.fail(removeFailure(options.name, stderr));
+    const versionedDir = resolve(pluginsRoot, options.name);
+    const versionedRel = relative(pluginsRoot, versionedDir);
+    if (
+      versionedRel === "" ||
+      versionedRel.startsWith("..") ||
+      resolve(pluginsRoot, versionedRel) !== versionedDir
+    ) {
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Plugin name resolves outside ${pluginsRoot}.`,
+          pluginName: options.name,
+          issues: [`refusing to recursively remove ${versionedDir}`],
+        }),
+      );
     }
-    yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+    if (!existsSync(versionedDir)) {
+      return { pluginName: options.name, removed: false };
+    }
+    yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
     const trustStore = options.trustStore;
     if (trustStore !== undefined) trustStore.delete(options.name);
     return { pluginName: options.name, removed: true };
