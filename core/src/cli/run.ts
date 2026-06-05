@@ -320,10 +320,13 @@ const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
   runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
   render: (value: A) => string | undefined,
+  options: { readonly renderEvents?: boolean; readonly plainTaskEvents?: "detail-only" } = {},
 ): Promise<void> =>
   runWithRendererHandling(operation, {
     runtime,
     rendererMode: activeRendererMode,
+    ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
+    ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     render,
     formatError: (error) => commandErrorMessage(error),
   });
@@ -352,9 +355,10 @@ const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv[0];
   if (name === undefined) throw new Error("Missing tooling command name");
   return runCompiledCommand(
-    runTooling({ name, args: argv.slice(1) }),
+    runTooling({ name, args: argv.slice(1), renderProgress: true }),
     makeLandoRuntime({ bootstrap: "app" }),
     renderRunToolingResult,
+    { renderEvents: true, plainTaskEvents: "detail-only" },
   );
 };
 

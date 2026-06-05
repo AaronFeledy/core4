@@ -1,8 +1,9 @@
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
-import { ConfigService, Renderer } from "@lando/sdk/services";
+import { ConfigService, type EventService, Renderer } from "@lando/sdk/services";
 
 import { ConfigServiceLive } from "../services/config.ts";
+import { EventServiceLive } from "../services/event-service.ts";
 import {
   type RendererMode,
   type ResolveRendererModeResult,
@@ -10,9 +11,14 @@ import {
 } from "./renderer-selection.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
 import {
+  makeJsonRendererLive,
   makeJsonRendererServiceLive,
+  makeLandoRendererLive,
   makeLandoRendererServiceLive,
+  makePlainRendererLive,
   makePlainRendererServiceLive,
+  makePlainTaskDetailRendererLive,
+  makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
 } from "./renderer/runtime.ts";
 
@@ -29,6 +35,29 @@ export const makeRendererServiceLiveForMode = (
       return makeVerboseRendererServiceLive(io);
     case "lando":
       return makeLandoRendererServiceLive(io);
+  }
+};
+
+export interface RendererEventConsumerOptions {
+  readonly plainTaskEvents?: "detail-only";
+}
+
+export const makeRendererEventConsumerLiveForMode = (
+  mode: RendererMode,
+  io: RendererIO = createStdioRendererIO(),
+  options: RendererEventConsumerOptions = {},
+): Layer.Layer<never, never, EventService> => {
+  switch (mode) {
+    case "json":
+      return makeJsonRendererLive(io);
+    case "plain":
+      return options.plainTaskEvents === "detail-only"
+        ? makePlainTaskDetailRendererLive(io)
+        : makePlainRendererLive(io);
+    case "verbose":
+      return makeVerboseRendererLive(io);
+    case "lando":
+      return makeLandoRendererLive(io);
   }
 };
 
@@ -65,6 +94,8 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly runtime: Layer.Layer<Exclude<R, Renderer>, RE>;
   readonly rendererMode: RendererMode;
   readonly io?: RendererIO;
+  readonly renderEvents?: boolean;
+  readonly plainTaskEvents?: "detail-only";
   readonly render?: (value: A) => string | undefined;
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
@@ -75,7 +106,20 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   options: RunWithRendererHandlingOptions<A, R, RE>,
 ): Promise<void> => {
   const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, options.io);
-  const commandLayer = Layer.merge(options.runtime, rendererLayer) as Layer.Layer<R, RE>;
+  const commandLayer = (
+    options.renderEvents === true
+      ? Layer.mergeAll(
+          options.runtime,
+          Layer.provideMerge(
+            makeRendererEventConsumerLiveForMode(options.rendererMode, options.io, {
+              ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
+            }),
+            EventServiceLive,
+          ),
+          rendererLayer,
+        )
+      : Layer.merge(options.runtime, rendererLayer)
+  ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
     const exit = yield* Effect.exit(effect.pipe(Effect.provide(commandLayer)));
     if (Exit.isSuccess(exit)) {

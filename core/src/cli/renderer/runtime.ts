@@ -47,8 +47,16 @@ const makeRendererLive = (
   });
 };
 
+const renderPlainTaskDetailLine = (event: LandoEvent): string | null => {
+  if (isRenderableTaskTreeEvent(event) && event._tag !== "task.detail") return null;
+  return renderPlainLine(event);
+};
+
 export const makePlainRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderPlainLine, io, "stdout");
+
+export const makePlainTaskDetailRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+  makeRendererLive(renderPlainTaskDetailLine, io, "stdout");
 
 export const makeJsonRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderJsonLine, io, "stderr");

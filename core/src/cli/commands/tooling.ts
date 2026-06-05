@@ -29,6 +29,7 @@ import {
   AppPlanner,
   CacheService,
   ConfigService,
+  EventService,
   LandofileService,
   PluginRegistry,
   type ProviderError,
@@ -38,6 +39,15 @@ import {
 } from "@lando/sdk/services";
 
 import { loadUserLandofile } from "../app-resolution.ts";
+import {
+  type ProgressEmitter,
+  publishTaskComplete,
+  publishTaskDetail,
+  publishTaskFail,
+  publishTaskStart,
+  publishTreeComplete,
+  publishTreeStart,
+} from "../progress.ts";
 
 import {
   type AppPlanSourceFingerprint,
@@ -63,6 +73,7 @@ export interface RunToolingOptions {
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly cacheRoot?: string;
+  readonly renderProgress?: boolean;
 }
 
 export interface RunToolingResult {
@@ -71,6 +82,7 @@ export interface RunToolingResult {
   readonly exitCode: number;
   readonly stdout: string;
   readonly stderr: string;
+  readonly rendered?: boolean;
 }
 
 type RunToolingError =
@@ -98,6 +110,7 @@ type RunToolingError =
 type RunToolingServices =
   | AppPlanner
   | ConfigService
+  | EventService
   | LandofileService
   | RuntimeProviderRegistry
   | ToolingEngine;
@@ -147,7 +160,71 @@ export const buildToolingInvocation = (
 };
 
 export const renderRunToolingResult = (result: RunToolingResult): string | undefined =>
-  result.stdout.length === 0 ? undefined : result.stdout;
+  result.rendered === true || result.stdout.length === 0 ? undefined : result.stdout;
+
+const outputLines = (text: string): ReadonlyArray<string> => {
+  if (text.length === 0) return [];
+  const lines = text.split(/\r?\n/u);
+  if (lines.at(-1) === "") lines.pop();
+  return lines;
+};
+
+const emitToolingOutputProgress = (input: {
+  readonly events: ProgressEmitter | undefined;
+  readonly tool: string;
+  readonly service: string;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly exitCode: number;
+  readonly durationMs: number;
+}): Effect.Effect<void> => {
+  const treeId = `tooling:${input.tool}`;
+  const taskId = `${treeId}:${input.service}`;
+  return Effect.gen(function* () {
+    yield* publishTreeStart(input.events, {
+      parentId: treeId,
+      label: `Tooling: ${input.tool}`,
+      children: [taskId],
+    });
+    yield* publishTaskStart(input.events, {
+      taskId,
+      parentId: treeId,
+      label: input.service,
+    });
+    for (const line of outputLines(input.stdout)) {
+      yield* publishTaskDetail(input.events, { taskId, stream: "stdout", line });
+    }
+    for (const line of outputLines(input.stderr)) {
+      yield* publishTaskDetail(input.events, { taskId, stream: "stderr", line });
+    }
+    if (input.exitCode === 0) {
+      yield* publishTaskComplete(input.events, {
+        taskId,
+        summary: "completed with exit code 0",
+        durationMs: input.durationMs,
+      });
+      yield* publishTreeComplete(input.events, {
+        parentId: treeId,
+        succeeded: 1,
+        failed: 0,
+        durationMs: input.durationMs,
+      });
+      return;
+    }
+    yield* publishTaskFail(input.events, {
+      taskId,
+      summary: `failed with exit code ${input.exitCode}`,
+      exitCode: input.exitCode,
+      durationMs: input.durationMs,
+    });
+    yield* publishTreeComplete(input.events, {
+      parentId: treeId,
+      succeeded: 0,
+      failed: 1,
+      durationMs: input.durationMs,
+    });
+  });
+};
 
 const canonicalLookupKey = (name: string): string => (name.startsWith("app:") ? name : `app:${name}`);
 
@@ -369,7 +446,24 @@ export const runTooling = (
         const scripts = yield* discoverBunShellScripts({ appRoot });
         const script = findBunShellScriptForName(scripts, options.name);
         if (script !== undefined) {
-          return yield* runBunShellScript(script, appRoot, options);
+          const events =
+            options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
+          const progressEvents = events?._tag === "Some" ? events.value : undefined;
+          const startedAt = Date.now();
+          const result = yield* runBunShellScript(script, appRoot, options);
+          yield* emitToolingOutputProgress({
+            events: progressEvents,
+            tool: result.tool,
+            service: result.service,
+            exitCode: result.exitCode,
+            stdout: result.stdout,
+            stderr: result.stderr,
+            durationMs: Date.now() - startedAt,
+          });
+          return {
+            ...result,
+            ...(progressEvents === undefined ? {} : { rendered: true }),
+          };
         }
       }
       return yield* Effect.fail(
@@ -400,6 +494,7 @@ export const runTooling = (
     });
     const registry = yield* RuntimeProviderRegistry;
     const engine = yield* ToolingEngine;
+    const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
     const provider = yield* registry.select(plan);
 
     const invocation = buildToolingInvocation(options.name, task, {
@@ -409,7 +504,19 @@ export const runTooling = (
       ...(options.env === undefined ? {} : { env: options.env }),
     });
 
+    const startedAt = Date.now();
     const result = yield* engine.run(invocation, plan, provider);
+    const progressEvents = events?._tag === "Some" ? events.value : undefined;
+
+    yield* emitToolingOutputProgress({
+      events: progressEvents,
+      tool: result.tool,
+      service: String(result.service),
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      durationMs: Date.now() - startedAt,
+    });
 
     return {
       tool: result.tool,
@@ -417,5 +524,6 @@ export const runTooling = (
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
+      ...(progressEvents === undefined ? {} : { rendered: true }),
     };
   });
