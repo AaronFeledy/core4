@@ -172,7 +172,7 @@ const makePluginRegistry = (
         );
       }),
     loadServiceType: (id) => {
-      if (discovery.bundled === false || discovery.disable?.includes("@lando/service-lando")) {
+      if (discovery.bundled === false) {
         return Effect.fail(
           new PluginLoadError({
             message: `Bundled service type ${id} is not registered.`,
