@@ -13,6 +13,12 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
+const RESERVED_PLUGIN_ROOT_NAMES = new Set([
+  "node_modules",
+  "package.json",
+  "package-lock.json",
+  "bun.lockb",
+]);
 
 export interface PluginRemoveSpawner {
   readonly uninstall: (request: {
@@ -134,13 +140,12 @@ export const pluginRemove = (
         }),
       );
     }
-    if (versionedDir === modulesRoot) {
+    if (RESERVED_PLUGIN_ROOT_NAMES.has(options.name)) {
       return yield* Effect.fail(
         new PluginManifestError({
-          message:
-            'Plugin name "node_modules" is reserved; refusing to remove the shared plugins/node_modules tree.',
+          message: `Plugin name "${options.name}" is reserved; refusing to remove shared/managed plugins root entries.`,
           pluginName: options.name,
-          issues: [`refusing to recursively remove shared tree ${modulesRoot}`],
+          issues: [`refusing to recursively remove managed plugins root entry ${versionedDir}`],
         }),
       );
     }

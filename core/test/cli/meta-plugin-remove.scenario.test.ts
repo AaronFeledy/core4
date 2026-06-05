@@ -141,6 +141,26 @@ describe("meta:plugin:remove command", () => {
     expect(exit._tag).toBe("Failure");
   });
 
+  test("rejects the reserved package.json name before removing the managed root manifest", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const manifestPath = join(pluginsRoot, "package.json");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(manifestPath, '{"name":"lando-plugin-root"}');
+
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({ name: "package.json" }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(manifestPath)).toBe(true);
+    expect(await Bun.file(manifestPath).text()).toBe('{"name":"lando-plugin-root"}');
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("reserved");
+      expect(cause).toContain("managed plugins root");
+    }
+  });
+
   test("rejects the reserved node_modules name before removing the shared tree", async () => {
     const sharedRoot = join(userDataRoot, "plugins", "node_modules");
     await mkdir(sharedRoot, { recursive: true });
