@@ -1,4 +1,4 @@
-import { dirname, normalize } from "node:path";
+import { dirname, extname, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { execute } from "@oclif/core";
@@ -1532,7 +1532,9 @@ export interface RunCliOptions {
 }
 
 export const isCompiledCliEntryPath = (entryPath: string, execPath: string = process.execPath): boolean =>
-  entryPath.includes("$bunfs") || normalize(entryPath) === normalize(execPath);
+  entryPath.includes("$bunfs") ||
+  normalize(entryPath) === normalize(execPath) ||
+  extname(entryPath) !== ".ts";
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {
   const entryPath = fileURLToPath(options.rootUrl);
