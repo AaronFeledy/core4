@@ -56,9 +56,10 @@ CI builds and smokes one binary per required PR platform:
 bun run build
 ./core/dist/lando --version
 ./core/dist/lando --help
+./core/dist/lando shellenv
 ```
 
-Each build job emits a `::notice title=ci-timing::...` line and has a timeout cap (30 minutes for Unix targets, 35 minutes for Windows). If a build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-<platform> > Artifacts > lando-<platform>`; for example, `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
+Each build job uploads its binary artifact with 14-day retention. Each build job emits a `::notice title=ci-timing::...` line and has a timeout cap (30 minutes for Unix targets, 35 minutes for Windows). If a build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-<platform> > Artifacts > lando-<platform>`; for example, `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
 
 ## Tooling hot-path perf budget
 

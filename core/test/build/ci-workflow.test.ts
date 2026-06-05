@@ -268,15 +268,52 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          test -f dist/lando");
     expect(buildLinux).toContain("          ./dist/lando --version");
     expect(buildLinux).toContain("          ./dist/lando --help");
+    expect(buildLinux).toContain("          ./dist/lando shellenv");
     expect(buildLinux).toContain("        uses: actions/upload-artifact@v4");
     expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
     expect(buildLinux).toContain("          path: dist/lando");
     expect(buildLinux).toContain("          if-no-files-found: ignore");
-    expect(buildLinux).toContain("          retention-days: 7");
+    expect(buildLinux).toContain("          retention-days: 14");
 
     expect(buildLinux.indexOf("./dist/lando --help")).toBeLessThan(
+      buildLinux.indexOf("./dist/lando shellenv"),
+    );
+    expect(buildLinux.indexOf("./dist/lando shellenv")).toBeLessThan(
       buildLinux.indexOf("uses: actions/upload-artifact@v4"),
+    );
+  });
+
+  test("builds and smokes the darwin-arm64 binary with shellenv and 14-day retention", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const buildDarwin = findIndentedBlock(jobs, "build-darwin-arm64", 2);
+
+    expect(buildDarwin).toContain(
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
+    expect(buildDarwin).toContain("    runs-on: macos-15");
+    expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
+    expect(buildDarwin).toContain(
+      "          bun build ./core/bin/lando.ts --compile --target=bun-darwin-arm64 --outfile ./dist/lando --sourcemap=external",
+    );
+    expect(buildDarwin).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
+    expect(buildDarwin).toContain("          test -f dist/lando");
+    expect(buildDarwin).toContain("          ./dist/lando --version");
+    expect(buildDarwin).toContain("          ./dist/lando --help");
+    expect(buildDarwin).toContain("          ./dist/lando shellenv");
+    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildDarwin).toContain("        if: always()");
+    expect(buildDarwin).toContain("          name: lando-darwin-arm64");
+    expect(buildDarwin).toContain("          path: dist/lando");
+    expect(buildDarwin).toContain("          if-no-files-found: ignore");
+    expect(buildDarwin).toContain("          retention-days: 14");
+
+    expect(buildDarwin.indexOf("./dist/lando --help")).toBeLessThan(
+      buildDarwin.indexOf("./dist/lando shellenv"),
+    );
+    expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
+      buildDarwin.indexOf("uses: actions/upload-artifact@v4"),
     );
   });
 

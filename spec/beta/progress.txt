@@ -1166,10 +1166,31 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Merge: merged (squash)
 ---
 
+## [2026-06-05 14:05 CDT] - US-183 (agent2)
+- The shared CI build-job generator now smokes `lando shellenv` (alongside `--version`/`--help`) and uploads each platform binary artifact with 14-day retention, completing the darwin-arm64 build job's acceptance contract. The change lives in the single `renderBuildJob` seam, so all five platform build jobs (darwin-arm64/x64, linux-arm64/x64, win32-x64) pick up the new smoke + retention consistently; only the darwin-arm64 contract is claimed here. Verified the darwin-arm64 cross-compile actually produces a Mach-O 64-bit arm64 executable from a linux-x64 host, and that `shellenv` exits 0 on a compiled binary.
+- Verification: typecheck, lint, full `bun test` (3036 pass / 0 fail) passed; codegen drift clean for `ci.yml`.
+- **Learnings for future iterations:**
+  - `scripts/build-ci-workflow.ts` has ONE shared `renderBuildJob` applied to every platform — smoke/retention changes are global by construction; per-platform divergence (e.g. US-186 windows UTF-8/exit-code smoke) needs a per-platform field, not a fork.
+  - `core/test/build/ci-workflow.test.ts` reads the *generated* `.github/workflows/ci.yml`, so a RED build-job assertion must be written against the not-yet-regenerated workflow, then GREEN after `bun run scripts/build-ci-workflow.ts`.
+  - Bun cross-compiles `--target=bun-darwin-arm64` (and the other four targets) from linux-x64 with no extra tooling — `file` confirms a real Mach-O arm64 binary, a usable verification surface for the darwin/windows build stories.
+---
+
+## [2026-06-05 14:05 CDT] - US-192 (agent2)
+- Verified complete on the prior merged branch (PR #294): `.github/workflows/provider-matrix.yml` + `scripts/build-provider-matrix-workflow.ts` are on `main`. The earlier PR landed the code but never flipped `prd.json`; reconciled the stale `passes: false` to `true`. No new code.
+- Verification: typecheck, lint, tests passed.
+---
 ## [2026-06-05 14:25 CDT] - US-170
 - Published the `@lando/core/*` library entry points as a verified contract. `core/package.json#exports` now declares explicit `{ types, import }` targets for every entry point (`.`, `/schema`, `/errors`, `/events`, `/services`, `/testing`, `/cli`, `/oclif`, plus the auxiliary `/docs/components` and `/cli/operations`), satisfying the "TS types + ESM" acceptance criterion. Added `docs/embedding.md` documenting each published entry point per §16, and a new `core/test/library/entry-points-export.test.ts` that asserts every entry resolves via its `@lando/core/*` package specifier, exposes the expected symbol, points at the right source target, and that the embedding doc names every public entry. Updated the two pre-existing export tests (`cli-operations-export`, `core-testing-export`) to assert the new object-form export shape.
 - Verification: typecheck (`tsc -b`) and lint (`biome check .`) passed; `bun test core/test/library/` was GREEN (23 pass); targeted blast-radius sweep over codegen/codegen-output/npm-dev-package/sdk exports/oclif-manifest/library suites passed (42 pass); the compiled `bun build --compile` binary built standalone (exit 0) and the compiled-consumer `bug-report.scenario.test.ts` passed in isolation (6 pass). Manual QA imported all ten `@lando/core/*` specifiers in a real Bun process and confirmed each expected symbol resolved (ALL_RESOLVED). The full `bun test` suite passed after cleanup: 3054 pass, 27 skip, 0 fail. An earlier aggregate run showed a lone `build:compile` exit-1 from parallel resource contention; it cleared on the clean rerun.
 - **Learnings for future iterations:**
   - Converting `core/package.json#exports` from bare-string targets to the `{ types, import }` object form is safe for Bun resolution and the compiled binary, but it silently breaks any test that hard-codes the string form with `.toBe("./src/...")`; grep `corePackage.exports[` and `.toBe("./src` before changing the export shape and migrate those assertions to `.toEqual({ types, import })`.
   - Scenario suites that each spawn `bun run build:compile` race for CPU/IO under the full `bun test`; a lone `build:compile` exit-1 in the aggregate run is almost always contention — reproduce the build standalone and re-run the specific scenario in isolation before treating it as a story regression.
+
+---
+
+## [2026-06-05 15:12 CDT] - Babysit
+- PR: #298 https://github.com/AaronFeledy/core4/pull/298
+- CI outcome: pass
+- Review feedback: fixed (merged origin/main and reconciled planning-file conflicts)
+- Merge: merged (squash)
 ---
