@@ -1179,3 +1179,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Verified complete on the prior merged branch (PR #294): `.github/workflows/provider-matrix.yml` + `scripts/build-provider-matrix-workflow.ts` are on `main`. The earlier PR landed the code but never flipped `prd.json`; reconciled the stale `passes: false` to `true`. No new code.
 - Verification: typecheck, lint, tests passed.
 ---
+## [2026-06-05 15:12 CDT] - Babysit
+- PR: #298 https://github.com/AaronFeledy/core4/pull/298
+- CI outcome: pass
+- Review feedback: fixed (merged origin/main and reconciled planning-file conflicts)
+- Merge: merged (squash)
+---
