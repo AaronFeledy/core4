@@ -416,6 +416,8 @@ export const pluginAdd = (
             }),
     });
 
+    const trustStoreForRollback = options.trustStore ?? globalTrustStore;
+    const hadTrustBefore = trustStoreForRollback.has(manifest.name);
     const trustSource = yield* Effect.tryPromise({
       try: () => ensureTrust(manifest, options),
       catch: (cause) =>
@@ -438,6 +440,7 @@ export const pluginAdd = (
         });
       } catch (cause) {
         if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+        if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(manifest.name);
         throw cause;
       }
     });

@@ -153,12 +153,13 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
-  test("removes a newly unpacked npm plugin when registry recording cannot write", async () => {
+  test("removes a newly unpacked npm plugin and new trust when registry recording cannot write", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
     await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    const trustStore = new Set<string>();
 
     const exit = await Effect.runPromiseExit(
       pluginAdd({
@@ -166,12 +167,36 @@ describe("meta:plugin:add command", () => {
         trust: true,
         registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
         fetcher: fetcherFor(bytes),
-        trustStore: new Set<string>(),
+        trustStore,
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
     expect(exit._tag).toBe("Failure");
     expect(await exists(join(pluginsRoot, "@lando/plugin-php", "1.2.3"))).toBe(false);
+    expect(trustStore.has("@lando/plugin-php")).toBe(false);
+  });
+
+  test("keeps pre-existing trust when registry recording cannot write", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
+      "index.js": "export {};\n",
+    });
+    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
+    const trustStore = new Set<string>(["@lando/plugin-php"]);
+
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(join(pluginsRoot, "@lando/plugin-php", "1.2.3"))).toBe(false);
+    expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
   test("does not drop existing registry entries when recording another plugin", async () => {
