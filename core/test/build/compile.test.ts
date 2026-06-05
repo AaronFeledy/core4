@@ -66,5 +66,6 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(help.stdout).toContain("USAGE");
     expect(help.stdout).toContain("TOPICS");
     expect(help.stdout).toContain("COMMANDS");
+    expect(help.stderr).not.toContain("could not find package.json");
   }, 120_000);
 });
