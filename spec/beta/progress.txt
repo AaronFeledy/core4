@@ -1158,3 +1158,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - When a runtime layer needs `Effect.serviceOption(PluginRegistry)` inside another Live Layer, provide `PluginRegistryLive` directly to that sub-layer; sibling `Layer.mergeAll` entries are not visible during sub-layer construction.
   - Tests that exercise `ConfigServiceLive` with user plugin discovery must isolate both `LANDO_USER_DATA_ROOT` and `LANDO_USER_CONF_ROOT`, or a malformed real user config can make discovery silently fall back to bundled-only plugins.
 ---
+
+## 2026-06-05 13:55 CDT - Babysit
+- PR: #296 https://github.com/AaronFeledy/core4/pull/296
+- CI outcome: pass (initial guide-scenarios-linux-x64 failure was a stale-base guide-drift false positive)
+- Review feedback: fixed (added Guide-Coverage-Skip note for the podman test file swept in by a stale drift base SHA, not part of this PR's real diff; pushed empty commit to refresh the gate)
+- Merge: merged (squash)
+---
