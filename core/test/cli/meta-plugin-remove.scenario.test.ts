@@ -141,6 +141,24 @@ describe("meta:plugin:remove command", () => {
     expect(exit._tag).toBe("Failure");
   });
 
+  test("rejects the reserved node_modules name before removing the shared tree", async () => {
+    const sharedRoot = join(userDataRoot, "plugins", "node_modules");
+    await mkdir(sharedRoot, { recursive: true });
+    await writeFile(join(sharedRoot, "package.json"), '{"name":"lando-plugin-root"}');
+
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({ name: "node_modules" }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(sharedRoot)).toBe(true);
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("reserved");
+      expect(cause).toContain("shared");
+    }
+  });
+
   test("removes an installed plugin and clears it from the trust store", async () => {
     const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
     await mkdir(pluginDir, { recursive: true });

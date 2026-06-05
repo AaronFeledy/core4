@@ -134,6 +134,16 @@ export const pluginRemove = (
         }),
       );
     }
+    if (versionedDir === modulesRoot) {
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message:
+            'Plugin name "node_modules" is reserved; refusing to remove the shared plugins/node_modules tree.',
+          pluginName: options.name,
+          issues: [`refusing to recursively remove shared tree ${modulesRoot}`],
+        }),
+      );
+    }
 
     let removed = false;
     if (existsSync(moduleDir)) {
