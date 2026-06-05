@@ -87,7 +87,6 @@ describe("global:install command operation", () => {
       expect(result.userLandofileCreated).toBe(true);
       const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
       expect(distContent).toContain("name: global");
-      // Bundled plugins contribute mailpit and traefik global services by default.
       expect(result.dist.serviceIds).toContain("mailpit");
       expect(result.dist.serviceIds).toContain("traefik");
       expect(distContent).toContain("mailpit:");

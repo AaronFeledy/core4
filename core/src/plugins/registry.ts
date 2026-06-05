@@ -132,9 +132,8 @@ const makePluginRegistry = (
 ): Context.Tag.Service<typeof PluginRegistry> => {
   const disabled = new Set(discovery.disable ?? []);
   const discover = Effect.gen(function* () {
-    const disabledPlugins = new Set(discovery.disable ?? []);
     const bundledPlugins = (discovery.bundled === false ? [] : systemPlugins).filter(
-      (plugin) => !disabledPlugins.has(plugin.manifest.name),
+      (plugin) => !disabled.has(plugin.manifest.name),
     );
     if (configService === undefined) return bundledPlugins.map((plugin) => plugin.manifest);
     const userDataRoot = yield* configService
