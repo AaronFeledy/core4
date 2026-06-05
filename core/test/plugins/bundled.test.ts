@@ -1,4 +1,5 @@
-import { readFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -13,6 +14,8 @@ import * as proxyTraefik from "@lando/proxy-traefik";
 import * as serviceLando from "@lando/service-lando";
 import * as templateHandlebars from "@lando/template-handlebars";
 import * as templateMustache from "@lando/template-mustache";
+
+import { ConfigService, Logger } from "@lando/sdk/services";
 
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 import { PluginRegistry, PluginRegistryLive } from "../../src/plugins/registry.ts";
@@ -91,18 +94,40 @@ describe("BUNDLED_PLUGINS", () => {
     expect(after).toBe(before);
   });
 
-  test("PluginRegistryLive lists and loads only bundled manifests", async () => {
-    const context = await Effect.runPromise(Effect.scoped(Layer.build(PluginRegistryLive)));
-    const registry = Context.get(context, PluginRegistry);
-    const manifests = await Effect.runPromise(registry.list);
-    const manifestNames: ReadonlyArray<string> = manifests.map((manifest) => String(manifest.name));
-    expect(manifestNames).toEqual(EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name));
+  test("PluginRegistryLive lists and loads bundled manifests when external registries are empty", async () => {
+    const userDataRoot = await mkdtemp(resolve(tmpdir(), "lando-bundled-registry-"));
+    try {
+      const registryLayer = PluginRegistryLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ConfigService, {
+              load: Effect.succeed({ userDataRoot } as never),
+              get: (key) =>
+                Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
+            }),
+            Layer.succeed(Logger, {
+              debug: () => Effect.void,
+              info: () => Effect.void,
+              warn: () => Effect.void,
+              error: () => Effect.void,
+            }),
+          ),
+        ),
+      );
+      const context = await Effect.runPromise(Effect.scoped(Layer.build(registryLayer)));
+      const registry = Context.get(context, PluginRegistry);
+      const manifests = await Effect.runPromise(registry.list);
+      const manifestNames: ReadonlyArray<string> = manifests.map((manifest) => String(manifest.name));
+      expect(manifestNames).toEqual(EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name));
 
-    const manifest = await Effect.runPromise(registry.load("@lando/provider-docker"));
-    const loadedName: string = String(manifest.name);
-    expect(loadedName).toBe("@lando/provider-docker");
+      const manifest = await Effect.runPromise(registry.load("@lando/provider-docker"));
+      const loadedName: string = String(manifest.name);
+      expect(loadedName).toBe("@lando/provider-docker");
 
-    const exit = await Effect.runPromiseExit(registry.load("@lando/not-bundled"));
-    expect(exit._tag).toBe("Failure");
+      const exit = await Effect.runPromiseExit(registry.load("@lando/not-bundled"));
+      expect(exit._tag).toBe("Failure");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
   });
 });

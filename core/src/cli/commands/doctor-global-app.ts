@@ -17,6 +17,7 @@ import type { ConfigService } from "@lando/sdk/services";
 import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
 import { GlobalAppServiceLive } from "../../global-app/service.ts";
+import { LoggerLive } from "../../logging/service.ts";
 import { PluginRegistryLive } from "../../plugins/registry.ts";
 import { FileSystemLive } from "../../services/file-system.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
@@ -203,7 +204,7 @@ export const DefaultGlobalAppDoctorLayer: Layer.Layer<
   ConfigService
 > = Layer.mergeAll(
   GlobalAppServiceLive.pipe(Layer.provide(FileSystemLive)),
-  PluginRegistryLive,
+  PluginRegistryLive.pipe(Layer.provideMerge(LoggerLive({ mode: "silent" }))),
   FileSystemLive,
 );
 
