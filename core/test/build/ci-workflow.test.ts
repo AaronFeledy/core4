@@ -8,9 +8,11 @@ const scenarioSmokePath = resolve(repoRoot, "core/test/scenario/mvp-exit-criteri
 const workflowsDir = resolve(repoRoot, ".github/workflows");
 const workflowPath = resolve(repoRoot, ".github/workflows/ci.yml");
 const nightlyWorkflowPath = resolve(repoRoot, ".github/workflows/nightly.yml");
+const providerMatrixWorkflowPath = resolve(repoRoot, ".github/workflows/provider-matrix.yml");
 
 const readWorkflow = async (): Promise<string> => Bun.file(workflowPath).text();
 const readNightlyWorkflow = async (): Promise<string> => Bun.file(nightlyWorkflowPath).text();
+const readProviderMatrixWorkflow = async (): Promise<string> => Bun.file(providerMatrixWorkflowPath).text();
 
 const findIndentedBlock = (source: string, key: string, indent = 0): string => {
   const lines = source.split("\n");
@@ -35,14 +37,58 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
-  test("keeps generated ci and release workflows as the only active workflows", async () => {
+  test("keeps generated workflows as the only active workflows", async () => {
     const entries = await readdir(workflowsDir, { withFileTypes: true });
     const activeWorkflowFiles = entries
       .filter((entry) => entry.isFile())
       .map((entry) => entry.name)
       .sort();
 
-    expect(activeWorkflowFiles).toEqual(["ci.yml", "nightly.yml", "release.yml"]);
+    expect(activeWorkflowFiles).toEqual(["ci.yml", "nightly.yml", "provider-matrix.yml", "release.yml"]);
+  });
+
+  test("runs the weekly provider matrix as an advisory workflow", async () => {
+    const workflow = await readProviderMatrixWorkflow();
+    const triggers = findIndentedBlock(workflow, "on");
+    const permissions = findIndentedBlock(workflow, "permissions");
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const providerContracts = findIndentedBlock(jobs, "provider-contracts", 2);
+
+    expect(workflow).toContain("name: provider-matrix");
+    expect(triggers).toContain("  schedule:");
+    expect(triggers).toContain("    - cron: '0 8 * * 1'");
+    expect(triggers).toContain("  workflow_dispatch:");
+    expect(permissions).toContain("  contents: read");
+    expect(providerContracts).toContain("      fail-fast: false");
+    expect(providerContracts).toContain("            engine: Docker Desktop");
+    expect(providerContracts).toContain("            engine: Docker Engine");
+    expect(providerContracts).toContain("            engine: Podman Desktop");
+    expect(providerContracts).toContain("            engine: Podman");
+    expect(providerContracts).toContain("            engine: Lima");
+    expect(providerContracts).toContain("            engine: OrbStack");
+    expect(providerContracts).toContain("      - name: Notice unsupported hosted runner cell");
+    expect(providerContracts).toContain("        if: ${{ matrix.installable == false }}");
+    expect(providerContracts).toContain("      - name: Setup Bun");
+    expect(providerContracts).toContain("          bun-version-file: .bun-version");
+    expect(providerContracts).toContain("        run: bun install --frozen-lockfile");
+    expect(providerContracts).toContain("      - name: Install Podman");
+    expect(providerContracts).toContain("      - name: Configure Docker socket");
+    expect(providerContracts).toContain("      - name: Run provider contract tests");
+    expect(providerContracts).toContain(
+      "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
+    );
+    expect(providerContracts).toContain(
+      "          bun test plugins/provider-lando/test/contract.integration.test.ts",
+    );
+    expect(providerContracts).toContain(
+      "          bun test plugins/provider-docker/test/contract.integration.test.ts",
+    );
+    expect(providerContracts).toContain(
+      "          bun test plugins/provider-podman/test/contract.integration.test.ts",
+    );
+    expect(providerContracts).toContain("      - name: Collect provider matrix diagnostics");
+    expect(providerContracts).toContain("      - name: Upload provider matrix diagnostics");
+    expect(providerContracts).toContain("          name: provider-matrix-diagnostics-${{ matrix.cell }}");
   });
 
   test("runs nightly provider-lando e2e on Linux x64", async () => {
@@ -159,12 +205,27 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
+    expect(staticChecksPlatform).toContain("        run: bun run check:renderer-boundary");
+    expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable-only platforms");
+    expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform != 'linux-x64' }}");
+    expect(staticChecksPlatform).toContain(
+      "runs fork-safe portable static gates only; linux-x64 runs the full static test suite",
+    );
+    expect(staticChecksPlatform).toContain("      - name: Unit test layer (linux-x64 full static scope)");
+    expect(staticChecksPlatform).toContain("        if: ${{ matrix.platform == 'linux-x64' }}");
     expect(staticChecksPlatform).toContain("        run: bun run test:unit");
+    expect(staticChecksPlatform).toContain(
+      "      - name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
+    );
     expect(staticChecksPlatform).toContain(
       "        run: bun test core/test/services core/test/cli core/test/scenario",
     );
+    expect(staticChecksPlatform).toContain("      - name: Recipe test layer (linux-x64 full static scope)");
     expect(staticChecksPlatform).toContain(
       "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
+    );
+    expect(staticChecksPlatform).toContain(
+      "      - name: Library API test layer (linux-x64 full static scope)",
     );
     expect(staticChecksPlatform).toContain("        run: bun test core/test/library sdk/test/library");
     expect(staticChecksPlatform).toContain("::notice title=ci-timing::static-checks/${{ matrix.platform }}");

@@ -6,9 +6,17 @@ Use these commands to reproduce the CI jobs locally.
 
 CI pins Bun via `.bun-version`; update that file first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `win32-x64`; the stable `static-checks` summary job is the branch-protection check.
 
+Every platform cell runs the fork-safe portable static gates:
+
 ```bash
 bun run typecheck
 bun run lint
+bun run check:renderer-boundary
+```
+
+Only the `linux-x64` static-checks cell runs the full current static test suite. The non-linux cells emit a `static-checks-scope` notice instead of pretending those path-sensitive test layers ran there. Full cross-platform static test portability remains separate US-189 work.
+
+```bash
 bun run test:unit
 bun test core/test/services core/test/cli core/test/scenario
 bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
@@ -116,9 +124,24 @@ LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/cor
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
 
+## Weekly provider matrix
+
+The advisory `provider-matrix` workflow runs weekly and on manual dispatch. It covers Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack cells. GitHub-hosted CI only installs/runs the Linux Docker Engine and Podman cells; desktop-only engines emit a `::notice` skip so maintainers can mirror those cells on prepared self-hosted runners.
+
+Installable cells run the shared provider contract layer:
+
+```bash
+bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
+bun test plugins/provider-lando/test/contract.integration.test.ts
+bun test plugins/provider-docker/test/contract.integration.test.ts
+bun test plugins/provider-podman/test/contract.integration.test.ts
+```
+
+Failures upload `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The weekly matrix is intentionally not listed under branch protection for Beta.
+
 ## Alpha platform scope
 
-Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix remains a separate follow-up workflow.
+Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns advisory cross-engine coverage.
 
 ## Branch protection
 

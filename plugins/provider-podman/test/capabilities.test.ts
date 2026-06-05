@@ -97,9 +97,8 @@ describe("provider-podman socket discovery", () => {
   });
 
   test("falls back to the rootless /run/user socket without XDG_RUNTIME_DIR on Linux", () => {
-    expect(resolvePodmanSocket({ platform: "linux", env: {} })).toBe(
-      `/run/user/${process.getuid()}/podman/podman.sock`,
-    );
+    const uid = typeof process.getuid === "function" ? process.getuid() : 0;
+    expect(resolvePodmanSocket({ platform: "linux", env: {} })).toBe(`/run/user/${uid}/podman/podman.sock`);
   });
 
   test("honors discovery precedence: explicit > LANDO_TEST_PODMAN_SOCKET > DOCKER_HOST > default", () => {

@@ -70,21 +70,31 @@ jobs:
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
-      - name: Unit test layer
+      - name: Static scope notice for portable-only platforms
+        if: ${{ matrix.platform != 'linux-x64' }}
+        run: |
+          echo "::notice title=static-checks-scope::${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 runs the full static test suite. Full cross-platform static test portability is tracked separately by US-189."
+
+      - name: Unit test layer (linux-x64 full static scope)
+        if: ${{ matrix.platform == 'linux-x64' }}
         run: bun run test:unit
 
-      - name: Effect service, CLI, and scenario test layers
+      - name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)
+        if: ${{ matrix.platform == 'linux-x64' }}
         run: bun test core/test/services core/test/cli core/test/scenario
 
-      - name: Recipe test layer
+      - name: Recipe test layer (linux-x64 full static scope)
+        if: ${{ matrix.platform == 'linux-x64' }}
         run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
-      - name: Library API test layer
+      - name: Library API test layer (linux-x64 full static scope)
+        if: ${{ matrix.platform == 'linux-x64' }}
         run: bun test core/test/library sdk/test/library
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::static-checks/${{ matrix.platform }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+        run: |
+          echo "::notice title=ci-timing::static-checks/${{ matrix.platform }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   static-checks:
     needs: [static-checks-platform]
@@ -125,7 +135,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::schema-snapshot completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+        run: |
+          echo "::notice title=ci-timing::schema-snapshot completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   bundled-codegen:
     runs-on: ubuntu-24.04
@@ -155,7 +166,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::bundled-codegen completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+        run: |
+          echo "::notice title=ci-timing::bundled-codegen completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   library-api-tests:
     runs-on: ubuntu-24.04
@@ -179,7 +191,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::library-api-tests completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+        run: |
+          echo "::notice title=ci-timing::library-api-tests completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   recipe-tests:
     runs-on: ubuntu-24.04
@@ -203,7 +216,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::recipe-tests completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+        run: |
+          echo "::notice title=ci-timing::recipe-tests completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
   guide-scenarios-linux-x64:
     needs: [static-checks]
@@ -259,7 +273,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::guide-scenarios-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
+        run: |
+          echo "::notice title=ci-timing::guide-scenarios-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   build-darwin-arm64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
@@ -305,7 +320,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::build-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+        run: |
+          echo "::notice title=ci-timing::build-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-darwin-x64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
@@ -351,7 +367,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::build-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+        run: |
+          echo "::notice title=ci-timing::build-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-linux-arm64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
@@ -397,7 +414,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::build-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+        run: |
+          echo "::notice title=ci-timing::build-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-linux-x64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
@@ -443,7 +461,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::build-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+        run: |
+          echo "::notice title=ci-timing::build-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-win32-x64:
     needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
@@ -489,7 +508,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::build-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+        run: |
+          echo "::notice title=ci-timing::build-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
   perf-budget-linux-x64:
     needs: [build-linux-x64]
@@ -523,7 +543,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::perf-budget-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
+        run: |
+          echo "::notice title=ci-timing::perf-budget-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 10m)"
 
   provider-integration-darwin-arm64:
     needs: [build-darwin-arm64]
@@ -571,7 +592,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::provider-integration-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
+        run: |
+          echo "::notice title=ci-timing::provider-integration-darwin-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-darwin-x64:
     needs: [build-darwin-x64]
@@ -619,7 +641,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::provider-integration-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
+        run: |
+          echo "::notice title=ci-timing::provider-integration-darwin-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
 
   provider-integration-linux-arm64:
     needs: [build-linux-arm64]
@@ -667,7 +690,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::provider-integration-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
+        run: |
+          echo "::notice title=ci-timing::provider-integration-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
   provider-integration-linux-x64:
     needs: [build-linux-x64]
@@ -786,7 +810,8 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::provider-integration-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
+        run: |
+          echo "::notice title=ci-timing::provider-integration-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
   provider-integration-win32-x64:
     needs: [build-win32-x64]
@@ -834,4 +859,5 @@ jobs:
 
       - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::provider-integration-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
+        run: |
+          echo "::notice title=ci-timing::provider-integration-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 20m)"
