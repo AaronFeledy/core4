@@ -60,17 +60,46 @@ describe("runWithRendererHandling", () => {
     expect(io.stdout()).toBe("");
   });
 
-  test("renders task events published by the command effect", async () => {
+  test("plain event rendering keeps tooling output flat", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
       Effect.gen(function* () {
         const events = yield* EventService;
         yield* events.publish({
+          _tag: "task.tree.start",
+          parentId: "tooling:composer",
+          label: "Tooling: composer",
+          children: ["tooling:composer:appserver"],
+          timestamp: "2026-06-04T00:00:00.000Z",
+        });
+        yield* events.publish({
+          _tag: "task.start",
+          taskId: "tooling:composer:appserver",
+          parentId: "tooling:composer",
+          label: "appserver",
+          timestamp: "2026-06-04T00:00:00.001Z",
+        });
+        yield* events.publish({
           _tag: "task.detail",
           taskId: "tooling:composer:appserver",
           stream: "stdout",
           line: "installing",
-          timestamp: "2026-06-04T00:00:00.000Z",
+          timestamp: "2026-06-04T00:00:00.002Z",
+        });
+        yield* events.publish({
+          _tag: "task.complete",
+          taskId: "tooling:composer:appserver",
+          summary: "completed with exit code 0",
+          durationMs: 10,
+          timestamp: "2026-06-04T00:00:00.003Z",
+        });
+        yield* events.publish({
+          _tag: "task.tree.complete",
+          parentId: "tooling:composer",
+          succeeded: 1,
+          failed: 0,
+          durationMs: 11,
+          timestamp: "2026-06-04T00:00:00.004Z",
         });
       }),
       {
@@ -78,6 +107,7 @@ describe("runWithRendererHandling", () => {
         rendererMode: "plain",
         io,
         renderEvents: true,
+        plainTaskEvents: "detail-only",
         render: () => undefined,
         formatError: () => "should not happen",
       },
