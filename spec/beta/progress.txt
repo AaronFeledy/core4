@@ -1202,3 +1202,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Library `makeLandoRuntime` now defaults plugin discovery to `explicit` (no bundled/user/app discovery). Tests or non-CLI call sites that expect bundled services/providers must opt in with `plugins: { policy: "bundled-only" }` or full discovery with `plugins: { policy: "discovery" }`.
 ---
 
+
+## 2026-06-05 18:48 CDT - Babysit
+- PR: #299 https://github.com/AaronFeledy/core4/pull/299
+- CI outcome: pass
+- Review feedback: fixed (corrected loadServiceType so disabling @lando/service-lando no longer fails all bundled service-type lookups; added Guide-Coverage-Skip to PR body for internal registry change)
+- Merge: merged (squash)
+---
