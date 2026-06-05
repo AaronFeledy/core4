@@ -400,6 +400,31 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
+  test("fails before removing node_modules when the managed root manifest is corrupt", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-php");
+    const manifestPath = join(pluginsRoot, "package.json");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(manifestPath, "not json");
+
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({
+        name: "@lando/plugin-php",
+        spawner: { uninstall: async () => ({ exitCode: 0, stderr: "" }) },
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(pluginDir)).toBe(true);
+    expect(await Bun.file(manifestPath).text()).toBe("not json");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("package.json");
+      expect(cause).toContain("not readable JSON");
+    }
+  });
+
   test("updates the managed plugin root package manifest", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-php");

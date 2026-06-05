@@ -81,6 +81,14 @@ const dependencyFields = [
   "peerDependencies",
 ] as const;
 
+const managedRootManifestError = (manifestPath: string, cause: unknown): NotImplementedError =>
+  new NotImplementedError({
+    message: `Managed plugin root package.json is not readable JSON: ${manifestPath}.`,
+    commandId: "meta:plugin:remove",
+    specSection: "spec/10-plugins.md",
+    remediation: `Repair or remove ${manifestPath}, then retry plugin removal. Cause: ${String(cause)}`,
+  });
+
 const updateManagedRootManifest = async (pluginsRoot: string, name: string): Promise<void> => {
   const manifestPath = join(pluginsRoot, "package.json");
   if (!existsSync(manifestPath)) return;
@@ -88,10 +96,12 @@ const updateManagedRootManifest = async (pluginsRoot: string, name: string): Pro
   let parsed: unknown;
   try {
     parsed = JSON.parse(await readFile(manifestPath, "utf8"));
-  } catch {
-    return;
+  } catch (cause) {
+    throw managedRootManifestError(manifestPath, cause);
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw managedRootManifestError(manifestPath, "manifest root is not an object");
+  }
 
   let changed = false;
   const manifest = parsed as Record<string, unknown>;
@@ -292,7 +302,18 @@ export const pluginRemove = (
       if (exitCode !== 0) {
         return yield* Effect.fail(removeFailure(options.name, stderr));
       }
-      yield* Effect.promise(() => updateManagedRootManifest(pluginsRoot, options.name));
+      yield* Effect.tryPromise({
+        try: () => updateManagedRootManifest(pluginsRoot, options.name),
+        catch: (cause) =>
+          cause instanceof NotImplementedError
+            ? cause
+            : new NotImplementedError({
+                message: `Failed to update managed plugin root package.json: ${String(cause)}`,
+                commandId: "meta:plugin:remove",
+                specSection: "spec/10-plugins.md",
+                remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
+              }),
+      });
       yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
     }
     if (hasVersionedDir) {
