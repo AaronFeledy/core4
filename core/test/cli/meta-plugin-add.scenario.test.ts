@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -172,6 +172,49 @@ describe("meta:plugin:add command", () => {
 
     expect(exit._tag).toBe("Failure");
     expect(await exists(join(pluginsRoot, "@lando/plugin-php", "1.2.3"))).toBe(false);
+  });
+
+  test("does not drop existing registry entries when recording another plugin", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
+      "index.js": "export {};\n",
+    });
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify(
+        {
+          "@lando/plugin-node": {
+            name: "@lando/plugin-node",
+            version: "2.0.0",
+            path: join(pluginsRoot, "@lando/plugin-node", "2.0.0"),
+          },
+          "@lando/plugin-extra": {
+            name: "@lando/plugin-extra",
+            version: "3.0.0",
+            path: join(pluginsRoot, "@lando/plugin-extra", "3.0.0"),
+            extra: "preserve me",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    const registry = JSON.parse(await readFile(join(pluginsRoot, "registry.json"), "utf8"));
+    expect(registry["@lando/plugin-node"].version).toBe("2.0.0");
+    expect(registry["@lando/plugin-extra"].extra).toBe("preserve me");
+    expect(registry["@lando/plugin-php"].version).toBe("1.2.3");
   });
 
   test("rewrites npm recipe-source remediation for plugin add", async () => {

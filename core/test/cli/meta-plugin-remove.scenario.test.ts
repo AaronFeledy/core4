@@ -211,21 +211,23 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
-  test("removes plugin files even when the installed registry is corrupt", async () => {
+  test("does not overwrite a corrupt installed registry during removal", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     const pluginDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
+    const registryPath = join(pluginsRoot, "registry.json");
     await mkdir(pluginDir, { recursive: true });
     await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
-    await writeFile(join(pluginsRoot, "registry.json"), "not json");
+    await writeFile(registryPath, "not json");
 
-    const result = await Effect.runPromise(
+    const exit = await Effect.runPromiseExit(
       pluginRemove({
         name: "@lando/plugin-php",
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
-    expect(result.removed).toBe(true);
+    expect(exit._tag).toBe("Failure");
     expect(await exists(pluginDir)).toBe(false);
+    expect(await Bun.file(registryPath).text()).toBe("not json");
   });
 
   test("reconciles a stale registry entry when plugin files are already gone", async () => {
