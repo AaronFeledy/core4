@@ -153,13 +153,12 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
-  test("removes a newly unpacked npm plugin when registry recording fails", async () => {
+  test("removes a newly unpacked npm plugin when registry recording cannot write", async () => {
     const bytes = await makeNpmTarball({
       "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
       "index.js": "export {};\n",
     });
-    await mkdir(pluginsRoot, { recursive: true });
-    await writeFile(join(pluginsRoot, "registry.json"), "not json");
+    await mkdir(join(pluginsRoot, "registry.json.tmp"), { recursive: true });
 
     const exit = await Effect.runPromiseExit(
       pluginAdd({
