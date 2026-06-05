@@ -36,7 +36,14 @@ describe("ci runbook", () => {
 
     expect(runbook).toContain("bun run typecheck");
     expect(runbook).toContain("bun run lint");
+    expect(runbook).toContain("bun run check:renderer-boundary");
     expect(runbook).toContain("bun run test:unit");
+    expect(runbook).toContain("Every platform cell runs the fork-safe portable static gates");
+    expect(runbook).toContain(
+      "Only the `linux-x64` static-checks cell runs the full current static test suite",
+    );
+    expect(runbook).toContain("static-checks-scope");
+    expect(runbook).toContain("US-189");
     expect(runbook).toContain("darwin-arm64");
     expect(runbook).toContain("build-win32-x64");
     expect(runbook).toContain("bun run build");

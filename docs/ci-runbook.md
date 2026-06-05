@@ -6,9 +6,17 @@ Use these commands to reproduce the CI jobs locally.
 
 CI pins Bun via `.bun-version`; update that file first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `win32-x64`; the stable `static-checks` summary job is the branch-protection check.
 
+Every platform cell runs the fork-safe portable static gates:
+
 ```bash
 bun run typecheck
 bun run lint
+bun run check:renderer-boundary
+```
+
+Only the `linux-x64` static-checks cell runs the full current static test suite. The non-linux cells emit a `static-checks-scope` notice instead of pretending those path-sensitive test layers ran there. Full cross-platform static test portability remains separate US-189 work.
+
+```bash
 bun run test:unit
 bun test core/test/services core/test/cli core/test/scenario
 bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts

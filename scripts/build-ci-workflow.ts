@@ -129,16 +129,25 @@ ${setupBunSteps}
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
-      - name: Unit test layer
+      - name: Static scope notice for portable-only platforms
+        if: \${{ matrix.platform != 'linux-x64' }}
+        run: |
+          echo "::notice title=static-checks-scope::\${{ matrix.platform }} runs fork-safe portable static gates only; linux-x64 runs the full static test suite. Full cross-platform static test portability is tracked separately by US-189."
+
+      - name: Unit test layer (linux-x64 full static scope)
+        if: \${{ matrix.platform == 'linux-x64' }}
         run: bun run test:unit
 
-      - name: Effect service, CLI, and scenario test layers
+      - name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)
+        if: \${{ matrix.platform == 'linux-x64' }}
         run: bun test core/test/services core/test/cli core/test/scenario
 
-      - name: Recipe test layer
+      - name: Recipe test layer (linux-x64 full static scope)
+        if: \${{ matrix.platform == 'linux-x64' }}
         run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
-      - name: Library API test layer
+      - name: Library API test layer (linux-x64 full static scope)
+        if: \${{ matrix.platform == 'linux-x64' }}
         run: bun test core/test/library sdk/test/library
 
 ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}

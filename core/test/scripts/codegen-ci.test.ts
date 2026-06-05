@@ -311,6 +311,35 @@ describe("ci workflow codegen", () => {
   );
 
   test(
+    "keeps non-linux static-checks platform cells to portable gates",
+    async () => {
+      await runCodegen();
+
+      const workflow = await readFile(workflowPath, "utf8");
+
+      expect(workflow).toContain("static-checks-platform:");
+      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64]");
+      expect(workflow).toContain("- name: Typecheck");
+      expect(workflow).toContain("run: bun run typecheck");
+      expect(workflow).toContain("- name: Lint");
+      expect(workflow).toContain("run: bun run lint");
+      expect(workflow).toContain("- name: Renderer boundary lint");
+      expect(workflow).toContain("run: bun run check:renderer-boundary");
+      expect(workflow).toContain("- name: Static scope notice for portable-only platforms");
+      expect(workflow).toContain("if: ${{ matrix.platform != 'linux-x64' }}");
+      expect(workflow).toContain("US-189");
+      expect(workflow).toContain("- name: Unit test layer (linux-x64 full static scope)");
+      expect(workflow).toContain(
+        "- name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
+      );
+      expect(workflow).toContain("- name: Recipe test layer (linux-x64 full static scope)");
+      expect(workflow).toContain("- name: Library API test layer (linux-x64 full static scope)");
+      expect((workflow.match(/if: \$\{\{ matrix\.platform == 'linux-x64' \}\}/g) ?? []).length).toBe(4);
+    },
+    codegenTestTimeout,
+  );
+
+  test(
     "generates the guide scenario CI gate",
     async () => {
       await runCodegen();
