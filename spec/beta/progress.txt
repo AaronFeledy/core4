@@ -1143,3 +1143,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - `PluginRegistryLive` must stay dependency-tolerant: no `ConfigService` means bundled/system-only, while configured runtimes capture `ConfigService`/`Logger` for user/app discovery and conflict warnings. App plugin discovery should resolve the Landofile app root (`findAppRoot(process.cwd())`) before reading `.lando/plugins`; raw cwd misses nested invocations.
   - Full-suite guide/codegen tests can leak or race generated guide fixtures; regenerate with `bun run scripts/build-guide-scenarios.ts` and rerun affected script suites before treating those as story regressions.
 ---
+
+## 2026-06-05 12:47 CDT - Babysit
+- PR: #295 https://github.com/AaronFeledy/core4/pull/295
+- CI outcome: pass (Cursor Bugbot SUCCESS on final HEAD; no other checks configured)
+- Review feedback: fixed (Bugbot: undefined userDataRoot wrongly skipped app discovery, and a single malformed user/app plugin manifest aborted all discovery — registry now runs app discovery independent of userDataRoot and isolates per-entry manifest failures so bundled/healthy plugins survive, with regression tests)
+- Merge: merged (squash)
+---
