@@ -1076,3 +1076,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Gate the renderer event-consumer per-command (`renderEvents`), not globally in `runWithRendererHandling` — attaching it for every command would change start/stop/etc. output. Pair it with `renderProgress` on the publisher so library callers and non-opted tests don't get task events (keeps `runTooling`'s result-only contract for embedders).
   - The compiled-binary behavioral dispatch-parity needs a fresh `bun run build`; the `run.ts` change here is dispatch-neutral (adds rendering flags only, routing unchanged) so the structural parity layer + CI's fresh build cover it. Avoid `bun run build` while another `bun test` is running (documented `core/dist/lando` ETXTBSY/ENOENT flakes).
 ---
+
+## Thu Jun 04 2026 06:49 PM CDT - Babysit
+- PR: #290 https://github.com/AaronFeledy/core4/pull/290
+- CI outcome: pass (Cursor Bugbot)
+- Review feedback: fixed (plain renderer for tooling now emits flat task-detail output only, dropping task-tree framing per US-164)
+- Merge: merged (squash)
+---
