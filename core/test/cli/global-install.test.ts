@@ -74,7 +74,9 @@ describe("global:install command operation", () => {
   test("materializes both global Landofile files with no plugin argument", async () => {
     await withTempRoots(async (dataRoot) => {
       const result = await Effect.runPromise(
-        globalInstall({}).pipe(Effect.provide(makeLandoRuntime({ bootstrap: "global" }))),
+        globalInstall({}).pipe(
+          Effect.provide(makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } })),
+        ),
       );
       const output = renderGlobalInstallResult(result);
 
@@ -85,7 +87,6 @@ describe("global:install command operation", () => {
       expect(result.userLandofileCreated).toBe(true);
       const distContent = await readFile(join(dataRoot, "global", ".lando.dist.yml"), "utf8");
       expect(distContent).toContain("name: global");
-      // Bundled plugins contribute mailpit and traefik global services by default.
       expect(result.dist.serviceIds).toContain("mailpit");
       expect(result.dist.serviceIds).toContain("traefik");
       expect(distContent).toContain("mailpit:");
@@ -134,7 +135,7 @@ describe("global:install command operation", () => {
     await withTempRoots(async () => {
       const exit = await Effect.runPromiseExit(
         globalInstall({ plugin: "@lando/proxy-traefik" }).pipe(
-          Effect.provide(makeLandoRuntime({ bootstrap: "global" })),
+          Effect.provide(makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } })),
         ),
       );
 

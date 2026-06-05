@@ -7,7 +7,8 @@ import { Cause, Effect, Exit, Layer } from "effect";
 
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
+import { PluginRegistryLive, makePluginRegistryLive } from "../../src/plugins/registry.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",
@@ -50,6 +51,14 @@ const fakeLogger = (sink: Array<string>) =>
 
 const pluginRegistryTestLayer = (dataRoot: string | undefined) =>
   PluginRegistryLive.pipe(Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))));
+
+const pluginRegistryTestLayerWithDiscovery = (
+  dataRoot: string | undefined,
+  discovery: Parameters<typeof makePluginRegistryLive>[0],
+) =>
+  makePluginRegistryLive(discovery).pipe(
+    Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))),
+  );
 
 const runWithPluginRegistry = <A, E>(effect: Effect.Effect<A, E, PluginRegistry>) =>
   Effect.runPromise(effect.pipe(Effect.provide(pluginRegistryTestLayer(userDataRoot))));
@@ -181,6 +190,43 @@ describe("PluginRegistryLive", () => {
     );
 
     expect(serviceType.id).toBe("node:lts");
+  });
+
+  test("loads service type contributions from enabled bundled plugins when service-lando is disabled", async () => {
+    const extraBundledPlugin = {
+      name: "@example/extra-service-types",
+      layer: Layer.empty,
+      manifest: {
+        name: "@example/extra-service-types",
+        version: "1.0.0",
+        api: 4,
+        entry: "index.js",
+        contributes: { serviceTypes: ["example:custom"] },
+      },
+      serviceTypes: new Map([
+        [
+          "example:custom",
+          {
+            id: "example:custom",
+            toServicePlan: () => Effect.die("not needed"),
+          },
+        ],
+      ]),
+    } as never;
+    (BUNDLED_PLUGINS as Array<typeof extraBundledPlugin>).push(extraBundledPlugin);
+    try {
+      const serviceType = await Effect.runPromise(
+        Effect.flatMap(PluginRegistry, (registry) => registry.loadServiceType("example:custom")).pipe(
+          Effect.provide(
+            pluginRegistryTestLayerWithDiscovery(userDataRoot, { disable: ["@lando/service-lando"] }),
+          ),
+        ),
+      );
+
+      expect(serviceType.id).toBe("example:custom");
+    } finally {
+      (BUNDLED_PLUGINS as Array<typeof extraBundledPlugin>).pop();
+    }
   });
 
   test("discovers user plugin registry entries from userDataRoot/plugins", async () => {

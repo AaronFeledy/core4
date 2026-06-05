@@ -29,6 +29,9 @@
 - `DeprecationSeverity`
 - `EndpointInput`
 - `EndpointPlan`
+- `EmbeddingPluginDiscoveryPolicy`
+- `EmbeddingPluginPolicy`
+- `EmbeddingPluginPolicyMode`
 - `FileSyncEngineCapabilities`
 - `FileSyncEventChunk`
 - `FileSyncMode`

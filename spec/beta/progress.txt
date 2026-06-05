@@ -1194,3 +1194,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (merged origin/main and reconciled planning-file conflicts)
 - Merge: merged (squash)
 ---
+
+## [2026-06-05 16:55 CDT] - US-171
+- Shipped the embedding plugin policy surface for library runtimes. `EmbeddingPluginPolicy` is now published from `@lando/sdk/schema`, `makeLandoRuntime` honors `none`, `explicit`, `bundled-only`, and `discovery` modes, and CLI dispatch explicitly opts into discovery so library defaults stay host-controlled while CLI behavior is preserved.
+- Verification: typecheck and lint passed; story-focused runtime/plugin/schema tests passed; manual library QA confirmed default/none load zero plugins while bundled-only/discovery expose bundled providers. Full `bun test` was attempted and hit the documented generated-guide and compiled-binary shared-output races; the affected guide/codegen suites pass in isolation after cleanup.
+- **Learnings for future iterations:**
+  - Library `makeLandoRuntime` now defaults plugin discovery to `explicit` (no bundled/user/app discovery). Tests or non-CLI call sites that expect bundled services/providers must opt in with `plugins: { policy: "bundled-only" }` or full discovery with `plugins: { policy: "discovery" }`.
+---
+

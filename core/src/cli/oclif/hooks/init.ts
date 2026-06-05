@@ -59,5 +59,5 @@ export const initHook: Hook<"init"> = async ({ config, context, id }) => {
     }
     throw error;
   }
-  commandRuntimeLayers.set(CommandClass, makeLandoRuntime({ bootstrap }));
+  commandRuntimeLayers.set(CommandClass, makeLandoRuntime({ bootstrap, plugins: { policy: "discovery" } }));
 };

@@ -35,6 +35,37 @@ const expectRuntimeBootstrapError = (exit: Exit.Exit<unknown, unknown>): LandoRu
 };
 
 describe("makeLandoRuntime", () => {
+  test("defaults library plugin policy to explicit discovery-free registry", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling" }))),
+    );
+    const registry = Context.get(context, PluginRegistry);
+
+    await expect(Effect.runPromise(registry.list)).resolves.toEqual([]);
+  });
+
+  test("honors bundled-only plugin policy", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(makeLandoRuntime({ bootstrap: "tooling", plugins: { policy: "bundled-only" } })),
+      ),
+    );
+    const registry = Context.get(context, PluginRegistry);
+
+    await expect(Effect.runPromise(registry.load("@lando/provider-lando"))).resolves.toMatchObject({
+      name: "@lando/provider-lando",
+    });
+  });
+
+  test("honors none plugin policy", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling", plugins: { policy: "none" } }))),
+    );
+    const registry = Context.get(context, PluginRegistry);
+
+    await expect(Effect.runPromise(registry.list)).resolves.toEqual([]);
+  });
+
   test("minimal bootstrap satisfies logger, config, and filesystem only", async () => {
     const runtime = makeLandoRuntime({ bootstrap: "minimal" });
     const context = await Effect.runPromise(Effect.scoped(Layer.build(runtime)));

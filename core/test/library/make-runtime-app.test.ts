@@ -31,6 +31,7 @@ describe("library makeLandoRuntime app bootstrap", () => {
           makeLandoRuntime({
             bootstrap: "app",
             plugins: {
+              policy: "bundled-only",
               layers: [
                 Layer.succeed(RuntimeProvider, TestRuntimeProvider),
                 Layer.succeed(RuntimeProviderRegistry, {

@@ -51,6 +51,7 @@ const SDK_SCHEMA_NAMES = [
   "ProviderId",
   "HostPlatform",
   "ServiceInfo",
+  "EmbeddingPluginPolicy",
   "PluginManifest",
   "GlobalServiceContribution",
   "FileSyncEngineCapabilities",
