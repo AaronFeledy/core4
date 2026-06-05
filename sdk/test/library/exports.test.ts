@@ -143,6 +143,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.GlobalAppService).toBeDefined();
     expect(services.ScratchAppService).toBeDefined();
     expect(services.PluginRegistry).toBeDefined();
+    expect(services.PluginTrustStore).toBeDefined();
     expect(services.RuntimeProvider).toBeDefined();
     expect(services.RuntimeProviderRegistry).toBeDefined();
     expect(services.FileSystem).toBeDefined();

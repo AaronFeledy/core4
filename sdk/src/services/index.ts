@@ -63,6 +63,7 @@ import type {
   SshServiceShape,
   UrlScannerShape,
 } from "./platform.ts";
+import type { PluginTrustState } from "./plugin-trust.ts";
 import type { RegisteredCommand, ServiceTypeShape } from "./plugins.ts";
 import type {
   ProcessResult,
@@ -118,6 +119,7 @@ export * from "./landofile.ts";
 export * from "./planner.ts";
 export * from "./platform.ts";
 export * from "./plugins.ts";
+export * from "./plugin-trust.ts";
 export * from "./process.ts";
 export * from "./provider.ts";
 export * from "./recipe.ts";
@@ -265,6 +267,18 @@ export declare class CommandRegistry extends Context.Tag("@lando/core/CommandReg
   CommandRegistry,
   {
     readonly list: Effect.Effect<ReadonlyArray<RegisteredCommand>, never>;
+  }
+>() {}
+
+export declare class PluginTrustStore extends Context.Tag("@lando/core/PluginTrustStore")<
+  PluginTrustStore,
+  {
+    readonly read: Effect.Effect<PluginTrustState, ConfigError>;
+    readonly isPluginTrusted: (name: string) => Effect.Effect<boolean, ConfigError>;
+    readonly trustPlugin: (name: string) => Effect.Effect<void, ConfigError>;
+    readonly untrustPlugin: (name: string) => Effect.Effect<void, ConfigError>;
+    readonly isAuthoringRootTrusted: (path: string) => Effect.Effect<boolean, ConfigError>;
+    readonly trustAuthoringRoot: (path: string) => Effect.Effect<void, ConfigError>;
   }
 >() {}
 

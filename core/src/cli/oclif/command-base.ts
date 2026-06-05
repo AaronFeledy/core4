@@ -107,6 +107,8 @@ const MVP_COMMAND_IDS = new Set([
   "meta:doctor",
   "meta:plugin:add",
   "meta:plugin:remove",
+  "meta:plugin:trust",
+  "meta:plugin:trust-authoring-root",
   "meta:setup",
   "meta:shellenv",
   "meta:version",

@@ -2,12 +2,11 @@
  * Per-command deferral plans for canonical Lando command ids that are not
  * implemented yet.
  *
- * Each plan names the release bucket that owns the command, the user-facing
- * contract reference, a short "why deferred" summary, and remediation safe
- * to print to stderr. The single `notImplementedErrorForCommand()` function
- * below is consumed by both the source OCLIF guard and the compiled `$bunfs`
- * dispatcher so the two paths produce identical remediation text for the
- * same command id.
+ * Each plan names the command grouping, a short "why deferred" summary, and
+ * remediation safe to print to stderr. The single
+ * `notImplementedErrorForCommand()` function below is consumed by both the
+ * source OCLIF guard and the compiled `$bunfs` dispatcher so the two paths
+ * produce identical remediation text for the same command id.
  */
 import { NotImplementedError } from "@lando/sdk/errors";
 
@@ -27,15 +26,6 @@ const META_GLOBAL_PLAN: DeferredCommandPlan = {
     "The global Lando app and the `globalServices:` plugin-contribution surface ship in Phase 3 Beta (spec §20).",
   remediation:
     'The global app and `meta:global:*` commands land in Phase 3 Beta. See spec/ROADMAP.md Phase 3 "full breadth" and spec/18-global-app.md.',
-};
-
-const META_PLUGIN_TRUST_PLAN: DeferredCommandPlan = {
-  phase: "Phase 4 RC",
-  specSection: "spec/10-plugins.md",
-  summary:
-    'Persistent plugin trust is the Phase 4 RC "Plugin trust UX" open decision (spec/ROADMAP.md §14.2); the command surface ships in RC.',
-  remediation:
-    '`meta:plugin:trust*` is the "Plugin trust UX" open decision (spec/ROADMAP.md §14.2) and lands in Phase 4 RC. Alpha trust is in-memory per process; pass `--trust` to `lando plugin:add` to authorize a single install. See spec/ROADMAP.md Phase 4 "hardening + governance" and spec/10-plugins.md.',
 };
 
 const META_PLUGIN_AUTHORING_PLAN: DeferredCommandPlan = {
@@ -98,8 +88,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:logs", META_GLOBAL_PLAN],
   ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:global:restart", META_GLOBAL_PLAN],
-  ["meta:plugin:trust", META_PLUGIN_TRUST_PLAN],
-  ["meta:plugin:trust-authoring-root", META_PLUGIN_TRUST_PLAN],
   ["meta:plugin:new", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:test", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:build", META_PLUGIN_AUTHORING_PLAN],

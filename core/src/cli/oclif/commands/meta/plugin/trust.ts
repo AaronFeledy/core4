@@ -1,15 +1,26 @@
 import { Args } from "@oclif/core";
-import { Effect } from "effect";
 
+import {
+  type PluginTrustResult,
+  pluginTrust,
+  renderPluginTrustResult,
+} from "../../../../commands/plugin-trust.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
-export const pluginTrustSpec: LandoCommandSpec<never> = {
+const extractInput = (input: unknown): { name: string } => {
+  if (typeof input !== "object" || input === null) return { name: "" };
+  const args = (input as { args?: Record<string, unknown> }).args ?? {};
+  return { name: typeof args.name === "string" ? args.name : "" };
+};
+
+export const pluginTrustSpec: LandoCommandSpec<PluginTrustResult> = {
   id: "meta:plugin:trust",
-  summary: "Trust an installed plugin (persistent trust deferred to Beta).",
+  summary: "Trust an installed plugin.",
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
-  run: () => Effect.die("not yet implemented: meta:plugin:trust"),
+  run: (input) => pluginTrust(extractInput(input)),
+  render: (result) => renderPluginTrustResult(result as PluginTrustResult),
 };
 
 export default class PluginTrustCommand extends LandoCommandBase {

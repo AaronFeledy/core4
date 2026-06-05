@@ -52,16 +52,6 @@
       "specSection": "spec/10-plugins.md"
     },
     {
-      "id": "meta:plugin:trust",
-      "phase": "Phase 4 RC",
-      "specSection": "spec/10-plugins.md"
-    },
-    {
-      "id": "meta:plugin:trust-authoring-root",
-      "phase": "Phase 4 RC",
-      "specSection": "spec/10-plugins.md"
-    },
-    {
       "id": "meta:plugin:unlink",
       "phase": "Phase 4 RC",
       "specSection": "spec/10-plugins.md"
