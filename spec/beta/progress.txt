@@ -1091,3 +1091,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - npm-backed plugin install should reuse the recipe npm source's packument parsing, version resolution, and integrity verification, then publish the extracted npm `package/` directory to `<userDataRoot>/plugins/<name>/<version>/` rather than to the recipe cache.
   - The plugin install command's old spawner seam remains useful for targeted tests, but the default command path is now npm packument + tarball extraction.
 ---
+
+## Thu Jun 04 2026 09:40 PM CDT - Babysit
+- PR: #291 https://github.com/AaronFeledy/core4/pull/291
+- CI outcome: pass (Cursor Bugbot)
+- Review feedback: fixed (Bugbot triage: pushed pending node_modules reserved-name guard for plugin:remove; rewrote npm plugin:add failure remediation to stop pointing at `lando init`/`--package=`; reserved managed plugin-root entries `package.json`/lockfiles from recursive removal)
+- Merge: merged (squash)
+---
