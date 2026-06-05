@@ -74,7 +74,9 @@ const documentedAuxiliaryEntryPoints = [
   },
 ] as const;
 
-type EntryPoint = (typeof publicEntryPoints)[number] | (typeof documentedAuxiliaryEntryPoints)[number];
+const publishedEntryPoints = [...publicEntryPoints, ...documentedAuxiliaryEntryPoints] as const;
+
+type EntryPoint = (typeof publishedEntryPoints)[number];
 
 const getExportTarget = (entry: EntryPoint): { readonly types: string; readonly import: string } => {
   const value = corePackage.exports[entry.exportKey as keyof typeof corePackage.exports];
@@ -92,7 +94,7 @@ const getExportTarget = (entry: EntryPoint): { readonly types: string; readonly 
 };
 
 describe("@lando/core public package entry points", () => {
-  test.each([...publicEntryPoints, ...documentedAuxiliaryEntryPoints])(
+  test.each(publishedEntryPoints)(
     "$specifier exposes explicit TS types and ESM import target",
     async (entry) => {
       const target = getExportTarget(entry);
@@ -111,7 +113,7 @@ describe("@lando/core public package entry points", () => {
   test("embedding documentation names every published library entry point", async () => {
     const docs = await Bun.file(resolve(repoRoot, "docs/embedding.md")).text();
 
-    for (const entry of publicEntryPoints) {
+    for (const entry of publishedEntryPoints) {
       expect(docs).toContain(entry.specifier);
     }
   });
