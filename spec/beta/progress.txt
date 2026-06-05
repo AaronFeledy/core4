@@ -1165,3 +1165,17 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (added Guide-Coverage-Skip note for the podman test file swept in by a stale drift base SHA, not part of this PR's real diff; pushed empty commit to refresh the gate)
 - Merge: merged (squash)
 ---
+
+## [2026-06-05 14:05 CDT] - US-183 (agent2)
+- The shared CI build-job generator now smokes `lando shellenv` (alongside `--version`/`--help`) and uploads each platform binary artifact with 14-day retention, completing the darwin-arm64 build job's acceptance contract. The change lives in the single `renderBuildJob` seam, so all five platform build jobs (darwin-arm64/x64, linux-arm64/x64, win32-x64) pick up the new smoke + retention consistently; only the darwin-arm64 contract is claimed here. Verified the darwin-arm64 cross-compile actually produces a Mach-O 64-bit arm64 executable from a linux-x64 host, and that `shellenv` exits 0 on a compiled binary.
+- Verification: typecheck, lint, full `bun test` (3036 pass / 0 fail) passed; codegen drift clean for `ci.yml`.
+- **Learnings for future iterations:**
+  - `scripts/build-ci-workflow.ts` has ONE shared `renderBuildJob` applied to every platform — smoke/retention changes are global by construction; per-platform divergence (e.g. US-186 windows UTF-8/exit-code smoke) needs a per-platform field, not a fork.
+  - `core/test/build/ci-workflow.test.ts` reads the *generated* `.github/workflows/ci.yml`, so a RED build-job assertion must be written against the not-yet-regenerated workflow, then GREEN after `bun run scripts/build-ci-workflow.ts`.
+  - Bun cross-compiles `--target=bun-darwin-arm64` (and the other four targets) from linux-x64 with no extra tooling — `file` confirms a real Mach-O arm64 binary, a usable verification surface for the darwin/windows build stories.
+---
+
+## [2026-06-05 14:05 CDT] - US-192 (agent2)
+- Verified complete on the prior merged branch (PR #294): `.github/workflows/provider-matrix.yml` + `scripts/build-provider-matrix-workflow.ts` are on `main`. The earlier PR landed the code but never flipped `prd.json`; reconciled the stale `passes: false` to `true`. No new code.
+- Verification: typecheck, lint, tests passed.
+---

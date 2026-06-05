@@ -192,6 +192,7 @@ ${setupBunSteps}
           test -f dist/${platform.binaryName}
           ./dist/${platform.binaryName} --version
           ./dist/${platform.binaryName} --help
+          ./dist/${platform.binaryName} shellenv
 
       - name: Upload ${platform.id} binary
         if: always()
@@ -200,7 +201,7 @@ ${setupBunSteps}
           name: lando-${platform.id}
           path: dist/${platform.binaryName}
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
 ${timingNoticeStep(`build-${platform.id}`, platform.timeoutMinutes)}
 `;
