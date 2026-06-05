@@ -280,10 +280,9 @@ export const pluginRemove = (
     const hasModuleDir = existsSync(moduleDir);
     const hasVersionedDir = existsSync(versionedDir);
     if (!hasModuleDir && !hasVersionedDir) {
+      yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
       return { pluginName: options.name, removed: false };
     }
-
-    yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
 
     if (hasModuleDir) {
       const spawner = options.spawner ?? defaultSpawner;
@@ -299,6 +298,8 @@ export const pluginRemove = (
     if (hasVersionedDir) {
       yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
     }
+
+    yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
 
     const trustStore = options.trustStore;
     if (trustStore !== undefined) trustStore.delete(options.name);

@@ -211,21 +211,87 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
-  test("preserves plugin files when registry cleanup fails", async () => {
+  test("reconciles a stale registry entry when plugin files are already gone", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
-    const pluginDir = join(pluginsRoot, "@lando/plugin-php", "1.2.3");
-    await mkdir(pluginDir, { recursive: true });
-    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
-    await writeFile(join(pluginsRoot, "registry.json"), "not json");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify(
+        {
+          "@lando/plugin-php": {
+            name: "@lando/plugin-php",
+            version: "1.2.3",
+            path: join(pluginsRoot, "@lando/plugin-php", "1.2.3"),
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
 
-    const exit = await Effect.runPromiseExit(
+    const result = await Effect.runPromise(
       pluginRemove({
         name: "@lando/plugin-php",
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
-    expect(exit._tag).toBe("Failure");
+    expect(result.removed).toBe(false);
+    expect(await readInstalledRegistry()).toEqual({});
+  });
+
+  test("retries cleanly after a failed uninstall leaves plugin files behind", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-php");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify(
+        {
+          "@lando/plugin-php": {
+            name: "@lando/plugin-php",
+            version: "1.2.3",
+            path: pluginDir,
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    let attempts = 0;
+    const spawner = {
+      uninstall: async () => {
+        attempts += 1;
+        return attempts === 1
+          ? { exitCode: 1, stderr: "injected uninstall failure" }
+          : { exitCode: 0, stderr: "" };
+      },
+    };
+
+    const first = await Effect.runPromiseExit(
+      pluginRemove({
+        name: "@lando/plugin-php",
+        spawner,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(first._tag).toBe("Failure");
     expect(await exists(pluginDir)).toBe(true);
+    expect(await readInstalledRegistry()).toMatchObject({
+      "@lando/plugin-php": { path: pluginDir, version: "1.2.3" },
+    });
+
+    const second = await Effect.runPromise(
+      pluginRemove({
+        name: "@lando/plugin-php",
+        spawner,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(second.removed).toBe(true);
+    expect(await exists(pluginDir)).toBe(false);
+    expect(await readInstalledRegistry()).toEqual({});
   });
 
   test("removes a default npm-installed plugin from the versioned directory", async () => {
