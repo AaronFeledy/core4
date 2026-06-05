@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -79,6 +79,14 @@ const exists = async (path: string): Promise<boolean> =>
     () => true,
     () => false,
   );
+
+const readInstalledRegistry = async (): Promise<
+  Record<string, { readonly path: string; readonly version: string }>
+> =>
+  JSON.parse(await readFile(join(userDataRoot, "plugins", "registry.json"), "utf8")) as Record<
+    string,
+    { readonly path: string; readonly version: string }
+  >;
 
 beforeEach(async () => {
   userDataRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-"));
@@ -225,6 +233,9 @@ describe("meta:plugin:remove command", () => {
     );
     const versionedDir = installResult.entry;
     expect(await exists(versionedDir)).toBe(true);
+    expect(await readInstalledRegistry()).toMatchObject({
+      "@lando/plugin-php": { path: versionedDir, version: "1.2.3" },
+    });
 
     const result = await Effect.runPromise(
       pluginRemove({
@@ -235,6 +246,7 @@ describe("meta:plugin:remove command", () => {
 
     expect(result.removed).toBe(true);
     expect(await exists(versionedDir)).toBe(false);
+    expect(await readInstalledRegistry()).toEqual({});
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
@@ -282,5 +294,71 @@ describe("meta:plugin:remove command", () => {
     expect(await exists(versionedDir)).toBe(false);
     expect(await exists(nodeModulesDir)).toBe(false);
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
+  });
+
+  test("updates the managed plugin root package manifest atomically", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-php");
+    const manifestPath = join(pluginsRoot, "package.json");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(
+      manifestPath,
+      `${JSON.stringify(
+        {
+          name: "lando-plugin-root",
+          private: true,
+          dependencies: {
+            "@lando/plugin-php": "1.2.3",
+            "@lando/plugin-node": "2.0.0",
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const result = await Effect.runPromise(
+      pluginRemove({
+        name: "@lando/plugin-php",
+        spawner: { uninstall: async () => ({ exitCode: 0, stderr: "" }) },
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.removed).toBe(true);
+    const updated = JSON.parse(await readFile(manifestPath, "utf8"));
+    expect(updated.dependencies).toEqual({ "@lando/plugin-node": "2.0.0" });
+    expect(await exists(`${manifestPath}.tmp`)).toBe(false);
+  });
+
+  test("refuses to remove a plugin referenced by the active Landofile", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-app-"));
+    const pluginDir = join(userDataRoot, "plugins", "@lando/plugin-php", "1.2.3");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      ["name: plugin-ref-app", "plugins:", "  - '@lando/plugin-php'", "services: {}", ""].join("\n"),
+    );
+
+    try {
+      const exit = await Effect.runPromiseExit(
+        pluginRemove({
+          name: "@lando/plugin-php",
+          cwd: appRoot,
+        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(await exists(pluginDir)).toBe(true);
+      if (exit._tag === "Failure") {
+        const cause = JSON.stringify(exit.cause);
+        expect(cause).toContain("active Landofile");
+        expect(cause).toContain("plugin-ref-app");
+        expect(cause).toContain(".lando.yml");
+      }
+    } finally {
+      await rm(appRoot, { recursive: true, force: true });
+    }
   });
 });

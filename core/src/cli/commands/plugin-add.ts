@@ -14,6 +14,7 @@ import {
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { publish } from "../../recipes/git-source.ts";
 import {
   DEFAULT_NPM_REGISTRY_URL,
@@ -423,6 +424,14 @@ export const pluginAdd = (
               remediation: "Re-run with --trust to bypass the prompt.",
             }),
     });
+
+    yield* Effect.promise(() =>
+      recordInstalledPlugin(pluginsRoot, {
+        name: manifest.name,
+        version: manifest.version,
+        path: packageDir,
+      }),
+    );
 
     return {
       pluginName: manifest.name,

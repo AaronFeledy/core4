@@ -1098,3 +1098,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (Bugbot triage: pushed pending node_modules reserved-name guard for plugin:remove; rewrote npm plugin:add failure remediation to stop pointing at `lando init`/`--package=`; reserved managed plugin-root entries `package.json`/lockfiles from recursive removal)
 - Merge: merged (squash)
 ---
+
+## [2026-06-04 22:18 CDT] - US-166
+- Shipped `meta:plugin:remove` completion for user-installed plugins: npm installs now record an atomic per-user plugin registry, removal prunes that registry after successful deletion, the managed plugin root package manifest is updated atomically for legacy `node_modules` installs, and removal refuses when the active app Landofile still references the plugin with remediation pointing at the app and Landofile.
+- Verification: typecheck, lint, focused plugin-remove tests, manual command-effect QA, and isolated compiled CLI parity/build suites passed. Full `bun test` reproduced only the documented compiled-binary build-pressure flake; the affected compiled suites passed in isolation after a fresh build.
+- **Learnings for future iterations:**
+  - The per-user plugin registry lives at `<userDataRoot>/plugins/registry.json` and is updated via write-temp-then-rename; keep plugin install/remove registry updates in the command seams until broader user/system/app discovery lands.
+  - `meta:plugin:remove` only checks the active Landofile (`cwd` upward) for `plugins:` references today; broader known-app reference indexes do not exist yet.
+---
