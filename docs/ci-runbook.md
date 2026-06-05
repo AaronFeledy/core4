@@ -116,9 +116,24 @@ LANDO_MVP_BINARY_PATH="$PWD/core/dist/lando" LANDO_SCENARIO_E2E_BINARY="$PWD/cor
 
 Failures upload `provider-lando-e2e-diagnostics-linux-x64` with the Podman service log and recent journal output. Notification routing is intentionally limited to normal GitHub Actions failure reporting in Beta.
 
+## Weekly provider matrix
+
+The advisory `provider-matrix` workflow runs weekly and on manual dispatch. It covers Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack cells. GitHub-hosted CI only installs/runs the Linux Docker Engine and Podman cells; desktop-only engines emit a `::notice` skip so maintainers can mirror those cells on prepared self-hosted runners.
+
+Installable cells run the shared provider contract layer:
+
+```bash
+bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts
+bun test plugins/provider-lando/test/contract.integration.test.ts
+bun test plugins/provider-docker/test/contract.integration.test.ts
+bun test plugins/provider-podman/test/contract.integration.test.ts
+```
+
+Failures upload `provider-matrix-diagnostics-<cell>` artifacts when logs are available. The weekly matrix is intentionally not listed under branch protection for Beta.
+
 ## Alpha platform scope
 
-Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix remains a separate follow-up workflow.
+Historical Alpha CI was Linux x64 only: no Windows or linux-arm64 release matrix was generated in Alpha, and macOS provider-lando validation was manual QA or an explicit opt-in job. Beta PR CI now owns the broad multi-platform matrix documented above; nightly cron owns full provider-lando e2e on Linux x64; the weekly provider matrix owns advisory cross-engine coverage.
 
 ## Branch protection
 

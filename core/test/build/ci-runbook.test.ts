@@ -59,6 +59,11 @@ describe("ci runbook", () => {
     expect(runbook).toContain(
       "Actions > ci > provider-integration-linux-x64 > Artifacts > provider-integration-diagnostics-linux-x64",
     );
+    expect(runbook).toContain("Weekly provider matrix");
+    expect(runbook).toContain("The advisory `provider-matrix` workflow runs weekly");
+    expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
+    expect(runbook).toContain("provider-matrix-diagnostics-<cell>");
+    expect(runbook).toContain("not listed under branch protection");
   });
 
   test("links the runbook from README and pull request templates", async () => {

@@ -112,7 +112,8 @@ describe("@lando/core/testing package export", () => {
       expect(resolved.stderr).toBe("");
       expect(resolved.stdout).toContain("test\n");
       const resolvedPath = resolved.stdout.trimEnd().split("\n").at(-1);
-      if (resolvedPath === undefined) throw new Error("packed @lando/core/testing import did not print a path");
+      if (resolvedPath === undefined)
+        throw new Error("packed @lando/core/testing import did not print a path");
       const actualResolvedPath = await realpath(resolvedPath);
       const expectedResolvedPath = await realpath(join(extractDir, "package/src/testing/index.ts"));
       expect(actualResolvedPath).toBe(expectedResolvedPath);

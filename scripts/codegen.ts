@@ -49,13 +49,18 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "nightly-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-nightly-workflow.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "release-workflow",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-release-workflow.ts`],
     cwd: REPO_ROOT,
   },
   {
-    id: "nightly-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-nightly-workflow.ts`],
+    id: "provider-matrix-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-provider-matrix-workflow.ts`],
     cwd: REPO_ROOT,
   },
 ] satisfies ReadonlyArray<Generator>;
