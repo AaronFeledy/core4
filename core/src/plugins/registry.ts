@@ -37,24 +37,59 @@ const loadInstalledPluginManifest = async (packageRoot: string): Promise<PluginM
   return decoded.right;
 };
 
+const warnPluginDiscoveryFailure = (
+  logger: Context.Tag.Service<typeof Logger> | undefined,
+  source: Exclude<PluginSourceKind, "system">,
+  pluginName: string,
+  cause: PluginManifestError,
+): Effect.Effect<void> =>
+  logger === undefined
+    ? Effect.void
+    : logger
+        .warn(
+          `Plugin discovery from ${source} source failed for ${pluginName}; skipping that plugin. ${cause.message}`,
+        )
+        .pipe(Effect.catchAll(() => Effect.void));
+
 const discoverInstalledPlugins = (
   source: Exclude<PluginSourceKind, "system">,
   pluginsRoot: string,
-): Effect.Effect<ReadonlyArray<DiscoveredPlugin>, PluginManifestError> =>
+  logger: Context.Tag.Service<typeof Logger> | undefined,
+): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
   Effect.tryPromise({
-    try: async () => {
-      const registry = await readInstalledPluginRegistry(pluginsRoot);
-      const plugins: Array<DiscoveredPlugin> = [];
-      for (const entry of Object.values(registry)) {
-        plugins.push({ source, manifest: await loadInstalledPluginManifest(entry.path) });
-      }
-      return plugins;
-    },
-    catch: (cause) =>
-      cause instanceof PluginManifestError
-        ? cause
-        : pluginManifestError(`Failed to discover ${source} plugins from ${pluginsRoot}`, cause),
-  });
+    try: async () => readInstalledPluginRegistry(pluginsRoot),
+    catch: (cause) => pluginManifestError(`Failed to discover ${source} plugins from ${pluginsRoot}`, cause),
+  }).pipe(
+    Effect.flatMap((registry) =>
+      Effect.forEach(Object.values(registry), (entry) =>
+        Effect.tryPromise({
+          try: async () => ({ source, manifest: await loadInstalledPluginManifest(entry.path) }),
+          catch: (cause) =>
+            cause instanceof PluginManifestError
+              ? cause
+              : pluginManifestError(
+                  `Failed to discover ${source} plugin ${entry.name} from ${entry.path}`,
+                  cause,
+                ),
+        }).pipe(
+          Effect.map((plugin) => [plugin] as ReadonlyArray<DiscoveredPlugin>),
+          Effect.catchAll((cause) =>
+            Effect.as(
+              warnPluginDiscoveryFailure(logger, source, entry.name, cause),
+              [] as ReadonlyArray<DiscoveredPlugin>,
+            ),
+          ),
+        ),
+      ),
+    ),
+    Effect.map((plugins) => plugins.flat()),
+    Effect.catchAll((cause) =>
+      Effect.as(
+        warnPluginDiscoveryFailure(logger, source, "registry", cause),
+        [] as ReadonlyArray<DiscoveredPlugin>,
+      ),
+    ),
+  );
 
 const mergeDiscoveredPlugins = (
   sources: ReadonlyArray<ReadonlyArray<DiscoveredPlugin>>,
@@ -95,10 +130,12 @@ const makePluginRegistry = (
     const userPlugins =
       userDataRoot === undefined
         ? []
-        : yield* discoverInstalledPlugins("user", join(userDataRoot, "plugins"));
+        : yield* discoverInstalledPlugins("user", join(userDataRoot, "plugins"), logger);
     const appRoot = yield* Effect.promise(() => findAppRoot(process.cwd()));
     const appPlugins =
-      appRoot === undefined ? [] : yield* discoverInstalledPlugins("app", join(appRoot, ".lando", "plugins"));
+      appRoot === undefined
+        ? []
+        : yield* discoverInstalledPlugins("app", join(appRoot, ".lando", "plugins"), logger);
     return yield* mergeDiscoveredPlugins([systemPlugins, userPlugins, appPlugins], logger);
   });
 

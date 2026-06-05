@@ -54,7 +54,31 @@ const pluginRegistryTestLayer = (dataRoot: string | undefined) =>
 const runWithPluginRegistry = <A, E>(effect: Effect.Effect<A, E, PluginRegistry>) =>
   Effect.runPromise(effect.pipe(Effect.provide(pluginRegistryTestLayer(userDataRoot))));
 
-const writeInstalledPlugin = async (
+const writeInstalledPluginRegistry = async (
+  pluginsRoot: string,
+  entries: ReadonlyArray<{ readonly name: string; readonly version: string; readonly path: string }>,
+) => {
+  await mkdir(pluginsRoot, { recursive: true });
+  await writeFile(
+    join(pluginsRoot, "registry.json"),
+    `${JSON.stringify(
+      Object.fromEntries(
+        entries.map((entry) => [
+          entry.name,
+          {
+            name: entry.name,
+            version: entry.version,
+            path: entry.path,
+          },
+        ]),
+      ),
+      null,
+      2,
+    )}\n`,
+  );
+};
+
+const writeInstalledPluginPackage = async (
   pluginsRoot: string,
   plugin: { readonly name: string; readonly version: string; readonly description?: string },
 ) => {
@@ -79,21 +103,40 @@ const writeInstalledPlugin = async (
     )}\n`,
   );
   await writeFile(join(packageRoot, "index.js"), "export {};\n");
-  await mkdir(pluginsRoot, { recursive: true });
+  return packageRoot;
+};
+
+const writeInstalledPlugin = async (
+  pluginsRoot: string,
+  plugin: { readonly name: string; readonly version: string; readonly description?: string },
+) => {
+  const packageRoot = await writeInstalledPluginPackage(pluginsRoot, plugin);
+  await writeInstalledPluginRegistry(pluginsRoot, [{ ...plugin, path: packageRoot }]);
+};
+
+const writeInvalidInstalledPluginPackage = async (
+  pluginsRoot: string,
+  plugin: { readonly name: string; readonly version: string },
+) => {
+  const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
+  await mkdir(packageRoot, { recursive: true });
   await writeFile(
-    join(pluginsRoot, "registry.json"),
+    join(packageRoot, "package.json"),
     `${JSON.stringify(
       {
-        [plugin.name]: {
+        name: plugin.name,
+        version: plugin.version,
+        landoPlugin: {
           name: plugin.name,
           version: plugin.version,
-          path: packageRoot,
+          api: 3,
         },
       },
       null,
       2,
     )}\n`,
   );
+  return packageRoot;
 };
 
 beforeEach(async () => {
@@ -239,6 +282,46 @@ describe("PluginRegistryLive", () => {
     expect(warnings).toEqual([
       "Plugin @lando/provider-docker from user source overrides system source.",
       "Plugin @lando/provider-docker from app source overrides user source.",
+    ]);
+  });
+
+  test("keeps system and healthy plugins available when user discovery has an invalid manifest", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenUserPackageRoot = await writeInvalidInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/broken-user-plugin",
+      version: "1.0.0",
+    });
+    const healthyUserPackageRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/broken-user-plugin", version: "1.0.0", path: brokenUserPackageRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyUserPackageRoot },
+    ]);
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@example/healthy-app-plugin",
+      version: "2.3.0",
+      description: "healthy app source",
+    });
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.map((manifest) => String(manifest.name))).toContain("@lando/provider-lando");
+    expect(manifests.find((manifest) => manifest.name === "@example/broken-user-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-app-plugin")).toMatchObject({
+      version: "2.3.0",
+      description: "healthy app source",
+    });
+    expect(warnings).toEqual([
+      expect.stringContaining("Plugin discovery from user source failed for @example/broken-user-plugin"),
     ]);
   });
 
