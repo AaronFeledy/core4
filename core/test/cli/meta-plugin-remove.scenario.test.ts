@@ -187,6 +187,26 @@ describe("meta:plugin:remove command", () => {
     }
   });
 
+  test("rejects the reserved registry.json name before removing the managed registry", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const registryPath = join(pluginsRoot, "registry.json");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(registryPath, '{"@lando/plugin-php":{"name":"@lando/plugin-php"}}');
+
+    const exit = await Effect.runPromiseExit(
+      pluginRemove({ name: "registry.json" }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(registryPath)).toBe(true);
+    expect(await Bun.file(registryPath).text()).toBe('{"@lando/plugin-php":{"name":"@lando/plugin-php"}}');
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("reserved");
+      expect(cause).toContain("managed plugins root");
+    }
+  });
+
   test("removes an installed plugin and clears it from the trust store", async () => {
     const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
     await mkdir(pluginDir, { recursive: true });

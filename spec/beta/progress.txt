@@ -1106,3 +1106,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The per-user plugin registry lives at `<userDataRoot>/plugins/registry.json` and is updated via write-temp-then-rename; keep plugin install/remove registry updates in the command seams until broader user/system/app discovery lands.
   - `meta:plugin:remove` only checks the active Landofile (`cwd` upward) for `plugins:` references today; broader known-app reference indexes do not exist yet.
 ---
+
+## [2026-06-04 22:40 CDT] - US-166 Review
+- Reviewed `meta:plugin:remove` against PRD-B-11. Fixed an in-scope guard gap: this story introduces `registry.json` as a managed plugins-root file, but it was missing from `RESERVED_PLUGIN_ROOT_NAMES`, so `lando plugin:remove registry.json` would pass the name grammar and delete the per-user registry via the versioned-dir cleanup. Added `registry.json` to the reserved set (mirroring the US-165 `package.json`/lockfile guard) and a scenario test asserting the registry is preserved.
+- Review notes (rejected/deferred): left `removeInstalledPlugin` gated behind `removed === true` as-is — pruning a registry entry whose on-disk dir was manually deleted is an inconsistent-state edge case the no-op path correctly reports, not a story blocker.
+- Verification: typecheck, lint, focused plugin-remove scenario suite (12 pass) passed.
+---

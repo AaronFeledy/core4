@@ -21,6 +21,7 @@ const RESERVED_PLUGIN_ROOT_NAMES = new Set([
   "package.json",
   "package-lock.json",
   "bun.lockb",
+  "registry.json",
 ]);
 
 export interface PluginRemoveSpawner {
