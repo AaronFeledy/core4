@@ -308,6 +308,7 @@ jobs:
           test -f dist/lando
           ./dist/lando --version
           ./dist/lando --help
+          ./dist/lando shellenv
 
       - name: Upload darwin-arm64 binary
         if: always()
@@ -316,7 +317,7 @@ jobs:
           name: lando-darwin-arm64
           path: dist/lando
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Report job timing
         if: always()
@@ -355,6 +356,7 @@ jobs:
           test -f dist/lando
           ./dist/lando --version
           ./dist/lando --help
+          ./dist/lando shellenv
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -363,7 +365,7 @@ jobs:
           name: lando-darwin-x64
           path: dist/lando
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Report job timing
         if: always()
@@ -402,6 +404,7 @@ jobs:
           test -f dist/lando
           ./dist/lando --version
           ./dist/lando --help
+          ./dist/lando shellenv
 
       - name: Upload linux-arm64 binary
         if: always()
@@ -410,7 +413,7 @@ jobs:
           name: lando-linux-arm64
           path: dist/lando
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Report job timing
         if: always()
@@ -449,6 +452,7 @@ jobs:
           test -f dist/lando
           ./dist/lando --version
           ./dist/lando --help
+          ./dist/lando shellenv
 
       - name: Upload linux-x64 binary
         if: always()
@@ -457,7 +461,7 @@ jobs:
           name: lando-linux-x64
           path: dist/lando
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Report job timing
         if: always()
@@ -496,6 +500,7 @@ jobs:
           test -f dist/lando.exe
           ./dist/lando.exe --version
           ./dist/lando.exe --help
+          ./dist/lando.exe shellenv
 
       - name: Upload win32-x64 binary
         if: always()
@@ -504,7 +509,7 @@ jobs:
           name: lando-win32-x64
           path: dist/lando.exe
           if-no-files-found: ignore
-          retention-days: 7
+          retention-days: 14
 
       - name: Report job timing
         if: always()
