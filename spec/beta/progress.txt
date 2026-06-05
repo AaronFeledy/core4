@@ -1127,3 +1127,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - When promoting a deferred CLI command, remove it from `DEFERRED_COMMAND_PLANS` and the deferred fixture, add it to `MVP_COMMAND_IDS`, wire the compiled `run.ts` branch, regenerate the OCLIF manifest, and repoint tests that used that command as a generic NotImplemented probe.
   - `PluginTrustStoreLive` is intentionally file-backed and total at layer construction; tests that need an isolated trust file should inject `makePluginTrustStore(<tmp>/plugin-trust.yml)` directly.
 ---
+
+## 2026-06-05 01:40 CDT - Babysit
+- PR: #293 https://github.com/AaronFeledy/core4/pull/293
+- CI outcome: pass (Cursor Bugbot NEUTRAL/skipping; no other checks)
+- Review feedback: rejected (Bugbot's 3 findings reviewed older commit af8203b; HEAD fb5ca11 already fixes authoring-root trust + rollback session-trust cleanup, and postinstall script execution is RC-deferred per Beta PRD — no changes needed)
+- Merge: merged (squash)
+---
