@@ -105,29 +105,10 @@ describe("meta:plugin:remove command", () => {
     expect(renderPluginRemoveResult(result)).toContain("not-installed");
   });
 
-  test("rejects path-traversal names before touching disk", async () => {
+  test("rejects path-traversal names before invoking removal or touching disk", async () => {
     const sentinel = join(userDataRoot, "DO_NOT_DELETE.txt");
     await writeFile(sentinel, "sentinel");
 
-    let removeCalled = false;
-    const spawner = {
-      uninstall: async () => {
-        removeCalled = true;
-        return { exitCode: 0, stderr: "" };
-      },
-    };
-    const result = await Effect.runPromiseExit(
-      pluginRemove({
-        name: "../../../../etc",
-        spawner,
-      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-    );
-    expect(result._tag).toBe("Failure");
-    expect(removeCalled).toBe(false);
-    expect(await Bun.file(sentinel).text()).toBe("sentinel");
-  });
-
-  test("rejects path-traversal names before invoking `bun remove` or `fs.rm`", async () => {
     let spawnerCalled = false;
     const spawner = {
       uninstall: async () => {
@@ -136,10 +117,13 @@ describe("meta:plugin:remove command", () => {
       },
     };
     const exit = await Effect.runPromiseExit(
-      pluginRemove({ name: "../../escape", spawner }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      pluginRemove({ name: "../../../../etc", spawner }).pipe(
+        Effect.provide(fakeConfigService(userDataRoot)),
+      ),
     );
     expect(exit._tag).toBe("Failure");
     expect(spawnerCalled).toBe(false);
+    expect(await Bun.file(sentinel).text()).toBe("sentinel");
   });
 
   test("rejects npm-illegal characters (semicolons, slashes) in plugin names", async () => {
@@ -316,7 +300,7 @@ describe("meta:plugin:remove command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
 
-  test("updates the managed plugin root package manifest atomically", async () => {
+  test("updates the managed plugin root package manifest", async () => {
     const pluginsRoot = join(userDataRoot, "plugins");
     const pluginDir = join(pluginsRoot, "node_modules", "@lando/plugin-php");
     const manifestPath = join(pluginsRoot, "package.json");

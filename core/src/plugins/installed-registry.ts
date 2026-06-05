@@ -10,8 +10,7 @@ export interface InstalledPluginRegistryEntry {
 
 export type InstalledPluginRegistry = Readonly<Record<string, InstalledPluginRegistryEntry>>;
 
-export const installedPluginRegistryPath = (pluginsRoot: string): string =>
-  join(pluginsRoot, "registry.json");
+const installedPluginRegistryPath = (pluginsRoot: string): string => join(pluginsRoot, "registry.json");
 
 export const readInstalledPluginRegistry = async (pluginsRoot: string): Promise<InstalledPluginRegistry> => {
   const path = installedPluginRegistryPath(pluginsRoot);
