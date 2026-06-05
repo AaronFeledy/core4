@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
+import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import { removeInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { parseNpmPackageSpec } from "../../recipes/npm-source.ts";
@@ -35,6 +36,7 @@ export interface PluginRemoveSpawner {
 export interface PluginRemoveOptions {
   readonly name: string;
   readonly userDataRoot?: string;
+  readonly cacheRoot?: string;
   readonly pluginsRoot?: string;
   readonly cwd?: string;
   readonly spawner?: PluginRemoveSpawner;
@@ -291,6 +293,9 @@ export const pluginRemove = (
     const hasVersionedDir = existsSync(versionedDir);
     if (!hasModuleDir && !hasVersionedDir) {
       yield* Effect.promise(() => removeInstalledPlugin(pluginsRoot, options.name));
+      yield* invalidatePluginCommandCache({
+        ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+      });
       return { pluginName: options.name, removed: false };
     }
 
@@ -324,6 +329,9 @@ export const pluginRemove = (
 
     const trustStore = options.trustStore;
     if (trustStore !== undefined) trustStore.delete(options.name);
+    yield* invalidatePluginCommandCache({
+      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
+    });
     return { pluginName: options.name, removed: true };
   });
 

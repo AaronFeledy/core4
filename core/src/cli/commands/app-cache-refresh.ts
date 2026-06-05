@@ -20,12 +20,14 @@ import type {
   LandofileValidationError,
   NoProviderInstalledError,
   NotImplementedError,
+  PluginManifestError,
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import {
   AppPlanner,
   LandofileService,
+  PluginRegistry,
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -62,6 +64,7 @@ type AppCacheRefreshError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | NotImplementedError
+  | PluginManifestError
   | CapabilityError
   | CacheError
   | LandoCommandError
@@ -70,7 +73,7 @@ type AppCacheRefreshError =
   | ProviderError
   | ProviderUnavailableError;
 
-type AppCacheRefreshServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
+type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | RuntimeProviderRegistry;
 
 export const renderAppCacheRefreshResult = (result: AppCacheRefreshResult): string =>
   `refreshed: ${result.app} (${result.commandsCompiled} command${result.commandsCompiled === 1 ? "" : "s"})`;
@@ -89,6 +92,7 @@ export const refreshAppCache = (
 ): Effect.Effect<AppCacheRefreshResult, AppCacheRefreshError, AppCacheRefreshServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
+    const pluginRegistry = yield* PluginRegistry;
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
 
@@ -107,6 +111,7 @@ export const refreshAppCache = (
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
     const pluginCachePath = yield* writePluginCommandCacheStrict({
+      manifests: yield* pluginRegistry.list,
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
 

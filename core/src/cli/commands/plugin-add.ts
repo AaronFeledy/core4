@@ -14,6 +14,7 @@ import {
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
+import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { publish } from "../../recipes/git-source.ts";
 import {
@@ -61,6 +62,7 @@ export interface PluginAddOptions {
   readonly nonInteractive?: boolean;
   readonly pluginsRoot?: string;
   readonly userDataRoot?: string;
+  readonly cacheRoot?: string;
   readonly spawner?: PluginAddSpawner;
   readonly registryUrl?: string;
   readonly registryClient?: NpmRegistryClient;
@@ -487,6 +489,10 @@ export const pluginAdd = (
         }
         throw cause;
       }
+    });
+
+    yield* invalidatePluginCommandCache({
+      ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
 
     return {
