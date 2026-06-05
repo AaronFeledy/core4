@@ -112,9 +112,12 @@ describe("@lando/core public package entry points", () => {
 
   test("embedding documentation names every published library entry point", async () => {
     const docs = await Bun.file(resolve(repoRoot, "docs/embedding.md")).text();
+    const documentedEntryPoints = new Set(
+      [...docs.matchAll(/^\|\s*`([^`]+)`\s*\|/gm)].map(([, specifier]) => specifier),
+    );
 
     for (const entry of publishedEntryPoints) {
-      expect(docs).toContain(entry.specifier);
+      expect(documentedEntryPoints).toContain(entry.specifier);
     }
   });
 });
