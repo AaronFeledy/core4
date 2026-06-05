@@ -93,7 +93,8 @@ const timingStartStep = `      - name: Mark job start
 
 const timingNoticeStep = (label: string, timeoutMinutes: number): string => `      - name: Report job timing
         if: always()
-        run: echo "::notice title=ci-timing::${label} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: ${timeoutMinutes}m)"`;
+        run: |
+          echo "::notice title=ci-timing::${label} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: ${timeoutMinutes}m)"`;
 
 const setupBunSteps = `      - name: Setup Bun
         uses: oven-sh/setup-bun@v2
