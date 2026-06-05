@@ -23,8 +23,13 @@
  */
 import { Effect, Layer } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
-import { CommandRegistry, LandofileService, type RegisteredCommand } from "@lando/sdk/services";
+import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
+import {
+  CommandRegistry,
+  LandofileService,
+  PluginRegistry,
+  type RegisteredCommand,
+} from "@lando/sdk/services";
 
 import { compileAppCommands } from "../cache/command-compiler.ts";
 import {
@@ -55,16 +60,24 @@ const toRegisteredCommands = (entries: ReadonlyArray<CommandIndexEntry>): Readon
 const writeCachesForLandofile = (
   landofile: LandofileShape,
   entries: ReadonlyArray<CommandIndexEntry>,
+  pluginManifests?: ReadonlyArray<PluginManifest>,
 ): Effect.Effect<void, never> =>
-  Effect.all([writeAppCommandCache({ landofile, entries }), writePluginCommandCache()], {
-    concurrency: 2,
-    discard: true,
-  });
+  Effect.all(
+    [
+      writeAppCommandCache({ landofile, entries }),
+      writePluginCommandCache(pluginManifests === undefined ? {} : { manifests: pluginManifests }),
+    ],
+    {
+      concurrency: 2,
+      discard: true,
+    },
+  );
 
 export const CommandRegistryLive = Layer.effect(
   CommandRegistry,
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
+    const pluginRegistryOption = yield* Effect.serviceOption(PluginRegistry);
     return {
       list: Effect.gen(function* () {
         const cached = yield* readFreshAppCommandCacheForCwd().pipe(
@@ -75,7 +88,11 @@ export const CommandRegistryLive = Layer.effect(
         const landofile = yield* landofileService.discover;
         const scripts = yield* discoverScriptsForCwd(process.cwd());
         const entries = compileAppCommands(landofile, scripts);
-        yield* writeCachesForLandofile(landofile, entries);
+        const pluginManifests =
+          pluginRegistryOption._tag === "Some"
+            ? yield* pluginRegistryOption.value.list.pipe(Effect.catchAll(() => Effect.succeed(undefined)))
+            : undefined;
+        yield* writeCachesForLandofile(landofile, entries, pluginManifests);
         return toRegisteredCommands(entries);
       }).pipe(
         Effect.catchAllCause(() =>

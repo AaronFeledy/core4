@@ -7,6 +7,7 @@ import { Effect, Layer } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
+import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
 import { pluginRemove, renderPluginRemoveResult } from "../../src/cli/commands/plugin-remove.ts";
 import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
@@ -209,6 +210,58 @@ describe("meta:plugin:remove command", () => {
     );
     expect(result.removed).toBe(true);
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
+  });
+
+  test("invalidates the plugin-command cache after removing a plugin", async () => {
+    const pluginDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
+    await mkdir(pluginDir, { recursive: true });
+    await writeFile(join(pluginDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-cache-"));
+    try {
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+
+      await Effect.runPromise(
+        pluginRemove({
+          name: "@lando/plugin-php",
+          spawner: { uninstall: async () => ({ exitCode: 0, stderr: "" }) },
+          cacheRoot,
+        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+      );
+
+      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("invalidates the plugin-command cache when reconciling a stale missing plugin", async () => {
+    const pluginsRoot = join(userDataRoot, "plugins");
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify({
+        "@lando/plugin-php": {
+          name: "@lando/plugin-php",
+          version: "1.2.3",
+          path: join(pluginsRoot, "@lando/plugin-php", "1.2.3"),
+        },
+      })}\n`,
+    );
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-remove-cache-"));
+    try {
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+
+      const result = await Effect.runPromise(
+        pluginRemove({ name: "@lando/plugin-php", cacheRoot }).pipe(
+          Effect.provide(fakeConfigService(userDataRoot)),
+        ),
+      );
+
+      expect(result.removed).toBe(false);
+      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
   });
 
   test("does not overwrite a corrupt installed registry during removal", async () => {

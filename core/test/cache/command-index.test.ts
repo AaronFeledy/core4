@@ -92,6 +92,11 @@ describe("encodePluginCommandIndex / decodePluginCommandIndex", () => {
       schemaVersion: Number(COMMAND_INDEX_SCHEMA_VERSION),
       landoVersion: "0.0.0",
       pluginNames: ["@lando/provider-lando", "@lando/service-lando"],
+      pluginListSha: "a".repeat(64),
+      commandsByPlugin: {
+        "@lando/provider-lando": ["meta:setup"],
+        "@lando/service-lando": ["meta:service:list"],
+      },
       generatedAtMs: 1_700_000_000_000,
       entries: [
         { id: "meta:plugin:add", summary: "", hidden: false },

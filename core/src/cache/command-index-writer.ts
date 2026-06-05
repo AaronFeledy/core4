@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { readFile, readdir, stat } from "node:fs/promises";
+import { readFile, readdir, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
 
 import { Effect } from "effect";
@@ -20,7 +20,9 @@ import {
   decodePluginCommandIndex,
   deriveAppCommandEntriesFingerprint,
   deriveAppCommandToolingFingerprint,
+  derivePluginCommandIdsByPlugin,
   derivePluginCommandManifestFingerprint,
+  derivePluginCommandPluginListSha,
   encodeAppCommandIndex,
   encodePluginCommandIndex,
 } from "./command-index.ts";
@@ -227,6 +229,8 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = pluginCommandCachePath(cacheRoot);
   const manifestFingerprint = derivePluginCommandManifestFingerprint(manifests);
+  const pluginListSha = derivePluginCommandPluginListSha(manifests);
+  const commandsByPlugin = derivePluginCommandIdsByPlugin(manifests);
 
   const cached = await readPluginCommandCacheTask({ ...options, cacheRoot, manifestFingerprint });
   if (cached !== null) return cachePath;
@@ -236,6 +240,8 @@ const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptio
     landoVersion: CORE_VERSION,
     pluginNames,
     manifestFingerprint,
+    pluginListSha,
+    commandsByPlugin,
     generatedAtMs: (options.now ?? Date.now)(),
     entries: compilePluginCommands(manifests),
   };
@@ -326,6 +332,8 @@ const readPluginCommandCacheTask = async (
   const manifests = options.manifests ?? BUNDLED_PLUGINS.map((plugin) => plugin.manifest);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = pluginCommandCachePath(cacheRoot);
+  const pluginListSha = derivePluginCommandPluginListSha(manifests);
+  const commandsByPlugin = derivePluginCommandIdsByPlugin(manifests);
 
   try {
     const payload = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
@@ -337,6 +345,8 @@ const readPluginCommandCacheTask = async (
     ) {
       return null;
     }
+    if (payload.pluginListSha !== pluginListSha) return null;
+    if (JSON.stringify(payload.commandsByPlugin) !== JSON.stringify(commandsByPlugin)) return null;
     return payload;
   } catch (cause) {
     if (isMissingFile(cause)) return null;
@@ -420,3 +430,11 @@ export const writePluginCommandCache = (
   options: WritePluginCommandCacheOptions = {},
 ): Effect.Effect<string | undefined, never> =>
   writePluginCommandCacheStrict(options).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+
+export const invalidatePluginCommandCache = (
+  options: { readonly cacheRoot?: string } = {},
+): Effect.Effect<void, never> =>
+  Effect.promise(async () => {
+    const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
+    await rm(pluginCommandCachePath(cacheRoot), { force: true });
+  }).pipe(Effect.catchAll(() => Effect.void));

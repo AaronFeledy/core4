@@ -7,6 +7,7 @@ import { Effect, Layer } from "effect";
 
 import { PluginTrustStore } from "@lando/sdk/services";
 
+import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,
@@ -41,6 +42,21 @@ describe("meta:plugin:trust commands", () => {
 
     const store = await Effect.runPromise(PluginTrustStore.pipe(Effect.provide(trustLayer(userConfRoot))));
     expect(await Effect.runPromise(store.isPluginTrusted("@lando/plugin-php"))).toBe(true);
+  });
+
+  test("invalidates the plugin-command cache after trusting a plugin", async () => {
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-trust-cache-"));
+    try {
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+
+      await Effect.runPromise(
+        pluginTrust({ name: "@lando/plugin-php", cacheRoot }).pipe(Effect.provide(trustLayer(userConfRoot))),
+      );
+
+      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
   });
 
   test("rejects relative authoring roots and persists absolute roots", async () => {

@@ -37,6 +37,8 @@ export interface PluginCommandIndexPayload {
   readonly schemaVersion: number;
   readonly landoVersion: string;
   readonly pluginNames: ReadonlyArray<string>;
+  readonly pluginListSha?: string;
+  readonly commandsByPlugin?: Readonly<Record<string, ReadonlyArray<string>>>;
   readonly manifestFingerprint?: string;
   readonly generatedAtMs: number;
   readonly entries: ReadonlyArray<CommandIndexEntry>;
@@ -73,6 +75,28 @@ export const derivePluginCommandManifestFingerprint = (manifests: ReadonlyArray<
     manifests
       .map(normalizeManifest)
       .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api),
+  );
+
+export const derivePluginCommandPluginListSha = (manifests: ReadonlyArray<PluginManifest>): string =>
+  stableFingerprint(
+    manifests
+      .map((manifest) => ({ name: manifest.name, version: manifest.version, api: manifest.api }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version) || a.api - b.api),
+  );
+
+export const derivePluginCommandIdsByPlugin = (
+  manifests: ReadonlyArray<PluginManifest>,
+): Readonly<Record<string, ReadonlyArray<string>>> =>
+  Object.fromEntries(
+    manifests
+      .map(
+        (manifest) =>
+          [
+            manifest.name,
+            [...(manifest.contributes?.commands ?? [])].sort((a, b) => a.localeCompare(b)),
+          ] as const,
+      )
+      .sort(([a], [b]) => a.localeCompare(b)),
   );
 
 export const deriveAppCommandToolingFingerprint = (landofile: LandofileShape): string =>
