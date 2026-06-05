@@ -119,20 +119,6 @@ export const pluginRemove = (
         }),
       );
     }
-    if (existsSync(moduleDir)) {
-      const spawner = options.spawner ?? defaultSpawner;
-      const { exitCode, stderr } = yield* Effect.promise(() =>
-        spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
-      );
-      if (exitCode !== 0) {
-        return yield* Effect.fail(removeFailure(options.name, stderr));
-      }
-      yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
-      const trustStore = options.trustStore;
-      if (trustStore !== undefined) trustStore.delete(options.name);
-      return { pluginName: options.name, removed: true };
-    }
-
     const versionedDir = resolve(pluginsRoot, options.name);
     const versionedRel = relative(pluginsRoot, versionedDir);
     if (
@@ -148,10 +134,27 @@ export const pluginRemove = (
         }),
       );
     }
-    if (!existsSync(versionedDir)) {
+
+    let removed = false;
+    if (existsSync(moduleDir)) {
+      const spawner = options.spawner ?? defaultSpawner;
+      const { exitCode, stderr } = yield* Effect.promise(() =>
+        spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
+      );
+      if (exitCode !== 0) {
+        return yield* Effect.fail(removeFailure(options.name, stderr));
+      }
+      yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+      removed = true;
+    }
+    if (existsSync(versionedDir)) {
+      yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
+      removed = true;
+    }
+    if (!removed) {
       return { pluginName: options.name, removed: false };
     }
-    yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
+
     const trustStore = options.trustStore;
     if (trustStore !== undefined) trustStore.delete(options.name);
     return { pluginName: options.name, removed: true };

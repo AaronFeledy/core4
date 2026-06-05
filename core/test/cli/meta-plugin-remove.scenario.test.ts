@@ -199,4 +199,50 @@ describe("meta:plugin:remove command", () => {
     expect(await exists(versionedDir)).toBe(false);
     expect(trustStore.has("@lando/plugin-php")).toBe(false);
   });
+
+  test("removes both layouts when both exist", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-php",
+        version: "1.2.3",
+        landoPlugin: {
+          name: "@lando/plugin-php",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "module.exports = {};\n",
+    });
+    const trustStore = new Set<string>(["@lando/plugin-php"]);
+    const installResult = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), []),
+        fetcher: fetcherFor(bytes, []),
+        trustStore,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    const versionedDir = installResult.entry;
+    const nodeModulesDir = join(userDataRoot, "plugins", "node_modules", "@lando/plugin-php");
+    await mkdir(nodeModulesDir, { recursive: true });
+    await writeFile(join(nodeModulesDir, "package.json"), `{"name":"@lando/plugin-php"}`);
+
+    const spawner = {
+      uninstall: async () => ({ exitCode: 0, stderr: "" }),
+    };
+    const result = await Effect.runPromise(
+      pluginRemove({
+        name: "@lando/plugin-php",
+        spawner,
+        trustStore,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.removed).toBe(true);
+    expect(await exists(versionedDir)).toBe(false);
+    expect(await exists(nodeModulesDir)).toBe(false);
+    expect(trustStore.has("@lando/plugin-php")).toBe(false);
+  });
 });
