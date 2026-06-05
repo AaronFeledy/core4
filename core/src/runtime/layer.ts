@@ -18,7 +18,7 @@
 import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { AbsolutePath, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, EmbeddingPluginPolicy, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type CacheService,
@@ -43,7 +43,7 @@ import { CacheServiceLive } from "../cache/service.ts";
 import { GlobalAppServiceLive } from "../global-app/service.ts";
 import { LandofileServiceLive } from "../landofile/service.ts";
 import { LoggerLive, type LoggerMode } from "../logging/service.ts";
-import { PluginRegistryLive } from "../plugins/registry.ts";
+import { makePluginRegistryLive } from "../plugins/registry.ts";
 import { PluginTrustStoreLive } from "../plugins/trust-store.ts";
 import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
 import { ScratchRegistryLive } from "../scratch-app/registry.ts";
@@ -66,30 +66,22 @@ import { BootstrapLevel } from "./bootstrap.ts";
 // - signal handlers: not installed (CLI: installed)
 // - bootstrap: required option (CLI: declared per command)
 
-/** Plugin discovery toggles for embedding hosts. */
-export const EmbeddingDiscoveryPolicy = Schema.Struct({
+const RuntimePluginDiscoveryOptions = Schema.Struct({
   bundled: Schema.optional(Schema.Boolean),
   system: Schema.optional(Schema.Boolean),
   user: Schema.optional(Schema.Boolean),
   app: Schema.optional(Schema.Boolean),
 });
 
-/**
- * Plugin policy for embedding hosts.
- *
- * The runtime treats `layers`, `manifests`, and discovered plugins as one
- * contribution graph subject to selection precedence and conflict rules.
- */
-export const EmbeddingPluginPolicy = Schema.Struct({
-  /** Direct Effect Layers. Each must satisfy one or more pluggable abstractions. */
+const RuntimePluginOptions = Schema.Struct({
+  policy: Schema.optional(EmbeddingPluginPolicy),
   layers: Schema.optional(Schema.Array(Schema.Unknown)),
-  /** Pre-resolved plugin manifests and entry modules. */
   manifests: Schema.optional(Schema.Array(Schema.Unknown)),
-  /** Opt into the standard discovery chain. Defaults are `false` in library mode and `true` in CLI mode. */
-  discovery: Schema.optional(EmbeddingDiscoveryPolicy),
-  /** Force-disable plugins by name regardless of source. */
+  discovery: Schema.optional(RuntimePluginDiscoveryOptions),
+  externalImports: Schema.optional(Schema.Boolean),
   disable: Schema.optional(Schema.Array(Schema.String)),
 });
+type RuntimePluginOptions = typeof RuntimePluginOptions.Type;
 
 const GlobalConfigOverrides = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
@@ -110,7 +102,7 @@ export const LandoRuntimeOptions = Schema.Struct({
   /** Working directory for Landofile discovery. Required if bootstrap >= "app". */
   cwd: Schema.optional(Schema.String),
   /** Plugin source policy. Default: host-provided only. */
-  plugins: Schema.optional(EmbeddingPluginPolicy),
+  plugins: Schema.optional(RuntimePluginOptions),
   /** Inline overrides applied after global config + env, before Landofile. */
   config: Schema.optional(GlobalConfigOverrides),
   /** Renderer/logger preset shortcuts. */
@@ -210,9 +202,8 @@ const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
 };
 
 const collectEmbeddingPluginLayers = (
-  options: LandoRuntimeOptions,
+  entries: ReadonlyArray<unknown>,
 ): Either.Either<ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>, LandoRuntimeBootstrapError> => {
-  const entries = options.plugins?.layers ?? [];
   const layers: Layer.Layer<unknown, unknown, unknown>[] = [];
   for (let index = 0; index < entries.length; index++) {
     const entry = entries[index];
@@ -229,6 +220,37 @@ const collectEmbeddingPluginLayers = (
   return Either.right(layers);
 };
 
+interface NormalizedPluginPolicy {
+  readonly layers: ReadonlyArray<unknown>;
+  readonly discovery: {
+    readonly bundled: boolean;
+    readonly user: boolean;
+    readonly app: boolean;
+    readonly disable: ReadonlyArray<string>;
+  };
+}
+
+const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined): NormalizedPluginPolicy => {
+  const rawPolicy = plugins?.policy;
+  const policy =
+    rawPolicy === undefined ? undefined : typeof rawPolicy === "string" ? { mode: rawPolicy } : rawPolicy;
+  const mode =
+    policy?.mode ??
+    (policy?.discovery === undefined && plugins?.discovery === undefined ? "explicit" : "discovery");
+  const discovery = policy?.discovery ?? plugins?.discovery;
+  const disables = [...(plugins?.disable ?? []), ...(policy?.disable ?? [])];
+
+  return {
+    layers: policy?.layers ?? plugins?.layers ?? [],
+    discovery: {
+      bundled: mode === "bundled-only" || mode === "discovery" ? (discovery?.bundled ?? true) : false,
+      user: mode === "discovery" ? (discovery?.user ?? true) : false,
+      app: mode === "discovery" ? (discovery?.app ?? true) : false,
+      disable: disables,
+    },
+  };
+};
+
 const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
   Layer.mergeAll(
     LoggerLive({ mode: loggerMode }),
@@ -239,9 +261,11 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
     SecretStoreLive,
   );
 
-const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
+const makeProviderRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
-  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
+    Layer.provide(minimalRuntimeLive),
+  );
   const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
     Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, EventServiceLive)),
   );
@@ -256,9 +280,11 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   );
 };
 
-const makeToolingRuntimeLive = (loggerMode: LoggerMode) => {
+const makeToolingRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
-  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
+    Layer.provide(minimalRuntimeLive),
+  );
   return Layer.mergeAll(
     minimalRuntimeLive,
     pluginRegistryLive,
@@ -267,21 +293,25 @@ const makeToolingRuntimeLive = (loggerMode: LoggerMode) => {
   );
 };
 
-const makeGlobalRuntimeLive = (loggerMode: LoggerMode) => {
+const makeGlobalRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
-  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
+    Layer.provide(minimalRuntimeLive),
+  );
   return Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode),
+    makeProviderRuntimeLive(loggerMode, pluginPolicy),
     AppPlannerLive.pipe(
       Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
     ),
   );
 };
 
-const makeScratchRuntimeLive = (loggerMode: LoggerMode) => {
-  const providerBase = makeProviderRuntimeLive(loggerMode);
+const makeScratchRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
+  const providerBase = makeProviderRuntimeLive(loggerMode, pluginPolicy);
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
-  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
+    Layer.provide(minimalRuntimeLive),
+  );
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
@@ -302,11 +332,13 @@ const makeScratchRuntimeLive = (loggerMode: LoggerMode) => {
   );
 };
 
-const makeAppRuntimeLive = (loggerMode: LoggerMode) => {
+const makeAppRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
-  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
+    Layer.provide(minimalRuntimeLive),
+  );
   return Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode),
+    makeProviderRuntimeLive(loggerMode, pluginPolicy),
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
     AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive))),
@@ -315,7 +347,11 @@ const makeAppRuntimeLive = (loggerMode: LoggerMode) => {
   );
 };
 
-const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {
+const runtimeLayerFor = (
+  bootstrap: BootstrapLevel,
+  loggerMode: LoggerMode,
+  pluginPolicy: NormalizedPluginPolicy,
+): RuntimeLayer => {
   switch (bootstrap) {
     case "none":
       return Layer.empty;
@@ -324,15 +360,15 @@ const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): Run
     case "commands":
       return makeMinimalRuntimeLive(loggerMode);
     case "tooling":
-      return makeToolingRuntimeLive(loggerMode);
+      return makeToolingRuntimeLive(loggerMode, pluginPolicy);
     case "provider":
-      return makeProviderRuntimeLive(loggerMode);
+      return makeProviderRuntimeLive(loggerMode, pluginPolicy);
     case "global":
-      return makeGlobalRuntimeLive(loggerMode);
+      return makeGlobalRuntimeLive(loggerMode, pluginPolicy);
     case "scratch":
-      return makeScratchRuntimeLive(loggerMode);
+      return makeScratchRuntimeLive(loggerMode, pluginPolicy);
     case "app":
-      return makeAppRuntimeLive(loggerMode);
+      return makeAppRuntimeLive(loggerMode, pluginPolicy);
   }
 };
 
@@ -349,30 +385,28 @@ const bootstrapError = (message: string, cause: unknown): LandoRuntimeBootstrapE
  * Builds the runtime layer for the requested bootstrap depth. This factory
  * owns composition and option validation only.
  */
-export function makeLandoRuntime(options: { readonly bootstrap: "minimal" }): Layer.Layer<
-  MinimalRuntimeServices,
-  LandoRuntimeBootstrapError
->;
-export function makeLandoRuntime(options: { readonly bootstrap: "tooling" }): Layer.Layer<
-  ToolingRuntimeServices,
-  LandoRuntimeBootstrapError
->;
-export function makeLandoRuntime(options: { readonly bootstrap: "provider" }): Layer.Layer<
-  ProviderRuntimeServices,
-  LandoRuntimeBootstrapError
->;
-export function makeLandoRuntime(options: { readonly bootstrap: "global" }): Layer.Layer<
-  GlobalRuntimeServices,
-  LandoRuntimeBootstrapError
->;
-export function makeLandoRuntime(options: { readonly bootstrap: "scratch" }): Layer.Layer<
-  ScratchRuntimeServices,
-  LandoRuntimeBootstrapError
->;
-export function makeLandoRuntime(options: { readonly bootstrap: "app" }): Layer.Layer<
-  AppRuntimeServices,
-  LandoRuntimeBootstrapError
->;
+type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOptions & {
+  readonly bootstrap: TBootstrap;
+};
+
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"minimal">,
+): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"tooling">,
+): Layer.Layer<ToolingRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"provider">,
+): Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"global">,
+): Layer.Layer<GlobalRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"scratch">,
+): Layer.Layer<ScratchRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"app">,
+): Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);
@@ -381,11 +415,13 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     return Layer.fail(bootstrapError("Invalid Lando runtime options.", decoded.left));
   }
 
+  const pluginPolicy = normalizePluginPolicy(decoded.right.plugins);
   const baseLayer = runtimeLayerFor(
     decoded.right.bootstrap ?? "app",
     decoded.right.logger === "pretty" ? "pretty" : "silent",
+    pluginPolicy,
   );
-  const hostLayersResult = collectEmbeddingPluginLayers(decoded.right);
+  const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);
 
   if (Either.isLeft(hostLayersResult)) {
     return Layer.fail(hostLayersResult.left);

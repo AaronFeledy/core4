@@ -13,6 +13,13 @@ import { readInstalledPluginRegistry } from "./installed-registry.ts";
 
 type PluginSourceKind = "system" | "user" | "app";
 
+interface PluginRegistryDiscoveryOptions {
+  readonly bundled?: boolean;
+  readonly user?: boolean;
+  readonly app?: boolean;
+  readonly disable?: ReadonlyArray<string>;
+}
+
 interface DiscoveredPlugin {
   readonly source: PluginSourceKind;
   readonly manifest: PluginManifest;
@@ -121,22 +128,30 @@ const systemPlugins: ReadonlyArray<DiscoveredPlugin> = BUNDLED_PLUGINS.map((plug
 const makePluginRegistry = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   logger: Context.Tag.Service<typeof Logger> | undefined,
+  discovery: PluginRegistryDiscoveryOptions,
 ): Context.Tag.Service<typeof PluginRegistry> => {
+  const disabled = new Set(discovery.disable ?? []);
   const discover = Effect.gen(function* () {
-    if (configService === undefined) return systemPlugins.map((plugin) => plugin.manifest);
+    const disabledPlugins = new Set(discovery.disable ?? []);
+    const bundledPlugins = (discovery.bundled === false ? [] : systemPlugins).filter(
+      (plugin) => !disabledPlugins.has(plugin.manifest.name),
+    );
+    if (configService === undefined) return bundledPlugins.map((plugin) => plugin.manifest);
     const userDataRoot = yield* configService
       .get("userDataRoot")
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
     const userPlugins =
-      userDataRoot === undefined
+      discovery.user === false || userDataRoot === undefined
         ? []
         : yield* discoverInstalledPlugins("user", join(userDataRoot, "plugins"), logger);
-    const appRoot = yield* Effect.promise(() => findAppRoot(process.cwd()));
+    const appRoot =
+      discovery.app === false ? undefined : yield* Effect.promise(() => findAppRoot(process.cwd()));
     const appPlugins =
       appRoot === undefined
         ? []
         : yield* discoverInstalledPlugins("app", join(appRoot, ".lando", "plugins"), logger);
-    return yield* mergeDiscoveredPlugins([systemPlugins, userPlugins, appPlugins], logger);
+    const manifests = yield* mergeDiscoveredPlugins([bundledPlugins, userPlugins, appPlugins], logger);
+    return manifests.filter((manifest) => !disabled.has(manifest.name));
   });
 
   return {
@@ -158,7 +173,17 @@ const makePluginRegistry = (
         );
       }),
     loadServiceType: (id) => {
+      if (discovery.bundled === false || discovery.disable?.includes("@lando/service-lando")) {
+        return Effect.fail(
+          new PluginLoadError({
+            message: `Bundled service type ${id} is not registered.`,
+            pluginName: "@lando/core",
+          }),
+        );
+      }
+
       for (const bundledPlugin of BUNDLED_PLUGINS) {
+        if (disabled.has(bundledPlugin.manifest.name)) continue;
         const serviceType = bundledPlugin.serviceTypes?.get(id);
 
         if (serviceType !== undefined) {
@@ -178,14 +203,18 @@ const makePluginRegistry = (
 
 export { PluginRegistry };
 
-export const PluginRegistryLive = Layer.effect(
-  PluginRegistry,
-  Effect.gen(function* () {
-    const configService = yield* Effect.serviceOption(ConfigService);
-    const logger = yield* Effect.serviceOption(Logger);
-    return makePluginRegistry(
-      configService._tag === "Some" ? configService.value : undefined,
-      logger._tag === "Some" ? logger.value : undefined,
-    );
-  }),
-);
+export const makePluginRegistryLive = (discovery: PluginRegistryDiscoveryOptions = {}) =>
+  Layer.effect(
+    PluginRegistry,
+    Effect.gen(function* () {
+      const configService = yield* Effect.serviceOption(ConfigService);
+      const logger = yield* Effect.serviceOption(Logger);
+      return makePluginRegistry(
+        configService._tag === "Some" ? configService.value : undefined,
+        logger._tag === "Some" ? logger.value : undefined,
+        discovery,
+      );
+    }),
+  );
+
+export const PluginRegistryLive = makePluginRegistryLive();

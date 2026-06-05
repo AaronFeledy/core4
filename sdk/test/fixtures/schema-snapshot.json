@@ -225,6 +225,7 @@
       "ProviderId",
       "HostPlatform",
       "ServiceInfo",
+      "EmbeddingPluginPolicy",
       "PluginManifest",
       "GlobalServiceContribution",
       "FileSyncEngineCapabilities",
@@ -1058,6 +1059,68 @@
       },
       "$ref": "#/$defs/DeprecationNotice",
       "$schema": "http://json-schema.org/draft-07/schema#"
+    },
+    "EmbeddingPluginPolicy": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "anyOf": [
+        {
+          "enum": ["none", "bundled-only", "explicit", "discovery"],
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "disable": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "discovery": {
+              "additionalProperties": false,
+              "properties": {
+                "app": {
+                  "type": "boolean"
+                },
+                "bundled": {
+                  "type": "boolean"
+                },
+                "system": {
+                  "type": "boolean"
+                },
+                "user": {
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "externalImports": {
+              "type": "boolean"
+            },
+            "layers": {
+              "items": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "type": "array"
+            },
+            "manifests": {
+              "items": {
+                "$id": "/schemas/unknown",
+                "title": "unknown"
+              },
+              "type": "array"
+            },
+            "mode": {
+              "enum": ["none", "bundled-only", "explicit", "discovery"],
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      ]
     },
     "FileSyncEngineCapabilities": {
       "$schema": "http://json-schema.org/draft-07/schema#",

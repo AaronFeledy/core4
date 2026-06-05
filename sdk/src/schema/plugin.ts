@@ -2,6 +2,30 @@ import { Schema } from "effect";
 
 import { PluginName } from "./primitives.ts";
 
+export const EmbeddingPluginPolicyMode = Schema.Literal("none", "bundled-only", "explicit", "discovery");
+export type EmbeddingPluginPolicyMode = typeof EmbeddingPluginPolicyMode.Type;
+
+export const EmbeddingPluginDiscoveryPolicy = Schema.Struct({
+  bundled: Schema.optional(Schema.Boolean),
+  system: Schema.optional(Schema.Boolean),
+  user: Schema.optional(Schema.Boolean),
+  app: Schema.optional(Schema.Boolean),
+});
+export type EmbeddingPluginDiscoveryPolicy = typeof EmbeddingPluginDiscoveryPolicy.Type;
+
+export const EmbeddingPluginPolicy = Schema.Union(
+  EmbeddingPluginPolicyMode,
+  Schema.Struct({
+    mode: Schema.optional(EmbeddingPluginPolicyMode),
+    layers: Schema.optional(Schema.Array(Schema.Unknown)),
+    manifests: Schema.optional(Schema.Array(Schema.Unknown)),
+    discovery: Schema.optional(EmbeddingPluginDiscoveryPolicy),
+    externalImports: Schema.optional(Schema.Boolean),
+    disable: Schema.optional(Schema.Array(Schema.String)),
+  }),
+);
+export type EmbeddingPluginPolicy = typeof EmbeddingPluginPolicy.Type;
+
 // Plugin manifest — declared by every plugin's package.json + plugin.yaml.
 
 /**
