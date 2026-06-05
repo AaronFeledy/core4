@@ -1,11 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Stream } from "effect";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { Context, Effect, Layer, Stream } from "effect";
 
 import { FilePermissionError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
+import { ConfigService, FileSystem, GlobalAppService, PluginRegistry } from "@lando/sdk/services";
 
-import { globalAppDoctor, renderGlobalAppDoctorResult } from "../../src/cli/commands/doctor-global-app.ts";
+import {
+  DefaultGlobalAppDoctorLayer,
+  globalAppDoctor,
+  renderGlobalAppDoctorResult,
+} from "../../src/cli/commands/doctor-global-app.ts";
 
 const distLandofile = AbsolutePath.make("/tmp/lando-global/.lando.dist.yml");
 const userLandofile = AbsolutePath.make("/tmp/lando-global/.lando.yml");
@@ -49,6 +57,44 @@ const unreadableFileSystemLayer = Layer.succeed(FileSystem, {
 
 const layer = Layer.mergeAll(globalAppLayer, pluginRegistryLayer, unreadableFileSystemLayer);
 
+const writeInstalledPlugin = async (pluginsRoot: string, name: string) => {
+  const packageRoot = join(pluginsRoot, name, "1.0.0");
+  await mkdir(packageRoot, { recursive: true });
+  await writeFile(
+    join(packageRoot, "package.json"),
+    `${JSON.stringify(
+      {
+        name,
+        version: "1.0.0",
+        landoPlugin: {
+          name,
+          version: "1.0.0",
+          api: 4,
+          entry: "index.js",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(packageRoot, "index.js"), "export {};\n");
+  await mkdir(pluginsRoot, { recursive: true });
+  await writeFile(
+    join(pluginsRoot, "registry.json"),
+    `${JSON.stringify(
+      {
+        [name]: {
+          name,
+          version: "1.0.0",
+          path: packageRoot,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+};
+
 describe("global-app doctor check", () => {
   test("reports a failure when the dist Landofile exists but cannot be read", async () => {
     const result = await Effect.runPromise(globalAppDoctor().pipe(Effect.provide(layer)));
@@ -63,5 +109,25 @@ describe("global-app doctor check", () => {
     const text = renderGlobalAppDoctorResult(result);
     expect(text).toContain("global-app: fail");
     expect(text).toContain("readError: permission denied");
+  });
+
+  test("DefaultGlobalAppDoctorLayer provides ConfigService to PluginRegistryLive", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-global-doctor-plugins-"));
+    try {
+      await writeInstalledPlugin(join(userDataRoot, "plugins"), "@example/global-doctor-user-plugin");
+      const configLayer = Layer.succeed(ConfigService, {
+        load: Effect.succeed({ userDataRoot } as never),
+        get: (key) => Effect.succeed(key === "userDataRoot" ? (userDataRoot as never) : (undefined as never)),
+      });
+      const context = await Effect.runPromise(
+        Effect.scoped(Layer.build(DefaultGlobalAppDoctorLayer.pipe(Layer.provide(configLayer)))),
+      );
+      const registry = Context.get(context, PluginRegistry);
+      const manifests = await Effect.runPromise(registry.list);
+
+      expect(manifests.map((manifest) => manifest.name)).toContain("@example/global-doctor-user-plugin");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
   });
 });

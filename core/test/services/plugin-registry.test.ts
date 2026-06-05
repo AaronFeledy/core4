@@ -1,8 +1,12 @@
-import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { Cause, Effect, Exit, Layer } from "effect";
 
 import { PluginLoadError } from "@lando/core/errors";
-import { PluginRegistry } from "@lando/core/services";
+import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
@@ -17,8 +21,138 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/template-mustache",
 ];
 
+let userDataRoot: string;
+let appRoot: string;
+let originalCwd: string;
+let warnings: Array<string>;
+
+const fakeConfigService = (dataRoot: string | undefined) =>
+  Layer.succeed(ConfigService, {
+    load: Effect.succeed(
+      dataRoot === undefined
+        ? ({ userConfRoot: "unused" } as never)
+        : ({ userDataRoot: dataRoot, userConfRoot: join(dataRoot, "conf") } as never),
+    ),
+    get: <K extends string>(key: K) =>
+      Effect.succeed(key === "userDataRoot" ? (dataRoot as never) : (undefined as never)),
+  });
+
+const fakeLogger = (sink: Array<string>) =>
+  Layer.succeed(Logger, {
+    debug: () => Effect.void,
+    info: () => Effect.void,
+    warn: (message: string) =>
+      Effect.sync(() => {
+        sink.push(message);
+      }),
+    error: () => Effect.void,
+  });
+
+const pluginRegistryTestLayer = (dataRoot: string | undefined) =>
+  PluginRegistryLive.pipe(Layer.provide(Layer.merge(fakeConfigService(dataRoot), fakeLogger(warnings))));
+
 const runWithPluginRegistry = <A, E>(effect: Effect.Effect<A, E, PluginRegistry>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(PluginRegistryLive)));
+  Effect.runPromise(effect.pipe(Effect.provide(pluginRegistryTestLayer(userDataRoot))));
+
+const writeInstalledPluginRegistry = async (
+  pluginsRoot: string,
+  entries: ReadonlyArray<{ readonly name: string; readonly version: string; readonly path: string }>,
+) => {
+  await mkdir(pluginsRoot, { recursive: true });
+  await writeFile(
+    join(pluginsRoot, "registry.json"),
+    `${JSON.stringify(
+      Object.fromEntries(
+        entries.map((entry) => [
+          entry.name,
+          {
+            name: entry.name,
+            version: entry.version,
+            path: entry.path,
+          },
+        ]),
+      ),
+      null,
+      2,
+    )}\n`,
+  );
+};
+
+const writeInstalledPluginPackage = async (
+  pluginsRoot: string,
+  plugin: { readonly name: string; readonly version: string; readonly description?: string },
+) => {
+  const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
+  await mkdir(packageRoot, { recursive: true });
+  await writeFile(
+    join(packageRoot, "package.json"),
+    `${JSON.stringify(
+      {
+        name: plugin.name,
+        version: plugin.version,
+        landoPlugin: {
+          name: plugin.name,
+          version: plugin.version,
+          api: 4,
+          description: plugin.description,
+          entry: "index.js",
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await writeFile(join(packageRoot, "index.js"), "export {};\n");
+  return packageRoot;
+};
+
+const writeInstalledPlugin = async (
+  pluginsRoot: string,
+  plugin: { readonly name: string; readonly version: string; readonly description?: string },
+) => {
+  const packageRoot = await writeInstalledPluginPackage(pluginsRoot, plugin);
+  await writeInstalledPluginRegistry(pluginsRoot, [{ ...plugin, path: packageRoot }]);
+};
+
+const writeInvalidInstalledPluginPackage = async (
+  pluginsRoot: string,
+  plugin: { readonly name: string; readonly version: string },
+) => {
+  const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
+  await mkdir(packageRoot, { recursive: true });
+  await writeFile(
+    join(packageRoot, "package.json"),
+    `${JSON.stringify(
+      {
+        name: plugin.name,
+        version: plugin.version,
+        landoPlugin: {
+          name: plugin.name,
+          version: plugin.version,
+          api: 3,
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  return packageRoot;
+};
+
+beforeEach(async () => {
+  originalCwd = process.cwd();
+  userDataRoot = await mkdtemp(join(tmpdir(), "lando-plugin-registry-user-"));
+  appRoot = await mkdtemp(join(tmpdir(), "lando-plugin-registry-app-"));
+  await writeFile(join(appRoot, ".lando.yml"), "name: plugin-registry-app\n");
+  warnings = [];
+  process.chdir(appRoot);
+});
+
+afterEach(async () => {
+  process.chdir(originalCwd);
+  await rm(userDataRoot, { recursive: true, force: true });
+  await rm(appRoot, { recursive: true, force: true });
+});
 
 describe("PluginRegistryLive", () => {
   test("lists bundled plugin manifests", async () => {
@@ -49,10 +183,152 @@ describe("PluginRegistryLive", () => {
     expect(serviceType.id).toBe("node:lts");
   });
 
+  test("discovers user plugin registry entries from userDataRoot/plugins", async () => {
+    await writeInstalledPlugin(join(userDataRoot, "plugins"), {
+      name: "@example/user-plugin",
+      version: "1.0.0",
+      description: "user source",
+    });
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/user-plugin")),
+    );
+
+    expect(manifest).toMatchObject({
+      name: "@example/user-plugin",
+      version: "1.0.0",
+      description: "user source",
+    });
+  });
+
+  test("discovers app plugin registry entries from cwd .lando/plugins", async () => {
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@example/app-plugin",
+      version: "2.0.0",
+      description: "app source",
+    });
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/app-plugin")).toMatchObject({
+      version: "2.0.0",
+      description: "app source",
+    });
+  });
+
+  test("discovers app plugin registry entries when userDataRoot is undefined", async () => {
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@example/app-without-user-root-plugin",
+      version: "2.2.0",
+      description: "app source without user root",
+    });
+
+    const manifests = await Effect.runPromise(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list).pipe(
+        Effect.provide(pluginRegistryTestLayer(undefined)),
+      ),
+    );
+
+    expect(
+      manifests.find((manifest) => manifest.name === "@example/app-without-user-root-plugin"),
+    ).toMatchObject({
+      version: "2.2.0",
+      description: "app source without user root",
+    });
+  });
+
+  test("discovers app plugin registry entries from the app root when cwd is nested", async () => {
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@example/nested-app-plugin",
+      version: "2.1.0",
+      description: "nested app source",
+    });
+    const nestedCwd = join(appRoot, "subdir", "deeper");
+    await mkdir(nestedCwd, { recursive: true });
+    process.chdir(nestedCwd);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/nested-app-plugin")).toMatchObject({
+      version: "2.1.0",
+      description: "nested app source",
+    });
+  });
+
+  test("merges sources by app over user over system precedence and warns on conflicts", async () => {
+    await writeInstalledPlugin(join(userDataRoot, "plugins"), {
+      name: "@lando/provider-docker",
+      version: "99.0.0",
+      description: "user override",
+    });
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@lando/provider-docker",
+      version: "100.0.0",
+      description: "app override",
+    });
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@lando/provider-docker")),
+    );
+
+    expect(manifest).toMatchObject({
+      version: "100.0.0",
+      description: "app override",
+    });
+    expect(warnings).toEqual([
+      "Plugin @lando/provider-docker from user source overrides system source.",
+      "Plugin @lando/provider-docker from app source overrides user source.",
+    ]);
+  });
+
+  test("keeps system and healthy plugins available when user discovery has an invalid manifest", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenUserPackageRoot = await writeInvalidInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/broken-user-plugin",
+      version: "1.0.0",
+    });
+    const healthyUserPackageRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/broken-user-plugin", version: "1.0.0", path: brokenUserPackageRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyUserPackageRoot },
+    ]);
+    await writeInstalledPlugin(join(appRoot, ".lando", "plugins"), {
+      name: "@example/healthy-app-plugin",
+      version: "2.3.0",
+      description: "healthy app source",
+    });
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.map((manifest) => String(manifest.name))).toContain("@lando/provider-lando");
+    expect(manifests.find((manifest) => manifest.name === "@example/broken-user-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-app-plugin")).toMatchObject({
+      version: "2.3.0",
+      description: "healthy app source",
+    });
+    expect(warnings).toEqual([
+      expect.stringContaining("Plugin discovery from user source failed for @example/broken-user-plugin"),
+    ]);
+  });
+
   test("fails with PluginLoadError for plugins outside the bundled registry", async () => {
     const exit = await Effect.runPromiseExit(
       Effect.flatMap(PluginRegistry, (registry) => registry.load("not-bundled")).pipe(
-        Effect.provide(PluginRegistryLive),
+        Effect.provide(pluginRegistryTestLayer(userDataRoot)),
       ),
     );
 

@@ -241,40 +241,49 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
 
 const makeProviderRuntimeLive = (loggerMode: LoggerMode) => {
   const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
   const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
-    Layer.provide(Layer.mergeAll(minimalRuntimeLive, PluginRegistryLive, EventServiceLive)),
+    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, EventServiceLive)),
   );
 
   return Layer.mergeAll(
     minimalRuntimeLive,
     EventServiceLive,
-    PluginRegistryLive,
+    pluginRegistryLive,
     Layer.succeed(RuntimeProvider, runtimeProviderService),
     providerRegistryLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   );
 };
 
-const makeToolingRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
-    makeMinimalRuntimeLive(loggerMode),
-    PluginRegistryLive,
+const makeToolingRuntimeLive = (loggerMode: LoggerMode) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  return Layer.mergeAll(
+    minimalRuntimeLive,
+    pluginRegistryLive,
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
   );
+};
 
-const makeGlobalRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
+const makeGlobalRuntimeLive = (loggerMode: LoggerMode) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  return Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
     AppPlannerLive.pipe(
-      Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+      Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
     ),
   );
+};
 
 const makeScratchRuntimeLive = (loggerMode: LoggerMode) => {
   const providerBase = makeProviderRuntimeLive(loggerMode);
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
   const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
+    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
   const scratchDeps = Layer.mergeAll(
     providerBase,
@@ -293,15 +302,18 @@ const makeScratchRuntimeLive = (loggerMode: LoggerMode) => {
   );
 };
 
-const makeAppRuntimeLive = (loggerMode: LoggerMode) =>
-  Layer.mergeAll(
+const makeAppRuntimeLive = (loggerMode: LoggerMode) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+  const pluginRegistryLive = PluginRegistryLive.pipe(Layer.provide(minimalRuntimeLive));
+  return Layer.mergeAll(
     makeProviderRuntimeLive(loggerMode),
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(LandofileServiceLive)),
-    AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive))),
+    AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive))),
     ProviderExecToolingEngineLive,
     FileSyncEngineLive,
   );
+};
 
 const runtimeLayerFor = (bootstrap: BootstrapLevel, loggerMode: LoggerMode): RuntimeLayer => {
   switch (bootstrap) {
