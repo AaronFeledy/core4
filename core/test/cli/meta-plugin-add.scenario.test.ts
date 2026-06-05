@@ -1,13 +1,16 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
+import type { NpmPackument, NpmRegistryClient } from "../../src/recipes/npm-source.ts";
+import type { TarballRecipeFetcher } from "../../src/recipes/tarball-source.ts";
 
 let userDataRoot: string;
 let pluginsRoot: string;
@@ -41,6 +44,78 @@ const writePluginManifest = async (
   await writeFile(join(packageDir, "index.js"), "module.exports = {};\n");
 };
 
+const makeNpmTarball = async (files: Readonly<Record<string, string>>): Promise<Uint8Array> => {
+  const stage = await mkdtemp(join(tmpdir(), "lando-plugin-add-tar-"));
+  const pkg = join(stage, "package");
+  const out = join(stage, "archive.tgz");
+  try {
+    await mkdir(pkg, { recursive: true });
+    for (const [rel, fileContent] of Object.entries(files)) {
+      const target = join(pkg, rel);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, fileContent);
+    }
+    const proc = Bun.spawn({
+      cmd: ["tar", "-czf", out, "-C", stage, "package"],
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [code, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    if (code !== 0) throw new Error(`tar failed: ${stderr}`);
+    return new Uint8Array(await Bun.file(out).arrayBuffer());
+  } finally {
+    await rm(stage, { recursive: true, force: true });
+  }
+};
+
+const sha512Sri = (bytes: Uint8Array): string =>
+  `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
+
+const packumentFor = (packageName: string, bytes: Uint8Array, version = "1.2.3"): NpmPackument => ({
+  "dist-tags": { latest: version },
+  versions: {
+    [version]: {
+      dist: {
+        tarball: `https://registry.example/${packageName}/-/${packageName.split("/").pop()}-${version}.tgz`,
+        integrity: sha512Sri(bytes),
+      },
+    },
+  },
+});
+
+const clientFor = (packument: NpmPackument | undefined, calls?: Array<string>): NpmRegistryClient => ({
+  fetchPackument: async (name) => {
+    calls?.push(name);
+    return packument;
+  },
+});
+
+const fetcherFor = (bytes: Uint8Array, calls?: Array<string>): TarballRecipeFetcher => ({
+  fetch: async (url) => {
+    calls?.push(url);
+    return bytes;
+  },
+});
+
+const pluginPackageJson = (name: string, version: string, landoPlugin: Record<string, unknown> = {}) =>
+  JSON.stringify({
+    name,
+    version,
+    landoPlugin: {
+      name,
+      version,
+      api: 4,
+      entry: "index.js",
+      ...landoPlugin,
+    },
+  });
+
+const exists = async (path: string): Promise<boolean> =>
+  stat(path).then(
+    () => true,
+    () => false,
+  );
+
 beforeEach(async () => {
   userDataRoot = await mkdtemp(join(tmpdir(), "lando-plugin-add-"));
   pluginsRoot = join(userDataRoot, "plugins");
@@ -51,6 +126,152 @@ afterEach(async () => {
 });
 
 describe("meta:plugin:add command", () => {
+  test("downloads an npm tarball, validates the manifest, and installs under plugins/<name>/<version>", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
+      "index.js": "export {};\n",
+    });
+    const registryCalls: Array<string> = [];
+    const fetchCalls: Array<string> = [];
+    const trustStore = new Set<string>();
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes), registryCalls),
+        fetcher: fetcherFor(bytes, fetchCalls),
+        trustStore,
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(result.pluginName).toBe("@lando/plugin-php");
+    expect(result.pluginVersion).toBe("1.2.3");
+    expect(result.entry).toBe(join(pluginsRoot, "@lando/plugin-php", "1.2.3"));
+    expect(await exists(join(result.entry, "package.json"))).toBe(true);
+    expect(registryCalls).toEqual(["@lando/plugin-php"]);
+    expect(fetchCalls).toHaveLength(1);
+    expect(trustStore.has("@lando/plugin-php")).toBe(true);
+  });
+
+  test("supports exact version pins and re-runs idempotently without re-downloading an installed version", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-php", "2.0.0"),
+      "index.js": "export {};\n",
+    });
+    const registryCalls: Array<string> = [];
+    const fetchCalls: Array<string> = [];
+    const trustStore = new Set<string>();
+    const common = {
+      spec: "@lando/plugin-php@2.0.0",
+      trust: true,
+      registryClient: clientFor(packumentFor("@lando/plugin-php", bytes, "2.0.0"), registryCalls),
+      fetcher: fetcherFor(bytes, fetchCalls),
+      trustStore,
+    } as const;
+
+    const first = await Effect.runPromise(
+      pluginAdd(common).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    const second = await Effect.runPromise(
+      pluginAdd(common).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(first.entry).toBe(join(pluginsRoot, "@lando/plugin-php", "2.0.0"));
+    expect(second.entry).toBe(first.entry);
+    expect(registryCalls).toEqual(["@lando/plugin-php", "@lando/plugin-php"]);
+    expect(fetchCalls).toHaveLength(1);
+    expect(second.trustSource).toBe("session");
+  });
+
+  test("fails closed when a downloaded package manifest is invalid", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-bad",
+        version: "0.0.1",
+        landoPlugin: { name: "bad" },
+      }),
+      "index.js": "export {};\n",
+    });
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-bad",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-bad", bytes, "0.0.1")),
+        fetcher: fetcherFor(bytes),
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      const cause = JSON.stringify(exit.cause);
+      expect(cause).toContain("PluginManifestError");
+      expect(await exists(join(pluginsRoot, "@lando/plugin-bad", "0.0.1"))).toBe(false);
+    }
+  });
+
+  test("rejects registry metadata that resolves outside the plugin root before downloading", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-escape", "../../../escape"),
+      "index.js": "export {};\n",
+    });
+    let fetchCalls = 0;
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-escape",
+        trust: true,
+        registryClient: clientFor({
+          "dist-tags": { latest: "../../../escape" },
+          versions: {
+            "../../../escape": {
+              dist: {
+                tarball: "https://registry.example/escape.tgz",
+                integrity: sha512Sri(bytes),
+              },
+            },
+          },
+        }),
+        fetcher: {
+          fetch: async () => {
+            fetchCalls += 1;
+            return bytes;
+          },
+        },
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(fetchCalls).toBe(0);
+    expect(await exists(join(userDataRoot, "escape"))).toBe(false);
+  });
+
+  test("cleans staging content when extraction fails before publication", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-partial", "1.0.0"),
+      "index.js": "export {};\n",
+    });
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-partial@1.0.0",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-partial", bytes, "1.0.0")),
+        fetcher: fetcherFor(bytes),
+        extractor: {
+          extract: async (_archiveBytes, destDir) => {
+            await writeFile(join(destDir, "leaked.txt"), "partial");
+            throw new Error("extract failed after writing");
+          },
+        },
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(join(pluginsRoot, "@lando/plugin-partial", "1.0.0"))).toBe(false);
+    expect(await exists(join(pluginsRoot, "@lando/plugin-partial", ".staging"))).toBe(false);
+  });
+
   test("installs a plugin via the BunSelfRunner and validates the manifest before recording trust", async () => {
     const calls: Array<{ spec: string; cwd: string }> = [];
     const spawner = {
