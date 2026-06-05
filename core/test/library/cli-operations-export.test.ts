@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -26,8 +26,8 @@ describe("@lando/core/cli/operations package export", () => {
     expect(operations.invokeOperation).toBeFunction();
     expect(operations.listServices).toBeFunction();
     expect(corePackage.exports["./cli/operations"]).toBe("./src/cli/operations.ts");
-    expect(Bun.resolveSync("@lando/core/cli/operations", repoRoot)).toBe(
-      join(coreRoot, "src/cli/operations.ts"),
+    expect(await realpath(Bun.resolveSync("@lando/core/cli/operations", repoRoot))).toBe(
+      await realpath(join(coreRoot, "src/cli/operations.ts")),
     );
   });
 

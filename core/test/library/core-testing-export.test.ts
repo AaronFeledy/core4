@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -10,7 +10,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sdkRoot = resolve(repoRoot, "sdk");
 const externalDependencyRoot = resolve(repoRoot, "node_modules");
-const packedConsumerDependencies = ["effect"] as const;
+const packedConsumerDependencies = ["effect", "fast-check", "pure-rand"] as const;
 
 interface RunResult {
   readonly exitCode: number;
@@ -52,7 +52,9 @@ describe("@lando/core/testing package export", () => {
     expect(testing.provideTestRuntime).toBeFunction();
     expect(testing.withService).toBeFunction();
     expect(corePackage.exports["./testing"]).toBe("./src/testing/index.ts");
-    expect(Bun.resolveSync("@lando/core/testing", repoRoot)).toBe(join(coreRoot, "src/testing/index.ts"));
+    expect(await realpath(Bun.resolveSync("@lando/core/testing", repoRoot))).toBe(
+      await realpath(join(coreRoot, "src/testing/index.ts")),
+    );
   });
 
   test("resolves from a packed package install", async () => {
@@ -109,7 +111,11 @@ describe("@lando/core/testing package export", () => {
       assertCommandSucceeded("packed @lando/core/testing import", resolved);
       expect(resolved.stderr).toBe("");
       expect(resolved.stdout).toContain("test\n");
-      expect(resolved.stdout).toContain(join(extractDir, "package/src/testing/index.ts"));
+      const resolvedPath = resolved.stdout.trimEnd().split("\n").at(-1);
+      if (resolvedPath === undefined) throw new Error("packed @lando/core/testing import did not print a path");
+      const actualResolvedPath = await realpath(resolvedPath);
+      const expectedResolvedPath = await realpath(join(extractDir, "package/src/testing/index.ts"));
+      expect(actualResolvedPath).toBe(expectedResolvedPath);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
