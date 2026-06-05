@@ -200,6 +200,7 @@ export const validatePluginManifest = async (
 };
 
 interface InstalledPluginPackage {
+  readonly created: boolean;
   readonly packageDir: string;
 }
 
@@ -268,7 +269,7 @@ const installFromNpm = async (
   }
 
   const packageDir = installTargetFor(pluginsRoot, parsed.name, resolvedVersion, options.spec);
-  if (await fileExists(packageDir)) return { packageDir };
+  if (await fileExists(packageDir)) return { created: false, packageDir };
 
   let archiveBytes: Uint8Array;
   try {
@@ -292,7 +293,7 @@ const installFromNpm = async (
     throw cause;
   }
   await rm(stagingRoot, { recursive: true, force: true });
-  return { packageDir };
+  return { created: true, packageDir };
 };
 
 const defaultPrompter: PluginAddPrompter = {
@@ -379,6 +380,7 @@ export const pluginAdd = (
     yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
     const packageName = parsePackageName(options.spec);
+    let createdPackageDir: string | undefined;
     const packageDir = yield* Effect.tryPromise({
       try: async () => {
         if (options.spawner !== undefined) {
@@ -386,7 +388,9 @@ export const pluginAdd = (
           if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
           return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
         }
-        return (await installFromNpm(options, pluginsRoot)).packageDir;
+        const installed = await installFromNpm(options, pluginsRoot);
+        if (installed.created) createdPackageDir = installed.packageDir;
+        return installed.packageDir;
       },
       catch: (cause) =>
         cause instanceof RecipeSourceError
@@ -425,13 +429,18 @@ export const pluginAdd = (
             }),
     });
 
-    yield* Effect.promise(() =>
-      recordInstalledPlugin(pluginsRoot, {
-        name: manifest.name,
-        version: manifest.version,
-        path: packageDir,
-      }),
-    );
+    yield* Effect.promise(async () => {
+      try {
+        await recordInstalledPlugin(pluginsRoot, {
+          name: manifest.name,
+          version: manifest.version,
+          path: packageDir,
+        });
+      } catch (cause) {
+        if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
+        throw cause;
+      }
+    });
 
     return {
       pluginName: manifest.name,

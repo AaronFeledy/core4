@@ -153,6 +153,28 @@ describe("meta:plugin:add command", () => {
     expect(trustStore.has("@lando/plugin-php")).toBe(true);
   });
 
+  test("removes a newly unpacked npm plugin when registry recording fails", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": pluginPackageJson("@lando/plugin-php", "1.2.3"),
+      "index.js": "export {};\n",
+    });
+    await mkdir(pluginsRoot, { recursive: true });
+    await writeFile(join(pluginsRoot, "registry.json"), "not json");
+
+    const exit = await Effect.runPromiseExit(
+      pluginAdd({
+        spec: "@lando/plugin-php",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-php", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(await exists(join(pluginsRoot, "@lando/plugin-php", "1.2.3"))).toBe(false);
+  });
+
   test("rewrites npm recipe-source remediation for plugin add", async () => {
     const exit = await Effect.runPromiseExit(
       pluginAdd({
