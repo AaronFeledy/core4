@@ -84,6 +84,22 @@ const sourceError = (input: {
 }): RecipeSourceError => new RecipeSourceError(input);
 
 /**
+ * Reject the obvious npm semver range forms up front. The shared parser only
+ * supports exact published versions or plain dist-tags; range matching is out
+ * of scope for this branch.
+ */
+const isSemverRangeSpecifier = (version: string): boolean => {
+  const trimmed = version.trim();
+  if (trimmed === "") return false;
+  if (/^(?:\^|~|>=|<=|>|<|=)/u.test(trimmed)) return true;
+  if (trimmed.includes("||")) return true;
+  if (/\s-\s/u.test(trimmed)) return true;
+  if (/^(?:x|\*)$/iu.test(trimmed)) return true;
+  if (/^\d+(?:\.\d+)?\s*\.\s*(?:x|\*)$/iu.test(trimmed)) return true;
+  return false;
+};
+
+/**
  * Splits an npm package spec into name + optional `@version`. The version
  * separator is the last `@` that is not the scope marker at index 0, so both
  * `@scope/pkg@1.2.3` and `pkg@1.2.3` parse correctly.
@@ -99,6 +115,14 @@ export const parseNpmPackageSpec = (spec: string): ParsedNpmPackageSpec => {
       source: spec,
       kind: "missing-package",
       remediation: "Pass --package=<name>[@version], e.g. --package=@lando/recipe-drupal@1.0.0.",
+    });
+  }
+  if (version !== undefined && version !== "" && isSemverRangeSpecifier(version)) {
+    throw sourceError({
+      message: `npm package spec "${spec}" uses a semver range in the version suffix; semver ranges are not supported.`,
+      source: spec,
+      kind: "version-not-found",
+      remediation: "Pass an exact published version or a dist-tag such as latest or next.",
     });
   }
   return version === undefined || version === "" ? { name } : { name, version };
@@ -122,7 +146,7 @@ const normalizeNpmSubpath = (subpath: string | undefined, source: string): strin
 const encodePackageName = (name: string): string =>
   name.startsWith("@") ? `@${encodeURIComponent(name.slice(1))}` : encodeURIComponent(name);
 
-const defaultNpmRegistryClient = (registryUrl: string): NpmRegistryClient => ({
+export const defaultNpmRegistryClient = (registryUrl: string): NpmRegistryClient => ({
   fetchPackument: async (packageName) => {
     const base = registryUrl.replace(/\/+$/u, "");
     const response = await fetch(`${base}/${encodePackageName(packageName)}`, {
@@ -135,7 +159,11 @@ const defaultNpmRegistryClient = (registryUrl: string): NpmRegistryClient => ({
   },
 });
 
-const resolveVersion = (packument: NpmPackument, requested: string | undefined, spec: string): string => {
+export const resolveNpmPackageVersion = (
+  packument: NpmPackument,
+  requested: string | undefined,
+  spec: string,
+): string => {
   const distTags = packument["dist-tags"] ?? {};
   const versions = packument.versions ?? {};
   if (requested === undefined || requested === "") {
@@ -159,7 +187,11 @@ const resolveVersion = (packument: NpmPackument, requested: string | undefined, 
   });
 };
 
-const verifyNpmIntegrity = (bytes: Uint8Array, dist: NpmPackageDist, source: string): void => {
+export const verifyNpmPackageDistIntegrity = (
+  bytes: Uint8Array,
+  dist: NpmPackageDist,
+  source: string,
+): void => {
   if (dist.integrity !== undefined && dist.integrity.trim() !== "") {
     const entry = dist.integrity.trim().split(/\s+/u)[0] ?? "";
     const dash = entry.indexOf("-");
@@ -226,7 +258,7 @@ export const resolveNpmRecipeSource = async (
     });
   }
 
-  const resolvedVersion = resolveVersion(packument, version, options.package);
+  const resolvedVersion = resolveNpmPackageVersion(packument, version, options.package);
   const dist = packument.versions?.[resolvedVersion]?.dist;
   if (dist === undefined || dist.tarball === undefined || dist.tarball.trim() === "") {
     throw sourceError({
@@ -249,7 +281,7 @@ export const resolveNpmRecipeSource = async (
     });
   }
 
-  verifyNpmIntegrity(archiveBytes, dist, dist.tarball);
+  verifyNpmPackageDistIntegrity(archiveBytes, dist, dist.tarball);
 
   // npm tarballs nest content under `package/`; delegate to the shared tarball
   // resolver (pre-downloaded bytes) so the extractor / cache / subpath logic is

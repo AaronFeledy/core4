@@ -1,0 +1,32 @@
+---
+id: install-from-npm
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, npm]
+---
+
+<Guide>
+  <Scenario id="install-plugin-from-npm" render={false} reason="The live npm path contacts the public registry, so guide CI documents the CLI surface while core tests exercise the installer with fake packuments and tarballs">
+    <Step name="command">
+      <Variable name="command" value="lando plugin:add @lando/plugin-foo --trust" display="Resolve npm metadata, download the published tarball, validate the plugin manifest, and trust the plugin for the current session" />
+      <Variable name="version" value="lando plugin:add @lando/plugin-foo@1.2.3 --trust" display="An @version suffix pins the exact package version to install" />
+      <Variable name="target" value="&lt;userDataRoot&gt;/plugins/@lando/plugin-foo/1.2.3/" display="Installed plugin packages are published under the per-user plugin root by name and resolved version" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="install-plugin-idempotency" render={false} reason="Idempotent reruns are covered by core/test/cli/meta-plugin-add.scenario.test.ts with a deterministic npm tarball">
+    <Step name="reuse-installed-version">
+      <Variable name="rerun" value="same package spec" display="A second install of an already-present name/version validates the existing manifest and reuses that directory without re-downloading the tarball" />
+      <Variable name="integrity" value="dist.integrity / dist.shasum" display="Fresh downloads are verified against the npm registry integrity metadata before extraction" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="install-plugin-validation" render={false} reason="Malformed package and manifest failures are unit-tested without contacting the live npm registry">
+    <Step name="manifest-validation">
+      <Variable name="schema" value="@lando/sdk PluginManifest" display="The downloaded package's landoPlugin manifest must decode as a Lando plugin manifest before publication" />
+      <Variable name="entry" value="entry containment" display="The plugin entry path must stay inside the extracted package directory, including realpath symlink containment" />
+      <Variable name="failure" value="PluginManifestError" display="Invalid manifests fail closed and do not leave an installed plugin version directory" />
+    </Step>
+  </Scenario>
+</Guide>

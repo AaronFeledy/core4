@@ -1083,3 +1083,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (plain renderer for tooling now emits flat task-detail output only, dropping task-tree framing per US-164)
 - Merge: merged (squash)
 ---
+
+## [2026-06-04 19:38 CDT] - US-165
+- Shipped `meta:plugin:add` as a real npm-source installer: it resolves npm packuments, honors exact `@version` pins or the registry `latest` dist-tag, verifies npm integrity/shasum metadata, safely extracts the published tarball, validates the Lando plugin manifest before publication, and installs package contents under the per-user versioned plugin root. Re-runs validate and reuse an already-installed name/version instead of re-downloading. Added the owned install-from-npm executable guide and flipped its guide-index row to shipped.
+- Verification: focused plugin/npm tests passed; typecheck, lint, guide lint, generated guide scenarios, build, isolated compiled tests, and guide coverage passed. Full `bun test` reproduced only the documented compiled-binary build-pressure flake; isolated build + compiled tests passed afterward. Sandboxed CLI QA was blocked because `.local/bin/lando4-dev` could not access `wsl.exe` from this shell, and host Lando binary execution was skipped per repo safety rules.
+- **Learnings for future iterations:**
+  - npm-backed plugin install should reuse the recipe npm source's packument parsing, version resolution, and integrity verification, then publish the extracted npm `package/` directory to `<userDataRoot>/plugins/<name>/<version>/` rather than to the recipe cache.
+  - The plugin install command's old spawner seam remains useful for targeted tests, but the default command path is now npm packument + tarball extraction.
+---

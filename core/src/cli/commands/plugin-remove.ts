@@ -13,6 +13,12 @@ import {
 import { ConfigService } from "@lando/sdk/services";
 
 const REGISTRY_NAME_RE = /^(@[^/]+\/)?[a-z0-9][a-z0-9._-]*$/i;
+const RESERVED_PLUGIN_ROOT_NAMES = new Set([
+  "node_modules",
+  "package.json",
+  "package-lock.json",
+  "bun.lockb",
+]);
 
 export interface PluginRemoveSpawner {
   readonly uninstall: (request: {
@@ -109,8 +115,8 @@ export const pluginRemove = (
     const pluginsRoot = options.pluginsRoot ?? join(userDataRoot, "plugins");
     const modulesRoot = resolve(pluginsRoot, "node_modules");
     const moduleDir = resolve(modulesRoot, options.name);
-    const rel = relative(modulesRoot, moduleDir);
-    if (rel === "" || rel.startsWith("..") || resolve(modulesRoot, rel) !== moduleDir) {
+    const moduleRel = relative(modulesRoot, moduleDir);
+    if (moduleRel === "" || moduleRel.startsWith("..") || resolve(modulesRoot, moduleRel) !== moduleDir) {
       return yield* Effect.fail(
         new PluginManifestError({
           message: `Plugin name resolves outside ${modulesRoot}.`,
@@ -119,18 +125,51 @@ export const pluginRemove = (
         }),
       );
     }
-    if (!existsSync(moduleDir)) {
+    const versionedDir = resolve(pluginsRoot, options.name);
+    const versionedRel = relative(pluginsRoot, versionedDir);
+    if (
+      versionedRel === "" ||
+      versionedRel.startsWith("..") ||
+      resolve(pluginsRoot, versionedRel) !== versionedDir
+    ) {
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Plugin name resolves outside ${pluginsRoot}.`,
+          pluginName: options.name,
+          issues: [`refusing to recursively remove ${versionedDir}`],
+        }),
+      );
+    }
+    if (RESERVED_PLUGIN_ROOT_NAMES.has(options.name)) {
+      return yield* Effect.fail(
+        new PluginManifestError({
+          message: `Plugin name "${options.name}" is reserved; refusing to remove shared/managed plugins root entries.`,
+          pluginName: options.name,
+          issues: [`refusing to recursively remove managed plugins root entry ${versionedDir}`],
+        }),
+      );
+    }
+
+    let removed = false;
+    if (existsSync(moduleDir)) {
+      const spawner = options.spawner ?? defaultSpawner;
+      const { exitCode, stderr } = yield* Effect.promise(() =>
+        spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
+      );
+      if (exitCode !== 0) {
+        return yield* Effect.fail(removeFailure(options.name, stderr));
+      }
+      yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
+      removed = true;
+    }
+    if (existsSync(versionedDir)) {
+      yield* Effect.promise(() => rm(versionedDir, { recursive: true, force: true }));
+      removed = true;
+    }
+    if (!removed) {
       return { pluginName: options.name, removed: false };
     }
 
-    const spawner = options.spawner ?? defaultSpawner;
-    const { exitCode, stderr } = yield* Effect.promise(() =>
-      spawner.uninstall({ name: options.name, cwd: pluginsRoot }),
-    );
-    if (exitCode !== 0) {
-      return yield* Effect.fail(removeFailure(options.name, stderr));
-    }
-    yield* Effect.promise(() => rm(moduleDir, { recursive: true, force: true }));
     const trustStore = options.trustStore;
     if (trustStore !== undefined) trustStore.delete(options.name);
     return { pluginName: options.name, removed: true };

@@ -128,12 +128,27 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 describe("parseNpmPackageSpec", () => {
   test.each([
     ["@lando/recipe-foo@1.2.3", "@lando/recipe-foo", "1.2.3"],
+    ["@lando/recipe-foo@1.2.3-rc.1", "@lando/recipe-foo", "1.2.3-rc.1"],
     ["@lando/recipe-foo", "@lando/recipe-foo", undefined],
     ["recipe-foo@2.0.0", "recipe-foo", "2.0.0"],
     ["recipe-foo", "recipe-foo", undefined],
+    ["@scope/pkg@latest", "@scope/pkg", "latest"],
     ["@scope/pkg@next", "@scope/pkg", "next"],
   ])("parses %s", (spec, name, version) => {
     expect(parseNpmPackageSpec(spec)).toEqual({ name, ...(version === undefined ? {} : { version }) });
+  });
+
+  test.each([
+    "@lando/recipe-foo@^1.0.0",
+    "@lando/recipe-foo@~1.2",
+    "@lando/recipe-foo@>=1.0.0",
+    "@lando/recipe-foo@1.x",
+    "@lando/recipe-foo@1.*",
+    "@lando/recipe-foo@1.2.3 - 2.0.0",
+    "@lando/recipe-foo@1.2.3 || 2.0.0",
+  ])("rejects semver range spec %p", (spec) => {
+    expect(() => parseNpmPackageSpec(spec)).toThrow(RecipeSourceError);
+    expect(() => parseNpmPackageSpec(spec)).toThrow(/semver ranges are not supported/);
   });
 
   test.each(["", "   ", "@"])("rejects empty/invalid spec %p", (spec) => {

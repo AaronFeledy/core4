@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { Effect, Either, Schema } from "effect";
 
@@ -9,11 +9,28 @@ import {
   type LandoCommandError,
   NotImplementedError,
   PluginManifestError,
+  RecipeSourceError,
 } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { publish } from "../../recipes/git-source.ts";
+import {
+  DEFAULT_NPM_REGISTRY_URL,
+  type NpmPackument,
+  type NpmRegistryClient,
+  defaultNpmRegistryClient,
+  parseNpmPackageSpec,
+  resolveNpmPackageVersion,
+  verifyNpmPackageDistIntegrity,
+} from "../../recipes/npm-source.ts";
 import { createStdioPromptIO } from "../../recipes/prompts/io.ts";
+import {
+  type TarballRecipeExtractor,
+  type TarballRecipeFetcher,
+  defaultTarballRecipeExtractor,
+  defaultTarballRecipeFetcher,
+} from "../../recipes/tarball-source.ts";
 
 export interface PluginAddSpawner {
   readonly install: (request: {
@@ -44,6 +61,10 @@ export interface PluginAddOptions {
   readonly pluginsRoot?: string;
   readonly userDataRoot?: string;
   readonly spawner?: PluginAddSpawner;
+  readonly registryUrl?: string;
+  readonly registryClient?: NpmRegistryClient;
+  readonly fetcher?: TarballRecipeFetcher;
+  readonly extractor?: TarballRecipeExtractor;
   readonly prompter?: PluginAddPrompter;
   readonly trustStore?: PluginTrustStore;
 }
@@ -97,6 +118,12 @@ const ensurePluginsRoot = async (root: string): Promise<void> => {
     );
   }
 };
+
+const fileExists = async (path: string): Promise<boolean> =>
+  stat(path).then(
+    () => true,
+    () => false,
+  );
 
 const parsePackageName = (spec: string): string => {
   if (spec.startsWith("@")) {
@@ -171,25 +198,100 @@ export const validatePluginManifest = async (
   return { manifest, entry };
 };
 
-const defaultSpawner: PluginAddSpawner = {
-  install: async ({ spec, cwd }) => {
-    const proc = Bun.spawn({
-      cmd: [process.execPath, "add", spec],
-      cwd,
-      env: {
-        ...(Object.fromEntries(
-          Object.entries(process.env).filter(([, v]) => typeof v === "string"),
-        ) as Record<string, string>),
-        BUN_BE_BUN: "1",
-        LANDO_DISALLOW_BUN_BE_BUN_REENTRY: "1",
-      },
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-    const packageName = parsePackageName(spec);
-    return { exitCode, stderr, packageRoot: join(cwd, "node_modules", packageName) };
-  },
+interface InstalledPluginPackage {
+  readonly packageDir: string;
+}
+
+const npmInstallFailure = (message: string, spec: string): NotImplementedError =>
+  new NotImplementedError({
+    message,
+    commandId: "meta:plugin:add",
+    specSection: "spec/10-plugins.md",
+    remediation: `Check the npm package spec and registry metadata, then retry \`lando plugin:add ${spec}\`.`,
+  });
+
+const assertSafeInstallSegment = (value: string, label: string, spec: string): void => {
+  const slashPath = value.replace(/\\/gu, "/");
+  const segments = slashPath.split("/");
+  if (
+    value.trim() === "" ||
+    isAbsolute(value) ||
+    slashPath.startsWith("/") ||
+    value.includes("\\") ||
+    segments.some((segment) => segment === "" || segment === "." || segment === "..")
+  ) {
+    throw npmInstallFailure(`Resolved npm plugin ${label} escapes the plugin root: ${value}`, spec);
+  }
+};
+
+const installTargetFor = (pluginsRoot: string, name: string, version: string, spec: string): string => {
+  assertSafeInstallSegment(name, "name", spec);
+  assertSafeInstallSegment(version, "version", spec);
+  const packageDir = join(pluginsRoot, name, version);
+  const rel = relative(pluginsRoot, packageDir);
+  if (rel === "" || rel === ".." || rel.startsWith("../") || isAbsolute(rel)) {
+    throw npmInstallFailure(`Resolved npm plugin install path escapes the plugin root: ${packageDir}`, spec);
+  }
+  return packageDir;
+};
+
+const installFromNpm = async (
+  options: PluginAddOptions,
+  pluginsRoot: string,
+): Promise<InstalledPluginPackage> => {
+  const parsed = parseNpmPackageSpec(options.spec);
+  const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
+  const client = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
+  let packument: NpmPackument | undefined;
+  try {
+    packument = await client.fetchPackument(parsed.name);
+  } catch (cause) {
+    throw npmInstallFailure(
+      `Could not fetch npm metadata for "${parsed.name}" from ${registryUrl}: ${String(cause)}`,
+      options.spec,
+    );
+  }
+  if (packument === undefined) {
+    throw npmInstallFailure(
+      `npm package "${parsed.name}" was not found in the registry ${registryUrl}.`,
+      options.spec,
+    );
+  }
+  const resolvedVersion = resolveNpmPackageVersion(packument, parsed.version, options.spec);
+  const dist = packument.versions?.[resolvedVersion]?.dist;
+  if (dist === undefined || dist.tarball === undefined || dist.tarball.trim() === "") {
+    throw npmInstallFailure(
+      `npm package "${parsed.name}@${resolvedVersion}" has no published tarball URL.`,
+      options.spec,
+    );
+  }
+
+  const packageDir = installTargetFor(pluginsRoot, parsed.name, resolvedVersion, options.spec);
+  if (await fileExists(packageDir)) return { packageDir };
+
+  let archiveBytes: Uint8Array;
+  try {
+    archiveBytes = await (options.fetcher ?? defaultTarballRecipeFetcher).fetch(dist.tarball);
+  } catch (cause) {
+    throw npmInstallFailure(`Could not download npm tarball ${dist.tarball}: ${String(cause)}`, options.spec);
+  }
+  verifyNpmPackageDistIntegrity(archiveBytes, dist, dist.tarball);
+
+  const finalParent = dirname(packageDir);
+  await mkdir(finalParent, { recursive: true });
+  const stagingRoot = await mkdtemp(join(finalParent, ".staging-"));
+  try {
+    await (options.extractor ?? defaultTarballRecipeExtractor).extract(archiveBytes, stagingRoot);
+    const extractedPackageDir = join(stagingRoot, "package");
+    await validatePluginManifest(extractedPackageDir);
+    await publish(extractedPackageDir, packageDir);
+  } catch (cause) {
+    await rm(stagingRoot, { recursive: true, force: true });
+    await rm(packageDir, { recursive: true, force: true });
+    throw cause;
+  }
+  await rm(stagingRoot, { recursive: true, force: true });
+  return { packageDir };
 };
 
 const defaultPrompter: PluginAddPrompter = {
@@ -228,7 +330,7 @@ export const pluginAdd = (
   options: PluginAddOptions,
 ): Effect.Effect<
   PluginAddResult,
-  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError,
+  ConfigError | LandoCommandError | NotImplementedError | PluginManifestError | RecipeSourceError,
   ConfigService
 > =>
   Effect.gen(function* () {
@@ -275,14 +377,28 @@ export const pluginAdd = (
     }
     yield* Effect.promise(() => ensurePluginsRoot(pluginsRoot));
 
-    const spawner = options.spawner ?? defaultSpawner;
-    const installed = yield* Effect.promise(() => spawner.install({ spec: options.spec, cwd: pluginsRoot }));
-    if (installed.exitCode !== 0) {
-      return yield* Effect.fail(installFailure(options.spec, installed.stderr));
-    }
-
     const packageName = parsePackageName(options.spec);
-    const packageDir = installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
+    const packageDir = yield* Effect.tryPromise({
+      try: async () => {
+        if (options.spawner !== undefined) {
+          const installed = await options.spawner.install({ spec: options.spec, cwd: pluginsRoot });
+          if (installed.exitCode !== 0) throw installFailure(options.spec, installed.stderr);
+          return installed.packageRoot ?? join(pluginsRoot, "node_modules", packageName);
+        }
+        return (await installFromNpm(options, pluginsRoot)).packageDir;
+      },
+      catch: (cause) =>
+        cause instanceof RecipeSourceError
+          ? npmInstallFailure(cause.message, options.spec)
+          : cause instanceof NotImplementedError || cause instanceof PluginManifestError
+            ? cause
+            : new NotImplementedError({
+                message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
+                commandId: "meta:plugin:add",
+                specSection: "spec/10-plugins.md",
+                remediation: "Check the plugin package and retry.",
+              }),
+    });
 
     const { manifest } = yield* Effect.tryPromise({
       try: () => validatePluginManifest(packageDir),
