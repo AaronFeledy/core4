@@ -26,13 +26,11 @@ case "$1" in
 esac
 `;
 
-// Exits non-zero for --version: a broken binary.
 const NONZERO_BINARY = `#!/bin/sh
 echo "boom" >&2
 exit 1
 `;
 
-// Emits invalid UTF-8 bytes on stdout for --version, then exits 0.
 const INVALID_UTF8_BINARY = `#!/bin/sh
 case "$1" in
   --version) printf '\\377\\376'; exit 0;;
@@ -40,8 +38,6 @@ case "$1" in
 esac
 `;
 
-// Succeeds for every subcommand, including the bogus probe: smoke must reject
-// because an unknown command is expected to fail.
 const ALWAYS_OK_BINARY = `#!/bin/sh
 echo "ok"
 exit 0
