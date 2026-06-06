@@ -193,6 +193,7 @@
 - `FileSyncContractMatrixReport`
 - `HealthcheckExpectation`
 - `HostPlatformId`
+- `PluginContractInput`
 - `ServiceContractExpectations`
 - `ServiceContractInput`
 - `ServiceContractMatrixCell`
@@ -203,12 +204,14 @@
 - `SupportedFileSyncContractCell`
 - `SupportedServiceContractCell`
 - `TestFileSyncEngine`
+- `TestPluginManifest`
 - `TestServiceType`
 - `UnsupportedContractCell`
 - `UnsupportedFileSyncContractCell`
 - `UnsupportedServiceContractCell`
 - `runFileSyncEngineContract`
 - `runFileSyncEngineContractMatrix`
+- `runPluginContract`
 - `runProviderContractMatrix`
 - `runServiceContract`
 - `runServiceContractMatrix`

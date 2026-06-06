@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
+
+import { runPluginContract } from "@lando/sdk/test";
 
 describe("@lando/logger-pretty package", () => {
   test("exports the package skeleton", async () => {
@@ -14,5 +16,18 @@ describe("@lando/logger-pretty package", () => {
       api: 4,
       contributes: { loggers: ["pretty"] },
     });
+  });
+
+  test("satisfies the published plugin contract suite", async () => {
+    const plugin = await import("@lando/logger-pretty");
+
+    await expect(
+      Effect.runPromise(
+        runPluginContract({
+          manifest: plugin.manifest,
+          layers: { logger: plugin.logger },
+        }),
+      ),
+    ).resolves.toBeUndefined();
   });
 });
