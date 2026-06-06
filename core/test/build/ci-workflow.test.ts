@@ -196,7 +196,7 @@ describe("ci workflow", () => {
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
     expect(staticChecksPlatform).toContain(
-      "        platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64]",
+      "        platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]",
     );
     expect(staticChecksPlatform).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(staticChecksPlatform).toContain("    timeout-minutes: 35");
@@ -380,6 +380,40 @@ describe("ci workflow", () => {
     );
     expect(buildLinuxArm.indexOf("./dist/lando shellenv")).toBeLessThan(
       buildLinuxArm.indexOf("uses: actions/upload-artifact@v4"),
+    );
+  });
+
+  test("builds and smokes the windows-x64 binary on windows-2022 with UTF-8 stdout decoding", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const buildWindows = findIndentedBlock(jobs, "build-windows-x64", 2);
+
+    expect(buildWindows).toContain(
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
+    expect(buildWindows).toContain("    runs-on: windows-2022");
+    expect(buildWindows).toContain("        run: bun run --filter='@lando/core' build:manifest");
+    expect(buildWindows).toContain(
+      "          bun build ./core/bin/lando.ts --compile --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external",
+    );
+    expect(buildWindows).toContain(
+      "          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe",
+    );
+    expect(buildWindows).toContain("          $versionOutput = & ./dist/lando-windows-x64.exe --version");
+    expect(buildWindows).toContain("          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }");
+    expect(buildWindows).toContain("          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8");
+    expect(buildWindows).toContain("          $helpOutput = & ./dist/lando-windows-x64.exe --help");
+    expect(buildWindows).toContain("          $shellenvOutput = & ./dist/lando-windows-x64.exe shellenv");
+    expect(buildWindows).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildWindows).toContain("        if: always()");
+    expect(buildWindows).toContain("          name: lando-windows-x64");
+    expect(buildWindows).toContain("          path: dist/lando-windows-x64.exe");
+    expect(buildWindows).toContain("          if-no-files-found: ignore");
+    expect(buildWindows).toContain("          retention-days: 14");
+
+    expect(buildWindows.indexOf("--help")).toBeLessThan(buildWindows.indexOf("shellenv"));
+    expect(buildWindows.indexOf("shellenv")).toBeLessThan(
+      buildWindows.indexOf("uses: actions/upload-artifact@v4"),
     );
   });
 
@@ -610,7 +644,7 @@ describe("ci workflow", () => {
   test("generates the Beta multi-platform build and provider integration matrix", async () => {
     const workflow = await readWorkflow();
 
-    for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]) {
+    for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
       expect(workflow).toContain(`build-${platform}:`);
       expect(workflow).toContain(`provider-integration-${platform}:`);
       expect(workflow).toContain(`name: lando-${platform}`);
@@ -620,8 +654,8 @@ describe("ci workflow", () => {
     expect(workflow).toContain("runs-on: macos-15-intel");
     expect(workflow).toContain("runs-on: ubuntu-24.04-arm");
     expect(workflow).toContain("runs-on: ubuntu-24.04");
-    expect(workflow).toContain("runs-on: windows-latest");
-    expect(workflow).toContain("--target=bun-windows-x64 --outfile ./dist/lando.exe");
+    expect(workflow).toContain("runs-on: windows-2022");
+    expect(workflow).toContain("--target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe");
     expect(workflow).toContain(
       "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
     );

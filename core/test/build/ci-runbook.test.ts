@@ -45,7 +45,7 @@ describe("ci runbook", () => {
     expect(runbook).toContain("static-checks-scope");
     expect(runbook).toContain("US-189");
     expect(runbook).toContain("darwin-arm64");
-    expect(runbook).toContain("build-win32-x64");
+    expect(runbook).toContain("build-windows-x64");
     expect(runbook).toContain("bun run build");
     expect(runbook).toContain("CI pins Bun via `.bun-version`");
     expect(runbook).toContain("Provider integration tests intentionally stay serial");

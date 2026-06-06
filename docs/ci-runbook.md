@@ -4,7 +4,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; update that file first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `win32-x64`; the stable `static-checks` summary job is the branch-protection check.
+CI pins Bun via `.bun-version`; update that file first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64`; the stable `static-checks` summary job is the branch-protection check.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -50,7 +50,7 @@ CI builds and smokes one binary per required PR platform:
 - `build-darwin-x64` on `macos-15-intel` → `lando-darwin-x64`
 - `build-linux-arm64` on `ubuntu-24.04-arm` → `lando-linux-arm64`
 - `build-linux-x64` on `ubuntu-24.04` → `lando-linux-x64`
-- `build-win32-x64` on `windows-latest` → `lando-win32-x64`
+- `build-windows-x64` on `windows-2022` → `lando-windows-x64`
 
 ```bash
 bun run build
@@ -158,13 +158,13 @@ Protect `main` in GitHub with required status checks enabled. All required statu
 - `build-darwin-x64`
 - `build-linux-arm64`
 - `build-linux-x64`
-- `build-win32-x64`
+- `build-windows-x64`
 - `perf-budget-linux-x64`
 - `provider-integration-darwin-arm64`
 - `provider-integration-darwin-x64`
 - `provider-integration-linux-arm64`
 - `provider-integration-linux-x64`
-- `provider-integration-win32-x64`
+- `provider-integration-windows-x64`
 
 ## Bun upgrade smoke checks
 
