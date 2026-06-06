@@ -1290,3 +1290,8 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - `scripts/build-bootstrap-layers.ts` must overwrite expected generated layer files in place before pruning stale extras; deleting the generated directory first creates a race with parallel CLI/source tests that import `core/src/runtime/generated/layers/index.ts`.
 ---
+
+## [2026-06-06 04:20 CDT] - US-187 Review
+- Reviewed the AOT bootstrap-layer codegen against PRD-B-13 §17.2: the generated per-level layers reproduce the deleted runtime factories line-for-line (none=Layer.empty; plugins/commands alias minimal; tooling/provider/global/scratch/app preserved), `layer.ts` delegates to the generated entrypoint with no runtime `Layer.mergeAll`/`Layer.provide` of its own, and the codegen + CI drift gate + idempotency tests are wired. One real blocker fixed: the story shipped the codegen but left two interim notes ("AOT bootstrap-layer codegen has not shipped") in README.md and spec/02-toolchain.md §2.4 that now contradict reality — removed both (the progress note claimed they were already removed; they were not).
+- Verification: generator re-run produced zero drift under `core/src/runtime/generated/layers`; `generated-bootstrap-layers.test.ts` 2/2; `bun run typecheck` exit 0; `bun run lint` clean (847 files); runtime + codegen + codegen-ci + bootstrap suites 31/31. Reverted the unrelated test-regenerated `compiled-manifest.ts` drift (known pre-existing app:shell mismatch) to keep the diff focused.
+---
