@@ -5,7 +5,7 @@
  * Inputs:
  *   - `@lando/sdk/schema` BootstrapLevel / BOOTSTRAP_RANK
  *   - `core/src/runtime/bootstrap-layer-support.ts` runtime-varying inputs
- *   - The core runtime service membership graph (§3.4)
+ *   - The core runtime service membership graph
  *
  * Output:
  *   - `core/src/runtime/generated/layers/*.ts` — one generated layer factory per bootstrap level.
@@ -29,7 +29,7 @@ const HEADER = (command = "bun run scripts/build-bootstrap-layers.ts") => `/**
  * Regenerate via \`${command}\`.
  *
  * Source of truth: \`scripts/build-bootstrap-layers.ts\`, \`BootstrapLevel\`, and the
- * core runtime service membership graph (§3.4).
+ * core runtime service membership graph.
  *
  * Bootstrap layer composition is emitted ahead of time so hand-authored
  * runtime factories do not rebuild the Effect Layer graph outside this
