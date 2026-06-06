@@ -1268,3 +1268,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (pushed the already-resolved local merge of origin/main to clear CONFLICTING; both Cursor Bugbot items — templateEngines + serviceTypes static-map validation in runPluginContract — were already addressed by existing branch commits; no new fix needed)
 - Merge: merged (squash)
 ---
+
+## [2026-06-06 00:59 CDT] - US-184
+- Closed the bookkeeping gap on US-184 (build darwin-x64 binary): the deliverable — the dedicated `build-darwin-x64` per-platform contract test in `core/test/build/ci-workflow.test.ts` plus the generated matrix job — was already implemented and merged via PR #300 (commit 4fdc834), but `spec/beta/prd.json` still carried `passes: false`. Verified the deliverable was already green before the bookkeeping-only branch commit and flipped the flag to `true`.
+- Verification: `bun test core/test/build/ci-workflow.test.ts` = 16 pass / 0 fail / 351 expect() (includes the "builds and smokes the darwin-x64 binary on the current Intel image with 14-day retention" case pinning `runs-on: macos-15-intel`, the `bun-darwin-x64` compile target, sanitize step, `--version`/`--help`/`shellenv` ordered smoke before upload, and 14-day retention). Regenerating via `bun run scripts/build-ci-workflow.ts` produced ZERO `.github/workflows/ci.yml` drift. `bun run typecheck` (`tsc -b`) exit 0; `bun run lint` (`biome check .`) clean across 834 files; full `bun test` = 3093 pass / 27 skip / 0 fail across 482 files.
+- **Learnings for future iterations:**
+  - A story whose code already merged under a same-named PR can still sit at `passes: false` in prd.json — the loop's deliverable in that case is the verification + flag flip, not new code. Confirm HEAD==main + the contract test is green + no generator drift before flipping, never flip blind.
+  - The AC's literal `macos-13` runner is satisfied by `macos-15-intel` (the "or current Intel image" allowance); the contract test already pins the current image, so don't "fix" the runner to the stale literal.
