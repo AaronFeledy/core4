@@ -68,8 +68,8 @@ jobs:
         env:
           LANDO_TEST_FILE_SYNC_LIVE: "1"
 
-  file-sync-contract-win32-x64:
-    runs-on: windows-latest
+  file-sync-contract-windows-x64:
+    runs-on: windows-2022
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -82,7 +82,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Run file-sync contract matrix (win32-x64)
+      - name: Run file-sync contract matrix (windows-x64)
         run: bun test plugins/file-sync-mutagen/test/contract.test.ts
         env:
           LANDO_TEST_FILE_SYNC_LIVE: "1"

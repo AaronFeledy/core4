@@ -318,7 +318,7 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("static-checks-platform:");
-      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64]");
+      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]");
       expect(workflow).toContain("- name: Typecheck");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("- name: Lint");
@@ -432,7 +432,7 @@ describe("ci workflow codegen", () => {
 
       const workflow = await readFile(workflowPath, "utf8");
 
-      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "win32-x64"]) {
+      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
         expect(workflow).toContain(`build-${platform}:`);
         expect(workflow).toContain(`provider-integration-${platform}:`);
         expect(workflow).toContain(`name: lando-${platform}`);
@@ -441,7 +441,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks:");
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("needs: [static-checks-platform]");
-      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64]");
+      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]");
       expect(workflow).toContain("run: bun test core/test/services core/test/cli core/test/scenario");
       expect(workflow).toContain(
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
