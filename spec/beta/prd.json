@@ -1672,8 +1672,8 @@
         "Lint passes"
       ],
       "priority": 99,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added core/test/library/import-boundary.test.ts: transitive static-import-graph walker (Bun.Transpiler scan; type-only+dynamic excluded) asserts default @lando/core, /cli, /testing load no OCLIF code path while /oclif does (positive control). Classifier self-checks both signals (@oclif/* npm import; reaching core/src/cli/oclif/**). Failure messages name the full import chain. Also resolves every default-entry export. 18 tests pass; tsc -b + core/test tsc clean; biome clean."
     },
     {
       "id": "US-173",
