@@ -1225,3 +1225,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - Library-mode renderer/telemetry defaults should stay in `core/src/runtime/layer.ts` as lightweight service values; importing `core/src/cli/renderer-boundary.ts` or renderer runtime from the default entry would expand the library import graph and risk pulling CLI/TUI code into embedders.
   - `makeToolingRuntimeLive` already provides `PluginRegistry`; keep `ToolingRuntimeServices` in sync with that actual layer surface so library test contexts typecheck when they inspect the registry.
 ---
+
+## [2026-06-05 21:44 CDT] - US-173 Verification
+- Verified the in-flight library-mode defaults story is complete on the current branch with no additional code changes needed;  still exposes the expected library defaults and explicit override coverage from the existing implementation.
+- Verification: typecheck, lint, guide lint, guide coverage, focused runtime/import-boundary tests, build, full test suite, and manual library runtime QA passed.
+- **Learnings for future iterations:**
+  - If a Build retry finds the story already committed and , rerun the required checks on the story branch and record a short verification-only progress entry rather than selecting the next failing story.
+---
