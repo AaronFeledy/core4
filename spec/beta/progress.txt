@@ -1232,3 +1232,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - **Learnings for future iterations:**
   - If a Build retry finds the story already committed and , rerun the required checks on the story branch and record a short verification-only progress entry rather than selecting the next failing story.
 ---
+
+## [2026-06-05 22:10 CDT] - US-173 Review
+- Closed the AC-required default-set coverage gap: added a silent-logger default assertion (library default emits no log output) plus a `logger: "pretty"` override assertion to `make-runtime.test.ts`, using the repo's existing console-capture pattern.
+- Review notes (rejected): Oracle flagged `normalizePluginPolicy` partial-discovery semantics + unplumbed `system`/`manifests`/`externalImports` — rejected as out of scope: that function was introduced by US-171 (commit fc3b69d), not this build step, and US-173's default (discovery-free) + per-field override criteria are already satisfied/tested; full EmbeddingPluginPolicy field fidelity is FR-4/US-171 work. Unknown-renderer→json silent fallback left as-is (intentional safe library default).
+- Verification: typecheck (tsc -b), lint, renderer-boundary, guide-coverage, guide-lint, and focused runtime/import-boundary/logger tests passed.
+---
