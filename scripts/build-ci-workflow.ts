@@ -169,8 +169,11 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
 
 const renderSmokeCommands = (platform: CiPlatform): string =>
   platform.id === "windows-x64"
-    ? `          test -f dist/${platform.binaryName}\n          bun run scripts/smoke-windows-binary.ts ./dist/${platform.binaryName}`
-    : `          test -f dist/${platform.binaryName}\n          ./dist/${platform.binaryName} --version\n          ./dist/${platform.binaryName} --help\n          ./dist/${platform.binaryName} shellenv`;
+    ? `          bun run scripts/smoke-windows-binary.ts ./dist/${platform.binaryName}`
+    : `          test -f dist/${platform.binaryName}
+          ./dist/${platform.binaryName} --version
+          ./dist/${platform.binaryName} --help
+          ./dist/${platform.binaryName} shellenv`;
 
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
     needs: ${buildNeeds}

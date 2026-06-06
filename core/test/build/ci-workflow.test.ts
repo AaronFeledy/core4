@@ -333,10 +333,12 @@ describe("ci workflow", () => {
     expect(buildWindows).toContain(
       "          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe",
     );
-    expect(buildWindows).toContain("          test -f dist/lando-windows-x64.exe");
+    expect(buildWindows).not.toContain("test -f dist/lando-windows-x64.exe");
     expect(buildWindows).toContain(
       "          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-x64.exe",
     );
+    expect(buildWindows).not.toContain("shell: pwsh");
+    expect(buildWindows).not.toContain("[Console]::OutputEncoding");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe --version");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe shellenv");
     expect(buildWindows).toContain("        uses: actions/upload-artifact@v4");

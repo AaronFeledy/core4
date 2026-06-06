@@ -497,7 +497,6 @@ jobs:
 
       - name: Smoke test binary
         run: |
-          test -f dist/lando-windows-x64.exe
           bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-x64.exe
 
       - name: Upload windows-x64 binary
