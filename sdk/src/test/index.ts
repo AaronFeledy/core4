@@ -4,7 +4,9 @@
  * Every `RuntimeProvider` plugin MUST pass the contract suite before it can be
  * treated as conforming to the SDK surface.
  */
-import { DateTime, Duration, Effect, Either, Schema, Stream } from "effect";
+import { DateTime, Duration, Effect, Either, Layer, Schema, Stream } from "effect";
+
+import { PluginLoadError, PluginManifestError } from "../errors/index.ts";
 
 import {
   AbsolutePath,
@@ -15,6 +17,7 @@ import {
   type HostPlatform,
   LandofileShape,
   type PlanMetadata,
+  PluginManifest,
   ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -132,6 +135,153 @@ const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArra
 >;
 
 const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
+
+type PluginLayerExportName =
+  | "ca"
+  | "engine"
+  | "logger"
+  | "provider"
+  | "proxy"
+  | "renderer"
+  | "services"
+  | "templateEngine";
+
+export interface PluginContractInput {
+  readonly manifest: unknown;
+  readonly layers?: Partial<Record<PluginLayerExportName, Layer.Layer<never, unknown, unknown>>>;
+  readonly globalServices?: ReadonlyMap<string, Effect.Effect<unknown, unknown, never>>;
+  readonly templateEngines?: ReadonlyMap<string, unknown>;
+}
+
+const pluginContributionLayerExports: ReadonlyArray<{
+  readonly key: keyof NonNullable<PluginManifest["contributes"]>;
+  readonly exportName: PluginLayerExportName;
+}> = [
+  { key: "cas", exportName: "ca" },
+  { key: "fileSyncEngines", exportName: "engine" },
+  { key: "loggers", exportName: "logger" },
+  { key: "providers", exportName: "provider" },
+  { key: "proxies", exportName: "proxy" },
+  { key: "renderers", exportName: "renderer" },
+  { key: "serviceTypes", exportName: "services" },
+  { key: "templateEngines", exportName: "templateEngine" },
+];
+
+export const TestPluginManifest: PluginManifest = Schema.decodeSync(PluginManifest)({
+  name: "@lando/test-plugin",
+  version: "0.0.0",
+  api: 4,
+  description: "SDK plugin contract fixture.",
+  enabled: true,
+  contributes: { loggers: ["test"] },
+  entry: "./src/index.ts",
+});
+
+const pluginContractFailure = (assertion: string, details?: unknown): ContractFailure =>
+  new ContractFailure({
+    message: `Plugin contract failed: ${assertion}`,
+    assertion,
+    details,
+  });
+
+const requirePluginContract = (condition: boolean, assertion: string, details?: unknown) =>
+  condition ? Effect.void : Effect.fail(pluginContractFailure(assertion, details));
+
+const isLayer = (value: unknown): boolean => Layer.isLayer(value);
+
+const hasNonEmptyStringEntries = (values: ReadonlyArray<string> | undefined): boolean =>
+  values === undefined || values.every(isNonEmptyString);
+
+export const runPluginContract = (input: PluginContractInput): Effect.Effect<void, ContractFailure> =>
+  Effect.gen(function* () {
+    const decodedManifest = Schema.decodeUnknownEither(PluginManifest)(input.manifest);
+
+    yield* requirePluginContract(
+      Either.isRight(decodedManifest),
+      "manifest decodes as PluginManifest",
+      decodedManifest,
+    );
+    if (Either.isLeft(decodedManifest)) return;
+
+    const manifest = decodedManifest.right;
+
+    yield* requirePluginContract(
+      isNonEmptyString(manifest.name),
+      "manifest name is a non-empty string",
+      manifest,
+    );
+    yield* requirePluginContract(
+      isNonEmptyString(manifest.version),
+      "manifest version is a non-empty string",
+      manifest,
+    );
+    yield* requirePluginContract(manifest.api === 4, "manifest api is 4", manifest);
+
+    const contributions = manifest.contributes ?? {};
+
+    for (const [key, values] of Object.entries(contributions)) {
+      if (Array.isArray(values) && key !== "globalServices") {
+        yield* requirePluginContract(
+          hasNonEmptyStringEntries(values),
+          `contribution ${key} contains only non-empty ids`,
+          values,
+        );
+      }
+    }
+
+    for (const { key, exportName } of pluginContributionLayerExports) {
+      const ids = contributions[key];
+      if (!Array.isArray(ids) || ids.length === 0) continue;
+
+      yield* requirePluginContract(
+        isLayer(input.layers?.[exportName]),
+        `contribution ${key} exposes Layer export ${exportName}`,
+        { exportName, ids },
+      );
+    }
+
+    for (const entry of contributions.globalServices ?? []) {
+      yield* requirePluginContract(
+        isNonEmptyString(entry.id),
+        "globalServices entries have non-empty ids",
+        entry,
+      );
+      yield* requirePluginContract(
+        Effect.isEffect(input.globalServices?.get(entry.id)),
+        `globalServices static map contains declared id ${entry.id}`,
+        entry,
+      );
+    }
+
+    for (const id of contributions.templateEngines ?? []) {
+      yield* requirePluginContract(
+        input.templateEngines === undefined || input.templateEngines.has(id),
+        `templateEngines static map contains declared id ${id}`,
+        { id },
+      );
+    }
+
+    const loadError = new PluginLoadError({
+      message: "plugin contract load error",
+      pluginName: manifest.name,
+    });
+    const manifestError = new PluginManifestError({
+      message: "plugin contract manifest error",
+      pluginName: manifest.name,
+      issues: ["contract"],
+    });
+
+    yield* requirePluginContract(
+      loadError._tag === "PluginLoadError",
+      "PluginLoadError tag is constructible",
+      loadError,
+    );
+    yield* requirePluginContract(
+      manifestError._tag === "PluginManifestError",
+      "PluginManifestError tag is constructible",
+      manifestError,
+    );
+  });
 
 const CONTRACT_MATRIX_PLATFORMS: ReadonlyArray<HostPlatform> = ["darwin", "linux", "win32", "wsl"];
 

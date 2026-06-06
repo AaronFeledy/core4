@@ -197,4 +197,11 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.runServiceContractMatrix).toBeDefined();
     expect(sdkTest.TestServiceType).toBeDefined();
   });
+
+  test("test entry point exports plugin contract helpers", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runPluginContract).toBeDefined();
+    expect(sdkTest.TestPluginManifest).toBeDefined();
+  });
 });
