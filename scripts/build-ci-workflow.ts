@@ -12,8 +12,6 @@ interface CiWorkflowInput {
   readonly bundledPluginNames: ReadonlyArray<string>;
 }
 
-type SmokeStyle = "posix" | "powershell";
-
 interface CiPlatform {
   readonly id: string;
   readonly runsOn: string;
@@ -22,7 +20,6 @@ interface CiPlatform {
   readonly timeoutMinutes: number;
   readonly providerTimeoutMinutes: number;
   readonly liveProviderIntegration: boolean;
-  readonly smoke: SmokeStyle;
 }
 
 const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
@@ -34,7 +31,6 @@ const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     timeoutMinutes: 30,
     providerTimeoutMinutes: 20,
     liveProviderIntegration: false,
-    smoke: "posix",
   },
   {
     id: "darwin-x64",
@@ -44,7 +40,6 @@ const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     timeoutMinutes: 30,
     providerTimeoutMinutes: 20,
     liveProviderIntegration: false,
-    smoke: "posix",
   },
   {
     id: "linux-arm64",
@@ -54,7 +49,6 @@ const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     timeoutMinutes: 30,
     providerTimeoutMinutes: 25,
     liveProviderIntegration: false,
-    smoke: "posix",
   },
   {
     id: "linux-x64",
@@ -64,7 +58,6 @@ const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     timeoutMinutes: 30,
     providerTimeoutMinutes: 25,
     liveProviderIntegration: true,
-    smoke: "posix",
   },
   {
     id: "windows-x64",
@@ -74,7 +67,6 @@ const CI_PLATFORMS: ReadonlyArray<CiPlatform> = [
     timeoutMinutes: 35,
     providerTimeoutMinutes: 20,
     liveProviderIntegration: false,
-    smoke: "powershell",
   },
 ];
 
@@ -175,6 +167,14 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
           echo "static-checks platform matrix passed"
 `;
 
+const renderSmokeCommands = (platform: CiPlatform): string =>
+  platform.id === "windows-x64"
+    ? `          bun run scripts/smoke-windows-binary.ts ./dist/${platform.binaryName}`
+    : `          test -f dist/${platform.binaryName}
+          ./dist/${platform.binaryName} --version
+          ./dist/${platform.binaryName} --help
+          ./dist/${platform.binaryName} shellenv`;
+
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
     needs: ${buildNeeds}
     runs-on: ${platform.runsOn}
@@ -196,29 +196,9 @@ ${setupBunSteps}
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
       - name: Smoke test binary
-${
-  platform.smoke === "powershell"
-    ? `        shell: pwsh
         run: |
-          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-          if (!(Test-Path "dist/${platform.binaryName}")) { exit 1 }
-          $versionOutput = & ./dist/${platform.binaryName} --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ([string]::IsNullOrWhiteSpace($versionOutput)) { exit 1 }
-          $helpOutput = & ./dist/${platform.binaryName} --help
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ([string]::IsNullOrWhiteSpace($helpOutput)) { exit 1 }
-          $shellenvOutput = & ./dist/${platform.binaryName} shellenv
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ([string]::IsNullOrWhiteSpace($shellenvOutput)) { exit 1 }
-`
-    : `        run: |
-          test -f dist/${platform.binaryName}
-          ./dist/${platform.binaryName} --version
-          ./dist/${platform.binaryName} --help
-          ./dist/${platform.binaryName} shellenv
-`
-}
+${renderSmokeCommands(platform)}
+
       - name: Upload ${platform.id} binary
         if: always()
         uses: actions/upload-artifact@v4

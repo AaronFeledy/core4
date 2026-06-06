@@ -499,19 +499,8 @@ jobs:
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
 
       - name: Smoke test binary
-        shell: pwsh
         run: |
-          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-          if (!(Test-Path "dist/lando-windows-x64.exe")) { exit 1 }
-          $versionOutput = & ./dist/lando-windows-x64.exe --version
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ([string]::IsNullOrWhiteSpace($versionOutput)) { exit 1 }
-          $helpOutput = & ./dist/lando-windows-x64.exe --help
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ([string]::IsNullOrWhiteSpace($helpOutput)) { exit 1 }
-          $shellenvOutput = & ./dist/lando-windows-x64.exe shellenv
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if ([string]::IsNullOrWhiteSpace($shellenvOutput)) { exit 1 }
+          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-x64.exe
 
       - name: Upload windows-x64 binary
         if: always()

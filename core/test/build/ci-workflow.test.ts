@@ -317,6 +317,45 @@ describe("ci workflow", () => {
     );
   });
 
+  test("builds and smokes the windows-x64 binary on windows-2022 with exit-code + UTF-8 coverage and 14-day retention", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const buildWindows = findIndentedBlock(jobs, "build-windows-x64", 2);
+
+    expect(buildWindows).toContain(
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+    );
+    expect(buildWindows).toContain("    runs-on: windows-2022");
+    expect(buildWindows).toContain("        run: bun run --filter='@lando/core' build:manifest");
+    expect(buildWindows).toContain(
+      "          bun build ./core/bin/lando.ts --compile --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external",
+    );
+    expect(buildWindows).toContain(
+      "          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe",
+    );
+    expect(buildWindows).not.toContain("test -f dist/lando-windows-x64.exe");
+    expect(buildWindows).toContain(
+      "          bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-x64.exe",
+    );
+    expect(buildWindows).not.toContain("shell: pwsh");
+    expect(buildWindows).not.toContain("[Console]::OutputEncoding");
+    expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe --version");
+    expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe shellenv");
+    expect(buildWindows).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildWindows).toContain("        if: always()");
+    expect(buildWindows).toContain("          name: lando-windows-x64");
+    expect(buildWindows).toContain("          path: dist/lando-windows-x64.exe");
+    expect(buildWindows).toContain("          if-no-files-found: ignore");
+    expect(buildWindows).toContain("          retention-days: 14");
+
+    expect(buildWindows.indexOf("--outfile ./dist/lando-windows-x64.exe")).toBeLessThan(
+      buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
+    );
+    expect(buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts")).toBeLessThan(
+      buildWindows.indexOf("uses: actions/upload-artifact@v4"),
+    );
+  });
+
   test("builds and smokes the darwin-x64 binary on the current Intel image with 14-day retention", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
@@ -380,40 +419,6 @@ describe("ci workflow", () => {
     );
     expect(buildLinuxArm.indexOf("./dist/lando shellenv")).toBeLessThan(
       buildLinuxArm.indexOf("uses: actions/upload-artifact@v4"),
-    );
-  });
-
-  test("builds and smokes the windows-x64 binary on windows-2022 with UTF-8 stdout decoding", async () => {
-    const workflow = await readWorkflow();
-    const jobs = findIndentedBlock(workflow, "jobs");
-    const buildWindows = findIndentedBlock(jobs, "build-windows-x64", 2);
-
-    expect(buildWindows).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
-    );
-    expect(buildWindows).toContain("    runs-on: windows-2022");
-    expect(buildWindows).toContain("        run: bun run --filter='@lando/core' build:manifest");
-    expect(buildWindows).toContain(
-      "          bun build ./core/bin/lando.ts --compile --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external",
-    );
-    expect(buildWindows).toContain(
-      "          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe",
-    );
-    expect(buildWindows).toContain("          $versionOutput = & ./dist/lando-windows-x64.exe --version");
-    expect(buildWindows).toContain("          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }");
-    expect(buildWindows).toContain("          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8");
-    expect(buildWindows).toContain("          $helpOutput = & ./dist/lando-windows-x64.exe --help");
-    expect(buildWindows).toContain("          $shellenvOutput = & ./dist/lando-windows-x64.exe shellenv");
-    expect(buildWindows).toContain("        uses: actions/upload-artifact@v4");
-    expect(buildWindows).toContain("        if: always()");
-    expect(buildWindows).toContain("          name: lando-windows-x64");
-    expect(buildWindows).toContain("          path: dist/lando-windows-x64.exe");
-    expect(buildWindows).toContain("          if-no-files-found: ignore");
-    expect(buildWindows).toContain("          retention-days: 14");
-
-    expect(buildWindows.indexOf("--help")).toBeLessThan(buildWindows.indexOf("shellenv"));
-    expect(buildWindows.indexOf("shellenv")).toBeLessThan(
-      buildWindows.indexOf("uses: actions/upload-artifact@v4"),
     );
   });
 
