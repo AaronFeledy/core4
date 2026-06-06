@@ -209,11 +209,19 @@ describe("@lando/sdk package exports", () => {
   test("test entry point documents plugin contract runner arguments", async () => {
     const source = await readFile(new URL("../../src/test/index.ts", import.meta.url), "utf8");
 
-    expect(source).toContain("runPluginContract arguments");
-    expect(source).toContain("manifest:");
-    expect(source).toContain("layers:");
-    expect(source).toContain("globalServices:");
-    expect(source).toContain("serviceTypes:");
-    expect(source).toContain("templateEngines:");
+    const docblock = source.match(/\/\*\*\s*\n \* runPluginContract arguments:[\s\S]*?\n \*\//)?.[0];
+
+    expect(docblock).toBeDefined();
+    expect(docblock).toMatch(/^ \* - manifest: decoded or encoded plugin manifest object to validate\.$/m);
+    expect(docblock).toMatch(/^ \* - layers: static Layer exports keyed by contribution kind/m);
+    expect(docblock).toMatch(
+      /^ \* - globalServices: static global-service map keyed by contributed service id\.$/m,
+    );
+    expect(docblock).toMatch(
+      /^ \* - serviceTypes: static service-type map keyed by contributed service type id\.$/m,
+    );
+    expect(docblock).toMatch(
+      /^ \* - templateEngines: static template-engine map keyed by contributed engine id\.$/m,
+    );
   });
 });
