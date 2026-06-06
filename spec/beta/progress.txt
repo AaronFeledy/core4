@@ -1261,3 +1261,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The per-platform `build-<id>` jobs are all produced by the `CI_PLATFORMS` loop in `scripts/build-ci-workflow.ts`; a "build X binary" story's deliverable is the dedicated contract test that pins that platform's runner/smoke/retention, not new workflow YAML.
   - To get a genuine RED for a workflow-contract test, mutate the generator entry + `bun run scripts/build-ci-workflow.ts`, run the test, then revert and regenerate (verify `git diff --stat .github/workflows/ci.yml` is empty) so no generated drift lands in the commit.
 ---
+
+## 2026-06-06 00:45 CDT - Babysit
+- PR: #303 https://github.com/AaronFeledy/core4/pull/303
+- CI outcome: pass
+- Review feedback: fixed (pushed the already-resolved local merge of origin/main to clear CONFLICTING; both Cursor Bugbot items — templateEngines + serviceTypes static-map validation in runPluginContract — were already addressed by existing branch commits; no new fix needed)
+- Merge: merged (squash)
+---
