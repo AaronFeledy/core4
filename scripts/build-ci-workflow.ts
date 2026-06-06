@@ -433,8 +433,11 @@ ${setupBunSteps}
       - name: Regenerate bundled recipes
         run: bun run codegen:bundled-recipes
 
+      - name: Regenerate bootstrap layers
+        run: bun run codegen:bootstrap-layers
+
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers
 
 ${timingNoticeStep("bundled-codegen", 15)}
 

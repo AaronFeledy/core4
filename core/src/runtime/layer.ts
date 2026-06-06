@@ -15,50 +15,34 @@
  * - Runs the requested bootstrap sequence.
  * - Keeps resource ownership in the layer's outer scope.
  */
-import { type Context, Effect, Either, Layer, Schema, Stream } from "effect";
+import { Either, Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { AbsolutePath, EmbeddingPluginPolicy, ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
-import {
-  type AppPlanner,
-  type CacheService,
-  type CommandRegistry,
-  type ConfigService,
-  type EventService,
-  type FileSystem,
-  type GlobalAppService,
-  type LandofileService,
-  type Logger,
-  type PluginRegistry,
-  type PluginTrustStore,
+import { AbsolutePath, EmbeddingPluginPolicy, ProviderId } from "@lando/sdk/schema";
+import type {
+  AppPlanner,
+  CacheService,
+  CommandRegistry,
+  ConfigService,
+  EventService,
+  FileSystem,
+  GlobalAppService,
+  LandofileService,
+  Logger,
+  PluginRegistry,
+  PluginTrustStore,
   Renderer,
   RuntimeProvider,
-  type RuntimeProviderRegistry,
-  type ScratchAppService,
+  RuntimeProviderRegistry,
+  ScratchAppService,
   Telemetry,
-  type ToolingEngine,
+  ToolingEngine,
 } from "@lando/sdk/services";
 
-import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
-
-import { CacheServiceLive } from "../cache/service.ts";
-import { GlobalAppServiceLive } from "../global-app/service.ts";
-import { LandofileServiceLive } from "../landofile/service.ts";
-import { LoggerLive, type LoggerMode } from "../logging/service.ts";
-import { makePluginRegistryLive } from "../plugins/registry.ts";
-import { PluginTrustStoreLive } from "../plugins/trust-store.ts";
-import { RuntimeProviderRegistryLive } from "../providers/registry.ts";
-import { ScratchRegistryLive } from "../scratch-app/registry.ts";
-import { ScratchResourceScannerLive } from "../scratch-app/scanner.ts";
-import { ScratchAppServiceLive } from "../scratch-app/service.ts";
-import { CommandRegistryLive } from "../services/command-registry.ts";
-import { ConfigServiceLive } from "../services/config.ts";
-import { EventServiceLive } from "../services/event-service.ts";
-import { FileSystemLive } from "../services/file-system.ts";
-import { AppPlannerLive } from "../services/planner.ts";
-import { SecretStoreLive } from "../services/secret-store.ts";
-import { ProviderExecToolingEngineLive } from "../services/tooling-engine.ts";
+import type { LoggerMode } from "../logging/service.ts";
+import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
 import { BootstrapLevel } from "./bootstrap.ts";
+import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index.ts";
 
 // Differences from CLI defaults:
 // - logger: "silent" in library mode (CLI: "pretty"/"json")
@@ -168,57 +152,6 @@ type RuntimeLayer =
   | Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<unknown, LandoRuntimeBootstrapError>;
 
-const providerCapabilities = Schema.decodeUnknownSync(ProviderCapabilities)({
-  artifactBuild: false,
-  artifactPull: false,
-  buildSecrets: false,
-  buildSsh: false,
-  multiServiceApply: false,
-  serviceExec: false,
-  serviceLogs: false,
-  serviceHealth: "none",
-  hostReachability: "none",
-  sharedCrossAppNetwork: false,
-  persistentStorage: false,
-  bindMounts: false,
-  bindMountPerformance: "none",
-  copyMounts: false,
-  copyOnWriteAppRoot: false,
-  hostPortPublish: "none",
-  routeProvider: false,
-  tlsCertificates: "none",
-  rootless: true,
-  privilegedServices: false,
-  composeSpec: "none",
-  providerExtensions: [],
-});
-
-const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
-  id: "stub",
-  displayName: "Stub Runtime Provider",
-  version: "0.0.0",
-  platform: "linux",
-  capabilities: providerCapabilities,
-  isAvailable: Effect.succeed(false),
-  setup: () => Effect.void,
-  getStatus: Effect.succeed({ running: false }),
-  getVersions: Effect.succeed({ provider: "0.0.0" }),
-  buildArtifact: () => Effect.die("runtime provider stub cannot build artifacts"),
-  pullArtifact: () => Effect.die("runtime provider stub cannot pull artifacts"),
-  removeArtifact: () => Effect.void,
-  apply: () => Effect.succeed({ changed: false }),
-  start: () => Effect.void,
-  stop: () => Effect.void,
-  restart: () => Effect.void,
-  destroy: () => Effect.void,
-  exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
-  execStream: () => Stream.empty,
-  run: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot run" }),
-  logs: () => Stream.empty,
-  inspect: () => Effect.die("runtime provider stub cannot inspect services"),
-  list: () => Effect.succeed([]),
-};
-
 const collectEmbeddingPluginLayers = (
   entries: ReadonlyArray<unknown>,
 ): Either.Either<ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>, LandoRuntimeBootstrapError> => {
@@ -240,12 +173,7 @@ const collectEmbeddingPluginLayers = (
 
 interface NormalizedPluginPolicy {
   readonly layers: ReadonlyArray<unknown>;
-  readonly discovery: {
-    readonly bundled: boolean;
-    readonly user: boolean;
-    readonly app: boolean;
-    readonly disable: ReadonlyArray<string>;
-  };
+  readonly discovery: BootstrapLayerPluginDiscovery;
 }
 
 const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined): NormalizedPluginPolicy => {
@@ -269,177 +197,19 @@ const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined): Norma
   };
 };
 
-const makeLibraryRenderer = (id: LibraryRendererMode): Context.Tag.Service<typeof Renderer> => ({
-  id,
-  message: {
-    info: () => Effect.void,
-    warn: () => Effect.void,
-    error: () => Effect.void,
-  },
-  output: {
-    stdout: () => Effect.void,
-    stderr: () => Effect.void,
-  },
-});
-
-const makeLibraryTelemetry = (enabled: boolean): Context.Tag.Service<typeof Telemetry> => ({
-  enabled,
-  record: () => Effect.void,
-});
-
-const makeMinimalRuntimeLive = (
-  loggerMode: LoggerMode,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-) =>
-  Layer.mergeAll(
-    LoggerLive({ mode: loggerMode }),
-    Layer.succeed(Renderer, makeLibraryRenderer(rendererMode)),
-    Layer.succeed(Telemetry, makeLibraryTelemetry(telemetryEnabled)),
-    ConfigServiceLive,
-    PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
-    CacheServiceLive,
-    FileSystemLive,
-    SecretStoreLive,
-  );
-
-const makeProviderRuntimeLive = (
-  loggerMode: LoggerMode,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-  pluginPolicy: NormalizedPluginPolicy,
-) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
-  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
-  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
-    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, EventServiceLive)),
-  );
-
-  return Layer.mergeAll(
-    minimalRuntimeLive,
-    EventServiceLive,
-    pluginRegistryLive,
-    Layer.succeed(RuntimeProvider, runtimeProviderService),
-    providerRegistryLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-  );
-};
-
-const makeToolingRuntimeLive = (
-  loggerMode: LoggerMode,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-  pluginPolicy: NormalizedPluginPolicy,
-) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
-  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
-  return Layer.mergeAll(
-    minimalRuntimeLive,
-    pluginRegistryLive,
-    LandofileServiceLive,
-    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
-  );
-};
-
-const makeGlobalRuntimeLive = (
-  loggerMode: LoggerMode,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-  pluginPolicy: NormalizedPluginPolicy,
-) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
-  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
-  return Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy),
-    AppPlannerLive.pipe(
-      Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
-    ),
-  );
-};
-
-const makeScratchRuntimeLive = (
-  loggerMode: LoggerMode,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-  pluginPolicy: NormalizedPluginPolicy,
-) => {
-  const providerBase = makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
-  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
-  );
-  const scratchDeps = Layer.mergeAll(
-    providerBase,
-    LandofileServiceLive,
-    plannerLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
-  );
-  return Layer.mergeAll(
-    providerBase,
-    LandofileServiceLive,
-    plannerLive,
-    ScratchRegistryLive,
-    ScratchResourceScannerLive,
-    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
-  );
-};
-
-const makeAppRuntimeLive = (
-  loggerMode: LoggerMode,
-  rendererMode: LibraryRendererMode,
-  telemetryEnabled: boolean,
-  pluginPolicy: NormalizedPluginPolicy,
-) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
-  const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
-  return Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy),
-    LandofileServiceLive,
-    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
-    AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive))),
-    ProviderExecToolingEngineLive,
-    FileSyncEngineLive,
-  );
-};
-
 const runtimeLayerFor = (
   bootstrap: BootstrapLevel,
   loggerMode: LoggerMode,
   rendererMode: LibraryRendererMode,
   telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
-): RuntimeLayer => {
-  switch (bootstrap) {
-    case "none":
-      return Layer.empty;
-    case "minimal":
-    case "plugins":
-    case "commands":
-      return makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
-    case "tooling":
-      return makeToolingRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
-    case "provider":
-      return makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
-    case "global":
-      return makeGlobalRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
-    case "scratch":
-      return makeScratchRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
-    case "app":
-      return makeAppRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
-  }
-};
+): RuntimeLayer =>
+  makeGeneratedBootstrapLayer(bootstrap, {
+    loggerMode,
+    rendererMode,
+    telemetryEnabled,
+    pluginDiscovery: pluginPolicy.discovery,
+  }) as RuntimeLayer;
 
 const bootstrapError = (message: string, cause: unknown): LandoRuntimeBootstrapError =>
   new LandoRuntimeBootstrapError({
@@ -499,5 +269,8 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   }
 
   const hostLayers = hostLayersResult.right;
-  return hostLayers.length === 0 ? baseLayer : (Layer.mergeAll(baseLayer, ...hostLayers) as RuntimeLayer);
+  return mergeRuntimeWithHostLayers(
+    baseLayer as Layer.Layer<unknown, unknown, unknown>,
+    hostLayers,
+  ) as RuntimeLayer;
 }

@@ -5,6 +5,7 @@ import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const bundledPluginsPath = resolve(repoRoot, "core/src/plugins/bundled.ts");
+const bootstrapLayersIndexPath = resolve(repoRoot, "core/src/runtime/generated/layers/index.ts");
 const oclifManifestPath = resolve(repoRoot, "core/oclif.manifest.json");
 
 const runCodegen = async (): Promise<void> => {
@@ -29,14 +30,17 @@ describe("codegen orchestrator", () => {
     await runCodegen();
 
     const firstBundledPlugins = await readFile(bundledPluginsPath, "utf8");
+    const firstBootstrapLayersIndex = await readFile(bootstrapLayersIndexPath, "utf8");
     const firstOclifManifest = await readFile(oclifManifestPath, "utf8");
 
     expect(firstBundledPlugins.length).toBeGreaterThan(0);
+    expect(firstBootstrapLayersIndex.length).toBeGreaterThan(0);
     expect(firstOclifManifest.length).toBeGreaterThan(0);
 
     await runCodegen();
 
     expect(await readFile(bundledPluginsPath, "utf8")).toBe(firstBundledPlugins);
+    expect(await readFile(bootstrapLayersIndexPath, "utf8")).toBe(firstBootstrapLayersIndex);
     expect(await readFile(oclifManifestPath, "utf8")).toBe(firstOclifManifest);
     // Runs the whole generator catalog twice; the catalog grows over time, so the
     // idempotency assertion needs headroom beyond the default per-test timeout.

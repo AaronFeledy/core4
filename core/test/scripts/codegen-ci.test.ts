@@ -277,8 +277,10 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run codegen:bundled-plugins");
       expect(workflow).toContain("- name: Regenerate bundled recipes");
       expect(workflow).toContain("run: bun run codegen:bundled-recipes");
+      expect(workflow).toContain("- name: Regenerate bootstrap layers");
+      expect(workflow).toContain("run: bun run codegen:bootstrap-layers");
       expect(workflow).toContain(
-        "run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts",
+        "run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers",
       );
       expect(workflow).toContain(
         "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",

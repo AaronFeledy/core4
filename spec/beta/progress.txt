@@ -1283,3 +1283,15 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The CI build-job platform id (`win32-x64`) is a SEPARATE namespace from the Node `process.platform` value `"win32"` and the runtime-bundle / mutagen archive keys (`win32-x64`) and the nightly `file-sync-contract-win32-x64` job (built by `build-nightly-workflow.ts`). Only the `build-ci-workflow.ts` build-job id was renamed to `windows-x64`; the others MUST stay `win32`/`win32-x64`.
   - Running the `core/test/build/*` suite regenerates `core/src/cli/oclif/compiled-manifest.ts` (it reflects a pre-existing app:shell source/manifest mismatch). That drift is unrelated to any CI-workflow story — stage CI files by explicit path and keep the manifest out of the commit (same drop the darwin-x64 #300 story applied).
 ---
+
+## [2026-06-06 03:50 CDT] - US-187
+- Shipped AOT bootstrap-layer codegen: `scripts/build-bootstrap-layers.ts` now emits per-bootstrap-level Live Layers under `core/src/runtime/generated/layers/`, `core/src/runtime/layer.ts` consumes the generated entrypoint instead of hand-building runtime `Layer.mergeAll` / `Layer.provide` chains, and the codegen + CI drift gates now regenerate and verify the bootstrap-layer output. Removed the stale interim AOT-not-shipped note from repo guidance and marked the story passing.
+- Verification: RED was `generated-bootstrap-layers.test.ts` failing with missing `core/src/runtime/generated/layers` and no generated import in `layer.ts`; GREEN after codegen/refactor. `bun run typecheck` exit 0; `bun run lint` exit 0; focused bootstrap/runtime/codegen/CI tests passed; full `bun --no-orphans test` passed (2933 pass / 27 skip / 0 fail).
+- **Learnings for future iterations:**
+  - `scripts/build-bootstrap-layers.ts` must overwrite expected generated layer files in place before pruning stale extras; deleting the generated directory first creates a race with parallel CLI/source tests that import `core/src/runtime/generated/layers/index.ts`.
+---
+
+## [2026-06-06 04:20 CDT] - US-187 Review
+- Reviewed the AOT bootstrap-layer codegen against PRD-B-13 §17.2: the generated per-level layers reproduce the deleted runtime factories line-for-line (none=Layer.empty; plugins/commands alias minimal; tooling/provider/global/scratch/app preserved), `layer.ts` delegates to the generated entrypoint with no runtime `Layer.mergeAll`/`Layer.provide` of its own, and the codegen + CI drift gate + idempotency tests are wired. One real blocker fixed: the story shipped the codegen but left two interim notes ("AOT bootstrap-layer codegen has not shipped") in README.md and spec/02-toolchain.md §2.4 that now contradict reality — removed both (the progress note claimed they were already removed; they were not).
+- Verification: generator re-run produced zero drift under `core/src/runtime/generated/layers`; `generated-bootstrap-layers.test.ts` 2/2; `bun run typecheck` exit 0; `bun run lint` clean (847 files); runtime + codegen + codegen-ci + bootstrap suites 31/31. Reverted the unrelated test-regenerated `compiled-manifest.ts` drift (known pre-existing app:shell mismatch) to keep the diff focused.
+---
