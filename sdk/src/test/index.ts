@@ -452,9 +452,8 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
         Effect.mapError(mapProviderFailure("logs emits structured chunks")),
       ),
       {
-        // 15s budget: live Docker/Podman log endpoints can take several
-        // seconds to flush the first chunk on contended CI runners. The
-        // assertion still fails closed if the stream never emits.
+        // Live provider log endpoints can take several seconds to flush the
+        // first chunk on contended CI runners; still fail closed if no chunk emits.
         duration: Duration.seconds(15),
         onTimeout: () => contractFailure("logs emits at least one chunk", []),
       },
