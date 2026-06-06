@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Layer } from "effect";
+import { Effect, Layer } from "effect";
+
+import { runPluginContract } from "@lando/sdk/test";
 
 describe("@lando/provider-lando package", () => {
   test("exports the package skeleton", async () => {
@@ -13,5 +15,18 @@ describe("@lando/provider-lando package", () => {
       api: 4,
       contributes: { providers: ["lando"] },
     });
+  });
+
+  test("satisfies the published plugin contract suite", async () => {
+    const plugin = await import("@lando/provider-lando");
+
+    await expect(
+      Effect.runPromise(
+        runPluginContract({
+          manifest: plugin.manifest,
+          layers: { provider: plugin.provider },
+        }),
+      ),
+    ).resolves.toBeUndefined();
   });
 });

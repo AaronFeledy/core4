@@ -193,6 +193,14 @@ const isLayer = (value: unknown): boolean => Layer.isLayer(value);
 const hasNonEmptyStringEntries = (values: ReadonlyArray<string> | undefined): boolean =>
   values === undefined || values.every(isNonEmptyString);
 
+/**
+ * runPluginContract arguments:
+ * - manifest: decoded or encoded plugin manifest object to validate.
+ * - layers: static Layer exports keyed by contribution kind (`provider`, `services`, etc.).
+ * - globalServices: static global-service map keyed by contributed service id.
+ * - serviceTypes: static service-type map keyed by contributed service type id.
+ * - templateEngines: static template-engine map keyed by contributed engine id.
+ */
 export const runPluginContract = (input: PluginContractInput): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
     const decodedManifest = Schema.decodeUnknownEither(PluginManifest)(input.manifest);
