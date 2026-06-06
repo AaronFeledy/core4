@@ -1209,3 +1209,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (corrected loadServiceType so disabling @lando/service-lando no longer fails all bundled service-type lookups; added Guide-Coverage-Skip to PR body for internal registry change)
 - Merge: merged (squash)
 ---
+
+## [2026-06-05 19:55 CDT] - US-184 (agent2)
+- Locked the `build-darwin-x64` CI job's acceptance contract with a dedicated regression test in `core/test/build/ci-workflow.test.ts`, mirroring the darwin-arm64 pin. The job itself was already correct — the shared `renderBuildJob` seam emits the `shellenv` smoke and 14-day retention for every platform, and the Intel runner is `macos-15-intel` (GitHub's official replacement for the now-retired `macos-13`, so it satisfies "macos-13 or current Intel image"). The new test asserts runner, `bun-darwin-x64` compile target, the `--version`/`--help`/`shellenv` smoke ordering, the `lando-darwin-x64` artifact, and 14-day retention, so a future regression to the Intel build job is caught.
+- Verification: typecheck, lint, full `bun test` (2900 pass / 0 fail) passed; ci.yml codegen drift clean. Proved the new test's teeth with a RED→GREEN cycle (mutated the generated runner to `macos-13` → RED on the runs-on assertion → regenerated → GREEN), and cross-compiled the binary locally with the exact workflow command (`file` reports a real `Mach-O 64-bit x86_64 executable`).
+- **Learnings for future iterations:**
+  - `macos-13` is fully retired (Dec 2025); `macos-15-intel` is the official x86_64 runner through ~Aug 2027 — use it for any Intel macOS job, not `macos-13`.
+  - Running `bun run --filter='@lando/core' build:manifest` (and some test setup paths) rewrites `core/src/cli/oclif/compiled-manifest.ts` from current source, exposing pre-existing manifest staleness on main; revert that file unless your story owns the manifest, so a build/codegen step doesn't smuggle unrelated churn into the PR.
+---
