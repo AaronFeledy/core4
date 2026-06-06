@@ -255,7 +255,7 @@ export const runPluginContract = (input: PluginContractInput): Effect.Effect<voi
 
     for (const id of contributions.templateEngines ?? []) {
       yield* requirePluginContract(
-        input.templateEngines === undefined || input.templateEngines.has(id),
+        input.templateEngines?.has(id) === true,
         `templateEngines static map contains declared id ${id}`,
         { id },
       );

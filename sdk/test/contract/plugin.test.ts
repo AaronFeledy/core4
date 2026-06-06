@@ -66,4 +66,17 @@ describe("runPluginContract", () => {
       "globalServices static map contains declared id mailpit",
     );
   });
+
+  test("validates declared template engine static map entries", async () => {
+    await expectPluginContractFailure(
+      {
+        manifest: {
+          ...TestPluginManifest,
+          contributes: { templateEngines: ["handlebars"] },
+        },
+        layers: { templateEngine: Layer.empty },
+      },
+      "templateEngines static map contains declared id handlebars",
+    );
+  });
 });
