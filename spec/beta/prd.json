@@ -1688,8 +1688,8 @@
         "Lint passes"
       ],
       "priority": 100,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Library-mode makeLandoRuntime now provides silent logger, json Renderer, disabled Telemetry, and explicit-only plugin discovery by default; renderer/telemetry/plugin policy overrides are covered. Import-boundary tests assert the default entry remains OCLIF-free and TUI-free. Added docs/guides/library/embedding-defaults.mdx and marked the guide Shipped."
     },
     {
       "id": "US-174",
