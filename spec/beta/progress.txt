@@ -1245,3 +1245,11 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
 - Review feedback: fixed (merged origin/main, preserved US-172 import-boundary coverage, removed unrelated manifest drift; Bugbot passed on latest head)
 - Merge: merged (squash)
 ---
+
+## [2026-06-05 23:05 CDT] - US-185 (agent2)
+- Locked the linux-arm64 compiled-binary build job contract with a dedicated `core/test/build/ci-workflow.test.ts` case mirroring the darwin per-platform tests: asserts the hosted ARM runner, the `bun-linux-arm64` compile target + sanitize step, the `--version`/`--help`/`shellenv` smoke (ordered before upload), and the 14-day artifact retention. The build job itself is already emitted by the generated multi-platform matrix, so this story pins its per-platform contract the same way US-184 did for darwin-x64.
+- Verification: typecheck, lint, tests passed. RED proof — temporarily flipping the generator's linux-arm64 runner and regenerating made the new test fail; reverting restored green with no `ci.yml`/generator drift.
+- **Learnings for future iterations:**
+  - The per-platform `build-<id>` jobs are all produced by the `CI_PLATFORMS` loop in `scripts/build-ci-workflow.ts`; a "build X binary" story's deliverable is the dedicated contract test that pins that platform's runner/smoke/retention, not new workflow YAML.
+  - To get a genuine RED for a workflow-contract test, mutate the generator entry + `bun run scripts/build-ci-workflow.ts`, run the test, then revert and regenerate (verify `git diff --stat .github/workflows/ci.yml` is empty) so no generated drift lands in the commit.
+---
