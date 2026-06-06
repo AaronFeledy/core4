@@ -74,6 +74,8 @@ describe("npm dev package preparation", () => {
     const source = await Bun.file(releaseScriptPath).text();
 
     expect(source).toContain("prepareNpmBetaPackages");
+    expect(source).toContain("for (const packageName of betaPackageNames)");
+    expect(source).toContain("bun run --filter=${packageName} build");
     expect(source).toContain(
       "npm publish --workspace ${packageName} --access public --tag next --provenance",
     );

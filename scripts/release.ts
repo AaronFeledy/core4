@@ -137,7 +137,9 @@ const stages: ReadonlyArray<Stage> = [
     forLibrary: true,
     status: "ready",
     run: async () => {
-      await $`bun run --filter='@lando/core' build`;
+      for (const packageName of betaPackageNames) {
+        await $`bun run --filter=${packageName} build`;
+      }
     },
   },
   {
