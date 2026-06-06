@@ -150,6 +150,7 @@ export interface PluginContractInput {
   readonly manifest: unknown;
   readonly layers?: Partial<Record<PluginLayerExportName, Layer.Layer<never, unknown, unknown>>>;
   readonly globalServices?: ReadonlyMap<string, Effect.Effect<unknown, unknown, never>>;
+  readonly serviceTypes?: ReadonlyMap<string, ServiceTypeShape>;
   readonly templateEngines?: ReadonlyMap<string, unknown>;
 }
 
@@ -250,6 +251,14 @@ export const runPluginContract = (input: PluginContractInput): Effect.Effect<voi
         Effect.isEffect(input.globalServices?.get(entry.id)),
         `globalServices static map contains declared id ${entry.id}`,
         entry,
+      );
+    }
+
+    for (const id of contributions.serviceTypes ?? []) {
+      yield* requirePluginContract(
+        input.serviceTypes?.has(id) === true,
+        `serviceTypes static map contains declared id ${id}`,
+        { id },
       );
     }
 

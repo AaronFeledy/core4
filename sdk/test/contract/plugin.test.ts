@@ -67,6 +67,19 @@ describe("runPluginContract", () => {
     );
   });
 
+  test("validates declared service type static map entries", async () => {
+    await expectPluginContractFailure(
+      {
+        manifest: {
+          ...TestPluginManifest,
+          contributes: { serviceTypes: ["node:lts"] },
+        },
+        layers: { services: Layer.empty },
+      },
+      "serviceTypes static map contains declared id node:lts",
+    );
+  });
+
   test("validates declared template engine static map entries", async () => {
     await expectPluginContractFailure(
       {
