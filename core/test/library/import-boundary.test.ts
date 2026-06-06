@@ -146,15 +146,14 @@ const resolveEntrySource = (specifier: string): string => realpathSync(Bun.resol
 
 interface CriticalEntryPoint {
   readonly specifier: string;
-  readonly label: string;
   readonly expectsOclif: boolean;
 }
 
 const CRITICAL_ENTRY_POINTS: CriticalEntryPoint[] = [
-  { specifier: "@lando/core", label: "default", expectsOclif: false },
-  { specifier: "@lando/core/cli", label: "/cli", expectsOclif: false },
-  { specifier: "@lando/core/testing", label: "/testing", expectsOclif: false },
-  { specifier: "@lando/core/oclif", label: "/oclif", expectsOclif: true },
+  { specifier: "@lando/core", expectsOclif: false },
+  { specifier: "@lando/core/cli", expectsOclif: false },
+  { specifier: "@lando/core/testing", expectsOclif: false },
+  { specifier: "@lando/core/oclif", expectsOclif: true },
 ];
 
 describe("import boundaries (basic importability)", () => {
@@ -190,7 +189,7 @@ describe("import boundaries (basic importability)", () => {
     expect(mod.SubscriberPriority).toBeDefined();
   });
 
-  test("marks the Alpha library API as unstable/dev-channel only", async () => {
+  test("marks the library API as unstable/dev-channel only", async () => {
     const source = await readFile(new URL("../../src/index.ts", import.meta.url), "utf8");
     expect(source).toContain("unstable");
     expect(source).toContain("dev/next channels");
@@ -258,8 +257,6 @@ describe("OCLIF-free default entry", () => {
     const entryAbs = resolveEntrySource("@lando/core/oclif");
     const { violations } = walkStaticImportGraph(entryAbs);
 
-    // If the detector were a no-op, this would be empty and the suite would not
-    // be guarding anything. The /oclif entry MUST reach the OCLIF code path.
     expect(violations.length).toBeGreaterThan(0);
 
     const namesOclif = violations.some((violation) =>
@@ -272,8 +269,6 @@ describe("OCLIF-free default entry", () => {
     const entryAbs = resolveEntrySource("@lando/core");
     const { visited, violations } = walkStaticImportGraph(entryAbs);
 
-    // Sanity: the default entry pulls in a non-trivial runtime graph, so a "0
-    // visited / 0 violations" pass cannot be a silently broken walk.
     expect(visited.size).toBeGreaterThan(1);
 
     if (violations.length > 0) {
@@ -312,7 +307,6 @@ describe("OCLIF-free default entry", () => {
     if (firstViolation === undefined) throw new Error("expected a positive-control violation");
 
     const message = formatViolation("@lando/core/oclif", firstViolation);
-    // Names the entry, joins the chain with arrows, and ends at the OCLIF offender.
     expect(message).toContain("@lando/core/oclif");
     expect(message).toContain("→");
     expect(message).toContain("cli/oclif/index.ts");
