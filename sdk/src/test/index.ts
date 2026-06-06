@@ -154,6 +154,15 @@ export interface PluginContractInput {
   readonly templateEngines?: ReadonlyMap<string, unknown>;
 }
 
+/**
+ * runPluginContract arguments:
+ * - manifest: decoded or encoded plugin manifest object to validate.
+ * - layers: static Layer exports keyed by contribution kind (`provider`, `services`, etc.).
+ * - globalServices: static global-service map keyed by contributed service id.
+ * - serviceTypes: static service-type map keyed by contributed service type id.
+ * - templateEngines: static template-engine map keyed by contributed engine id.
+ */
+
 const pluginContributionLayerExports: ReadonlyArray<{
   readonly key: keyof NonNullable<PluginManifest["contributes"]>;
   readonly exportName: PluginLayerExportName;

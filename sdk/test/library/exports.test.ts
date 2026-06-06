@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { readFile } from "node:fs/promises";
 
 describe("@lando/sdk package exports", () => {
   test("root entry point resolves the public namespaces", async () => {
@@ -203,5 +204,16 @@ describe("@lando/sdk package exports", () => {
 
     expect(sdkTest.runPluginContract).toBeDefined();
     expect(sdkTest.TestPluginManifest).toBeDefined();
+  });
+
+  test("test entry point documents plugin contract runner arguments", async () => {
+    const source = await readFile(new URL("../../src/test/index.ts", import.meta.url), "utf8");
+
+    expect(source).toContain("runPluginContract arguments");
+    expect(source).toContain("manifest:");
+    expect(source).toContain("layers:");
+    expect(source).toContain("globalServices:");
+    expect(source).toContain("serviceTypes:");
+    expect(source).toContain("templateEngines:");
   });
 });

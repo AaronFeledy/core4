@@ -2016,7 +2016,7 @@
         "Lint passes"
       ],
       "priority": 121,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]
