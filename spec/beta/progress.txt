@@ -1279,3 +1279,9 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The CI workflows force `defaults.run.shell: bash` workflow-wide, so bash-isms (`test -f`, `./dist/...`) work on the `windows-2022` runner via Git Bash; no per-step `shell:` override is needed.
   - Running `bun run --filter='@lando/core' build:manifest` (or any test that does) regenerates `core/src/cli/oclif/compiled-manifest.ts` and can surface unrelated in-flight command-source drift from `origin/main`; revert that file before committing if your story doesn't touch CLI command definitions.
 ---
+
+## [2026-06-06 01:59 CDT] - US-186 Review
+- Reviewed the windows-x64 CI binary build commit against the PRD and fixed a confirmed review defect: the new Windows workflow contract test had been duplicated, creating redundant review noise without adding coverage.
+- Review notes (deferred/rejected): no out-of-scope review findings accepted; runtime `win32-x64` host-key references remain intentionally untouched because US-186 renames only the CI/release platform id.
+- Verification: typecheck, lint, tests passed.
+---
