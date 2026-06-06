@@ -80,12 +80,6 @@ These need follow-up before GA:
 - **`tsconfig.skipLibCheck: true`.** `@types/bun` and `@types/node` currently
   conflict on `stream/web` and a handful of other globals. Revisit once
   Bun's type packaging stabilizes.
-- **AOT bootstrap-layer codegen has not shipped.** The `scripts/codegen.ts`
-  orchestrator runs the §17.2 catalog (guide scenarios, bundled plugins,
-  bundled recipes, schema snapshot, OCLIF manifest, CI/release/nightly
-  workflows), but the AOT bootstrap-layer generator is not yet emitted;
-  `core/src/runtime/layer.ts` still composes the runtime via runtime
-  `Layer.mergeAll` chains. Tracked in spec §17.2 / §2.4.
 - **`scripts/release.ts` is a partial orchestrator.** The codegen, typecheck,
   lint, test, library-bundle, and compile stages run; the schema-artifacts,
   strip, sign, notarize, manifest, provenance, and publish stages are stubs
