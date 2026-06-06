@@ -34,6 +34,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "bootstrap-layers",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bootstrap-layers.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "schema-snapshot",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-schema-snapshot.ts`],
     cwd: REPO_ROOT,

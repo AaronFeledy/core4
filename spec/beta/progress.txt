@@ -1283,3 +1283,10 @@ This condenses the global-app lifecycle workstream and the interleaved agent2 gu
   - The CI build-job platform id (`win32-x64`) is a SEPARATE namespace from the Node `process.platform` value `"win32"` and the runtime-bundle / mutagen archive keys (`win32-x64`) and the nightly `file-sync-contract-win32-x64` job (built by `build-nightly-workflow.ts`). Only the `build-ci-workflow.ts` build-job id was renamed to `windows-x64`; the others MUST stay `win32`/`win32-x64`.
   - Running the `core/test/build/*` suite regenerates `core/src/cli/oclif/compiled-manifest.ts` (it reflects a pre-existing app:shell source/manifest mismatch). That drift is unrelated to any CI-workflow story — stage CI files by explicit path and keep the manifest out of the commit (same drop the darwin-x64 #300 story applied).
 ---
+
+## [2026-06-06 03:50 CDT] - US-187
+- Shipped AOT bootstrap-layer codegen: `scripts/build-bootstrap-layers.ts` now emits per-bootstrap-level Live Layers under `core/src/runtime/generated/layers/`, `core/src/runtime/layer.ts` consumes the generated entrypoint instead of hand-building runtime `Layer.mergeAll` / `Layer.provide` chains, and the codegen + CI drift gates now regenerate and verify the bootstrap-layer output. Removed the stale interim AOT-not-shipped note from repo guidance and marked the story passing.
+- Verification: RED was `generated-bootstrap-layers.test.ts` failing with missing `core/src/runtime/generated/layers` and no generated import in `layer.ts`; GREEN after codegen/refactor. `bun run typecheck` exit 0; `bun run lint` exit 0; focused bootstrap/runtime/codegen/CI tests passed; full `bun --no-orphans test` passed (2933 pass / 27 skip / 0 fail).
+- **Learnings for future iterations:**
+  - `scripts/build-bootstrap-layers.ts` must overwrite expected generated layer files in place before pruning stale extras; deleting the generated directory first creates a race with parallel CLI/source tests that import `core/src/runtime/generated/layers/index.ts`.
+---

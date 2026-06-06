@@ -1,0 +1,331 @@
+#!/usr/bin/env bun
+/**
+ * Regenerate `core/src/runtime/generated/layers/*` from the bootstrap layer graph.
+ *
+ * Inputs:
+ *   - `@lando/sdk/schema` BootstrapLevel / BOOTSTRAP_RANK
+ *   - `core/src/runtime/bootstrap-layer-support.ts` runtime-varying inputs
+ *   - The core runtime service membership graph (§3.4)
+ *
+ * Output:
+ *   - `core/src/runtime/generated/layers/*.ts` — one generated layer factory per bootstrap level.
+ *
+ * Drift gate: `bun run codegen` re-runs this generator and
+ * `git diff --exit-code` fails if the output drifts.
+ */
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { basename, resolve } from "node:path";
+
+import { BOOTSTRAP_RANK } from "@lando/sdk/schema";
+
+import { writeFormattedOutput } from "./_codegen-output.ts";
+
+const REPO_ROOT = resolve(import.meta.dirname, "..");
+const OUTPUT_DIR = resolve(REPO_ROOT, "core/src/runtime/generated/layers");
+
+const HEADER = (command = "bun run scripts/build-bootstrap-layers.ts") => `/**
+ * **GENERATED FILE** — do not edit by hand.
+ *
+ * Regenerate via \`${command}\`.
+ *
+ * Source of truth: \`scripts/build-bootstrap-layers.ts\`, \`BootstrapLevel\`, and the
+ * core runtime service membership graph (§3.4).
+ *
+ * Bootstrap layer composition is emitted ahead of time so hand-authored
+ * runtime factories do not rebuild the Effect Layer graph outside this
+ * generated output.
+ */
+`;
+
+const levelOrder = Object.keys(BOOTSTRAP_RANK).sort(
+  (left, right) =>
+    BOOTSTRAP_RANK[left as keyof typeof BOOTSTRAP_RANK] -
+    BOOTSTRAP_RANK[right as keyof typeof BOOTSTRAP_RANK],
+);
+
+const renderMinimal = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { CacheServiceLive } from "../../../cache/service.ts";',
+    'import { LoggerLive } from "../../../logging/service.ts";',
+    'import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";',
+    'import { ConfigServiceLive } from "../../../services/config.ts";',
+    'import { FileSystemLive } from "../../../services/file-system.ts";',
+    'import { SecretStoreLive } from "../../../services/secret-store.ts";',
+    'import { Renderer, Telemetry } from "@lando/sdk/services";',
+    'import { makeLibraryRenderer, makeLibraryTelemetry, type BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    "",
+    "export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) =>",
+    "  Layer.mergeAll(",
+    "    LoggerLive({ mode: inputs.loggerMode }),",
+    "    Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),",
+    "    Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),",
+    "    ConfigServiceLive,",
+    "    PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),",
+    "    CacheServiceLive,",
+    "    FileSystemLive,",
+    "    SecretStoreLive,",
+    "  );",
+    "",
+  ].join("\n");
+
+const renderAlias = (level: "plugins" | "commands"): string =>
+  [
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    "",
+    `export const make${capitalize(level)}BootstrapLayer = (inputs: BootstrapLayerInputs) =>`,
+    "  makeMinimalBootstrapLayer(inputs);",
+    "",
+  ].join("\n");
+
+const renderProvider = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { GlobalAppServiceLive } from "../../../global-app/service.ts";',
+    'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
+    'import { RuntimeProviderRegistryLive } from "../../../providers/registry.ts";',
+    'import { ConfigServiceLive } from "../../../services/config.ts";',
+    'import { EventServiceLive } from "../../../services/event-service.ts";',
+    'import { FileSystemLive } from "../../../services/file-system.ts";',
+    'import { RuntimeProvider } from "@lando/sdk/services";',
+    'import { runtimeProviderService, type BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    "",
+    "export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);",
+    "  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(",
+    "    Layer.provide(minimalRuntimeLive),",
+    "  );",
+    "  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(",
+    "    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, EventServiceLive)),",
+    "  );",
+    "",
+    "  return Layer.mergeAll(",
+    "    minimalRuntimeLive,",
+    "    EventServiceLive,",
+    "    pluginRegistryLive,",
+    "    Layer.succeed(RuntimeProvider, runtimeProviderService),",
+    "    providerRegistryLive,",
+    "    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),",
+    "  );",
+    "};",
+    "",
+  ].join("\n");
+
+const renderTooling = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { LandofileServiceLive } from "../../../landofile/service.ts";',
+    'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
+    'import { CommandRegistryLive } from "../../../services/command-registry.ts";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    "",
+    "export const makeToolingBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);",
+    "  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(",
+    "    Layer.provide(minimalRuntimeLive),",
+    "  );",
+    "  return Layer.mergeAll(",
+    "    minimalRuntimeLive,",
+    "    pluginRegistryLive,",
+    "    LandofileServiceLive,",
+    "    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),",
+    "  );",
+    "};",
+    "",
+  ].join("\n");
+
+const renderGlobal = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
+    'import { CacheServiceLive } from "../../../cache/service.ts";',
+    'import { ConfigServiceLive } from "../../../services/config.ts";',
+    'import { AppPlannerLive } from "../../../services/planner.ts";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    'import { makeProviderBootstrapLayer } from "./provider.ts";',
+    "",
+    "export const makeGlobalBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);",
+    "  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(",
+    "    Layer.provide(minimalRuntimeLive),",
+    "  );",
+    "  return Layer.mergeAll(",
+    "    makeProviderBootstrapLayer(inputs),",
+    "    AppPlannerLive.pipe(",
+    "      Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),",
+    "    ),",
+    "  );",
+    "};",
+    "",
+  ].join("\n");
+
+const renderScratch = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { CacheServiceLive } from "../../../cache/service.ts";',
+    'import { LandofileServiceLive } from "../../../landofile/service.ts";',
+    'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
+    'import { ScratchRegistryLive } from "../../../scratch-app/registry.ts";',
+    'import { ScratchResourceScannerLive } from "../../../scratch-app/scanner.ts";',
+    'import { ScratchAppServiceLive } from "../../../scratch-app/service.ts";',
+    'import { ConfigServiceLive } from "../../../services/config.ts";',
+    'import { AppPlannerLive } from "../../../services/planner.ts";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    'import { makeProviderBootstrapLayer } from "./provider.ts";',
+    "",
+    "export const makeScratchBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const providerBase = makeProviderBootstrapLayer(inputs);",
+    "  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);",
+    "  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(",
+    "    Layer.provide(minimalRuntimeLive),",
+    "  );",
+    "  const plannerLive = AppPlannerLive.pipe(",
+    "    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),",
+    "  );",
+    "  const scratchDeps = Layer.mergeAll(",
+    "    providerBase,",
+    "    LandofileServiceLive,",
+    "    plannerLive,",
+    "    ScratchRegistryLive,",
+    "    ScratchResourceScannerLive,",
+    "  );",
+    "  return Layer.mergeAll(",
+    "    providerBase,",
+    "    LandofileServiceLive,",
+    "    plannerLive,",
+    "    ScratchRegistryLive,",
+    "    ScratchResourceScannerLive,",
+    "    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),",
+    "  );",
+    "};",
+    "",
+  ].join("\n");
+
+const renderApp = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";',
+    'import { CacheServiceLive } from "../../../cache/service.ts";',
+    'import { LandofileServiceLive } from "../../../landofile/service.ts";',
+    'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
+    'import { CommandRegistryLive } from "../../../services/command-registry.ts";',
+    'import { AppPlannerLive } from "../../../services/planner.ts";',
+    'import { ProviderExecToolingEngineLive } from "../../../services/tooling-engine.ts";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    'import { makeProviderBootstrapLayer } from "./provider.ts";',
+    "",
+    "export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);",
+    "  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(",
+    "    Layer.provide(minimalRuntimeLive),",
+    "  );",
+    "  return Layer.mergeAll(",
+    "    makeProviderBootstrapLayer(inputs),",
+    "    LandofileServiceLive,",
+    "    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),",
+    "    AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive))),",
+    "    ProviderExecToolingEngineLive,",
+    "    FileSyncEngineLive,",
+    "  );",
+    "};",
+    "",
+  ].join("\n");
+
+const renderNone = (): string =>
+  ['import { Layer } from "effect";', "", "export const noneBootstrapLayer = Layer.empty;", ""].join("\n");
+
+const renderIndex = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import type { BootstrapLevel } from "@lando/sdk/schema";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { noneBootstrapLayer } from "./none.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    'import { makePluginsBootstrapLayer } from "./plugins.ts";',
+    'import { makeCommandsBootstrapLayer } from "./commands.ts";',
+    'import { makeToolingBootstrapLayer } from "./tooling.ts";',
+    'import { makeProviderBootstrapLayer } from "./provider.ts";',
+    'import { makeGlobalBootstrapLayer } from "./global.ts";',
+    'import { makeScratchBootstrapLayer } from "./scratch.ts";',
+    'import { makeAppBootstrapLayer } from "./app.ts";',
+    "",
+    "export const makeGeneratedBootstrapLayer = (bootstrap: BootstrapLevel, inputs: BootstrapLayerInputs) => {",
+    "  switch (bootstrap) {",
+    '    case "none":',
+    "      return noneBootstrapLayer;",
+    '    case "minimal":',
+    "      return makeMinimalBootstrapLayer(inputs);",
+    '    case "plugins":',
+    "      return makePluginsBootstrapLayer(inputs);",
+    '    case "commands":',
+    "      return makeCommandsBootstrapLayer(inputs);",
+    '    case "tooling":',
+    "      return makeToolingBootstrapLayer(inputs);",
+    '    case "provider":',
+    "      return makeProviderBootstrapLayer(inputs);",
+    '    case "global":',
+    "      return makeGlobalBootstrapLayer(inputs);",
+    '    case "scratch":',
+    "      return makeScratchBootstrapLayer(inputs);",
+    '    case "app":',
+    "      return makeAppBootstrapLayer(inputs);",
+    "  }",
+    "};",
+    "",
+    "export const mergeRuntimeWithHostLayers = (",
+    "  baseLayer: Layer.Layer<unknown, unknown, unknown>,",
+    "  hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,",
+    ") => (hostLayers.length === 0 ? baseLayer : Layer.mergeAll(baseLayer, ...hostLayers));",
+    "",
+  ].join("\n");
+
+const renderers: Record<string, () => string> = {
+  none: renderNone,
+  minimal: renderMinimal,
+  plugins: () => renderAlias("plugins"),
+  commands: () => renderAlias("commands"),
+  tooling: renderTooling,
+  provider: renderProvider,
+  global: renderGlobal,
+  scratch: renderScratch,
+  app: renderApp,
+  index: renderIndex,
+};
+
+const capitalize = (value: string): string => `${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`;
+
+const main = async (): Promise<void> => {
+  await mkdir(OUTPUT_DIR, { recursive: true });
+
+  const files = [...levelOrder, "index"];
+  for (const name of files) {
+    const render = renderers[name];
+    if (render === undefined) throw new Error(`No bootstrap layer renderer for ${name}`);
+    const output = resolve(OUTPUT_DIR, `${name}.ts`);
+    await writeFormattedOutput(output, `${HEADER()}\n${render()}`);
+  }
+
+  const expectedFiles = new Set(files.map((file) => `${file}.ts`));
+  for (const file of await readdir(OUTPUT_DIR).catch(() => [])) {
+    if (file.endsWith(".ts") && !expectedFiles.has(file)) await rm(resolve(OUTPUT_DIR, file));
+  }
+
+  console.log(
+    `[build-bootstrap-layers] wrote ${OUTPUT_DIR} (${files.map((file) => basename(file)).length} files)`,
+  );
+};
+
+await main();

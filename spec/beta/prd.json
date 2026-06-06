@@ -1909,8 +1909,8 @@
         "Lint passes"
       ],
       "priority": 114,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "scripts/build-bootstrap-layers.ts emits per-BootstrapLevel layers under core/src/runtime/generated/layers/ (wired into codegen + codegen:bootstrap-layers + the CI drift gate). core/src/runtime/layer.ts now delegates to the generated makeGeneratedBootstrapLayer/mergeRuntimeWithHostLayers seam with no runtime Layer.mergeAll/Layer.provide of its own. Interim 'not yet shipped' notes removed from AGENTS.md, README.md, and spec/02-toolchain.md §2.4. New test core/test/runtime/generated-bootstrap-layers.test.ts asserts one generated module per level + the no-Layer.mergeAll constraint on layer.ts."
     },
     {
       "id": "US-188",
