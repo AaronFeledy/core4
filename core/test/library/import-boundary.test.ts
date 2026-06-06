@@ -16,6 +16,17 @@ const pluginsRoot = resolve(repoRoot, "plugins");
  * non-OCLIF entry point is a library import-boundary violation.
  */
 const oclifCodePathDir = `${resolve(coreSrc, "cli/oclif")}/`;
+const tuiCodePathDirs = [
+  `${resolve(coreSrc, "cli/tui")}/`,
+  `${resolve(coreSrc, "cli/renderer/tui")}/`,
+  `${resolve(coreSrc, "tui")}/`,
+];
+const tuiCodePathFiles = [
+  resolve(coreSrc, "cli/renderer/task-tree-tail.ts"),
+  resolve(coreSrc, "cli/renderer/keybindings.ts"),
+];
+const isTuiCodePath = (absPath: string): boolean =>
+  tuiCodePathDirs.some((dir) => absPath.startsWith(dir)) || tuiCodePathFiles.includes(absPath);
 
 const firstPartySourceRoots = [`${coreSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
 
@@ -24,6 +35,9 @@ const isFirstPartySource = (absPath: string): boolean =>
 
 const isOclifNpmSpecifier = (specifier: string): boolean =>
   specifier === "@oclif/core" || specifier.startsWith("@oclif/");
+
+const isTuiNpmSpecifier = (specifier: string): boolean =>
+  specifier === "opentui" || specifier === "@opentui/core" || specifier.startsWith("@opentui/");
 
 /** Follow only first-party static edges: relative paths and `@lando/*` packages. */
 const isFollowableSpecifier = (specifier: string): boolean =>
@@ -57,8 +71,27 @@ const classifyOclifImport = (edge: {
   return undefined;
 };
 
+const classifyTuiImport = (edge: {
+  readonly importerAbs: string;
+  readonly specifier: string;
+  readonly resolvedAbs: string | undefined;
+}): string | undefined => {
+  if (isTuiNpmSpecifier(edge.specifier)) {
+    return `imports the TUI npm package "${edge.specifier}"`;
+  }
+  if (edge.resolvedAbs !== undefined && isTuiCodePath(edge.resolvedAbs) && !isTuiCodePath(edge.importerAbs)) {
+    return `reaches the TUI code path ${repoRelative(edge.resolvedAbs)}`;
+  }
+  return undefined;
+};
+
 interface OclifViolation {
   /** Import chain from the walked entry to the offending module/specifier. */
+  readonly chain: ReadonlyArray<string>;
+  readonly reason: string;
+}
+
+interface TuiViolation {
   readonly chain: ReadonlyArray<string>;
   readonly reason: string;
 }
@@ -96,9 +129,14 @@ const resolveFirstParty = (specifier: string, importerAbs: string): string | und
  */
 const walkStaticImportGraph = (
   entryAbs: string,
-): { readonly visited: ReadonlySet<string>; readonly violations: ReadonlyArray<OclifViolation> } => {
+): {
+  readonly visited: ReadonlySet<string>;
+  readonly violations: ReadonlyArray<OclifViolation>;
+  readonly tuiViolations: ReadonlyArray<TuiViolation>;
+} => {
   const visited = new Set<string>();
   const violations: OclifViolation[] = [];
+  const tuiViolations: TuiViolation[] = [];
 
   const visit = (absPath: string, chain: ReadonlyArray<string>): void => {
     if (visited.has(absPath)) return;
@@ -127,6 +165,12 @@ const walkStaticImportGraph = (
         // edges we still recurse below so deeper offenders surface too.
       }
 
+      const tuiReason = classifyTuiImport({ importerAbs: absPath, specifier, resolvedAbs });
+      if (tuiReason !== undefined) {
+        const offender = isTuiNpmSpecifier(specifier) ? specifier : (resolvedAbs ?? specifier);
+        tuiViolations.push({ chain: [...chain, absPath, offender], reason: tuiReason });
+      }
+
       if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) {
         visit(resolvedAbs, [...chain, absPath]);
       }
@@ -134,10 +178,15 @@ const walkStaticImportGraph = (
   };
 
   visit(realpathSync(entryAbs), []);
-  return { visited, violations };
+  return { visited, violations, tuiViolations };
 };
 
 const formatViolation = (entrySpecifier: string, violation: OclifViolation): string => {
+  const chain = violation.chain.map(repoRelative).join("\n      → ");
+  return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
+};
+
+const formatTuiViolation = (entrySpecifier: string, violation: TuiViolation): string => {
   const chain = violation.chain.map(repoRelative).join("\n      → ");
   return `${entrySpecifier} ${violation.reason} via:\n      ${chain}`;
 };
@@ -252,6 +301,48 @@ describe("OCLIF import-boundary classifier (detection self-check)", () => {
   });
 });
 
+describe("TUI import-boundary classifier (detection self-check)", () => {
+  test("signal A: flags a direct @opentui/* npm import from anywhere", () => {
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(coreSrc, "runtime/layer.ts"),
+        specifier: "@opentui/core",
+        resolvedAbs: undefined,
+      }),
+    ).toContain("@opentui/core");
+  });
+
+  test("signal B: flags a non-TUI module reaching into a TUI code path", () => {
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(coreSrc, "runtime/layer.ts"),
+        specifier: "../tui/renderer.ts",
+        resolvedAbs: resolve(coreSrc, "tui/renderer.ts"),
+      }),
+    ).toContain("TUI code path");
+  });
+
+  test("signal B: flags a non-TUI module reaching the rich terminal renderer files", () => {
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(coreSrc, "runtime/layer.ts"),
+        specifier: "../cli/renderer/task-tree-tail.ts",
+        resolvedAbs: resolve(coreSrc, "cli/renderer/task-tree-tail.ts"),
+      }),
+    ).toContain("TUI code path");
+  });
+
+  test("does NOT flag TUI-internal edges (tui file → tui file)", () => {
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(coreSrc, "cli/renderer/keybindings.ts"),
+        specifier: "./task-tree-tail.ts",
+        resolvedAbs: resolve(coreSrc, "cli/renderer/task-tree-tail.ts"),
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe("OCLIF-free default entry", () => {
   test("the walker detects OCLIF when present (positive control on @lando/core/oclif)", () => {
     const entryAbs = resolveEntrySource("@lando/core/oclif");
@@ -276,6 +367,21 @@ describe("OCLIF-free default entry", () => {
       throw new Error(`@lando/core must not load any OCLIF code path; offending import chains:\n\n${report}`);
     }
     expect(violations.length).toBe(0);
+  });
+
+  test("the default @lando/core entry has a TUI-free transitive static import graph", () => {
+    const entryAbs = resolveEntrySource("@lando/core");
+    const { visited, tuiViolations } = walkStaticImportGraph(entryAbs);
+
+    expect(visited.size).toBeGreaterThan(1);
+
+    if (tuiViolations.length > 0) {
+      const report = tuiViolations
+        .map((violation) => formatTuiViolation("@lando/core", violation))
+        .join("\n\n");
+      throw new Error(`@lando/core must not load any TUI code path; offending import chains:\n\n${report}`);
+    }
+    expect(tuiViolations.length).toBe(0);
   });
 
   test.each(CRITICAL_ENTRY_POINTS)(

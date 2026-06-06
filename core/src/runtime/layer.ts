@@ -31,9 +31,11 @@ import {
   type Logger,
   type PluginRegistry,
   type PluginTrustStore,
+  Renderer,
   RuntimeProvider,
   type RuntimeProviderRegistry,
   type ScratchAppService,
+  Telemetry,
   type ToolingEngine,
 } from "@lando/sdk/services";
 
@@ -95,6 +97,15 @@ const GlobalConfigOverrides = Schema.Struct({
   renderer: Schema.optional(Schema.String),
 });
 
+const LIBRARY_RENDERER_MODES = ["json", "plain", "verbose", "lando"] as const;
+type LibraryRendererMode = (typeof LIBRARY_RENDERER_MODES)[number];
+
+const isLibraryRendererMode = (value: string): value is LibraryRendererMode =>
+  (LIBRARY_RENDERER_MODES as ReadonlyArray<string>).includes(value);
+
+const normalizeLibraryRendererMode = (value: string | undefined): LibraryRendererMode =>
+  value === undefined ? "json" : isLibraryRendererMode(value) ? value : "json";
+
 /** Runtime options bag. */
 export const LandoRuntimeOptions = Schema.Struct({
   /** Bootstrap depth. Default `"app"` for embedding. */
@@ -117,8 +128,15 @@ export const LandoRuntimeOptions = Schema.Struct({
 });
 export type LandoRuntimeOptions = typeof LandoRuntimeOptions.Type;
 
-type MinimalRuntimeServices = Logger | ConfigService | FileSystem | CacheService | PluginTrustStore;
-type ToolingRuntimeServices = MinimalRuntimeServices | LandofileService | CommandRegistry;
+type MinimalRuntimeServices =
+  | Logger
+  | Renderer
+  | Telemetry
+  | ConfigService
+  | FileSystem
+  | CacheService
+  | PluginTrustStore;
+type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;
 type ProviderRuntimeServices =
   | MinimalRuntimeServices
   | PluginRegistry
@@ -251,9 +269,33 @@ const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined): Norma
   };
 };
 
-const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
+const makeLibraryRenderer = (id: LibraryRendererMode): Context.Tag.Service<typeof Renderer> => ({
+  id,
+  message: {
+    info: () => Effect.void,
+    warn: () => Effect.void,
+    error: () => Effect.void,
+  },
+  output: {
+    stdout: () => Effect.void,
+    stderr: () => Effect.void,
+  },
+});
+
+const makeLibraryTelemetry = (enabled: boolean): Context.Tag.Service<typeof Telemetry> => ({
+  enabled,
+  record: () => Effect.void,
+});
+
+const makeMinimalRuntimeLive = (
+  loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
+) =>
   Layer.mergeAll(
     LoggerLive({ mode: loggerMode }),
+    Layer.succeed(Renderer, makeLibraryRenderer(rendererMode)),
+    Layer.succeed(Telemetry, makeLibraryTelemetry(telemetryEnabled)),
     ConfigServiceLive,
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
@@ -261,8 +303,13 @@ const makeMinimalRuntimeLive = (loggerMode: LoggerMode) =>
     SecretStoreLive,
   );
 
-const makeProviderRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+const makeProviderRuntimeLive = (
+  loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
+  pluginPolicy: NormalizedPluginPolicy,
+) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
   const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
     Layer.provide(minimalRuntimeLive),
   );
@@ -280,8 +327,13 @@ const makeProviderRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: Normalize
   );
 };
 
-const makeToolingRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+const makeToolingRuntimeLive = (
+  loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
+  pluginPolicy: NormalizedPluginPolicy,
+) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
   const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
     Layer.provide(minimalRuntimeLive),
   );
@@ -293,22 +345,32 @@ const makeToolingRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: Normalized
   );
 };
 
-const makeGlobalRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+const makeGlobalRuntimeLive = (
+  loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
+  pluginPolicy: NormalizedPluginPolicy,
+) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
   const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
     Layer.provide(minimalRuntimeLive),
   );
   return Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode, pluginPolicy),
+    makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy),
     AppPlannerLive.pipe(
       Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
     ),
   );
 };
 
-const makeScratchRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
-  const providerBase = makeProviderRuntimeLive(loggerMode, pluginPolicy);
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+const makeScratchRuntimeLive = (
+  loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
+  pluginPolicy: NormalizedPluginPolicy,
+) => {
+  const providerBase = makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
   const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
     Layer.provide(minimalRuntimeLive),
   );
@@ -332,13 +394,18 @@ const makeScratchRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: Normalized
   );
 };
 
-const makeAppRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPluginPolicy) => {
-  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode);
+const makeAppRuntimeLive = (
+  loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
+  pluginPolicy: NormalizedPluginPolicy,
+) => {
+  const minimalRuntimeLive = makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
   const pluginRegistryLive = makePluginRegistryLive(pluginPolicy.discovery).pipe(
     Layer.provide(minimalRuntimeLive),
   );
   return Layer.mergeAll(
-    makeProviderRuntimeLive(loggerMode, pluginPolicy),
+    makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy),
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
     AppPlannerLive.pipe(Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive))),
@@ -350,6 +417,8 @@ const makeAppRuntimeLive = (loggerMode: LoggerMode, pluginPolicy: NormalizedPlug
 const runtimeLayerFor = (
   bootstrap: BootstrapLevel,
   loggerMode: LoggerMode,
+  rendererMode: LibraryRendererMode,
+  telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
 ): RuntimeLayer => {
   switch (bootstrap) {
@@ -358,17 +427,17 @@ const runtimeLayerFor = (
     case "minimal":
     case "plugins":
     case "commands":
-      return makeMinimalRuntimeLive(loggerMode);
+      return makeMinimalRuntimeLive(loggerMode, rendererMode, telemetryEnabled);
     case "tooling":
-      return makeToolingRuntimeLive(loggerMode, pluginPolicy);
+      return makeToolingRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
     case "provider":
-      return makeProviderRuntimeLive(loggerMode, pluginPolicy);
+      return makeProviderRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
     case "global":
-      return makeGlobalRuntimeLive(loggerMode, pluginPolicy);
+      return makeGlobalRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
     case "scratch":
-      return makeScratchRuntimeLive(loggerMode, pluginPolicy);
+      return makeScratchRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
     case "app":
-      return makeAppRuntimeLive(loggerMode, pluginPolicy);
+      return makeAppRuntimeLive(loggerMode, rendererMode, telemetryEnabled, pluginPolicy);
   }
 };
 
@@ -419,6 +488,8 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const baseLayer = runtimeLayerFor(
     decoded.right.bootstrap ?? "app",
     decoded.right.logger === "pretty" ? "pretty" : "silent",
+    normalizeLibraryRendererMode(decoded.right.renderer ?? decoded.right.config?.renderer),
+    decoded.right.telemetry ?? decoded.right.config?.telemetry?.enabled ?? false,
     pluginPolicy,
   );
   const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);

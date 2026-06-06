@@ -11,13 +11,29 @@ import {
   LandofileService,
   Logger,
   PluginRegistry,
+  Renderer,
   RuntimeProvider,
   RuntimeProviderRegistry,
   SecretStore,
+  Telemetry,
   ToolingEngine,
 } from "@lando/sdk/services";
 
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
+
+const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
+  const lines: Array<string> = [];
+  const previousLog = console.log;
+  try {
+    console.log = (...args: ReadonlyArray<unknown>) => {
+      lines.push(args.map(String).join(" "));
+    };
+    await run();
+    return lines;
+  } finally {
+    console.log = previousLog;
+  }
+};
 
 const expectRuntimeBootstrapError = (exit: Exit.Exit<unknown, unknown>): LandoRuntimeBootstrapError => {
   expect(Exit.isFailure(exit)).toBe(true);
@@ -35,6 +51,67 @@ const expectRuntimeBootstrapError = (exit: Exit.Exit<unknown, unknown>): LandoRu
 };
 
 describe("makeLandoRuntime", () => {
+  test("applies library-mode defaults at runtime construction", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling" }))),
+    );
+    const registry = Context.get(context, PluginRegistry);
+    const renderer = Context.get(context, Renderer);
+    const telemetry = Context.get(context, Telemetry);
+
+    expect(renderer.id).toBe("json");
+    expect(telemetry.enabled).toBe(false);
+    await expect(Effect.runPromise(registry.list)).resolves.toEqual([]);
+  });
+
+  test("honors explicit library-mode default overrides", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(
+        Layer.build(
+          makeLandoRuntime({
+            bootstrap: "tooling",
+            renderer: "plain",
+            telemetry: true,
+            plugins: { policy: "bundled-only" },
+          }),
+        ),
+      ),
+    );
+    const registry = Context.get(context, PluginRegistry);
+    const renderer = Context.get(context, Renderer);
+    const telemetry = Context.get(context, Telemetry);
+
+    expect(renderer.id).toBe("plain");
+    expect(telemetry.enabled).toBe(true);
+    await expect(Effect.runPromise(registry.load("@lando/provider-lando"))).resolves.toMatchObject({
+      name: "@lando/provider-lando",
+    });
+  });
+
+  test("applies the silent logger by default (no log output)", async () => {
+    const lines = await captureConsoleLog(() =>
+      Effect.runPromise(
+        Effect.flatMap(Logger, (logger) => logger.info("library default should be silent")).pipe(
+          Effect.provide(makeLandoRuntime({ bootstrap: "minimal" })),
+        ),
+      ),
+    );
+
+    expect(lines).toEqual([]);
+  });
+
+  test("honors the explicit logger override (pretty emits output)", async () => {
+    const lines = await captureConsoleLog(() =>
+      Effect.runPromise(
+        Effect.flatMap(Logger, (logger) => logger.info("override visible info")).pipe(
+          Effect.provide(makeLandoRuntime({ bootstrap: "minimal", logger: "pretty" })),
+        ),
+      ),
+    );
+
+    expect(lines.some((line) => line.includes("INFO") && line.includes("override visible info"))).toBe(true);
+  });
+
   test("defaults library plugin policy to explicit discovery-free registry", async () => {
     const context = await Effect.runPromise(
       Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling" }))),

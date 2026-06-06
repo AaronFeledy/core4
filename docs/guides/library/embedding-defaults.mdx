@@ -1,0 +1,34 @@
+---
+id: embedding-defaults
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, library, embedding]
+---
+
+<Guide>
+  <Scenario id="library-defaults" render={false} reason="Runtime construction defaults are verified by core makeLandoRuntime tests without requiring a provider-backed app">
+    <Step name="default-set">
+      <Variable name="logger" value="silent" display="Library runtimes use the silent logger by default" />
+      <Variable name="renderer" value="json" display="Library runtimes provide a json renderer service by default" />
+      <Variable name="telemetry" value="off" display="Telemetry is disabled unless the embedder opts in" />
+      <Variable name="pluginDiscovery" value="explicit" display="Plugin discovery is host-provided only by default" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="library-overrides" render={false} reason="Override behavior is verified by core makeLandoRuntime tests without requiring a provider-backed app">
+    <Step name="explicit-options">
+      <Variable name="renderer" value="plain" display="Embedders can override the renderer field at runtime construction" />
+      <Variable name="telemetry" value="true" display="Embedders can opt into telemetry at runtime construction" />
+      <Variable name="plugins" value="bundled-only" display="Embedders can opt into bundled plugin loading instead of the explicit-only default" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="library-import-boundary" render={false} reason="The import-boundary suite verifies the default entry keeps OCLIF and TUI code paths out of the library graph">
+    <Step name="default-entry">
+      <Variable name="entry" value="@lando/core" display="Embedders import makeLandoRuntime from the default package entry" />
+      <Variable name="oclif" value="isolated" display="OCLIF remains isolated to @lando/core/oclif" />
+      <Variable name="tui" value="not imported" display="The library default JSON renderer does not pull TUI paths into the default entry" />
+    </Step>
+  </Scenario>
+</Guide>
