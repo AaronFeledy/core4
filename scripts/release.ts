@@ -11,11 +11,13 @@
  * shell-shaped work through `ShellRunner` for redaction, lifecycle events,
  * and pluggability.
  *
- * Status: SCAFFOLDING. Stages 9–13 (sign / notarize / manifest / SBOM /
- * publish) are stubs and exit successfully without doing real work; they
- * land alongside the signing/notarization secrets and supply-chain pipeline.
+ * Status: SCAFFOLDING. Stages 9–12 (sign / notarize / manifest / SBOM) are
+ * stubs and exit successfully without doing real work; they land alongside
+ * the signing/notarization secrets and supply-chain pipeline.
  */
 import { $ } from "bun";
+
+import { betaPackageNames, prepareNpmBetaPackages } from "./prepare-npm-dev-packages.ts";
 
 interface Stage {
   readonly id: string;
@@ -62,6 +64,18 @@ const stageMatchesTarget = (stage: Stage, target: ArtifactTarget): boolean => {
   if (target === "binary") return stage.forBinary;
   return stage.forLibrary;
 };
+
+const npmBetaPublishScript = (): string =>
+  [
+    'before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"',
+    ...betaPackageNames.map(
+      (packageName) => `npm publish --workspace ${packageName} --access public --tag next --provenance`,
+    ),
+    'after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"',
+    'test "$before_latest" = "$after_latest"',
+    "npm view @lando/core dist-tags.next --json | grep -Eq '\"?4\\.0\\.0-beta\\.[0-9]+\"?'",
+    ...betaPackageNames.map((packageName) => `npm dist-tag rm ${packageName} dev 2>/dev/null || true`),
+  ].join("\n");
 
 const skip = async (id: string, reason: string): Promise<void> => {
   console.log(`[release] skip ${id} (${reason})`);
@@ -178,11 +192,14 @@ const stages: ReadonlyArray<Stage> = [
   },
   {
     id: "13-publish",
-    description: "Upload to GitHub Releases (binaries + manifests) and npm (library).",
-    forBinary: true,
+    description: "Publish @lando/core and bundled workspace packages to npm on the next tag.",
+    forBinary: false,
     forLibrary: true,
-    status: "stub",
-    run: () => skip("13-publish", "publishing handled by the release.yml workflow until 9–12 are wired"),
+    status: "ready",
+    run: async () => {
+      await prepareNpmBetaPackages();
+      await $`sh -euc ${npmBetaPublishScript()}`;
+    },
   },
 ];
 
