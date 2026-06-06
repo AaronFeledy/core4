@@ -12,8 +12,11 @@ const runBinary = async (
   args: ReadonlyArray<string>,
 ): Promise<{ readonly exitCode: number; readonly stdout: string }> => {
   const proc = Bun.spawn([binaryPath, ...args], { stdout: "pipe", stderr: "pipe" });
-  const stdoutBytes = new Uint8Array(await new Response(proc.stdout).arrayBuffer());
-  await new Response(proc.stderr).arrayBuffer();
+  const [stdoutBuf] = await Promise.all([
+    new Response(proc.stdout).arrayBuffer(),
+    new Response(proc.stderr).arrayBuffer(),
+  ]);
+  const stdoutBytes = new Uint8Array(stdoutBuf);
   const exitCode = await proc.exited;
   return { exitCode, stdout: decodeUtf8(stdoutBytes) };
 };
