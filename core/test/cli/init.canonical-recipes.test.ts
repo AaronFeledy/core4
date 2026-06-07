@@ -94,6 +94,24 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
     expectedTooling: ["composer", "php"],
   },
   {
+    recipe: "drupal",
+    answers: { name: "drupal-app", php: "8.3", database: "mariadb" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb" },
+    ],
+    expectedTooling: ["drush", "composer"],
+  },
+  {
+    recipe: "drupal-cms",
+    answers: { name: "drupal-cms-app", php: "8.3", database: "mariadb" },
+    expectedServices: [
+      { name: "appserver", type: "php:8.3" },
+      { name: "database", type: "mariadb" },
+    ],
+    expectedTooling: ["drush", "composer"],
+  },
+  {
     recipe: "node-api",
     answers: { name: "node-api-app", node: "lts", framework: "fastify", database: "postgres" },
     expectedServices: [
@@ -203,6 +221,8 @@ describe("BUILTIN_RECIPE_RENDERERS — bundled set", () => {
       "sveltekit",
       "nextjs",
       "django",
+      "drupal",
+      "drupal-cms",
       "fastapi",
       "rails",
       "jekyll",

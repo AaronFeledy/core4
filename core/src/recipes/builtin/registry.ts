@@ -10,6 +10,8 @@ import type { PromptAnswers } from "../prompts/runtime.ts";
 
 import { astroRenderer } from "./astro/render.ts";
 import { djangoRenderer } from "./django/render.ts";
+import { drupalCmsRenderer } from "./drupal-cms/render.ts";
+import { drupalRenderer } from "./drupal/render.ts";
 import { eleventyRenderer } from "./eleventy/render.ts";
 import { emptyRenderer } from "./empty/render.ts";
 import { fastapiRenderer } from "./fastapi/render.ts";
@@ -56,6 +58,8 @@ const RENDERERS = [
   sveltekitRenderer,
   nextjsRenderer,
   djangoRenderer,
+  drupalRenderer,
+  drupalCmsRenderer,
   fastapiRenderer,
   railsRenderer,
   jekyllRenderer,
