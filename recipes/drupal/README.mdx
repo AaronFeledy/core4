@@ -1,0 +1,32 @@
+---
+id: drupal
+provider: test
+timeout: 60000
+tags: [recipe, drupal, php]
+---
+
+# Drupal
+
+Spin up a Drupal 11 stack with PHP, MariaDB, Drush, and Composer. After the app
+starts, scaffold the codebase with `lando composer create-project drupal/recommended-project .`.
+The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="drupal" display="my-drupal-app" />
+      <Run command="lando init --recipe drupal --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Inspect output />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -174,9 +174,14 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 
 | User Story | Feature | Guide Path | Acceptance |
 |---|---|---|---|
+| US-083 | go service type | `docs/guides/services/go.mdx` | Required at story acceptance |
 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Required at story acceptance |
+| US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Required at story acceptance |
 | US-086 | valkey service type (dual-scheme emission) | `docs/guides/services/valkey.mdx` | Required at story acceptance |
+| US-087 | solr service type | `docs/guides/services/solr.mdx` | Required at story acceptance |
 | US-088 | elasticsearch service type | `docs/guides/services/elasticsearch.mdx` | Required at story acceptance |
+| US-089 | opensearch service type | `docs/guides/services/opensearch.mdx` | Required at story acceptance |
+| US-090 | meilisearch service type | `docs/guides/services/meilisearch.mdx` | Required at story acceptance |
 | US-093 | static service type | `docs/guides/services/static.mdx` | Required at story acceptance |
 | US-094 | raw Compose passthrough service | `docs/guides/services/compose-passthrough.mdx` | Required at story acceptance |
 

@@ -1,0 +1,5 @@
+name: php-demo
+services:
+  app:
+    type: "php:8.3"
+    primary: true

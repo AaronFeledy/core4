@@ -1,0 +1,4 @@
+name: redis-demo
+services:
+  cache:
+    type: redis

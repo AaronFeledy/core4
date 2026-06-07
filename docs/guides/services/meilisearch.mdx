@@ -1,0 +1,42 @@
+---
+id: meilisearch
+provider: test
+timeout: 90000
+tags: [beta, docs, meilisearch, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="meilisearch-demo" />
+      <Variable name="serviceType" value="meilisearch" display="Declare type: meilisearch in your services block (resolves to the meilisearch:1 image line)" />
+      <Variable name="defaultImage" value="getmeili/meilisearch:v1.11" display="Default Docker image" />
+      <Variable name="defaultPort" value="7700" display="Default HTTP port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="health-and-keys" render={false} reason="Expose a tooling alias that curls the health endpoint after start; set a master key for production-like auth">
+    <Step name="health">
+      <Variable name="healthCommand" value="lando meili /health" display="Query the Meilisearch health endpoint via a tooling alias" />
+      <Variable name="expectedBody" value="status: available" display="A healthy Meilisearch reports a JSON body with status: available" />
+    </Step>
+    <Step name="master-key">
+      <Variable name="masterKeyEnv" value="MEILI_MASTER_KEY" display="Set MEILI_MASTER_KEY under services.search.environment to require an API key" />
+      <Variable name="devNote" value="Without a master key Meilisearch runs in development mode with auth disabled" display="Local dev defaults leave auth open; set a master key to mirror production" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific Meilisearch version when the default v1.11 image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: getmeili/meilisearch:v1.10" display="Pin a specific Meilisearch release via image: getmeili/meilisearch:v1.10 under services.search" />
+    </Step>
+  </Scenario>
+</Guide>

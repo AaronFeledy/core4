@@ -1,0 +1,4 @@
+name: apache-demo
+services:
+  web:
+    type: apache

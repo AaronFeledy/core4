@@ -14,6 +14,12 @@
 
 import { ASTRO_RECIPE_ID, astroRecipeSource, astroRecipeYaml } from "./builtin/astro/manifest.ts";
 import { DJANGO_RECIPE_ID, djangoRecipeSource, djangoRecipeYaml } from "./builtin/django/manifest.ts";
+import {
+  DRUPAL_CMS_RECIPE_ID,
+  drupalCmsRecipeSource,
+  drupalCmsRecipeYaml,
+} from "./builtin/drupal-cms/manifest.ts";
+import { DRUPAL_RECIPE_ID, drupalRecipeSource, drupalRecipeYaml } from "./builtin/drupal/manifest.ts";
 import { ELEVENTY_RECIPE_ID, eleventyRecipeSource, eleventyRecipeYaml } from "./builtin/eleventy/manifest.ts";
 import { EMPTY_RECIPE_ID, emptyRecipeSource, emptyRecipeYaml } from "./builtin/empty/manifest.ts";
 import { FASTAPI_RECIPE_ID, fastapiRecipeSource, fastapiRecipeYaml } from "./builtin/fastapi/manifest.ts";
@@ -104,6 +110,16 @@ export const BUNDLED_RECIPES: ReadonlyArray<BundledRecipe> = [
     id: DJANGO_RECIPE_ID,
     source: djangoRecipeSource,
     manifestYaml: djangoRecipeYaml,
+  },
+  {
+    id: DRUPAL_RECIPE_ID,
+    source: drupalRecipeSource,
+    manifestYaml: drupalRecipeYaml,
+  },
+  {
+    id: DRUPAL_CMS_RECIPE_ID,
+    source: drupalCmsRecipeSource,
+    manifestYaml: drupalCmsRecipeYaml,
   },
   {
     id: FASTAPI_RECIPE_ID,

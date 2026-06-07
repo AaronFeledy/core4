@@ -1,0 +1,5 @@
+name: ruby-demo
+services:
+  app:
+    type: "ruby:3.3"
+    primary: true

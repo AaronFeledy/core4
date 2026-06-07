@@ -1,0 +1,4 @@
+name: mysql-demo
+services:
+  db:
+    type: mysql

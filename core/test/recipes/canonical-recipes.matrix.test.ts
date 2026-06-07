@@ -44,6 +44,8 @@ const CANONICAL_ANSWERS: Readonly<Record<string, CanonicalAnswers>> = {
     extras: { node: "lts", database: "postgres", auth: "none" },
   },
   django: { name: "django-canon", extras: { celery: "true" } },
+  drupal: { name: "drupal-canon", extras: { php: "8.3", database: "mariadb" } },
+  "drupal-cms": { name: "drupal-cms-canon", extras: { php: "8.3", database: "mariadb" } },
   fastapi: { name: "fastapi-canon" },
   rails: { name: "rails-canon" },
   jekyll: { name: "jekyll-canon" },

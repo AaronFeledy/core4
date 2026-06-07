@@ -1,0 +1,49 @@
+---
+id: mariadb
+provider: test
+timeout: 90000
+tags: [beta, docs, mariadb, service, database]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="mariadb-demo" />
+      <Variable name="serviceType" value="mariadb" display="Declare type: mariadb in your services block" />
+      <Variable name="defaultImage" value="mariadb:11.4" display="Default Docker image" />
+      <Variable name="defaultPort" value="3306" display="Default TCP port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="connection-details" render={false} reason="Documents the in-container connection credentials a dependent app uses; lando info surfaces the same values once the app is running">
+    <Step name="credentials">
+      <Variable name="host" value="db" display="Connect from another service using the service name db as the hostname" />
+      <Variable name="database" value="mariadb-demo" display="Default database name — the app name (set database: under services.db to override)" />
+      <Variable name="user" value="lando" display="Default application user" />
+      <Variable name="password" value="lando" display="Default application password" />
+      <Variable name="mysqlCompat" value="MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE are also set" display="MariaDB exports the MYSQL_* env names too, so MySQL clients and frameworks connect unchanged" />
+      <Variable name="internalUrl" value="mysql://lando:lando@db:3306/mariadb-demo" display="Connection URL from inside the app network (MariaDB speaks the MySQL wire protocol)" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cli-access" render={false} reason="The fixture can define a tooling alias that opens the mariadb client against the running database">
+    <Step name="client">
+      <Variable name="toolingAlias" value="lando mariadb" display="Declare a tooling alias targeting the db service to open the mariadb client" />
+      <Variable name="importNote" value="lando db-import dump.sql" display="A common pattern is a db-import tooling alias that pipes a SQL file into the client" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific MariaDB version when the default mariadb:11.4 image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: mariadb:10.11" display="Pin MariaDB 10.11 (LTS) via image: mariadb:10.11 under services.db" />
+    </Step>
+  </Scenario>
+</Guide>

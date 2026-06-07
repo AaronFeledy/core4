@@ -1,0 +1,31 @@
+---
+id: lemp
+provider: test
+timeout: 60000
+tags: [recipe, lemp, php]
+---
+
+# LEMP
+
+Spin up a classic Nginx, PHP, and MariaDB stack for a traditional PHP application.
+The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
+
+<Guide>
+  <Scenario id="reader-path" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="lemp" display="my-lemp-app" />
+      <Run command="lando init --recipe lemp --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Inspect output />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>

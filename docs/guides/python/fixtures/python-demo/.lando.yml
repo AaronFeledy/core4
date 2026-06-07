@@ -1,0 +1,5 @@
+name: python-demo
+services:
+  app:
+    type: "python:3.12"
+    primary: true

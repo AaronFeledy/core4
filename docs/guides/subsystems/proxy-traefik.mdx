@@ -7,7 +7,7 @@ tags: [beta, docs, subsystems, proxy, traefik]
 ---
 
 <Guide>
-  <Scenario id="proxy-sdk-contract" render={false} reason="ProxyService SDK contract is exercised by sdk/test/contract/proxy-service.test.ts against TestProxyService; the Traefik Live Layer requires the global app (US-111) and running containers">
+  <Scenario id="proxy-sdk-contract" render={false} reason="The ProxyService SDK contract is exercised against an in-memory test double; the Traefik Live Layer requires the global app and running containers">
     <Step name="proxy-contract">
       <Variable name="sdkTag" value="ProxyService" display="Effect Service tag published in @lando/sdk; plugins implement ProxyServiceShape" />
       <Variable name="contractRunner" value="runProxyServiceContract" display="Contract runner from @lando/sdk/test validates id, setup, applyRoutes, removeRoutes" />
@@ -23,10 +23,10 @@ tags: [beta, docs, subsystems, proxy, traefik]
     </Step>
   </Scenario>
 
-  <Scenario id="proxy-unavailable-layer" render={false} reason="ProxyServiceUnavailableLive stub is exercised by unit tests; Traefik Live Layer requires the global app (US-111, US-114) which is deferred to a later Beta story">
+  <Scenario id="proxy-unavailable-layer" render={false} reason="The fail-closed ProxyServiceUnavailableLive stub is exercised by unit tests; the Traefik Live Layer requires the global app and running containers">
     <Step name="unavailable-layer">
-      <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="Fails closed with remediation until global app (US-111) provides the Traefik service" />
-      <Variable name="liveLayerPRD" value="US-111 GlobalAppService + US-114 bundled Traefik global service" display="Full Traefik Live Layer wired via globalServices: lands in US-111 / US-114" />
+      <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="Fails closed with actionable remediation when the global app has not provided the Traefik service yet" />
+      <Variable name="liveLayer" value="Traefik global service" display="The full Traefik Live Layer is wired through the global app's globalServices: contribution" />
     </Step>
   </Scenario>
 

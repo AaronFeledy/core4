@@ -1,0 +1,4 @@
+name: postgres-demo
+services:
+  db:
+    type: postgres

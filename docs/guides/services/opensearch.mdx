@@ -1,0 +1,46 @@
+---
+id: opensearch
+provider: test
+timeout: 90000
+tags: [beta, docs, opensearch, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="opensearch-demo" />
+      <Variable name="serviceType" value="opensearch" display="Declare type: opensearch in your services block (resolves to the opensearch:2 image)" />
+      <Variable name="defaultImage" value="opensearchproject/opensearch:2" display="Default Docker image" />
+      <Variable name="defaultPort" value="9200" display="Default HTTP port" />
+      <Variable name="license" value="Apache 2.0" display="OpenSearch is Apache 2.0 licensed — use it when you need an open-source alternative to Elasticsearch's Elastic License v2" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cluster-health" render={false} reason="Expose a tooling alias that curls the cluster health endpoint after start to verify the node is reachable">
+    <Step name="health">
+      <Variable name="healthCommand" value="lando os-cli /_cluster/health" display="Query cluster health via a tooling alias" />
+      <Variable name="expectedStatus" value="green or yellow" display="A healthy single-node OpenSearch reports green or yellow" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="elasticsearch-parity" render={false} reason="OpenSearch speaks the same REST surface as Elasticsearch 7, so existing clients and queries work unchanged">
+    <Step name="note">
+      <Variable name="apiCompat" value="OpenSearch 2 is API-compatible with Elasticsearch 7" display="Most Elasticsearch 7 clients and queries work against OpenSearch unchanged" />
+      <Variable name="securityNote" value="Local dev disables the demo security plugin; production must configure TLS + auth" display="Default config is for local development only, not production" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific OpenSearch image when the default opensearch:2 image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: opensearchproject/opensearch:2.17.0" display="Pin a specific OpenSearch release via image: opensearchproject/opensearch:2.17.0 under services.search" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -97,6 +97,8 @@ export const buildConfig: BuildConfig = {
     { id: "sveltekit" },
     { id: "nextjs" },
     { id: "django" },
+    { id: "drupal" },
+    { id: "drupal-cms" },
     { id: "fastapi" },
     { id: "rails" },
     { id: "jekyll" },

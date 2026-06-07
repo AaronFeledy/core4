@@ -11,7 +11,7 @@ tags: [beta, docs, recipes, git, tarball, npm, registry]
     <Step name="command">
       <Variable name="command" value="lando init --source=git --url=&lt;git-url&gt;" display="Clone a git repository as the recipe source, then read recipe.yml from the clone root" />
       <Variable name="subpath" value="--path=packages/my-recipe" display="Optional monorepo subdirectory; recipe.yml must live at the top level of that subpath" />
-      <Variable name="scope" value="manifest and prompts" display="US-129 reaches recipe manifest parsing and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+      <Variable name="scope" value="manifest and prompts" display="A git source resolves to recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
     </Step>
   </Scenario>
 
@@ -38,7 +38,7 @@ tags: [beta, docs, recipes, git, tarball, npm, registry]
       <Variable name="command" value="lando init --source=tarball --url=&lt;tarball-url&gt;" display="Download a tar/tar.gz archive as the recipe source, then read recipe.yml from the extracted root" />
       <Variable name="checksum" value="--checksum=&lt;sha256&gt;" display="Optional 64-hex SHA-256; when present the archive is verified before extraction and a mismatch fails closed" />
       <Variable name="subpath" value="--path=packages/my-recipe" display="Optional monorepo subdirectory; recipe.yml must live at the top level of that subpath" />
-      <Variable name="scope" value="manifest and prompts" display="US-130 reaches recipe manifest parsing and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+      <Variable name="scope" value="manifest and prompts" display="A tarball source resolves to recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
     </Step>
   </Scenario>
 
@@ -66,7 +66,7 @@ tags: [beta, docs, recipes, git, tarball, npm, registry]
       <Variable name="command" value="lando init --source=npm --package=@lando/recipe-foo" display="Resolve an npm package's metadata, download the published tarball, and read recipe.yml from the extracted package/ root" />
       <Variable name="version" value="--package=@lando/recipe-foo@1.2.3" display="An @version suffix is honored as an exact published version or a dist-tag; with no suffix the registry latest dist-tag is used" />
       <Variable name="subpath" value="--path=recipes/my-recipe" display="Optional subdirectory inside the package; recipe.yml must live at the top level of that subpath" />
-      <Variable name="scope" value="manifest and prompts" display="US-131 reaches recipe manifest parsing and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+      <Variable name="scope" value="manifest and prompts" display="An npm source resolves to recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
     </Step>
   </Scenario>
 
@@ -94,7 +94,7 @@ tags: [beta, docs, recipes, git, tarball, npm, registry]
       <Variable name="command" value="lando init --source=registry --id=&lt;recipe-id&gt;" display="Resolve a recipe id through the configured registry, then read recipe.yml from the resolved git clone or tarball extract" />
       <Variable name="defaultRegistry" value="https://registry.lando.dev/recipes/" display="With no override, Lando queries the default recipe registry URL" />
       <Variable name="registryUrl" value="--registry-url=&lt;url&gt;" display="Override the registry base URL for private or test registries" />
-      <Variable name="scope" value="manifest and prompts" display="US-132 reaches registry resolution, recipe manifest parsing, and prompt collection; non-bundled file rendering still stops at the existing Alpha render boundary" />
+      <Variable name="scope" value="manifest and prompts" display="A registry source resolves the registry entry, then recipe manifest parsing and prompt collection; rendering a non-bundled recipe's files is not yet implemented" />
     </Step>
   </Scenario>
 

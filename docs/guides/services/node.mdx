@@ -1,0 +1,44 @@
+---
+id: node
+provider: test
+timeout: 90000
+tags: [beta, docs, node, service, runtime]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="node-demo" />
+      <Variable name="serviceType" value="node:22" display="Declare type: node:22 for the primary service (Node has no bare type: node alias — pin a version)" />
+      <Variable name="supportedVersions" value="node:lts, node:22" display="Supported Node service versions" />
+      <Variable name="defaultImage" value="node:22" display="Default Docker image, derived from the pinned version" />
+      <Variable name="defaultPort" value="3000" display="Default HTTP port the service exposes" />
+      <Variable name="appMount" value="/app" display="Your repository is bind-mounted read-write at /app, the working directory" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="run-the-app" render={false} reason="The default keep-alive command holds the container open so you install dependencies and start your server via tooling">
+    <Step name="install">
+      <Variable name="npmInstall" value="lando npm install" display="Declare an npm tooling alias to install dependencies inside the service" />
+    </Step>
+    <Step name="start-server">
+      <Variable name="startServer" value="lando npm start" display="Run your server via a tooling alias; bind it to 3000 to be reached at the app URL" />
+      <Variable name="execForm" value="lando exec app -- node server.js" display="Or run a one-off process directly with lando exec" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Pin a different supported Node version, or set image to use a custom Node base image">
+    <Step name="note">
+      <Variable name="pinVersion" value="type: node:lts" display="Track the current LTS line by setting type: node:lts under services.app" />
+      <Variable name="customImage" value="image: node:22-bookworm" display="Override the base image via image: node:22-bookworm under services.app" />
+    </Step>
+  </Scenario>
+</Guide>
