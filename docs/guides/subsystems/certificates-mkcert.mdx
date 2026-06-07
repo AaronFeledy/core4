@@ -32,7 +32,7 @@ tags: [beta, docs, subsystems, certs, mkcert, ca]
     </Step>
   </Scenario>
 
-  <Scenario id="ca-cert-chain-validation" render={false} reason="Cert chain validation against the locally-installed root requires lando setup to have run; the live test is gated behind LANDO_TEST_CA_LIVE=1 (not yet implemented; tracked in US-102 notes)">
+  <Scenario id="ca-cert-chain-validation" render={false} reason="Cert chain validation against the locally-installed root requires lando setup to have run; the live test is gated behind LANDO_TEST_CA_LIVE=1 and skipped by default">
     <Step name="cert-chain">
       <Variable name="validationApproach" value="openssl verify -CAfile <caPath> <certPath>" display="The issued cert chain must validate against the locally-installed root" />
       <Variable name="liveGate" value="LANDO_TEST_CA_LIVE=1" display="Live cert chain test gate (reserved for when mkcert binary is available in CI)" />
