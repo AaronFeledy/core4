@@ -26,7 +26,7 @@ export const LOGS_FOLLOW_DEFERRED = deferredLogsError(
 );
 
 export const LOGS_SINCE_DEFERRED = deferredLogsError(
-  "`lando logs --since` is deferred to (provider LogOptions does not yet expose a since cursor).",
+  "`lando logs --since` is not available yet (provider LogOptions does not yet expose a since cursor).",
   "Drop --since and use --tail <N> for a finite recent snapshot.",
 );
 

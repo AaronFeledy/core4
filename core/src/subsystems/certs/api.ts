@@ -25,7 +25,7 @@ export { CertificateAuthority };
 
 const CA_UNAVAILABLE_ID = "unavailable" as const;
 const CA_UNAVAILABLE_MESSAGE =
-  "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (available in with US-102 full implementation).";
+  "CertificateAuthority requires @lando/ca-mkcert. Run `lando setup` to install the CA (full implementation is not available yet).";
 
 export const CertificateAuthorityUnavailableLive = Layer.succeed(CertificateAuthority, {
   id: CA_UNAVAILABLE_ID,

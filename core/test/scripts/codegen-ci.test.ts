@@ -478,9 +478,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(
         "npm publish --workspace @lando/service-lando --dry-run --access public --tag dev",
       );
-      expect(workflow).toContain(
-        "npm publish --workspace @lando/sdk --access public --tag dev --provenance",
-      );
+      expect(workflow).toContain("npm publish --workspace @lando/sdk --access public --tag dev --provenance");
       expect(workflow).toContain(
         "npm publish --workspace @lando/core --access public --tag dev --provenance",
       );
