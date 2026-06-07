@@ -157,8 +157,9 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 
 **CLI / source surface paths covered (drift gate input):**
 
-- `core/src/scratch/**`
-- `core/src/cli/commands/apps/scratch/**`
+- `core/src/scratch-app/**`
+- `core/src/cli/commands/scratch.ts`
+- `core/src/cli/oclif/commands/apps/scratch/**`
 
 ## Open Questions
 

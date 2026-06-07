@@ -155,6 +155,8 @@ Per [PRD-12 US-198](./prd-beta-12-executable-guides-beta.md) (`## Guide Coverage
 | US-074 | provider-lando Windows VM lifecycle | `docs/guides/setup/provider-lando-windows.mdx` | Required at story acceptance |
 | US-077 | provider-docker on Windows (Docker Desktop) | `docs/guides/setup/provider-docker-windows.mdx` | Required at story acceptance |
 | US-078 | @lando/provider-podman opt-in on Linux | `docs/guides/setup/provider-podman-linux.mdx` | Required at story acceptance |
+| US-079 | @lando/provider-podman on macOS via Podman Desktop | `docs/guides/setup/provider-podman-macos.mdx` | Required at story acceptance |
+| US-079 | @lando/provider-podman on Windows via Podman Desktop | `docs/guides/setup/provider-podman-windows.mdx` | Required at story acceptance |
 | US-082 | provider selection precedence + conflict diagnostics | `docs/guides/setup/provider-selection.mdx` | Required at story acceptance |
 
 **CLI / source surface paths covered (drift gate input):**

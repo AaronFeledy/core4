@@ -1,8 +1,11 @@
 # Beta Feature Coverage Matrix
 
 This matrix maps each user-facing Beta PRD feature to the executable guide(s) that
-exercise it. It is the union of every PRD's `## Guide Coverage` section. Internal/infra
-PRDs (09, 13) declare no guides and are intentionally absent.
+exercise it. The first table is the union of every PRD's `## Guide Coverage` section;
+internal/infra PRDs (09, 13) declare no guides and are intentionally absent. The
+supplementary sections at the end list capability guides that are **not owned by a Beta
+PRD** (core service types and end-to-end tutorials that predate the Beta milestone) — they
+carry no PRD or User Story and exist purely as capability documentation plus tests.
 
 `Status` is `Shipped` when the guide file exists on disk and `Planned` when the owning
 story has not yet landed its guide. `bun run check:guide-coverage` validates that every
@@ -14,10 +17,17 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-01 | US-074 | provider-lando Windows VM lifecycle | `docs/guides/setup/provider-lando-windows.mdx` | Shipped |
 | PRD-01 | US-077 | provider-docker on Windows (Docker Desktop) | `docs/guides/setup/provider-docker-windows.mdx` | Shipped |
 | PRD-01 | US-078 | @lando/provider-podman opt-in on Linux | `docs/guides/setup/provider-podman-linux.mdx` | Shipped |
+| PRD-01 | US-079 | @lando/provider-podman on macOS via Podman Desktop | `docs/guides/setup/provider-podman-macos.mdx` | Shipped |
+| PRD-01 | US-079 | @lando/provider-podman on Windows via Podman Desktop | `docs/guides/setup/provider-podman-windows.mdx` | Shipped |
 | PRD-01 | US-082 | provider selection precedence + conflict diagnostics | `docs/guides/setup/provider-selection.mdx` | Shipped |
+| PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
+| PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |
 | PRD-02 | US-086 | valkey service type (dual-scheme emission) | `docs/guides/services/valkey.mdx` | Shipped |
+| PRD-02 | US-087 | solr service type | `docs/guides/services/solr.mdx` | Shipped |
 | PRD-02 | US-088 | elasticsearch service type | `docs/guides/services/elasticsearch.mdx` | Shipped |
+| PRD-02 | US-089 | opensearch service type | `docs/guides/services/opensearch.mdx` | Shipped |
+| PRD-02 | US-090 | meilisearch service type | `docs/guides/services/meilisearch.mdx` | Shipped |
 | PRD-02 | US-093 | static service type | `docs/guides/services/static.mdx` | Shipped |
 | PRD-02 | US-094 | raw Compose passthrough service | `docs/guides/services/compose-passthrough.mdx` | Shipped |
 | PRD-03 | US-097 | Mutagen host CLI + agent download via `lando setup` | `docs/guides/setup/file-sync-mutagen.mdx` | Shipped |
@@ -25,6 +35,9 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-101 | ProxyService + Traefik via global app | `docs/guides/subsystems/proxy-traefik.mdx` | Shipped |
 | PRD-04 | US-102 | CertificateAuthority via @lando/ca-mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
 | PRD-04 | US-103 | SshService sidecar (default) | `docs/guides/subsystems/ssh-sidecar.mdx` | Shipped |
+| PRD-04 | US-104 | HealthcheckService (tcp/http/cmd probes) | `docs/guides/subsystems/healthcheck-runner.mdx` | Shipped |
+| PRD-04 | US-105 | ScannerService endpoint discovery + port-collision detection | `docs/guides/subsystems/scanner-service.mdx` | Shipped |
+| PRD-04 | US-106 | HostProxyService (`lndo.site`-style hostnames) | `docs/guides/subsystems/host-proxy.mdx` | Shipped |
 | PRD-04 | US-108 | `lando doctor` subsystem walkthrough | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | PRD-05 | US-111 | GlobalAppService + reserved id `global` | `docs/guides/global/install-and-bundled-services.mdx` | Shipped |
 | PRD-05 | US-116 | `meta:global:*` CLI namespace incl. uninstall | `docs/guides/global/uninstall-and-purge.mdx` | Shipped |
@@ -51,3 +64,46 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-11 | US-167 | postinstall trust gating (incl. wildcards) | `docs/guides/plugins/trust-and-wildcards.mdx` | Planned |
 | PRD-11 | US-168 | system / user / app plugin discovery scopes | `docs/guides/plugins/discovery-scopes.mdx` | Shipped |
 | PRD-11 | US-173 | library-mode defaults | `docs/guides/library/embedding-defaults.mdx` | Shipped |
+
+## Core service catalog (capability guides — no PRD mapping)
+
+These service types shipped before the Beta milestone, so they are not owned by a Beta PRD
+and carry no User Story. Their guides run on the same `provider: test` scenario harness as
+the Beta guides above.
+
+| PRD | User Story | Feature | Guide Path | Status |
+|---|---|---|---|---|
+| — | — | php service type (runtime + framework presets) | `docs/guides/services/php.mdx` | Shipped |
+| — | — | node service type | `docs/guides/services/node.mdx` | Shipped |
+| — | — | python service type | `docs/guides/services/python.mdx` | Shipped |
+| — | — | ruby service type | `docs/guides/services/ruby.mdx` | Shipped |
+| — | — | mysql service type | `docs/guides/services/mysql.mdx` | Shipped |
+| — | — | mariadb service type | `docs/guides/services/mariadb.mdx` | Shipped |
+| — | — | postgres service type | `docs/guides/services/postgres.mdx` | Shipped |
+| — | — | redis service type | `docs/guides/services/redis.mdx` | Shipped |
+| — | — | nginx service type | `docs/guides/services/nginx.mdx` | Shipped |
+| — | — | apache service type | `docs/guides/services/apache.mdx` | Shipped |
+
+## Tutorials (capability guides — no PRD mapping)
+
+End-to-end tutorials that exercise several capabilities at once.
+
+| PRD | User Story | Feature | Guide Path | Status |
+|---|---|---|---|---|
+| — | — | everyday app lifecycle (start / inspect / exec / restart / destroy) | `docs/guides/tutorial/app-lifecycle.mdx` | Shipped |
+| — | — | Node + Postgres app scaffolded from a recipe | `docs/guides/node-postgres.mdx` | Shipped |
+
+## Recipe stacks (executable recipe READMEs — no PRD mapping)
+
+Each bundled application-stack recipe ships an executable `recipes/<id>/README.mdx`
+guide that scaffolds the stack with `lando init --recipe <id>`, starts it, and tears
+it down. These run on the same `provider: test` scenario harness; their paths are
+outside `docs/guides/` so they are not gate-validated here.
+
+| Recipe | Stack | Guide Path | Status |
+|---|---|---|---|
+| `lamp` | Apache + PHP + MariaDB | `recipes/lamp/README.mdx` | Shipped |
+| `lemp` | Nginx + PHP + MariaDB | `recipes/lemp/README.mdx` | Shipped |
+| `wordpress` | WordPress (PHP + MariaDB, WP-CLI) | `recipes/wordpress/README.mdx` | Shipped |
+| `drupal` | Drupal 11 (PHP + MariaDB/Postgres, Drush) | `recipes/drupal/README.mdx` | Shipped |
+| `drupal-cms` | Drupal CMS / Starshot (PHP + MariaDB/Postgres, Drush) | `recipes/drupal-cms/README.mdx` | Shipped |
