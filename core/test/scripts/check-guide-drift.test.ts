@@ -81,7 +81,7 @@ describe("parseGuideCoverageSurfacePaths", () => {
 });
 
 const recipeDecl: GuideDriftDeclaration = {
-  source: "spec/beta/prd-beta-07-recipes-full-breadth.md",
+  source: "prd/alpha-3/prd-alpha-3-07-recipes-full-breadth.md",
   surfacePaths: ["core/src/recipes/**", "sdk/src/recipes/**", "plugins/recipe-*/src/**"],
   guidePaths: ["docs/guides/recipes/remote-sources.mdx"],
 };
@@ -95,7 +95,7 @@ describe("checkGuideDrift (pure)", () => {
     });
     expect(result.skip).toBeUndefined();
     expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-    expect(result.diagnostics.some((d) => d.message.includes("prd-beta-07-recipes-full-breadth.md"))).toBe(
+    expect(result.diagnostics.some((d) => d.message.includes("prd-alpha-3-07-recipes-full-breadth.md"))).toBe(
       true,
     );
     expect(result.diagnostics.some((d) => d.message.includes("Guide-Coverage-Skip"))).toBe(true);
@@ -199,7 +199,7 @@ describe("checkGuideDriftOnDisk", () => {
       prBody: "Implements the git recipe source.",
     });
     expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-    expect(result.diagnostics.some((d) => d.message.includes("prd-beta-07-recipes-full-breadth.md"))).toBe(
+    expect(result.diagnostics.some((d) => d.message.includes("prd-alpha-3-07-recipes-full-breadth.md"))).toBe(
       true,
     );
   });
@@ -219,7 +219,7 @@ describe("checkGuideDriftOnDisk", () => {
 
   test("scaffolded PRD: touch-surface-without-guide fails, touch-both passes", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-07-recipes.md": prdSection(
+      "prd/alpha-3/prd-alpha-3-07-recipes.md": prdSection(
         [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
         ["core/src/recipes/**"],
       ),
@@ -243,7 +243,7 @@ describe("checkGuideDriftOnDisk", () => {
 
   test("scaffolded PRD: a valid skip tag bypasses the gate on disk", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-07-recipes.md": prdSection(
+      "prd/alpha-3/prd-alpha-3-07-recipes.md": prdSection(
         [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
         ["core/src/recipes/**"],
       ),

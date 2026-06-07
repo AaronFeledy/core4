@@ -102,7 +102,6 @@ export const config = (
         new NotImplementedError({
           message: `meta:config ${subcommand} is deferred to Beta.`,
           commandId: "meta:config",
-          specSection: "spec/08-cli-and-tooling.md",
           remediation: writeRemediation,
         }),
       );

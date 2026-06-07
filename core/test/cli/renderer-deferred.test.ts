@@ -5,7 +5,6 @@ import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import {
   DEFERRED_RENDERER_FLAGS,
   DEFERRED_RENDERER_MODES,
-  RENDERER_DEFERRED_SPEC_SECTION,
   deferredRendererFlagError,
   deferredRendererModeError,
   findDeferredRendererFlag,
@@ -19,12 +18,9 @@ describe("DEFERRED_RENDERER_MODES", () => {
     expect(DEFERRED_RENDERER_MODES.size).toBe(0);
   });
 
-  test("any future entry must carry a Phase 3 Beta or Phase 4 RC remediation pointing at spec/ROADMAP.md", () => {
+  test("any future entry must carry a remediation pointing at the current command list", () => {
     for (const [name, surface] of DEFERRED_RENDERER_MODES.entries()) {
-      expect(["Phase 3 Beta", "Phase 4 RC"]).toContain(surface.phase);
-      expect(surface.remediation).toContain(surface.phase);
-      expect(surface.remediation).toContain("spec/ROADMAP.md");
-      expect(surface.remediation).toContain("spec/08-cli-and-tooling.md");
+      expect(surface.remediation).toContain("not available yet");
       expect(surface.remediation.length).toBeGreaterThan(40);
       expect(name).toMatch(/^[a-z][a-z0-9-]*$/u);
     }
@@ -50,18 +46,15 @@ describe("DEFERRED_RENDERER_FLAGS (US-040 contract)", () => {
     "--no-tail",
   ] as const;
 
-  test("covers the expand/collapse and task.detail streaming-tail surfaces from spec §8.9.2", () => {
+  test("covers the expand/collapse and task.detail streaming-tail surfaces", () => {
     for (const flag of REQUIRED_FLAGS) {
       expect(DEFERRED_RENDERER_FLAGS.has(flag)).toBe(true);
     }
   });
 
-  test("every entry carries a Phase 4 RC remediation pointing at spec/ROADMAP.md and §8.9.2", () => {
+  test("every entry carries actionable remediation", () => {
     for (const [flag, surface] of DEFERRED_RENDERER_FLAGS.entries()) {
-      expect(surface.phase).toBe("Phase 4 RC");
-      expect(surface.remediation).toContain("Phase 4 RC");
-      expect(surface.remediation).toContain("spec/ROADMAP.md");
-      expect(surface.remediation).toContain("spec/08-cli-and-tooling.md");
+      expect(surface.remediation).toContain("not available yet");
       expect(surface.remediation.length).toBeGreaterThan(40);
       expect(flag.startsWith("--")).toBe(true);
     }
@@ -75,24 +68,23 @@ describe("deferredRendererModeError", () => {
 });
 
 describe("deferredRendererFlagError", () => {
-  test("returns a tagged NotImplementedError with Phase 4 RC remediation for --no-expand configuration", () => {
+  test("returns a tagged NotImplementedError with remediation for --no-expand configuration", () => {
     const err = deferredRendererFlagError("--no-expand");
     expect(err).toBeInstanceOf(NotImplementedError);
     expect(err._tag).toBe("NotImplementedError");
     expect(err.commandId).toBe("cli:renderer-selection");
-    expect(err.specSection).toBe(RENDERER_DEFERRED_SPEC_SECTION);
     expect(err.message).toContain("--no-expand");
     expect(err.remediation).toContain("default Enter/Esc task-detail expand/collapse keybindings");
-    expect(err.remediation).toContain("User-configurable expand/collapse control flags are deferred");
-    expect(err.remediation).toContain("Phase 4 RC");
-    expect(err.remediation).toContain("spec/ROADMAP.md");
+    expect(err.remediation).toContain(
+      "User-configurable expand/collapse control flags are not available yet",
+    );
   });
 
-  test("--tail remediation says the control flag, not the fixed Beta tail, is deferred", () => {
+  test("--tail remediation says the control flag, not the fixed tail, is unavailable", () => {
     const err = deferredRendererFlagError("--tail");
     expect(err.remediation).toContain("task.detail");
-    expect(err.remediation).toContain("fixed Beta 4-line");
-    expect(err.remediation).toContain("control flag is deferred");
+    expect(err.remediation).toContain("fixed `task.detail` tail");
+    expect(err.remediation).toContain("control flag is not available yet");
   });
 });
 

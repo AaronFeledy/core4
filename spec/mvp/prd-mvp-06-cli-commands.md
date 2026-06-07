@@ -39,8 +39,8 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
   - The Landofile contains one `node:lts` service and one `postgres` service.
   - A skeleton `<cwd>/my-app/package.json` exists with at minimum `name: "my-app"`.
 - [ ] Test asserts running `init --full` *without* `--name` fails with a typed error message naming the missing flag (no interactive prompts at MVP).
-- [ ] Test asserts running `init --full --name=existing` against an existing non-empty directory fails with `InitTargetExistsError` and remediation pointing at `--force` (whose implementation is Alpha — at MVP we just refuse).
-- [ ] The "hardcoded built-in recipe" lives at `core/src/recipes/builtin/node-postgres/` (or similar) and is loaded by direct import — not from a parsed `recipe.yml` (recipe parser is Alpha).
+- [ ] Test asserts running `init --full --name=existing` against an existing non-empty directory fails with `InitTargetExistsError` and remediation pointing at `--force` (whose implementation is Alpha 1 — at MVP we just refuse).
+- [ ] The "hardcoded built-in recipe" lives at `core/src/recipes/builtin/node-postgres/` (or similar) and is loaded by direct import — not from a parsed `recipe.yml` (recipe parser is Alpha 1).
 - [ ] Bootstrap level for `init`: `commands` (no provider, no app — recipe execution doesn't need them).
 - [ ] Test passes after the impl lands.
 - [ ] Typecheck/lint/whole-workspace tests pass.
@@ -164,31 +164,31 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
 - FR-3: Every error surfaced to the user is rendered through the `Logger` Live (PRD-03 US-007); raw `console.error` is forbidden in command bodies.
 - FR-4: Every error is one of the SDK tagged errors (PRD-01 US-005). The renderer maps `_tag` to a remediation message.
 - FR-5: `lando init --full` consumes a hardcoded built-in recipe — no FS scan, no remote fetch.
-- FR-6: Output to stdout is plain text only at MVP (no concurrent task tree, no first-paint banner — those are Alpha+).
+- FR-6: Output to stdout is plain text only at MVP (no concurrent task tree, no first-paint banner — those are Alpha 1+).
 - FR-7: SIGINT (and SIGTERM) cancels the running Effect via the `AbortSignal` plumbed through `bringUp` / `bringDown`.
 - FR-8: `lando` invoked with no args prints the OCLIF help; this works at bootstrap level `commands` and does *not* require provider initialization.
 
 ## Non-Goals
 
-- **No interactive prompts** in `init`. `--full --name=<name>` is the only path; everything else is Alpha (`spec/08-cli-and-tooling.md` recipe prompts).
+- **No interactive prompts** in `init`. `--full --name=<name>` is the only path; everything else is Alpha 1 (`spec/08-cli-and-tooling.md` recipe prompts).
 - **No `recipe.yml` parsing.** Hardcoded built-in recipe only.
-- **No remote recipe sources** (`git`, `tarball`, `npm`, `registry`). Beta.
-- **No `apps:list`, `apps:poweroff`** at MVP — Alpha (`apps:*` namespace).
-- **No `meta:*` commands beyond what fast-paths handle.** `meta:config`, `meta:plugin:*`, `meta:setup`, `meta:doctor`, `meta:bun`, `meta:x` — all Alpha+.
-- **No `apps:init` interactive prompt flow.** Alpha.
-- **No `app:cache:refresh`, `app:includes:*`, `app:config:translate`.** Alpha+.
-- **No tooling commands** (`lando exec`, `lando ssh`, `lando shell`, user-defined tooling). Alpha.
-- **No `lando logs` command** at MVP. Alpha.
+- **No remote recipe sources** (`git`, `tarball`, `npm`, `registry`). Alpha 3.
+- **No `apps:list`, `apps:poweroff`** at MVP — Alpha 1 (`apps:*` namespace).
+- **No `meta:*` commands beyond what fast-paths handle.** `meta:config`, `meta:plugin:*`, `meta:setup`, `meta:doctor`, `meta:bun`, `meta:x` — all Alpha 1+.
+- **No `apps:init` interactive prompt flow.** Alpha 1.
+- **No `app:cache:refresh`, `app:includes:*`, `app:config:translate`.** Alpha 1+.
+- **No tooling commands** (`lando exec`, `lando ssh`, `lando shell`, user-defined tooling). Alpha 1.
+- **No `lando logs` command** at MVP. Alpha 1.
 - **No JSON / lando / verbose renderers.** Plain text only.
-- **No telemetry events on commands.** RC.
+- **No telemetry events on commands.** Beta 1.
 
 ## Technical Considerations
 
 - The OCLIF init hook (PRD-02 US-002) is the only place that reads `static bootstrap`; commands themselves don't construct runtimes.
 - `lando init` cannot use the provider — it runs at bootstrap `commands`. It writes files via `FileSystem` (PRD-03 US-003).
 - Cancellation: when SIGINT fires, the OCLIF main wraps the command's Effect with an interrupt scope. PRD-04's `bringUp` honors the `AbortSignal`. The CLI shell installs the signal handlers per `installSignalHandlers: true` (PRD-02 US-001 default for CLI mode).
-- Output: at MVP, `Logger.pretty` writes to stderr; command "data" output (e.g. `info` table) goes to stdout via `process.stdout.write` from inside the Effect program. Beta swaps this for a renderer.
-- Built-in recipe location: `core/src/recipes/builtin/node-postgres/` keeps the recipe assets (the `.lando.yml` template, the skeleton `package.json`). At MVP, these are read from the filesystem of the source tree. Asset embedding into the compiled binary is Beta (`spec/15-binary-build-and-release.md`).
+- Output: at MVP, `Logger.pretty` writes to stderr; command "data" output (e.g. `info` table) goes to stdout via `process.stdout.write` from inside the Effect program. Alpha 3 swaps this for a renderer.
+- Built-in recipe location: `core/src/recipes/builtin/node-postgres/` keeps the recipe assets (the `.lando.yml` template, the skeleton `package.json`). At MVP, these are read from the filesystem of the source tree. Asset embedding into the compiled binary is Alpha 3 (`spec/15-binary-build-and-release.md`).
 - The MVP exit-criteria scenario test (US-009) takes time to run — exclude it from default `bun test` via tag (`scenario.test.ts` suffix) and run explicitly with `bun test core/test/scenario/`. **CI runs it on every PR** via [PRD-07](./prd-mvp-07-ci-and-binaries.md)'s `provider-integration-linux-x64` job — failing this test blocks merge.
 
 ## Success Metrics
@@ -200,7 +200,7 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
 
 ## Open Questions
 
-- How does `lando init` decide the project skeleton beyond the `.lando.yml`? Default at MVP: a 3-file skeleton (`.lando.yml`, `package.json`, `README.md`). Larger skeletons (entry points, `tsconfig.json`, etc.) are recipe-content decisions deferred to Alpha.
-- Should `info` print a JSON output if `--renderer=json` is passed? Default at MVP: no — `--renderer` flag is Alpha. The command always prints plain text.
-- Is `lando` (no args) routed to OCLIF's default help, or do we ship a custom landing page? Default at MVP: OCLIF default help; custom landing is Beta.
+- How does `lando init` decide the project skeleton beyond the `.lando.yml`? Default at MVP: a 3-file skeleton (`.lando.yml`, `package.json`, `README.md`). Larger skeletons (entry points, `tsconfig.json`, etc.) are recipe-content decisions deferred to Alpha 1.
+- Should `info` print a JSON output if `--renderer=json` is passed? Default at MVP: no — `--renderer` flag is Alpha 1. The command always prints plain text.
+- Is `lando` (no args) routed to OCLIF's default help, or do we ship a custom landing page? Default at MVP: OCLIF default help; custom landing is Alpha 3.
 - The OCLIF v4-vs-v5 question is a roadmap "cross-cutting risk" — at MVP we stay on v4. Document the lock in `spec/14-appendices.md` only; this PRD does not include a v5 migration story.

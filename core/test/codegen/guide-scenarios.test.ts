@@ -113,8 +113,7 @@ describe("build-guide-scenarios MDX walker", () => {
     try {
       parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content);
     } catch (error) {
-      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("§19.11");
-      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("Phase 3 Beta");
+      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("not supported yet");
     }
   });
 
@@ -610,14 +609,12 @@ describe("build-guide-scenarios MDX walker", () => {
       try {
         parseGuideScenarioAst("docs/guides/hidden-case.mdx", content);
       } catch (error) {
-        expect(error instanceof GuideHiddenScenarioReasonError ? error.remediation : "").toContain("§19.9");
         expect(error instanceof GuideHiddenScenarioReasonError ? error.remediation : "").toContain(
-          "PRD-A2-00",
+          "at least 8 characters",
         );
         expect(error instanceof GuideHiddenScenarioReasonError ? error.commandId : "").toBe(
           "guide.scenario.hidden-reason",
         );
-        expect(error instanceof GuideHiddenScenarioReasonError ? error.specSection : "").toBe("§19.9");
       }
     }
   });

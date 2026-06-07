@@ -18,7 +18,7 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
 ## Goals
 
 - `LandoRuntimeLive` composes correctly for bootstrap levels `none`, `minimal`, `commands`, `provider`, `app` (the levels Phase 1 actually uses). `plugins` and `tooling` exist as skeleton compositions.
-- `makeLandoRuntime` works for the CLI shell; library mode throws `NotImplemented` (Alpha makes it real).
+- `makeLandoRuntime` works for the CLI shell; library mode throws `NotImplemented` (Alpha 1 makes it real).
 - The OCLIF `init` hook reads bootstrap level off the resolved command and provides exactly the matching layer.
 - Pre-OCLIF fast path handles `--version`, `-v`, `version`, and `shellenv` in <50ms, never touching Effect.
 - `scripts/build-bundled-plugins.ts` and `scripts/codegen.ts` exist and produce a real `bundled.ts`.
@@ -60,7 +60,7 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
 **Acceptance Criteria:**
 - [ ] Failing test in `core/test/cli/fast-path.test.ts` shells out to `bun run core/src/cli/index.ts --version`, asserts exit code 0, asserts stdout matches the version string from `core/package.json`, and asserts no Effect runtime imports were touched (verified via a debug hook that throws if `makeLandoRuntime` is called).
 - [ ] Same test repeats for `-v` and `version`.
-- [ ] Wall-clock budget: ≤50ms on a baseline Linux x64 dev machine in `bun test` mode (CI gating on this number is Beta — the budget at MVP is documented but not enforced).
+- [ ] Wall-clock budget: ≤50ms on a baseline Linux x64 dev machine in `bun test` mode (CI gating on this number is Alpha 3 — the budget at MVP is documented but not enforced).
 - [ ] Test passes after the fast-path branch is added at the top of `core/src/cli/index.ts` before any OCLIF import.
 - [ ] Typecheck/lint/whole-workspace tests pass.
 
@@ -91,7 +91,7 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
 **Acceptance Criteria:**
 - [ ] Failing test in `core/test/scripts/codegen.test.ts` runs `bun run codegen` against a fresh checkout, asserts exit code 0, and asserts the listed outputs exist with non-empty contents.
 - [ ] The script is at `scripts/codegen.ts` and is idempotent — running it twice produces no diff.
-- [ ] At MVP, the orchestrator only needs to call `scripts/build-bundled-plugins.ts` and a placeholder OCLIF manifest step (`oclif manifest`); RC will add schema artifacts and recipe embedding.
+- [ ] At MVP, the orchestrator only needs to call `scripts/build-bundled-plugins.ts` and a placeholder OCLIF manifest step (`oclif manifest`); Beta 1 will add schema artifacts and recipe embedding.
 - [ ] Test passes after `scripts/codegen.ts` is implemented.
 - [ ] Typecheck/lint/whole-workspace tests pass.
 
@@ -105,7 +105,7 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
   - `dist/lando --version` prints the package.json version.
   - `dist/lando --help` exits 0 (basic OCLIF help registers commands).
 - [ ] `core/package.json` `scripts.build` invokes `bun build --compile --outfile=dist/lando ./src/cli/index.ts` (or equivalent — exact flags per `spec/15-binary-build-and-release.md` MVP guidance).
-- [ ] Asset embedding is documented as deferred (Beta) — at MVP, runtime FS reads of plugins/recipes are acceptable; `lando init --full` is allowed to read its hardcoded recipe from the source tree at MVP.
+- [ ] Asset embedding is documented as deferred (Alpha 3) — at MVP, runtime FS reads of plugins/recipes are acceptable; `lando init --full` is allowed to read its hardcoded recipe from the source tree at MVP.
 - [ ] Test passes after the build script is wired.
 - [ ] Typecheck/lint/whole-workspace tests pass.
 
@@ -169,12 +169,12 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
 
 - **No CI in this PRD.** CI is owned by [PRD-07](./prd-mvp-07-ci-and-binaries.md) and consumes the local gates this PRD ships (`bun run typecheck`, `bun run lint`, `bun test`, `bun run build`). The local gates here must be runnable from a clean checkout — that is what makes PRD-07's workflow possible.
 - **No persistent caches**. `CacheService` is in-memory at MVP — but this PRD doesn't own the implementation, PRD-03 does.
-- **No library-mode `makeLandoRuntime`**. Library mode throws `NotImplemented` at MVP; Alpha makes it real for `bootstrap: "app"`.
-- **No `tooling` bootstrap level work**. Skeleton-only — PRD-03 wires services, but the tooling-specific cache-only app-plan path is Beta.
-- **No AOT bootstrap-layer codegen**. That's `spec/15-binary-build-and-release.md` §17.2, Beta.
-- **No asset embedding** (recipes, schemas, OCLIF manifest). Runtime FS reads acceptable at MVP. Beta does the embedding.
+- **No library-mode `makeLandoRuntime`**. Library mode throws `NotImplemented` at MVP; Alpha 1 makes it real for `bootstrap: "app"`.
+- **No `tooling` bootstrap level work**. Skeleton-only — PRD-03 wires services, but the tooling-specific cache-only app-plan path is Alpha 3.
+- **No AOT bootstrap-layer codegen**. That's `spec/15-binary-build-and-release.md` §17.2, Alpha 3.
+- **No asset embedding** (recipes, schemas, OCLIF manifest). Runtime FS reads acceptable at MVP. Alpha 3 does the embedding.
 - **No signal handlers** installed by `makeLandoRuntime`. The `installSignalHandlers` option exists in the schema; the CLI shell installs them itself in PRD-06's command implementations.
-- **No Mutagen / file-sync infrastructure**. Beta.
+- **No Mutagen / file-sync infrastructure**. Alpha 3.
 - **No Windows or macOS build path**. Linux x64 only.
 
 ## Technical Considerations
@@ -183,7 +183,7 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
 - `bun build --compile` cannot dynamically import bundled plugins (per [`AGENTS.md`](../../AGENTS.md)). All bundled plugin imports must go through `core/src/plugins/bundled.ts`, which is statically analyzable.
 - `LandoRuntimeLive` composition uses `Layer.merge` and `Layer.provide` per `spec/03-architecture.md`; intermediate layer composition outside `core/src/runtime/layer.ts` is forbidden in core.
 - Stale OCLIF/Node CI workflows in `.github/workflows/` (per `AGENTS.md`) must be left alone or updated separately; this PRD does not depend on or modify them.
-- The `engines.bun >=1.3.0` floor in `package.json` stays at MVP (the floor itself is an RC open decision per `spec/14`).
+- The `engines.bun >=1.3.0` floor in `package.json` stays at MVP (the floor itself is an Beta 1 open decision per `spec/14`).
 
 ## Success Metrics
 
@@ -195,5 +195,5 @@ Depends on: **PRD-01 (SDK contracts)** — every layer wired here imports SDK se
 ## Open Questions
 
 - Does the OCLIF init hook need to handle `--bootstrap=<level>` overrides at MVP for debugging? Default: no — `static bootstrap` on the class is the only source.
-- The `none`-level fast path for `version` is at MVP; what about `--help`? Default: `--help` goes through OCLIF — it needs the command list, which needs at least a partial CommandRegistry. Document as an Alpha optimization.
+- The `none`-level fast path for `version` is at MVP; what about `--help`? Default: `--help` goes through OCLIF — it needs the command list, which needs at least a partial CommandRegistry. Document as an Alpha 1 optimization.
 - Should `provideTestRuntime` accept a `setup` Effect (for fixture setup) or rely on Bun's `beforeEach`? Default: rely on Bun's hooks; the helper is a Layer factory, nothing more.

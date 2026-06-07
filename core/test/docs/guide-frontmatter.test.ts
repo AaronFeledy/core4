@@ -15,7 +15,7 @@ const expectRight = (input: unknown): GuideFrontmatter => {
 };
 
 describe("GuideFrontmatter", () => {
-  test("accepts Alpha 2 frontmatter and applies defaults", () => {
+  test("accepts frontmatter and applies defaults", () => {
     const decoded = expectRight({
       id: "node-postgres",
       defaultLayer: "scenario",
@@ -113,7 +113,7 @@ describe("GuideFrontmatter", () => {
     expect(decode({ id: "node-postgres", axes: { OS: ["linux"] } })._tag).toBe("Left");
   });
 
-  test("rejects e2e default layer with Beta remediation", () => {
+  test("rejects e2e default layer with remediation", () => {
     const decoded = decode({ id: "node-postgres", defaultLayer: "e2e" });
     expect(decoded._tag).toBe("Left");
     if (Either.isRight(decoded)) return;
@@ -121,9 +121,7 @@ describe("GuideFrontmatter", () => {
     expect(decoded.left).toMatchObject({
       _tag: "NotImplementedError",
       commandId: "guide.frontmatter",
-      specSection: "§19.11",
     });
-    expect(decoded.left.remediation).toContain("Phase 3 Beta");
-    expect(decoded.left.remediation).toContain("§19.11");
+    expect(decoded.left.remediation).toContain("not supported yet");
   });
 });

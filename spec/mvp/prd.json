@@ -437,7 +437,7 @@
     {
       "id": "US-028",
       "title": "CacheService Live implementation (in-memory)",
-      "description": "As any caller that needs caching, I depend on CacheService.Live which is in-memory only at MVP (persistent caches are Alpha). (PRD-03 US-008)",
+      "description": "As any caller that needs caching, I depend on CacheService.Live which is in-memory only at MVP (persistent caches are Alpha 1). (PRD-03 US-008)",
       "acceptanceCriteria": [
         "Failing test `core/test/services/cache-service.test.ts` sets a key, reads it back, asserts roundtrip",
         "Different cache namespaces are isolated",
@@ -681,7 +681,7 @@
       "acceptanceCriteria": [
         "Failing test `plugins/provider-lando/test/setup.integration.test.ts` runs setup with no podman socket, asserts it exits with NoProviderInstalledError carrying remediation message",
         "With socket present, setup succeeds and reports detected Podman version",
-        "No automatic download of pinned Podman binary at MVP (deferred to Alpha; documented as such)",
+        "No automatic download of pinned Podman binary at MVP (deferred to Alpha 1; documented as such)",
         "Tests pass",
         "Typecheck passes",
         "Lint passes"
@@ -910,7 +910,7 @@
     {
       "id": "US-058",
       "title": "Every non-MVP OCLIF command exits with structured NotImplementedError",
-      "description": "As a user who runs a not-yet-shipped command, I get a clear NotImplementedError with the command id and a 'this is alpha/beta/...' remediation message \u2014 not a stack trace. (PRD-06 US-007)",
+      "description": "As a user who runs a not-yet-shipped command, I get a clear NotImplementedError with the command id and a 'this is alpha/alpha 3/...' remediation message \u2014 not a stack trace. (PRD-06 US-007)",
       "acceptanceCriteria": [
         "Failing test `core/test/cli/not-implemented.test.ts` runs a representative non-MVP command (e.g. `lando exec`) and asserts exit non-zero plus stderr contains NotImplementedError with the command id",
         "Every non-MVP OCLIF command class throws NotImplementedError consistently",

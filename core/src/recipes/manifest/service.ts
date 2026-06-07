@@ -24,7 +24,7 @@ import { parseRecipeYaml } from "./parser.ts";
 
 export { RecipeManifestService } from "@lando/sdk/services";
 
-const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
+const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.";
 
 // Forward-compat verb gate: every shipped `bun:` verb is supported, so this
 // set is empty. A future deferred verb is added here to fail loudly before
@@ -33,7 +33,6 @@ const REJECTED_BUN_VERBS = new Set<string>();
 
 interface BetaFinding {
   readonly message: string;
-  readonly specSection: string;
 }
 
 const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
@@ -41,8 +40,7 @@ const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefi
   const obj = parsed as Record<string, unknown>;
   if (Object.hasOwn(obj, "deprecated")) {
     return {
-      message: `Recipe-wide \`deprecated:\` notice is not supported in Alpha recipes at ${source}.`,
-      specSection: "§18",
+      message: `Recipe-wide \`deprecated:\` notice is not supported in recipes at ${source}.`,
     };
   }
   return undefined;
@@ -60,14 +58,12 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
     const name = typeof prompt.name === "string" ? prompt.name : `prompts[${index}]`;
     if (prompt.type === "editor") {
       return {
-        message: `Prompt type \`editor\` in prompt "${name}" is not supported in Alpha recipes at ${source}.`,
-        specSection: "§8.8.5",
+        message: `Prompt type \`editor\` in prompt "${name}" is not supported in recipes at ${source}.`,
       };
     }
     if (Object.hasOwn(prompt, "deprecated")) {
       return {
-        message: `Per-prompt \`deprecated:\` notice in prompt "${name}" is not supported in Alpha recipes at ${source}.`,
-        specSection: "§18",
+        message: `Per-prompt \`deprecated:\` notice in prompt "${name}" is not supported in recipes at ${source}.`,
       };
     }
   }
@@ -88,8 +84,7 @@ const scanPostInitBeta = (parsed: unknown, source: string): BetaFinding | undefi
     if (typeof verb !== "string") continue;
     if (REJECTED_BUN_VERBS.has(verb)) {
       return {
-        message: `postInit \`bun\` verb \`${verb}\` (postInit[${index}]) is not supported in Alpha recipes at ${source}.`,
-        specSection: "§8.8.8",
+        message: `postInit \`bun\` verb \`${verb}\` (postInit[${index}]) is not supported in recipes at ${source}.`,
       };
     }
   }
@@ -104,7 +99,6 @@ const rejectBetaSections = (source: string, parsed: unknown): Effect.Effect<unkn
     new NotImplementedError({
       message: finding.message,
       commandId: "recipe.parse",
-      specSection: finding.specSection,
       remediation: BETA_REMEDIATION,
     }),
   );

@@ -210,8 +210,8 @@ describe("RuntimeProvider contract", () => {
   });
 });
 
-describe("SDK provider error contract (§5.7)", () => {
-  test("ProviderCapabilityError carries the §5.7 base fields plus capability/required/actual", () => {
+describe("SDK provider error contract", () => {
+  test("ProviderCapabilityError carries the base fields plus capability/required/actual", () => {
     const error = new ProviderCapabilityError({
       providerId: "lando",
       operation: "isAvailable",
@@ -236,7 +236,7 @@ describe("SDK provider error contract (§5.7)", () => {
     expect(error.actualValue).toBe(false);
   });
 
-  test("ProviderUnavailableError carries the §5.7 base fields", () => {
+  test("ProviderUnavailableError carries the base fields", () => {
     const error = new ProviderUnavailableError({
       providerId: "podman",
       operation: "podman-api",
@@ -253,7 +253,7 @@ describe("SDK provider error contract (§5.7)", () => {
     expect(error.cause).toBeInstanceOf(Error);
   });
 
-  test("NoProviderInstalledError carries message + optional suggestion (§5.7 'no provider' surface)", () => {
+  test("NoProviderInstalledError carries message + optional suggestion", () => {
     const error = new NoProviderInstalledError({
       message: "No runtime provider is installed.",
       suggestion: "Run `lando setup`.",

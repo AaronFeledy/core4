@@ -235,7 +235,7 @@ const lintHiddenScenarioReason = (
         sourcePath,
         scenario,
         "guide.scenario.hidden-reason",
-        "<Scenario render={false}> requires a `reason` of at least 8 characters per §19.9.",
+        "<Scenario render={false}> requires a `reason` of at least 8 characters.",
       ),
     );
   }
@@ -255,7 +255,7 @@ const lintHiddenReason = (
         sourcePath,
         node,
         "guide.hidden.reason",
-        "<Hidden> requires a `reason` of at least 8 characters per §19.10.",
+        "<Hidden> requires a `reason` of at least 8 characters.",
       ),
     );
   });
@@ -271,7 +271,7 @@ const lintSkipReason = (sourcePath: string, root: MdxNode, diagnostics: Array<Gu
         sourcePath,
         node,
         "guide.skip.reason",
-        "<Skip> requires a `reason` of at least 8 characters per §19.10.",
+        "<Skip> requires a `reason` of at least 8 characters.",
       ),
     );
   });
@@ -291,7 +291,7 @@ const lintInlineJustification = (
         sourcePath,
         node,
         "guide.inline.justification",
-        "<Inline> requires a `justification` of at least 8 characters per §19.10.",
+        "<Inline> requires a `justification` of at least 8 characters.",
       ),
     );
   });
@@ -342,7 +342,7 @@ const lintVerifyMatchers = (
           sourcePath,
           node,
           "guide.verify.matcher",
-          `Invalid <Verify> props: ${formatErrorMessage(error)} per §19.10.`,
+          `Invalid <Verify> props: ${formatErrorMessage(error)}.`,
         ),
       );
       return;
@@ -354,7 +354,7 @@ const lintVerifyMatchers = (
           sourcePath,
           node,
           "guide.verify.matcher",
-          `Invalid <Verify> props: ${formatErrorMessage(decoded.left)} per §19.10.`,
+          `Invalid <Verify> props: ${formatErrorMessage(decoded.left)}.`,
         ),
       );
     }
@@ -392,7 +392,7 @@ const lintFixtures = (
           sourcePath,
           node,
           "guide.fixture.missing",
-          `<UseFixture name="${name}"> does not resolve to a fixture directory per §19.9.`,
+          `<UseFixture name="${name}"> does not resolve to a fixture directory.`,
         ),
       );
       continue;
@@ -405,7 +405,7 @@ const lintFixtures = (
             sourcePath,
             node,
             "guide.fixture.symlink",
-            `Fixture "${name}" contains a symbolic link at "${symlinkPath}" and cannot be copied immutably per §19.9.`,
+            `Fixture "${name}" contains a symbolic link at "${symlinkPath}" and cannot be copied immutably.`,
           ),
         );
       }
@@ -423,7 +423,7 @@ const lintFixtures = (
         sourcePath,
         anchor,
         "guide.fixture.unused",
-        `Fixture "${entry.name}" is not referenced by any <UseFixture> in guide "${guideId}" per §19.10.`,
+        `Fixture "${entry.name}" is not referenced by any <UseFixture> in guide "${guideId}".`,
       ),
     );
   }
@@ -433,12 +433,7 @@ const lintComponents = (sourcePath: string, root: MdxNode, diagnostics: Array<Gu
   walkElements(root, (node) => {
     if (node.name === undefined || node.name === null || ALPHA_2_COMPONENTS.has(node.name)) return;
     diagnostics.push(
-      diagnostic(
-        sourcePath,
-        node,
-        "guide.component.beta",
-        `<${node.name}> is not supported in Alpha 2. <${node.name}> ships in Phase 3 Beta — see spec/ROADMAP.md.`,
-      ),
+      diagnostic(sourcePath, node, "guide.component.beta", `<${node.name}> is not supported yet.`),
     );
   });
 };

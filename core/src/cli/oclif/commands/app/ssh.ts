@@ -29,7 +29,6 @@ const subsystemDeferred = (kind: "subsystem" | "sidecar"): NotImplementedError =
   new NotImplementedError({
     message: `\`lando ssh --${kind}\`: SSH ${kind} support is deferred to Beta. Alpha \`ssh\` is provider-exec TTY command behavior only.`,
     commandId: "app:ssh",
-    specSection: "spec/08-cli-and-tooling.md",
     remediation:
       "Drop the unsupported flag. Alpha `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec. SSH sidecar/subsystem support lands in Beta.",
   });

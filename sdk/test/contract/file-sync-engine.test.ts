@@ -61,7 +61,7 @@ describe("FileSyncEngine contract", () => {
     expect(typeof engine.streamEvents).toBe("function");
   });
 
-  test("exposes the spec §10.6.1 lifecycle methods as Effect or Stream", () => {
+  test("exposes the section 10.6.1 lifecycle methods as Effect or Stream", () => {
     const spec = buildSpec("app-root");
     expect(Effect.isEffect(TestFileSyncEngine.isAvailable)).toBe(true);
     expect(Effect.isEffect(TestFileSyncEngine.setup({ force: false }))).toBe(true);

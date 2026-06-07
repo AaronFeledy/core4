@@ -398,7 +398,6 @@ const runBunShellScript = (
         new NotImplementedError({
           message: `.bun.sh script "${script.id}" declares service "${script.service}"; service-targeted .bun.sh scripts are deferred to Beta.`,
           commandId: "tooling.run",
-          specSection: "§8.5.9",
           remediation:
             "Remove the `service:` field (or set it to `:host`) so the script runs through the host engine, or move the body into a Landofile tooling task that targets the desired service.",
         }),

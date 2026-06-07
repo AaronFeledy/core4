@@ -428,7 +428,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates the Beta five-platform PR CI matrix with timing and timeout instrumentation",
+    "generates the five-platform PR CI matrix with timing and timeout instrumentation",
     async () => {
       await runCodegen();
 

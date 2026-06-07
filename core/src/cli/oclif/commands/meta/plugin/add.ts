@@ -25,7 +25,6 @@ const missingSpecError = (): NotImplementedError =>
   new NotImplementedError({
     message: "meta:plugin:add requires a plugin spec argument.",
     commandId: "meta:plugin:add",
-    specSection: "spec/10-plugins.md",
     remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
   });
 

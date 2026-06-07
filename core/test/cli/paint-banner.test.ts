@@ -118,7 +118,7 @@ describe("paintBanner (TTY fixture)", () => {
     expect(wrote.includes(ANSI_PREFIX)).toBe(false);
   });
 
-  test("emits the banner within the §2.1 50 ms cold first-byte budget", () => {
+  test("emits the banner within the cold first-byte budget", () => {
     const stream = makeFakeStream(false);
     const start = performance.now();
     paintBanner({ commandId: "app:start", stream });
@@ -135,7 +135,7 @@ describe("paintBanner (TTY fixture)", () => {
   });
 });
 
-describe("pre-renderer module discipline (spec §8.9.1)", () => {
+describe("pre-renderer module discipline", () => {
   test("the pre-renderer source does not statically import Effect, the Renderer service, OCLIF, or any plugin code", () => {
     const specifiers = collectImportSpecifiers(preRendererSource);
     const forbiddenPrefixes = [

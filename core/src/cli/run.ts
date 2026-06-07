@@ -858,7 +858,6 @@ const sshDeferred = (kind: "subsystem" | "sidecar"): string =>
     new NotImplementedError({
       message: `\`lando ssh --${kind}\`: SSH ${kind} support is deferred to Beta. Alpha \`ssh\` is provider-exec TTY command behavior only.`,
       commandId: "app:ssh",
-      specSection: "spec/08-cli-and-tooling.md",
       remediation:
         "Drop the unsupported flag. Alpha `lando ssh` runs the default service shell (`sh -l`) inside the selected service via provider-exec. SSH sidecar/subsystem support lands in Beta.",
     }),
@@ -1196,7 +1195,6 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
         new NotImplementedError({
           message: "meta:plugin:add requires a plugin spec argument.",
           commandId: "meta:plugin:add",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
         }),
       ),
@@ -1219,7 +1217,6 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
         new NotImplementedError({
           message: "meta:plugin:remove requires a plugin name argument.",
           commandId: "meta:plugin:remove",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
         }),
       ),
@@ -1242,7 +1239,6 @@ const runMetaPluginTrust = async (argv: ReadonlyArray<string>): Promise<void> =>
         new NotImplementedError({
           message: "meta:plugin:trust requires a plugin name argument.",
           commandId: "meta:plugin:trust",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass the plugin name, e.g. `lando plugin:trust @lando/plugin-php`.",
         }),
       ),
@@ -1265,7 +1261,6 @@ const runMetaPluginTrustAuthoringRoot = async (argv: ReadonlyArray<string>): Pro
         new NotImplementedError({
           message: "meta:plugin:trust-authoring-root requires an absolute path argument.",
           commandId: "meta:plugin:trust-authoring-root",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass an absolute path, e.g. `lando plugin:trust-authoring-root /home/me/plugin`.",
         }),
       ),

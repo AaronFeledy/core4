@@ -21,7 +21,7 @@ const APP_REF: typeof AppRef.Encoded = {
   root: "/srv/apps/myapp",
 };
 
-describe("FileSyncEngineCapabilities (§10.6.1)", () => {
+describe("FileSyncEngineCapabilities", () => {
   test("decodes the canonical Mutagen capability matrix", () => {
     const decoded = Schema.decodeUnknownEither(FileSyncEngineCapabilities)({
       modes: ["two-way-safe", "two-way-resolved", "one-way-safe", "one-way-replica"],
@@ -88,7 +88,7 @@ describe("FileSyncEngineCapabilities (§10.6.1)", () => {
   });
 });
 
-describe("FileSyncSessionSpec (§10.6.1)", () => {
+describe("FileSyncSessionSpec", () => {
   test("decodes a volume-target session spec round-trip", () => {
     const decoded = Schema.decodeUnknownEither(FileSyncSessionSpec)({
       app: APP_REF,

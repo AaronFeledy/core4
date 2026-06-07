@@ -35,7 +35,6 @@ export class GuideHiddenScenarioReasonError extends Schema.TaggedError<GuideHidd
   {
     message: Schema.String,
     commandId: Schema.String,
-    specSection: Schema.String,
     sourcePath: Schema.String,
     scenarioId: Schema.String,
     rejectedValue: Schema.Unknown,

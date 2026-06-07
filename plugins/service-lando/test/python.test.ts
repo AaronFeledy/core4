@@ -250,7 +250,7 @@ describe("python:3.12 ServiceType", () => {
     ).toThrow(/Set type to one of: python:3.12/);
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys (spec §6.9)", () => {
+  test("rejects user environment that targets reserved LANDO_* keys", () => {
     const service = decodeService({
       type: "python:3.12",
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },

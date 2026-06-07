@@ -505,15 +505,21 @@ export const COMPILED_OCLIF_MANIFEST = {
     "app:shell": {
       aliases: ["shell"],
       args: {},
-      description: "Open a host shell scoped to the current Lando app.",
+      description: "Open an interactive shell in a Lando service.",
       flags: {
         service: {
           char: "s",
-          description: "(Beta) Open the shell inside a service via provider-exec; rejected in Alpha.",
+          description: "Service to open a shell in.",
           name: "service",
           hasDynamicHelp: false,
           multiple: false,
           type: "option",
+        },
+        host: {
+          description: "Open a host shell scoped to the current app.",
+          name: "host",
+          allowNo: false,
+          type: "boolean",
         },
       },
       hasDynamicHelp: false,
@@ -527,7 +533,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "app:shell",
-        summary: "Open a host shell scoped to the current Lando app.",
+        summary: "Open an interactive shell in a Lando service.",
         namespace: "app",
         topLevelAlias: true,
         bootstrap: "app",
@@ -1515,7 +1521,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:global:info": {
       aliases: [],
       args: {},
-      description: "Global-app `info` (Phase 3 Beta deliverable).",
+      description: "Global-app `info` (deliverable).",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -1528,7 +1534,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:info",
-        summary: "Global-app `info` (Phase 3 Beta deliverable).",
+        summary: "Global-app `info` (deliverable).",
         namespace: "meta",
         bootstrap: "minimal",
       },
@@ -1588,7 +1594,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:global:list": {
       aliases: [],
       args: {},
-      description: "Global-app `list` (Phase 3 Beta deliverable).",
+      description: "Global-app `list` (deliverable).",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -1601,7 +1607,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:list",
-        summary: "Global-app `list` (Phase 3 Beta deliverable).",
+        summary: "Global-app `list` (deliverable).",
         namespace: "meta",
         bootstrap: "minimal",
       },
@@ -1621,7 +1627,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:global:logs": {
       aliases: [],
       args: {},
-      description: "Global-app `logs` (Phase 3 Beta deliverable).",
+      description: "Global-app `logs` (deliverable).",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -1634,7 +1640,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:logs",
-        summary: "Global-app `logs` (Phase 3 Beta deliverable).",
+        summary: "Global-app `logs` (deliverable).",
         namespace: "meta",
         bootstrap: "minimal",
       },
@@ -1654,7 +1660,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:global:rebuild": {
       aliases: [],
       args: {},
-      description: "Global-app `rebuild` (Phase 3 Beta deliverable).",
+      description: "Global-app `rebuild` (deliverable).",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -1667,7 +1673,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:rebuild",
-        summary: "Global-app `rebuild` (Phase 3 Beta deliverable).",
+        summary: "Global-app `rebuild` (deliverable).",
         namespace: "meta",
         bootstrap: "minimal",
       },
@@ -1687,7 +1693,7 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:global:restart": {
       aliases: [],
       args: {},
-      description: "Global-app `restart` (Phase 3 Beta deliverable).",
+      description: "Global-app `restart` (deliverable).",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -1700,7 +1706,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:global:restart",
-        summary: "Global-app `restart` (Phase 3 Beta deliverable).",
+        summary: "Global-app `restart` (deliverable).",
         namespace: "meta",
         bootstrap: "minimal",
       },

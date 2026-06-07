@@ -906,7 +906,6 @@ describe("AppPlannerLive", () => {
       expect(failure).toBeInstanceOf(NotImplementedError);
       if (failure instanceof NotImplementedError) {
         expect(failure._tag).toBe("NotImplementedError");
-        expect(failure.specSection).toBe("§6.5");
         expect(failure.message).toContain("worker");
         expect(failure.message.toLowerCase()).toContain("global");
         expect(failure.remediation.toLowerCase()).toContain("global");

@@ -23,7 +23,7 @@ const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
 };
 
 describe("CLI command-boundary direct-write canary (US-157 zero-state)", () => {
-  test("no console.* or process.std*.write outside the §2.4 carve-outs", async () => {
+  test("no console.* or process.std*.write outside the fast-path carve-outs", async () => {
     const files = await collectTsFiles(cliRoot);
     const offenders: string[] = [];
     for (const file of files) {

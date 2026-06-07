@@ -299,7 +299,7 @@ const renderCleanupFinalizers = (steps: ReadonlyArray<GuideStepNode>, sourcePath
     )
     .map(({ component, hidden }) => {
       // Hidden-origin cleanup finalizers run at teardown where hiddenDepth is 0, so
-      // re-enter context.hidden to keep their frame suppressed per §17/§19.3.
+      // re-enter context.hidden to keep their frame suppressed.
       const append = `context.transcript.append({ kind: "cleanup", command: [], exit: 0 })`;
       const finalizer = hidden ? `context.hidden(${append})` : append;
       return `${sourceComment(sourcePath, component.line)}\n    yield* Effect.addFinalizer(() => ${finalizer});`;
@@ -751,12 +751,10 @@ const parseScenario = (node: MdxNode, sourcePath: string): GuideScenarioNode => 
     throw new GuideHiddenScenarioReasonError({
       message: `<Scenario render={false}> at ${sourcePath} requires a reason of at least 8 characters.`,
       commandId: "guide.scenario.hidden-reason",
-      specSection: "§19.9",
       sourcePath,
       scenarioId: typeof props.id === "string" ? props.id : "<unknown>",
       rejectedValue: props.reason,
-      remediation:
-        "Add a colocated `<Scenario render={false}>` reason of at least 8 characters per §19.9 and PRD-A2-00's hidden-coverage rule.",
+      remediation: "Add a colocated `<Scenario render={false}>` reason of at least 8 characters.",
     });
   }
   const scenario = decodeOrThrow(decodeScenarioPropsEither(props), sourcePath, "Scenario", props);

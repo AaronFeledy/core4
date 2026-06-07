@@ -1,0 +1,332 @@
+{
+  "project": "Lando v4 Phase 2.5 Alpha 2",
+  "description": "Phase 2.5 Alpha 2 PRDs for the guide scenario engine: MDX-authored guides under docs/guides/** generate TypeScript scenario tests that run on the scenario layer against TestRuntimeProvider, with source-mapped failures and a focused per-PR CI gate. Stories follow the 4-PRD breakdown in `spec/alpha-2/prd-alpha-2-{01..04}-*.md`; each story has a corresponding US-XXX section in its PRD with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 2.5 and `spec/17-executable-tutorials.md` (\u00a719).",
+  "userStories": [
+    {
+      "id": "US-057",
+      "title": "Publish Alpha 2 GuideFrontmatter schema",
+      "description": "As a guide author, I can validate my MDX frontmatter against `GuideFrontmatter` and receive a typed remediation when I use a Alpha-3-only key. (PRD-A2-01 US-057)",
+      "acceptanceCriteria": [
+        "`GuideFrontmatter` Effect Schema lives in `sdk/src/docs/guide-frontmatter.ts` and is re-exported by `@lando/sdk/docs/components` and `@lando/core/schema`",
+        "Accepted keys: `id` (kebab-case, required), `defaultLayer` (only `\"scenario\"`; `\"e2e\"` schema-rejected with Alpha 3 remediation citing \u00a719.11), `provider` (only `\"test\"`), `timeout` (positive int ms, default 60000), `platforms`, `tags`, `skip` (`{ reason, until? }`), and `deprecated` (schema-only, no runtime propagation in Alpha 2)",
+        "Schema-rejected keys with tagged `NotImplementedError` remediation citing \u00a719.16 and Phase 3 Alpha 3: `tabs`, `axes`, `variants`",
+        "Schema round-trips through the \u00a713.2 schema snapshot gate without manual fixture edits beyond the snapshot diff",
+        "Tests cover happy-path acceptance, each Alpha-3-only key rejection (text assertion), and the `id` kebab-case rule",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-058",
+      "title": "Publish Alpha 2 component prop schemas",
+      "description": "As a guide author, every Alpha 2 component has a published prop schema that round-trips through encode/decode, with a `MatcherSchema` subset for `<Verify>`. (PRD-A2-01 US-058)",
+      "acceptanceCriteria": [
+        "Prop schemas exist for `<Guide>`, `<Scenario>`, `<Step>`, `<Run>`, `<Verify>`, `<Cleanup>`, `<Variable>`, `<Hidden>`, `<UseFixture>` in `sdk/src/docs/components/*.ts`, re-exported from `@lando/sdk/docs/components` and `@lando/core/docs/components`",
+        "`ScenarioProps`: `id` required, `render` defaults to `true`, `reason` required when `render === false` (\u2265 8 chars), `tags`, `layer` accepts `\"scenario\"` only (`\"e2e\"` rejected with Alpha 3 remediation)",
+        "`RunProps` accepts exactly one of `command` or `shell`; `runtime` and `tooling` schema-rejected with Alpha 3 remediation",
+        "`VerifyProps` accepts exactly one of `event`, `command`, `file`, `errorTag`; `tooling`/`runtime` rejected. `expect` validates against the Alpha 2 `MatcherSchema` subset (scalar deep-equal, partial-object, `regex`, `schema`, `anyOf`, `not`); `exact`/`allOf`/`oneOf` are Alpha 3+",
+        "`HiddenProps` parses but every generator path emits `NotImplementedError(commandId: \"guide.component.hidden\", specSection: \"\u00a719.3\")` pointing at `<Scenario render={false}>`",
+        "`VariableProps` requires `name` and `value`, `display` optional; `UseFixtureProps` requires `name`",
+        "All schemas round-trip through the \u00a713.2 schema gate",
+        "Tests cover each schema's accept set and at least one rejection path with remediation text assertion",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-059",
+      "title": "Ship ScenarioContext and Alpha 2 testing helpers",
+      "description": "As a generated scenario, I can import `withScenarioContext` from `@lando/core/testing` and receive a stable `ScenarioContext` with the Alpha 2 field set. (PRD-A2-01 US-059)",
+      "acceptanceCriteria": [
+        "`ScenarioContext` interface + Effect tag in `core/src/testing/scenario-context.ts`, re-exported from `@lando/core/testing`",
+        "Alpha 2 fields: `guideId`, `scenarioId`, `testDir` (under `os.tmpdir()`, removed at finalize unless `KEEP_SCENARIO_DIRS=1`), `runtime` (TestRuntime from Alpha 1 PRD-06), `vars` map, `runCli`, `events`, `transcript` (write-only stub), `fixtures`",
+        "Forward-compat fields throw `NotImplementedError` at use: `variant` (returns `{}` always), `shell` runner",
+        "`withScenarioContext({ guideId, scenarioId }, body)` is a scoped Effect that creates `testDir`, builds the context, runs `body`, and runs all `Cleanup` finalizers before tearing down",
+        "`runCli` uses the Alpha 1 PRD-06 in-process runner (not a subprocess); captured `stdout`, `stderr`, `exitCode`, and event stream are recorded in the transcript stub",
+        "Tests cover `withScenarioContext` end-to-end with a fake `Run`; verify `testDir` is removed on success and preserved when `KEEP_SCENARIO_DIRS=1` is set",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-060",
+      "title": "Codify fixture-copy discipline",
+      "description": "As a guide author using `<UseFixture name=\"\u2026\">`, the named fixture directory is copied into `ScenarioContext.testDir` before mutation and is immutable in its source location. (PRD-A2-01 US-060)",
+      "acceptanceCriteria": [
+        "`ScenarioContext.fixtures.use(name)` resolves to `<testDir>/<name>` after deep-copying from `docs/guides/<guideId>/fixtures/<name>` or `docs/guides/fixtures/<name>` (per-guide overrides shared)",
+        "Copy happens before first mutation; mutating the copy does not mutate the source",
+        "Missing fixture surfaces tagged `GuideFixtureNotFoundError` listing the resolved candidate paths",
+        "Second `<UseFixture>` call for same name in same scenario is a no-op (not a re-copy, not a silent overwrite)",
+        "Symbolic links inside fixtures rejected at copy time with tagged `GuideFixtureSymlinkError`",
+        "Fixture I/O uses the existing `FileSystem` service, not `node:fs/promises` directly",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-061",
+      "title": "Reject Hidden component at SDK boundary with remediation",
+      "description": "As a guide author who writes `<Hidden reason=\"\u2026\">` in Alpha 2, I get a typed, source-mapped error directing me at `<Scenario render={false}>` rather than a silent ignore. (PRD-A2-01 US-061)",
+      "acceptanceCriteria": [
+        "`assertAlpha 2Component(componentName, hostPath)` helper in `@lando/sdk/docs/components` throws `NotImplementedError(commandId: \"guide.component.hidden\", specSection: \"\u00a719.3\")` with the verbatim remediation: \"Move this coverage into a colocated `<Scenario render={false}>` per \u00a719.9. `<Hidden>` ships in Phase 3 Alpha 3 \u2014 see `spec/ROADMAP.md`.\"",
+        "Same helper rejects every non-Alpha 1-2 component name (`<Inspect>`, `<Tabs>`, `<Tab>`, `<Inline>`, `<Skip>`) with a one-line remediation citing Phase 3 Alpha 3 + `spec/ROADMAP.md`",
+        "Tests cover each rejected component name and assert exact remediation text",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-062",
+      "title": "Implement deterministic MDX walker for build-guide-scenarios",
+      "description": "As a maintainer, `scripts/build-guide-scenarios.ts` parses every guide MDX under `docs/guides/**` into a normalized AST that downstream codegen consumes. (PRD-A2-02 US-062)",
+      "acceptanceCriteria": [
+        "Generator discovers `docs/guides/**/*.mdx` and `recipes/*/README.mdx`; missing/empty `docs/guides/` produces zero outputs without error",
+        "MDX parsing uses `@mdx-js/mdx` (or chosen Bun-supported equivalent); dep + version recorded in PR description and `package.json#dependencies`",
+        "Frontmatter validates against `GuideFrontmatter` from US-057; failure exits 1 with tagged `GuideFrontmatterValidationError` listing field and rejected value",
+        "AST walking records `<Guide>` and every immediate `<Scenario>` child; multi-axis (`<Tabs>`/`<Tab>`) rejected with schema-level Alpha 3 remediation",
+        "Each scenario's component tree flattened into ordered step list: `(stepName, [{ kind: \"Run\"|\"Verify\"|\"Cleanup\"|\"Variable\"|\"UseFixture\", props }])`",
+        "Three fixture guides under `core/test/codegen/fixtures/guides/`: happy-path single-scenario, multi-scenario with one `render={false}`, Alpha-3-only-component guide (exits 1)",
+        "Re-running twice with identical inputs produces byte-identical AST (assert via deterministic JSON representation)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-063",
+      "title": "Emit Alpha 2 generated TypeScript from MDX scenarios",
+      "description": "As a generated scenario, I am valid TypeScript that imports `withScenarioContext` from `@lando/core/testing`, runs steps in order, and registers a `Cleanup` finalizer. (PRD-A2-02 US-063)",
+      "acceptanceCriteria": [
+        "One file per scenario at `test/scenarios/generated/guides/<guideId>/<scenarioId>.test.ts`",
+        "Each file starts with `// @generated`, `// @source: <mdx-path>:<line>`, `// @scenario: <scenarioId>`, and always-empty `// @variant:` placeholder",
+        "Generated bodies wrap `withScenarioContext({ guideId, scenarioId }, \u2026)`; each step is a sequential Effect block with its own `// @source` header for that MDX line. `<Variable>` decls land before steps. `<Cleanup>` becomes `Effect.addFinalizer` registered before first step runs",
+        "`<Run command=\"\u2026\">` becomes `runCli(command, { answers })` with `<Variable>` interpolation in source order. `<Verify event=\"\u2026\">` becomes an event-stream assertion. `<Verify file=\"\u2026\">` reads under `testDir`. `<Verify errorTag=\"\u2026\">` asserts on captured failure's `_tag`",
+        "`<UseFixture name=\"\u2026\">` lands before any mutation as `await fixtures.use(name)`",
+        "Variable interpolation `{{name}}` substitutes `value` into generated TS; `display` preserved only as a comment",
+        "Generator deterministic: re-run into temp dir and `diff` produces no changes (unit-test asserted)",
+        "`tsc --noEmit` over `test/scenarios/generated/guides/**/*.ts` passes",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-064",
+      "title": "Generate test-only scenarios without rendering",
+      "description": "As a maintainer, a colocated `<Scenario render={false} reason=\"\u2026\">` produces a generated test that runs identically to a reader scenario but is excluded from any future docs render. (PRD-A2-02 US-064)",
+      "acceptanceCriteria": [
+        "`render: false` preserved through AST and emitted into generated file header as `// @render: false`",
+        "Generated test runs same `withScenarioContext` body as reader scenarios; only the render bit differs",
+        "Missing or `< 8 char` `reason` exits 1 with `GuideHiddenScenarioReasonError` citing \u00a719.9 and PRD-A2-00 hidden-coverage rule",
+        "Tests cover: present-reason green path, missing-reason failure, short-reason failure, and a fixture with one reader + one test-only scenario in the same guide (both files generated, both pass)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-065",
+      "title": "Wire build-guide-scenarios into bun run codegen and gitignore outputs",
+      "description": "As a maintainer, `bun run codegen` invokes `build-guide-scenarios` deterministically, generated outputs are gitignored, and the existing codegen catalog snapshot does not regress. (PRD-A2-02 US-065)",
+      "acceptanceCriteria": [
+        "`scripts/codegen.ts` registers `build-guide-scenarios` as a stage-1 generator before any TypeScript-compiling stage",
+        "`.gitignore` ignores `test/scenarios/generated/guides/**`",
+        "`bun run codegen` exits 0 on a clean checkout with at least one Alpha 2 fixture guide present",
+        "Alpha 1 PRD-07 codegen-drift check covers `build-guide-scenarios` registration in the catalog snapshot",
+        "Output directory cleared on each run so deleted scenarios do not leave stale tests",
+        "Generator emits guides sorted by relative path and scenarios by lexicographic id (no filesystem-order leakage)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-066",
+      "title": "Provide canonical node-postgres Alpha 2 fixture guide",
+      "description": "As a maintainer, an end-to-end fixture guide at `docs/guides/node-postgres.mdx` exercises every Alpha 2 component on the scenario layer. (PRD-A2-02 US-066)",
+      "acceptanceCriteria": [
+        "`docs/guides/node-postgres.mdx` uses `<Guide>`, `<Variable>`, `<Scenario render>` (reader), `<Scenario render={false}>` (one hidden case), `<Step>`, `<Run command>`, `<Verify event>` and `<Verify errorTag>`, `<Cleanup>`, and `<UseFixture>`",
+        "Reader scenario walks the MVP node-postgres path (`lando init --recipe node-postgres` \u2192 `lando start` \u2192 `post-start` event verify \u2192 `lando destroy -y` cleanup) using `TestRuntimeProvider`",
+        "Hidden `<Scenario render={false}>` exercises an invalid-Landofile regression that asserts `LandofileValidationError` with a remediation substring match",
+        "Immutable fixture at `docs/guides/node-postgres/fixtures/invalid-service-type/` with deliberately bad `.lando.yml`; hidden scenario calls `<UseFixture name=\"invalid-service-type\" />` before `<Run>`",
+        "Both generated tests pass under `bun test test/scenarios/generated/guides/node-postgres/`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-067",
+      "title": "Implement bun run docs:scenario author command",
+      "description": "As a guide author, I can run one guide's scenarios from the repo root without re-running the whole `bun test` suite. (PRD-A2-03 US-067)",
+      "acceptanceCriteria": [
+        "`scripts/docs-scenario.ts` wired into `package.json#scripts` as `\"docs:scenario\": \"bun run scripts/docs-scenario.ts\"`",
+        "`bun run docs:scenario <guideId>` runs `build-guide-scenarios --only <guideId>` then `bun test test/scenarios/generated/guides/<guideId>/`",
+        "`--scenario <id>` narrows to one scenario by routing to the matching generated file",
+        "`--keep` sets `KEEP_SCENARIO_DIRS=1` for inner `bun test` and prints the temp dir path on completion (read from transcript stub)",
+        "`--debug` prints generated test path, MDX\u2192TS source map, resolved `<Variable>` value/display map, and fixture copy map",
+        "`--explain` prints MDX\u2192scenario plan without running tests; exits 0",
+        "Alpha-3-only flags (`--variant`, `--step`, `--fixture`, `--update-transcript`) fail with `NotImplementedError` citing Phase 3 Alpha 3 + `spec/ROADMAP.md`",
+        "Tests cover green/red exits, `--explain` snapshot, `--debug` snapshot, unknown-flag rejection",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-068",
+      "title": "Implement scenario source-mapper reporter",
+      "description": "As a guide author seeing a generated test failure, the reporter rewrites the failure's primary stack frame to point at the MDX line for the failing assertion. (PRD-A2-03 US-068)",
+      "acceptanceCriteria": [
+        "`scripts/test-reporters/scenario-source-mapper.ts` registered as `bun test` reporter for paths matching `test/scenarios/generated/guides/**/*.test.ts`",
+        "For each failing assertion, reporter walks stack frames; for frames in generated guide test files, scans backward for nearest `// @source`, `// @scenario`, and always-empty `// @variant` headers",
+        "Reporter rewrites primary frame to `<mdx-path>:<line>` and prefixes failure description with `[<guideId>:<scenarioId>] `",
+        "Generated `.ts:line` frame preserved as secondary `Generated:` annotation",
+        "Frames outside generated guide test files left untouched",
+        "`LANDO_DISABLE_GUIDE_SOURCE_MAPPER=1` restores raw `bun test` output unchanged",
+        "Fixture pairs under `core/test/scenarios/reporter/`: `(input.txt, expected.txt)` for single-frame failure, multi-frame failure with intervening node-modules frames, and no-match failure",
+        "Reporter tolerates always-empty `// @variant:` header without misclassifying as missing",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-069",
+      "title": "Print copy-pasteable re-run command on failure",
+      "description": "As a guide author looking at a CI failure log, I can copy the last line of the failure block and re-run that exact scenario locally. (PRD-A2-03 US-069)",
+      "acceptanceCriteria": [
+        "On every failed generated guide test, source-mapper reporter appends a single line: `Re-run: bun run docs:scenario <guideId> --scenario <scenarioId>`",
+        "Reporter resolves `<guideId>`/`<scenarioId>` from header comments, not file path regex",
+        "Missing `@scenario` header falls back to whole-guide form `Re-run: bun run docs:scenario <guideId>` and emits a tagged warning frame",
+        "Re-run line is the last line of the failure block (terminals truncating from top still keep it visible)",
+        "Tests cover: happy path, missing-`@scenario` fallback, missing-`@source` fallback, and last-line position assertion",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-070",
+      "title": "Add per-PR CI gate for guide scenarios",
+      "description": "As a maintainer, every PR runs the new generator + type check + scenario tests gate; drift between MDX and generated outputs fails the build. (PRD-A2-04 US-070)",
+      "acceptanceCriteria": [
+        "`scripts/build-ci-workflow.ts` adds `guide-scenarios-linux-x64` job after `static-checks`, in parallel with `provider-integration-linux-x64`",
+        "Job runs in order: `bun install` \u2192 `bun run codegen` \u2192 `bun run typecheck` \u2192 `bun run lint:guides` \u2192 `bun test test/scenarios/generated/guides/**`",
+        "Job is required for merge to `main` per branch protection",
+        "Job pinned to `ubuntu-24.04` per ROADMAP cross-cutting Podman-drift risk note",
+        "Job uploads any failing scenario's internal transcript JSON (from US-071) as CI artifact `guide-scenario-transcripts-<run-id>.zip` with 7-day retention",
+        "`bun run codegen` regenerates `.github/workflows/ci.yml` with the new job; Alpha 1 PRD-07 `git diff --exit-code` drift gate passes",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-071",
+      "title": "Persist internal transcripts per scenario run",
+      "description": "As a CI consumer, every scenario run produces a deterministic JSON transcript I can attach to a failing PR for debugging. (PRD-A2-04 US-071)",
+      "acceptanceCriteria": [
+        "Transcript stub from US-059 becomes a real write to `dist/transcripts/guides/<guideId>/<scenarioId>.json` at scenario teardown",
+        "Effect Schema in `sdk/src/docs/transcript.ts` round-trips through \u00a713.2 schema gate; shape: `{ guideId, scenarioId, render, startedAt, finishedAt, durationMs, exitStatus: \"pass\"|\"fail\", frames: TranscriptFrame[] }`",
+        "`TranscriptFrame` union: `{ kind: \"run\", command, stdout, stderr, exit, durationMs }`, `{ kind: \"verify\", target: \"event\"|\"file\"|\"errorTag\", matched, expected, actual }`, `{ kind: \"fixture\", name, copiedTo }`, `{ kind: \"cleanup\", command, exit }`",
+        "Apply \u00a719.6 redaction: reuse Alpha 1 PRD-05 `pre-shell-exec` policy; rewrite absolute `testDir` paths to `<testDir>` placeholder; mask timestamps in stdout/stderr",
+        "Transcripts land under `dist/transcripts/guides/` (covered by existing `dist/` gitignore rule)",
+        "Tests cover: green scenario writes well-formed transcript that schema-validates; red scenario writes transcript with `exitStatus === \"fail\"` and the failing frame matches the failing assertion; redaction strips a fixture stdout containing each redaction class",
+        "Redaction is applied before writing to disk, not on read",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-072",
+      "title": "Implement minimal bun run lint:guides",
+      "description": "As a maintainer, `bun run lint:guides` checks the Alpha 2 hard rules and fails the build if any guide violates them. (PRD-A2-04 US-072)",
+      "acceptanceCriteria": [
+        "`scripts/lint-guides.ts` entry point, registered as `\"lint:guides\"` in `package.json#scripts`",
+        "Six Alpha 2 rules enforced (each violation exits non-zero with source-mapped error frame): (1) frontmatter validates against `GuideFrontmatter`; (2) every `<Scenario id>` unique within a guide; (3) every `render={false}` scenario declares `reason` \u2265 8 chars; (4) every `<Step name>` unique within its containing scenario; (5) no Alpha-3-only component appears; (6) `diataxis:` (when present) is `tutorial` or `how-to` for guides containing a rendered scenario",
+        "Lint runs in US-070 CI gate between `bun run typecheck` and the test run",
+        "Rules deferred to Alpha 3 documented in `lint-guides.ts` comments with links back to PRD-A2-04: display:execute divergence cap, standalone `<Verify>` matcher-schema deep validation, event-name registry membership, `<Inline>` density caps, `<Hidden>` content shape",
+        "Fixture per rule under `core/test/lint/guides/`: one green guide satisfying all rules + one deliberately-broken guide per rule with expected error frame",
+        "Rule (6) only fires when frontmatter sets `diataxis:`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-073",
+      "title": "(Conditional) Implement recipe README strip/flatten",
+      "description": "As a recipe author shipping a `recipes/<id>/README.mdx`, the scaffold step copies a prose-only Markdown version into the user's project. Conditional: in scope only if any Alpha 1 recipe ships an MDX README with executable components by PR-open time. (PRD-A2-04 US-073)",
+      "acceptanceCriteria": [
+        "Decision point at PR-open: if no `recipes/*/README.mdx` exists with executable components, close as `Not applicable in Alpha 2; deferred to Alpha 3 per \u00a719.13` and update `spec/alpha-2/progress.txt`; otherwise implement the bullets below",
+        "`scripts/build-recipe-readmes.ts` registered in codegen catalog after `build-guide-scenarios`",
+        "For each `recipes/<id>/README.mdx` containing `<Guide>`, writes `recipes/<id>/.scaffold/README.md` (Alpha 2 emits a single prose-only output; per-axis-value cell-product output is Alpha 3+)",
+        "Strip rules per \u00a719.13: `<Guide>` unwraps; rendered `<Scenario>` unwraps; `<Step>` becomes numbered heading; `<Run command>` becomes fenced bash block of displayed command; `<Verify>`, `<Hidden>`, test-only scenarios omitted; `<Variable>` replaced by `display` (falls back to `value`); `<Cleanup>` becomes final \"Cleanup\" section",
+        "Recipe scaffold path (Alpha 1 PRD-04 US-031) reads `.scaffold/README.md` if present, falls back to `README.md`",
+        "Tests cover fixture recipe with one reader + one hidden scenario produces `.scaffold/README.md` containing only reader steps; no `<` JSX leak; no unresolved `{{variable}}`; corresponding MDX still generates scenario tests via the PRD-A2-02 generator",
+        "Decision is made once at PR-open and not re-evaluated mid-series",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": "Not applicable in Alpha 2; deferred to Alpha 3 per \u00a719.13 because no recipes/<id>/README.mdx files exist in this repository at the PR-open decision point."
+    }
+  ]
+}

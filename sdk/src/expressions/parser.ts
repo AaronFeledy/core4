@@ -35,7 +35,7 @@ const IDENTIFIER_START = /^[A-Za-z_]$/;
 const IDENTIFIER_PART = /^[A-Za-z0-9_]$/;
 const NUMBER_START = /^\d$/;
 const NAMESPACES = new Set(["path", "fs", "url", "semver"]);
-const REMEDIATION = "Check the Landofile configuration expression syntax in spec §7.3.1.";
+const REMEDIATION = "Check the Landofile configuration expression syntax.";
 
 const isIdentifierStart = (char: string | undefined): boolean =>
   char !== undefined && IDENTIFIER_START.test(char);

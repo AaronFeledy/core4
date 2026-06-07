@@ -1,8 +1,7 @@
-import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { beforeAll } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import {
   DEFERRED_COMMAND_PLANS,
   deferredCommandPlan,
@@ -14,8 +13,6 @@ import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 
 interface FixtureEntry {
   readonly id: string;
-  readonly phase: "Phase 3 Beta" | "Phase 4 RC";
-  readonly specSection: string;
 }
 
 interface FixtureFile {
@@ -92,16 +89,13 @@ const expectNoStackOrSourcePaths = (errorBlock: string, commandId: string): void
   );
 };
 
-const expectPhaseTaggedRemediation = (stderr: string, entry: FixtureEntry): void => {
+const expectDeferredRemediation = (stderr: string, entry: FixtureEntry): void => {
   expect(stderr, `${entry.id}: stderr must contain the NotImplementedError tag`).toContain(
     "NotImplementedError",
   );
   expect(stderr, `${entry.id}: stderr must echo the commandId`).toContain(`commandId: ${entry.id}`);
-  expect(stderr, `${entry.id}: stderr must echo the specSection`).toContain(
-    `specSection: ${entry.specSection}`,
-  );
-  expect(stderr, `${entry.id}: stderr must name the target phase`).toContain(entry.phase);
-  expect(stderr, `${entry.id}: stderr must point at the roadmap`).toContain("spec/ROADMAP.md");
+  expect(stderr, `${entry.id}: stderr must include remediation`).toContain("↳");
+  expect(stderr, `${entry.id}: stderr must explain availability`).toContain("available");
 
   const errorBlock = extractErrorBlock(stderr);
   expect(errorBlock.length, `${entry.id}: error block must be non-empty`).toBeGreaterThan(0);
@@ -129,31 +123,26 @@ describe("deferred command remediation contract (US-037)", () => {
     }
   });
 
-  test("DEFERRED_COMMAND_PLANS covers every fixture entry with matching phase/specSection", () => {
+  test("DEFERRED_COMMAND_PLANS covers every fixture entry", () => {
     for (const entry of fixture.commands) {
       const plan = deferredCommandPlan(entry.id);
       expect(plan, `${entry.id} must have a registered deferral plan`).toBeDefined();
-      if (plan === undefined) continue;
-      expect(plan.phase, `${entry.id}: phase mismatch`).toBe(entry.phase);
-      expect(plan.specSection, `${entry.id}: specSection mismatch`).toBe(entry.specSection);
     }
   });
 
-  test("notImplementedErrorForCommand emits a tagged, phase-aware payload for every fixture entry", () => {
+  test("notImplementedErrorForCommand emits a tagged payload for every fixture entry", () => {
     for (const entry of fixture.commands) {
       const error = notImplementedErrorForCommand(entry.id);
       expect(error._tag).toBe("NotImplementedError");
       expect(error.commandId).toBe(entry.id);
-      expect(error.specSection).toBe(entry.specSection);
-      expect(error.message).toContain("Phase 2 Alpha");
-      expect(error.remediation).toContain(entry.phase);
-      expect(error.remediation).toContain("spec/ROADMAP.md");
+      expect(error.message).toContain("not implemented");
+      expect(error.remediation).toContain("not available yet");
       expect(error.remediation).not.toMatch(STACK_FRAME_PATTERN);
       expect(error.remediation).not.toMatch(SOURCE_FILE_PATH_PATTERN);
     }
   });
 
-  test("every non-MVP compiled command has a registered deferral plan (no phase-less commands)", () => {
+  test("every non-MVP compiled command has a registered deferral plan", () => {
     const nonMvpIds = Object.keys(compiledCommands).filter((id) => !isMvpCommandId(id));
     const missing = nonMvpIds.filter((id) => deferredCommandPlan(id) === undefined);
     expect(missing, "every non-MVP compiled command id must be mapped in DEFERRED_COMMAND_PLANS").toEqual([]);
@@ -170,10 +159,10 @@ describe("deferred command remediation contract (US-037)", () => {
 
   describe("source OCLIF CLI", () => {
     for (const entry of fixture.commands) {
-      test(`${entry.id} returns phase-tagged remediation`, async () => {
+      test(`${entry.id} returns deferred remediation`, async () => {
         const result = await runSource(entry.id);
         expect(result.exitCode, `${entry.id}: source exit code`).not.toBe(0);
-        expectPhaseTaggedRemediation(result.stderr, entry);
+        expectDeferredRemediation(result.stderr, entry);
       });
     }
   });
@@ -206,16 +195,15 @@ describe("deferred command remediation contract (US-037)", () => {
         expect(collapseErrorBlock(compiled.stderr), `${entry.id}: error block parity`).toBe(
           collapseErrorBlock(source.stderr),
         );
-        expectPhaseTaggedRemediation(compiled.stderr, entry);
+        expectDeferredRemediation(compiled.stderr, entry);
       }, 60_000);
     }
   });
 
-  test("every plan entry surfaces a roadmap reference (Phase 3 Beta or Phase 4 RC)", () => {
+  test("every plan entry surfaces actionable remediation", () => {
     for (const [commandId, plan] of DEFERRED_COMMAND_PLANS) {
-      expect(plan.remediation, `${commandId}: remediation must name target phase`).toContain(plan.phase);
-      expect(plan.remediation, `${commandId}: remediation must reference spec/ROADMAP.md`).toContain(
-        "spec/ROADMAP.md",
+      expect(plan.remediation, `${commandId}: remediation must explain availability`).toContain(
+        "not available yet",
       );
       expect(plan.remediation, `${commandId}: remediation must not contain stack frames`).not.toMatch(
         STACK_FRAME_PATTERN,

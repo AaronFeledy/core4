@@ -126,9 +126,7 @@ const shellNotImplemented = (command: string): NotImplementedError =>
   new NotImplementedError({
     message: `<Run shell=\"${command}\"> is not implemented in Alpha 2`,
     commandId: "guide.run.shell",
-    specSection: "§19.4",
-    remediation:
-      'Use `<Run command="…">` for Alpha 2 guide scenarios. Shell runners ship in Phase 3 Beta — see `spec/ROADMAP.md`.',
+    remediation: 'Use `<Run command="…">` for guide scenarios. Shell runners are not available yet.',
   });
 
 const fixtureSymlinkError = (name: string, path: string): GuideFixtureSymlinkError =>

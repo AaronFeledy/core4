@@ -2,19 +2,19 @@
 
 ## Introduction
 
-Per the user's directive — *binary builds and testing in CI as early as possible* — MVP no longer waits until Alpha to wire CI. This PRD is new (it does not exist in the original [`spec/ROADMAP.md`](../../spec/ROADMAP.md) Phase 1 deliverable list); the roadmap itself is amended in the same change-set so the two stay in sync.
+Per the user's directive — *binary builds and testing in CI as early as possible* — MVP no longer waits until Alpha 1 to wire CI. This PRD is new (it does not exist in the original [`spec/ROADMAP.md`](../../spec/ROADMAP.md) Phase 1 deliverable list); the roadmap itself is amended in the same change-set so the two stay in sync.
 
 What this PRD ships at MVP:
 
 - **Full CI on Linux x64 only.** Static gates (typecheck, lint, unit + Effect-service tests), the binary build (`bun build --compile`), and the full provider-integration suite (running against a Podman service in the runner) — all per-PR.
-- **Workflow artifacts only.** The compiled `dist/lando` is uploaded as a workflow artifact every run. No GitHub Release publishing, no tagged binaries, no `dev` channel, no installer scripts, no signing — those wait for Alpha onward.
+- **Workflow artifacts only.** The compiled `dist/lando` is uploaded as a workflow artifact every run. No GitHub Release publishing, no tagged binaries, no `dev` channel, no installer scripts, no signing — those wait for Alpha 1 onward.
 
 What this PRD explicitly does *not* ship:
 
-- macOS or Windows runners (Alpha+).
-- linux-arm64 runner (Alpha — multi-arch matrix grows the CI cost curve).
-- Nightly distribution rehearsal, weekly provider matrix, scenario-tutorial gates (Beta+).
-- Self-update, signing, SBOM, SLSA — RC.
+- macOS or Windows runners (Alpha 1+).
+- linux-arm64 runner (Alpha 1 — multi-arch matrix grows the CI cost curve).
+- Nightly distribution rehearsal, weekly provider matrix, scenario-tutorial gates (Alpha 3+).
+- Self-update, signing, SBOM, SLSA — Beta 1.
 
 Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation — `bun run build` works locally)**, **PRD-03 (Effect services)**, **PRD-04 (Providers — integration tests run on Podman socket)**, **PRD-05 (Bundled services)**, **PRD-06 (CLI commands — exit-criteria smoke test)**.
 
@@ -71,7 +71,7 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
   - It runs `bun test core/test/scenario` AND `bun test plugins/provider-lando/test --filter=integration` AND `bun test plugins/provider-docker/test --filter=integration` (Docker tests are still gated on `LANDO_TEST_DOCKER_SOCKET` being set; if Docker isn't available in the runner — which is the default — those tests xfail without failing the job).
   - The job runs the MVP exit-criteria scenario test (PRD-06 US-009) explicitly via `bun test core/test/scenario/mvp-exit-criteria.scenario.test.ts`.
   - A teardown step (always-run, even on failure) tears down any leftover containers + the Podman service, so a flaky run doesn't poison cache.
-- [ ] Test asserts the job's timeout is set to ≤20 minutes (CI cost guard at MVP — Beta loosens this).
+- [ ] Test asserts the job's timeout is set to ≤20 minutes (CI cost guard at MVP — Alpha 3 loosens this).
 - [ ] Test asserts the job uploads, on failure, a diagnostic bundle (Podman logs, `dist/lando` if built, last 100 lines of each test output) so debugging a CI-only failure is possible.
 - [ ] Test passes after the workflow's `provider-integration-linux-x64` job is added.
 - [ ] Typecheck/lint/whole-workspace tests pass.
@@ -128,7 +128,7 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 
 - FR-1: `.github/workflows/ci.yml` is the single CI workflow at MVP. It contains exactly three jobs: `static-checks`, `build-linux-x64`, `provider-integration-linux-x64`.
 - FR-2: All three jobs run on `ubuntu-24.04` (pinned, with the rationale documented in a workflow comment — `ubuntu-latest` drift is a known footgun).
-- FR-3: `static-checks` does not require Podman. It runs on every PR. Wall-clock budget: ≤5 minutes (advisory at MVP, hard cap at Beta).
+- FR-3: `static-checks` does not require Podman. It runs on every PR. Wall-clock budget: ≤5 minutes (advisory at MVP, hard cap at Alpha 3).
 - FR-4: `build-linux-x64` produces `dist/lando`, runs `--version` and `--help` smoke checks, uploads as `lando-linux-x64` artifact with 7-day retention. Wall-clock budget: ≤5 minutes.
 - FR-5: `provider-integration-linux-x64` starts a private Podman socket in the runner, exports `LANDO_TEST_PODMAN_SOCKET`, runs the integration + scenario suites, tears down on success or failure. Wall-clock budget: ≤20 minutes.
 - FR-6: Failure of any job blocks the PR. Failures upload a diagnostic bundle (Podman logs, partial test output, the binary if built) for post-hoc debugging.
@@ -139,17 +139,17 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 
 ## Non-Goals
 
-- **No GitHub Release / tagged pre-release.** Alpha promotes the artifact to a `dev`-channel pre-release.
-- **No nightly cron.** Beta adds nightly distribution rehearsal (`spec/13`).
-- **No multi-platform matrix.** Linux x64 only at MVP; Alpha adds linux-arm64; Beta adds darwin-{x64,arm64}, windows-x64.
-- **No weekly provider matrix.** Beta runs the cross-provider matrix (`@lando/provider-lando` Linux + macOS, Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, OrbStack).
-- **No code signing, notarization, SBOM, SLSA, cosign.** RC.
-- **No self-update path or update manifest.** RC.
-- **No installer scripts** (`install.sh`, `install.ps1`). RC.
-- **No `npm publish` of `@lando/sdk` or `@lando/core`.** Alpha publishes `4.0.0-alpha.N` on the `dev` tag; MVP is private.
-- **No telemetry exports from CI.** RC.
+- **No GitHub Release / tagged pre-release.** Alpha 1 promotes the artifact to a `dev`-channel pre-release.
+- **No nightly cron.** Alpha 3 adds nightly distribution rehearsal (`spec/13`).
+- **No multi-platform matrix.** Linux x64 only at MVP; Alpha 1 adds linux-arm64; Alpha 3 adds darwin-{x64,arm64}, windows-x64.
+- **No weekly provider matrix.** Alpha 3 runs the cross-provider matrix (`@lando/provider-lando` Linux + macOS, Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, OrbStack).
+- **No code signing, notarization, SBOM, SLSA, cosign.** Beta 1.
+- **No self-update path or update manifest.** Beta 1.
+- **No installer scripts** (`install.sh`, `install.ps1`). Beta 1.
+- **No `npm publish` of `@lando/sdk` or `@lando/core`.** Alpha 1 publishes `4.0.0-alpha.N` on the `dev` tag; MVP is private.
+- **No telemetry exports from CI.** Beta 1.
 - **No PR-comment "preview build" bot.** Out of scope; the artifact download is sufficient at MVP.
-- **No CI metrics dashboard.** Beta+ if we ship one at all; MVP just relies on GitHub's built-in workflow runs view.
+- **No CI metrics dashboard.** Alpha 3+ if we ship one at all; MVP just relies on GitHub's built-in workflow runs view.
 
 ## Technical Considerations
 
@@ -168,12 +168,12 @@ In dependency order this PRD lands **last** in MVP — it wraps every other PRD'
 - The MVP exit-criteria scenario test (PRD-06 US-009) runs green in CI on every push to `main`.
 - Zero PRs reach `main` without a green `provider-integration-linux-x64` run.
 - Zero hand-edits to `.github/workflows/ci.yml` after this PRD lands — every change goes through `scripts/build-ci-workflow.ts`.
-- Mean time to debug a CI-only failure ≤30 minutes (anecdotal at MVP; tracked from Beta when the runbook gets used in anger).
+- Mean time to debug a CI-only failure ≤30 minutes (anecdotal at MVP; tracked from Alpha 3 when the runbook gets used in anger).
 
 ## Open Questions
 
-- Should we adopt `actionlint` as a dev dep + CI gate now, or defer to Alpha? Default: adopt now — it's a 2MB binary and catches workflow regressions early. If it's not already in the toolchain, document the install in `docs/ci-runbook.md`.
+- Should we adopt `actionlint` as a dev dep + CI gate now, or defer to Alpha 1? Default: adopt now — it's a 2MB binary and catches workflow regressions early. If it's not already in the toolchain, document the install in `docs/ci-runbook.md`.
 - The "diagnostic bundle on failure" pattern (US-003) needs a documented shape — what files, what naming, what retention. Default: `failure-diagnostics-${{ github.run_id }}.tar.gz` containing `podman.log`, `dist/lando` if built, `core/test/**/*.log` (any test that wrote a log file). Implementer fills the exact contents.
-- Branch protection in US-007 is *policy*, not code. Should we adopt Probot Settings (`.github/settings.yml`) to manage it as code? Default: Beta. At MVP, the documented runbook + a manual one-time setup is acceptable.
+- Branch protection in US-007 is *policy*, not code. Should we adopt Probot Settings (`.github/settings.yml`) to manage it as code? Default: Alpha 3. At MVP, the documented runbook + a manual one-time setup is acceptable.
 - `bun test`'s `--filter` semantics for excluding integration tests: confirm the exact flag in current Bun (`--testNamePattern`? `--filter`? path-based exclusion?). Implementer pins the right invocation.
-- ~~Is `ubuntu-22.04` or `ubuntu-24.04` the right pin?~~ **Resolved (Beta paradigm review):** `ubuntu-24.04` — 24.04 is the current LTS, ships Podman ≥4.9, and per-PR rationale (`ubuntu-latest` drift footgun) is unchanged. All Linux Actions workflows pin to `ubuntu-24.04`.
+- ~~Is `ubuntu-22.04` or `ubuntu-24.04` the right pin?~~ **Resolved (Alpha 3 paradigm review):** `ubuntu-24.04` — 24.04 is the current LTS, ships Podman ≥4.9, and per-PR rationale (`ubuntu-latest` drift footgun) is unchanged. All Linux Actions workflows pin to `ubuntu-24.04`.

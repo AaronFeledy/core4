@@ -12,15 +12,15 @@ const DATA_TARGET = PortablePath.make("/meili_data");
  * Dev-environment default master key, deterministic so users can hit
  * `MEILI_MASTER_KEY=lando` in shell snippets and scenario tooling.
  *
- * Per §6.12.4 creds-schema semantics, this is a dev default, not a real
- * secret; it is redacted in `lando info` / event surfaces (§6.6/§6.9)
+ * This is a dev default, not a real
+ * secret; it is redacted in `lando info` / event surfaces
  * when the publishing layer adds it to the `redact:` token set. Users
  * who need a non-default key set `environment.MEILI_MASTER_KEY` in their
  * Landofile.
  */
 export const MEILISEARCH_DEFAULT_MASTER_KEY = "lando" as const;
 
-export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds a deterministic master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}) that is redacted from event surfaces per §6.6 / §6.12.4 redaction rules. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
+export const MEILISEARCH_SERVICE_DESCRIPTION = `Meilisearch is an MIT-licensed search engine with a typo-tolerant, ranked search HTTP API. The default local-dev configuration disables telemetry (MEILI_NO_ANALYTICS=true), runs in development mode (MEILI_ENV=development), and seeds a deterministic master key (MEILI_MASTER_KEY=${MEILISEARCH_DEFAULT_MASTER_KEY}) that is redacted from event surfaces. Override via services.<name>.environment.MEILI_MASTER_KEY in the Landofile for a non-default key.`;
 
 export const meilisearch1ServiceType: ServiceTypeShape = {
   id: "meilisearch:1",

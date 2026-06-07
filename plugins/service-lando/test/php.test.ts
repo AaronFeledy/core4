@@ -284,7 +284,7 @@ describe("php:8.3 ServiceType", () => {
     ).toThrow(/Unsupported PHP version "8.4"/);
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys (spec §6.9)", () => {
+  test("rejects user environment that targets reserved LANDO_* keys", () => {
     const service = decodeService({
       type: "php:8.2",
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },

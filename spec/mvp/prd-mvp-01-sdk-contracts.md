@@ -46,7 +46,7 @@ This PRD turns those stubs into real, frozen contracts.
 
 ### US-003: Ship `ProviderCapabilities` schema (full shape)
 
-**Description:** As a provider author, I need the *full* `ProviderCapabilities` schema in MVP — even though only one capability is exercised — so the contract doesn't change in Alpha when more providers ship.
+**Description:** As a provider author, I need the *full* `ProviderCapabilities` schema in MVP — even though only one capability is exercised — so the contract doesn't change in Alpha 1 when more providers ship.
 
 **Acceptance Criteria:**
 - [ ] Failing test in `sdk/test/schema/provider-capabilities.test.ts` asserts the schema contains every field listed in `spec/05-runtime-providers.md` capability matrix (e.g. `bindMountPerformance`, `sharedCrossAppNetwork`, `copyOnWriteAppRoot`, etc.).
@@ -146,19 +146,19 @@ This PRD turns those stubs into real, frozen contracts.
 - FR-3: `@lando/sdk/events` exports the 10 lifecycle event payload schemas listed in US-006, plus a `LandoEvent` discriminated union over them.
 - FR-4: `@lando/sdk/services` exports the 11 Effect Service tags listed in US-007, each with a method-typed shape using SDK errors in failure channels.
 - FR-5: `@lando/sdk/test` exports the contract suite helper `runProviderContract` and a `TestRuntimeProvider` reference impl.
-- FR-6: Every schema in FR-1 has a generated JSON Schema reachable from a single `getJsonSchema(<schemaName>)` helper exported from `@lando/sdk/schema` (publication pipeline is RC; the helper is MVP).
+- FR-6: Every schema in FR-1 has a generated JSON Schema reachable from a single `getJsonSchema(<schemaName>)` helper exported from `@lando/sdk/schema` (publication pipeline is Beta 1; the helper is MVP).
 - FR-7: All exports above are listed in `sdk/package.json` `"exports"` field; `@lando/sdk` is publishable to the local `bun pm` cache without errors.
 
 ## Non-Goals
 
-- No deprecation governance (`DeprecationNotice`, `markDeprecated()`) — that is RC (`spec/16-deprecation-and-surface-evolution.md`).
-- No JSON Schema *publication* to `https://schemas.lando.dev/` — RC.
+- No deprecation governance (`DeprecationNotice`, `markDeprecated()`) — that is Beta 1 (`spec/16-deprecation-and-surface-evolution.md`).
+- No JSON Schema *publication* to `https://schemas.lando.dev/` — Beta 1.
 - No tagged errors for subsystems not used at MVP (proxy, certs, sync, scanner, scratch, global app).
-- No event payloads for events outside the start/stop lifecycle (recipe events, plugin install events, etc. — Beta).
-- No Effect service tags for subsystems not used at MVP (`ProxyService`, `CertificateAuthority`, `HealthcheckService`, etc. — Beta).
+- No event payloads for events outside the start/stop lifecycle (recipe events, plugin install events, etc. — Alpha 3).
+- No Effect service tags for subsystems not used at MVP (`ProxyService`, `CertificateAuthority`, `HealthcheckService`, etc. — Alpha 3).
 - No `@lando/sdk/test` provider contract assertions for capabilities that don't exist yet (file sync, copy-on-write, shared cross-app network).
-- No published reference docs site — RC.
-- No published-to-npm package — Alpha (this PRD only requires `@lando/sdk` resolves locally in the workspace).
+- No published reference docs site — Beta 1.
+- No published-to-npm package — Alpha 1 (this PRD only requires `@lando/sdk` resolves locally in the workspace).
 
 ## Technical Considerations
 
@@ -170,11 +170,11 @@ This PRD turns those stubs into real, frozen contracts.
 
 ## Success Metrics
 
-- Zero changes to `sdk/src/` between MVP exit and 4.0 GA (excluding additions for new subsystems shipped in Alpha/Beta — additions are fine; modifications to Phase 1 shapes are not).
+- Zero changes to `sdk/src/` between MVP exit and 4.0 GA (excluding additions for new subsystems shipped in Alpha 1/Alpha 3 — additions are fine; modifications to Phase 1 shapes are not).
 - 100% of `@lando/core` failure channels reference SDK-exported tagged errors (no anonymous `Error`, no `string` failures, no `unknown`).
 - The provider contract suite (US-008) passes against `TestRuntimeProvider`, `provider-docker` (PRD-04 stretch), and `provider-lando` Linux (PRD-04 must-ship).
 
 ## Open Questions
 
 - `LandofileShape` for MVP includes Compose-subset keys — exact allowlist must be confirmed against `spec/06-services.md` and `spec/07-landofile-and-config.md`. The PRD enumerates a starting set (`image`, `ports`, `environment`, `volumes`, `command`, `dependsOn`); the implementer must add only what `node` and `postgres` ServiceTypes actually need.
-- Should `getJsonSchema()` be in `@lando/sdk/schema` or in a separate `@lando/sdk/schema-meta` entry to keep the core SDK lean? Default: same entry until publication automation in RC says otherwise.
+- Should `getJsonSchema()` be in `@lando/sdk/schema` or in a separate `@lando/sdk/schema-meta` entry to keep the core SDK lean? Default: same entry until publication automation in Beta 1 says otherwise.

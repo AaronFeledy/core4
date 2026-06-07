@@ -52,7 +52,6 @@ const removeFailure = (name: string, stderr: string): NotImplementedError =>
   new NotImplementedError({
     message: `BunSelfExecError: bun remove failed for ${name}.`,
     commandId: "meta:plugin:remove",
-    specSection: "spec/10-plugins.md",
     remediation: `Resolve the underlying bun error and retry:\n${stderr.trim()}`,
   });
 
@@ -87,7 +86,6 @@ const managedRootManifestError = (manifestPath: string, cause: unknown): NotImpl
   new NotImplementedError({
     message: `Managed plugin root package.json is not readable JSON: ${manifestPath}.`,
     commandId: "meta:plugin:remove",
-    specSection: "spec/10-plugins.md",
     remediation: `Repair or remove ${manifestPath}, then retry plugin removal. Cause: ${String(cause)}`,
   });
 
@@ -197,7 +195,6 @@ const activeLandofileRefusal = async (
   return new NotImplementedError({
     message: `Plugin ${name} is referenced by active Landofile ${landofilePath}.`,
     commandId: "meta:plugin:remove",
-    specSection: "spec/10-plugins.md",
     remediation: `Remove ${name} from the plugins: block in app ${appName} (${landofilePath}), then retry \`lando plugin:remove ${name}\`.`,
   });
 };
@@ -215,7 +212,6 @@ export const pluginRemove = (
         new NotImplementedError({
           message: "Plugin name is required.",
           commandId: "meta:plugin:remove",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
         }),
       );
@@ -240,7 +236,6 @@ export const pluginRemove = (
           new NotImplementedError({
             message: "userDataRoot is not configured.",
             commandId: "meta:plugin:remove",
-            specSection: "spec/10-plugins.md",
             remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
           }),
         );
@@ -315,7 +310,6 @@ export const pluginRemove = (
             : new NotImplementedError({
                 message: `Failed to update managed plugin root package.json: ${String(cause)}`,
                 commandId: "meta:plugin:remove",
-                specSection: "spec/10-plugins.md",
                 remediation: "Repair the managed plugin root package.json, then retry plugin removal.",
               }),
       });

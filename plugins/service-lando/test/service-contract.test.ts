@@ -199,7 +199,7 @@ const buildMatrixCells = (entry: CatalogContractEntry): ReadonlyArray<ServiceCon
     factory: () => buildContractInput(entry, platform),
   }));
 
-describe("Beta service catalog × contract suite", () => {
+describe("service catalog × contract suite", () => {
   for (const entry of CATALOG_CONTRACT_ENTRIES) {
     test(`${entry.serviceType.id} satisfies runServiceContract on the lando provider × linux platform`, async () => {
       await expect(
@@ -224,7 +224,7 @@ describe("Beta service catalog × contract suite", () => {
     });
   }
 
-  test("catalog covers every new Beta service type from US-083..US-090", () => {
+  test("catalog covers every new service type from US-083..US-090", () => {
     const ids = CATALOG_CONTRACT_ENTRIES.map((entry) => entry.serviceType.id).sort();
     expect(ids).toEqual([
       "elasticsearch",

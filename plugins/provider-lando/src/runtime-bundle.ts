@@ -20,7 +20,7 @@ export class ProviderBundleChecksumError extends ProviderUnavailableError {
       operation: "setup",
       message,
       remediation:
-        "The Lando runtime bundle did not match the pinned SHA-256 from the bundled checksum manifest (spec §5.8.1). Retry `lando setup`; if it fails again, report the release artifact URL and the observed checksum.",
+        "The Lando runtime bundle did not match the pinned SHA-256 from the bundled checksum manifest. Retry `lando setup`; if it fails again, report the release artifact URL and the observed checksum.",
       cause,
     });
   }
@@ -60,7 +60,7 @@ const unsupportedHostPlatformError = () =>
     operation: "setup",
     message: `No pinned runtime-bundle entry for unsupported host platform ${process.platform}.`,
     remediation:
-      "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest (spec §5.8.1).",
+      "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest.",
   });
 
 /**
@@ -83,7 +83,7 @@ export const resolveRuntimeBundleEntry = (
               operation: "setup",
               message: `No pinned runtime-bundle entry for ${platformArchKey(platform, arch)}.`,
               remediation:
-                "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest (spec §5.8.1).",
+                "Run `lando setup` on a supported host (Linux x64/arm64, macOS x64/arm64, Windows x64) or update the bundled manifest.",
             }),
           )
         : Effect.succeed(entry),
@@ -96,7 +96,7 @@ export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEnt
       providerId: PROVIDER_ID,
       operation: "setup",
       message: `Invalid runtime-bundle filename ${entry.filename}.`,
-      remediation: "Use a basename-only runtime-bundle filename from the pinned manifest (spec §5.8.1).",
+      remediation: "Use a basename-only runtime-bundle filename from the pinned manifest.",
     });
   }
 
@@ -108,7 +108,7 @@ export const runtimeBundleCachePath = (stateDir: string, entry: RuntimeBundleEnt
       providerId: PROVIDER_ID,
       operation: "setup",
       message: `Runtime-bundle filename ${entry.filename} escapes the provider cache directory.`,
-      remediation: "Use a basename-only runtime-bundle filename from the pinned manifest (spec §5.8.1).",
+      remediation: "Use a basename-only runtime-bundle filename from the pinned manifest.",
     });
   }
 
@@ -165,8 +165,7 @@ export const makeRuntimeBundleDownloader = (
           providerId: PROVIDER_ID,
           operation: "setup",
           message: `Failed to download the Lando runtime bundle from ${entry.url}.`,
-          remediation:
-            "Check network connectivity, proxy/CA configuration, and retry `lando setup` (spec §5.8.1).",
+          remediation: "Check network connectivity, proxy/CA configuration, and retry `lando setup`.",
           cause,
         }),
     });

@@ -5,19 +5,12 @@ import { GuideId } from "../guide-frontmatter.ts";
 
 const ComponentId = GuideId.annotations({ identifier: "ComponentId" });
 
-const betaRemediation = (surface: string, specSection = "§19.3") =>
-  `${surface} ships in Phase 3 Beta per ${specSection} — see \`spec/ROADMAP.md\`.`;
-
-const betaComponentPropsError = (
-  component: string,
-  key: string,
-  specSection = "§19.3",
-): NotImplementedError =>
+const betaComponentPropsError = (component: string, key: string): NotImplementedError =>
   new NotImplementedError({
-    message: `<${component}> prop \`${key}\` is not supported in Alpha 2.`,
+    message: `<${component}> prop \`${key}\` is not supported yet.`,
     commandId: `guide.component.${component.toLowerCase()}`,
-    specSection,
-    remediation: betaRemediation(`<${component}> \`${key}\``, specSection),
+    remediation:
+      "Unsupported guide component prop. Remove the unsupported prop or use a supported guide component shape.",
   });
 
 const ALPHA_2_COMPONENTS = [
@@ -36,10 +29,9 @@ const BETA_COMPONENTS = ["Inspect", "Tabs", "Tab", "Hidden", "Inline", "Skip"] a
 
 const betaComponentError = (componentName: string, hostPath: string): NotImplementedError =>
   new NotImplementedError({
-    message: `<${componentName}> is not supported in Alpha 2 at ${hostPath}.`,
+    message: `<${componentName}> is not supported at ${hostPath}.`,
     commandId: `guide.component.${componentName.toLowerCase()}`,
-    specSection: "§19.3",
-    remediation: `<${componentName}> ships in Phase 3 Beta — see \`spec/ROADMAP.md\`.`,
+    remediation: `<${componentName}> is not supported yet.`,
   });
 
 export const assertAlpha2Component = (componentName: string, hostPath: string): void => {
@@ -306,7 +298,7 @@ const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either
 
 export const decodeScenarioPropsEither = (input: unknown): Either.Either<ScenarioProps, DecodeError> => {
   const record = asRecord(input);
-  if (record?.layer === "e2e") return Either.left(betaComponentPropsError("Scenario", "layer", "§19.11"));
+  if (record?.layer === "e2e") return Either.left(betaComponentPropsError("Scenario", "layer"));
   return decodeEither(ScenarioProps, input);
 };
 
@@ -316,10 +308,8 @@ export const decodeStepPropsEither = (input: unknown): Either.Either<StepProps, 
 export const decodeRunPropsEither = (input: unknown): Either.Either<RunProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined) {
-    if (Object.hasOwn(record, "runtime"))
-      return Either.left(betaComponentPropsError("Run", "runtime", "§19.14"));
-    if (Object.hasOwn(record, "tooling"))
-      return Either.left(betaComponentPropsError("Run", "tooling", "§19.14"));
+    if (Object.hasOwn(record, "runtime")) return Either.left(betaComponentPropsError("Run", "runtime"));
+    if (Object.hasOwn(record, "tooling")) return Either.left(betaComponentPropsError("Run", "tooling"));
   }
   return decodeEither(RunProps, input);
 };
@@ -347,13 +337,10 @@ const findBetaMatcherKey = (input: unknown): "exact" | "allOf" | "oneOf" | undef
 export const decodeVerifyPropsEither = (input: unknown): Either.Either<VerifyProps, DecodeError> => {
   const record = asRecord(input);
   if (record !== undefined) {
-    if (Object.hasOwn(record, "runtime"))
-      return Either.left(betaComponentPropsError("Verify", "runtime", "§19.14"));
-    if (Object.hasOwn(record, "tooling"))
-      return Either.left(betaComponentPropsError("Verify", "tooling", "§19.14"));
+    if (Object.hasOwn(record, "runtime")) return Either.left(betaComponentPropsError("Verify", "runtime"));
+    if (Object.hasOwn(record, "tooling")) return Either.left(betaComponentPropsError("Verify", "tooling"));
     const betaMatcherKey = findBetaMatcherKey(record.expect);
-    if (betaMatcherKey !== undefined)
-      return Either.left(betaComponentPropsError("Verify", betaMatcherKey, "§19.3"));
+    if (betaMatcherKey !== undefined) return Either.left(betaComponentPropsError("Verify", betaMatcherKey));
   }
   return decodeEither(VerifyProps, input);
 };

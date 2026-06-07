@@ -341,7 +341,7 @@ describe("withScenarioContext", () => {
     }
   });
 
-  test("shell runner fails with Alpha 2 remediation", async () => {
+  test("shell runner fails with remediation", async () => {
     const exit = await Effect.runPromiseExit(
       withScenarioContext({ guideId: "node-postgres", scenarioId: "shell" }, (context) =>
         context.shell("echo hi"),
@@ -353,7 +353,9 @@ describe("withScenarioContext", () => {
     const error = failure._tag === "Some" ? failure.value : undefined;
     expect(error).toBeInstanceOf(NotImplementedError);
     expect(error instanceof NotImplementedError ? error.commandId : undefined).toBe("guide.run.shell");
-    expect(error instanceof NotImplementedError ? error.remediation : undefined).toContain("Phase 3 Beta");
+    expect(error instanceof NotImplementedError ? error.remediation : undefined).toContain(
+      "not available yet",
+    );
   });
 
   test("fixtures.use deep-copies per-guide fixtures before mutation and does not re-copy", async () => {

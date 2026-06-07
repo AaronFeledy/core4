@@ -15,10 +15,10 @@ export const DEFAULT_TS_TIMEOUT_MS = 5000;
 export const TS_TIMEOUT_ENV = "LANDO_LANDOFILE_TS_TIMEOUT_MS";
 
 const SANDBOX_REMEDIATION =
-  "Remove the disallowed import or call. Programmatic Landofiles must not perform host shell-outs, remote module fetches, or filesystem access outside the app root. See spec/07-landofile-and-config.md §7.1.1.";
+  "Remove the disallowed import or call. Programmatic Landofiles must not perform host shell-outs, remote module fetches, or filesystem access outside the app root.";
 const SANDBOX_PARSE_VIOLATION = "lando:parse-error";
 
-const TIMEOUT_REMEDIATION = `Reduce work in the Landofile or raise the timeout via the ${TS_TIMEOUT_ENV} environment variable. See spec/07-landofile-and-config.md §7.1.1.`;
+const TIMEOUT_REMEDIATION = `Reduce work in the Landofile or raise the timeout via the ${TS_TIMEOUT_ENV} environment variable.`;
 
 const FORBIDDEN_NODE_MODULES: ReadonlySet<string> = new Set([
   "fs",

@@ -73,13 +73,12 @@ const detectScheme = (ref: string): RecipeRefScheme => {
   return "unknown";
 };
 
-const BETA_REMEDIATION = "Remove the source scheme; remote recipe sources are deferred to the Beta release.";
+const BETA_REMEDIATION = "Remove the source scheme; remote recipe sources are not supported yet.";
 
-const notImplemented = (scheme: string, ref: string, specSection = "§8.8.4"): NotImplementedError =>
+const notImplemented = (scheme: string, ref: string): NotImplementedError =>
   new NotImplementedError({
-    message: `Recipe source scheme "${scheme}" (ref "${ref}") is not supported in Alpha.`,
+    message: `Recipe source scheme "${scheme}" (ref "${ref}") is not supported yet.`,
     commandId: "recipe.source.resolve",
-    specSection,
     remediation: BETA_REMEDIATION,
   });
 

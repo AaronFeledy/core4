@@ -196,7 +196,7 @@ describe("LandofileServiceLive — TS form sandbox violations", () => {
     expect(error).toBeInstanceOf(LandofileSandboxError);
     if (!(error instanceof LandofileSandboxError)) return;
     expect(error._tag).toBe("LandofileSandboxError");
-    expect(error.remediation).toContain("§7.1.1");
+    expect(error.remediation).toContain("Remove the disallowed");
     expect(error.violation).toContain(violationFragment);
   };
 
@@ -530,7 +530,7 @@ describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
     });
   });
 
-  test("TS export with Beta tooling field surfaces NotImplementedError matching the YAML path", async () => {
+  test("TS export with tooling field surfaces NotImplementedError matching the YAML path", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.ts"),

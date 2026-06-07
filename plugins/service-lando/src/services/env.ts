@@ -43,7 +43,7 @@ export const validateUserEnv = (serviceName: string, userEnv: Readonly<Record<st
   const reserved = Object.keys(userEnv).filter((key) => isReservedKey(key));
   if (reserved.length > 0) {
     throw new Error(
-      `User environment cannot override reserved LANDO_* keys (spec §6.9): ${reserved.join(", ")}. ` +
+      `User environment cannot override reserved LANDO_* keys: ${reserved.join(", ")}. ` +
         `Remove these from services.${serviceName}.environment; plugins use LANDO_PLUGIN_<NAME>_* instead.`,
     );
   }

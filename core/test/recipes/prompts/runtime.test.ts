@@ -637,7 +637,7 @@ describe("collectPrompts — multiselect validate.min/max", () => {
   });
 });
 
-describe("collectPrompts — non-interactive default-less prompts fail fast (spec §8.8.1)", () => {
+describe("collectPrompts — non-interactive default-less prompts fail fast", () => {
   test("--yes on a default-less confirm raises RecipeMissingAnswerError (not synthesized true)", async () => {
     const promise = collectPrompts({
       prompts: [prompt({ name: "ssl", type: "confirm", message: "Enable SSL?" })],

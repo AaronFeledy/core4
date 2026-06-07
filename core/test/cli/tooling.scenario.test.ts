@@ -841,7 +841,7 @@ const writeBunShScript = async (appRoot: string, relativePath: string, contents:
   return target;
 };
 
-describe("runTooling — .bun.sh script-backed tasks (§8.5.9)", () => {
+describe("runTooling — .bun.sh script-backed tasks", () => {
   test("runs a .lando/scripts/<name>.bun.sh task through the host engine and returns its output", async () => {
     await withAppRoot(async (root) => {
       await writeBunShScript(
@@ -1030,7 +1030,7 @@ describe("runTooling — .bun.sh script-backed tasks (§8.5.9)", () => {
       if (exit._tag !== "Failure") return;
       const flat = JSON.stringify(exit.cause);
       expect(flat).toContain("NotImplementedError");
-      expect(flat).toContain("§8.5.9");
+      expect(flat).toContain("Remove the `service:` field");
       expect(calls).toHaveLength(0);
     });
   });

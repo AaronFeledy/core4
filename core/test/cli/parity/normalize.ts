@@ -65,7 +65,6 @@ const VOLATILE_JSON_KEYS: ReadonlyArray<string> = ["timestamp", "logsDir", "cach
 
 /**
  * Strip volatile keys from a parsed JSON-renderer envelope so the stable error
- * fields (`_tag`, `code`, `commandId`, `body`, `remediation`, `specSection`)
  * can be compared for equality across the two dispatch paths.
  */
 export const normalizeJsonEnvelope = (value: unknown): Record<string, unknown> => {

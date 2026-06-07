@@ -33,7 +33,7 @@ describe("go ServiceType — supported versions and frameworks", () => {
     expect([...SUPPORTED_GO_VERSIONS]).toEqual(["1.22", "1.23"]);
   });
 
-  test("exposes none as the only supported go framework (Beta scope)", () => {
+  test("exposes none as the only supported go framework (scope)", () => {
     expect([...SUPPORTED_GO_FRAMEWORKS]).toEqual(["none"]);
   });
 });
@@ -146,7 +146,7 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.extensions["lando-service-go"]).toMatchObject({ port: 9090 });
   });
 
-  test("plan uses provider-neutral ServicePlan fields per spec §6.2 and §6.10", () => {
+  test("plan uses provider-neutral ServicePlan fields", () => {
     const service = decodeService({ type: "go:1.22" });
     const plan = go122ServiceType.toServicePlan({
       name: "web",
@@ -177,7 +177,7 @@ describe("go:1.22 ServiceType", () => {
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
   });
 
-  test("rejects framework values outside the Beta supported set with remediation", () => {
+  test("rejects framework values outside the supported set with remediation", () => {
     const service = decodeService({ type: "go:1.22", framework: "echo" });
     expect(() =>
       go122ServiceType.toServicePlan({
@@ -223,7 +223,7 @@ describe("go:1.22 ServiceType", () => {
     ).toThrow(/Set type to one of: go:1.22, go:1.23/);
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys (spec §6.9)", () => {
+  test("rejects user environment that targets reserved LANDO_* keys", () => {
     const service = decodeService({
       type: "go:1.22",
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },

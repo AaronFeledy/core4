@@ -25,7 +25,7 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return failure.value;
 };
 
-describe("RecipeManifestService.parse — happy paths (§8.8.3)", () => {
+describe("RecipeManifestService.parse — happy paths", () => {
   test("metadata: required id/title/description/version with optional authors/tags/requires", async () => {
     const yaml = `id: my-app
 title: My App
@@ -238,14 +238,14 @@ postInit:
   });
 });
 
-describe("RecipeManifestService.parse — Beta-deferred rejections (§8.8)", () => {
+describe("RecipeManifestService.parse — Beta-deferred rejections", () => {
   const baseHeader = `id: beta-rejection
-title: Beta rejection
-description: Trigger one Beta surface per case.
+title: rejection
+description: Trigger one surface per case.
 version: 0.0.1
 `;
 
-  test("prompt type `editor` is rejected with §8.8.5 remediation", async () => {
+  test("prompt type `editor` is rejected with remediation", async () => {
     const yaml = `${baseHeader}prompts:
   - name: notes
     type: editor
@@ -255,7 +255,6 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(NotImplementedError);
     if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§8.8.5");
       expect(error.message).toContain("editor");
     }
   });
@@ -295,7 +294,7 @@ version: 0.0.1
     }
   });
 
-  test("top-level `deprecated:` is rejected with §18 remediation", async () => {
+  test("top-level `deprecated:` is rejected with remediation", async () => {
     const yaml = `${baseHeader}deprecated:
   since: 4.0.0
   note: replaced by node-postgres-v2
@@ -304,12 +303,11 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(NotImplementedError);
     if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§18");
       expect(error.message).toContain("deprecated");
     }
   });
 
-  test("per-prompt `deprecated:` is rejected with §18 remediation", async () => {
+  test("per-prompt `deprecated:` is rejected with remediation", async () => {
     const yaml = `${baseHeader}prompts:
   - name: legacy
     type: text
@@ -322,12 +320,11 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(NotImplementedError);
     if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§18");
       expect(error.message).toContain("legacy");
     }
   });
 
-  test("prompt type `editor` is still rejected with §8.8.5 remediation", async () => {
+  test("prompt type `editor` is still rejected with remediation", async () => {
     const yaml = `${baseHeader}prompts:
   - name: notes
     type: editor
@@ -337,13 +334,12 @@ version: 0.0.1
     const error = expectFailure(exit);
     expect(error).toBeInstanceOf(NotImplementedError);
     if (error instanceof NotImplementedError) {
-      expect(error.specSection).toBe("§8.8.5");
       expect(error.message).toContain("editor");
     }
   });
 });
 
-describe("RecipeManifestService.parse — postInit bun verbs (§8.8.8)", () => {
+describe("RecipeManifestService.parse — postInit bun verbs", () => {
   const baseHeader = `id: bun-verbs
 title: Bun verbs
 description: Exercises each supported bun verb.
