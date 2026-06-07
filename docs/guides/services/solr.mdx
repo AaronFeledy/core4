@@ -1,0 +1,45 @@
+---
+id: solr
+provider: test
+timeout: 90000
+tags: [beta, docs, solr, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="solr-demo" />
+      <Variable name="serviceType" value="solr" display="Declare type: solr in your services block (resolves to the solr:9 image)" />
+      <Variable name="defaultImage" value="solr:9" display="Default Docker image" />
+      <Variable name="defaultPort" value="8983" display="Default HTTP port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="precreate-cores" render={false} reason="Declare cores to have Solr precreate them on boot before the foreground server starts">
+    <Step name="declare-cores">
+      <Variable name="coresField" value="cores: [default, products]" display="List cores under services.search to precreate them at start" />
+      <Variable name="precreateNote" value="precreate-core runs for each declared core before solr-foreground" display="Each declared core is created before the server accepts queries" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="admin-api" render={false} reason="The fixture can expose a tooling alias that curls the Solr admin API after start to confirm the HTTP surface is reachable">
+    <Step name="ping">
+      <Variable name="adminCommand" value="lando solr-cli /solr/admin/info/system" display="Query the Solr admin system endpoint via a tooling alias" />
+      <Variable name="healthcheck" value="curl -sf http://localhost:8983/solr/admin/info/system" display="The built-in healthcheck Lando waits on before post-start" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific Solr image when the default solr:9 image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: solr:9.6" display="Pin a specific Solr patch release via image: solr:9.6 under services.search" />
+    </Step>
+  </Scenario>
+</Guide>

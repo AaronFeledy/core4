@@ -1,0 +1,4 @@
+name: mariadb-demo
+services:
+  db:
+    type: mariadb

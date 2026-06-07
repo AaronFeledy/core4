@@ -1,0 +1,51 @@
+---
+id: go
+provider: test
+timeout: 90000
+tags: [beta, docs, go, service]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="go-demo" />
+      <Variable name="serviceType" value="go:1.23" display="Declare type: go:1.23 for the primary service (a Go service has no bare type: go alias — pin a version)" />
+      <Variable name="supportedVersions" value="go:1.22, go:1.23" display="Supported Go service versions" />
+      <Variable name="defaultImage" value="golang:1.23" display="Default Docker image, derived from the pinned version" />
+      <Variable name="defaultPort" value="8080" display="Default HTTP port the service exposes" />
+      <Variable name="appMount" value="/app" display="Your repository is bind-mounted read-write at /app, the working directory" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="primary-service" render={false} reason="A Go service named web is the primary service by default; tooling commands target it without an explicit service field">
+    <Step name="note">
+      <Variable name="primaryRule" value="A service named web is primary by default" display="Naming the service web makes it the default tooling target" />
+      <Variable name="primaryOverride" value="primary: true" display="Set primary: true on any service to make it the default command target" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="run-the-app" render={false} reason="The default keep-alive command holds the container open so you can build and run your Go program via tooling">
+    <Step name="build">
+      <Variable name="buildCommand" value="lando exec web -- go build -o /tmp/app ." display="Compile the project inside the running Go service" />
+    </Step>
+    <Step name="run">
+      <Variable name="runCommand" value="lando exec web -- go run ." display="Run the Go program inside the service" />
+      <Variable name="portNote" value="Listen on 8080 to be reached through the proxy at the app URL" display="Bind your HTTP server to the default 8080 endpoint" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Pin a different supported Go minor version, or set image to use a custom Go base image">
+    <Step name="note">
+      <Variable name="pinVersion" value="type: go:1.22" display="Pin Go 1.22 by setting type: go:1.22 under services.web" />
+      <Variable name="customImage" value="image: golang:1.23-bookworm" display="Override the base image via image: golang:1.23-bookworm under services.web" />
+    </Step>
+  </Scenario>
+</Guide>

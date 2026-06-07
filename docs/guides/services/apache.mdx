@@ -1,0 +1,39 @@
+---
+id: apache
+provider: test
+timeout: 90000
+tags: [beta, docs, apache, service, webserver]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="apache-demo" />
+      <Variable name="serviceType" value="apache" display="Declare type: apache in your services block" />
+      <Variable name="defaultImage" value="httpd:2.4-alpine" display="Default Docker image" />
+      <Variable name="defaultPort" value="80" display="Default HTTP port" />
+      <Variable name="documentRoot" value="/app" display="Your repository is mounted at /app and set as APACHE_DOCUMENT_ROOT" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="routing" render={false} reason="Documents how the service is published; the proxy derives a hostname from the HTTP endpoint without a proxy: block">
+    <Step name="urls">
+      <Variable name="autoUrl" value="web.<app>.lndo.site" display="The proxy auto-derives an HTTPS hostname from the apache service's HTTP endpoint" />
+      <Variable name="documentRootEnv" value="APACHE_DOCUMENT_ROOT=/app" display="Override the served directory by setting APACHE_DOCUMENT_ROOT under services.web.environment" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific Apache httpd version when the default httpd:2.4-alpine image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: httpd:2.4" display="Pin a Debian-based Apache httpd 2.4 via image: httpd:2.4 under services.web" />
+    </Step>
+  </Scenario>
+</Guide>

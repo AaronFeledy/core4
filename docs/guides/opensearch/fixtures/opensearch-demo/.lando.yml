@@ -1,0 +1,4 @@
+name: opensearch-demo
+services:
+  search:
+    type: opensearch

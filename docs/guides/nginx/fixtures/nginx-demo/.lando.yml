@@ -1,0 +1,4 @@
+name: nginx-demo
+services:
+  web:
+    type: nginx

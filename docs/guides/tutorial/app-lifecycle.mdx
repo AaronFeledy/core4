@@ -1,0 +1,80 @@
+---
+id: app-lifecycle
+provider: test
+timeout: 90000
+tags: [beta, docs, tutorial, lifecycle]
+---
+
+<Guide>
+  <Scenario id="everyday-loop" render>
+    <Step name="scaffold">
+      <UseFixture name="app-lifecycle-demo" />
+      <Variable name="appService" value="app" display="A node:22 service marked primary — the default target for tooling and exec" />
+      <Variable name="dbService" value="db" display="A postgres service the app depends on" />
+      <Variable name="primary" value="primary: true" display="The primary service is the default target when a command omits --service" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando app:config --format=json" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="inspect-a-running-app" render={false} reason="Documents the read-only inspection commands a user runs against a started app without provider-backed execution in the scenario harness">
+    <Step name="info">
+      <Variable name="infoCommand" value="lando info" display="Show every service, its connection details, and the app URLs" />
+      <Variable name="infoJson" value="lando info --json" display="The same data as machine-readable JSON, including scanner endpoint output verbatim" />
+    </Step>
+    <Step name="logs">
+      <Variable name="logsCommand" value="lando logs" display="Stream the combined logs of every service" />
+      <Variable name="logsFollow" value="lando logs --service app --follow" display="Follow just the primary app service's logs in real time" />
+    </Step>
+    <Step name="config">
+      <Variable name="configCommand" value="lando app:config --format=json" display="Print the fully-resolved Landofile (includes merged, templates rendered) as JSON" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="work-inside-the-app" render={false} reason="Documents the interactive/tooling commands that require a live container, which the test provider does not boot in render mode">
+    <Step name="exec">
+      <Variable name="execCommand" value="lando exec app -- node --version" display="Run a one-off command in a named service" />
+      <Variable name="execPrimary" value="lando exec -- node --version" display="Omit the service to target the primary service" />
+    </Step>
+    <Step name="ssh">
+      <Variable name="sshCommand" value="lando ssh" display="Open an interactive shell in the primary service" />
+      <Variable name="sshService" value="lando ssh --service db" display="Open a shell in a specific service" />
+    </Step>
+    <Step name="tooling">
+      <Variable name="toolingNote" value="lando <alias>" display="Tooling aliases declared under tooling: run inside their target service (e.g. lando npm install, lando psql)" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="restart-and-rebuild" render={false} reason="Documents the state-changing lifecycle commands; the render scenario above proves start and destroy against the test provider">
+    <Step name="stop-start">
+      <Variable name="stopCommand" value="lando stop" display="Stop the app's containers but keep volumes and state" />
+      <Variable name="startAgain" value="lando start" display="Bring a stopped app back up using the existing plan and volumes" />
+    </Step>
+    <Step name="restart">
+      <Variable name="restartCommand" value="lando restart" display="Stop then start in one step — the fastest way to pick up a code change that needs a fresh process" />
+    </Step>
+    <Step name="rebuild">
+      <Variable name="rebuildCommand" value="lando rebuild -y" display="Recreate containers from the current Landofile — use after changing service types, images, or build steps" />
+      <Variable name="rebuildVsRestart" value="rebuild recreates containers; restart only cycles the existing ones" display="Reach for rebuild when configuration changed, restart when only the running process needs cycling" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="tear-down" render={false} reason="Documents the destructive and multi-app commands; -y is required in non-interactive contexts">
+    <Step name="destroy">
+      <Variable name="destroyCommand" value="lando destroy -y" display="Remove the app's containers, networks, and volumes — this deletes service data" />
+    </Step>
+    <Step name="all-apps">
+      <Variable name="listCommand" value="lando apps:list" display="List every Lando app known on this host and its status" />
+      <Variable name="poweroffCommand" value="lando apps:poweroff" display="Stop every running Lando app and the shared services at once" />
+    </Step>
+  </Scenario>
+</Guide>

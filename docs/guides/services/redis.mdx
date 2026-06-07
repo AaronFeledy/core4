@@ -1,0 +1,47 @@
+---
+id: redis
+provider: test
+timeout: 90000
+tags: [beta, docs, redis, service, cache]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="redis-demo" />
+      <Variable name="serviceType" value="redis" display="Declare type: redis in your services block" />
+      <Variable name="defaultImage" value="redis:7" display="Default Docker image" />
+      <Variable name="defaultPort" value="6379" display="Default TCP port" />
+      <Variable name="persistence" value="redis-server --appendonly yes" display="The default command enables append-only persistence so cached data survives a restart" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="connection-details" render={false} reason="Documents how a dependent app reaches the cache; the default image runs without authentication for local dev">
+    <Step name="credentials">
+      <Variable name="host" value="cache" display="Connect from another service using the service name cache as the hostname" />
+      <Variable name="noAuth" value="no password by default" display="The default image runs without auth for local dev; add --requirepass via command: to require one" />
+      <Variable name="internalUrl" value="redis://cache:6379" display="Connection URL from inside the app network" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cli-access" render={false} reason="The fixture can define a tooling alias that opens redis-cli against the running cache">
+    <Step name="client">
+      <Variable name="pingCommand" value="lando redis-cli ping" display="Declare a redis-cli tooling alias targeting the cache service to verify it responds with PONG" />
+      <Variable name="setGet" value="lando redis-cli set hello world" display="Store and read keys directly from the host via the alias" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific Redis version when the default redis:7 image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: redis:6" display="Pin Redis 6 via image: redis:6 under services.cache" />
+    </Step>
+  </Scenario>
+</Guide>

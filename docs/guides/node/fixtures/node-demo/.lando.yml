@@ -1,0 +1,5 @@
+name: node-demo
+services:
+  app:
+    type: "node:22"
+    primary: true

@@ -1,0 +1,4 @@
+name: meilisearch-demo
+services:
+  search:
+    type: meilisearch

@@ -1,0 +1,48 @@
+---
+id: postgres
+provider: test
+timeout: 90000
+tags: [beta, docs, postgres, service, database]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="postgres-demo" />
+      <Variable name="serviceType" value="postgres" display="Declare type: postgres in your services block" />
+      <Variable name="defaultImage" value="postgres:16" display="Default Docker image" />
+      <Variable name="defaultPort" value="5432" display="Default TCP port" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="connection-details" render={false} reason="Documents the in-container connection credentials a dependent app uses; lando info surfaces the same values once the app is running">
+    <Step name="credentials">
+      <Variable name="host" value="db" display="Connect from another service using the service name db as the hostname" />
+      <Variable name="database" value="postgres-demo" display="Default database name — the app name (set database: under services.db to override)" />
+      <Variable name="user" value="lando" display="Default application user" />
+      <Variable name="password" value="derived per app; read it from lando info" display="The password is derived per app (lando-<hash>), so read the exact value from lando info rather than hardcoding it" />
+      <Variable name="internalUrl" value="postgresql://lando:<password>@db:5432/postgres-demo" display="Connection URL from inside the app network; substitute the password from lando info" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cli-access" render={false} reason="The fixture can define a tooling alias that opens the psql client against the running database">
+    <Step name="client">
+      <Variable name="toolingAlias" value="lando psql" display="Declare a tooling alias targeting the db service to open the psql client" />
+      <Variable name="importNote" value="lando db-import dump.sql" display="A common pattern is a db-import tooling alias that pipes a SQL file into psql" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific PostgreSQL version when the default postgres:16 image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: postgres:15" display="Pin PostgreSQL 15 via image: postgres:15 under services.db" />
+    </Step>
+  </Scenario>
+</Guide>

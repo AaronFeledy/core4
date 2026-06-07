@@ -1,0 +1,45 @@
+---
+id: nginx
+provider: test
+timeout: 90000
+tags: [beta, docs, nginx, service, webserver]
+---
+
+<Guide>
+  <Scenario id="happy-path" render>
+    <Step name="scaffold">
+      <UseFixture name="nginx-demo" />
+      <Variable name="serviceType" value="nginx" display="Declare type: nginx in your services block" />
+      <Variable name="defaultImage" value="nginx:1.26-alpine" display="Default Docker image" />
+      <Variable name="defaultPort" value="80" display="Default HTTP port" />
+      <Variable name="webroot" value="/app" display="Your repository is mounted at /app and served as the document root" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="routing" render={false} reason="Documents how the service is published; the proxy derives a hostname from the HTTP endpoint without a proxy: block">
+    <Step name="urls">
+      <Variable name="autoUrl" value="web.<app>.lndo.site" display="The proxy auto-derives an HTTPS hostname from the nginx service's HTTP endpoint" />
+      <Variable name="noProxyBlock" value="no proxy: block required" display="Routes are derived from service endpoints; you only add proxy: to customize hostnames" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="pair-with-php" render={false} reason="nginx is commonly paired with a php-fpm service; this documents the typical two-service shape">
+    <Step name="note">
+      <Variable name="pattern" value="nginx web + php app, with nginx proxying PHP requests to the app service over the per-app network" display="A common stack runs nginx for static files and forwards dynamic requests to a php service" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="version-override" render={false} reason="Use image to pin a specific nginx version when the default nginx:1.26-alpine image is not desired">
+    <Step name="note">
+      <Variable name="pinImage" value="image: nginx:1.27-alpine" display="Pin nginx 1.27 via image: nginx:1.27-alpine under services.web" />
+    </Step>
+  </Scenario>
+</Guide>

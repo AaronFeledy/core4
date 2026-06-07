@@ -1,0 +1,4 @@
+name: solr-demo
+services:
+  search:
+    type: solr

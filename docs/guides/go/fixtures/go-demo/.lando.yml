@@ -1,0 +1,4 @@
+name: go-demo
+services:
+  web:
+    type: "go:1.23"
