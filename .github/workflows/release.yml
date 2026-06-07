@@ -62,7 +62,7 @@ jobs:
           gh release delete "$RELEASE_TAG" --yes --cleanup-tag 2>/dev/null || true
           gh release create "$RELEASE_TAG" dist/lando dist/SHA256SUMS --prerelease --target "${{ github.event.workflow_run.head_sha }}" --title "Lando v4 dev ${{ github.run_number }}" --notes "Generated Linux x64 dev prerelease from successful ci workflow run ${{ github.event.workflow_run.id }}."
 
-  npm-beta-packages:
+  npm-alpha-packages:
     if: github.event.workflow_run.conclusion == 'success'
     needs: [dev-prerelease-linux-x64]
     runs-on: ubuntu-24.04
@@ -99,57 +99,42 @@ jobs:
           bun run --filter='@lando/core' typecheck
           bun run --filter='@lando/core' build:manifest
 
-      - name: Prepare beta package metadata
+      - name: Prepare alpha package metadata
         env:
-          LANDO_NPM_VERSION: 4.0.0-beta.${{ github.run_number }}
-          LANDO_NPM_DIST_TAG: next
+          LANDO_NPM_VERSION: 4.0.0-alpha.${{ github.run_number }}
+          LANDO_NPM_DIST_TAG: dev
         run: bun run scripts/prepare-npm-dev-packages.ts
 
-      - name: Dry-run npm next publishes
+      - name: Dry-run npm dev publishes
         run: |
-          npm publish --workspace @lando/sdk --dry-run --access public --tag next
-          npm publish --workspace @lando/container-runtime --dry-run --access public --tag next
-          npm publish --workspace @lando/core --dry-run --access public --tag next
-          npm publish --workspace @lando/provider-lando --dry-run --access public --tag next
-          npm publish --workspace @lando/provider-docker --dry-run --access public --tag next
-          npm publish --workspace @lando/provider-podman --dry-run --access public --tag next
-          npm publish --workspace @lando/service-lando --dry-run --access public --tag next
-          npm publish --workspace @lando/logger-pretty --dry-run --access public --tag next
-          npm publish --workspace @lando/file-sync-mutagen --dry-run --access public --tag next
-          npm publish --workspace @lando/proxy-traefik --dry-run --access public --tag next
-          npm publish --workspace @lando/template-handlebars --dry-run --access public --tag next
-          npm publish --workspace @lando/template-mustache --dry-run --access public --tag next
+          npm publish --workspace @lando/sdk --dry-run --access public --tag dev
+          npm publish --workspace @lando/container-runtime --dry-run --access public --tag dev
+          npm publish --workspace @lando/core --dry-run --access public --tag dev
+          npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
+          npm publish --workspace @lando/provider-docker --dry-run --access public --tag dev
+          npm publish --workspace @lando/provider-podman --dry-run --access public --tag dev
+          npm publish --workspace @lando/service-lando --dry-run --access public --tag dev
+          npm publish --workspace @lando/logger-pretty --dry-run --access public --tag dev
+          npm publish --workspace @lando/file-sync-mutagen --dry-run --access public --tag dev
+          npm publish --workspace @lando/proxy-traefik --dry-run --access public --tag dev
+          npm publish --workspace @lando/template-handlebars --dry-run --access public --tag dev
+          npm publish --workspace @lando/template-mustache --dry-run --access public --tag dev
 
-      - name: Publish npm next packages
+      - name: Publish npm dev packages
         run: |
           before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
-          npm publish --workspace @lando/sdk --access public --tag next --provenance
-          npm publish --workspace @lando/container-runtime --access public --tag next --provenance
-          npm publish --workspace @lando/core --access public --tag next --provenance
-          npm publish --workspace @lando/provider-lando --access public --tag next --provenance
-          npm publish --workspace @lando/provider-docker --access public --tag next --provenance
-          npm publish --workspace @lando/provider-podman --access public --tag next --provenance
-          npm publish --workspace @lando/service-lando --access public --tag next --provenance
-          npm publish --workspace @lando/logger-pretty --access public --tag next --provenance
-          npm publish --workspace @lando/file-sync-mutagen --access public --tag next --provenance
-          npm publish --workspace @lando/proxy-traefik --access public --tag next --provenance
-          npm publish --workspace @lando/template-handlebars --access public --tag next --provenance
-          npm publish --workspace @lando/template-mustache --access public --tag next --provenance
+          npm publish --workspace @lando/sdk --access public --tag dev --provenance
+          npm publish --workspace @lando/container-runtime --access public --tag dev --provenance
+          npm publish --workspace @lando/core --access public --tag dev --provenance
+          npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
+          npm publish --workspace @lando/provider-docker --access public --tag dev --provenance
+          npm publish --workspace @lando/provider-podman --access public --tag dev --provenance
+          npm publish --workspace @lando/service-lando --access public --tag dev --provenance
+          npm publish --workspace @lando/logger-pretty --access public --tag dev --provenance
+          npm publish --workspace @lando/file-sync-mutagen --access public --tag dev --provenance
+          npm publish --workspace @lando/proxy-traefik --access public --tag dev --provenance
+          npm publish --workspace @lando/template-handlebars --access public --tag dev --provenance
+          npm publish --workspace @lando/template-mustache --access public --tag dev --provenance
           after_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
           test "$before_latest" = "$after_latest"
-          npm view @lando/core dist-tags.next --json | grep -Eq '"?4\.0\.0-beta\.[0-9]+"?'
-
-      - name: Retire npm dev dist-tags
-        run: |
-          npm dist-tag rm @lando/sdk dev 2>/dev/null || true
-          npm dist-tag rm @lando/container-runtime dev 2>/dev/null || true
-          npm dist-tag rm @lando/core dev 2>/dev/null || true
-          npm dist-tag rm @lando/provider-lando dev 2>/dev/null || true
-          npm dist-tag rm @lando/provider-docker dev 2>/dev/null || true
-          npm dist-tag rm @lando/provider-podman dev 2>/dev/null || true
-          npm dist-tag rm @lando/service-lando dev 2>/dev/null || true
-          npm dist-tag rm @lando/logger-pretty dev 2>/dev/null || true
-          npm dist-tag rm @lando/file-sync-mutagen dev 2>/dev/null || true
-          npm dist-tag rm @lando/proxy-traefik dev 2>/dev/null || true
-          npm dist-tag rm @lando/template-handlebars dev 2>/dev/null || true
-          npm dist-tag rm @lando/template-mustache dev 2>/dev/null || true
+          npm view @lando/core dist-tags.dev --json | grep -Eq '"?4\.0\.0-alpha\.[0-9]+"?'

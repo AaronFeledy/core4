@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 import {
+  deriveNpmAlphaVersion,
   deriveNpmBetaVersion,
-  deriveNpmDevVersion,
   preparePackageJson,
 } from "../../../scripts/prepare-npm-dev-packages";
 
@@ -12,8 +12,8 @@ const releaseScriptPath = resolve(import.meta.dirname, "../../../scripts/release
 
 describe("npm dev package preparation", () => {
   test("derives alpha package versions for workflow runs", () => {
-    expect(deriveNpmDevVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-alpha.123");
-    expect(deriveNpmDevVersion({ LANDO_NPM_VERSION: "4.0.0-alpha.local" })).toBe("4.0.0-alpha.local");
+    expect(deriveNpmAlphaVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-alpha.123");
+    expect(deriveNpmAlphaVersion({ LANDO_NPM_VERSION: "4.0.0-alpha.local" })).toBe("4.0.0-alpha.local");
   });
 
   test("derives beta package versions for release workflow runs", () => {
@@ -70,16 +70,15 @@ describe("npm dev package preparation", () => {
     });
   });
 
-  test("release orchestrator publishes beta workspaces on next and retires dev tags", async () => {
+  test("release orchestrator publishes alpha workspaces on the dev tag", async () => {
     const source = await Bun.file(releaseScriptPath).text();
 
-    expect(source).toContain("prepareNpmBetaPackages");
-    expect(source).toContain("for (const packageName of betaPackageNames)");
+    expect(source).toContain("prepareNpmAlphaPackages");
+    expect(source).toContain("for (const packageName of releasePackageNames)");
     expect(source).toContain("bun run --filter=${packageName} build");
     expect(source).toContain(
-      "npm publish --workspace ${packageName} --access public --tag next --provenance",
+      "npm publish --workspace ${packageName} --access public --tag dev --provenance",
     );
-    expect(source).toContain("npm view @lando/core dist-tags.next --json");
-    expect(source).toContain("npm dist-tag rm ${packageName} dev 2>/dev/null || true");
+    expect(source).toContain("npm view @lando/core dist-tags.dev --json");
   });
 });

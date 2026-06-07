@@ -12,12 +12,12 @@ contract is an Effect Schema. Plugins are the unit of extension — providers,
 services, the proxy, the certificate authority, file sync, loggers, renderers,
 and template engines all ship as separate packages.
 
-> **Status: Beta.** The Phase 3 "full breadth" milestone is complete — the
+> **Status: Alpha.** The Alpha 3 "full breadth" milestone is complete — the
 > provider matrix, the canonical service catalog, file sync, the subsystems,
 > the global app, scratch apps, recipes, the full Landofile schema, the wired
 > renderer, the tooling hot path, plugin install + library API, executable
-> guides, and the 5-platform CI matrix are all shipped. Beta builds publish to
-> npm on the `next` tag as `4.0.0-beta.N`. A handful of command surfaces remain
+> guides, and the 5-platform CI matrix are all shipped. Alpha builds publish to
+> npm on the `dev` tag as `4.0.0-alpha.N`. A handful of command surfaces remain
 > deferred and throw `NotImplementedError` until their story lands — see
 > [Known limitations](#known-limitations).
 
@@ -176,10 +176,10 @@ Tracked items remaining before GA:
   Signing/notarization, SBOM, provenance, and the `curl | sh` installer manifest
   land alongside the release-secrets infrastructure.
 - **`@lando/sdk` and `@lando/core` are `private` in-repo.** Both are pinned to
-  version `0.0.0` in the working tree; the Beta publish pipeline
+  version `0.0.0` in the working tree; the alpha publish pipeline
   (`scripts/prepare-npm-dev-packages.ts` + the release workflow) rewrites
   versions and `workspace:*` ranges and publishes the full workspace surface to
-  the npm `next` tag as `4.0.0-beta.N`.
+  the npm `dev` tag as `4.0.0-alpha.N`.
 - **Some command surfaces are deferred.** A subset of commands still throw
   `NotImplementedError`/`Effect.die` until their story lands; deferred ids are
   tracked in `core/src/cli/deferred-commands.ts`.
