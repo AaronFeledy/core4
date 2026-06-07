@@ -37,7 +37,7 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return failure.value;
 };
 
-describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
+describe("resolveRecipeRef — programmatic recipe.ts", () => {
   test("committed recipe.ts (defineRecipe + Recipe type) loads with prompts/runs/fetchAllowlist/postInit", async () => {
     const recipeDir = join(FIXTURE_ROOT, "programmatic-recipe");
     const exit = await runResolve(recipeDir, FIXTURE_ROOT);
@@ -202,7 +202,7 @@ describe("resolveRecipeRef — programmatic recipe.ts (§8.8.14)", () => {
         [
           "export default {",
           '  id: "beta-prompt",',
-          '  title: "Beta prompt",',
+          '  title: "prompt",',
           '  description: "Uses a deferred prompt type.",',
           '  version: "0.0.1",',
           '  prompts: [{ name: "notes", type: "editor", message: "Edit notes" }],',

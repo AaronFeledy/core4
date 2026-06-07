@@ -646,7 +646,7 @@ describe("ci workflow", () => {
     );
   });
 
-  test("generates the Beta multi-platform build and provider integration matrix", async () => {
+  test("generates the multi-platform build and provider integration matrix", async () => {
     const workflow = await readWorkflow();
 
     for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {

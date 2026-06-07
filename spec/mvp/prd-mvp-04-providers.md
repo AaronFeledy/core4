@@ -2,11 +2,11 @@
 
 ## Introduction
 
-The runtime provider is the architectural bet of Lando v4: core never shells out to provider binaries on `PATH`. The reference provider — `@lando/provider-lando` — proves that bet by talking to a *private* Podman API socket via `Bun.spawn`-driven RPC. Per [`spec/ROADMAP.md`](../../spec/ROADMAP.md) "Why `@lando/provider-lando` must be prototyped at MVP", deferring this to Beta would risk catastrophic interface redesign.
+The runtime provider is the architectural bet of Lando v4: core never shells out to provider binaries on `PATH`. The reference provider — `@lando/provider-lando` — proves that bet by talking to a *private* Podman API socket via `Bun.spawn`-driven RPC. Per [`spec/ROADMAP.md`](../../spec/ROADMAP.md) "Why `@lando/provider-lando` must be prototyped at MVP", deferring this to Alpha 3 would risk catastrophic interface redesign.
 
 This PRD ships the two MVP-bundled providers:
 
-- **`@lando/provider-lando` (must-ship, primary):** Linux x64 only, private Podman socket, no VM lifecycle, manual Podman install on the dev box. macOS/Windows is Alpha/Beta.
+- **`@lando/provider-lando` (must-ship, primary):** Linux x64 only, private Podman socket, no VM lifecycle, manual Podman install on the dev box. macOS/Windows is Alpha 1/Alpha 3.
 - **`@lando/provider-docker` (stretch):** Linux x64 Docker Engine only, as a parallel cross-validator of the `RuntimeProvider` contract. Optional for MVP exit but recommended.
 
 Today (Phase 0):
@@ -45,7 +45,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**, **PRD-03 (Effec
 **Acceptance Criteria:**
 - [ ] Failing test in `plugins/provider-lando/test/capabilities.test.ts` (gated on `LANDO_TEST_PODMAN_SOCKET` env var being set; otherwise xfail) connects to a private Podman socket and asserts the returned `ProviderCapabilities` declares:
   - `bindMountPerformance: "native"` on Linux.
-  - `sharedCrossAppNetwork: false` (Beta capability).
+  - `sharedCrossAppNetwork: false` (Alpha 3 capability).
   - `copyOnWriteAppRoot: false` (post-GA).
   - All other capabilities populated to their MVP defaults.
 - [ ] Test asserts the introspection uses `Bun.spawn` with `unix:///path/to/socket` HTTP-over-UNIX requests — not `Bun.spawn("podman", ...)`.
@@ -90,7 +90,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**, **PRD-03 (Effec
 - [ ] Failing integration test in `plugins/provider-lando/test/bring-down.integration.test.ts` (gated on `LANDO_TEST_PODMAN_SOCKET`; otherwise xfail) brings up the fixture app, calls `bringDown`, and asserts:
   - Both containers are removed.
   - The per-app network is removed.
-  - Volumes declared in the plan are *not* removed (they survive `app:stop`; only `app:destroy` removes them — Beta).
+  - Volumes declared in the plan are *not* removed (they survive `app:stop`; only `app:destroy` removes them — Alpha 3).
   - Lifecycle events `pre-service-stop` and `post-service-stop` were published.
 - [ ] Test passes after the impl lands.
 - [ ] Typecheck/lint/whole-workspace tests pass.
@@ -150,14 +150,14 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**, **PRD-03 (Effec
 **Acceptance Criteria:**
 - [ ] Failing integration test in `plugins/provider-docker/test/contract.integration.test.ts` (gated on `LANDO_TEST_DOCKER_SOCKET=/var/run/docker.sock` or `DOCKER_HOST`; otherwise xfail) runs `runProviderContract(provider)` against the Docker provider and asserts every assertion passes.
 - [ ] Compose emission, `bringUp`, `bringDown`, `exec`, `logs`, `inspect` all use the Docker Engine HTTP API (Unix socket or TCP), not `Bun.spawn("docker", ...)`.
-- [ ] `bindMountPerformance: "slow"` is *not* declared on Linux Docker Engine (it's `"native"` — Docker Desktop on macOS would declare `"slow"`, but that's Alpha).
+- [ ] `bindMountPerformance: "slow"` is *not* declared on Linux Docker Engine (it's `"native"` — Docker Desktop on macOS would declare `"slow"`, but that's Alpha 1).
 - [ ] At MVP, this story may xfail in CI without blocking PRD-04 acceptance, *as long as* the architectural assertions (no PATH-shellout, contract-suite parameterization works) are satisfied locally on a developer machine.
 - [ ] Typecheck/lint passes for `plugins/provider-docker/` even if the integration test xfails.
 - [ ] Whole-workspace `bun test` passes (xfailed integration test does not regress the suite).
 
 ### US-011: `lando setup` (`provider-lando`) — manual-install acceptance
 
-**Description:** As MVP exit, I accept that `provider-lando` requires a manually-installed Podman binary on the dev box. The future automated `lando setup` (Alpha) downloads + verifies a pinned Podman bundle; at MVP, the provider's `setup` Effect just verifies the dev box has Podman ≥ a pinned version on PATH and that the API socket is reachable.
+**Description:** As MVP exit, I accept that `provider-lando` requires a manually-installed Podman binary on the dev box. The future automated `lando setup` (Alpha 1) downloads + verifies a pinned Podman bundle; at MVP, the provider's `setup` Effect just verifies the dev box has Podman ≥ a pinned version on PATH and that the API socket is reachable.
 
 **Acceptance Criteria:**
 - [ ] Failing integration test in `plugins/provider-lando/test/setup.integration.test.ts` runs `provider.setup()` and asserts:
@@ -165,7 +165,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**, **PRD-03 (Effec
   - Failure with `ProviderUnavailableError` (specifically a `PodmanNotInstalledError` subtype) on a box without Podman.
   - Failure with `ProviderUnavailableError` (`PodmanSocketUnreachableError`) when Podman is installed but the socket is not running.
 - [ ] Each error carries a remediation message naming the next step (e.g. "install Podman ≥ X.Y", "run `systemctl --user start podman.socket`").
-- [ ] At MVP, `setup` does *not* download a runtime bundle — that's Alpha. Document the deferral in code comments + the PRD's "Open Questions".
+- [ ] At MVP, `setup` does *not* download a runtime bundle — that's Alpha 1. Document the deferral in code comments + the PRD's "Open Questions".
 - [ ] Test passes after `setup` is implemented.
 - [ ] Typecheck/lint/whole-workspace tests pass.
 
@@ -192,22 +192,22 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**, **PRD-03 (Effec
 
 ## Non-Goals
 
-- **No macOS/Windows for `provider-lando`.** VM lifecycle (Podman machine create/start/stop), runtime bundle download, checksum verification per `spec/05-runtime-providers.md` §5.8.1 — all Alpha.
+- **No macOS/Windows for `provider-lando`.** VM lifecycle (Podman machine create/start/stop), runtime bundle download, checksum verification per `spec/05-runtime-providers.md` §5.8.1 — all Alpha 1.
 - **No Docker Desktop support.** Linux Docker Engine only at MVP for the stretch path.
-- **No Podman Desktop support.** Beta (`@lando/provider-podman`).
+- **No Podman Desktop support.** Alpha 3 (`@lando/provider-podman`).
 - **No automated `lando setup` runtime bundle.** Manual Podman install at MVP. Document the deferral.
-- **No file sync (Mutagen).** Beta — `bindMountPerformance: "slow"` providers don't exist at MVP.
-- **No shared cross-app network.** Per-app bridge only (Alpha+ for shared discovery).
-- **No build-secret / SSH-forwarding support.** Beta.
-- **No native Compose passthrough.** Beta — MVP planner emits the canonical subset only.
-- **No registry credential support.** Beta.
+- **No file sync (Mutagen).** Alpha 3 — `bindMountPerformance: "slow"` providers don't exist at MVP.
+- **No shared cross-app network.** Per-app bridge only (Alpha 1+ for shared discovery).
+- **No build-secret / SSH-forwarding support.** Alpha 3.
+- **No native Compose passthrough.** Alpha 3 — MVP planner emits the canonical subset only.
+- **No registry credential support.** Alpha 3.
 
 ## Technical Considerations
 
 - The Podman API uses the same Docker-compatible HTTP API surface — that simplifies sharing a single API client. Implementer's call whether to ship one client (with adapters) or two; either is OK.
 - HTTP-over-UNIX-socket via `Bun.spawn`: use `fetch(url, { unix: "/path/to/socket" })` if Bun's `fetch` supports it in 1.3.x; otherwise wrap a low-level UNIX socket client around `Bun.connect`.
 - Compose emission: the canonical doc shape is owned by `spec/05-runtime-providers.md`. Refer to it; do not invent new keys.
-- The MVP "manual Podman install" path means `setup`'s job is verification + remediation messaging, not installation. The Alpha path swaps the implementation; the contract stays the same.
+- The MVP "manual Podman install" path means `setup`'s job is verification + remediation messaging, not installation. The Alpha 1 path swaps the implementation; the contract stays the same.
 - Provider tests that touch real Podman/Docker are gated on env vars and run in a separate `*.integration.test.ts` suffix — vanilla `bun test` (no env vars set) skips them. **CI runs the full integration suite at MVP** — see [PRD-07](./prd-mvp-07-ci-and-binaries.md). The `provider-integration-linux-x64` job exports `LANDO_TEST_PODMAN_SOCKET` and runs every `*.integration.test.ts`. Docker integration tests stay opportunistic (xfail when no Docker socket) so contributors who enable Docker locally still get coverage without changing CI.
 
 ## Success Metrics
@@ -219,7 +219,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**, **PRD-03 (Effec
 
 ## Open Questions
 
-- The "download + verify a pinned Podman binary on first `lando setup`" path was discussed in the roadmap as a stretch even within MVP. Default for this PRD: defer to Alpha (PRD's `setup` does verification only). If the implementer wants to ship the download now, the trust-root and checksum source must be locked first — `spec/05-runtime-providers.md §5.8.1` is the spec gate, RC is the policy gate.
+- The "download + verify a pinned Podman binary on first `lando setup`" path was discussed in the roadmap as a stretch even within MVP. Default for this PRD: defer to Alpha 1 (PRD's `setup` does verification only). If the implementer wants to ship the download now, the trust-root and checksum source must be locked first — `spec/05-runtime-providers.md §5.8.1` is the spec gate, Beta 1 is the policy gate.
 - Should the Compose emitter live in `@lando/sdk` (so plugins can share it) or `@lando/core` (so plugins reach back through a service tag)? Default: `core`, exposed via a `ComposeEmitter` Effect Service tag declared in the SDK. Decide in implementation; document the choice.
-- `ServiceInfo.endpoints` shape: do we report container-internal addresses, host-published ports, or both? Default per `spec/06-services.md`: host-published ports for `lando info`'s consumption. Container-internal addresses are a Beta thing.
+- `ServiceInfo.endpoints` shape: do we report container-internal addresses, host-published ports, or both? Default per `spec/06-services.md`: host-published ports for `lando info`'s consumption. Container-internal addresses are a Alpha 3 thing.
 - Are integration tests allowed to leave Podman containers behind on failure, or must we always teardown? Default: always teardown via `Effect.acquireRelease` so a panic doesn't pollute the dev box.

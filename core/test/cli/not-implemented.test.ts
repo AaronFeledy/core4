@@ -60,8 +60,7 @@ describe("non-MVP OCLIF commands", () => {
       expect(result.exitCode, commandId).not.toBe(0);
       expect(result.stderr, commandId).toContain("NotImplementedError");
       expect(result.stderr, commandId).toContain(`commandId: ${commandId}`);
-      expect(result.stderr, commandId).toContain("spec/");
-      expect(result.stderr, commandId).toContain("See ");
+      expect(result.stderr, commandId).toContain("available");
     }
   }, 120_000);
 

@@ -4,7 +4,7 @@ import { Either, Schema } from "effect";
 
 import { FileSyncDriftError, FileSyncStartError, FileSyncStopError } from "@lando/sdk/errors";
 
-describe("FileSyncStartError (§10.6.1)", () => {
+describe("FileSyncStartError", () => {
   test("carries engineId, message, redactable sessionSpec, remediation, cause", () => {
     const error = new FileSyncStartError({
       engineId: "mutagen",
@@ -54,7 +54,7 @@ describe("FileSyncStartError (§10.6.1)", () => {
   });
 });
 
-describe("FileSyncDriftError (§10.6.1 — conflict reporting)", () => {
+describe("FileSyncDriftError", () => {
   test("carries engineId, sessionRef, conflictedPaths, suggestedMode, remediation, cause", () => {
     const error = new FileSyncDriftError({
       engineId: "mutagen",
@@ -104,7 +104,7 @@ describe("FileSyncDriftError (§10.6.1 — conflict reporting)", () => {
   });
 });
 
-describe("FileSyncStopError (§10.6.1 — terminate failure)", () => {
+describe("FileSyncStopError", () => {
   test("carries engineId, sessionRef, message, remediation, cause", () => {
     const error = new FileSyncStopError({
       engineId: "mutagen",

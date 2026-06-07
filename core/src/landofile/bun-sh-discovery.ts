@@ -31,26 +31,25 @@ export type BunShellScriptDiscoveryError =
 
 const HOST_SERVICE = ":host";
 
-const BETA_FRONT_MATTER_KEYS: ReadonlyArray<{ key: string; specSection: string }> = [
-  { key: "aliases", specSection: "§8.5.1" },
-  { key: "topLevelAlias", specSection: "§8.5.1" },
-  { key: "bootstrap", specSection: "§8.5.1" },
-  { key: "flags", specSection: "§8.5.1" },
-  { key: "args", specSection: "§8.5.1" },
-  { key: "passThrough", specSection: "§8.5.1" },
-  { key: "sources", specSection: "§8.5.6" },
-  { key: "generates", specSection: "§8.5.6" },
-  { key: "status", specSection: "§8.5.6" },
-  { key: "preconditions", specSection: "§8.5.6" },
-  { key: "run", specSection: "§8.5.6" },
-  { key: "platforms", specSection: "§8.5.1" },
-  { key: "internal", specSection: "§8.5.1" },
-  { key: "disabled", specSection: "§8.5.1" },
-  { key: "engine", specSection: "§8.5.1" },
+const BETA_FRONT_MATTER_KEYS: ReadonlyArray<{ key: string }> = [
+  { key: "aliases" },
+  { key: "topLevelAlias" },
+  { key: "bootstrap" },
+  { key: "flags" },
+  { key: "args" },
+  { key: "passThrough" },
+  { key: "sources" },
+  { key: "generates" },
+  { key: "status" },
+  { key: "preconditions" },
+  { key: "run" },
+  { key: "platforms" },
+  { key: "internal" },
+  { key: "disabled" },
+  { key: "engine" },
 ];
 
-const BETA_REMEDIATION =
-  "Remove the field from the .bun.sh front-matter; this surface is deferred to the Beta release.";
+const BETA_REMEDIATION = "Remove the field from the .bun.sh front-matter; this surface is not supported yet.";
 
 const FRONT_MATTER_REMEDIATION =
   "Wrap the front-matter in `# ---` markers, prefix every line with `# `, and use only the Alpha keys: service, desc, description, summary.";
@@ -151,16 +150,14 @@ const decodeFrontMatter = (
       }),
   )(parsed, { onExcessProperty: "error" });
 
-const detectBetaKey = (parsed: Record<string, unknown>): { key: string; specSection: string } | undefined => {
+const detectBetaKey = (parsed: Record<string, unknown>): { key: string } | undefined => {
   for (const entry of BETA_FRONT_MATTER_KEYS) {
     if (Object.hasOwn(parsed, entry.key)) return entry;
   }
   return undefined;
 };
 
-const detectBetaKeyFromBody = (
-  body: ReadonlyArray<string>,
-): { key: string; specSection: string } | undefined => {
+const detectBetaKeyFromBody = (body: ReadonlyArray<string>): { key: string } | undefined => {
   for (const raw of body) {
     if (raw === "" || /^\s/.test(raw)) continue;
     const match = raw.match(/^([A-Za-z][A-Za-z0-9_-]*):/);
@@ -239,9 +236,8 @@ const parseScriptFile = (
     if (betaFromBody !== undefined) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `.bun.sh front-matter field "${betaFromBody.key}:" at ${scriptPath} is not supported in Alpha (${betaFromBody.specSection}).`,
+          message: `.bun.sh front-matter field "${betaFromBody.key}:" at ${scriptPath} is not supported yet.`,
           commandId: "landofile.parse",
-          specSection: betaFromBody.specSection,
           remediation: BETA_REMEDIATION,
         }),
       );
@@ -263,9 +259,8 @@ const parseScriptFile = (
     if (beta !== undefined) {
       return yield* Effect.fail(
         new NotImplementedError({
-          message: `.bun.sh front-matter field "${beta.key}:" at ${scriptPath} is not supported in Alpha (${beta.specSection}).`,
+          message: `.bun.sh front-matter field "${beta.key}:" at ${scriptPath} is not supported yet.`,
           commandId: "landofile.parse",
-          specSection: beta.specSection,
           remediation: BETA_REMEDIATION,
         }),
       );

@@ -30,7 +30,7 @@ const lintFixtureWithInventory = async (
 };
 
 describe("lint:guides", () => {
-  test("accepts a guide satisfying all Alpha 2 rules", async () => {
+  test("accepts a guide satisfying all rules", async () => {
     expect(await lintFixture("green")).toEqual([]);
   });
 
@@ -54,7 +54,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("missing-hidden-reason");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/missing-hidden-reason.mdx:7:3: guide.scenario.hidden-reason: <Scenario render={false}> requires a `reason` of at least 8 characters per §19.9.",
+      "core/test/lint/guides/missing-hidden-reason.mdx:7:3: guide.scenario.hidden-reason: <Scenario render={false}> requires a `reason` of at least 8 characters.",
     ]);
   });
 
@@ -64,7 +64,7 @@ describe("lint:guides", () => {
 
   test("reports <Hidden> blocks missing a reason", async () => {
     expect(await lintFixture("hidden-missing-reason")).toEqual([
-      "core/test/lint/guides/hidden-missing-reason.mdx:9:5: guide.hidden.reason: <Hidden> requires a `reason` of at least 8 characters per §19.10.",
+      "core/test/lint/guides/hidden-missing-reason.mdx:9:5: guide.hidden.reason: <Hidden> requires a `reason` of at least 8 characters.",
     ]);
   });
 
@@ -112,7 +112,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("beta-component");
 
     expect(diagnostics[0]).toBe(
-      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Bogus> is not supported in Alpha 2. <Bogus> ships in Phase 3 Beta — see spec/ROADMAP.md.",
+      "core/test/lint/guides/beta-component.mdx:7:3: guide.component.beta: <Bogus> is not supported yet.",
     );
   });
 
@@ -122,7 +122,7 @@ describe("lint:guides", () => {
 
   test("reports <Skip> blocks missing or short reasons", async () => {
     expect(await lintFixture("skip-missing-reason")).toEqual([
-      "core/test/lint/guides/skip-missing-reason.mdx:9:5: guide.skip.reason: <Skip> requires a `reason` of at least 8 characters per §19.10.",
+      "core/test/lint/guides/skip-missing-reason.mdx:9:5: guide.skip.reason: <Skip> requires a `reason` of at least 8 characters.",
     ]);
   });
 
@@ -132,7 +132,7 @@ describe("lint:guides", () => {
 
   test("reports <Inline> components missing or short justifications", async () => {
     expect(await lintFixture("inline-missing-justification")).toEqual([
-      "core/test/lint/guides/inline-missing-justification.mdx:11:7: guide.inline.justification: <Inline> requires a `justification` of at least 8 characters per §19.10.",
+      "core/test/lint/guides/inline-missing-justification.mdx:11:7: guide.inline.justification: <Inline> requires a `justification` of at least 8 characters.",
     ]);
   });
 
@@ -199,7 +199,7 @@ describe("lint:guides", () => {
     const diagnostics = await lintFixture("beta-inline-component");
 
     expect(diagnostics).toEqual([
-      "core/test/lint/guides/beta-inline-component.mdx:9:33: guide.component.beta: <Bogus> is not supported in Alpha 2. <Bogus> ships in Phase 3 Beta — see spec/ROADMAP.md.",
+      "core/test/lint/guides/beta-inline-component.mdx:9:33: guide.component.beta: <Bogus> is not supported yet.",
     ]);
   });
 
@@ -270,7 +270,7 @@ describe("lint:guides", () => {
 
   test("reports a <UseFixture> that resolves to no fixture directory", async () => {
     expect(await lintFixtureWithInventory("fixture-demo", [])).toEqual([
-      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory per §19.9.',
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory.',
     ]);
   });
 
@@ -285,7 +285,7 @@ describe("lint:guides", () => {
         },
       ]),
     ).toEqual([
-      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory per §19.9.',
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.missing: <UseFixture name="demo"> does not resolve to a fixture directory.',
     ]);
   });
 
@@ -314,7 +314,7 @@ describe("lint:guides", () => {
         },
       ]),
     ).toEqual([
-      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.symlink: Fixture "demo" contains a symbolic link at "docs/guides/fixture-demo/fixtures/demo/link" and cannot be copied immutably per §19.9.',
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.symlink: Fixture "demo" contains a symbolic link at "docs/guides/fixture-demo/fixtures/demo/link" and cannot be copied immutably.',
     ]);
   });
 
@@ -329,7 +329,7 @@ describe("lint:guides", () => {
         },
       ]),
     ).toEqual([
-      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.symlink: Fixture "demo" contains a symbolic link at "docs/guides/fixture-demo/fixtures/demo" and cannot be copied immutably per §19.9.',
+      'core/test/lint/guides/fixture-demo.mdx:10:7: guide.fixture.symlink: Fixture "demo" contains a symbolic link at "docs/guides/fixture-demo/fixtures/demo" and cannot be copied immutably.',
     ]);
   });
 
@@ -350,7 +350,7 @@ describe("lint:guides", () => {
         },
       ]),
     ).toEqual([
-      'core/test/lint/guides/fixture-demo.mdx:7:1: guide.fixture.unused: Fixture "orphan" is not referenced by any <UseFixture> in guide "fixture-demo" per §19.10.',
+      'core/test/lint/guides/fixture-demo.mdx:7:1: guide.fixture.unused: Fixture "orphan" is not referenced by any <UseFixture> in guide "fixture-demo".',
     ]);
   });
 

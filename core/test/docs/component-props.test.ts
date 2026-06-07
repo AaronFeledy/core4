@@ -42,11 +42,10 @@ const expectNotImplemented = (decoded: Either.Either<unknown, unknown>, key: str
   expect(decoded.left).toBeInstanceOf(NotImplementedError);
   expect(decoded.left).toMatchObject({ _tag: "NotImplementedError" });
   expect(String(decoded.left.message)).toContain(key);
-  expect(String(decoded.left.remediation)).toContain("Phase 3 Beta");
-  expect(String(decoded.left.remediation)).toContain("spec/ROADMAP.md");
+  expect(String(decoded.left.remediation)).toContain("Unsupported guide component prop");
 };
 
-describe("Alpha 2 component prop schemas", () => {
+describe("component prop schemas", () => {
   test("accepts Guide, Step, Cleanup, Variable, Hidden, and UseFixture props", () => {
     expect(Schema.decodeUnknownSync(GuideProps)({})).toEqual({});
     expect(Schema.decodeUnknownSync(StepProps)({ name: "install-deps" })).toEqual({ name: "install-deps" });
@@ -103,7 +102,7 @@ describe("Alpha 2 component prop schemas", () => {
     expectNotImplemented(decodeScenarioPropsEither({ id: "reader", layer: "e2e" }), "layer");
   });
 
-  test("accepts Run command or shell and rejects Beta runtime/tooling variants", () => {
+  test("accepts Run command or shell and rejects runtime/tooling variants", () => {
     expect(
       expectRight(decodeRunPropsEither({ command: "lando start", answers: { name: "node-postgres" } })),
     ).toEqual({
@@ -137,7 +136,7 @@ describe("Alpha 2 component prop schemas", () => {
     expectNotImplemented(decodeRunPropsEither({ tooling: "npm" }), "tooling");
   });
 
-  test("accepts Verify targets and Alpha 2 matcher subset", () => {
+  test("accepts Verify targets and matcher subset", () => {
     expect(
       expectRight(decodeVerifyPropsEither({ event: "post-start", expect: { regex: "started" } })),
     ).toEqual({
@@ -298,8 +297,7 @@ describe("Alpha 2 component prop schemas", () => {
         expect(error).toBeInstanceOf(NotImplementedError);
         if (!(error instanceof NotImplementedError)) return;
         expect(error.commandId).toBe(`guide.component.${componentName.toLowerCase()}`);
-        expect(error.specSection).toBe("§19.3");
-        expect(error.remediation).toBe(`<${componentName}> ships in Phase 3 Beta — see \`spec/ROADMAP.md\`.`);
+        expect(error.remediation).toBe(`<${componentName}> is not supported yet.`);
       }
     },
   );

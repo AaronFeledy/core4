@@ -171,7 +171,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.extensions["lando-service-ruby"]).toMatchObject({ port: 4000 });
   });
 
-  test("plan uses provider-neutral ServicePlan fields per spec §6.2 and §6.10", () => {
+  test("plan uses provider-neutral ServicePlan fields", () => {
     const service = decodeService({ type: "ruby:3.3", framework: "rails" });
     const plan = ruby33ServiceType.toServicePlan({
       name: "web",
@@ -235,7 +235,7 @@ describe("ruby:3.3 ServiceType", () => {
     ).toThrow(/Set type to one of: ruby:3.3/);
   });
 
-  test("rejects user environment that targets reserved LANDO_* keys (spec §6.9)", () => {
+  test("rejects user environment that targets reserved LANDO_* keys", () => {
     const service = decodeService({
       type: "ruby:3.3",
       environment: { LANDO_PROJECT: "evil", FOO: "bar" },

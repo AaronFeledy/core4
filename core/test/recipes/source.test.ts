@@ -36,7 +36,7 @@ const expectFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
   return failure.value;
 };
 
-describe("resolveRecipeRef — built-in (bundled) discovery (§8.8.4)", () => {
+describe("resolveRecipeRef — built-in (bundled) discovery", () => {
   test("bare id resolves to the bundled node-postgres recipe", async () => {
     const exit = await runResolve("node-postgres", process.cwd());
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -59,7 +59,7 @@ describe("resolveRecipeRef — built-in (bundled) discovery (§8.8.4)", () => {
   });
 });
 
-describe("resolveRecipeRef — local cwd discovery (§8.8.4)", () => {
+describe("resolveRecipeRef — local cwd discovery", () => {
   test("./relative path resolves recipe.yml under that directory", async () => {
     await withTempCwd(async (dir) => {
       const recipeDir = join(dir, "my-recipe");
@@ -102,7 +102,7 @@ version: 0.0.1
     });
   });
 
-  test("local recipe.yml with id mismatching directory basename fails with RecipeManifestValidationError (§8.8.3)", async () => {
+  test("local recipe.yml with id mismatching directory basename fails with RecipeManifestValidationError", async () => {
     await withTempCwd(async (dir) => {
       const recipeDir = join(dir, "expected-id");
       await Bun.write(
@@ -160,7 +160,7 @@ version: 0.0.1
   });
 });
 
-describe("resolveRecipeRef — deferred remote sources (§8.8.4)", () => {
+describe("resolveRecipeRef — deferred remote sources", () => {
   const REMOTE_REFS: ReadonlyArray<{ readonly scheme: string; readonly ref: string }> = [
     { scheme: "github", ref: "github:lando/wordpress" },
     { scheme: "github", ref: "github:lando/wordpress/path@main" },
@@ -178,14 +178,13 @@ describe("resolveRecipeRef — deferred remote sources (§8.8.4)", () => {
   ];
 
   for (const { scheme, ref } of REMOTE_REFS) {
-    test(`${ref} fails with NotImplementedError + Beta remediation`, async () => {
+    test(`${ref} fails with NotImplementedError + remediation`, async () => {
       const exit = await runResolve(ref, process.cwd());
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(NotImplementedError);
       if (failure instanceof NotImplementedError) {
         expect(failure.commandId).toBe("recipe.source.resolve");
-        expect(failure.specSection).toBe("§8.8.4");
-        expect(failure.remediation).toContain("deferred to the Beta release");
+        expect(failure.remediation).toContain("not supported yet");
         expect(failure.message).toContain(`"${scheme}"`);
         expect(failure.message).toContain(`"${ref}"`);
       }

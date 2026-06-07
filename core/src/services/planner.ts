@@ -293,7 +293,6 @@ const rejectGlobalScope = (
   new NotImplementedError({
     message: `Service ${serviceName} declares storage scope: global at services.${serviceName}.storage[${entry.index}]${entry.store ? ` (store ${entry.store})` : ""} in ${appRoot}/.lando.yml.`,
     commandId: "landofile.parse",
-    specSection: "§6.5",
     remediation: GLOBAL_SCOPE_REMEDIATION,
   });
 

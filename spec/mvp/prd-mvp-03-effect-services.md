@@ -46,7 +46,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
 
 ### US-002: `ShellRunner` Live implementation (`Bun.$`)
 
-**Description:** As the future `host` ToolingEngine (deferred to Alpha but the contract lives now), I need `ShellRunner.exec(cmdString, { cwd, env })` that runs through Bun's shell API and returns the same `{ stdout, stderr, exitCode }` shape as `ProcessRunner`.
+**Description:** As the future `host` ToolingEngine (deferred to Alpha 1 but the contract lives now), I need `ShellRunner.exec(cmdString, { cwd, env })` that runs through Bun's shell API and returns the same `{ stdout, stderr, exitCode }` shape as `ProcessRunner`.
 
 **Acceptance Criteria:**
 - [ ] Failing test in `core/test/services/shell-runner.test.ts` runs `Effect.flatMap(ShellRunner, s => s.exec("echo $FOO", { env: { FOO: "bar" } }))` and asserts `stdout === "bar\n"`.
@@ -101,7 +101,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
 - [ ] Failing test in `core/test/services/event-service.test.ts` subscribes a handler, publishes a `pre-app-start` event, and asserts the handler ran with the typed payload.
 - [ ] Test asserts published events go to *every* active subscriber (fan-out).
 - [ ] Test asserts a subscriber's failure does *not* abort the publish (errors logged, not propagated — `EventError` raised from publish only on the bus itself failing).
-- [ ] No priority bands at MVP (Alpha+); subscribers fire in registration order.
+- [ ] No priority bands at MVP (Alpha 1+); subscribers fire in registration order.
 - [ ] Subscriptions are scope-bound — when their owning Effect Scope closes, the handler is unregistered.
 - [ ] Live impl lives at `core/src/services/event-service.ts`; test passes after impl lands.
 - [ ] Typecheck/lint/whole-workspace tests pass.
@@ -119,7 +119,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
 
 ### US-008: `CacheService` Live implementation (in-memory)
 
-**Description:** As `AppPlanner` (and future Beta consumers), I need `CacheService.get<T>(key, schema)` and `set(key, value, ttlMs?)` that round-trip through Effect Schema and live in-memory only at MVP.
+**Description:** As `AppPlanner` (and future Alpha 3 consumers), I need `CacheService.get<T>(key, schema)` and `set(key, value, ttlMs?)` that round-trip through Effect Schema and live in-memory only at MVP.
 
 **Acceptance Criteria:**
 - [ ] Failing test in `core/test/services/cache.test.ts` sets a value, gets it back, and asserts equality after schema decode.
@@ -165,7 +165,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
   - One bind mount of the app root → `/app` (or similar canonical mount point).
   - Endpoints derived from each service's published ports.
   - `providerId: "lando"`.
-- [ ] Test asserts that planning against a capability fixture with `bindMountPerformance: "slow"` does *not* swap the bind mount for a Mutagen volume (Mutagen is Beta).
+- [ ] Test asserts that planning against a capability fixture with `bindMountPerformance: "slow"` does *not* swap the bind mount for a Mutagen volume (Mutagen is Alpha 3).
 - [ ] Test asserts an unknown `serviceType` fails with `LandofileValidationError` (delegated through the Landofile schema; this test pins the propagation).
 - [ ] Live impl lives at `core/src/services/planner.ts` (file already exists as a stub); test passes after impl lands.
 - [ ] Typecheck/lint/whole-workspace tests pass.
@@ -181,7 +181,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
   - Each invocation passed the right service plan.
 - [ ] Test asserts a service whose build fails causes the orchestrator to short-circuit — subsequent services are *not* built — and the failure is propagated as the original tagged error.
 - [ ] Test asserts pre-build/post-build lifecycle events are published per service.
-- [ ] No group weighting at MVP — that is Beta (`spec/06-services.md` group ordering).
+- [ ] No group weighting at MVP — that is Alpha 3 (`spec/06-services.md` group ordering).
 - [ ] Live impl lives at `core/src/services/build-orchestrator.ts`; test passes after impl lands.
 - [ ] Typecheck/lint/whole-workspace tests pass.
 
@@ -192,21 +192,21 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
 - FR-3: Every method's failure channel is typed against `@lando/sdk/errors`. No `unknown`, no bare `Error`, no `string`.
 - FR-4: `ProcessRunner` and `ShellRunner` are the only services that call `Bun.spawn` and `Bun.$`. `FileSystem` is the only service that calls `Bun.file` / `Bun.write`. Other services use these three.
 - FR-5: `EventService` subscriptions are scope-bound; when the owning Scope closes, the subscription is removed.
-- FR-6: `CacheService` is in-memory at MVP; persistence ships in Alpha. The interface must already accept a `schema` parameter so persistence can be added without an interface change.
+- FR-6: `CacheService` is in-memory at MVP; persistence ships in Alpha 1. The interface must already accept a `schema` parameter so persistence can be added without an interface change.
 - FR-7: `PluginRegistry` reads only `BUNDLED_PLUGINS`; FS scanning, dynamic imports, and remote sources are forbidden at MVP.
 - FR-8: `RuntimeProviderRegistry` derives the active provider from `ConfigService.get("defaultProviderId")` and `PluginRegistry.list`.
 - FR-9: Each service's Live Layer is *idempotent* under double-build (`Layer.merge(L, L)` produces the same effective service).
 
 ## Non-Goals
 
-- No persistent caches (Alpha).
-- No plugin discovery beyond `BUNDLED_PLUGINS` (Alpha).
-- No event priority bands, no event payload schema validation beyond the start/stop set (Beta).
-- No `tooling` bootstrap level work (cache-only app-plan read — Beta).
-- No `ProxyService`, `CertificateAuthority`, `SshService`, `HealthcheckService`, `ScannerService`, `HostProxyService` (Beta).
-- No `SecretStore` (Beta).
-- No `DeprecationService` (RC).
-- No telemetry hooks (RC).
+- No persistent caches (Alpha 1).
+- No plugin discovery beyond `BUNDLED_PLUGINS` (Alpha 1).
+- No event priority bands, no event payload schema validation beyond the start/stop set (Alpha 3).
+- No `tooling` bootstrap level work (cache-only app-plan read — Alpha 3).
+- No `ProxyService`, `CertificateAuthority`, `SshService`, `HealthcheckService`, `ScannerService`, `HostProxyService` (Alpha 3).
+- No `SecretStore` (Alpha 3).
+- No `DeprecationService` (Beta 1).
+- No telemetry hooks (Beta 1).
 
 ## Technical Considerations
 
@@ -226,6 +226,6 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation)**.
 
 ## Open Questions
 
-- Bun shipped a built-in YAML parser experimentally in some 1.3.x releases — does it cover the MVP Landofile shape, or do we add the `yaml` package? Default: add `yaml` as a core dep; revisit at Alpha.
+- Bun shipped a built-in YAML parser experimentally in some 1.3.x releases — does it cover the MVP Landofile shape, or do we add the `yaml` package? Default: add `yaml` as a core dep; revisit at Alpha 1.
 - Should `Logger` accept structured fields (e.g. `Logger.info("event", { appId, serviceName })`)? Default: yes — Effect's logger already supports structured annotations; expose them.
-- `EventService` failure semantics on a slow subscriber: at MVP we run sequentially per-publish. Beta may add concurrency bands. Document the slow-subscriber risk in code comments.
+- `EventService` failure semantics on a slow subscriber: at MVP we run sequentially per-publish. Alpha 3 may add concurrency bands. Document the slow-subscriber risk in code comments.

@@ -33,8 +33,8 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
   },
 };
 
-describe("LandofileShape — Beta schema gate", () => {
-  test("JSON Schema exposes every shipped Beta top-level Landofile key", () => {
+describe("LandofileShape — schema gate", () => {
+  test("JSON Schema exposes every shipped top-level Landofile key", () => {
     const schema = getJsonSchema("LandofileShape") as { readonly properties?: Record<string, unknown> };
     const properties = schema.properties ?? {};
 

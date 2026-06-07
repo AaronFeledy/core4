@@ -234,7 +234,7 @@ describe("runServiceContract", () => {
     });
     await expectServiceContractFailure(
       withoutLandoEnv,
-      "service plan environment contains the §6.9 LANDO_* identity keys",
+      "service plan environment contains the LANDO_* identity keys",
     );
   });
 

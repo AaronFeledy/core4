@@ -130,8 +130,7 @@ const e2eLayerError = (): NotImplementedError =>
   new NotImplementedError({
     message: "Guide frontmatter `defaultLayer: e2e` is not supported in Alpha 2.",
     commandId: "guide.frontmatter",
-    specSection: "§19.11",
-    remediation: "Guide e2e scenarios ship in Phase 3 Beta per §19.11 — see `spec/ROADMAP.md`.",
+    remediation: "Guide e2e scenarios are not supported yet.",
   });
 
 const findDeferredGuideFrontmatter = (input: unknown): NotImplementedError | undefined => {

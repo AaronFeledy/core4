@@ -233,7 +233,6 @@ describe("discoverBunShellScripts", () => {
       );
       const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
       expect(failure._tag).toBe("NotImplementedError");
-      expect(failure.specSection).toBe("§8.5.6");
       expect(failure.commandId).toBe("landofile.parse");
     });
   });
@@ -256,7 +255,6 @@ describe("discoverBunShellScripts", () => {
       );
       const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
       expect(failure._tag).toBe("NotImplementedError");
-      expect(failure.specSection).toBe("§8.5.1");
       expect(failure.commandId).toBe("landofile.parse");
     });
   });
@@ -277,7 +275,6 @@ describe("discoverBunShellScripts", () => {
       );
       const failure = await expectFailureTag(discoverBunShellScripts({ appRoot: root }));
       expect(failure._tag).toBe("NotImplementedError");
-      expect(failure.specSection).toBe("§8.5.1");
       expect(failure.commandId).toBe("landofile.parse");
     });
   });

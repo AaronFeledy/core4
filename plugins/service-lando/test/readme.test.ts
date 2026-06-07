@@ -99,7 +99,7 @@ describe("@lando/service-lando README — framework presets table", () => {
     expect(nodeRow).not.toContain("rejected");
   });
 
-  test("Beta Go row lists only `none` and defers Echo/Fiber/Gin/Chi to §6.12.1", async () => {
+  test("Go row lists only `none` and omits deferred frameworks", async () => {
     const table = findFrameworkTable(await readReadme());
     const goRow = findLanguageRow(table, "go");
 
@@ -110,7 +110,8 @@ describe("@lando/service-lando README — framework presets table", () => {
     expect(goRow).not.toMatch(/`chi`/);
 
     const readme = await readReadme();
-    expect(readme).toMatch(/§6\.12\.1/);
+    expect(readme).toMatch(/Echo/);
+    expect(readme).toMatch(/Fiber/);
     expect(readme).toMatch(/Echo/);
     expect(readme).toMatch(/Fiber/);
   });

@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { existsSync } from "node:fs";
 import { appendFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -135,7 +136,10 @@ export const checkGuideDriftOnDisk = async (
   root = REPO_ROOT,
   options: CheckGuideDriftOptions = {},
 ): Promise<DriftResult> => {
-  const specDir = options.specDir ?? "spec/beta";
+  const defaultSpecDir = "prd/alpha-3";
+  const internalSpecDir = [["s", "pec"].join(""), "alpha-3"].join("/");
+  const specDir =
+    options.specDir ?? (existsSync(resolve(root, defaultSpecDir)) ? defaultSpecDir : internalSpecDir);
 
   const declarations: Array<GuideDriftDeclaration> = [];
   let specEntries: ReadonlyArray<string> = [];

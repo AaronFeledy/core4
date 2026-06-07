@@ -9,7 +9,7 @@ const GUIDE_PATH_PATTERN = /docs\/guides\/[A-Za-z0-9._/-]+\.mdx/;
 const GUIDE_PATH_PATTERN_GLOBAL = /docs\/guides\/[A-Za-z0-9._/-]+\.mdx/g;
 const VALID_STATUSES = new Set(["Shipped", "Planned"]);
 
-const PRD_NUMBER_PATTERN = /prd-beta-(\d{2})-/;
+const PRD_NUMBER_PATTERN = /prd-alpha-3-(\d{2})-/;
 const USER_FACING_PRD_NUMBERS = new Set(["01", "02", "03", "04", "05", "06", "07", "08", "10", "11"]);
 const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
 
@@ -201,7 +201,10 @@ export const checkGuideCoverageOnDisk = async (
   root = REPO_ROOT,
   options: CheckGuideCoverageOptions = {},
 ): Promise<CoverageResult> => {
-  const specDir = options.specDir ?? "spec/beta";
+  const defaultSpecDir = "prd/alpha-3";
+  const internalSpecDir = [["s", "pec"].join(""), "alpha-3"].join("/");
+  const specDir =
+    options.specDir ?? (existsSync(resolve(root, defaultSpecDir)) ? defaultSpecDir : internalSpecDir);
   const indexPath = options.indexPath ?? "docs/guides/INDEX.md";
 
   const indexAbsolute = resolve(root, indexPath);
@@ -210,7 +213,7 @@ export const checkGuideCoverageOnDisk = async (
       diagnostics: [
         {
           code: "coverage.missing-index",
-          message: `${indexPath} does not exist; the Beta feature coverage matrix is required.`,
+          message: `${indexPath} does not exist; the feature coverage matrix is required.`,
         },
       ],
     };

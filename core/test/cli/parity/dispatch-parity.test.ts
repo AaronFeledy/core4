@@ -1,13 +1,13 @@
 /**
- * Compiled-binary dispatch parity test layer (§13.1).
+ * Compiled-binary dispatch parity test layer.
  *
- * The §14.2 "Compiled-binary CLI dispatch unification" decision resolved to
- * option (b): the spike (§14 Appendix D.1) proved `@oclif/core`'s `execute()`
+ * The compiled-binary CLI dispatch unification decision resolved to
+ * option (b): the spike proved `@oclif/core`'s `execute()`
  * cannot dispatch inside a `bun build --compile` single-file binary, so the two
  * dispatch paths — source-mode OCLIF `execute()` and the compiled hand-rolled
- * `runCompiledCli` (§8.4.1) — are permanent. §8.4.1's parity rules are therefore
+ * `runCompiledCli` — are permanent. The parity rules are therefore
  * normative, and THIS layer enforces them across every canonical command id in
- * the compiled registry (`MVP_COMMAND_IDS` plus the §17.1 stage-7
+ * the compiled registry (`MVP_COMMAND_IDS` plus the stage-7
  * deferred-command set).
  *
  * Two parts:
@@ -49,7 +49,7 @@ const runSource = readFileSync(runSourcePath, "utf-8");
 
 /**
  * A canonical id has a compiled-dispatch branch when `runCompiledCli` compares
- * `argv[0]` against it (the `argv[0] === "<id>"` switch that §8.4.1 mandates).
+ * `argv[0]` against it (the `argv[0] === "<id>"` switch).
  *
  * The match is anchored to the actual dispatch comparison rather than a bare
  * quoted literal: several canonical ids legitimately appear elsewhere in
@@ -63,7 +63,7 @@ const hasCompiledDispatchBranch = (id: string): boolean => {
   return new RegExp(`argv\\[0\\]\\s*===\\s*"${escaped}"`).test(runSource);
 };
 
-describe("compiled-binary dispatch parity — structural (§8.4.1, §13.1)", () => {
+describe("compiled-binary dispatch parity — structural", () => {
   test("the canonical command-id universe is non-empty and fully canonical", () => {
     expect(CANONICAL_IDS.length).toBeGreaterThan(0);
     for (const id of CANONICAL_IDS) {
@@ -92,10 +92,7 @@ describe("compiled-binary dispatch parity — structural (§8.4.1, §13.1)", () 
 
   test("every MVP canonical id has a compiled-dispatch branch in run.ts", () => {
     const missing = MVP_IDS.filter((id) => !hasCompiledDispatchBranch(id));
-    expect(
-      missing,
-      "every MVP id must have an argv[0] dispatch branch in core/src/cli/run.ts (§8.4.1 parity rule)",
-    ).toEqual([]);
+    expect(missing, "every MVP id must have an argv[0] dispatch branch in core/src/cli/run.ts").toEqual([]);
   });
 
   test("every deferred canonical id has a registered plan and no bespoke dispatch branch", () => {
@@ -152,7 +149,7 @@ const lastJsonLine = (output: string): unknown => {
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
-describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral (§13.1)", () => {
+describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", () => {
   beforeAll(async () => {
     if (!(await Bun.file(compiledBinary).exists())) {
       const build = await runProcess([process.execPath, "run", "build:compile"], { cwd: coreRoot });

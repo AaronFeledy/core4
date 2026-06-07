@@ -101,8 +101,6 @@ const extractExtraTagFields = (
   if (record === undefined) return [];
   const out: Array<[string, string]> = [];
   const tag = asString(record._tag);
-  const specSection = asString(record.specSection);
-  if (specSection !== undefined) out.push(["specSection", specSection]);
   if (tag === "LandofileParseError") {
     const filePath = asString(record.filePath);
     if (filePath !== undefined) out.push(["filePath", filePath]);

@@ -109,7 +109,7 @@ describe("resolveRuntimeBundleEntry", () => {
     expect(failure).toBeInstanceOf(ProviderUnavailableError);
     const provider = failure as ProviderUnavailableError;
     expect(provider.message).toContain("win32-arm64");
-    expect(provider.remediation).toContain("§5.8.1");
+    expect(provider.remediation).toContain("lando setup");
   });
 });
 
@@ -120,9 +120,9 @@ describe("ProviderBundleChecksumError", () => {
     expect(err).toBeInstanceOf(ProviderBundleChecksumError);
   });
 
-  test("remediation cites spec §5.8.1 and instructs the user to rerun `lando setup`", () => {
+  test("remediation cites section 5.8.1 and instructs the user to rerun `lando setup`", () => {
     const err = new ProviderBundleChecksumError("test");
-    expect(err.remediation).toContain("§5.8.1");
+    expect(err.remediation).toContain("lando setup");
     expect(err.remediation).toContain("`lando setup`");
   });
 
@@ -275,7 +275,7 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
       expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
       const checksum = failure as ProviderBundleChecksumError;
-      expect(checksum.remediation).toContain("§5.8.1");
+      expect(checksum.remediation).toContain("lando setup");
       expect(checksum.message).toContain(entry.filename);
 
       const cachePath = runtimeBundleCachePath(stateDir, entry);
@@ -304,7 +304,7 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
       const provider = failure as ProviderUnavailableError;
       expect(provider.message).toContain("download");
-      expect(provider.remediation).toContain("§5.8.1");
+      expect(provider.remediation).toContain("lando setup");
 
       const cachePath = runtimeBundleCachePath(stateDir, entry);
       const onDisk = await readFile(cachePath).catch(() => undefined);
@@ -329,7 +329,7 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
       expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
-      expect((failure as ProviderUnavailableError).remediation).toContain("§5.8.1");
+      expect((failure as ProviderUnavailableError).remediation).toContain("lando setup");
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
@@ -355,7 +355,7 @@ describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifes
       const exit = await Effect.runPromiseExit(downloader.download);
       const failure = expectFailure(exit);
       expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
-      expect((failure as ProviderBundleChecksumError).remediation).toContain("§5.8.1");
+      expect((failure as ProviderBundleChecksumError).remediation).toContain("lando setup");
       expect(log.calls).toBe(1);
       expect(log.urls[0]).toBe(entry.url);
     } finally {

@@ -282,7 +282,7 @@ describe("runPostInit — bun.install", () => {
     expect(out).not.toContain("hunter3");
   });
 
-  test("rejects bun action with `when:` set as Beta NotImplementedError", async () => {
+  test("rejects bun action with `when:` set as NotImplementedError", async () => {
     await withTempDir(async (dir) => {
       await writePackageJson(dir);
       const { spawner, calls } = makeFakeSpawner(0);
@@ -906,7 +906,7 @@ describe("runPostInit — message", () => {
 });
 
 describe("runPostInit — Beta-deferred action types", () => {
-  test("gitInit returns Beta NotImplementedError without running it", async () => {
+  test("gitInit returns NotImplementedError without running it", async () => {
     await withTempDir(async (dir) => {
       let caught: unknown;
       try {

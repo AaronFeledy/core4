@@ -17,7 +17,6 @@ const deferredLogsError = (message: string, remediation: string): NotImplemented
   new NotImplementedError({
     message,
     commandId: "app:logs",
-    specSection: "spec/08-cli-and-tooling.md",
     remediation,
   });
 
@@ -27,7 +26,7 @@ export const LOGS_FOLLOW_DEFERRED = deferredLogsError(
 );
 
 export const LOGS_SINCE_DEFERRED = deferredLogsError(
-  "`lando logs --since` is deferred to Beta (provider LogOptions does not yet expose a since cursor).",
+  "`lando logs --since` is deferred to (provider LogOptions does not yet expose a since cursor).",
   "Drop --since and use --tail <N> for a finite recent snapshot.",
 );
 

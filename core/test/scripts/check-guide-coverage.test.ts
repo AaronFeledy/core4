@@ -40,7 +40,7 @@ ${rows.map((r) => `| ${r.story} | ${r.feature} | \`${r.path}\` | Required at sto
 ## Open Questions
 `;
 
-const indexDoc = (rows: ReadonlyArray<GuideCoverageRow>): string => `# Beta Feature Coverage Matrix
+const indexDoc = (rows: ReadonlyArray<GuideCoverageRow>): string => `# Feature Coverage Matrix
 
 | PRD | User Story | Feature | Guide Path | Status |
 |---|---|---|---|---|
@@ -159,7 +159,7 @@ describe("check:guide-coverage", () => {
 
   test("a green INDEX.md (all shipped guides present and on disk) passes", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md": prdSection([
+      "prd/alpha-3/prd-alpha-3-01-providers.md": prdSection([
         { story: "US-074", feature: "Foo", path: "docs/guides/setup/foo.mdx" },
       ]),
       "docs/guides/setup/foo.mdx": "---\nid: foo\n---\n",
@@ -183,7 +183,7 @@ describe("check:guide-coverage", () => {
 
   test("a missing guide file behind a Shipped INDEX row fails", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md": prdSection([
+      "prd/alpha-3/prd-alpha-3-01-providers.md": prdSection([
         { story: "US-074", feature: "Foo", path: "docs/guides/setup/foo.mdx" },
       ]),
       "docs/guides/INDEX.md": indexDoc([
@@ -207,7 +207,7 @@ describe("check:guide-coverage", () => {
 
   test("a PRD-declared guide that exists but is absent from INDEX fails", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md": prdSection([
+      "prd/alpha-3/prd-alpha-3-01-providers.md": prdSection([
         { story: "US-074", feature: "Foo", path: "docs/guides/setup/foo.mdx" },
       ]),
       "docs/guides/setup/foo.mdx": "---\nid: foo\n---\n",
@@ -224,7 +224,7 @@ describe("check:guide-coverage", () => {
 
   test("an INDEX row pointing at a non-existent guide fails", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md": prdSection([]),
+      "prd/alpha-3/prd-alpha-3-01-providers.md": prdSection([]),
       "docs/guides/INDEX.md": indexDoc([
         {
           prd: "PRD-01",
@@ -245,7 +245,7 @@ describe("check:guide-coverage", () => {
 
   test("a Planned INDEX row whose guide does not exist yet is allowed", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-06-scratch.md": prdSection([
+      "prd/alpha-3/prd-alpha-3-06-scratch.md": prdSection([
         { story: "US-123", feature: "Bar", path: "docs/guides/scratch/bar.mdx" },
       ]),
       "docs/guides/INDEX.md": indexDoc([
@@ -278,7 +278,7 @@ describe("check:guide-coverage", () => {
         },
       ],
       declarations: [
-        { source: "spec/beta/prd-beta-01-providers.md", guidePath: "docs/guides/setup/foo.mdx" },
+        { source: "prd/alpha-3/prd-alpha-3-01-providers.md", guidePath: "docs/guides/setup/foo.mdx" },
       ],
       guideExists: () => true,
     });
@@ -287,13 +287,14 @@ describe("check:guide-coverage", () => {
 
   test("a user-facing PRD without a Guide Coverage section fails", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md": "# Provider Matrix\n\n## User Stories\n\nNo coverage section.\n",
+      "prd/alpha-3/prd-alpha-3-01-providers.md":
+        "# Provider Matrix\n\n## User Stories\n\nNo coverage section.\n",
       "docs/guides/INDEX.md": indexDoc([]),
     });
     try {
       const result = await checkGuideCoverageOnDisk(root);
       expect(codesFor(result.diagnostics)).toContain("coverage.missing-section");
-      expect(result.diagnostics.some((d) => d.message.includes("prd-beta-01-providers.md"))).toBe(true);
+      expect(result.diagnostics.some((d) => d.message.includes("prd-alpha-3-01-providers.md"))).toBe(true);
     } finally {
       await rm(root, { force: true, recursive: true });
     }
@@ -301,7 +302,7 @@ describe("check:guide-coverage", () => {
 
   test("an internal PRD that declares None passes the section convention", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-09-renderer.md":
+      "prd/alpha-3/prd-alpha-3-09-renderer.md":
         "# Renderer\n\n## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Open Questions\n",
       "docs/guides/INDEX.md": indexDoc([]),
     });
@@ -315,7 +316,7 @@ describe("check:guide-coverage", () => {
 
   test("a user-facing PRD with a None declaration fails the section convention", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md":
+      "prd/alpha-3/prd-alpha-3-01-providers.md":
         "# Provider Matrix\n\n## Guide Coverage\n\n**None — internal/infra PRD.** No executable guides are required.\n\n## Open Questions\n",
       "docs/guides/INDEX.md": indexDoc([]),
     });
@@ -329,7 +330,7 @@ describe("check:guide-coverage", () => {
 
   test("a user-facing PRD with an empty Guide Coverage section fails", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md":
+      "prd/alpha-3/prd-alpha-3-01-providers.md":
         "# Provider Matrix\n\n## Guide Coverage\n\nNo guide rows yet.\n\n## Open Questions\n",
       "docs/guides/INDEX.md": indexDoc([]),
     });
@@ -343,7 +344,7 @@ describe("check:guide-coverage", () => {
 
   test("an internal PRD with guide paths fails the None convention", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-09-renderer.md": prdSection([
+      "prd/alpha-3/prd-alpha-3-09-renderer.md": prdSection([
         { story: "US-150", feature: "Renderer", path: "docs/guides/rendering/renderer.mdx" },
       ]),
       "docs/guides/INDEX.md": indexDoc([
@@ -366,7 +367,7 @@ describe("check:guide-coverage", () => {
 
   test("an internal PRD missing its Guide Coverage section fails", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-13-build.md": "# Build & CI\n\n## User Stories\n\nNo coverage section.\n",
+      "prd/alpha-3/prd-alpha-3-13-build.md": "# Build & CI\n\n## User Stories\n\nNo coverage section.\n",
       "docs/guides/INDEX.md": indexDoc([]),
     });
     try {
@@ -379,7 +380,7 @@ describe("check:guide-coverage", () => {
 
   test("a user-facing PRD declaring a non-existent guide path fails the gate", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-01-providers.md": prdSection([
+      "prd/alpha-3/prd-alpha-3-01-providers.md": prdSection([
         { story: "US-074", feature: "Ghost", path: "docs/guides/setup/ghost.mdx" },
       ]),
       "docs/guides/INDEX.md": indexDoc([]),
@@ -395,8 +396,8 @@ describe("check:guide-coverage", () => {
 
   test("the index PRD (PRD-00) and guides PRD (PRD-12) are exempt from the section convention", async () => {
     const root = await scaffold({
-      "spec/beta/prd-beta-00-index.md": "# Index\n\nNo coverage section.\n",
-      "spec/beta/prd-beta-12-guides.md": "# Executable Guides\n\nNo coverage section.\n",
+      "prd/alpha-3/prd-alpha-3-00-index.md": "# Index\n\nNo coverage section.\n",
+      "prd/alpha-3/prd-alpha-3-12-guides.md": "# Executable Guides\n\nNo coverage section.\n",
       "docs/guides/INDEX.md": indexDoc([]),
     });
     try {

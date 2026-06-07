@@ -26,8 +26,7 @@ const betaFlagError = (flag: string): NotImplementedError =>
   new NotImplementedError({
     message: `${flag} is not implemented for docs:scenario in Alpha 2.`,
     commandId: "docs:scenario",
-    specSection: "§19.12",
-    remediation: `${flag} ships in Phase 3 Beta — see spec/ROADMAP.md.`,
+    remediation: `${flag} is not supported yet.`,
   });
 
 const formatError = (error: unknown): string => {
@@ -36,7 +35,6 @@ const formatError = (error: unknown): string => {
       `code: ${error._tag}`,
       error.message,
       `commandId: ${error.commandId}`,
-      `specSection: ${error.specSection}`,
       `remediation: ${error.remediation}`,
     ].join("\n");
   }

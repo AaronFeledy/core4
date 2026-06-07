@@ -1,0 +1,942 @@
+{
+  "project": "Lando v4 Phase 2 Alpha 1",
+  "description": "Phase 2 Alpha 1 PRDs for common-stack happy path coverage beyond the completed MVP walking skeleton. Stories follow the 7-PRD breakdown in `spec/alpha-1/prd-alpha-1-{01..07}-*.md`; each story has a corresponding US-XXX section in its PRD with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 2 and complete spec parts in `spec/{01..19}-*.md`.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Automate provider-lando setup on Linux",
+      "description": "As a Linux alpha tester, I can run `lando setup` and get the managed runtime bundle downloaded, verified, and recorded without manually wiring sockets. (PRD-01 US-001)",
+      "acceptanceCriteria": [
+        "Failing test covers `meta:setup` invoking provider-lando setup with a fake bundle downloader and fake Podman API client",
+        "Checksum verification follows \u00a75.8.1 and fails closed with a tagged remediation error",
+        "Setup stores provider state in the configured cache/state directory, not process memory",
+        "Compiled `$bunfs` path and source OCLIF path produce equivalent setup output",
+        "`lando setup` and `lando shellenv` derive `LANDO_INSTALL_DIR` from `process.execPath` in the compiled binary per \u00a717.1 stage 7; tests assert agreement between the two commands",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add provider-lando macOS machine lifecycle",
+      "description": "As a macOS alpha tester, I can create/start/stop/teardown the managed Podman machine through provider-lando. (PRD-01 US-002)",
+      "acceptanceCriteria": [
+        "Fake-client unit tests cover create, start, stop, upgrade, and teardown transitions",
+        "ProviderCapabilities declares macOS support with `bindMountPerformance: \"slow\"`",
+        "`lando setup` reports actionable remediation when host virtualization prerequisites are missing",
+        "Live test is gated behind an explicit macOS provider env var and skipped by default",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Complete provider-lando capability matrix",
+      "description": "As the planner, I can choose provider-lando based on a complete capability matrix instead of MVP assumptions. (PRD-01 US-003)",
+      "acceptanceCriteria": [
+        "Schema test asserts every Alpha 1 capability field has a provider-lando value for Linux and macOS",
+        "Planner rejects unsupported Alpha 1 features with a tagged error before apply",
+        "Capability output is surfaced by `meta:doctor` diagnostics: every `ProviderCapabilities` field from \u00a75.4 appears in the selected-provider check, and missing-capability failures include service, feature, capability, provider id, and suggested fix per \u00a75.4",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Make provider-docker feature-complete on Linux and macOS",
+      "description": "As a user with Docker Desktop or system Docker, I can use provider-docker as an Alpha 1 alternative path. (PRD-01 US-004)",
+      "acceptanceCriteria": [
+        "Docker Engine HTTP API fake-client tests cover apply, inspect, exec, logs, and destroy",
+        "Linux socket and macOS Docker Desktop paths are supported through config/env discovery",
+        "Provider declares `bindMountPerformance: \"slow\"` for Docker Desktop or VM-mediated paths and `\"native\"` for Linux native Docker sockets per \u00a75.4",
+        "Live Docker tests are gated by `LANDO_TEST_DOCKER_SOCKET` or `DOCKER_HOST`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Persist cross-process provider state needed for lifecycle commands",
+      "description": "As a user, I can run `start`, `info`, `stop`, and `destroy` from separate CLI processes without relying on in-memory provider caches. (PRD-01 US-005)",
+      "acceptanceCriteria": [
+        "Scenario test starts an app, launches a fresh runtime, then runs info/stop/destroy using persisted plan/state",
+        "Destroy receives the planned `AppPlan` and preserves app-scoped volumes unless explicitly requested",
+        "Provider-specific transient state is stored under the provider state directory with cache encoding rules from \u00a712.2",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Harden provider cleanup and failure recovery",
+      "description": "As an alpha tester, failed start/stop operations leave containers, networks, and volumes in documented states. (PRD-01 US-006)",
+      "acceptanceCriteria": [
+        "Fake provider tests cover partial apply failure after network creation and after one service start",
+        "Cleanup removes app-scoped containers/networks and preserves volumes by default",
+        "Errors include remediation plus `providerId`, operation name, redacted details, and original cause fields required by \u00a75.7 so manual cleanup identifies the affected provider operation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Expose provider diagnostics in `meta:doctor`",
+      "description": "As a tester filing bugs, I can run `lando doctor` and include provider/runtime diagnostics. (PRD-01 US-007)",
+      "acceptanceCriteria": [
+        "`meta:doctor` reports selected provider, version, socket/machine status, the \u00a75.4 capability summary, and \u00a710.9 solution records with `automatic` or `manual` remediation",
+        "Doctor never requires app bootstrap unless app-specific diagnostics are requested",
+        "JSON renderer output is covered by the named snapshot fixture `meta-doctor.provider-status.ndjson`, asserting event order, provider fields, capability fields, severity, context, and solution records per \u00a710.9",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Keep provider contract suite authoritative",
+      "description": "As a provider author, I can run one contract suite against TestRuntimeProvider, provider-lando, and provider-docker. (PRD-01 US-008)",
+      "acceptanceCriteria": [
+        "`@lando/sdk/test` exposes the provider contract suite drafted in MVP with Alpha 1 lifecycle coverage",
+        "TestRuntimeProvider and provider-docker pass in default CI",
+        "provider-lando live cases remain env-gated where host runtime is required",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Ship PHP service types for common frameworks",
+      "description": "As a PHP user, I can define `php:8.2` or `php:8.3` with Drupal, WordPress, Laravel, Symfony, or no framework. (PRD-02 US-009)",
+      "acceptanceCriteria": [
+        "ServiceType tests cover normalized plans for php versions and framework options",
+        "Generated service plans include app mounts from \u00a76.4, `LANDO_*` env from \u00a76.9, healthcheck intent from \u00a76.7, and framework web server hints from \u00a76.12.2",
+        "Unsupported PHP versions fail during planning with remediation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Ship Node service types beyond MVP",
+      "description": "As a Node user, I can use `node:lts` or `node:22` in real app plans. (PRD-02 US-010)",
+      "acceptanceCriteria": [
+        "Node ServiceType tests cover both versions and app-root bind mounts",
+        "Plans work with providerExec tooling as a default execution target",
+        "Existing MVP Node+Postgres scenario remains green",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Ship Python service types for Django/FastAPI/Flask",
+      "description": "As a Python user, I can define Python 3.12 apps with supported framework hints. (PRD-02 US-011)",
+      "acceptanceCriteria": [
+        "ServiceType tests cover django, fastapi, flask, and none framework options",
+        "Plans expose default endpoint ports from \u00a76.6 and command metadata from the selected framework preset in \u00a76.12.2",
+        "Unsupported framework values fail schema validation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Ship Ruby service types for Rails and generic Ruby",
+      "description": "As a Ruby user, I can define Ruby 3.3 services for Rails or generic workloads. (PRD-02 US-012)",
+      "acceptanceCriteria": [
+        "ServiceType tests cover rails and none framework options",
+        "Rails default command/port metadata is represented as provider-neutral intent",
+        "Planner output uses provider-neutral `ServicePlan` fields from \u00a76.2 and \u00a76.10, with provider-specific fields limited to `providerInfo` or `providers.<id>` extensions per \u00a75.6",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Ship common database/cache/web services",
+      "description": "As a team, we can compose apps with mysql, mariadb, postgres, redis, nginx, apache, static, and raw Compose passthrough. (PRD-02 US-013)",
+      "acceptanceCriteria": [
+        "Each listed service has schema and ServiceType plan tests",
+        "Raw Compose passthrough accepts `image:` and Compose `build:` for `type: compose` per \u00a76.12.1; fields without provider-neutral semantics must live under `providers.<id>` and are marked non-portable per \u00a75.6. Tests exercise both `provider-lando` and `provider-docker` codepaths",
+        "Compose-declared volumes follow the same destroy-preserves-volumes rule as Lando-managed volumes (per provider-lando lifecycle contract)",
+        "Database services declare storage scope defaults and credentials/env contract",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Support Alpha 1 mount and storage semantics",
+      "description": "As a user, I can use app-root bind mounts, bind/volume mounts, excludes, and app/service scoped storage. (PRD-02 US-014)",
+      "acceptanceCriteria": [
+        "Landofile parser tests cover `mounts:` bind and volume entries plus `excludes:` patterns",
+        "Planner maps excludes to volume-shadow behavior only; Mutagen/file sync is not implemented",
+        "Storage `scope: global` is rejected until the global app phase",
+        "Landofile parser rejects Alpha-3-only sections (`includes:` per \u00a77.7, configuration expressions per \u00a77.3.1, `secrets:` per \u00a74.2 SecretStore + \u00a77.4 top-level key, env overrides per \u00a77.6) with a tagged NotImplemented + Alpha 3 remediation; one test per rejected section",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-014b",
+      "title": "Extend LandofileService to load `landofile.ts`",
+      "description": "As an advanced recipe author, I can author a programmatic Landofile (`landofile.ts`) and have `LandofileService` execute it deterministically. Unblocks PRD-04 US-029. (PRD-02 US-014b)",
+      "acceptanceCriteria": [
+        "`LandofileService` loads `landofile.ts` files via Bun's TS loader and returns a parsed Landofile equivalent to the YAML form; YAML and TS forms produce identical `AppPlan` output",
+        "Programmatic execution is sandboxed: no remote module fetch, no host shell-out, no filesystem access outside the app root; violations fail with a tagged `LandofileSandboxError` + remediation",
+        "Execution timeout is bounded and configurable; default timeout fails with `LandofileTimeoutError`",
+        "Schema validation runs on the returned object; failures surface the same `LandofileParseError` shape as the YAML path",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 28.5,
+      "passes": true,
+      "notes": "Out-of-sequence story in PRD-02 (priorities 9-16); priority 28.5 places the landofile.ts loader before the PRD-04 US-029 story it unblocks."
+    },
+    {
+      "id": "US-015",
+      "title": "Emit the basic `LANDO_*` environment contract",
+      "description": "As code running inside services, I can rely on basic app/service/host path environment variables. (PRD-02 US-015)",
+      "acceptanceCriteria": [
+        "Service plan tests assert app id, service id, and \u00a76.9 host path env vars for every \u00a76.12.1 catalog family shipped in Alpha 1",
+        "Provider exec tests verify env reaches command execution",
+        "Env var names are documented in the PRD/source docs touched by the implementation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Plan per-app networking and provider-exec healthchecks",
+      "description": "As an app user, services share a per-app bridge and basic healthchecks can gate readiness. (PRD-02 US-016)",
+      "acceptanceCriteria": [
+        "Planner tests assert per-app network intent for multi-service apps",
+        "Healthcheck support is limited to provider-exec mode and rejects unsupported modes clearly",
+        "`lando start` readiness output uses inspected provider state, not blind success",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Parse Alpha 1 `tooling:` Landofile section",
+      "description": "As a user, I can define basic tooling commands in `.lando.yml`. (PRD-03 US-017)",
+      "acceptanceCriteria": [
+        "Landofile parser tests cover `tooling:` tasks with `cmds:`, `service:`, `description:`, and Alpha 1 `vars:` forms: literal value, `default:`, `sh:`, and `prompt:` per \u00a78.5.3; remote vars and unsafe `raw:` interpolation are deferred",
+        "Unsupported Alpha-3-only tooling features fail with remediation, not silent ignore",
+        "Parsed tooling contributes to command registry at bootstrap `tooling`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Implement providerExec ToolingEngine",
+      "description": "As a user, default tooling runs inside the selected service through the runtime provider. (PRD-03 US-018)",
+      "acceptanceCriteria": [
+        "ToolingEngine unit tests verify command execution delegates to `RuntimeProvider.exec`",
+        "Service resolution selects the declared `service:` value or the primary app service from the planned `ServiceInfo` set per \u00a76.10; tests cover the no-primary error path",
+        "Exit code/stdout/stderr are preserved through CLI rendering",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Implement host ToolingEngine",
+      "description": "As a user, I can opt into host-mode tooling backed by Bun.$. (PRD-03 US-019)",
+      "acceptanceCriteria": [
+        "Host engine tests cover success, non-zero exit, cwd, and env propagation",
+        "Shell errors map to tagged ShellExecError/remediation patterns from existing services",
+        "Host mode is available for `lando shell` in Alpha 1; service shell remains Alpha 3",
+        "Host engine is the runtime for `.bun.sh` script-backed tasks (\u00a78.5.9) and `vars.<name>.sh:` evaluation (\u00a78.5.3); the \u00a78.5.9 realpath-containment rule applies and is regression-tested",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Compile tooling command registry on cold path",
+      "description": "As the CLI, I can discover tooling commands during bootstrap and cache the resulting command index. (PRD-03 US-020)",
+      "acceptanceCriteria": [
+        "Compilation pipeline tests cover Landofile tooling to command specs",
+        "Cold path writes plugin/tooling command index cache using \u00a712 encoding",
+        "Hot-path optimization is explicitly not required in Alpha 1",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Support `.bun.sh` script-backed tasks",
+      "description": "As a power user, I can define script-backed tasks without a separate plugin. (PRD-03 US-021)",
+      "acceptanceCriteria": [
+        "Parser and execution tests cover `.bun.sh` task discovery described by \u00a78.5.9",
+        "Scripts run with documented cwd/env and failure behavior",
+        "Script-backed tasks cannot escape declared host/provider execution mode without explicit config",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Implement `lando exec`, provider-exec `lando ssh`, and host-mode `lando shell`",
+      "description": "As a user, I can execute commands, use Alpha 1 `ssh` as provider-exec TTY command behavior, and open host-mode shells from the CLI. (PRD-03 US-022)",
+      "acceptanceCriteria": [
+        "Scenario tests cover `exec` against providerExec with fake provider output",
+        "`ssh` behavior is documented as provider-exec TTY command behavior only; SSH sidecar/subsystem work remains deferred",
+        "`shell` host mode works; service shell and SSH subsystem/sidecar features return NotImplemented/Alpha 3 remediation",
+        "Compiled and source CLI paths match for supported commands: identical exit code, stdout, stderr tag/remediation structure, and JSON renderer event fields after normalizing timestamps and temp paths per \u00a78.2 and \u00a717.1 stage 7",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Fill Alpha 1 app command coverage",
+      "description": "As an app user, most `app:*` commands work except explicitly deferred commands. (PRD-03 US-023)",
+      "acceptanceCriteria": [
+        "Scenario tests cover the \u00a78.2 command subset `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `app:info`, `app:logs`, `app:config`, and `app:cache`",
+        "Deferred `app:includes:*` and `app:config:translate` return structured NotImplemented remediation",
+        "Compiled `$bunfs` handlers mirror source command behavior until full OCLIF dispatch lands",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Fill Alpha 1 meta/app management commands",
+      "description": "As a maintainer, I can run app list/poweroff and basic plugin/config/setup/doctor/bun/x commands. (PRD-03 US-024)",
+      "acceptanceCriteria": [
+        "Scenario tests cover `apps:list`, `apps:poweroff`, `meta:config`, `meta:plugin:add` npm source, `meta:plugin:remove`, `meta:setup`, `meta:doctor`, `meta:bun`, and `meta:x`",
+        "`meta:plugin:add` npm source validates manifest/module containment before loading any plugin code",
+        "`meta:plugin:add` warns/confirms that plugins run as trusted host code while trust/signing is deferred; non-interactive mode requires an explicit trust/confirm flag",
+        "Trust decisions are in-memory for the current install only \u2014 no persistent trust store in Alpha 1; a persistent trust store is deferred to Alpha 3 and a test asserts the prompt fires with a fresh `<userConfRoot>` per test invocation",
+        "Deferred plugin trust/new/test/build/link/unlink/publish commands return structured remediation",
+        "Command aliases follow the top-level alias conflict rules",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Parse full Alpha 1 `recipe.yml` schema",
+      "description": "As a recipe author, I can write `recipe.yml` using the Alpha 1-supported schema. (PRD-04 US-025)",
+      "acceptanceCriteria": [
+        "Parser tests cover metadata, prompts, files, Landofile output, and postInit sections from \u00a78.8",
+        "Schema rejects Alpha-3-only remote/dynamic fields with remediation",
+        "MVP hardcoded recipe path migrates to the recipe parser without breaking MVP scenario",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Support built-in prompt types",
+      "description": "As a user running `lando init`, I can answer text/select/multiselect/confirm/number/secret/path prompts. (PRD-04 US-026)",
+      "acceptanceCriteria": [
+        "CLI fixture tests cover each prompt type with deterministic stdin/stdout",
+        "Secret prompts do not echo values in renderer transcripts",
+        "Prompt validation errors are recoverable in interactive mode and typed in non-interactive mode",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Ship cwd-only recipe source",
+      "description": "As an Alpha 1 user, I can initialize from recipes in the current checkout/binary bundle only. (PRD-04 US-027)",
+      "acceptanceCriteria": [
+        "Recipe source tests cover built-in/cwd discovery and reject git, tarball, npm, registry sources with Alpha 3 remediation",
+        "Recipe resolution is deterministic and does not perform network access",
+        "Bundled recipe files are embedded in the compiled binary via `scripts/build-bundled-recipes.ts` \u2192 `core/src/recipes/bundled.ts` with no disk read at runtime; codegen drift is caught by the bundled-codegen gate in PRD-07 US-049",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Ship canonical common-stack recipes",
+      "description": "As an alpha tester, I can scaffold the canonical v4.0 recipe set from \u00a78.8.10, including WordPress, Laravel, node-api, Django, FastAPI, and Rails apps. (PRD-04 US-028)",
+      "acceptanceCriteria": [
+        "Each \u00a78.8.10 canonical recipe has a scenario test that runs init, parses the generated Landofile, and verifies the recipe snapshot names the generated service ids, `type:` entries, and tooling command ids",
+        "The binary ships the full \u00a78.8.10 canonical recipe set in Alpha 1; Drupal and v3-style recipe compatibility shims remain out of scope per \u00a78.8.10",
+        "Recipe READMEs document alpha limitations and required host prerequisites",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Support programmatic `landofile.ts` output",
+      "description": "As an advanced recipe author, I can generate a Landofile programmatically during init. (PRD-04 US-029)",
+      "acceptanceCriteria": [
+        "Tests cover a recipe that emits Landofile data via `landofile.ts` and validates the result through LandofileService",
+        "Programmatic output is sandboxed to documented inputs; no remote code fetch is allowed",
+        "Generated Landofile remains compatible with app planning",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Implement Alpha 1 `postInit` bun install action",
+      "description": "As a recipe user, post-init can run Bun install where the recipe declares it. (PRD-04 US-030)",
+      "acceptanceCriteria": [
+        "Scenario test covers `postInit: bun: { verb: install }` using a fake process runner or fixture package",
+        "`bun install` runs only inside the generated destination/app directory, never global Lando/plugin/cache directories",
+        "Tests reject outside-destination `cwd` or path traversal attempts for postInit actions",
+        "Docs/remediation explicitly state network access and package lifecycle script behavior for `bun install`",
+        "Unsupported postInit actions (`script`, `add`, `create`, `run`, `x`) return Alpha 3 remediation",
+        "Post-init failures leave clear instructions, redact env/registry token values in output, and do not delete generated files",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Make `apps:init` interactive full prompt flow",
+      "description": "As a new user, `lando init` guides me through recipe and prompt selection. (PRD-04 US-031)",
+      "acceptanceCriteria": [
+        "Interactive scenario test covers choosing a recipe and answering prompts through stdin",
+        "Non-interactive flags can supply prompt values for CI scenarios",
+        "Init progress renderer-mode coverage is owned by PRD-05 US-039",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 31,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "Validate recipe artifacts in CI",
+      "description": "As a maintainer, every shipped recipe remains executable as the service catalog evolves. (PRD-04 US-032)",
+      "acceptanceCriteria": [
+        "Recipe test layer runs all canonical recipe parse/plan tests in CI",
+        "At least one Linux provider integration scenario covers a generated common-stack app when env prerequisites exist",
+        "Failures identify recipe name and generated file path",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 32,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Implement renderer selection",
+      "description": "As a user, I can select `--renderer=plain|json|lando` and get consistent output semantics. (PRD-05 US-033)",
+      "acceptanceCriteria": [
+        "CLI tests cover renderer flag parsing and config/env precedence",
+        "Unsupported renderer values fail before command execution with a tagged parse error",
+        "Compiled and source CLI paths share renderer selection code",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 33,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Implement concurrent task tree events",
+      "description": "As a user, long-running operations show task tree progress for concurrent work. (PRD-05 US-034)",
+      "acceptanceCriteria": [
+        "Renderer tests cover `task.tree.start`, `task.start`, `task.complete`, and `task.fail` events",
+        "Concurrent task ordering is covered by the named snapshot fixture `renderer.task-tree.concurrent.ndjson`, asserting `task.tree.start`, child `task.start`, `task.detail`, terminal event, and `task.tree.complete` order per \u00a78.9.2",
+        "Plain renderer remains readable in non-TTY CI logs",
+        "Renderer subscriber stream is materialized before the first event publish per the EventService no-replay contract; cold-start regression test asserts no events are dropped between bootstrap and the first `task.tree.start`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Implement message info/warn/error contract",
+      "description": "As a command author, I can emit structured messages consistently across renderers. (PRD-05 US-035)",
+      "acceptanceCriteria": [
+        "Unit tests cover `message.info`, `message.warn`, and `message.error` in plain/json/lando renderers",
+        "Warnings do not change exit code unless command fails separately",
+        "Error messages include remediation when present on tagged errors",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 35,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-036",
+      "title": "Implement basic first-paint banner",
+      "description": "As a user, the lando renderer paints a useful first banner before long-running work. (PRD-05 US-036)",
+      "acceptanceCriteria": [
+        "TTY fixture test covers `paint.banner` first-paint behavior from \u00a78.9.1: a single-line pre-bootstrap banner on stdout, emitted before plugin import, within the 50 ms cold first-byte budget, and handed off once to the Renderer Layer",
+        "Full first-paint contract and expand/collapse remain marked Beta 1/deferred",
+        "Non-TTY output avoids control sequences",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 36,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-037",
+      "title": "Keep unsupported command remediation precise",
+      "description": "As a user hitting a Alpha 3/Beta 1 command, I see when and why it is unavailable. (PRD-05 US-037)",
+      "acceptanceCriteria": [
+        "Fixture lists every deferred command surface for Alpha 1: `apps:scratch:*`, `meta:global:*`, `app:includes:*`, `app:config:translate`, `meta:plugin:trust*`, and `meta:plugin:{new,test,build,link,unlink,publish}`. A snapshot test asserts each command returns a tagged NotImplementedError with phase-specific remediation",
+        "Tests assert every not-yet-shipped command returns NotImplementedError with target phase remediation",
+        "Remediation text uses the roadmap phase names from `spec/ROADMAP.md` Phase 2 and \u00a714 open-decision labels, and does not include stack traces or source file paths",
+        "Compiled `$bunfs` fallback mirrors source OCLIF guard behavior",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 37,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Standardize alpha bug-report diagnostics",
+      "description": "As an alpha tester, command failures include enough context for useful bug reports. (PRD-05 US-038)",
+      "acceptanceCriteria": [
+        "Failure output includes command id, app id when known, provider id when known, and log/cache path pointers",
+        "Sensitive env/prompt values are redacted",
+        "JSON renderer includes machine-readable error code and remediation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 38,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "Render provider and recipe progress through task tree",
+      "description": "As a user, setup/start/init show visible progress instead of silent hangs. (PRD-05 US-039)",
+      "acceptanceCriteria": [
+        "Scenario tests assert setup/start/init emit task events for provider setup, service apply, recipe rendering, and postInit",
+        "Provider fake clients can inject progress events without coupling to provider internals",
+        "Plain renderer snapshots remain stable",
+        "Init progress (recipe rendering + postInit) renders correctly in plain/json/lando renderer modes; snapshot tests cover all three modes",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 39,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "Document renderer limitations for Alpha 1",
+      "description": "As contributors, we know which renderer features are intentionally deferred. (PRD-05 US-040)",
+      "acceptanceCriteria": [
+        "Alpha 1 PRD/source docs list deferred `task.detail` streaming tail, expand/collapse, and full first-paint contract",
+        "Tests assert deferred flags/options fail with Beta 1/Alpha 3 remediation instead of no-op behavior",
+        "Docs and NotImplemented remediation agree",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 40,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "Implement persistent cwd-app-map cache",
+      "description": "As the CLI, I can resolve known apps across processes using a durable cwd-app map. (PRD-06 US-041)",
+      "acceptanceCriteria": [
+        "CacheService tests cover write/read/delete/list for cwd-app-map entries",
+        "Cache encoding follows \u00a712.2 and handles corrupt entries with remediation",
+        "`apps:list` consumes the persistent cache",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 41,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "Implement persistent app plan cache",
+      "description": "As the planner, I can reuse app plans across CLI invocations when inputs have not changed. (PRD-06 US-042)",
+      "acceptanceCriteria": [
+        "Plan cache tests cover key derivation from Landofile/config/plugin/service inputs",
+        "Changing relevant input invalidates the cached plan",
+        "Cache writes use `CacheService.writeAtomic` true atomic rename semantics (write-temp-then-rename) per \u00a712; the rename adapter lives outside `FileSystem` and uses `node:fs/promises.rename` because Bun 1.2.18 has no atomic rename primitive on `Bun.file`; regression test asserts the temp file is renamed (not copied) into place",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 42,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "Implement plugin command index cache",
+      "description": "As command bootstrap, I can avoid recomputing plugin/tooling command indexes unnecessarily. (PRD-06 US-043)",
+      "acceptanceCriteria": [
+        "Cache tests cover plugin command index serialization/deserialization",
+        "Command registry invalidates cache when plugin manifests or Landofile tooling change",
+        "Cache is safe for missing bundled plugins and reports tagged errors",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 43,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-044",
+      "title": "Make binary cache encoding rules testable",
+      "description": "As a maintainer, all Alpha 1 caches use one encoding policy and compatibility checks. (PRD-06 US-044)",
+      "acceptanceCriteria": [
+        "Shared tests validate version byte/header/schema version for each binary cache type from \u00a712.2",
+        "Old/unknown cache versions are ignored or migrated according to documented policy",
+        "Cache test fixtures live in repo and are updated intentionally",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 44,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-045",
+      "title": "Make `makeLandoRuntime` work for `bootstrap: \"app\"`",
+      "description": "As an embedding host, I can construct a runtime through app bootstrap without invoking the CLI. (PRD-06 US-045)",
+      "acceptanceCriteria": [
+        "Library API tests call `makeLandoRuntime({ bootstrap: \"app\" })` and run a simple app operation with TestRuntimeProvider",
+        "Smaller bootstrap levels continue to work",
+        "Public library API remains marked unstable/dev-channel only",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 45,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-046",
+      "title": "Publish `@lando/core/testing` with TestRuntimeProvider",
+      "description": "As plugin/core tests, I can use a stable test provider layer instead of ad hoc fakes. (PRD-06 US-046)",
+      "acceptanceCriteria": [
+        "Package export tests assert `@lando/core/testing` resolves in workspace and built package",
+        "TestRuntimeProvider passes provider contract suite for Alpha 1 features it claims",
+        "Docs/example test demonstrate provider injection",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 46,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-047",
+      "title": "Expose `@lando/core/cli/operations` command invocation API",
+      "description": "As an embedding host, I can invoke CLI commands programmatically for the Alpha 1-supported surface through the Effect-bearing operations subpath. (PRD-06 US-047)",
+      "acceptanceCriteria": [
+        "Library API test invokes a supported command through `@lando/core/cli/operations` (the Effect-bearing host API) without spawning a process",
+        "Errors/renderer output are returned in a host-consumable shape",
+        "API is documented as unstable and not semver-stable until later phase",
+        "Fast-path canary `core/test/cli/fast-path.test.ts` still passes \u2014 the static-import boundary in `core/src/cli/index.ts` is preserved",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 47,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-048",
+      "title": "Keep SDK additions backward-compatible",
+      "description": "As SDK consumers, Alpha 1 can add schemas/tags but cannot mutate MVP shapes. (PRD-06 US-048)",
+      "acceptanceCriteria": [
+        "Snapshot tests compare MVP-exported schema names/tag method signatures against a frozen list",
+        "New Alpha 1 additions are additive and documented",
+        "Breaking changes require explicit roadmap/spec update, not silent PRD drift",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 48,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-049",
+      "title": "Add schema and bundled-codegen snapshot gates to CI",
+      "description": "As maintainers, schema changes and bundled-plugin/recipe set changes are intentional and visible in PR review. (PRD-07 US-049)",
+      "acceptanceCriteria": [
+        "CI includes a schema-snapshot diff job generated by `scripts/build-ci-workflow.ts`",
+        "Schema-snapshot scope is `@lando/sdk` schema exports plus the bundled plugins' manifest schemas; out-of-tree plugin manifests are not part of the gate",
+        "CI re-runs `scripts/build-bundled-plugins.ts` and `scripts/build-bundled-recipes.ts` and fails via `git diff --exit-code` when `core/src/plugins/bundled.ts` or `core/src/recipes/bundled.ts` is out of date",
+        "Failing test covers generator output for both the schema gate and the bundled-codegen gate",
+        "Schema-snapshot and bundled-codegen update commands are documented (`bun run codegen`)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 49,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-050",
+      "title": "Add library API and recipe test layers to CI",
+      "description": "As maintainers, Alpha 1-only surfaces are continuously verified. (PRD-07 US-050)",
+      "acceptanceCriteria": [
+        "Generated CI workflow runs library API tests and recipe test layer separately or as named steps",
+        "Workflow tests assert the job/step names so branch protection can target them",
+        "Env-gated live provider tests remain skipped unless secrets/host config exist",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 50,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-051",
+      "title": "Promote Linux x64 workflow artifact to dev prerelease",
+      "description": "As an alpha tester, I can download a Linux x64 binary from the dev channel. (PRD-07 US-051)",
+      "acceptanceCriteria": [
+        "Release workflow promotes successful build artifact to a GitHub prerelease tagged for dev/alpha",
+        "Dev prerelease publishes a single `SHA256SUMS` text file alongside the binaries (one line per artifact, `<sha256>  <filename>` format); no GPG/cosign signing required in Alpha 1",
+        "No signing, SBOM, installer scripts, or self-update are required in Alpha 1, but `SHA256SUMS` publication is required",
+        "Promotion is generated from scripts/codegen, not hand-edited YAML",
+        "Sandboxed first-launch test runs the distributed artifact in a network namespace with egress blocked and asserts exit 0 plus no non-loopback `connect()` calls under `strace -e trace=network` (no telemetry beacon) \u2014 enforces the index non-goal",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 51,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-052",
+      "title": "Publish `@lando/core` alpha package to npm dev tag",
+      "description": "As an embedding tester, I can install `@lando/core@4.0.0-alpha.N` from npm dev tag. (PRD-07 US-052)",
+      "acceptanceCriteria": [
+        "Package publish workflow for `@lando/core` uses workspace build artifacts and dry-run test coverage",
+        "The packaging plan documents whether workspace dependencies are bundled, published as dev-tag dependencies, or otherwise resolved without changing the roadmap's named `@lando/core` Alpha 1 distribution scope",
+        "Publishing uses protected CI credentials or trusted publishing; no local developer token path is accepted",
+        "Publish command/config uses `--tag dev` and has a test/assertion that `latest` is not changed",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 52,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-053",
+      "title": "Keep Bun version source pinned to `.bun-version`",
+      "description": "As CI maintainers, lockfile compatibility does not drift from package engine ranges. (PRD-07 US-053)",
+      "acceptanceCriteria": [
+        "Workflow generator tests assert all setup-bun uses `bun-version-file: .bun-version`",
+        "No generated workflow reads `package.json#engines.bun` as the CI Bun version source",
+        "AGENTS/CI runbook note remains accurate",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 53,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-054",
+      "title": "Document alpha install and bug-report path",
+      "description": "As an alpha tester, I know how to install, verify, and report useful failures. (PRD-07 US-054)",
+      "acceptanceCriteria": [
+        "Docs cover dev prerelease binary download, `sha256sum -c SHA256SUMS` verification, npm dev install (`npm install @lando/core@dev`), `lando doctor`, and required logs/artifacts",
+        "Docs state Linux x64 binary + npm `dev` install (Linux/macOS) support and Windows deferral clearly; macOS users use the npm path until macOS binary promotion lands in Alpha 3",
+        "Docs are linked from release notes or README",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 54,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-055",
+      "title": "Assert branch protection for Alpha 1 CI jobs",
+      "description": "As maintainers, the expanded CI matrix is required before merging Alpha 1 work. (PRD-07 US-055)",
+      "acceptanceCriteria": [
+        "Branch-protection assertion includes static checks, build-linux-x64, provider integration, schema gate, library API, and recipe layers",
+        "Test can run without network by reading documented required-checks list or a gh API mock",
+        "Docs list exact required job names",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 55,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-056",
+      "title": "Keep multi-platform matrix deferred to Alpha 3 except explicit Alpha 1 macOS provider checks",
+      "description": "As maintainers, Alpha 1 CI grows deliberately without pretending full platform support. (PRD-07 US-056)",
+      "acceptanceCriteria": [
+        "Workflow tests assert no broad Windows or linux-arm64 release matrix is generated in Alpha 1",
+        "Any macOS provider validation is either documented manual QA or explicit opt-in job, not required default CI unless approved",
+        "Roadmap deferrals remain mirrored in PRD non-goals",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 56,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

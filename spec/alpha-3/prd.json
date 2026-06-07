@@ -1,0 +1,2023 @@
+{
+  "project": "Lando v4 Phase 3 Alpha 3",
+  "branchName": "ralph/alpha-3",
+  "description": "Phase 3 Alpha 3 PRDs for Lando v4 'full breadth': complete the provider matrix, ship the full canonical service catalog, wire file sync via Mutagen, land all §11 subsystems, ship the global app + scratch apps, finish the recipe surface, complete the Landofile schema, wire the renderer at the CLI boundary, finish the tooling hot path, ship plugin install + library API, expand executable guides, and ship the 5-platform CI matrix + 4.0.0-alpha.N publish. Stories follow the 13-PRD breakdown in `spec/alpha-3/prd-alpha-3-{01..13}-*.md`; each story has a corresponding US-XXX section in its PRD with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 3 and complete spec parts in `spec/{01..19}-*.md`.",
+  "userStories": [
+    {
+      "id": "US-074",
+      "title": "provider-lando Windows VM lifecycle",
+      "description": "As a Windows tester, I can run `lando setup` and have `@lando/provider-lando` create, start, stop, and tear down the managed Podman machine without leaving WSL2/Hyper-V state behind. (PRD-A3-01 US-074)",
+      "acceptanceCriteria": [
+        "Fake-client unit tests cover create / start / stop / upgrade / teardown transitions for Windows",
+        "`ProviderCapabilities` declares Windows support with `bindMountPerformance: \"slow\"`",
+        "`lando setup` reports actionable remediation when virtualization prerequisites (Hyper-V, WSL2, Virtual Machine Platform) are missing",
+        "Live test gated behind `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1` and skipped by default",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-075",
+      "title": "provider-lando Windows runtime-bundle download and checksum verification",
+      "description": "As a Windows tester, the runtime-bundle download path matches §5.8.1 — same checksum/signature semantics as Linux + macOS — and stores the bundle under the per-user state directory. (PRD-A3-01 US-075)",
+      "acceptanceCriteria": [
+        "Bundle URL and SHA-256 are resolved through the same pinned manifest used by Linux + macOS",
+        "Checksum mismatch fails closed with a tagged `ProviderBundleChecksumError`; remediation cites §5.8.1",
+        "Re-runs are idempotent (existing valid bundle is reused)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-076",
+      "title": "provider-lando Windows capability surface in meta:doctor",
+      "description": "As a Windows tester, `lando doctor` surfaces every §5.4 capability for provider-lando and explains any missing one with a Windows-specific remediation. (PRD-A3-01 US-076)",
+      "acceptanceCriteria": [
+        "`meta:doctor` reports `bindMountPerformance`, `sharedCrossAppNetwork` (false until PRD-04), socket/machine status, and bundle version for the Windows provider",
+        "Snapshot-tested JSON output for the Windows path; live block skipped without `LANDO_TEST_WINDOWS_PROVIDER_LANDO=1`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-077",
+      "title": "provider-docker Windows (Docker Desktop)",
+      "description": "As a Windows tester with Docker Desktop, I can use `@lando/provider-docker` to apply, inspect, exec, log, and destroy plans through the Docker Engine HTTP API. (PRD-A3-01 US-077)",
+      "acceptanceCriteria": [
+        "Docker Desktop named-pipe / TCP discovery: `DOCKER_HOST`, `npipe://./pipe/docker_engine`, fall-back order documented and tested",
+        "Fake-client tests cover apply / inspect / exec / logs / destroy",
+        "Declares `bindMountPerformance: \"slow\"` for Docker Desktop",
+        "Live test gated by `LANDO_TEST_WINDOWS_DOCKER_SOCKET` or `DOCKER_HOST` and skipped by default",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-078",
+      "title": "ship @lando/provider-podman as an opt-in provider (Linux)",
+      "description": "As a Linux user with a pre-existing rootless Podman install, I can opt into `@lando/provider-podman` and reuse the Podman API contract. (PRD-A3-01 US-078)",
+      "acceptanceCriteria": [
+        "Plugin published at `@lando/provider-podman` with a `RuntimeProvider` Live Layer; not auto-loaded — opt-in via Landofile or `--provider=podman`",
+        "Discovers a user-installed Podman socket (`$XDG_RUNTIME_DIR/podman/podman.sock` or `DOCKER_HOST`-style override)",
+        "Declares `bindMountPerformance: \"native\"` on Linux, `\"slow\"` on macOS/Windows",
+        "Selection rejects opt-in if `lando setup` recorded a conflict with `@lando/provider-lando`'s private socket; remediation describes the conflict",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-079",
+      "title": "@lando/provider-podman on macOS + Windows via Podman Desktop",
+      "description": "As a macOS/Windows user with Podman Desktop, I can drive `@lando/provider-podman` against the Podman Desktop machine. (PRD-A3-01 US-079)",
+      "acceptanceCriteria": [
+        "Discovery covers the Podman Desktop default machine names + sockets per platform",
+        "Fake-client tests cover apply / inspect / exec / logs / destroy and machine-not-running remediation",
+        "Live tests gated by `LANDO_TEST_PODMAN_DESKTOP_SOCKET` and skipped by default",
+        "`meta:doctor` distinguishes `provider-lando` (managed) from `provider-podman` (user-installed) in its output",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-080",
+      "title": "shared provider contract suite covers all three providers",
+      "description": "As a provider maintainer, I can run one contract suite (from `@lando/sdk/test`) and have it cover `TestRuntimeProvider`, `provider-lando`, `provider-docker`, and `provider-podman` on every supported platform. (PRD-A3-01 US-080)",
+      "acceptanceCriteria": [
+        "`@lando/sdk/test` exports a single contract-suite runner; the four provider packages each have a contract-test entry point",
+        "Suite covers lifecycle (apply / inspect / exec / logs / destroy), capability matrix, error contract (`ProviderCapabilityError`, `NoProviderInstalledError`, redacted-detail rules from §5.7), and bundle/setup invariants",
+        "Suite is matrix-driven over platform × provider; cells without a supported declaration are skipped with a reason",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-081",
+      "title": "provider negative-path coverage (partial-failure cleanup, abort signal)",
+      "description": "As an operator, failed apply/destroy operations honor the abort signal and converge to a documented partial-state. (PRD-A3-01 US-081)",
+      "acceptanceCriteria": [
+        "Fake-provider tests cover partial apply failure after network creation and after one service start; cleanup preserves app-scoped volumes unless `destroy({ volumes: true })` is requested",
+        "All three providers honor the AbortSignal forwarded from the CLI; pending operations stop before bring-up completes",
+        "Errors include `providerId`, operation name, redacted details, and original cause per §5.7",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-082",
+      "title": "provider selection precedence and conflict diagnostics",
+      "description": "As a user with multiple providers installed, selection follows `flag > Landofile > env > config > capability-based default` and conflicts are diagnosed clearly. (PRD-A3-01 US-082)",
+      "acceptanceCriteria": [
+        "Precedence resolver tested for every pair of (`--provider`, Landofile `provider:`, `LANDO_PROVIDER`, `~/.lando/config.yml`, capability default)",
+        "`meta:doctor` reports the resolved provider and the inputs that led to it",
+        "Conflict between `provider-lando` and `provider-podman` (both targeting Podman API) is reported with remediation (`lando setup --provider=…`)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-083",
+      "title": "go service type (compiled and module-based projects)",
+      "description": "As a user with a Go app, I can declare `type: go` (`go:1.22`, `go:1.23`) and `lando start` brings up a service with the Go toolchain available for `go run` / `go build` / `go mod`. (PRD-A3-02 US-083)",
+      "acceptanceCriteria": [
+        "`go` `ServiceType` shipped from `@lando/service-lando` with image tags pinned per §6.12.1",
+        "Scenario test starts a minimal Go HTTP server, verifies endpoint, and runs `lando go version` through tooling",
+        "Service contract test passes (capabilities, healthcheck schema, endpoints)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-084",
+      "title": "mongodb service type",
+      "description": "As a user, I can declare `type: mongodb` (e.g. `mongodb:7`) and connect via `mongodb://lando@…` from sibling services. (PRD-A3-02 US-084)",
+      "acceptanceCriteria": [
+        "`mongodb` `ServiceType` with healthcheck and `mongodb://` endpoint emission",
+        "Default credential generation per §6.6 redaction rules",
+        "Scenario test brings up Mongo, runs `lando mongosh --eval \"db.runCommand('ping')\"` through tooling, asserts success",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-085",
+      "title": "memcached service type",
+      "description": "As a user, I can declare `type: memcached` and connect via `memcached://…` from sibling services. (PRD-A3-02 US-085)",
+      "acceptanceCriteria": [
+        "`memcached` `ServiceType` with telnet/binary protocol healthcheck",
+        "Endpoint emission per §6.10",
+        "Scenario test sets and gets a key via `lando memcached-tool` (or equivalent shipped tooling alias)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-086",
+      "title": "valkey service type",
+      "description": "As a user, I can declare `type: valkey` and use it as a drop-in replacement for `redis` (Valkey is the OSS Redis fork). (PRD-A3-02 US-086)",
+      "acceptanceCriteria": [
+        "`valkey` `ServiceType` shares schema with `redis`; endpoint emission emits both `valkey://` (primary) and `redis://` (alias for client-compat) per §6.12.1",
+        "Scenario test ping/set/get; tooling alias `lando valkey-cli` works",
+        "Service description documents the dual-scheme emission and recommends `valkey://` for new apps that want protocol awareness; `redis://` alias keeps existing client libraries working",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-087",
+      "title": "solr service type",
+      "description": "As a user, I can declare `type: solr` (e.g. `solr:9`) and post documents / run admin queries through tooling. (PRD-A3-02 US-087)",
+      "acceptanceCriteria": [
+        "`solr` `ServiceType` with HTTP healthcheck on the admin ping endpoint",
+        "Default core/collection creation is opt-in via service-level `cores:` config (deferred to Beta 1 if expressions-language ergonomics conflict — PRD-08)",
+        "Scenario test creates a default core and runs `lando solr-admin status`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-088",
+      "title": "elasticsearch service type",
+      "description": "As a user, I can declare `type: elasticsearch` (Elastic License v2 image) and run cluster-health / index operations through tooling. (PRD-A3-02 US-088)",
+      "acceptanceCriteria": [
+        "`elasticsearch` `ServiceType` with HTTP healthcheck on `/_cluster/health`",
+        "Defaults to single-node, security-disabled local dev config; service description warns this is not production-suitable",
+        "Scenario test starts the service, asserts `green` or `yellow` cluster health, runs `lando es-cli` (or equivalent tooling alias) against `/_cat/indices`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-089",
+      "title": "opensearch service type",
+      "description": "As a user, I can declare `type: opensearch` (Apache 2.0 image) and use the same query surface as `elasticsearch` against an Apache-licensed fork. (PRD-A3-02 US-089)",
+      "acceptanceCriteria": [
+        "`opensearch` `ServiceType` with HTTP healthcheck on `/_cluster/health`",
+        "Service description notes the licensing distinction vs Elasticsearch",
+        "Scenario test mirrors US-088 with the OpenSearch endpoint",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 16,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-090",
+      "title": "meilisearch service type",
+      "description": "As a user, I can declare `type: meilisearch` and use the Meilisearch HTTP API through tooling. (PRD-A3-02 US-090)",
+      "acceptanceCriteria": [
+        "`meilisearch` `ServiceType` with HTTP healthcheck on `/health`",
+        "Default master key generation per §6.6 redaction rules",
+        "Scenario test creates an index, posts a document, queries it via `lando meili` tooling alias",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 17,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-091",
+      "title": "framework-preset coverage extends to Go (if §6.12.1 grows)",
+      "description": "As maintainers, we keep the Alpha 3 cut of framework presets aligned with §6.12.1 — Alpha 3 does not add Drupal/Laravel/Symfony beyond Alpha 1 but documents the Go framework slot as currently empty. (PRD-A3-02 US-091)",
+      "acceptanceCriteria": [
+        "`go` `ServiceType` declares `framework: \"none\"` only; future entries (Echo, Fiber, Gin, Chi, etc.) deferred to post-GA with §6.12.1 cross-reference",
+        "Documentation table in `@lando/service-lando` README lists supported `framework:` values per language; Alpha 3 adds the `go` row",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 18,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-092",
+      "title": "service contract suite covers every new type",
+      "description": "As a service-type maintainer, every new Alpha 3 service passes the `@lando/sdk/test` service-contract suite. (PRD-A3-02 US-092)",
+      "acceptanceCriteria": [
+        "Contract-suite runner is matrix-driven over service type × provider × platform",
+        "Each new service type from US-083..090 has a contract-test entry; capabilities, endpoint emission, healthcheck schema, default-credential redaction, and `LANDO_*` env contract are exercised",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 19,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-093",
+      "title": "static service type",
+      "description": "As a user, I can declare `type: static` (built-in nginx-backed) to serve a built artifact directory without writing a separate web-server service. (PRD-A3-02 US-093)",
+      "acceptanceCriteria": [
+        "`static` `ServiceType` accepts `root:` (path within the service) and emits an HTTP endpoint",
+        "No special framework integration; behaves like a minimal nginx serving `root:`",
+        "Scenario test mounts a `dist/` directory, starts the service, fetches a known file",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 20,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-094",
+      "title": "raw Compose passthrough service",
+      "description": "As a power user, I can declare `type: compose` with a `compose:` block that the planner passes through verbatim to the provider, while still respecting the Compose allowlist from §7.4. (PRD-A3-02 US-094)",
+      "acceptanceCriteria": [
+        "`compose` `ServiceType` accepts only keys in the documented Compose subset; rejected keys produce a tagged remediation per the cross-cutting Compose allowlist",
+        "The passthrough still emits `LANDO_*` env vars, app-root bind mount (unless explicitly opted out per service), and per-app network membership",
+        "Scenario test exercises a representative passthrough (e.g. a third-party image not in the canonical catalog) and asserts the service starts and gets a default endpoint",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 21,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-095",
+      "title": "FileSyncEngine contract published in @lando/sdk",
+      "description": "As a future file-sync plugin author, I can implement against a stable `FileSyncEngine` Effect Service tag with a documented contract. (PRD-A3-03 US-095)",
+      "acceptanceCriteria": [
+        "`FileSyncEngine` service tag, contract, and tagged errors (`FileSyncStartError`, `FileSyncDriftError`, `FileSyncStopError`) exported from `@lando/sdk`",
+        "Contract suite stub in `@lando/sdk/test` covers start / pause / resume / stop / status, error semantics, and idempotency",
+        "Schema round-trips through the §13.2 snapshot gate",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 22,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-096",
+      "title": "@lando/file-sync-mutagen plugin Live Layer",
+      "description": "As a user on a slow-bind-mount provider, the bundled `@lando/file-sync-mutagen` plugin provides a `FileSyncEngine` Live Layer that drives the Mutagen host CLI against the planned app-root mount. (PRD-A3-03 US-096)",
+      "acceptanceCriteria": [
+        "Plugin `Layer` declared in `plugins/file-sync-mutagen/src/index.ts`, registered in `BUNDLED_PLUGINS`, contributed to bundled.ts codegen",
+        "Fake-client unit tests cover create / pause / resume / terminate session and status polling",
+        "Mutagen sessions named by `${appId}-${serviceId}-${mountId}`; session names are deterministic",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 23,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-097",
+      "title": "Mutagen host CLI + agent download via lando setup",
+      "description": "As a user, `lando setup` downloads the platform-appropriate Mutagen host CLI plus the per-target agent and stores them under the user data root. (PRD-A3-03 US-097)",
+      "acceptanceCriteria": [
+        "Download manifest pinned per §17.9 (host + agent variants); SHA-256 verified per §5.8.1 semantics",
+        "Failure modes (network, checksum mismatch) reported with tagged remediation",
+        "Re-runs are idempotent (existing valid binaries reused)",
+        "`lando doctor` reports the resolved Mutagen version per platform",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 24,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-098",
+      "title": "planner auto-selects file sync for slow-bind-mount providers",
+      "description": "As a user, I do not configure file sync — the planner auto-selects `@lando/file-sync-mutagen` when the selected provider declares `bindMountPerformance: \"slow\"`, and skips file sync otherwise. (PRD-A3-03 US-098)",
+      "acceptanceCriteria": [
+        "`AppPlanner` consults `ProviderCapabilities.bindMountPerformance`; produces a `FileSyncPlan` per slow service mount",
+        "`BuildOrchestrator` starts file sync after the provider applies and before `post-app-start` lifecycle event publishes",
+        "Scenario test on Linux x64 (with a fake \"slow\" provider) verifies that `FileSyncPlan` is included and that `lando stop` terminates the sync session",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-099",
+      "title": "excludes patterns (volume-shadow + Mutagen ignores)",
+      "description": "As a user, `excludes:` patterns from §6 are honored by file sync — node_modules, vendor, etc. — using both the existing volume-shadow approach (Alpha 1) and Mutagen ignore rules. (PRD-A3-03 US-099)",
+      "acceptanceCriteria": [
+        "`excludes:` patterns translated into Mutagen ignore rules in addition to the volume-shadow strategy",
+        "Defaults include `node_modules`, `vendor`, `.git`, `tmp`, and any framework-aware presets contributed by service types",
+        "Scenario test confirms excluded paths are not synced (new file in excluded dir does not propagate to the container)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-100",
+      "title": "file-sync engine contract suite passes",
+      "description": "As a maintainer, the `FileSyncEngine` contract suite is green against `@lando/file-sync-mutagen` on macOS arm64, macOS x64, and Windows x64. (PRD-A3-03 US-100)",
+      "acceptanceCriteria": [
+        "Contract-suite runner from US-095 wired against the Mutagen Live Layer",
+        "Live tests gated behind `LANDO_TEST_FILE_SYNC_LIVE=1` and skipped without a real provider socket + Mutagen binary",
+        "Nightly CI matrix exercises the suite on all slow-provider platforms",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-101",
+      "title": "ProxyService contract + default Live Layer wired through global app",
+      "description": "As a user, an HTTPS-aware reverse proxy automatically routes `https://<app>.lndo.site` to the right service without manual Traefik config. (PRD-A3-04 US-101)",
+      "acceptanceCriteria": [
+        "`ProxyService` Effect Service tag, contract, and tagged errors published in `@lando/sdk`",
+        "Default Live Layer routes through Traefik running inside the global app (per §20.10.1); contributed via `globalServices:` (PRD-05)",
+        "Per-app config (hostname rules, port mappings) is derived from service endpoints — no `proxy:` Landofile block required for the default case",
+        "Scenario test starts two apps with overlapping default ports; both resolve via Traefik with no port conflict",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 28,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-102",
+      "title": "CertificateAuthority via @lando/ca-mkcert",
+      "description": "As a user, local HTTPS works out of the box — Traefik gets a trusted certificate for `*.lndo.site` (or the configured base domain) without me running `mkcert -install`. (PRD-A3-04 US-102)",
+      "acceptanceCriteria": [
+        "`CertificateAuthority` Effect Service tag + contract in `@lando/sdk`",
+        "`@lando/ca-mkcert` bundled plugin downloads mkcert via `lando setup`, runs `mkcert -install` once (with consent), and issues per-app wildcard certs",
+        "User can opt out via `lando setup --ca=none` (no trust install, HTTP only)",
+        "Scenario test asserts the issued cert chain validates against the locally-installed root",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 29,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-103",
+      "title": "SshService sidecar (default)",
+      "description": "As a user, services that need an SSH agent (e.g. Composer pulling from private git) get one via a sidecar container — no `ssh-agent` lifecycle on the host. (PRD-A3-04 US-103)",
+      "acceptanceCriteria": [
+        "`SshService` contract published in `@lando/sdk`; default Live Layer is the sidecar implementation per §10.4",
+        "Sidecar forwards a Unix-socket SSH agent into the app network; opt-in per service via `sshAgent: true`",
+        "`lando ssh <service>` works for the sidecar path (provider-exec TTY still wraps the actual login)",
+        "Scenario test runs `lando composer install` against a fake private package server with SSH-agent auth and asserts success",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 30,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-104",
+      "title": "HealthcheckService against provider-exec semantics",
+      "description": "As a user, services declare healthchecks (`type: tcp|http|cmd`) and Lando waits for them before publishing `post-app-start`. (PRD-A3-04 US-104)",
+      "acceptanceCriteria": [
+        "`HealthcheckService` contract + Effect tag in `@lando/sdk`",
+        "Live Layer drives provider-exec for `cmd:` healthchecks and TCP/HTTP probes from inside the per-app network",
+        "Healthcheck failure within timeout → `HealthcheckTimeoutError` with the failing service, probe, and last status",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 31,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-105",
+      "title": "ScannerService for endpoint discovery and port-collision detection",
+      "description": "As a user, `lando info` reports the actual reachable endpoints and `lando start` errors clearly when two apps want the same host port. (PRD-A3-04 US-105)",
+      "acceptanceCriteria": [
+        "`ScannerService` contract published; default Live Layer combines provider inspect output with proxy routing rules",
+        "Port-collision errors include all conflicting apps + service ids",
+        "`lando info --json` includes the scanner output verbatim",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 32,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-106",
+      "title": "HostProxyService for lndo.site-style hostnames",
+      "description": "As a user, `*.lndo.site` resolves to `127.0.0.1` (or the configured loopback) without me editing `/etc/hosts`. (PRD-A3-04 US-106)",
+      "acceptanceCriteria": [
+        "`HostProxyService` contract + default Live Layer (DNS sinkhole or `/etc/hosts` writer per platform)",
+        "Privileged operations gated behind sudo/UAC prompt at `lando setup` time; never inline during `lando start`",
+        "`lando setup --host-proxy=none` opt-out for users managing their own DNS",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 33,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-107",
+      "title": "sharedCrossAppNetwork capability + provider-side wiring",
+      "description": "As the global app, I can reach per-app services across networks without each user enabling host-only networking. (PRD-A3-04 US-107)",
+      "acceptanceCriteria": [
+        "`ProviderCapabilities.sharedCrossAppNetwork: true` declared for `provider-lando` and `provider-docker` on every platform where it works; `false` where it does not, with remediation",
+        "Planner refuses to start a global service requiring `sharedCrossAppNetwork` on a provider without the capability — actionable error",
+        "Scenario test exercises global Traefik routing to a per-app web service across the shared network",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-108",
+      "title": "lando doctor reports every subsystem status",
+      "description": "As an operator, `lando doctor` aggregates every subsystem's status (proxy reachable, CA installed, host proxy active, healthcheck engine ready, scanner cache age) and surfaces remediation per §10.9. (PRD-A3-04 US-108)",
+      "acceptanceCriteria": [
+        "Per-subsystem doctor checks return a `{ status, severity, context, solution }` record per §10.9",
+        "JSON renderer snapshot (`meta-doctor.subsystems.ndjson`) covers every subsystem and at least one failing-state remediation",
+        "Doctor never requires app bootstrap unless `--app` is passed",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 35,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-109",
+      "title": "networking intent — per-app bridge + shared cross-app network",
+      "description": "As the planner, I produce a `NetworkingPlan` per app that creates a per-app bridge network AND attaches the app to a shared network when a global service or another app needs to reach it. (PRD-A3-04 US-109)",
+      "acceptanceCriteria": [
+        "`NetworkingPlan` schema in `@lando/sdk` covers `perAppBridge` + `sharedNetworkMembership`",
+        "Provider apply creates / joins both networks idempotently; destroy removes per-app bridge but leaves the shared network (which is owned by the global app)",
+        "Scenario test verifies two apps + global Traefik all reach each other",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 36,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-110",
+      "title": "subsystem failure-recovery + cleanup",
+      "description": "As an operator, partial subsystem failures (proxy down, CA expired, host proxy unreachable) leave the apps in a documented partial state and `lando doctor` explains how to recover. (PRD-A3-04 US-110)",
+      "acceptanceCriteria": [
+        "Each subsystem's failure path produces a tagged error with `severity` + `solution` per §10.9",
+        "`meta:doctor --fix` (where safe) re-runs the subsystem's setup step; otherwise produces a `manual` remediation",
+        "Tests cover at least one degraded-subsystem scenario per subsystem",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 37,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-111",
+      "title": "GlobalAppService core service + reserved id global",
+      "description": "As the runtime, the `global` app id is reserved; any user attempt to declare it in a Landofile is rejected with `AppIdReservedError`. (PRD-A3-05 US-111)",
+      "acceptanceCriteria": [
+        "`GlobalAppService` Effect Service tag, contract, and Live Layer in `@lando/core`",
+        "`AppIdReservedError` tagged error published in `@lando/sdk`; emitted when a Landofile declares `name: global` or any id resolving to `global`",
+        "Schema round-trips through the §13.2 snapshot gate",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 38,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-112",
+      "title": "<userDataRoot>/global/.lando.yml materialization",
+      "description": "As the runtime, the global app has a materialized Landofile under the per-user data root; `meta:global:install` writes it idempotently. (PRD-A3-05 US-112)",
+      "acceptanceCriteria": [
+        "`<userDataRoot>/global/.lando.yml` is generated by `meta:global:install`; reruns are idempotent",
+        "The materialized file references bundled global services + any plugin-contributed `globalServices:` entries",
+        "User edits to the global Landofile are preserved across `meta:global:install` reruns; conflicts produce a tagged remediation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 39,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-113",
+      "title": "globalServices: plugin contribution surface",
+      "description": "As a plugin author, I can contribute `globalServices:` from my plugin's `Layer` and have those services appear in the global app's Landofile. (PRD-A3-05 US-113)",
+      "acceptanceCriteria": [
+        "`globalServices:` plugin contribution shape published in `@lando/sdk`; resolver merges contributions deterministically (last-wins per spec)",
+        "Conflict between two plugin contributions on the same service id produces a tagged error at bootstrap",
+        "Contract suite verifies a fake plugin contributing a global service appears in the materialized global Landofile",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 40,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-114",
+      "title": "bundled Traefik global service",
+      "description": "As a user, Traefik runs inside the global app and provides the default proxy referenced by per-app services. (PRD-A3-05 US-114)",
+      "acceptanceCriteria": [
+        "`traefik` global service shipped from `@lando/service-lando` (or a dedicated `@lando/service-traefik` plugin — implementer's choice; spec §20.10 is silent on packaging)",
+        "Default config exposes the Traefik dashboard on `traefik.lndo.site` (or configured base domain)",
+        "Scenario test (with global app started) confirms a per-app service is reachable through Traefik",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 41,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-115",
+      "title": "bundled Mailpit global service",
+      "description": "As a user, Mailpit runs inside the global app and per-app services have `MAIL_HOST`/`MAIL_PORT` env vars pointing at it. (PRD-A3-05 US-115)",
+      "acceptanceCriteria": [
+        "`mailpit` global service shipped; SMTP and web UI exposed (`mailpit.lndo.site` by default)",
+        "Per-app `LANDO_*` env contract extends to include `LANDO_MAIL_HOST` + `LANDO_MAIL_PORT` (resolved against the shared cross-app network)",
+        "Scenario test sends mail from a per-app service and asserts it appears in Mailpit's UI/API",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 42,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-116",
+      "title": "meta:global:* CLI namespace",
+      "description": "As an operator, I can run `meta:global:install`, `meta:global:start`, `meta:global:stop`, `meta:global:status`, `meta:global:uninstall`, `meta:global:config`, and `meta:global:destroy`. (PRD-A3-05 US-116)",
+      "acceptanceCriteria": [
+        "All seven commands implemented; aliases per §8.2 (e.g. `lando global:install`)",
+        "`meta:global:destroy` is gated behind `--yes` confirmation per the cross-cutting destructive-confirmation rule",
+        "Compiled `$bunfs` parity for every command (or unified dispatch from PRD-09 covers it)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 43,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-117",
+      "title": "Global lifecycle event scope",
+      "description": "As an event subscriber, I receive `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop` events distinct from per-app lifecycle events. (PRD-A3-05 US-117)",
+      "acceptanceCriteria": [
+        "Event payloads published in `@lando/sdk` with schema; `scope: \"global\"` in the event payload distinguishes them from per-app `scope: \"app\"`",
+        "Plugin subscribing to `post-global-start` receives the event before any per-app service that declared `AppFeature.requires.globalServices` boots",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 44,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-118",
+      "title": "auto-start via AppFeature.requires.globalServices",
+      "description": "As a user, running `lando start` on an app that needs the proxy will auto-start the global app if it is not running — no manual `meta:global:start`. (PRD-A3-05 US-118)",
+      "acceptanceCriteria": [
+        "Per-app `AppFeature.requires.globalServices: [\"traefik\"]` (or analogous) wires the dependency",
+        "Auto-start respects the abort signal; if global app start fails, per-app start fails with a chained tagged error pointing at the global failure",
+        "`lando stop` does NOT auto-stop the global app — global stop is explicit only",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 45,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-119",
+      "title": "global-app integration with lando doctor",
+      "description": "As an operator, `lando doctor` reports global app status (installed, started, contributing-plugin manifest, proxy / mailpit reachability). (PRD-A3-05 US-119)",
+      "acceptanceCriteria": [
+        "`meta:doctor` includes a `global-app` section per §10.9",
+        "Output covers materialized Landofile path, last `meta:global:install` timestamp, per-service status, and plugin contribution list",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 46,
+      "passes": true,
+      "notes": "global-app doctor check added; DefaultGlobalAppDoctorLayer wired; guide at docs/guides/global/doctor-walkthrough.mdx"
+    },
+    {
+      "id": "US-120",
+      "title": "ScratchAppService + scratch bootstrap level",
+      "description": "As the runtime, scratch apps boot through a dedicated `scratch` bootstrap level that loads the minimum subset needed (no app discovery, no plugin tooling). (PRD-A3-06 US-120)",
+      "acceptanceCriteria": [
+        "`ScratchAppService` Effect Service tag + contract published in `@lando/sdk`",
+        "`scratch` added to `BootstrapLevel` ranking between `commands` and `provider` (or per spec — implementer confirms with §3.2)",
+        "Live Layer composed in `core/src/runtime/layer.ts`; scratch bootstrap takes no Landofile from CWD",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 47,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-121",
+      "title": "apps:scratch:* CLI namespace",
+      "description": "As a user, I can run `apps:scratch:start`, `apps:scratch:stop`, `apps:scratch:destroy`, `apps:scratch:list`, `apps:scratch:info`, `apps:scratch:logs`, and `apps:scratch:gc`. (PRD-A3-06 US-121)",
+      "acceptanceCriteria": [
+        "All seven commands implemented and aliased per §8.2",
+        "`apps:scratch:gc` runs the orphan-reap (US-126) on demand",
+        "`--detach` flag on `apps:scratch:start` returns the scratch app id immediately and runs lifetime in the background",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 48,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-122",
+      "title": "fork mode (apps:scratch:start --fork=<app>)",
+      "description": "As a user, I can fork an existing app into a scratch copy with the same services, mounts, and config. (PRD-A3-06 US-122)",
+      "acceptanceCriteria": [
+        "Fork mode resolves the source app via `AppRef`, deep-copies the plan, and creates a new scoped id (e.g. `<source>-scratch-<rand>`)",
+        "Source app is not modified; fork's volumes/mounts are separate",
+        "Scenario test forks a Node+Postgres app, asserts both source and fork run simultaneously",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 49,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-123",
+      "title": "scratch mode (apps:scratch:start --recipe=<id>)",
+      "description": "As a user, I can scratch-start from any recipe (canonical or remote, per PRD-07) and get an ephemeral app without scaffolding into the CWD. (PRD-A3-06 US-123)",
+      "acceptanceCriteria": [
+        "Scratch mode runs the recipe against a temp directory under the per-user data root (`<userDataRoot>/scratch/<id>/`)",
+        "All recipe prompts that take defaults can be auto-answered via `--option=key=value` flags; remaining prompts run interactively unless `--yes`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 50,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-124",
+      "title": "--isolate=full content copy",
+      "description": "As a user, `--isolate=full` causes the scratch app to be a content copy (not a shared bind mount) of the source app's app root. (PRD-A3-06 US-124)",
+      "acceptanceCriteria": [
+        "`IsolateMode` schema in `@lando/sdk`: `\"none\" | \"full\"`. `--isolate=full` is opt-in; default is `\"none\"` (shared mount with source)",
+        "Content-copy implementation uses platform-appropriate fast copy (`cp -r --reflink=auto` on Linux where supported, falling back to byte copy)",
+        "Provider declares `copyOnWriteAppRoot: false` for Alpha 3; reflink/clonefile/overlay paths are preserved as the post-4.0 substitution point",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 51,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-125",
+      "title": "scope-bound lifetime + finalizer",
+      "description": "As a user running `apps:scratch:start` without `--detach`, the scratch app is destroyed automatically when the command exits — even on Ctrl-C. (PRD-A3-06 US-125)",
+      "acceptanceCriteria": [
+        "Finalizer registered against the Effect scope of the command; `Ctrl-C` triggers destroy",
+        "`--detach` skips the finalizer; the scratch app survives until `apps:scratch:destroy` or `gc`",
+        "Tests cover both attached + detached lifetimes including signal-on-exit cleanup",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 52,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-126",
+      "title": "scratch-app registry + provider-label orphan reap",
+      "description": "As an operator, `apps:scratch:gc` lists and removes scratch apps whose registry entry no longer matches a live provider container set. (PRD-A3-06 US-126)",
+      "acceptanceCriteria": [
+        "Per-user scratch-app registry in `<userDataRoot>/scratch/registry.json` per §12",
+        "Provider containers tagged with `lando.scratchId=<id>` label",
+        "GC pass cross-references registry × provider label set; orphans on either side are reported; `--prune` removes them",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 53,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-127",
+      "title": "--mount-cwd + --share-global-storage flags",
+      "description": "As a user, I can opt the scratch app into mounting my current working directory and/or sharing the global app's storage scope. (PRD-A3-06 US-127)",
+      "acceptanceCriteria": [
+        "`--mount-cwd[=<container-path>]` adds a mount of `$PWD` into the scratch app's primary service",
+        "`--share-global-storage` joins the scratch app to the shared cross-app network and exposes the global app's storage scope",
+        "Flags are mutually compatible; tests cover both individually + together",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 54,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-128",
+      "title": "apps:scratch:list + apps:scratch:info",
+      "description": "As an operator, I can inspect what scratch apps exist, when they were created, what mode they were started in, and their lifetime status. (PRD-A3-06 US-128)",
+      "acceptanceCriteria": [
+        "`apps:scratch:list` renders id / source / mode / created / status (`attached` | `detached` | `orphan`)",
+        "`apps:scratch:info <id>` shows the same data plus mount points, network membership, and per-service endpoints",
+        "JSON renderer output covered by a named snapshot fixture",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 55,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-129",
+      "title": "git recipe source",
+      "description": "As a user, I can run `lando init --source=git --url=…` and Lando clones the repo, locates `recipe.yml`, and proceeds with prompts. (PRD-A3-07 US-129)",
+      "acceptanceCriteria": [
+        "`git` source resolver clones to `<userDataRoot>/recipe-cache/git/<sha>/`; SHA-pinned per-Landofile lock",
+        "Subpath (`--path=<dir>`) resolves the recipe inside a monorepo",
+        "Failure modes (auth, missing recipe.yml, dirty subpath) produce tagged remediation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 56,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-130",
+      "title": "tarball recipe source",
+      "description": "As a user, I can run `lando init --source=tarball --url=…` and Lando downloads, verifies, and extracts the tarball before resolving `recipe.yml`. (PRD-A3-07 US-130)",
+      "acceptanceCriteria": [
+        "`tarball` source downloads to `<userDataRoot>/recipe-cache/tarball/<sha256>/`",
+        "SHA-256 verification required when `--checksum=<hash>` is passed; warn-only otherwise (with a per-init prompt unless `--yes`)",
+        "Tests cover successful extract, checksum mismatch, and missing `recipe.yml` at top-level / subpath",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 57,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-131",
+      "title": "npm recipe source",
+      "description": "As a user, I can run `lando init --source=npm --package=@lando/recipe-…` and Lando fetches the npm tarball, extracts it, and proceeds. (PRD-A3-07 US-131)",
+      "acceptanceCriteria": [
+        "Resolves npm package metadata via the registry, downloads the published tarball, and reuses the `tarball` extractor",
+        "Honors `@version` suffix; defaults to latest stable",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 58,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-132",
+      "title": "registry recipe source",
+      "description": "As a user, I can run `lando init --source=registry --id=drupal-10` and Lando resolves the recipe id through the registry surface (e.g. `https://registry.lando.dev/recipes/`). (PRD-A3-07 US-132)",
+      "acceptanceCriteria": [
+        "`registry` source resolver hits the configured registry URL (default `https://registry.lando.dev/recipes/`) and follows the resolution result to a `git`/`tarball` underlying source",
+        "Registry response schema published in `@lando/sdk`",
+        "Tests use a fake registry; live integration test gated by env var",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 59,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-133",
+      "title": "dynamic choicesFrom: for prompts",
+      "description": "As a recipe author, I can declare a `select` prompt whose choices come from running a canonical Lando command (e.g. `lando services:list --type=php`). (PRD-A3-07 US-133)",
+      "acceptanceCriteria": [
+        "`choicesFrom: { command: \"<id>\", args: […], parse: \"json\" | \"lines\" }` schema published in `@lando/sdk`",
+        "Command runs in a sandboxed bootstrap that does not require an app; output parsed per `parse:`",
+        "Failure (command exit ≠ 0 or unparseable output) falls back to a remediation prompt asking the user for manual choice",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 60,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-134",
+      "title": "runs: allowlist + ctx.run",
+      "description": "As a recipe author, I can declare a `runs:` allowlist (command ids the recipe may invoke during `postInit:`) and call `ctx.run('<id>', args)` from declarative recipes or `recipe.ts`. (PRD-A3-07 US-134)",
+      "acceptanceCriteria": [
+        "`runs:` allowlist parsed from `recipe.yml` / `recipe.ts`; runtime check rejects any `ctx.run('…')` not in the allowlist with a tagged error",
+        "Allowlisted commands run under the same bootstrap as the recipe's own command",
+        "Tests cover allowlisted + non-allowlisted call paths",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 61,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-135",
+      "title": "fetchAllowlist: + ctx.fetch",
+      "description": "As a recipe author, I can declare a `fetchAllowlist:` (URL globs) and call `ctx.fetch(url)` from a recipe — calls outside the allowlist fail with a tagged remediation. (PRD-A3-07 US-135)",
+      "acceptanceCriteria": [
+        "`fetchAllowlist:` parsed; URL match is glob-based (e.g. `https://api.example.com/**`)",
+        "`ctx.fetch` is a thin wrapper over the platform `fetch`; redirect targets must also match the allowlist",
+        "Tests cover allowed, denied, and redirect-out-of-allowlist cases",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 62,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-136",
+      "title": "programmatic recipe.ts",
+      "description": "As a recipe author, I can write a recipe as a TypeScript module exporting a default `Recipe` object instead of `recipe.yml`. (PRD-A3-07 US-136)",
+      "acceptanceCriteria": [
+        "`Recipe` type exported from `@lando/sdk`; a recipe TypeScript file is compiled and loaded under the recipe bootstrap",
+        "Compilation uses Bun's native TS support; no `tsc` step required at recipe-load time",
+        "Tests cover a fixture recipe.ts with prompts, `runs:`, `fetchAllowlist:`, and `postInit:` declarations",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 63,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-137",
+      "title": "remaining postInit: bun: verbs — script, add, create, run",
+      "description": "As a recipe author, I can declare `postInit:` steps that run `bun script`, `bun add`, `bun create`, and `bun run` (in addition to Alpha 1's `bun install`). (PRD-A3-07 US-137)",
+      "acceptanceCriteria": [
+        "`script` runs an arbitrary bun script from the recipe's `scripts/` directory",
+        "`add` installs additional packages with optional `--dev` semantics",
+        "`create` runs `bun create <template>`; the template arg supports recipe-substituted variables",
+        "`run` runs an entry from `package.json#scripts`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 64,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-138",
+      "title": "postInit: bun: { verb: x } (arbitrary bunx invocation)",
+      "description": "As a recipe author, I can declare `postInit: { bun: { verb: x, args: [\"...\", \"...\"] } }` to run a one-off `bunx` command. (PRD-A3-07 US-138)",
+      "acceptanceCriteria": [
+        "`x` verb runs the equivalent of `bunx <args>`; output streams into the renderer's task tree",
+        "Allowlist enforcement: `x` is gated by `runs:` if a recipe declares one; recipes without `runs:` allow `x` by default (recipes opt into stricter sandboxing)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 65,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-139",
+      "title": "includes: + .lando.lock.yml",
+      "description": "As a user, my Landofile can `includes:` other YAML/Landofile fragments and the resolved tree is pinned by `.lando.lock.yml`. (PRD-A3-08 US-139)",
+      "acceptanceCriteria": [
+        "`includes:` resolver supports relative paths, `git@…`/`https://…` URLs (reuse PRD-07 source surface where it makes sense), and npm packages",
+        "`.lando.lock.yml` records the resolved SHA + hash of every included fragment",
+        "Lock mismatch at load time produces `LandofileLockMismatchError` with remediation pointing at `lando app:includes:update`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 66,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-140",
+      "title": "app:includes:update",
+      "description": "As a user, I can run `lando app:includes:update` to refresh every included fragment to its latest source-resolved version and rewrite `.lando.lock.yml`. (PRD-A3-08 US-140)",
+      "acceptanceCriteria": [
+        "Command re-resolves every `includes:` entry, recomputes SHAs, and writes the lockfile atomically",
+        "`--check` mode reports drift without writing",
+        "Compiled binary parity verified (or unified dispatch from PRD-09 covers it)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 67,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-141",
+      "title": "app:includes:verify",
+      "description": "As CI, I can run `lando app:includes:verify` to confirm the lockfile matches the resolved tree without mutating anything. (PRD-A3-08 US-141)",
+      "acceptanceCriteria": [
+        "Read-only command; exits non-zero on lock mismatch with the same `LandofileLockMismatchError` schema as US-139",
+        "JSON renderer output covers the per-fragment status",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 68,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-142",
+      "title": "configuration expressions language (§7.3.1) — parser",
+      "description": "As a user, I can use `${{ … }}` expressions in Landofile values with pipes, filters, and the full operator set documented in §7.3.1. (PRD-A3-08 US-142)",
+      "acceptanceCriteria": [
+        "Expression parser implemented; the full `pipe | filter | filter` syntax + comparators + ternary supported per §7.3.1",
+        "Parse errors emit `LandofileExpressionParseError` with file + line + column",
+        "Tests cover the documented operator surface (one assert per documented filter)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 69,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-143",
+      "title": "expression evaluator + sandbox",
+      "description": "As a user, evaluating expressions only sees a sandboxed context (config values, env, service metadata, secrets) — no arbitrary code or filesystem reads. (PRD-A3-08 US-143)",
+      "acceptanceCriteria": [
+        "Evaluator runs against a documented `ExpressionContext` published in `@lando/sdk`",
+        "No host FS / network / process access from inside an expression; attempt → `LandofileExpressionForbiddenError`",
+        "Tests cover happy path (config + env + secret) and forbidden access",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 70,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-144",
+      "title": "bundled template engines — Handlebars + Mustache",
+      "description": "As a recipe / Landofile author, I can declare `template: handlebars` or `template: mustache` and have the Landofile rendered through the bundled engine before parsing. (PRD-A3-08 US-144)",
+      "acceptanceCriteria": [
+        "`@lando/template-handlebars` and `@lando/template-mustache` shipped as bundled plugins; contributed to `bundled.ts` codegen",
+        "Template selection happens before YAML parse; template errors surface with template-source line numbers (not post-render line numbers)",
+        "Default template engine is none (raw YAML); opt-in per Landofile",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 71,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-145",
+      "title": "env overrides (§7.6)",
+      "description": "As a user, I can override any Landofile value via `LANDO_*` env vars with the precedence chain documented in §7.6. (PRD-A3-08 US-145)",
+      "acceptanceCriteria": [
+        "Generic `LANDO_CONFIG__path__to__value=…` overlay implemented (uses `__` as delimiter); replaces MVP's hard-coded four-var overlay",
+        "Precedence: command flag > env > `.lando.local.yml` > main Landofile > defaults",
+        "Tests cover every level of the precedence chain",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 72,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-146",
+      "title": "SecretStore contract + env-backed default",
+      "description": "As a user, I can reference `${{ secrets.MY_TOKEN }}` in Landofile and have it resolve via a pluggable `SecretStore`; the default reads from environment variables. (PRD-A3-08 US-146)",
+      "acceptanceCriteria": [
+        "`SecretStore` Effect Service tag + contract in `@lando/sdk` (`get`, `has`, `list`)",
+        "Default Live Layer reads from `process.env`; missing secret → `SecretNotFoundError` with the secret id",
+        "Secrets are redacted in renderer / log output by default; secret values never appear in `lando info` JSON",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 73,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-147",
+      "title": "config-translation framework (§7.4.1)",
+      "description": "As a plugin author, I can register a `ConfigTranslator` that maps an external config format (e.g. a legacy `lando v3` `.lando.yml` style key) into the canonical v4 schema. (PRD-A3-08 US-147)",
+      "acceptanceCriteria": [
+        "`ConfigTranslator` Effect Service tag + contract published in `@lando/sdk`",
+        "Translator resolution is deterministic; multiple translators run in declared order; conflicts produce `ConfigTranslatorConflictError`",
+        "No translators are shipped in Alpha 3 core (the framework is the deliverable; concrete translators come post-GA)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 74,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-148",
+      "title": "app:config:translate command",
+      "description": "As a user with a non-canonical config file (e.g. v3 Landofile), I can run `lando app:config:translate` to produce a v4 canonical file via registered translators. (PRD-A3-08 US-148)",
+      "acceptanceCriteria": [
+        "Command reads the input file, runs through registered translators, writes the canonical YAML next to it as `.lando.yml.canonical`",
+        "`--write` overwrites the input (with a `.bak` backup)",
+        "With zero translators registered, the command exits with a remediation pointing at the plugin install path",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 75,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-149",
+      "title": "Landofile schema gate",
+      "description": "As a maintainer, the full Landofile schema (`includes:`, `expressions`, `template:`, `secrets:`, `tooling:`, `services:`, …) round-trips through the §13.2 schema snapshot gate. (PRD-A3-08 US-149)",
+      "acceptanceCriteria": [
+        "JSON Schema exports for every new key; snapshot test asserts no fixture drift on `bun run codegen`",
+        "`sdk/API_COMPATIBILITY.md` updated for Alpha-3-added keys",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 76,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-195",
+      "title": "app:config:lint command",
+      "description": "As an IDE / editor integration (or a developer who wants fast schema feedback without paying for the full doctor --app sweep), I can run `lando app:config:lint` and get a canonical-schema-only validation of the Landofile in the current app directory. (PRD-A3-08 US-195)",
+      "acceptanceCriteria": [
+        "`lando app:config:lint` validates the Landofile against the canonical JSON Schema (no translators, no doctor checks, no provider probes)",
+        "Exit code is 0 on clean, non-zero on schema violation; renderer emits structured violations (path, message, suggested fix) so editors can surface inline diagnostics",
+        "`--format=json` emits a stable JSON shape suitable for LSP-style consumers; `--format=text` (default) is human-readable",
+        "`lando doctor --app` invokes the same lint pass internally (single source of truth — no forked logic between standalone and doctor paths)",
+        "Command participates in the §13.1 layer coverage rules and the §13.4 renderer lint gate",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 195,
+      "passes": true,
+      "notes": "Added during paradigm review (PRD-A3-08 §Open Questions item #21 resolution). Ships standalone for IDE/LSP integrations and is wired into doctor --app via shared lint implementation."
+    },
+    {
+      "id": "US-196",
+      "title": "`bun run dev:guides` watch mode",
+      "description": "As a developer using executable guides as the dev-time test driver, I can run `bun run dev:guides` (or single-guide mode with a path arg) and the codegen + typecheck + scenario test loop re-runs on every change. (PRD-A3-12 US-196)",
+      "acceptanceCriteria": [
+        "`bun run dev:guides` watches `docs/guides/**/*.mdx`, `core/src/**`, `sdk/src/**`, `plugins/*/src/**`, and `scripts/build-guide-scenarios.ts`",
+        "On any change: re-runs `build-guide-scenarios` for affected guides, re-runs `tsc --noEmit` on generated paths, re-runs only the affected guide's scenario tests",
+        "Single-guide mode: `bun run dev:guides docs/guides/<path>.mdx` constrains the loop to one guide for focused TDD",
+        "Source-mapped failures from PRD-A2-03 surface unchanged",
+        "Watch mode exits cleanly on SIGINT with no leftover `dist/` artifacts beyond a normal run",
+        "Tests cover fixture guide, script invocation, failing guide, single-guide path",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 196,
+      "passes": true,
+      "notes": "Added during paradigm review (PRD-A3-12 §Guide-as-TDD discipline). Alpha 2-04 explicitly deferred this to Alpha 3+; Alpha 3 picks it up."
+    },
+    {
+      "id": "US-197",
+      "title": "Alpha 3 feature coverage matrix (`docs/guides/INDEX.md`)",
+      "description": "As a maintainer, I can see at a glance which Alpha 3 features are covered by guides via an authored `docs/guides/INDEX.md` matrix mapping each user-facing PRD feature to the guide(s) that exercise it. (PRD-A3-12 US-197)",
+      "acceptanceCriteria": [
+        "`docs/guides/INDEX.md` exists with a table: PRD | User Story | Feature | Guide Path | Status",
+        "At Alpha 3 cutover, every user-facing Alpha 3 PRD (01, 02, 03, 04, 05, 06, 07, 08, 10, 11) has at least one row in the matrix",
+        "`scripts/check-guide-coverage.ts` validates that every guide path in INDEX.md exists, every §Guide-Coverage-declared PRD has its rows, and every row points at a real file",
+        "`bun run check:guide-coverage` is wired into the per-PR CI gate between `lint:guides` and the test run",
+        "Tests cover green INDEX, missing guide file, missing PRD row, dangling INDEX entry",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 197,
+      "passes": true,
+      "notes": "Authored matrix (not generated) so it can carry status/notes columns that a frontmatter scrape can't express."
+    },
+    {
+      "id": "US-198",
+      "title": "per-PRD `## Guide Coverage` section convention",
+      "description": "As a maintainer, every user-facing Alpha 3 PRD declares a `## Guide Coverage` section listing guide paths owned by that PRD; internal/infra PRDs declare `None`. (PRD-A3-12 US-198)",
+      "acceptanceCriteria": [
+        "Every user-facing Alpha 3 PRD (01, 02, 03, 04, 05, 06, 07, 08, 10, 11) has a `## Guide Coverage` section with a table mapping user stories to guide paths",
+        "PRDs 09 and 13 explicitly state `## Guide Coverage: None — internal/infra PRD.`",
+        "`scripts/check-guide-coverage.ts` parses the section and asserts every path exists in `docs/guides/` and appears in `INDEX.md`",
+        "A user-facing PRD that lacks the section, or declares a non-existent path, fails the gate",
+        "Tests cover valid section, missing section, dangling path, internal-PRD 'None' declaration",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 198,
+      "passes": true,
+      "notes": "Decentralized declaration (per PRD) with centralized matrix (INDEX.md) — keeps each PRD self-describing while still giving one place to scan for gaps."
+    },
+    {
+      "id": "US-199",
+      "title": "guide-drift CI gate",
+      "description": "As CI, when a PR touches files under a CLI/source surface declared in any PRD's §Guide Coverage section, the PR MUST also touch one of the listed guide files or use the `Guide-Coverage-Skip:` escape hatch. (PRD-A3-12 US-199)",
+      "acceptanceCriteria": [
+        "`scripts/check-guide-drift.ts` reads §Guide Coverage sections to map CLI/source paths to guide paths",
+        "On a PR: diffs changed files against declared surfaces; touch-surface-without-guide fails with a remediation pointing at the §Guide Coverage section",
+        "Escape hatch: PR body line `Guide-Coverage-Skip: <reason ≥ 24 chars>` bypasses; reason recorded in CI log and PR check summary",
+        "Wired as **blocking** into per-PR CI gate after `check-guide-coverage`",
+        "Tests cover: touch-without-guide (fail), touch-both (pass), guide-only (pass), valid skip (pass + log), too-short skip (fail)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 199,
+      "passes": true,
+      "notes": "Blocking from day one of Alpha 3 (no soft-warning ramp). Escape hatch (`Guide-Coverage-Skip:`) handles legitimate exceptions like refactors and dependency bumps."
+    },
+    {
+      "id": "US-150",
+      "title": "task.detail streaming tail (4-line ring buffer)",
+      "description": "As a user watching `lando start`, each running task shows the last 4 lines of its stdout/stderr beneath the task line. (PRD-A3-09 US-150)",
+      "acceptanceCriteria": [
+        "`task.detail` events publish a single line; the renderer keeps a 4-line ring buffer per task",
+        "Buffer wraps oldest-out at exactly 4 lines (configurable later, fixed for Alpha 3)",
+        "Tests cover ring-buffer rotation, finished-task collapse, and CSI cursor handling",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 77,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-151",
+      "title": "task.detail.expand + task.detail.collapse keybindings",
+      "description": "As a user, I can press a key to expand a task's full detail and another to collapse it back to the 4-line tail. (PRD-A3-09 US-151)",
+      "acceptanceCriteria": [
+        "Expand / collapse keybindings registered (default per §8.9; user-configurable post-GA)",
+        "Expanding shows the whole stream tail (bounded by terminal scroll); collapsing restores the 4-line ring",
+        "Tests use a fake TTY to exercise the keybinding state machine",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 78,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-152",
+      "title": "full first-paint contract per §8.9.1",
+      "description": "As a user, the first paint after `lando start` matches §8.9.1 exactly — banner, task tree placeholder, and no flicker. (PRD-A3-09 US-152)",
+      "acceptanceCriteria": [
+        "`paint.banner` first-paint contract honored; no Effect / OCLIF / SDK / plugin imports happen before first paint (covered by the canary test added in MVP)",
+        "Renderer initializes the task tree skeleton before any work runs",
+        "Tests use a fake terminal recorder to assert byte-for-byte first-paint output",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 79,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-153",
+      "title": "verbose renderer",
+      "description": "As a debugging user, I can pass `--renderer=verbose` to get the same task tree as `lando` plus full message and event traces. (PRD-A3-09 US-153)",
+      "acceptanceCriteria": [
+        "`verbose` renderer registered alongside `lando`, `json`, `plain`",
+        "Output is human-readable but extends `lando` with every published event payload",
+        "Tests cover the renderer-selection precedence (`flag > env > config > default`) with `verbose` as a valid choice",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 80,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-154",
+      "title": "renderer message contract (message.info / warn / error)",
+      "description": "As a developer, every user-facing message goes through the renderer's `message.info`/`message.warn`/`message.error` contract — never `console.log` directly. (PRD-A3-09 US-154)",
+      "acceptanceCriteria": [
+        "Renderer message API exposed via the `Renderer` Effect Service tag",
+        "All four renderers (`lando`, `json`, `plain`, `verbose`) implement the message contract",
+        "Tests cover each renderer's output for each severity level",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 81,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-155",
+      "title": "CLI dispatch unification spike",
+      "description": "As a maintainer, I run the spike per ROADMAP Phase 3: can `@oclif/core`'s `execute()` dispatch reliably inside `bun build --compile` against `oclif.manifest.json` + `core/src/cli/oclif/compiled-commands.ts`? (PRD-A3-09 US-155)",
+      "acceptanceCriteria": [
+        "Spike covers `app:start`, `meta:setup`, `meta:bun --version` passthrough, and one deferred command id",
+        "Spike asserts exit code, stderr remediation, and JSON-renderer parity against `runCompiledCli`",
+        "Spike documented in `spec/14-appendices.md` with the conclusion (option a or option b)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 82,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-156",
+      "title": "apply spike outcome — unify or harden dual dispatch",
+      "description": "As a maintainer, the spike outcome from US-155 is applied: either delete `runCompiledCli` and drop §8.4.1's relaxed-import rule, or promote §8.4.1 to normative and add a compiled-binary parity test layer. (PRD-A3-09 US-156)",
+      "acceptanceCriteria": [
+        "If option (a): `runCompiledCli` removed from `core/src/cli/run.ts`; §8.4.1 folded into a historical note; `AGENTS.md` interim bullets for dual CLI dispatch + single source of truth + compiled CLI coverage all removed",
+        "If option (b): §8.4.1 parity rules become normative; new §13.1 parity test layer covers every canonical command id (MVP_COMMAND_IDS + the §17.1 stage-7 deferred-command set)",
+        "Either way: §14.2 row 'Compiled-binary CLI dispatch unification' closed; ROADMAP Phase 3 spike entry stricken or referenced",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 83,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-157",
+      "title": "Renderer Live Layer wired at CLI command boundary",
+      "description": "As a maintainer, every CLI command's `render()` helper / direct `console.*` call in `core/src/cli/run.ts` and per-command modules is replaced by `Renderer` service calls. (PRD-A3-09 US-157)",
+      "acceptanceCriteria": [
+        "`Renderer` Live Layer instantiated at the command-boundary; commands consume it via `Effect.serviceOption`",
+        "`renderer` field added to `GlobalConfig` Schema so the `flag > env > config > default` precedence reaches a real Live Layer (closes the AGENTS interim note)",
+        "No `process.stdout.write` or `console.*` calls outside the two §2.4 carve-outs (`core/bin/lando.ts`, `core/src/cli/oclif/pre-renderer.ts`)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 84,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-158",
+      "title": "§13.4 renderer lint gate",
+      "description": "As a maintainer, the lint gate from §13.4 fails CI when any source file outside the two §2.4 carve-outs calls `process.stdout.write` or `console.*`. (PRD-A3-09 US-158)",
+      "acceptanceCriteria": [
+        "Lint rule added to `scripts/check-renderer-boundary.ts` (or AST-grep config); CI calls it from `static-checks`",
+        "AGENTS.md 'Renderer not wired at the CLI command boundary' interim bullet is removed; §2.4 reverts to its originally-specified prohibitions",
+        "Lint gate covers `core/src/**` and `plugins/**`; the two carve-out files are explicitly allowlisted",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 85,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-159",
+      "title": "tooling bootstrap level becomes real",
+      "description": "As the runtime, the `tooling` bootstrap level loads what's necessary to dispatch a tooling command — and nothing more. (PRD-A3-10 US-159)",
+      "acceptanceCriteria": [
+        "`tooling` `BootstrapLevel` declared per §3.2 ranking; composed Live Layer in `core/src/runtime/layer.ts`",
+        "No provider connection / app planner construction at `tooling` level; relies on the §12 app-plan cache",
+        "Tests assert `tooling` boots cleanly without `LANDO_TEST_PODMAN_SOCKET`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 86,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-160",
+      "title": "cache-only app-plan read at tooling level",
+      "description": "As a tooling command, I read the planned app from the cache; cache miss falls back to a one-shot `app` bootstrap (cold path). (PRD-A3-10 US-160)",
+      "acceptanceCriteria": [
+        "Tooling dispatch reads `app-plan` cache by `(landofileContentHash, providerId)`; cache miss → fall back to `app` bootstrap, regenerate plan, repopulate cache",
+        "Cache key includes Landofile content hash, included-fragment SHAs, and provider id",
+        "Tests cover hit, miss, and stale-entry invalidation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 87,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-161",
+      "title": "tooling compilation cache",
+      "description": "As a tooling command, the compiled command set is cached by Landofile content hash so repeated invocations skip recompilation. (PRD-A3-10 US-161)",
+      "acceptanceCriteria": [
+        "Compilation cache stored under §12 cache rules; key = Landofile content hash + tooling-relevant config hash",
+        "Cache invalidation on any tooling-affecting key change (services, tooling, includes)",
+        "Tests cover cold compile, warm reuse, and invalidation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 88,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-162",
+      "title": "perf-budget benchmark gate (~150ms target)",
+      "description": "As maintainers, a CI benchmark gate measures tooling hot-path latency and fails the run if regression exceeds the budget. (PRD-A3-10 US-162)",
+      "acceptanceCriteria": [
+        "Benchmark script (`scripts/bench-tooling-hot-path.ts`) measures `lando <tooling-alias>` cold + warm latency on Linux x64",
+        "Budget recorded in a versioned baseline; per-PR regression > 25% fails CI",
+        "Target is ~150ms warm-path on Linux x64 per §1.1; current baseline documented even if not yet at target",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 89,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-163",
+      "title": "service-mode lando shell",
+      "description": "As a user, I can run `lando shell <service>` to drop into the running container's shell. (PRD-A3-10 US-163)",
+      "acceptanceCriteria": [
+        "Service mode is the default for `lando shell <service>`; host mode is `lando shell --host` (Alpha 1 behavior preserved)",
+        "Shell is launched via the selected provider's exec, attaches stdin/stdout/stderr, and forwards window-resize signals",
+        "AbortSignal forwarding stops the shell on Ctrl-C of the parent CLI",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 90,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-164",
+      "title": "tooling output streams via the renderer task tree",
+      "description": "As a user, `lando <tool>` output (whether host or provider-exec) streams into the renderer task tree consistently, matching the §8.9 contract. (PRD-A3-10 US-164)",
+      "acceptanceCriteria": [
+        "Tooling commands publish `task.start`/`task.detail`/`task.complete`/`task.fail` events through the renderer",
+        "`--renderer=plain` produces a flat stream (preserving the Alpha 1 behavior); `lando` and `verbose` produce the tree",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 91,
+      "passes": true,
+      "notes": "Tooling output streams via the renderer task tree. runTooling opts into progress via renderProgress; emitToolingOutputProgress publishes task.tree.start/task.start/task.detail(stdout|stderr, newline-split)/task.complete|task.fail/task.tree.complete. runWithRendererHandling gates the event-consumer renderer on renderEvents (tooling-only, no regression to other commands); run.ts compiled dispatch passes both flags. plain=flat Alpha 1 stream, lando/verbose=task tree, json=NDJSON on stderr. Guide docs/guides/tooling/output-streaming.mdx added (INDEX Shipped). typecheck+lint+tests+lint:guides+guide-coverage green; manual QA per mode captured."
+    },
+    {
+      "id": "US-165",
+      "title": "meta:plugin:add against npm (full source)",
+      "description": "As a user, I can run `lando meta:plugin:add @lando/plugin-foo` and have it installed under the per-user plugin root with manifest validation. (PRD-A3-11 US-165)",
+      "acceptanceCriteria": [
+        "Resolves npm package metadata, downloads tarball, extracts under `<userDataRoot>/plugins/<name>/<version>/`",
+        "Manifest validated against `@lando/sdk` plugin manifest schema (`name`, `lando.version`, `requires`)",
+        "Re-runs are idempotent; version pinning supported (`@1.2.3` suffix)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 92,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-166",
+      "title": "meta:plugin:remove",
+      "description": "As a user, I can run `lando meta:plugin:remove <name>` and the plugin is unloaded and removed from disk. (PRD-A3-11 US-166)",
+      "acceptanceCriteria": [
+        "Plugin directory deleted; per-user plugin registry updated atomically",
+        "If the plugin is referenced by an active Landofile, command refuses with a remediation pointing at the referencing app",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 93,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-167",
+      "title": "postinstall trust gating mechanism",
+      "description": "As the loader, plugins with declared postinstall scripts are gated behind a trust check; untrusted plugins are installed but inert until trust is granted. (PRD-A3-11 US-167)",
+      "acceptanceCriteria": [
+        "`PluginTrustStore` Effect Service tag in `@lando/sdk`; default Live Layer reads `<userConfRoot>/plugin-trust.yml`",
+        "`meta:plugin:add` honors trust state; untrusted plugins with postinstalls skip the postinstall and log a remediation pointing at `meta:plugin:trust <name>` (UX finalized at Beta 1)",
+        "`meta:plugin:trust <name>` writes the trust entry; `meta:plugin:trust-authoring-root <abs>` allows blanket trust for a developer authoring root",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 94,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-168",
+      "title": "system / user / app plugin discovery sources",
+      "description": "As the loader, plugins are discovered from system (bundled), user (`<userDataRoot>/plugins/`), and app (`<appRoot>/.lando/plugins/`) sources, in declared precedence. (PRD-A3-11 US-168)",
+      "acceptanceCriteria": [
+        "Discovery returns a merged plugin list; per-source precedence is `app > user > system`",
+        "Conflict on the same plugin id across sources resolves to the highest-precedence entry; warning emitted",
+        "Tests cover all three sources individually + combined",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 95,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-169",
+      "title": "plugin command-index cache",
+      "description": "As the CLI, repeated `lando --help` after a plugin install hits the §12 plugin-command-index cache and does not re-scan plugin directories. (PRD-A3-11 US-169)",
+      "acceptanceCriteria": [
+        "Cache encodes plugin-list SHA + per-plugin command id list",
+        "Invalidation on `meta:plugin:add` / `meta:plugin:remove` / `meta:plugin:trust`",
+        "Tests cover cold scan, warm hit, and post-add invalidation",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 96,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-170",
+      "title": "@lando/core/* entry points published",
+      "description": "As a library embedder, I can import from `@lando/core/schema`, `/errors`, `/events`, `/services`, `/testing`, `/cli`, and `/oclif` and get the expected surface. (PRD-A3-11 US-170)",
+      "acceptanceCriteria": [
+        "`package.json#exports` lists every entry point with TS types + ESM",
+        "Each entry is documented in `core/README.md` or a dedicated `docs/embedding.md` per §16",
+        "Tests in `core/test/library/` cover at least one symbol from each entry",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 97,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-171",
+      "title": "EmbeddingPluginPolicy fully wired",
+      "description": "As an embedder, I can pass an `EmbeddingPluginPolicy` to `makeLandoRuntime` and control plugin discovery / loading per §16. (PRD-A3-11 US-171)",
+      "acceptanceCriteria": [
+        "`EmbeddingPluginPolicy` schema published in `@lando/sdk`; modes per §16.4 (`none`, `bundled-only`, `explicit`, `discovery`)",
+        "`makeLandoRuntime({ plugins: { policy: … } })` honors the policy; `none` mode loads no plugins at all",
+        "Library mode defaults: silent logger, json renderer, `policy: \"explicit\"`, no telemetry",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 98,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-172",
+      "title": "import-boundary test enforces OCLIF-free default entry",
+      "description": "As a maintainer, the default `@lando/core` entry imports no OCLIF code path — OCLIF lives only under `@lando/core/oclif`. (PRD-A3-11 US-172)",
+      "acceptanceCriteria": [
+        "Import-boundary test in `core/test/library/` resolves every symbol from `@lando/core` and asserts no OCLIF module is loaded transitively",
+        "Test also covers the four critical entry points (`/cli`, `/oclif`, `/testing`, default) and asserts their bundled module graph at compile-time",
+        "Failure messages name the offending import chain",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 99,
+      "passes": true,
+      "notes": "Added core/test/library/import-boundary.test.ts: transitive static-import-graph walker (Bun.Transpiler scan; type-only+dynamic excluded) asserts default @lando/core, /cli, /testing load no OCLIF code path while /oclif does (positive control). Classifier self-checks both signals (@oclif/* npm import; reaching core/src/cli/oclif/**). Failure messages name the full import chain. Also resolves every default-entry export. 18 tests pass; tsc -b + core/test tsc clean; biome clean."
+    },
+    {
+      "id": "US-173",
+      "title": "library-mode defaults",
+      "description": "As an embedder, `makeLandoRuntime` in library mode uses silent logger, json renderer, no plugin auto-discovery, and no telemetry — unless I opt in. (PRD-A3-11 US-173)",
+      "acceptanceCriteria": [
+        "Defaults applied at runtime construction; embedders can override per-field",
+        "Default-renderer choice in library mode does not pull TUI code paths (verified by the import-boundary test)",
+        "Tests cover the default-set and the explicit-override path",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 100,
+      "passes": true,
+      "notes": "Library-mode makeLandoRuntime now provides silent logger, json Renderer, disabled Telemetry, and explicit-only plugin discovery by default; renderer/telemetry/plugin policy overrides are covered. Import-boundary tests assert the default entry remains OCLIF-free and TUI-free. Added docs/guides/library/embedding-defaults.mdx and marked the guide Shipped."
+    },
+    {
+      "id": "US-174",
+      "title": "plugin SDK contract test publishable",
+      "description": "As a plugin author, `@lando/sdk/test` publishes a runnable contract suite I can wire into my plugin's test script. (PRD-A3-11 US-174)",
+      "acceptanceCriteria": [
+        "`@lando/sdk/test` exports the plugin-SDK contract suite (covering manifest, plugin layer, contribution surfaces, error contract)",
+        "At least one external example plugin in `plugins/` (or a fixture under `core/test/library/`) imports + runs the suite green",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 101,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-175",
+      "title": "<Inspect> component (read-only state assertions inside a step)",
+      "description": "As a guide author, I can place `<Inspect>` between `<Run>` and `<Verify>` to expose intermediate state (config, env, file contents) without affecting scenario behavior. (PRD-A3-12 US-175)",
+      "acceptanceCriteria": [
+        "`InspectProps` schema published in `@lando/sdk/docs/components`; round-trips through §13.2",
+        "Generator emits `ctx.inspect(…)` calls; output is captured in the transcript but not asserted",
+        "Tests cover schema validation and a sample guide using `<Inspect>` against a fake state",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 102,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-176",
+      "title": "replace ScenarioContext.runCli fake with real CLI seam",
+      "description": "As the scenario engine, `ctx.runCli(args)` invokes the real Lando CLI via `@lando/core/cli` (or compiled binary in e2e mode) instead of Alpha 2's fake. (PRD-A3-12 US-176)",
+      "acceptanceCriteria": [
+        "`runCli` uses `@lando/core/cli` for `layer: \"scenario\"`; the e2e layer uses the compiled binary",
+        "Fake path remains available behind `ScenarioContextFactory.testOnlyFake` for unit tests within the engine itself",
+        "Existing Alpha 2 generated tests still pass without changes",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 103,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-177",
+      "title": "<Tabs> + <Tab> for axis selection",
+      "description": "As a guide author, I can declare `<Tabs>` with multiple `<Tab>` children to express axis selection (e.g. service framework, OS, language version) and the renderer shows tabs while the codegen produces a scenario per tab. (PRD-A3-12 US-177)",
+      "acceptanceCriteria": [
+        "`TabsProps` + `TabProps` schemas published; round-trip through §13.2",
+        "`tabs:` frontmatter declares axis names; per-tab content emits its own scenario variant",
+        "Lint catches missing axis declarations and duplicate tab ids",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 104,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-178",
+      "title": "multi-axis variants (axes: frontmatter + per-cell variants:)",
+      "description": "As a guide author, I can declare multiple `axes:` and have the codegen emit one scenario per cartesian-product cell, optionally overriding per-cell `variants:`. (PRD-A3-12 US-178)",
+      "acceptanceCriteria": [
+        "`axes:` frontmatter accepts an array of axis declarations; codegen produces scenario variants accordingly",
+        "Per-cell `variants:` overrides apply through a documented merge order",
+        "Generated test files carry `// @variant: <key>=<value>` headers (replaces the empty placeholder from Alpha 2 progress)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 105,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-179",
+      "title": "<Hidden> becomes code-emitting",
+      "description": "As a guide author, `<Hidden>` blocks emit code into the generated scenario but are not rendered in the reader-visible transcript. (PRD-A3-12 US-179)",
+      "acceptanceCriteria": [
+        "Codegen treats `<Hidden>` as a non-rendered emitter; Alpha 2's `NotImplementedError` remediation is removed",
+        "Lint requires a `reason` attribute on `<Hidden>` (≥ 8 chars) for maintainability",
+        "Tests cover round-trip through schema and a representative use (e.g. seeding test fixtures invisibly)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 106,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-180",
+      "title": "<Inline> + <Skip> components",
+      "description": "As a guide author, I can use `<Inline>` for inline-rendered code samples that do not execute, and `<Skip>` to mark a scenario as skipped with a reason. (PRD-A3-12 US-180)",
+      "acceptanceCriteria": [
+        "`InlineProps` + `SkipProps` schemas published; round-trip through §13.2",
+        "`<Inline>` does not emit any execution code; output appears verbatim in transcripts",
+        "`<Skip>` requires a `reason` (≥ 8 chars); generated test calls `test.skip(...)`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 107,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-181",
+      "title": "fuller §19.10 lint depth",
+      "description": "As CI, `bun run lint:guides` runs the full §19.10 lint set: matcher-shape validation, fixture-immutability checks, axis-id uniqueness, reason-required gates, and unused-fixture detection. (PRD-A3-12 US-181)",
+      "acceptanceCriteria": [
+        "Every §19.10 lint rule documented in `scripts/lint-guides.ts` (or equivalent)",
+        "Each rule has at least one failing fixture and one passing fixture under `test/fixtures/guides/lint/`",
+        "Lint gate from PRD-A2-04 extends to the new rules in Alpha 3",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 108,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-182",
+      "title": "recipe README strip/flatten (§19.13)",
+      "description": "As a recipe author, my canonical recipe's MDX README can be authored with executable-guide components, and the build pipeline strips them into plain README for npm publishing while keeping the original for the docs site. (PRD-A3-12 US-182)",
+      "acceptanceCriteria": [
+        "`scripts/build-recipe-readmes.ts` (Alpha 2 stub) is now active; emits per-recipe `README.md` (stripped, plain Markdown) from the MDX source",
+        "At least one canonical Alpha 1 recipe ships an MDX-authored README that passes through the pipeline",
+        "Generated stripped READMEs do not contain executable-component artifacts and validate as plain Markdown",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 109,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-183",
+      "title": "build darwin-arm64 binary",
+      "description": "As CI, the `build-darwin-arm64` job produces `dist/lando-darwin-arm64` via `bun build --compile` and runs smoke + `--help` checks before uploading the artifact. (PRD-A3-13 US-183)",
+      "acceptanceCriteria": [
+        "Runner is `macos-14` (or current Apple-silicon image); Bun version pinned per `.bun-version`",
+        "Build artifact uploaded with 14-day retention",
+        "Smoke covers `--version`, `--help`, and `lando shellenv`",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 110,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-184",
+      "title": "build darwin-x64 binary",
+      "description": "As CI, the `build-darwin-x64` job mirrors US-183 for Intel macOS. (PRD-A3-13 US-184)",
+      "acceptanceCriteria": [
+        "Runner is `macos-13` (or current Intel image); same smoke as US-183",
+        "Build artifact uploaded with 14-day retention",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 111,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-185",
+      "title": "build linux-arm64 binary",
+      "description": "As CI, the `build-linux-arm64` job produces `dist/lando-linux-arm64` and runs the same smoke + `--help` checks. (PRD-A3-13 US-185)",
+      "acceptanceCriteria": [
+        "Runner uses `ubuntu-24.04-arm64` (or QEMU emulation if hosted ARM64 unavailable); Bun version pinned",
+        "Build artifact uploaded with 14-day retention",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 112,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-186",
+      "title": "build windows-x64 binary",
+      "description": "As CI, the `build-windows-x64` job produces `dist/lando-windows-x64.exe` and runs the same smoke + `--help` checks. (PRD-A3-13 US-186)",
+      "acceptanceCriteria": [
+        "Runner is `windows-2022`; Bun version pinned via `.bun-version`",
+        "Build artifact uploaded with 14-day retention",
+        "Smoke covers exit codes + UTF-8 stdout decoding",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 113,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-187",
+      "title": "AOT bootstrap-layer codegen (§17.2)",
+      "description": "As a maintainer, the runtime no longer uses runtime `Layer.mergeAll`/`Layer.provide` chains outside the §17.2 codegen output; bootstrap layers are emitted ahead of time. (PRD-A3-13 US-187)",
+      "acceptanceCriteria": [
+        "Codegen script (`scripts/build-bootstrap-layers.ts`) emits per-bootstrap-level Live Layers under `core/src/runtime/generated/`",
+        "`core/src/runtime/layer.ts` consumes the generated module; no runtime `Layer.mergeAll` outside the codegen output",
+        "AGENTS.md 'AOT bootstrap-layer codegen not yet shipped' interim bullet removed",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 114,
+      "passes": true,
+      "notes": "scripts/build-bootstrap-layers.ts emits per-BootstrapLevel layers under core/src/runtime/generated/layers/ (wired into codegen + codegen:bootstrap-layers + the CI drift gate). core/src/runtime/layer.ts now delegates to the generated makeGeneratedBootstrapLayer/mergeRuntimeWithHostLayers seam with no runtime Layer.mergeAll/Layer.provide of its own. Interim 'not yet shipped' notes removed from AGENTS.md, README.md, and spec/02-toolchain.md §2.4. New test core/test/runtime/generated-bootstrap-layers.test.ts asserts one generated module per level + the no-Layer.mergeAll constraint on layer.ts."
+    },
+    {
+      "id": "US-188",
+      "title": "asset embedding for recipes / schemas / OCLIF manifest",
+      "description": "As the compiled binary, bundled recipes, schemas, and the OCLIF manifest are embedded at build time — no runtime FS read of these assets. (PRD-A3-13 US-188)",
+      "acceptanceCriteria": [
+        "Build pipeline reads recipes / schemas / OCLIF manifest at compile time and emits them into the binary's data section",
+        "Import-boundary test asserts no runtime FS read of `recipes/`, `sdk/schema/`, or `oclif.manifest.json` from the compiled binary path",
+        "`bundled.ts` is populated by codegen (`scripts/build-bundled-plugins.ts`); hand-edits forbidden",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 115,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-189",
+      "title": "per-PR CI matrix on all 5 platforms",
+      "description": "As CI, every PR runs `static-checks`, `build-<platform>`, and `provider-integration-<platform>` (where supported) on all five platforms. (PRD-A3-13 US-189)",
+      "acceptanceCriteria": [
+        "`.github/workflows/ci.yml` (regenerated by codegen) covers the 5-platform matrix",
+        "All §13.1 test layers (unit, Effect service, CLI, scenario, recipe, library, provider contract) run green on every platform",
+        "Compile time + test wall-clock are tracked; per-platform timeout caps documented",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 116,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-190",
+      "title": "nightly e2e against @lando/provider-lando",
+      "description": "As CI, a nightly cron job runs the full e2e scenario suite against `@lando/provider-lando` on Linux x64. (PRD-A3-13 US-190)",
+      "acceptanceCriteria": [
+        "`.github/workflows/nightly.yml` runs the `@smoke` + non-smoke e2e tags against a real provider-lando setup",
+        "Failures notify maintainers (Slack/Issue mechanism out of scope here — Alpha 3 only ships the workflow)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 117,
+      "passes": true,
+      "notes": "Nightly workflow runs provider-lando e2e on Linux x64 via generated workflow."
+    },
+    {
+      "id": "US-191",
+      "title": "distribution rehearsal in nightly job",
+      "description": "As CI, the nightly job rehearses the full distribution flow (build, package, upload artifact set) without actually publishing to GitHub Releases. (PRD-A3-13 US-191)",
+      "acceptanceCriteria": [
+        "Rehearsal produces a tagged artifact bundle (binaries + sha256 sums) under workflow-artifact storage",
+        "Acceptance check verifies SHA256 sums match the binaries",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 118,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-192",
+      "title": "weekly provider matrix",
+      "description": "As CI, a weekly cron job runs the provider contract suite against Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack on the platforms each supports. (PRD-A3-13 US-192)",
+      "acceptanceCriteria": [
+        "`.github/workflows/provider-matrix.yml` declares the weekly cron; matrix cells skip where the engine is not installable in CI",
+        "Cells run the `@lando/sdk/test` provider contract suite (US-080)",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 119,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-193",
+      "title": "publish @lando/core 4.0.0-alpha.N on the next npm tag",
+      "description": "As a publisher, the release pipeline tags `4.0.0-alpha.N` and publishes `@lando/core` (and the bundled plugin packages) on the npm `dev` tag. (PRD-A3-13 US-193)",
+      "acceptanceCriteria": [
+        "`scripts/release.ts` handles tag → publish for the workspace packages (no signing yet — that's Beta 1)",
+        "`dev` tag points at the latest alpha 3 after each publish; `dev` tag is retired at Alpha 3 cutover via `npm dist-tag rm` on `@lando/core` and bundled plugin packages",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 120,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-194",
+      "title": "plugin SDK contract tests published",
+      "description": "As a plugin author, the Alpha 3 SDK contract suite (`@lando/sdk/test`) is published with the npm release and runnable from a downstream plugin's test command. (PRD-A3-13 US-194)",
+      "acceptanceCriteria": [
+        "`@lando/sdk/test` is in `package.json#exports`; the contract suite runner has documented args",
+        "At least one bundled plugin (`@lando/provider-lando` or `@lando/service-lando`) runs the contract suite in its package tests",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 121,
+      "passes": true,
+      "notes": ""
+    }
+  ]
+}

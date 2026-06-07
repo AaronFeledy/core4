@@ -24,25 +24,24 @@ const LANDOFILE_NAME = ".lando.yml";
 const LANDOFILE_TS_NAME = ".lando.ts";
 const REMEDIATION = "Remove unsupported keys or update the documented Landofile service schema.";
 const COMPOSE_ALLOWLIST_REMEDIATION =
-  "Compose compatibility is limited to the documented §7.4 subset in spec/07-landofile-and-config.md; move provider-native keys under providers.<provider-id> or use config translation.";
+  "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
 const SERVICE_CONFIG_KEYS = new Set(Object.keys(ServiceConfig.fields));
 
-const BETA_REMEDIATION = "Remove the section; this surface is deferred to the Beta release.";
+const BETA_REMEDIATION = "Remove the section; this surface is not supported yet.";
 
 const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   key: string;
-  specSection: string;
   description: string;
 }> = [
-  { key: "env_file", specSection: "§7.6", description: "Landofile env file overrides" },
-  { key: "toolingDefaults", specSection: "§8.5", description: "Tooling defaults" },
-  { key: "toolingIncludes", specSection: "§8.5.8", description: "Tooling includes" },
-  { key: "events", specSection: "§8.5.7", description: "Events-as-tasks" },
-  { key: "commandAliases", specSection: "§8.1.2", description: "Top-level command aliases" },
+  { key: "env_file", description: "Landofile env file overrides" },
+  { key: "toolingDefaults", description: "Tooling defaults" },
+  { key: "toolingIncludes", description: "Tooling includes" },
+  { key: "events", description: "Events-as-tasks" },
+  { key: "commandAliases", description: "Top-level command aliases" },
 ];
 
-const scanForBetaTopLevelKey = (parsed: unknown): { key: string; specSection: string } | undefined => {
+const scanForBetaTopLevelKey = (parsed: unknown): { key: string; description: string } | undefined => {
   if (parsed === null || typeof parsed !== "object") return undefined;
   const obj = parsed as Record<string, unknown>;
   for (const entry of BETA_TOP_LEVEL_KEYS) {
@@ -51,41 +50,41 @@ const scanForBetaTopLevelKey = (parsed: unknown): { key: string; specSection: st
   return undefined;
 };
 
-const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string; specSection: string }> = [
-  { key: "deps", specSection: "§8.5.2" },
-  { key: "engine", specSection: "§8.5.1" },
-  { key: "bootstrap", specSection: "§8.5.1" },
-  { key: "dotenv", specSection: "§8.5.1" },
-  { key: "env", specSection: "§8.5.1" },
-  { key: "user", specSection: "§8.5.1" },
-  { key: "dir", specSection: "§8.5.1" },
-  { key: "appMount", specSection: "§8.5.1" },
-  { key: "stdio", specSection: "§8.5.1" },
-  { key: "interactive", specSection: "§8.5.1" },
-  { key: "passThrough", specSection: "§8.5.1" },
-  { key: "sources", specSection: "§8.5.6" },
-  { key: "generates", specSection: "§8.5.6" },
-  { key: "method", specSection: "§8.5.6" },
-  { key: "status", specSection: "§8.5.6" },
-  { key: "preconditions", specSection: "§8.5.6" },
-  { key: "if", specSection: "§8.5.1" },
-  { key: "run", specSection: "§8.5.6" },
-  { key: "platforms", specSection: "§8.5.1" },
-  { key: "prompt", specSection: "§8.5.1" },
-  { key: "silent", specSection: "§8.5.1" },
-  { key: "output", specSection: "§8.5.1" },
-  { key: "failFast", specSection: "§8.5.1" },
-  { key: "disabled", specSection: "§8.5.1" },
-  { key: "aliases", specSection: "§8.5.1" },
-  { key: "topLevelAlias", specSection: "§8.5.1" },
-  { key: "namespace", specSection: "§8.5.1" },
-  { key: "internal", specSection: "§8.5.1" },
-  { key: "hostProxyAllowed", specSection: "§8.5.1" },
-  { key: "deprecated", specSection: "§18" },
-  { key: "flags", specSection: "§8.5.1" },
-  { key: "args", specSection: "§8.5.1" },
-  { key: "examples", specSection: "§8.5.1" },
-  { key: "usage", specSection: "§8.5.1" },
+const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
+  { key: "deps" },
+  { key: "engine" },
+  { key: "bootstrap" },
+  { key: "dotenv" },
+  { key: "env" },
+  { key: "user" },
+  { key: "dir" },
+  { key: "appMount" },
+  { key: "stdio" },
+  { key: "interactive" },
+  { key: "passThrough" },
+  { key: "sources" },
+  { key: "generates" },
+  { key: "method" },
+  { key: "status" },
+  { key: "preconditions" },
+  { key: "if" },
+  { key: "run" },
+  { key: "platforms" },
+  { key: "prompt" },
+  { key: "silent" },
+  { key: "output" },
+  { key: "failFast" },
+  { key: "disabled" },
+  { key: "aliases" },
+  { key: "topLevelAlias" },
+  { key: "namespace" },
+  { key: "internal" },
+  { key: "hostProxyAllowed" },
+  { key: "deprecated" },
+  { key: "flags" },
+  { key: "args" },
+  { key: "examples" },
+  { key: "usage" },
 ];
 
 const BETA_STEP_OBJECT_KEYS = new Set(["task", "command", "defer", "for", "cmd"]);
@@ -94,7 +93,6 @@ const BETA_VAR_KEYS = new Set(["raw"]);
 interface ToolingBetaFinding {
   readonly task: string;
   readonly key: string;
-  readonly specSection: string;
   readonly description: string;
 }
 
@@ -113,7 +111,6 @@ const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => 
         return {
           task: taskName,
           key: entry.key,
-          specSection: entry.specSection,
           description: `Tooling task field "${entry.key}"`,
         };
       }
@@ -129,7 +126,6 @@ const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => 
               return {
                 task: taskName,
                 key: `cmds[].${stepKey}`,
-                specSection: "§8.5.2",
                 description: `Step-object cmds entry "${stepKey}"`,
               };
             }
@@ -147,7 +143,6 @@ const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => 
               return {
                 task: taskName,
                 key: `vars.${varName}.${varKey}`,
-                specSection: "§8.5.3",
                 description: `Unsafe "${varKey}:" interpolation in tooling var "${varName}"`,
               };
             }
@@ -163,18 +158,16 @@ const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => 
 const CONFIG_EXPRESSION_PATTERN = /\$\{[A-Za-z_]/;
 const TEMPLATE_EXPRESSION_PATTERN = /\{\{/;
 
-const scanForConfigExpression = (
-  content: string,
-): { specSection: string; description: string } | undefined => {
+const scanForConfigExpression = (content: string): { description: string } | undefined => {
   const withoutComments = content
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*#.*$/, "").replace(/\s+#.*$/, ""))
     .join("\n");
   if (CONFIG_EXPRESSION_PATTERN.test(withoutComments)) {
-    return { specSection: "§7.3.1", description: "Configuration expressions (${...})" };
+    return { description: "Configuration expressions (${...})" };
   }
   if (TEMPLATE_EXPRESSION_PATTERN.test(withoutComments)) {
-    return { specSection: "§7.3.1", description: "Template expressions ({{ ... }})" };
+    return { description: "Template expressions ({{ ... }})" };
   }
   return undefined;
 };
@@ -302,7 +295,6 @@ const scanContentForBetaExpressions = (
     new NotImplementedError({
       message: `${match.description} are not supported in Alpha Landofiles at ${filePath}.`,
       commandId: "landofile.parse",
-      specSection: match.specSection,
       remediation: BETA_REMEDIATION,
     }),
   );
@@ -318,7 +310,6 @@ const rejectBetaTopLevelKeys = (
     new NotImplementedError({
       message: `Top-level "${beta.key}:" is not supported in Alpha Landofiles at ${filePath}.`,
       commandId: "landofile.parse",
-      specSection: beta.specSection,
       remediation: BETA_REMEDIATION,
     }),
   );
@@ -334,7 +325,6 @@ const rejectBetaToolingFeatures = (
     new NotImplementedError({
       message: `${finding.description} in tooling task "${finding.task}" is not supported in Alpha Landofiles at ${filePath}.`,
       commandId: "landofile.parse",
-      specSection: finding.specSection,
       remediation: BETA_REMEDIATION,
     }),
   );

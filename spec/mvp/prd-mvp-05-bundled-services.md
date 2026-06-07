@@ -20,7 +20,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation — `BUNDLED_PLUGIN
 - `@lando/service-lando` registers two `ServiceType`s: `node:lts` and `postgres`. They are recognized by `LandofileService` validation and `AppPlanner` planning.
 - Each `ServiceType` produces the right `ServicePlan` fields (image, default ports, default environment, default volumes) so the providers don't need service-specific knowledge.
 - `@lando/logger-pretty` ships a real plugin manifest but an empty Live Layer — its purpose is to prove `BUNDLED_PLUGINS` works for non-provider plugin `kind`s.
-- Both plugins pass any plugin-SDK contract assertions that exist at MVP (PRD-01 only ships the `RuntimeProvider` contract suite at MVP — service-plugin contract assertions are Beta, but lint-level shape checks must hold).
+- Both plugins pass any plugin-SDK contract assertions that exist at MVP (PRD-01 only ships the `RuntimeProvider` contract suite at MVP — service-plugin contract assertions are Alpha 3, but lint-level shape checks must hold).
 
 ## User Stories
 
@@ -49,7 +49,7 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation — `BUNDLED_PLUGIN
   - A default `command` of `["sh", "-c", "tail -f /dev/null"]` (or whatever spec specifies for "no app code yet" — we don't auto-run anything for MVP).
   - `expose: [3000]` or `ports: ["3000:3000"]` — exact shape per `spec/06-services.md`.
 - [ ] Test asserts user overrides win: setting `image: "node:22"` in the Landofile produces `image: "node:22"` in the plan (no opinionated rewrite).
-- [ ] Test asserts `framework:` is not accepted at MVP (`framework: drupal` in a `node:lts` Landofile entry fails `LandofileService.discover` validation — framework presets are Alpha).
+- [ ] Test asserts `framework:` is not accepted at MVP (`framework: drupal` in a `node:lts` Landofile entry fails `LandofileService.discover` validation — framework presets are Alpha 1).
 - [ ] Live impl lives at `plugins/service-lando/src/services/node.ts`; test passes after impl lands.
 - [ ] Typecheck/lint/whole-workspace tests pass.
 
@@ -127,24 +127,24 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation — `BUNDLED_PLUGIN
 
 ## Non-Goals
 
-- **No framework presets.** `framework: drupal | wordpress | laravel | symfony | django | rails | …` is Alpha (`spec/06-services.md` framework awareness).
-- **No PHP, Python, Ruby, Go service types.** Alpha+.
-- **No HTTP/web server services** (`nginx`, `apache`). Alpha.
-- **No additional databases** (`mysql`, `mariadb`, `mongodb`). Alpha (mysql/mariadb), Beta (mongodb).
-- **No caches** (`redis`, `memcached`, `valkey`). Alpha (redis), Beta (memcached/valkey).
-- **No search** (`solr`, `elasticsearch`, `opensearch`, `meilisearch`). Beta.
-- **No mailpit / mail capture.** Beta (lives in the global app).
-- **No `static`-type service.** Alpha.
-- **No raw Compose passthrough.** Alpha.
-- **No `@lando/logger-pretty` actual rendering work.** That ships when there's a reason to deviate from Effect's `Logger.pretty` — Beta or Phase 6+.
+- **No framework presets.** `framework: drupal | wordpress | laravel | symfony | django | rails | …` is Alpha 1 (`spec/06-services.md` framework awareness).
+- **No PHP, Python, Ruby, Go service types.** Alpha 1+.
+- **No HTTP/web server services** (`nginx`, `apache`). Alpha 1.
+- **No additional databases** (`mysql`, `mariadb`, `mongodb`). Alpha 1 (mysql/mariadb), Alpha 3 (mongodb).
+- **No caches** (`redis`, `memcached`, `valkey`). Alpha 1 (redis), Alpha 3 (memcached/valkey).
+- **No search** (`solr`, `elasticsearch`, `opensearch`, `meilisearch`). Alpha 3.
+- **No mailpit / mail capture.** Alpha 3 (lives in the global app).
+- **No `static`-type service.** Alpha 1.
+- **No raw Compose passthrough.** Alpha 1.
+- **No `@lando/logger-pretty` actual rendering work.** That ships when there's a reason to deviate from Effect's `Logger.pretty` — Alpha 3 or Phase 6+.
 
 ## Technical Considerations
 
 - The `ServiceType` interface lives in `@lando/sdk/services` (or wherever PRD-01 settled it). Service plugins implement it; they do *not* re-declare it.
 - `ServicePlan` shape is owned by PRD-01. Add fields here only by going back to PRD-01 first.
-- For Postgres password generation: HMAC-SHA256(`appId`, secret) where `secret` is a constant baked into core (not a per-install secret — that's RC's secrets management). Document the limitation in code.
+- For Postgres password generation: HMAC-SHA256(`appId`, secret) where `secret` is a constant baked into core (not a per-install secret — that's Beta 1's secrets management). Document the limitation in code.
 - The bind mount for `node:lts` is the *app root*; for `postgres` we use a named volume (data isn't on the host). This split is per `spec/06-services.md`.
-- Image versions are pinned by *tag* at MVP, not by digest. Tag pinning vs digest pinning is a Beta question (`spec/06-services.md`).
+- Image versions are pinned by *tag* at MVP, not by digest. Tag pinning vs digest pinning is a Alpha 3 question (`spec/06-services.md`).
 - `@lando/logger-pretty`'s empty status is documented in its `src/index.ts` so it doesn't look like a TODO.
 
 ## Success Metrics
@@ -157,6 +157,6 @@ Depends on: **PRD-01 (SDK contracts)**, **PRD-02 (Foundation — `BUNDLED_PLUGIN
 ## Open Questions
 
 - Postgres image: `postgres:16` vs `postgres:17` for MVP? Default: whichever `spec/06-services.md` pins; if neither, `postgres:16` (current LTS). Document the version in the `node`/`postgres` `ServiceType` source files.
-- Should the deterministic Postgres password be visible in `lando info`? Default: yes, with a redaction toggle for production-style use cases (Alpha).
-- `node:lts` "default command" — at MVP we don't run user app code, so the container just stays alive. Beta will add a `start: ["bun", "run", "dev"]` convention. Confirm `tail -f /dev/null` is the right placeholder vs `node --version && sleep infinity`.
+- Should the deterministic Postgres password be visible in `lando info`? Default: yes, with a redaction toggle for production-style use cases (Alpha 1).
+- `node:lts` "default command" — at MVP we don't run user app code, so the container just stays alive. Alpha 3 will add a `start: ["bun", "run", "dev"]` convention. Confirm `tail -f /dev/null` is the right placeholder vs `node --version && sleep infinity`.
 - Should `@lando/logger-pretty` have *any* code at all, or is `Layer.empty` sufficient? Default: a single comment-only file plus a populated manifest. Sufficient to prove codegen.

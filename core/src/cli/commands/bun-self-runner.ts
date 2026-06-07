@@ -74,7 +74,6 @@ export const bunSelfRun = (
         new NotImplementedError({
           message: "Recursive `lando bun` invocation detected — BunSelfRunner refuses to re-enter.",
           commandId: "meta:bun",
-          specSection: "spec/08-cli-and-tooling.md",
           remediation:
             "Use the embedded Bun's own help/scripting facilities; do not nest `lando bun` inside `lando bun run`.",
         }),

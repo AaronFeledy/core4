@@ -416,9 +416,8 @@ const runMessage = (
 
 const rejectGitInit = (index: number): never => {
   throw new NotImplementedError({
-    message: `postInit[${index}] (gitInit): post-init gitInit is deferred to the Beta release.`,
+    message: `postInit[${index}] (gitInit): post-init gitInit is deferred to the release.`,
     commandId: "apps:init",
-    specSection: "§8.8.8",
     remediation: "Run `git init` manually after `lando init` completes for now.",
   });
 };
@@ -458,11 +457,10 @@ const runCommand = async (
 const rejectWhen = (index: number, action: RecipePostInitAction): never => {
   const verb = action.type === "bun" ? action.verb : undefined;
   throw new NotImplementedError({
-    message: `postInit[${index}] (${action.type}${verb === undefined ? "" : `:${verb}`}): \`when:\` expressions are deferred to the Beta release.`,
+    message: `postInit[${index}] (${action.type}${verb === undefined ? "" : `:${verb}`}): \`when:\` expressions are deferred to the release.`,
     commandId: "apps:init",
-    specSection: "§8.8.5",
     remediation:
-      "Remove `when:` from the post-init action. Conditional execution returns in the Beta expression engine.",
+      "Remove `when:` from the post-init action. Conditional execution returns in the expression engine.",
   });
 };
 

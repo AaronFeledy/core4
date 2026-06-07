@@ -1015,7 +1015,7 @@ export const runServiceContract = (input: ServiceContractInput): Effect.Effect<v
     for (const key of SERVICE_LANDO_IDENTITY_KEYS) {
       yield* requireServiceContract(
         isNonEmptyString(plan.environment[key]),
-        "service plan environment contains the §6.9 LANDO_* identity keys",
+        "service plan environment contains the LANDO_* identity keys",
         { missing: key, environment: Object.keys(plan.environment) },
       );
     }

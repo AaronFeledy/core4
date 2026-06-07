@@ -1,5 +1,7 @@
 # PRD Index — Lando v4 Phase 1 (MVP / "walking skeleton")
 
+> **Phase naming (reframed):** This is completed pre-alpha work. The release ladder was rescoped so that the originally-shipped phases are now **MVP → Alpha 1 → Alpha 2 → Alpha 3**, the remaining work is **Beta 1 (last feature surface, incl. `setup`/`uninstall`) → Beta 2 → RC → 4.0 GA**, and the alpha phases publish `4.0.0-alpha.N` on the `dev` channel. See [`spec/ROADMAP.md`](../ROADMAP.md) for the authoritative ladder.
+
 ## Introduction
 
 Phase 1 of [`spec/ROADMAP.md`](../../spec/ROADMAP.md) — the "walking skeleton" MVP — is large enough that a single PRD would obscure the dependency structure between subsystems. This index splits the phase into six per-subsystem PRDs that can be picked up independently once their prerequisites are met.
@@ -96,19 +98,19 @@ Every story therefore carries the following minimum acceptance criteria, in addi
 
 ## Cross-cutting non-goals (out of scope for the entire MVP set)
 
-The following are explicitly **not** part of any Phase 1 PRD. If something below sneaks into a story, push it back to Alpha/Beta:
+The following are explicitly **not** part of any Phase 1 PRD. If something below sneaks into a story, push it back to Alpha 1/Alpha 3:
 
 - macOS or Windows support of any kind (Linux x64 only).
-- VM lifecycle / `lando setup` / runtime bundle download / checksum verification (Alpha for `provider-lando` macOS).
-- Persistent caches (in-memory only at MVP — `§12.1` persistent caches are Alpha).
+- VM lifecycle / `lando setup` / runtime bundle download / checksum verification (Alpha 1 for `provider-lando` macOS).
+- Persistent caches (in-memory only at MVP — `§12.1` persistent caches are Alpha 1).
 - Recipes other than the single hardcoded built-in (no `recipe.yml` parser, no remote sources, no prompts beyond `--name`).
 - Plugin install / discovery beyond the bundled `BUNDLED_PLUGINS` array.
 - Tooling system (`tooling:` Landofile section, `lando exec`/`shell`/`ssh`).
 - Global app, scratch apps, file sync (Mutagen), proxy, certificates, healthchecks, scanner.
 - Concurrent task tree renderer, first-paint banner, expand/collapse — plain text output only.
 - Library API stability or documentation — internal-only, used by `bun test`.
-- Signing, notarization, SBOM, self-update, installer scripts — RC concerns.
-- Telemetry — RC concern.
+- Signing, notarization, SBOM, self-update, installer scripts — Beta 1 concerns.
+- Telemetry — Beta 1 concern.
 - ~~CI — local-only verification at MVP.~~ **Updated:** CI ships at MVP — see PRD-07. Local-only verification is no longer the gate; per-PR GitHub Actions on Linux x64 is.
 - OCLIF v5 migration — phase decision, see roadmap "Cross-cutting risks".
 

@@ -87,7 +87,6 @@ const trustNonInteractiveError = (spec: string): NotImplementedError =>
   new NotImplementedError({
     message: "Plugin trust prompt cannot run non-interactively without --trust.",
     commandId: "meta:plugin:add",
-    specSection: "spec/10-plugins.md",
     remediation: `Re-run \`lando plugin:add ${spec} --trust\` to confirm the plugin should run as trusted host code. Persistent trust storage is deferred to Beta.`,
   });
 
@@ -95,7 +94,6 @@ const trustRejectedError = (pluginName: string): NotImplementedError =>
   new NotImplementedError({
     message: `User declined to trust plugin ${pluginName}.`,
     commandId: "meta:plugin:add",
-    specSection: "spec/10-plugins.md",
     remediation: "Re-run with --trust if you intend to trust the plugin as host code.",
   });
 
@@ -103,7 +101,6 @@ const installFailure = (spec: string, stderr: string): NotImplementedError =>
   new NotImplementedError({
     message: `BunSelfExecError: bun add failed for ${spec}.`,
     commandId: "meta:plugin:add",
-    specSection: "spec/10-plugins.md",
     remediation: `Resolve the underlying bun error and retry:\n${stderr.trim()}`,
   });
 
@@ -223,7 +220,6 @@ const npmInstallFailure = (message: string, spec: string): NotImplementedError =
   new NotImplementedError({
     message,
     commandId: "meta:plugin:add",
-    specSection: "spec/10-plugins.md",
     remediation: `Check the npm package spec and registry metadata, then retry \`lando plugin:add ${spec}\`.`,
   });
 
@@ -367,7 +363,6 @@ export const pluginAdd = (
         new NotImplementedError({
           message: "Plugin spec is required.",
           commandId: "meta:plugin:add",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass an npm package spec, e.g. `lando plugin:add @lando/plugin-php`.",
         }),
       );
@@ -377,7 +372,6 @@ export const pluginAdd = (
         new NotImplementedError({
           message: `meta:plugin:add only supports npm registry specs in Alpha (got ${options.spec}).`,
           commandId: "meta:plugin:add",
-          specSection: "spec/10-plugins.md",
           remediation:
             "Git URL, tarball, and file: source kinds land in Beta. Pass a registry spec like `@lando/plugin-php@1.0.0`.",
         }),
@@ -395,7 +389,6 @@ export const pluginAdd = (
             new NotImplementedError({
               message: "userDataRoot is not configured.",
               commandId: "meta:plugin:add",
-              specSection: "spec/10-plugins.md",
               remediation: "Configure userDataRoot in <userConfRoot>/config.yml.",
             }),
           );
@@ -426,7 +419,6 @@ export const pluginAdd = (
             : new NotImplementedError({
                 message: `Plugin install failed for ${options.spec}: ${String(cause)}`,
                 commandId: "meta:plugin:add",
-                specSection: "spec/10-plugins.md",
                 remediation: "Check the plugin package and retry.",
               }),
     });
@@ -470,7 +462,6 @@ export const pluginAdd = (
           : new NotImplementedError({
               message: `Unexpected trust failure: ${String(cause)}`,
               commandId: "meta:plugin:add",
-              specSection: "spec/10-plugins.md",
               remediation: "Re-run with --trust to bypass the prompt.",
             }),
     });

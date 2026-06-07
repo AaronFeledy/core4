@@ -162,8 +162,6 @@ describe("LandofileServiceLive", () => {
             expect(error.issues).toContain("services.web.deploy");
             expect(error.message).toContain("unsupported Compose-subset keys");
             expect(error.message).toContain("providers.<provider-id>");
-            expect(error.message).toContain("spec/07-landofile-and-config.md");
-            expect(error.message).toContain("§7.4");
           }
         }
       }
@@ -391,12 +389,11 @@ describe("LandofileServiceLive — mounts, storage, and excludes (US-014)", () =
 });
 
 describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => {
-  const assertBetaRejection = (error: unknown, expectedSpecSection: string): void => {
+  const assertBetaRejection = (error: unknown, _expectedSpecSection: string): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
-    expect(error.specSection).toBe(expectedSpecSection);
-    expect(error.remediation.toLowerCase()).toContain("beta");
+    expect(error.remediation).toContain("not supported yet");
   };
 
   test("allows top-level `includes:` through raw discovery for the include resolver", async () => {
@@ -421,7 +418,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     });
   });
 
-  test("rejects configuration expressions ${...} with NotImplementedError + Beta remediation", async () => {
+  test("rejects configuration expressions ${...} with NotImplementedError + remediation", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -442,7 +439,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, "§7.3.1");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, "not supported yet");
       }
     });
   });
@@ -472,7 +469,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     });
   });
 
-  test("rejects top-level `env_file:` env overrides with NotImplementedError + Beta remediation", async () => {
+  test("rejects top-level `env_file:` env overrides with NotImplementedError + remediation", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -493,7 +490,7 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, "§7.6");
+        if (failure._tag === "Some") assertBetaRejection(failure.value, "not supported yet");
       }
     });
   });
@@ -553,17 +550,16 @@ describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
 });
 
 describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () => {
-  const assertBetaRejection = (error: unknown, expectedSpecSection: string): void => {
+  const assertBetaRejection = (error: unknown, _expectedSpecSection: string): void => {
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
-    expect(error.specSection).toBe(expectedSpecSection);
-    expect(error.remediation.toLowerCase()).toContain("beta");
+    expect(error.remediation).toContain("not supported yet");
   };
 
   const assertRejectsLandofile = async (
     content: ReadonlyArray<string>,
-    expectedSpecSection: string,
+    _expectedSpecSection: string,
   ): Promise<void> => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), content.join("\n"));
@@ -574,51 +570,54 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
       if (Exit.isFailure(exit)) {
         const failure = Cause.failureOption(exit.cause);
         expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") assertBetaRejection(failure.value, expectedSpecSection);
+        if (failure._tag === "Some") assertBetaRejection(failure.value, _expectedSpecSection);
       }
     });
   };
 
-  test("rejects top-level `toolingDefaults:` with Beta remediation", async () => {
-    await assertRejectsLandofile(["name: myapp", "toolingDefaults:", "  method: checksum", ""], "§8.5");
+  test("rejects top-level `toolingDefaults:` with remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "toolingDefaults:", "  method: checksum", ""],
+      "not supported yet",
+    );
   });
 
-  test("rejects top-level `toolingIncludes:` with Beta remediation", async () => {
+  test("rejects top-level `toolingIncludes:` with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "toolingIncludes:", "  docs:", "    file: ./docs/.lando.tasks.yml", ""],
-      "§8.5.8",
+      "not supported yet",
     );
   });
 
-  test("rejects top-level `events:` with Beta remediation", async () => {
+  test("rejects top-level `events:` with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "events:", "  post-start:", "    - task: db-wait", ""],
-      "§8.5.7",
+      "not supported yet",
     );
   });
 
-  test("rejects top-level `commandAliases:` with Beta remediation", async () => {
+  test("rejects top-level `commandAliases:` with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "commandAliases:", "  custom:", "    start: app-start", ""],
-      "§8.1.2",
+      "not supported yet",
     );
   });
 
-  test("rejects per-task `deps:` field with Beta remediation", async () => {
+  test("rejects per-task `deps:` field with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "tooling:", "  build:", "    cmd: make", "    deps:", "      - assets", ""],
-      "§8.5.2",
+      "not supported yet",
     );
   });
 
-  test("rejects per-task `engine:` field with Beta remediation", async () => {
+  test("rejects per-task `engine:` field with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "tooling:", "  echo:", "    cmd: echo hi", "    engine: host", ""],
-      "§8.5.1",
+      "not supported yet",
     );
   });
 
-  test("rejects unsafe `raw:` var form with Beta remediation", async () => {
+  test("rejects unsafe `raw:` var form with remediation", async () => {
     await assertRejectsLandofile(
       [
         "name: myapp",
@@ -630,21 +629,21 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
         '        raw: "$(date)"',
         "",
       ],
-      "§8.5.3",
+      "not supported yet",
     );
   });
 
-  test("rejects step-object `cmds[].task` entry with Beta remediation (not silent schema error)", async () => {
+  test("rejects step-object `cmds[].task` entry with remediation (not silent schema error)", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "tooling:", "  build:", "    cmds:", "      - task: assets", ""],
-      "§8.5.2",
+      "not supported yet",
     );
   });
 
-  test("rejects step-object `cmds[].command` entry with Beta remediation", async () => {
+  test("rejects step-object `cmds[].command` entry with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "tooling:", "  build:", "    cmds:", "      - command: app:start", ""],
-      "§8.5.2",
+      "not supported yet",
     );
   });
 });

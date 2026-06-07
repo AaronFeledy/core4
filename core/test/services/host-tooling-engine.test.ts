@@ -278,7 +278,7 @@ describe("resolveScriptPath", () => {
         if (failure._tag === "Some") {
           expect(failure.value._tag).toBe("ShellScriptOutsideRootError");
           expect(failure.value.path).toBe(outsideScript);
-          expect(failure.value.remediation).toContain("§8.5.9");
+          expect(failure.value.remediation).toContain("Move the script inside");
         }
       }
     } finally {

@@ -31,7 +31,6 @@ export const pluginTrust = (input: { readonly name: string; readonly cacheRoot?:
         new NotImplementedError({
           message: `Invalid plugin name: ${name}`,
           commandId: "meta:plugin:trust",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass an npm plugin package name, e.g. `lando plugin:trust @lando/plugin-php`.",
         }),
       );
@@ -55,7 +54,6 @@ export const pluginTrustAuthoringRoot = (input: {
         new NotImplementedError({
           message: `Plugin authoring root must be an absolute path: ${path}`,
           commandId: "meta:plugin:trust-authoring-root",
-          specSection: "spec/10-plugins.md",
           remediation: "Pass an absolute path, e.g. `lando plugin:trust-authoring-root /home/me/plugin`.",
         }),
       );

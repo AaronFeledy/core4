@@ -1177,7 +1177,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - **Learnings for future iterations:**
   - Patterns discovered: keep provider-lando setup host-dependent checks injectable with `podmanCommand` and `podmanApi` seams so tests remain deterministic.
   - Gotchas encountered: `RuntimeProvider.setup` requires `Scope`, so tests and drivers must wrap it with `Effect.scoped(...)` before `Effect.runPromise`.
-  - Useful context: MVP setup intentionally verifies manual Podman install/socket availability only; automatic runtime bundle download remains deferred to Alpha.
+  - Useful context: MVP setup intentionally verifies manual Podman install/socket availability only; automatic runtime bundle download remains deferred to Alpha 1.
 ---
 
 ## [2026-05-14 22:55 CDT] - Push (US-043)
@@ -1362,7 +1362,7 @@ Spec source of truth: spec/ROADMAP.md Phase 1 + spec/{01..19}-*.md
 - /review findings (manual, no slash command available in this env):
   - Fixed: compiled-binary init handler in `core/src/cli/run.ts` printed only `error.message` on catch, dropping `InitTargetExistsError.remediation` so the compiled CLI did not point at `--force`. The source CLI (via `apps/init.ts`) already concatenated message + remediation. Mirrored that behavior in the `$bunfs` init handler so both surfaces emit consistent UX.
   - Rejected: OCLIF flag description "App name (slugified for the project id)" — out of scope (no slugification implemented yet); behavior is acceptable for MVP and not part of US-052 acceptance.
-  - Rejected: unused OCLIF flags (`source`, `recipe`, `destination`, `yes`, `option`) — Alpha features, intentionally inert at MVP.
+  - Rejected: unused OCLIF flags (`source`, `recipe`, `destination`, `yes`, `option`) — Alpha 1 features, intentionally inert at MVP.
   - Rejected: `--name=../foo` path-traversal not validated — out of scope; PRD does not require name validation at MVP.
 - **Learnings for future iterations:**
   - When forwarding a tagged error from the compiled-binary `$bunfs` CLI path, copy the source-CLI's remediation-concatenation pattern; the AGENTS.md gotcha about explicit compiled-binary handlers covers existence, not error-output parity.

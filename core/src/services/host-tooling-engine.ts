@@ -141,7 +141,7 @@ const outsideRootError = (
     ...(realpathValue === undefined ? {} : { realpath: realpathValue }),
     permittedRoots,
     remediation:
-      "Move the script inside the app root (or recipe cache for recipe-bundled scripts) and ensure no symlinks escape it; see spec §8.5.9.",
+      "Move the script inside the app root (or recipe cache for recipe-bundled scripts) and ensure no symlinks escape it.",
     ...(cause === undefined ? {} : { cause }),
   });
 

@@ -51,7 +51,6 @@ export class LandoCommandError extends Schema.TaggedError<LandoCommandError>()("
 export class NotImplementedError extends Schema.TaggedError<NotImplementedError>()("NotImplementedError", {
   message: Schema.String,
   commandId: Schema.String,
-  specSection: Schema.String,
   remediation: Schema.String,
 }) {}
 

@@ -31,7 +31,6 @@ export const pluginRemoveSpec: LandoCommandSpec<PluginRemoveResult> = {
           new NotImplementedError({
             message: "meta:plugin:remove requires a plugin name argument.",
             commandId: "meta:plugin:remove",
-            specSection: "spec/10-plugins.md",
             remediation: "Pass the plugin name, e.g. `lando plugin:remove @lando/plugin-php`.",
           }),
         );

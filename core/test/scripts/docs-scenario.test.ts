@@ -178,7 +178,6 @@ Step: run (Variable, Run)
 
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("code: NotImplementedError");
-    expect(result.stderr).toContain("Phase 3 Beta");
-    expect(result.stderr).toContain("spec/ROADMAP.md");
+    expect(result.stderr).toContain("not supported yet");
   });
 });

@@ -24,8 +24,7 @@ describe("buildBugReport: envelope extraction", () => {
       error: new NotImplementedError({
         message: "deferred",
         commandId: "meta:plugin:trust",
-        specSection: "spec/10-plugins.md",
-        remediation: "Phase 3 Beta — see spec/ROADMAP.md",
+        remediation: "— see the current command list",
       }),
       context: ctx({ commandId: "meta:plugin:trust" }),
     });
@@ -135,21 +134,19 @@ describe("renderPlainBugReport: stable multi-line output", () => {
     expect(text).not.toContain("providerId:");
   });
 
-  test("preserves NotImplementedError specSection as a labeled diagnostic line", () => {
+  test("preserves NotImplementedError commandId as a labeled diagnostic line", () => {
     const text = renderPlainBugReport(
       buildBugReport({
         error: new NotImplementedError({
           message: "deferred",
           commandId: "meta:plugin:trust",
-          specSection: "spec/10-plugins.md",
-          remediation: "Phase 3 Beta",
+          remediation: "not available yet",
         }),
         context: ctx({ commandId: "meta:plugin:trust" }),
       }),
     );
     expect(text).toContain("code: NotImplementedError");
     expect(text).toContain("commandId: meta:plugin:trust");
-    expect(text).toContain("specSection: spec/10-plugins.md");
   });
 
   test("output never contains ANSI control sequences", () => {

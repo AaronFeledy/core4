@@ -234,7 +234,7 @@ describe("provider-lando setup", () => {
         expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
         expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
         expect(failure.value.remediation).toContain("checksum");
-        expect(failure.value.remediation).toContain("§5.8.1");
+        expect(failure.value.remediation).toContain("lando setup");
       }
     }
   });

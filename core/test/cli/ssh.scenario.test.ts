@@ -40,16 +40,15 @@ describe("lando ssh — Alpha provider-exec TTY command behavior (US-022)", () =
     expect(SshCommand.aliases).toContain("ssh");
   });
 
-  test("`--subsystem` fails with a structured NotImplementedError (Beta defer)", async () => {
+  test("`--subsystem` fails with a structured NotImplementedError (defer)", async () => {
     const result = await runCli(["ssh", "--subsystem=sftp"]);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("NotImplementedError");
     expect(result.stderr).toContain("commandId: app:ssh");
-    expect(result.stderr).toContain("specSection: spec/08-cli-and-tooling.md");
     expect(result.stderr).toContain("subsystem");
   });
 
-  test("`--sidecar` fails with a structured NotImplementedError (Beta defer)", async () => {
+  test("`--sidecar` fails with a structured NotImplementedError (defer)", async () => {
     const result = await runCli(["ssh", "--sidecar"]);
     expect(result.exitCode).not.toBe(0);
     expect(result.stderr).toContain("NotImplementedError");
