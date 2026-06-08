@@ -11,6 +11,7 @@ import { Flags } from "@oclif/core";
 import { DateTime, Effect } from "effect";
 
 import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 import {
   CertificateAuthority,
@@ -73,6 +74,21 @@ const inputHostProxyMode = (input: unknown): "auto" | "none" => {
   return (flags as Record<string, unknown>)["host-proxy"] === "none" ? "none" : "auto";
 };
 
+const SYSTEM_RUNTIME_PROVIDERS: Record<string, string> = {
+  docker: "Docker",
+  podman: "Podman",
+};
+
+const systemRuntimeUnavailableError = (providerId: string): ProviderUnavailableError => {
+  const runtimeName = SYSTEM_RUNTIME_PROVIDERS[providerId] ?? providerId;
+  return new ProviderUnavailableError({
+    providerId,
+    operation: "setup",
+    message: `\`lando setup --provider=${providerId}\` requires an existing ${runtimeName} installation, but ${runtimeName} was not detected on this host.`,
+    remediation: `Install ${runtimeName} and make sure it is running, then rerun \`lando setup --provider=${providerId}\`. To use the bundled Lando-managed runtime instead, run \`lando setup\` (the default) or \`lando setup --provider=lando\`.`,
+  });
+};
+
 const setupProviderPlan = (provider: ProviderId): AppPlan => ({
   id: AppId.make("setup"),
   name: "setup",
@@ -116,6 +132,12 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       });
 
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
+
+      const selectedProviderId = String(resolution.providerId);
+      if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
+        const available = yield* provider.isAvailable;
+        if (!available) return yield* Effect.fail(systemRuntimeUnavailableError(selectedProviderId));
+      }
 
       if (!inputBooleanFlag(input, "skip-provider")) {
         yield* Effect.scoped(provider.setup({ force: false }));

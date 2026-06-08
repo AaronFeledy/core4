@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
+import { Cause, type Context, Effect, Layer } from "effect";
 
 import {
   CertificateAuthority,
@@ -262,6 +262,78 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(
       'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
     );
+  });
+
+  describe("system-runtime providers require an existing installation (US-200 AC5)", () => {
+    for (const id of ["docker", "podman"] as const) {
+      test(`--provider=${id} fails with remediation when the system runtime is unavailable`, async () => {
+        let setupCalls = 0;
+        const provider = {
+          ...TestRuntimeProvider,
+          id,
+          isAvailable: Effect.succeed(false),
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+
+        const exit = await Effect.runPromiseExit(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: id } })
+            .pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag !== "Failure") throw new Error("expected failure");
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag !== "Some") throw new Error("expected a typed failure");
+        const error = failure.value as {
+          readonly _tag?: string;
+          readonly providerId?: string;
+          readonly remediation?: string;
+        };
+        expect(error._tag).toBe("ProviderUnavailableError");
+        expect(error.providerId).toBe(id);
+        expect(error.remediation ?? "").toContain(`lando setup --provider=${id}`);
+        expect(setupCalls).toBe(0);
+      });
+
+      test(`--provider=${id} proceeds when the system runtime is available`, async () => {
+        let setupCalls = 0;
+        const provider = {
+          ...TestRuntimeProvider,
+          id,
+          isAvailable: Effect.succeed(true),
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+
+        const result = await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: id } })
+            .pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+
+        expect(setupCalls).toBe(1);
+        expect(setupSpec.render?.(result)).toBe(
+          `setup complete: Lando runtime (${id})\nLANDO_INSTALL_DIR="/opt/lando"`,
+        );
+      });
+    }
   });
 
   test("honors an explicit provider flag when selecting setup provider", async () => {
