@@ -82,6 +82,9 @@ const inputHostProxyMode = (input: unknown): "auto" | "none" => {
   return (flags as Record<string, unknown>)["host-proxy"] === "none" ? "none" : "auto";
 };
 
+export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
+  inputHostProxyMode(input) === "none";
+
 const SYSTEM_RUNTIME_PROVIDERS: Record<string, string> = {
   docker: "Docker",
   podman: "Podman",
@@ -174,7 +177,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         if (ssh._tag === "Some") yield* ssh.value.setup({ force: false });
       }
 
-      if (!inputBooleanFlag(input, "skip-proxy") && inputHostProxyMode(input) === "none") {
+      if (shouldDisableHostProxyForSetup(input)) {
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
       }
 

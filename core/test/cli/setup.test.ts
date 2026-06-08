@@ -25,7 +25,10 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
-import SetupCommand, { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import SetupCommand, {
+  setupSpec,
+  shouldDisableHostProxyForSetup,
+} from "../../src/cli/oclif/commands/meta/setup.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
@@ -449,6 +452,12 @@ describe("meta:setup command", () => {
     expect(setupCalls).toBe(1);
     expect(setupSpec.render?.(result)).toBe(
       'setup complete: Lando runtime (podman)\nLANDO_INSTALL_DIR="/opt/lando"',
+    );
+  });
+
+  test("host-proxy none remains honored when proxy setup is skipped", () => {
+    expect(shouldDisableHostProxyForSetup({ flags: { "skip-proxy": true, "host-proxy": "none" } })).toBe(
+      true,
     );
   });
 
