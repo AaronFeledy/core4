@@ -1,0 +1,1409 @@
+{
+  "project": "Lando v4 Phase 4 Beta 1",
+  "branchName": "ralph/beta-1",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18) and schema publication (§7.8), ship the plugin authoring toolkit (§9.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, and build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform — then enter feature freeze. Stories follow the 11-PRD breakdown in `spec/beta-1/prd-beta-1-{01..11}-*.md` (US-200..US-278); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "userStories": [
+    {
+      "id": "US-200",
+      "title": "`lando setup` orchestrates provider, CA, proxy, shell, and file-sync setup",
+      "description": "As a new user, I can run `lando setup` once and have Lando prepare every required host integration for the selected provider.",
+      "acceptanceCriteria": [
+        "`meta:setup` is registered at bootstrap `minimal` with the top-level `lando setup` alias.",
+        "The setup flow runs provider, CA, proxy, shell-integration, and file-sync setup through plugin subscribers and direct service calls in a deterministic order.",
+        "Flags are accepted and honored: `--yes`, `--provider=<id>`, `--skip-provider`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, and `--skip-file-sync`.",
+        "Provider plugins can add setup flags through `setup.flags`, and those flags appear in command metadata and parsing tests.",
+        "Default setup installs the Lando-managed runtime. `--provider=docker` and `--provider=podman` fail with remediation unless the matching system runtime already exists.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-201",
+      "title": "File-sync setup downloads Mutagen only when the active provider needs it",
+      "description": "As a user on a slow bind-mount provider, I get Mutagen acceleration prepared during setup, while users on native providers do no extra file-sync work.",
+      "acceptanceCriteria": [
+        "Providers with `bindMountPerformance: \"slow\"` trigger `FileSyncEngine.setup()` during setup unless `--skip-file-sync` is passed.",
+        "Mutagen host CLI downloads to `<userDataRoot>/bin/mutagen` or `<userDataRoot>/bin/mutagen.exe` with a pinned checksum.",
+        "Per-platform Mutagen agents download to `<userDataRoot>/bin/mutagen-agents/mutagen-agent-<platform>` with pinned checksums.",
+        "`--skip-file-sync` records setup as deferred so the first accelerated `app:start` can finish file-sync setup with clear messaging.",
+        "Providers with `bindMountPerformance: \"native\"` report file sync as already satisfied and do not download Mutagen.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-202",
+      "title": "Setup validates corporate proxy and custom CA configuration before long downloads",
+      "description": "As a user behind a corporate proxy or TLS interception, setup checks my network trust settings first and tells me exactly what to fix before large downloads start.",
+      "acceptanceCriteria": [
+        "All setup downloads honor proxy precedence: `network.proxy`, then `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY`.",
+        "Additional CAs are loaded from `network.ca.certs` and `LANDO_NETWORK_CA_CERTS` before download probes run.",
+        "Setup validates proxy and CA configuration before provider or Mutagen downloads begin.",
+        "Failures distinguish TLS interception, proxy authentication, missing custom CA, and blocked registry cases.",
+        "Every failure includes platform-specific remediation and the config key or environment variable the user should change.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-203",
+      "title": "Setup uses `PrivilegeService` for elevation and exposes `lando shellenv`",
+      "description": "As an operator, host-level changes go through the privilege abstraction, and I can print shell snippets that add Lando's bin directory to PATH.",
+      "acceptanceCriteria": [
+        "CA trust-store installation, provider installation, and shell-profile writes use `PrivilegeService` rather than direct privileged shell calls.",
+        "Linux sudo-prompting commands set `SUDO_ASKPASS` when an askpass helper exists.",
+        "`lando shellenv` prints shell-profile snippets that add `<userDataRoot>/bin` to PATH without modifying files.",
+        "Shell snippets cover supported POSIX shells and PowerShell with tests for path escaping.",
+        "Setup can apply shell integration when requested, while `lando shellenv` remains a safe manual path.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-204",
+      "title": "Setup is idempotent, re-entrant, and feeds doctor readiness",
+      "description": "As a support engineer, I can ask a user to rerun setup and read a readiness summary that explains what is ready, skipped, deferred, or failed.",
+      "acceptanceCriteria": [
+        "Re-running `lando setup` never corrupts existing provider state, CA trust, Mutagen binaries, shell entries, or proxy state.",
+        "Already-satisfied steps are reported as satisfied with evidence, not silently skipped.",
+        "Interrupted setup can resume from the last safe point without forcing users to delete data roots.",
+        "Setup writes a structured readiness summary consumed by `lando doctor` §10.9 diagnostics.",
+        "Every readiness failure includes per-platform remediation and enough detail for support triage without leaking secrets.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-205",
+      "title": "`lando uninstall` enumerates destructive work and supports dry runs",
+      "description": "As a user removing Lando, I can preview every action before anything is deleted, and destructive execution requires explicit confirmation.",
+      "acceptanceCriteria": [
+        "`meta:uninstall` is registered at bootstrap `minimal` with the top-level `lando uninstall` alias.",
+        "`lando uninstall --dry-run` prints every planned destructive and non-destructive step without changing the system.",
+        "`lando uninstall` without `--yes` refuses destructive execution and tells the user to rerun with `--yes` after reviewing the plan.",
+        "The plan lists managed provider runtimes or machines, Mutagen binaries, CA trust-store changes, global app state, caches, installed binary, shell entries, `<userDataRoot>`, and `<userCacheRoot>` when applicable.",
+        "The rendered plan marks steps as owned by Lando, user-owned, skipped, or requiring manual remediation.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-206",
+      "title": "Uninstall splits toolchain removal from data destruction",
+      "description": "As a user, I can remove Lando's toolchain while keeping application data, or explicitly purge all Lando-owned state.",
+      "acceptanceCriteria": [
+        "`--keep-data` removes the Lando-owned toolchain but preserves user data roots, app data, and global app state that would destroy local work.",
+        "`--purge` opts into deliberate data destruction and is still gated by `--yes`.",
+        "Managed provider runtimes, provider machines, downloaded Mutagen binaries and agents, CA root trust, global app state, caches, installed binary, shell-env entries, `<userDataRoot>`, and `<userCacheRoot>` are removed only when owned by Lando and allowed by the chosen mode.",
+        "The installed binary is removed only when Lando owns the path; otherwise the command prints exact manual removal steps.",
+        "Partial failures leave a resumable uninstall report with completed, failed, skipped, and manual steps.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-207",
+      "title": "Setup and uninstall dispatch identically in source and compiled binary paths",
+      "description": "As a user, I get the same setup and uninstall behavior whether I run from source or the compiled `$bunfs` binary.",
+      "acceptanceCriteria": [
+        "OCLIF command registrations and `runCompiledCli` branches cover `setup`, `meta:setup`, `shellenv`, `uninstall`, and `meta:uninstall` in the same change.",
+        "Shared command helpers own parsing, setup planning, uninstall planning, rendering, and error mapping.",
+        "Parity tests cover flags, aliases, unknown flags, dry-run rendering, destructive confirmation, and representative failure cases.",
+        "Compiled-binary tests verify no OCLIF-only assumptions are required for setup or uninstall.",
+        "Renderer-boundary tests confirm command output flows through the renderer seam.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-208",
+      "title": "Bun floor decision + `--bytecode` validation",
+      "description": "As a release engineer, I need the Beta 1 Bun version floor confirmed or bumped so every cross-compiled binary can use `--bytecode` consistently.",
+      "acceptanceCriteria": [
+        "A Beta 1 decision note confirms `>=1.3.14` or records the bumped minimum with rationale and affected release targets.",
+        "Root `package.json`, `core/package.json`, `.bun-version`, release docs, and any generated install docs all show the same minimum Bun version.",
+        "The release validation suite proves `bun build --compile --bytecode` works for every configured cross-compile target or fails with a documented blocker tied to the decision.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-209",
+      "title": "OCLIF major lock decision",
+      "description": "As a CLI maintainer, I need the OCLIF v4 versus v5 decision closed so source-mode CLI behavior, manifest generation, and dual-dispatch parity tests have a stable target.",
+      "acceptanceCriteria": [
+        "A Beta 1 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.",
+        "If staying on v4, dependency ranges, compatibility notes, and dispatch parity assumptions are preserved and documented.",
+        "If moving to v5, source-mode command loading, manifest generation, hooks, and parity tests are updated in the same story and no compiled-dispatch unification is attempted.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-210",
+      "title": "Provider auto-setup level decision + setup-default alignment",
+      "description": "As a first-time user, I need `lando setup` and first-run provider preparation to follow one documented UX, either aggressive auto-setup or guided opt-in.",
+      "acceptanceCriteria": [
+        "A Beta 1 decision note chooses aggressive auto-setup or guided opt-in and defines the default for interactive, non-interactive, and CI contexts.",
+        "`lando setup` defaults, prompts, `--yes`, `--no-interactive`, and provider readiness checks align with the chosen UX.",
+        "User docs and setup tests cover the selected default and the rejected alternative's remediation path.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-211",
+      "title": "Compose subset key matrix + per-key remediation",
+      "description": "As a user importing Compose-shaped config, I need a published key matrix that clearly shows which keys Lando accepts and what to do when a key is rejected.",
+      "acceptanceCriteria": [
+        "The supported top-level Compose subset is frozen as `services`, `volumes`, `networks`, `configs`, `secrets`, `include`, and `x-*`; `version:` is accepted as deprecated.",
+        "Unsupported top-level keys fail closed with a specific remediation message for each accepted, deprecated, and rejected key class.",
+        "The matrix is schema-backed, generated or checked by tests, and published in user docs so docs cannot drift from validation behavior.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-212",
+      "title": "`sshAgent.sidecar: false` ship-or-reject decision",
+      "description": "As a security-conscious operator, I need the reserved `sshAgent.sidecar: false` setting either shipped with a safe direct-mount fallback or rejected with a clear warning.",
+      "acceptanceCriteria": [
+        "A Beta 1 decision note chooses whether `sshAgent.sidecar: false` ships or remains rejected, with sidecar default `true` preserved.",
+        "If shipped, the direct-mount fallback has schema, docs, tests, platform constraints, and security remediation text.",
+        "If rejected, config validation and docs explain that `false` is reserved and identify the supported sidecar path.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-213",
+      "title": "Plugin trust surface + postinstall gating finalized",
+      "description": "As a user installing plugins, I need an explicit trust surface that prevents arbitrary postinstall scripts unless I trust the plugin, session, or authoring root.",
+      "acceptanceCriteria": [
+        "`<userConfRoot>/plugin-trust.yml` is published as an Effect Schema with sorted-unique `trustedPlugins: []` and `trustedAuthoringRoots: []`.",
+        "`meta:plugin:trust <name>` validates an npm-ish plugin name, persists it, invalidates plugin command cache, and renders `trusted-plugin: <name>`.",
+        "`meta:plugin:trust-authoring-root <abs>` requires an absolute path, persists the resolved absolute path, invalidates cache, and renders `trusted-authoring-root: <abs>`.",
+        "`BunSelfRunner.add` and `.install` disable arbitrary postinstall scripts for untrusted plugins, then allow trusted scripts only in a recursion-guarded BunSelfRunner child that emits `pre-bun-self-exec` and `post-bun-self-exec` with `verb: \"install\"`.",
+        "Gating recognizes session trust, persistent plugin trust, persistent authoring-root trust, explicit `--trust`, and non-interactive rejection as untrusted.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-214",
+      "title": "Trust list/revoke, scope, expiry, and flag-model decision",
+      "description": "As a maintainer, I need the remaining trust-model sub-questions closed so the command surface, persistence policy, and install flags are not left ambiguous at feature freeze.",
+      "acceptanceCriteria": [
+        "A Beta 1 decision note chooses whether `meta:plugin:trust list` and `meta:plugin:trust revoke` ship now or are explicitly deferred with rationale; if shipped, the existing `untrustPlugin` service path has CLI coverage.",
+        "Trust expiry is either rejected as non-expiring Beta 1 state or implemented with schema, migration, and renderer coverage.",
+        "Trust scope is defined for npm/registry, git, and local plugin sources, including how authoring-root trust applies to linked plugins.",
+        "The exact flag model is published, including `--trust`, non-interactive behavior, and any prompt wording for interactive installs.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-215",
+      "title": "`DeprecationNotice` schema and publication",
+      "description": "As a plugin author, I need a canonical deprecation notice schema so every public surface describes deprecation state the same way.",
+      "acceptanceCriteria": [
+        "`DeprecationNotice` is published from `@lando/sdk` and re-exported by `@lando/core/schema`.",
+        "The schema includes `since`, `removeIn`, `severity`, `replacement`, `note`, `docsUrl`, and `ticket` with the defaults and required fields from §18.2.",
+        "`removeIn` validation rejects patch removals, past releases, and missing values once a notice is older than 12 months.",
+        "Structural dedupe uses `since`, `removeIn`, and `note`.",
+        "The §13.2 schema snapshot gate round-trips the notice losslessly and emits `dist/schemas/deprecation-notice.json`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-216",
+      "title": "`DeprecationService` registry and usage API",
+      "description": "As the runtime, I need a central service that registers deprecated surfaces, records actual use, and answers summary and lookup requests.",
+      "acceptanceCriteria": [
+        "`DeprecationService` ships at bootstrap level `minimal` with `use`, `summary`, `lookup`, and internal `register` operations.",
+        "The registry index is populated by the `plugins` bootstrap level, while `register` remains off the hot path.",
+        "`use` short-circuits repeated `(kind,id)` warnings in a single process while summaries retain usage counts.",
+        "`severity: \"error\"` fails with `DeprecatedSurfaceError` on use.",
+        "A non-deprecated alias that points at a deprecated canonical surface fails with `DeprecationContradictionError`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-217",
+      "title": "`deprecation-used` lifecycle event",
+      "description": "As an embedding host or telemetry subscriber, I need to receive a typed event when deprecated runtime behavior is actually used.",
+      "acceptanceCriteria": [
+        "`DeprecationUse` and `DeprecationUsedEvent = { use: DeprecationUse }` schemas are published from `@lando/sdk`.",
+        "`DeprecationService.use` emits `deprecation-used` after recording usage and before the deprecated behavior continues.",
+        "Event subscribers are recommended to use `late` priority, and subscriber failures do not abort the originating command.",
+        "Library API tests prove subscribed hosts receive the event without going through the CLI renderer.",
+        "Telemetry can consume the same event through the `Telemetry` service without a second deprecation path.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-218",
+      "title": "Schema-annotation propagation",
+      "description": "As a docs and tooling consumer, I need schema-level deprecations to flow into JSON Schema and generated reference content without hand-maintained tables.",
+      "acceptanceCriteria": [
+        "Effect Schema annotations accept a `DeprecationNotice` on deprecated schemas and fields.",
+        "JSON Schema generation emits both `deprecated: true` and `x-deprecation` for every annotated surface.",
+        "Generated Starlight reference content receives a deprecation callout from the same schema walk.",
+        "IDE hover data includes the deprecation note where the schema-driven type surface supports it.",
+        "The schema gate verifies every emitted `x-deprecation` validates against `DeprecationNotice`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-219",
+      "title": "Contract-field and manifest-field deprecation",
+      "description": "As a core maintainer or plugin author, I need command, tooling, recipe, service, provider, and plugin surfaces to carry deprecation notices through their existing contracts.",
+      "acceptanceCriteria": [
+        "Built-in commands, flags, args, service types, service features, route filters, lifecycle events, event fields, render events, and provider extensions accept deprecation contract fields where §18.5 assigns them.",
+        "Plugin command, whole-plugin, plugin manifest field, `globalServices:`, recipe, prompt, tooling task, tooling flag, and tooling arg deprecations are accepted through manifest or YAML fields.",
+        "Plugin loading validates deprecation notices, records them in `DeprecationService`, and fails invalid notices before the deprecated surface is used.",
+        "Alias-scoped deprecations are tracked separately from canonical command deprecations.",
+        "Registry construction performs the three required walks: schema annotations, built-in contracts, and plugin manifests.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-220",
+      "title": "TSDoc `@deprecated` and `markDeprecated()` enforcement",
+      "description": "As a TypeScript consumer, I need public deprecated exports and tagged errors to show IDE deprecation hints and record runtime use when called.",
+      "acceptanceCriteria": [
+        "Public TypeScript exports can pair TSDoc `@deprecated` with `markDeprecated(notice, impl)` for runtime recording.",
+        "Deprecated tagged error classes can expose `static readonly deprecation: DeprecationNotice` and TSDoc `@deprecated`.",
+        "The lint gate fails when a public export has TSDoc `@deprecated` without a matching `markDeprecated()` wrapper or accepted tagged-error deprecation metadata.",
+        "`markDeprecated()` records through `DeprecationService.use` and preserves the original implementation's callable behavior.",
+        "IDE hover and API report output include the same actionable note and replacement text.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-221",
+      "title": "Renderer warnings and suppression controls",
+      "description": "As a CLI user, I need clear deprecation warnings by default, with suppression controls that silence renderer output but not machine-readable diagnostics.",
+      "acceptanceCriteria": [
+        "The first use of each `(kind,id)` emits one warning line through the renderer, and later uses only increment the summary count.",
+        "`severity: \"info\"` notices emit one end-of-run summary line instead of immediate warning spam.",
+        "`--no-deprecation-warnings` and `LANDO_DEPRECATION_WARNINGS=0` suppress only renderer warning output.",
+        "`lando doctor --deprecations` and `lando config --format yaml` ignore suppression and still report deprecations.",
+        "The JSON renderer emits structured `deprecation-used` events on stderr.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-222",
+      "title": "`scripts/check-deprecations.ts` release gate",
+      "description": "As a release engineer, I need stale and overdue deprecations to fail before Beta or GA artifacts are built.",
+      "acceptanceCriteria": [
+        "`scripts/check-deprecations.ts` runs after codegen and before type checking through `bun run codegen:check`.",
+        "The gate verifies `since` matches a released or pending semver.",
+        "The gate requires `removeIn` once a notice is older than 12 months and ensures `removeIn` is a future major or minor release.",
+        "A surface still present at its `removeIn` release fails with `DeprecationStaleError`.",
+        "A surface still present after its `removeIn` release fails with `DeprecationOverdueError`, and removing a surface requires removing its notice plus updating tests, docs, and changelog.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-223",
+      "title": "`lando doctor --deprecations` report",
+      "description": "As an operator, I need a per-app report of deprecated surfaces used by the current app and its loaded plugins.",
+      "acceptanceCriteria": [
+        "`lando doctor --deprecations` prints a dedicated deprecations section with columns for kind, id, severity, since, removeIn, replacement, note, docsUrl, source, and count.",
+        "The report reads from `DeprecationService.summary()` and `lookup(kind,id)` rather than re-walking manifests ad hoc.",
+        "App, plugin, global-service, Landofile, config, env override, command, and event deprecations are represented when present.",
+        "Empty reports state that no deprecations were used or registered for the app.",
+        "JSON and YAML doctor output expose the same structured data without renderer-warning suppression.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-224",
+      "title": "JSON Schema export for every public SDK schema",
+      "description": "As a tooling author, I need draft-07 JSON Schema files for every public Lando schema so editors, validators, and external integrations can validate Lando contracts.",
+      "acceptanceCriteria": [
+        "All public Effect Schemas for Landofile, global config, service config, expression AST and resolution errors, tooling config, route config, healthcheck config, plugin manifest, event payloads, and other `@lando/sdk` contracts are included in JSON Schema export.",
+        "Build-time publication emits stable `dist/schemas/*.json` files using JSON Schema draft-07 by default.",
+        "JSON Schema generation comes from schema AST traversal, not hand-written schema files.",
+        "Schema definitions preserve identifiers, titles, descriptions, field descriptions, examples where present, and deprecation annotations.",
+        "Generation failures identify the schema id and fail the schema gate.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-225",
+      "title": "Central public schema registry and metadata index",
+      "description": "As a library consumer, I need one public registry that lists available schemas and their generated artifact metadata.",
+      "acceptanceCriteria": [
+        "`@lando/sdk/schema` exposes the central public schema registry for all published SDK schemas.",
+        "`@lando/core/schema` re-exports the public schema registry and generated schema helpers without creating a second source of truth.",
+        "Build-time publication emits a schema metadata index that maps schema id to title, description, package export, JSON artifact path, docs path, and deprecation state when present.",
+        "The registry is the input for JSON Schema export and generated MDX reference pages.",
+        "The registry avoids undocumented identifiers that were not found in the spec and treats `@lando/sdk/schema` as the canonical documented surface.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-226",
+      "title": "Required schema annotations enforcement",
+      "description": "As a docs reader, I need generated schema references to have names, descriptions, and examples that explain public fields clearly.",
+      "acceptanceCriteria": [
+        "Every public schema in the registry has an `identifier`, `title`, and `description` annotation.",
+        "Public fields have descriptions unless a field is self-explanatory under the documented exemption rules.",
+        "Examples attached to schemas or fields decode successfully during the schema gate.",
+        "Missing required annotations fail with actionable output naming the schema and field path.",
+        "The enforcement rule applies to new schemas before they can be added to `@lando/sdk` public exports.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-227",
+      "title": "Generated MDX schema reference pages",
+      "description": "As a user or plugin author, I need Starlight reference pages generated from the same schemas that validators use.",
+      "acceptanceCriteria": [
+        "Build-time publication generates MDX schema reference pages for Starlight from schema AST traversal.",
+        "Generated pages include schema title, description, field table, required fields, examples, defaults, accepted values, and links to JSON Schema artifacts.",
+        "Deprecated schemas and fields show callouts such as `Deprecated since X` from `DeprecationNotice` metadata.",
+        "Hand-maintained schema tables are not accepted for public schema reference pages.",
+        "The docs build uses the generated pages and fails if generated docs drift from schema source.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-228",
+      "title": "Merge-blocking §13.2 schema gate",
+      "description": "As a maintainer, I need CI to block schema changes that lack tests, annotations, stable JSON output, or docs generation.",
+      "acceptanceCriteria": [
+        "Every public schema has a dedicated `bun test` file that covers a happy path, an error path, and encode/decode round-trip behavior.",
+        "The schema gate verifies required annotations, decodes examples, generates JSON Schema successfully, and checks stable output.",
+        "Generated reference docs build without hand edits.",
+        "New public schemas are rejected unless they have round-trip tests and required annotations.",
+        "The gate is wired into the merge-blocking §13.4 CI path.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-229",
+      "title": "`x-deprecation` propagation end to end",
+      "description": "As a tooling consumer, I need deprecated schema surfaces to carry complete deprecation metadata in JSON Schema and generated docs.",
+      "acceptanceCriteria": [
+        "`DeprecationNotice` from BETA1-03 US-215 is accepted as the only deprecation annotation payload for schemas and fields.",
+        "Annotated schemas emit `deprecated: true` and valid `x-deprecation` in generated JSON Schema.",
+        "Generated MDX reference pages render the same deprecation metadata as Starlight callouts.",
+        "The schema gate validates every emitted `x-deprecation` against the `DeprecationNotice` schema and round-trips it losslessly.",
+        "`DeprecationNotice` itself is included in `dist/schemas/deprecation-notice.json` and the metadata index.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-230",
+      "title": "`meta:plugin:new` scaffold + templates + prompts/answers",
+      "description": "As a plugin author, I can create a new plugin from a bundled template and get a project that is immediately buildable, testable, and linkable.",
+      "acceptanceCriteria": [
+        "`meta:plugin:new <name> [<destination>]` scaffolds from codegen-embedded templates: `service-type`, `provider`, `tooling-engine`, `template-engine`, `route-filter`, `config-translator`, `recipe`, and `bare`.",
+        "Interactive mode prompts for `name`, `template`, `cspace`, and `description`; `--no-interactive` requires all needed values through args, repeatable `--answer key=value`, or `--answers <file>`.",
+        "The scaffold emits `package.json` with plugin metadata and `api: 4`, Effect-Schema config, a test fixture, strict `tsconfig.json`, and `README.md`.",
+        "The generated plugin can run `meta:plugin:test`, `meta:plugin:build`, and `meta:plugin:link` without manual file edits.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-231",
+      "title": "`meta:plugin:test` Bun test runner + arg forwarding + events",
+      "description": "As a plugin author, I can run the plugin test suite through Lando while keeping Bun arguments and lifecycle events intact.",
+      "acceptanceCriteria": [
+        "`meta:plugin:test [<paths>...]` detects the current plugin root, validates its manifest, and runs `bun test` in that root through `BunSelfRunner`.",
+        "Positional paths are passed to Bun as test targets, and arguments after `--` are forwarded unchanged.",
+        "The command publishes `cli-meta:plugin:test-*` events plus `pre-bun-self-exec` and `post-bun-self-exec` events.",
+        "Rendered output reports the plugin name, test command, and final result without touching raw stdio outside the renderer boundary.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-232",
+      "title": "`meta:plugin:build` exports build + declarations + mixed-tree refusal",
+      "description": "As a plugin author, I can build publishable artifacts from `package.json#exports` and avoid accidentally publishing mixed source and dist trees.",
+      "acceptanceCriteria": [
+        "`meta:plugin:build` validates the manifest, reads `package.json#exports`, and emits `dist/` artifacts with TypeScript declarations.",
+        "The command refuses mixed `dist/` and source trees with a tagged error and remediation before writing publish artifacts.",
+        "Build work routes through `BunSelfRunner` and publishes `cli-meta:plugin:build-*`, `pre-bun-self-exec`, and `post-bun-self-exec` events.",
+        "Build outputs are deterministic enough for tests to compare expected files and package metadata.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-233",
+      "title": "`meta:plugin:link` symlink + cache refresh + tracking",
+      "description": "As a plugin author, I can link a local plugin into my user plugin registry and have Lando refresh every cache that depends on plugin commands.",
+      "acceptanceCriteria": [
+        "`meta:plugin:link [<path>]` defaults to `cwd`, resolves the absolute path, validates the plugin manifest, and symlinks it into `<userDataRoot>/plugins/<name>`.",
+        "The linked registry entry tracks `source: \"linked\"` and `linkedPath: <abs>`.",
+        "The command refreshes or invalidates the command index, OCLIF shim cache, plugin cache, and any compiled-dispatch metadata needed for parity.",
+        "Linking refuses to mutate global state outside `<userDataRoot>/plugins/` and reports a tagged conflict if an existing entry cannot be safely replaced.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-234",
+      "title": "`meta:plugin:unlink` restore/remove behavior",
+      "description": "As a plugin author, I can unlink a local plugin and either restore the prior registry copy or remove the linked entry cleanly.",
+      "acceptanceCriteria": [
+        "`meta:plugin:unlink <name>` validates the plugin name and locates the linked registry entry under `<userDataRoot>/plugins/`.",
+        "If the plugin lockfile recorded a prior registry copy, unlink restores that copy atomically.",
+        "If no prior copy exists, unlink removes the linked symlink and registry metadata without touching the source authoring path.",
+        "The command refreshes the same command and plugin caches as link, then renders the final restored or removed state.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-235",
+      "title": "`meta:plugin:publish` rebuild/retest/validate/auth/`--dry-run`",
+      "description": "As a plugin publisher, I can publish a built plugin artifact with validation, optional retesting, and a dry-run package listing.",
+      "acceptanceCriteria": [
+        "`meta:plugin:publish` runs from a built artifact directory, rebuilds if stale, and retests unless `--no-test` is set.",
+        "The command validates manifest shape, `api: 4`, module containment, package contents, `tag`, and `registry` before publishing.",
+        "Auth is read from `<userDataRoot>/plugin-auth.json`; missing auth produces a tagged remediation and never prompts in non-interactive mode.",
+        "`--dry-run` prints package contents, planned registry, tag, and validation result, then exits 0 without network publish.",
+        "Publish and build/test child operations route through `BunSelfRunner` and publish the relevant lifecycle events.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 36,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-236",
+      "title": "Dual-dispatch parity + `BunSelfRunner` routing + plugin-root containment",
+      "description": "As a maintainer, I need all six plugin authoring commands to behave identically in source mode and compiled `$bunfs` mode while preserving process-routing and containment rules.",
+      "acceptanceCriteria": [
+        "`runCompiledCli` has explicit branches for `meta:plugin:new`, `meta:plugin:test`, `meta:plugin:build`, `meta:plugin:link`, `meta:plugin:unlink`, and `meta:plugin:publish`.",
+        "OCLIF command bodies and compiled branches share command logic instead of duplicating behavior.",
+        "Every child process routes through `BunSelfRunner`; no command uses ad hoc Bun, shell, or Node process spawning.",
+        "Tests prove no command mutates global state outside `<userDataRoot>/plugins/` except documented auth/trust files owned by the plugin management surface.",
+        "Dispatch parity tests cover success, unknown flag, help, non-interactive failure, and renderer output for all six commands.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-237",
+      "title": "`Telemetry` transport and sink implementation",
+      "description": "As the runtime, I need `Telemetry.record(event, data)` to enqueue allowed telemetry without blocking command completion, process exit, or shutdown.",
+      "acceptanceCriteria": [
+        "`core/src/**/telemetry*.ts` or an equivalent telemetry module implements the `Telemetry` Live Layer and replaces the minimal bootstrap no-op stub in CLI mode.",
+        "`Telemetry.enabled` reflects the resolved runtime setting and `record(event, data)` returns immediately after local validation and enqueue.",
+        "Endpoint failures, sink failures, DNS failures, timeouts, and process-exit races never change the command exit code.",
+        "Pending telemetry is best-effort flushed only within a bounded budget and is dropped rather than delaying process shutdown.",
+        "Plugin-contributed sinks are invoked only through the `Telemetry` service and receive no calls when telemetry is disabled.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-238",
+      "title": "Documented telemetry event inventory",
+      "description": "As a maintainer or privacy reviewer, I need one in-repo inventory that lists every telemetry event, allowed field, source, and owner.",
+      "acceptanceCriteria": [
+        "A canonical telemetry inventory document is published under `docs/` or `spec/` and linked from the generated reference docs where appropriate.",
+        "The inventory lists event names, field names, field types, allowed values, owning package, source trigger, and whether the event is CLI-only or library-eligible.",
+        "Initial inventory includes update outcomes and `deprecation-used` events, plus any always-on runtime health events needed by the transport.",
+        "A lint or test gate fails when code records an event not present in the inventory.",
+        "Event additions require an explicit inventory diff in the same PR.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-239",
+      "title": "Redaction rules and retention policy",
+      "description": "As a user, I need telemetry to exclude sensitive identifiers and to have a written retention policy before emission is enabled by default.",
+      "acceptanceCriteria": [
+        "A shared redaction layer rejects or removes paths, hostnames, usernames, user IDs, app names, project names, email addresses, tokens, secrets, raw command arguments, and raw error messages.",
+        "Redaction tests cover POSIX paths, Windows paths, hostnames, URLs with credentials, UUID-like identifiers, home-directory aliases, and nested telemetry payloads.",
+        "Update telemetry fields are constrained to version, target, channel, platform, and outcome category.",
+        "The retention policy states what is retained, where it is retained, who can access it, and when aggregated and raw data are deleted.",
+        "The policy is linked from telemetry docs, opt-out command output, and the event inventory.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 40,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-240",
+      "title": "CLI default-on and library default-off precedence",
+      "description": "As a CLI user or embedding host, I need telemetry defaults to match the shell I am using and to resolve controls predictably.",
+      "acceptanceCriteria": [
+        "CLI mode defaults telemetry to enabled when no flag, env var, config key, or runtime option overrides it.",
+        "Library mode defaults telemetry to disabled unless `makeLandoRuntime` or equivalent runtime construction opts in.",
+        "Precedence is `flag > env > config > default`, with runtime option `telemetry` treated as the library-mode host decision before default resolution.",
+        "`GlobalConfig.telemetry.enabled` flips from its current `false` default to the CLI default-on behavior without changing the library-mode default-off contract.",
+        "`LANDO_CONFIG__TELEMETRY__ENABLED=0` and equivalent false values disable emission before any sink is constructed.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-241",
+      "title": "Opt-out controls",
+      "description": "As a user, I need first-class controls to disable telemetry through config, environment, and a documented CLI surface.",
+      "acceptanceCriteria": [
+        "`telemetry.enabled` in `GlobalConfig` disables telemetry for future CLI runs when set to `false`.",
+        "`LANDO_CONFIG__TELEMETRY__ENABLED=0` disables telemetry for the current process and takes precedence over config.",
+        "A first-class CLI command or flag disables telemetry and writes the same `GlobalConfig` key; default command id is `meta:config telemetry off` until the Open Question is closed.",
+        "The opt-out surface reports the current effective telemetry state and the source that selected it: flag, env, config, or default.",
+        "Disabling telemetry prevents local buffering, plugin sink invocation, and outbound transport attempts.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-242",
+      "title": "Update outcome and `deprecation-used` telemetry wiring",
+      "description": "As a maintainer, I need update outcomes and deprecated surface use to be visible through the same telemetry pipeline without adding a second reporting path.",
+      "acceptanceCriteria": [
+        "`lando update` records outcome categories `success`, `signature_failure`, `launch_probe_failure`, `permission_failure`, and `network_failure`.",
+        "Update telemetry includes only version, target version, channel, platform, and outcome category.",
+        "Update telemetry never includes paths, hostnames, usernames, user IDs, app IDs, install directories, raw URLs, raw errors, or command arguments.",
+        "`deprecation-used` events from `DeprecationService` are consumed through `Telemetry.record` with event data allowed by the inventory.",
+        "Telemetry-disabled runs emit neither update outcome events nor deprecation telemetry, while normal deprecation renderer and doctor behavior remains unchanged.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-243",
+      "title": "Public reader-scenario transcript emission",
+      "description": "As a docs author, I need generated guide scenarios to emit public transcript frames that match what readers should see while excluding hidden and test-only execution details.",
+      "acceptanceCriteria": [
+        "Scenario generation emits a public transcript artifact for visible `<Step>`, `<Run>`, `<Verify>`, `<Inspect>`, `<Cleanup>`, `<Inline>`, `<Tabs>`, and `<Tab>` reader frames.",
+        "`<Hidden>`, test-only scenarios, fixtures, fixture-copy paths, raw temp dirs, internal event traces, and cleanup-only internals are excluded from public frames.",
+        "Public frames preserve guide id, scenario id, variant, runtime, source file, source line, display text, command display text, and visible result summary.",
+        "Internal transcripts continue to capture full execution data for tests without leaking into public docs output.",
+        "Source headers and source-mapper reporter still attribute failures to the authoring MDX file and line.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-244",
+      "title": "Starlight consumption of public transcript frames",
+      "description": "As a reader, I want the docs site to show verified guide outputs from public transcript frames instead of static examples that can drift from tests.",
+      "acceptanceCriteria": [
+        "The Starlight docs pipeline consumes public transcript artifacts and renders them in the matching guide scenario blocks.",
+        "Missing public transcript artifacts fail docs build or guide lint for shipped guides that require transcripts.",
+        "Hidden blocks, test-only scenarios, fixtures, and internal traces remain absent from rendered docs HTML.",
+        "Variant-aware transcript rendering selects the correct frame set for tabs and axes.",
+        "Docs output links transcript frames back to the guide source section where the scenario is authored.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-245",
+      "title": "Library-mode guides through `<Run runtime=\"...\">`",
+      "description": "As an embedding user, I need executable guides that can exercise `@lando/core` library APIs through `<Run runtime=\"...\">`, not just shell CLI commands.",
+      "acceptanceCriteria": [
+        "`<Run runtime=\"library\">` or the exact §19 runtime-target spelling generates scenario code that imports and executes `@lando/core` library APIs.",
+        "Library-mode guide runs receive a complete `ScenarioContext` with `guideId`, `scenarioId`, `variant`, `testDir`, `runtime`, `vars`, `shell`, `events`, `transcript`, and `fixtures`.",
+        "Library-mode guide runs can use `@lando/core/testing` helpers without routing through `runCli`.",
+        "Display-vs-execute binding stays explicit; author-visible prose is never inferred from library code.",
+        "Library-mode failures preserve MDX file and line ownership through source headers and the source-mapper reporter.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 46,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-246",
+      "title": "`layer: \"e2e\"` `@smoke` guide-scenario subset",
+      "description": "As a release maintainer, I need a small e2e guide-scenario subset that runs against a real provider on linux-x64 so executable guides prove the provider path too.",
+      "acceptanceCriteria": [
+        "Guide frontmatter or scenario props support `layer: \"e2e\"` and an `@smoke` marker for the e2e subset.",
+        "The linux-x64 CI job runs the `@smoke` e2e guide-scenario subset against a real provider with credentials and provider availability explicitly gated.",
+        "Local runs skip e2e guide scenarios with a clear message when the provider gate is absent.",
+        "E2e guide scenarios still use generated TypeScript from MDX and still emit internal transcripts and public transcript frames where visible.",
+        "Provider failures are reported as scenario failures with source-mapped MDX ownership.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 47,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-247",
+      "title": "Per-PR CI scenario variants on every supported platform",
+      "description": "As a maintainer, I need every scenario-layer guide variant to run on every supported platform in PR CI so platform-specific docs drift is caught before merge.",
+      "acceptanceCriteria": [
+        "The per-PR CI matrix runs scenario-layer executable guide variants on `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64`.",
+        "Multi-axis variants generate distinct test cases or files that CI can shard and report by guide id, scenario id, and variant.",
+        "Platform-specific skips must be explicit in guide metadata and visible in CI output.",
+        "Generated scenario tests remain gitignored and reproducible from the MDX source.",
+        "CI failure annotations point at the source MDX file and line, not only the generated TypeScript file.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 48,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-248",
+      "title": "Full `lint:guides` quality gates",
+      "description": "As a docs maintainer, I need `bun run lint:guides` to block guide patterns that make public docs and executable scenarios drift apart.",
+      "acceptanceCriteria": [
+        "Raw fenced shell blocks are forbidden inside `<Guide>` content unless wrapped in the approved display-only component form from §19.",
+        "Display-vs-execute binding is required for every executable `<Run>`, with no inferred command rewriting.",
+        "Hidden blocks, test-only scenarios, fixtures, and internal traces are excluded from public transcript output by linted rule, not convention.",
+        "Source mapping metadata is required for every generated scenario block and fails lint when missing.",
+        "`bun run lint:guides` remains the merge-blocking gate for guide content, fixtures, component props, transcript references, and source-map coverage.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 49,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-249",
+      "title": "Public transcript redaction and determinism",
+      "description": "As a reader and reviewer, I need public transcript frames to be stable across machines and free of local paths, secrets, hostnames, and other machine-specific data.",
+      "acceptanceCriteria": [
+        "Public transcript redaction removes or normalizes temp dirs, home dirs, app roots, fixture roots, hostnames, usernames, tokens, secrets, random ports, generated container ids, and provider-specific ids.",
+        "Transcript snapshots are deterministic across supported platforms for the same guide variant.",
+        "Redaction runs before docs-site consumption and before public transcript artifacts are written.",
+        "Internal transcripts may keep richer diagnostic detail, but public transcript tests prove the public artifact excludes private fields.",
+        "A fixture suite covers POSIX, Windows, provider-specific, and library-mode transcript redaction.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-250",
+      "title": "Canonical guide acceptance path",
+      "description": "As a Beta 1 release owner, I need one canonical recipe guide to prove public transcripts, library-mode scenarios, and e2e `@smoke` variants all work together.",
+      "acceptanceCriteria": [
+        "At least one canonical recipe guide ships a public transcript rendered in the docs site.",
+        "The same guide or a paired canonical guide ships a library-mode scenario that targets `@lando/core` APIs through `<Run runtime=\"...\">`.",
+        "The same guide or a paired canonical guide ships an `@smoke` `layer: \"e2e\"` variant that runs against a real provider on linux-x64.",
+        "Guide coverage index entries mark the accepted guide or guides as shipped rather than planned.",
+        "The accepted path is green in guide lint, generated scenario tests, docs build, and the linux-x64 e2e smoke job.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-251",
+      "title": "`scripts/release.ts` runs the 13-stage pipeline in order",
+      "description": "As a release manager, I can start one script and trust it to run the required release stages in the fixed order.",
+      "acceptanceCriteria": [
+        "`scripts/release.ts` defines the 13 ordered stages: Codegen, Type-check, Lint/format, Test gates, Schema artifacts, Library bundle, Compile, Strip, Sign, Notarize, Manifest, Provenance & SBOM, Publish.",
+        "Stages may be skipped per artifact family but cannot be reordered by CLI flags or config.",
+        "Shell-shaped stages use `Bun.$`; argv-precise tools use `Bun.spawn`.",
+        "Any stage failure halts the pipeline and reports a tagged release error with stage id, artifact family, command summary, and remediation.",
+        "Unit tests prove stage ordering, halt behavior, and shell-vs-argv runner selection.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-252",
+      "title": "Artifact-family stage split and local rehearsal behavior are explicit",
+      "description": "As a maintainer, I can rehearse part of a release locally and know which stages apply to binaries, libraries, and credential-gated work.",
+      "acceptanceCriteria": [
+        "Compiled binaries run stages 1 through 5 and 7 through 13.",
+        "The library package runs stages 1 through 6 and 11 through 13.",
+        "Local rehearsal can run any prefix without secrets.",
+        "With `LOCAL_REHEARSAL=1`, stages 9, 10, 11 signature work, 12, and 13 skip with warnings when credentials are absent.",
+        "Stage 7 can compile the maintainer's current platform locally without cross-platform signing secrets.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 53,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-253",
+      "title": "The deprecation gate runs after codegen and before type-check",
+      "description": "As a maintainer, I cannot release a version that still contains surfaces whose `removeIn` version has arrived.",
+      "acceptanceCriteria": [
+        "`scripts/check-deprecations.ts` runs immediately after stage 1 Codegen and before stage 2 Type-check.",
+        "The release fails if any deprecation notice has `removeIn` matching or preceding the release version.",
+        "The failure lists each offending surface, declaration file, `removeIn` value, and the expected removal action.",
+        "Local rehearsal runs the same deprecation gate as CI.",
+        "Tests include a synthetic expired deprecation fixture and verify the gate blocks release.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 54,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-254",
+      "title": "macOS artifacts are Developer ID signed, notarized, and stapled",
+      "description": "As a macOS user, I receive a binary that passes Gatekeeper checks because the release pipeline signs, notarizes, and staples it.",
+      "acceptanceCriteria": [
+        "Darwin x64 and arm64 binaries are signed with the configured Developer ID identity.",
+        "Signed macOS artifacts are submitted through `notarytool submit` with credential-gated execution.",
+        "Successful notarization runs `stapler staple` and verifies the stapled ticket.",
+        "Missing macOS credentials skip only in local rehearsal and fail in CI release mode.",
+        "Tests cover command construction, credential gating, and tagged errors without requiring live Apple credentials.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-255",
+      "title": "Windows artifacts are Authenticode signed and cosign signed",
+      "description": "As a Windows user, I receive an Authenticode-signed binary with an additional cosign signature for release verification.",
+      "acceptanceCriteria": [
+        "Windows binaries are signed with `signtool` using configured certificate material.",
+        "The signed Windows binary receives a cosign signature as part of the Sign stage.",
+        "Missing Windows signing credentials skip only in local rehearsal and fail in CI release mode.",
+        "Verification commands confirm Authenticode status and cosign signature presence before Manifest generation.",
+        "Tests cover `signtool` argument construction, cosign invocation, and failure mapping.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-256",
+      "title": "Linux artifacts publish GPG and cosign signed checksum manifests",
+      "description": "As a Linux user, I can verify downloaded binaries through a signed checksum manifest and cosign signature.",
+      "acceptanceCriteria": [
+        "Linux release artifacts produce a `SHA256SUMS` manifest covering linux-x64 and linux-arm64 binaries.",
+        "`SHA256SUMS` is GPG-signed in the Sign stage when release credentials are present.",
+        "`SHA256SUMS` is cosign-signed in the Sign stage.",
+        "Verification confirms checksum coverage and both signatures before Manifest generation.",
+        "Tests cover manifest generation, missing binary failure, GPG command construction, cosign command construction, and local rehearsal skipping.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 57,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-257",
+      "title": "Compiled binaries use `--bytecode` and stay within the cold-build budget",
+      "description": "As a maintainer, I can compile Beta 1 binaries with Bun bytecode enabled and catch release-time build slowdowns early.",
+      "acceptanceCriteria": [
+        "Stage 7 Compile invokes `bun build --compile --bytecode` against the canonical compiled entry.",
+        "Compile targets preserve the Beta 1 platform ids from the generated CI workflow.",
+        "A perf guard measures one-target cold build time on reference linux-x64 and fails above 10 minutes.",
+        "Local rehearsal reports compile duration even when later signing stages are skipped.",
+        "Tests verify `--bytecode` is present and that the budget guard reports tagged failures.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 58,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-258",
+      "title": "Each release artifact includes a CycloneDX SBOM",
+      "description": "As a security reviewer, I can inspect a CycloneDX SBOM for every published Lando artifact.",
+      "acceptanceCriteria": [
+        "The release pipeline emits `dist/lando-${V}-sbom.cdx.json` for each binary artifact and the library archive.",
+        "SBOM files use CycloneDX JSON format and include artifact name, version, checksum, component list, and tool metadata.",
+        "Stage 12 fails if any publishable artifact lacks a matching SBOM.",
+        "Release manifest entries link each artifact to its SBOM path and checksum.",
+        "Tests cover SBOM naming, required fields, missing-SBOM failure, and manifest linkage.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 59,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-259",
+      "title": "Release provenance uses SLSA v1.0 keyless cosign through OIDC",
+      "description": "As a downstream verifier, I can confirm that published artifacts came from the official GitHub Actions release workflow.",
+      "acceptanceCriteria": [
+        "Stage 12 emits SLSA v1.0 provenance attestations for every published artifact.",
+        "Provenance attestations are keyless-signed with cosign using GitHub Actions OIDC.",
+        "Attestations include builder identity, source ref, commit SHA, artifact digest, workflow path, and release version.",
+        "CI fails release mode if OIDC identity or issuer does not match the configured release workflow.",
+        "Tests cover attestation payload shape, OIDC issuer configuration, and missing-attestation failure without requiring live OIDC.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 60,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-260",
+      "title": "Binary signatures are verified in CI and documented in release notes",
+      "description": "As a user downloading a binary, I can run the published verification command and get the same success CI proved before publish.",
+      "acceptanceCriteria": [
+        "Every binary gets a keyless cosign signature before publish.",
+        "CI runs `cosign verify-blob` for every published binary using the configured OIDC identity and issuer.",
+        "Release notes publish each binary's signature, certificate, and exact verification command.",
+        "Publish fails if any binary cannot be verified with the published command.",
+        "Tests cover release-note command rendering, identity / issuer mismatch, and missing-signature failure.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 61,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-261",
+      "title": "`lando update` resolves a channel and verifies a signed manifest before trusting it",
+      "description": "As a user, I can run `lando update` and know the update metadata was verified before Lando downloads or replaces anything.",
+      "acceptanceCriteria": [
+        "`meta:update` and top-level `lando update` resolve channels `stable`, `next`, and `dev`.",
+        "Manifest URLs are `https://update.lando.dev/v4/{stable,next,dev}.json`.",
+        "`UpdateManifestSchema` validates channel, version, minimum, artifact URLs, checksums, signatures, and platform entries.",
+        "The manifest sibling `.sig` is verified before any manifest fields are trusted.",
+        "The `minimum` field blocks auto-update for binaries that are too old and prints manual update remediation.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 62,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-262",
+      "title": "POSIX self-update replaces the binary atomically and re-execs",
+      "description": "As a POSIX user, a successful update downloads, verifies, probes, atomically swaps the binary, and restarts into the new version.",
+      "acceptanceCriteria": [
+        "POSIX update downloads to a temp file in the target filesystem and verifies checksum plus signature before execution.",
+        "A launch probe runs the downloaded binary before replacement.",
+        "Replacement uses `rename(2)` and preserves a `.bak` rollback file.",
+        "Successful replacement runs `execve(2)` into the updated binary with the expected argv and environment.",
+        "Tests cover temp-file placement, checksum failure, signature failure, launch probe success, rename behavior, and re-exec argument preservation.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 63,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-263",
+      "title": "Failed launch probes restore `.bak` and raise `UpdateLaunchProbeError`",
+      "description": "As a user, if the downloaded binary cannot start, Lando restores the previous binary and tells me what failed.",
+      "acceptanceCriteria": [
+        "Failed launch probe restores the `.bak` binary before returning control to the user.",
+        "Launch probe failures surface `UpdateLaunchProbeError` with platform, attempted version, probe command, and redacted output summary.",
+        "Rollback failure is reported separately and never hides the original probe error.",
+        "The update cache records the failed category without storing paths, hostnames, or user identifiers.",
+        "Tests cover probe failure, successful rollback, rollback failure, and redacted error rendering.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 64,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-264",
+      "title": "Windows self-update handles running `.exe` replacement safely",
+      "description": "As a Windows user, updating a running Lando executable uses a delayed swap or spawn-and-exit flow instead of trying to overwrite the locked executable.",
+      "acceptanceCriteria": [
+        "Windows update detects the running `.exe` lock and avoids direct overwrite.",
+        "The update flow supports delayed swap or spawn-and-exit replacement with a verified downloaded binary.",
+        "If the delayed swap cannot be scheduled, Lando prints exact manual fallback instructions.",
+        "Windows replacement preserves rollback behavior where the platform permits it.",
+        "Tests cover locked-exe detection, swap helper invocation, fallback instruction rendering, and failure mapping.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 65,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-265",
+      "title": "Update permission errors and telemetry are safe and actionable",
+      "description": "As a user without write permission to the install path, I get exact manual remediation and Lando never silently elevates.",
+      "acceptanceCriteria": [
+        "EACCES during download placement, replacement, backup, or rollback surfaces `UpdatePermissionError`.",
+        "`UpdatePermissionError` includes exact manual sudo or UAC remediation for the detected install path without running elevation itself.",
+        "Update never invokes sudo, UAC, or `PrivilegeService` silently.",
+        "Update telemetry reports success and failure categories only.",
+        "Telemetry payloads do not include paths, hostnames, user IDs, full URLs with tokens, or raw command output.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 66,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-266",
+      "title": "GitHub Releases publishes the complete signed artifact set",
+      "description": "As a user who downloads manually, I can get every binary, library archive, SBOM, provenance file, checksum, and signature from GitHub Releases.",
+      "acceptanceCriteria": [
+        "GitHub Releases publishes signed binaries for every Beta 1 platform target.",
+        "The release includes the library archive, SBOM files, provenance attestations, checksum manifests, signature files, certificates, and verification instructions.",
+        "The compiled binary embeds Bun, so binary-only installs require no separate Bun, Node, or package manager.",
+        "Mutagen is not embedded in the binary and remains acquired by `lando setup`.",
+        "Release tests fail if any required artifact family is missing from the GitHub Releases manifest.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 67,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-267",
+      "title": "`install.sh` detects POSIX platforms and installs verified binaries",
+      "description": "As a POSIX user, I can run the published shell installer and receive a verified Lando binary in my chosen install directory.",
+      "acceptanceCriteria": [
+        "`https://get.lando.dev/install.sh` detects OS, architecture, and libc constraints needed for the release platform id.",
+        "The script resolves `stable`, `next`, or `dev` channel manifests.",
+        "The script downloads the binary, checksum manifest, and signature for the detected platform.",
+        "The script verifies checksum and signature before installing.",
+        "The script installs to `${LANDO_INSTALL_DIR:-<userDataRoot>/bin}` and creates the directory if absent.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 68,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-268",
+      "title": "`install.ps1` handles Windows installs and execution policy guidance",
+      "description": "As a Windows user, I can run the published PowerShell installer and get a verified `lando.exe` with clear execution policy instructions.",
+      "acceptanceCriteria": [
+        "`https://get.lando.dev/install.ps1` detects Windows architecture and maps it to the `windows-x64` release artifact.",
+        "The script resolves `stable`, `next`, or `dev` channel manifests.",
+        "The script downloads `lando.exe`, checksum manifest, and signature for Windows.",
+        "The script verifies checksum and signature before installing.",
+        "The script documents the default execution policy path and prints exact remediation when policy blocks execution.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 69,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-269",
+      "title": "Installer verification uses vendored trust roots",
+      "description": "As a security-conscious user, I can inspect the installer trust roots and know they are not fetched from the same network path as the binary.",
+      "acceptanceCriteria": [
+        "`install.sh` verifies artifacts with a vendored GPG trust root.",
+        "`install.ps1` verifies artifacts with a vendored cosign trust root.",
+        "Trust roots are versioned with the installer scripts and not downloaded from the update manifest.",
+        "Verification fails closed if the trust root is missing, malformed, expired, or mismatched.",
+        "Tests cover trust-root selection, missing trust root, wrong signer, and tampered artifact cases.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 70,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-270",
+      "title": "Installers support PATH integration and optional post-install setup",
+      "description": "As a first-time user, I can install Lando, get PATH guidance, and choose whether to run setup immediately.",
+      "acceptanceCriteria": [
+        "Both installers offer to run `lando setup` after the binary is installed and verified.",
+        "Non-interactive installer mode can skip post-install setup without prompting.",
+        "Both installers print `lando shellenv` guidance for adding the install directory to PATH.",
+        "PATH guidance matches the `lando shellenv` output from PRD-01.",
+        "Installer tests cover setup opt-in, setup skip, non-interactive mode, and PATH guidance rendering.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 71,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-271",
+      "title": "Installer scripts are signed and published at stable URLs",
+      "description": "As a user running a curl-pipe installer, I can verify the script itself before trusting it.",
+      "acceptanceCriteria": [
+        "`install.sh` and `install.ps1` are signed before publication.",
+        "Detached script signatures are published next to the stable installer URLs.",
+        "Release notes include installer script verification commands.",
+        "Publishing fails if a script, signature, or trust-root artifact is missing.",
+        "Tests cover script signing, stable URL manifest entries, and missing-signature failure.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 72,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-272",
+      "title": "`@lando/core/testing` stable on `next` + deterministic `TestRuntime`",
+      "description": "As an embedding host or plugin author, I can import `@lando/core/testing` from the `next` channel and get deterministic in-memory testing utilities with documented exports.",
+      "acceptanceCriteria": [
+        "`@lando/core/testing` is declared stable on the `next` channel for Beta 1 while `@lando/core/docs/components` and `@lando/core/docs/redactions` remain unstable until GA.",
+        "`TestRuntime` satisfies every default service tag, is deterministic, and does not touch filesystem or network outside explicit overrides.",
+        "The provider contract suite runs against `TestRuntime` and proves the default fake provider behavior is stable.",
+        "Every `@lando/core/testing` export has JSDoc and is covered by workspace and packed-install resolution tests.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 73,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-273",
+      "title": "Full §16.2 library contract suite + `docs/redactions` export gap",
+      "description": "As a package consumer, I need every public library entry point to resolve, obey import boundaries, and match the §16.2 stability contract.",
+      "acceptanceCriteria": [
+        "`core/test/library/entry-points-export.test.ts` verifies `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, `@lando/core/cli`, `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions`.",
+        "`core/test/library/import-boundary.test.ts` proves the default entry is OCLIF-free and `@lando/core/oclif` is internal-only.",
+        "`core/test/library/core-testing-export.test.ts` resolves `@lando/core/testing` from both workspace and packed install.",
+        "`core/test/library/cli-operations-export.test.ts` and `core/test/library/make-runtime-app.test.ts` cover CLI operation exports and runtime creation.",
+        "The known missing `@lando/core/docs/redactions` export is either added or ticketed with a failing contract test and explicit Beta 1 acceptance note.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 74,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-274",
+      "title": "Library-mode defaults + scoped/idempotent `makeLandoRuntime`",
+      "description": "As an embedding host, I can create Lando runtimes repeatedly without unwanted process mutation and with library-mode defaults that are safe for host applications.",
+      "acceptanceCriteria": [
+        "Library-mode defaults are `logger: silent`, `renderer: json`, discovery booleans default `false`, telemetry enabled unless explicitly disabled, and signal handlers off unless requested.",
+        "`makeLandoRuntime` validates options through Effect Schema and returns one scoped Layer.",
+        "Repeated calls to `makeLandoRuntime` are safe, do not share mutable global state accidentally, and tear down all resources when the scope closes.",
+        "The runtime runs the same bootstrap sequence as CLI mode while avoiding global process mutation unless signal handlers are explicitly enabled.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 75,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-275",
+      "title": "Plugin SDK contract test for `requires.\"@lando/core\": \"^4.0.0\"`",
+      "description": "As a plugin author, I need the plugin compatibility contract to reject plugins that target the wrong core major version.",
+      "acceptanceCriteria": [
+        "Plugin manifests must declare `requires.\"@lando/core\": \"^4.0.0\"` for Beta 1 compatibility.",
+        "The plugin SDK contract test accepts compatible manifests and rejects missing, incompatible, or overly broad core requirements with tagged remediation.",
+        "Bundled plugin fixtures and generated schema snapshots are updated to match the compatibility requirement.",
+        "Plugin authoring docs explain the requirement and show the field in scaffolded `package.json` output.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 76,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-276",
+      "title": "§17.9 criteria 1-9 acceptance harness green on linux-x64",
+      "description": "As a release engineer, I can run the first half of the binary acceptance harness on linux-x64 and prove release, signing, supply-chain, and update behavior work on the reference platform.",
+      "acceptanceCriteria": [
+        "Criterion 1 passes: clean checkout plus `bun run release` produces a signed, checksum-manifested local binary that launches and reports version.",
+        "Criterion 2 passes or records gated timing evidence: full 1-13 pipeline stays under 30 minutes single-platform and 60 minutes full matrix in CI.",
+        "Criteria 3-5 pass for linux-x64: binary signing policy, CycloneDX SBOM, SLSA v1.0 provenance, SHA256SUMS, and `cosign verify-blob` verification.",
+        "Criteria 6-9 pass for linux-x64: signed update manifest verification, `lando update` snapshot replacement and re-exec, failed launch rollback to `.bak` with `UpdateLaunchProbeError`, and EACCES handling with `UpdatePermissionError` and no silent elevation.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 77,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-277",
+      "title": "§17.9 criteria 10-14 acceptance harness green on linux-x64",
+      "description": "As a release engineer, I can verify installers, compiled import boundaries, Mutagen embedding policy, and setup file-sync behavior on linux-x64.",
+      "acceptanceCriteria": [
+        "Criterion 10 passes: `install.sh` on a clean linux-x64 container installs to `<userDataRoot>/bin/lando`, verifies the embedded GPG trust root, runs `lando version`, and matches `lando shellenv` path output.",
+        "Criterion 11 is represented in the harness and marked platform-gated for Windows until RC all-platform acceptance.",
+        "Criterion 12 passes: the compiled binary import graph has no runtime filesystem reads of bundled plugins, recipes, OCLIF manifest, or built-in schema.",
+        "Criterion 13 passes: the compiled binary contains the generated Mutagen Connect-RPC client and `mutagen-versions.json` but no Mutagen binary blob.",
+        "Criterion 14 passes on linux-x64: `lando setup` on slow providers downloads Mutagen host and agents through proxy/CA stack, `--skip-file-sync` defers downloads, and native providers download nothing.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 78,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-278",
+      "title": "§17.9 criteria 15-19 acceptance harness green on linux-x64",
+      "description": "As a release engineer, I can verify the final runtime, bytecode, AOT, performance, and level-none import-boundary criteria on linux-x64.",
+      "acceptanceCriteria": [
+        "Criterion 15 passes: `app:start` on a slow provider with bind mount engages `FileSyncEngine`, and repeat starts reuse file-sync sessions.",
+        "Criterion 16 passes: the compiled binary is built with `--bytecode`.",
+        "Criterion 17 passes: AOT bootstrap layers live at `src/runtime/generated/layers/<level>.ts`, with no runtime `Layer.merge` or `Layer.provide` outside codegen paths.",
+        "Criterion 18 passes or is nightly-gated with recorded linux-x64 evidence for e2e and perceived-performance p95 budgets.",
+        "Criterion 19 passes: level-`none` invocations do not import `@oclif/core` or construct any `Context.Service`.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 79,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
