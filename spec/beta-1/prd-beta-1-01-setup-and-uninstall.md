@@ -32,14 +32,14 @@ This work closes the remaining setup and uninstall feature surface called out by
 **Description:** As a new user, I can run `lando setup` once and have Lando prepare every required host integration for the selected provider.
 
 **Acceptance Criteria:**
-- [ ] `meta:setup` is registered at bootstrap `minimal` with the top-level `lando setup` alias.
-- [ ] The setup flow runs provider, CA, proxy, shell-integration, and file-sync setup through plugin subscribers and direct service calls in a deterministic order.
-- [ ] Flags are accepted and honored: `--yes`, `--provider=<id>`, `--skip-provider`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, and `--skip-file-sync`.
-- [ ] Provider plugins can add setup flags through `setup.flags`, and those flags appear in command metadata and parsing tests.
-- [ ] Default setup installs the Lando-managed runtime. `--provider=docker` and `--provider=podman` fail with remediation unless the matching system runtime already exists.
-- [ ] Tests pass
-- [ ] Typecheck passes
-- [ ] Lint passes
+- [x] `meta:setup` is registered at bootstrap `minimal` with the top-level `lando setup` alias.
+- [x] The setup flow runs provider, CA, proxy, shell-integration, and file-sync setup through plugin subscribers and direct service calls in a deterministic order.
+- [x] Flags are accepted and honored: `--yes`, `--provider=<id>`, `--skip-provider`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, and `--skip-file-sync`.
+- [x] Provider plugins can add setup flags through `setup.flags`, and those flags appear in command metadata and parsing tests.
+- [x] Default setup installs the Lando-managed runtime. `--provider=docker` and `--provider=podman` fail with remediation unless the matching system runtime already exists.
+- [x] Tests pass
+- [x] Typecheck passes
+- [x] Lint passes
 
 ### US-201: File-sync setup downloads Mutagen only when the active provider needs it
 
