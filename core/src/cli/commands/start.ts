@@ -193,7 +193,7 @@ export const renderStartAppResult = (result: StartAppResult): string => {
  * Start the app discovered at the runtime's `cwd`.
  *
  * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanner`,
- * `RuntimeProviderRegistry`, `EventService`, `Logger`.
+ * `RuntimeProviderRegistry`, `EventService`.
  */
 export const startApp = (
   options: StartAppOptions = {},

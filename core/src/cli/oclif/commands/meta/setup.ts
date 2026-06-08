@@ -33,10 +33,12 @@ import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
+type FileSyncStatus = "deferred" | "installed" | "satisfied" | "unavailable";
+
 interface SetupResult {
   readonly providerId: string;
   readonly installDir: string;
-  readonly fileSyncStatus: "deferred" | "installed" | "satisfied" | "unavailable";
+  readonly fileSyncStatus: FileSyncStatus;
 }
 
 export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
@@ -62,42 +64,28 @@ const inputInstallDir = (input: unknown): string | undefined => {
   return typeof installDir === "string" ? installDir : undefined;
 };
 
-const inputProviderFlag = (input: unknown): ProviderId | undefined => {
+const inputFlags = (input: unknown): Record<string, unknown> | undefined => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return undefined;
   const flags = (input as { flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null || !("provider" in flags)) return undefined;
-  const provider = (flags as { provider?: unknown }).provider;
+  return typeof flags === "object" && flags !== null ? (flags as Record<string, unknown>) : undefined;
+};
+
+const inputProviderFlag = (input: unknown): ProviderId | undefined => {
+  const provider = inputFlags(input)?.provider;
   return typeof provider === "string" && provider.length > 0 ? ProviderId.make(provider) : undefined;
 };
 
-const inputSkipFileSync = (input: unknown): boolean => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return false;
-  const flags = (input as { flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null) return false;
-  return (flags as Record<string, unknown>)["skip-file-sync"] === true;
-};
+const inputSkipFileSync = (input: unknown): boolean => inputFlags(input)?.["skip-file-sync"] === true;
 
 const inputStringFlag = (input: unknown, name: string): string | undefined => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return undefined;
-  const flags = (input as { flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null) return undefined;
-  const value = (flags as Record<string, unknown>)[name];
+  const value = inputFlags(input)?.[name];
   return typeof value === "string" && value.length > 0 ? value : undefined;
 };
 
-const inputBooleanFlag = (input: unknown, name: string): boolean => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return false;
-  const flags = (input as { flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null) return false;
-  return (flags as Record<string, unknown>)[name] === true;
-};
+const inputBooleanFlag = (input: unknown, name: string): boolean => inputFlags(input)?.[name] === true;
 
-const inputHostProxyMode = (input: unknown): "auto" | "none" => {
-  if (typeof input !== "object" || input === null || !("flags" in input)) return "auto";
-  const flags = (input as { flags?: unknown }).flags;
-  if (typeof flags !== "object" || flags === null) return "auto";
-  return (flags as Record<string, unknown>)["host-proxy"] === "none" ? "none" : "auto";
-};
+const inputHostProxyMode = (input: unknown): "auto" | "none" =>
+  inputFlags(input)?.["host-proxy"] === "none" ? "none" : "auto";
 
 export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
   inputHostProxyMode(input) === "none";
@@ -135,6 +123,19 @@ const setupProviderPlan = (provider: ProviderId): AppPlan => ({
   },
   extensions: {},
 });
+
+const fileSyncStatusLine = (status: string): string => {
+  switch (status) {
+    case "deferred":
+      return "file-sync: deferred until first accelerated app:start";
+    case "installed":
+      return "file-sync: installed";
+    case "unavailable":
+      return "file-sync: unavailable (userDataRoot is not configured)";
+    default:
+      return "file-sync: already satisfied (native bind mounts)";
+  }
+};
 
 export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | RuntimeProviderRegistry> = {
   id: "meta:setup",
@@ -238,15 +239,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       return undefined;
     }
     const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
-    const fileSyncLine =
-      status === "deferred"
-        ? "file-sync: deferred until first accelerated app:start"
-        : status === "installed"
-          ? "file-sync: installed"
-          : status === "unavailable"
-            ? "file-sync: unavailable (userDataRoot is not configured)"
-            : "file-sync: already satisfied (native bind mounts)";
-    return `setup complete: Lando runtime (${String(result.providerId)})\n${fileSyncLine}\nLANDO_INSTALL_DIR="${String(result.installDir)}"`;
+    return `setup complete: Lando runtime (${String(result.providerId)})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${String(result.installDir)}"`;
   },
 };
 
