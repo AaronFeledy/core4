@@ -136,6 +136,10 @@
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
 
+## Additive Beta service fields
+
+- `ProviderSetupOptions.runtimeBundleUrl`
+
 ## Additive Beta schema fields
 
 - `ConfigLintViolation.line`

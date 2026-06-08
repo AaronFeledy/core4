@@ -31,6 +31,7 @@ export type ProviderError =
 
 export interface ProviderSetupOptions {
   readonly force: boolean;
+  readonly runtimeBundleUrl?: string;
 }
 
 export interface ProviderStatus {
