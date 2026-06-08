@@ -15,3 +15,7 @@
 - Verification: typecheck, lint, and focused start/setup/rebuild/restart scenario tests passed.
 - **Learnings for future iterations:** Any optional/best-effort step added inside `startFileSyncSessions` is under `rollbackAppliedApp` (destroy volumes+state); swallow its failure or a transient blip destroys a successfully-applied app.
 ---
+## 2026-06-08 16:30 CDT - US-201 Verify
+- Built the compiled binary successfully with `cd core && bun run build`, but real setup/scenario verification could not run because the required `lando4-dev` sandbox entry path is unavailable from this shell: `.local/bin/lando4-dev --check` exits 127 with `wsl.exe is not available from this shell; run from the host distro`.
+- Blocker recorded: host-safety rules prohibit running `./core/dist/lando setup` or container/runtime scenarios on the host distro, so Verify cannot honestly pass until sandbox access is restored.
+---
