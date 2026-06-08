@@ -164,17 +164,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
   }
-  const runtimeBundleDownloader =
-    options.runtimeBundleDownloader ??
-    (stateDir === undefined
+  const makeSetupRuntimeBundleDownloader = (url?: string): RuntimeBundleDownloader | undefined =>
+    stateDir === undefined
       ? undefined
       : makeDefaultRuntimeBundleDownloader({
           stateDir,
           platform,
+          ...(url === undefined ? {} : { url }),
           ...(options.runtimeBundleFetchImpl === undefined
             ? {}
             : { fetchImpl: options.runtimeBundleFetchImpl }),
-        }));
+        });
+  const runtimeBundleDownloader = options.runtimeBundleDownloader ?? makeSetupRuntimeBundleDownloader();
   const capabilities =
     podmanApi === undefined
       ? Effect.succeed(mvpProviderCapabilities(platform))
@@ -213,13 +214,21 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         platform,
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
-        setup: () =>
+        setup: (setupOptions) =>
           setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
             ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
             platform,
-            ...(runtimeBundleDownloader === undefined ? {} : { runtimeBundleDownloader }),
+            ...(() => {
+              const setupRuntimeBundleDownloader =
+                setupOptions.runtimeBundleUrl === undefined
+                  ? runtimeBundleDownloader
+                  : makeSetupRuntimeBundleDownloader(setupOptions.runtimeBundleUrl);
+              return setupRuntimeBundleDownloader === undefined
+                ? {}
+                : { runtimeBundleDownloader: setupRuntimeBundleDownloader };
+            })(),
             ...(stateDir === undefined ? {} : { stateDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
@@ -336,6 +345,17 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   api: 4,
   description: "Reference Lando-managed RuntimeProvider implementation.",
   enabled: true,
-  contributes: { providers: ["lando"] },
+  contributes: {
+    providers: ["lando"],
+    setup: {
+      flags: [
+        {
+          name: "runtime-bundle-url",
+          description: "Override the Lando-managed runtime bundle URL for setup.",
+          type: "option",
+        },
+      ],
+    },
+  },
   entry: "./src/index.ts",
 });

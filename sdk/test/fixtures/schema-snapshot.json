@@ -46,7 +46,16 @@
       "manifest": {
         "api": 4,
         "contributes": {
-          "providers": ["lando"]
+          "providers": ["lando"],
+          "setup": {
+            "flags": [
+              {
+                "description": "Override the Lando-managed runtime bundle URL for setup.",
+                "name": "runtime-bundle-url",
+                "type": "option"
+              }
+            ]
+          }
         },
         "description": "Reference Lando-managed RuntimeProvider implementation.",
         "enabled": true,
@@ -2674,6 +2683,39 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "setup": {
+              "additionalProperties": false,
+              "properties": {
+                "flags": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "options": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "type": {
+                        "enum": ["boolean", "option"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["name", "type"],
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [],
+              "type": "object"
             },
             "templateEngines": {
               "items": {

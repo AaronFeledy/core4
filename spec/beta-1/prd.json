@@ -18,8 +18,8 @@
         "Lint passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "AC1 bootstrap minimal (+OCLIF provider-runtime escalation for parity with run.ts); AC2/AC3 orchestration+skip flags; AC4 provider setup.flags (runtime-bundle-url) via PluginContribution.setup; AC5 docker isAvailable probes daemon reachability and podman caps-introspection both fail with remediation. Verified end-to-end on a runtime-less host."
     },
     {
       "id": "US-201",

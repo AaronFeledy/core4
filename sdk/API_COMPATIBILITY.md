@@ -81,6 +81,8 @@
 - `SharedNetworkMembershipPlan`
 - `PluginContribution`
 - `PluginName`
+- `PluginSetupContribution`
+- `PluginSetupFlagContribution`
 - `PortablePath`
 - `ProviderExtensionConfig`
 - `RecipeChoicesFrom`
@@ -133,6 +135,10 @@
 - `VerifyProps`
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
+
+## Additive Beta service fields
+
+- `ProviderSetupOptions.runtimeBundleUrl`
 
 ## Additive Beta schema fields
 

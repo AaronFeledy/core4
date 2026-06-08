@@ -404,36 +404,13 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
   return undefined;
 };
 
-const parseSkipFileSyncFlag = (argv: ReadonlyArray<string>): boolean =>
-  argv.some((arg) => arg === "--skip-file-sync");
-
 const parseFixFlag = (argv: ReadonlyArray<string>): boolean => argv.some((arg) => arg === "--fix");
-
-type ParsedHostProxyFlag = "auto" | "none" | "invalid" | undefined;
-
-const parseHostProxyFlag = (argv: ReadonlyArray<string>): ParsedHostProxyFlag => {
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === undefined) continue;
-    if (arg.startsWith("--host-proxy=")) {
-      const value = arg.slice("--host-proxy=".length);
-      return value === "none" ? "none" : value === "auto" ? "auto" : "invalid";
-    }
-    if (arg === "--host-proxy") {
-      const next = argv[i + 1];
-      if (next === undefined || next.startsWith("-")) return "invalid";
-      return next === "none" ? "none" : next === "auto" ? "auto" : "invalid";
-    }
-  }
-  return undefined;
-};
 
 const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   const installDir = dirname(process.execPath);
-  const provider = parseProviderFlag(argv);
-  const skipFileSync = parseSkipFileSyncFlag(argv);
-  const hostProxy = parseHostProxyFlag(argv);
-  if (hostProxy === "invalid") {
+  const input = compiledCommandInputFromArgv("meta:setup", argv);
+  const hostProxy = input.flags["host-proxy"];
+  if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
     emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
     process.exitCode = 1;
     return;
@@ -442,11 +419,7 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
     setupSpec
       .run({
         installDir,
-        flags: {
-          ...(provider === undefined ? {} : { provider }),
-          ...(skipFileSync ? { "skip-file-sync": true } : {}),
-          ...(hostProxy === undefined ? {} : { "host-proxy": hostProxy }),
-        },
+        flags: input.flags,
       })
       .pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "discovery" } }))),
   );

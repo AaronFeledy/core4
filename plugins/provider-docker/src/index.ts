@@ -1221,7 +1221,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         version: "0.0.0",
         platform,
         capabilities: resolvedCapabilities,
-        isAvailable: Effect.succeed(true),
+        isAvailable: dockerApi.info.pipe(
+          Effect.as(true),
+          Effect.catchAll(() => Effect.succeed(false)),
+        ),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0" }),

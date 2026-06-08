@@ -11,8 +11,16 @@ import { Flags } from "@oclif/core";
 import { DateTime, Effect } from "effect";
 
 import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  CertificateAuthority,
+  ConfigService,
+  FileSyncEngine,
+  ProxyService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/sdk/services";
 
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -52,11 +60,44 @@ const inputSkipFileSync = (input: unknown): boolean => {
   return (flags as Record<string, unknown>)["skip-file-sync"] === true;
 };
 
+const inputStringFlag = (input: unknown, name: string): string | undefined => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return undefined;
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return undefined;
+  const value = (flags as Record<string, unknown>)[name];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+};
+
+const inputBooleanFlag = (input: unknown, name: string): boolean => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return false;
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return false;
+  return (flags as Record<string, unknown>)[name] === true;
+};
+
 const inputHostProxyMode = (input: unknown): "auto" | "none" => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return "auto";
   const flags = (input as { flags?: unknown }).flags;
   if (typeof flags !== "object" || flags === null) return "auto";
   return (flags as Record<string, unknown>)["host-proxy"] === "none" ? "none" : "auto";
+};
+
+export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
+  inputHostProxyMode(input) === "none";
+
+const SYSTEM_RUNTIME_PROVIDERS: Record<string, string> = {
+  docker: "Docker",
+  podman: "Podman",
+};
+
+const systemRuntimeUnavailableError = (providerId: string): ProviderUnavailableError => {
+  const runtimeName = SYSTEM_RUNTIME_PROVIDERS[providerId] ?? providerId;
+  return new ProviderUnavailableError({
+    providerId,
+    operation: "setup",
+    message: `\`lando setup --provider=${providerId}\` requires an existing ${runtimeName} installation, but ${runtimeName} was not detected on this host.`,
+    remediation: `Install ${runtimeName} and make sure it is running, then rerun \`lando setup --provider=${providerId}\`. To use the bundled Lando-managed runtime instead, run \`lando setup\` (the default) or \`lando setup --provider=lando\`.`,
+  });
 };
 
 const setupProviderPlan = (provider: ProviderId): AppPlan => ({
@@ -83,7 +124,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "provider",
+  bootstrap: "minimal",
   run: (input) =>
     Effect.gen(function* () {
       const configService = yield* ConfigService;
@@ -103,17 +144,53 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
 
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
 
-      yield* Effect.scoped(provider.setup({ force: false }));
+      const selectedProviderId = String(resolution.providerId);
+      if (!inputBooleanFlag(input, "skip-provider")) {
+        if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
+          const available = yield* provider.isAvailable;
+          if (!available) return yield* Effect.fail(systemRuntimeUnavailableError(selectedProviderId));
+        }
+        const runtimeBundleUrl = inputStringFlag(input, "runtime-bundle-url");
+        yield* Effect.scoped(
+          provider.setup({
+            force: false,
+            ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
+          }),
+        );
+      }
 
-      if (inputHostProxyMode(input) === "none") {
+      const ca = yield* Effect.serviceOption(CertificateAuthority);
+      if (ca._tag === "Some") {
+        yield* ca.value.setup({
+          force: false,
+          ...(inputBooleanFlag(input, "skip-install-ca") ? { skipTrustInstall: true } : {}),
+        });
+      }
+
+      if (!inputBooleanFlag(input, "skip-proxy")) {
+        const proxy = yield* Effect.serviceOption(ProxyService);
+        if (proxy._tag === "Some") yield* proxy.value.setup();
+      }
+
+      if (!inputBooleanFlag(input, "skip-shell-integration")) {
+        const ssh = yield* Effect.serviceOption(SshService);
+        if (ssh._tag === "Some") yield* ssh.value.setup({ force: false });
+      }
+
+      if (shouldDisableHostProxyForSetup(input)) {
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
       }
 
       if (provider.capabilities.bindMountPerformance === "slow" && !inputSkipFileSync(input)) {
-        const userDataRootRaw = yield* configService.get("userDataRoot");
-        if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
-          const downloader = makeMutagenDownloader();
-          yield* downloader.setup({ userDataRoot: userDataRootRaw });
+        const fileSync = yield* Effect.serviceOption(FileSyncEngine);
+        if (fileSync._tag === "Some") {
+          yield* Effect.scoped(fileSync.value.setup({ force: false }));
+        } else {
+          const userDataRootRaw = yield* configService.get("userDataRoot");
+          if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
+            const downloader = makeMutagenDownloader();
+            yield* downloader.setup({ userDataRoot: userDataRootRaw });
+          }
         }
       }
 
@@ -148,6 +225,9 @@ export default class SetupCommand extends LandoCommandBase {
     "skip-file-sync": Flags.boolean({
       description: "Skip Mutagen binary download; deferred to first accelerated app:start.",
       default: false,
+    }),
+    "runtime-bundle-url": Flags.string({
+      description: "Override the Lando-managed runtime bundle URL for setup.",
     }),
     "host-proxy": Flags.string({
       description:

@@ -4,13 +4,32 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Layer } from "effect";
+import { Cause, type Context, Effect, Layer } from "effect";
 
-import { ConfigService, HostProxyService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  CertificateAuthority,
+  ConfigService,
+  FileSyncEngine,
+  HostProxyService,
+  ProxyService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
-import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import {
+  TestFileSyncEngine,
+  makeTestCertificateAuthority,
+  makeTestProxyService,
+  makeTestSshService,
+} from "@lando/sdk/test";
+import SetupCommand, {
+  setupSpec,
+  shouldDisableHostProxyForSetup,
+} from "../../src/cli/oclif/commands/meta/setup.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
 const makeConfigService = (
@@ -32,6 +51,26 @@ const buildSetupLayers = (
   Layer.merge(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, makeConfigService(configOverrides)),
+  );
+
+const buildSetupLayersWithHostIntegrations = (
+  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  services: {
+    readonly ca: Context.Tag.Service<typeof CertificateAuthority>;
+    readonly proxy: Context.Tag.Service<typeof ProxyService>;
+    readonly ssh: Context.Tag.Service<typeof SshService>;
+    readonly fileSync: Context.Tag.Service<typeof FileSyncEngine>;
+  },
+  configOverrides: Partial<GlobalConfig> = {},
+): Layer.Layer<
+  ConfigService | RuntimeProviderRegistry | CertificateAuthority | ProxyService | SshService | FileSyncEngine
+> =>
+  Layer.mergeAll(
+    buildSetupLayers(registry, configOverrides),
+    Layer.succeed(CertificateAuthority, services.ca),
+    Layer.succeed(ProxyService, services.proxy),
+    Layer.succeed(SshService, services.ssh),
+    Layer.succeed(FileSyncEngine, services.fileSync),
   );
 
 const coreRoot = resolve(import.meta.dirname, "../..");
@@ -84,6 +123,178 @@ const normalizeSetupFailure = (stderr: string): string =>
     .join("\n");
 
 describe("meta:setup command", () => {
+  test("is registered at the minimal bootstrap level with the top-level setup alias", () => {
+    expect(setupSpec.bootstrap).toBe("minimal");
+    expect(SetupCommand.bootstrap).toBe("minimal");
+    expect(SetupCommand.aliases).toContain("setup");
+  });
+
+  test("exposes provider-contributed setup.flags in metadata and compiled parsing", () => {
+    expect(providerLandoManifest.contributes?.setup?.flags).toContainEqual({
+      name: "runtime-bundle-url",
+      description: "Override the Lando-managed runtime bundle URL for setup.",
+      type: "option",
+    });
+    expect(Object.keys(SetupCommand.flags)).toContain("runtime-bundle-url");
+
+    const input = compiledCommandInputFromArgv("meta:setup", [
+      "--runtime-bundle-url",
+      "https://example.invalid/lando-runtime.zip",
+    ]);
+
+    expect(input.flags["runtime-bundle-url"]).toBe("https://example.invalid/lando-runtime.zip");
+  });
+
+  test("passes runtime-bundle-url through to provider setup", async () => {
+    const setupOptions: Array<{ readonly force: boolean; readonly runtimeBundleUrl?: string }> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: (options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
+        Effect.sync(() => {
+          setupOptions.push(options);
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          flags: { "runtime-bundle-url": "https://example.invalid/lando-runtime.zip" },
+        })
+        .pipe(Effect.provide(buildSetupLayers(registry))),
+    );
+
+    expect(setupOptions).toEqual([
+      { force: false, runtimeBundleUrl: "https://example.invalid/lando-runtime.zip" },
+    ]);
+  });
+
+  test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {
+    const calls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("provider");
+        }),
+    };
+    const ca = {
+      ...makeTestCertificateAuthority(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("ca");
+        }),
+    };
+    const proxy = {
+      ...makeTestProxyService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("proxy");
+        }),
+    };
+    const ssh = {
+      ...makeTestSshService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("shell");
+        }),
+    };
+    const fileSync = {
+      ...TestFileSyncEngine,
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("file-sync");
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando" })
+        .pipe(Effect.provide(buildSetupLayersWithHostIntegrations(registry, { ca, proxy, ssh, fileSync }))),
+    );
+
+    expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
+  });
+
+  test("honors setup skip flags for provider, CA trust install, proxy, shell, and file sync", async () => {
+    const calls: string[] = [];
+    const caSetupOptions: Array<{ readonly skipTrustInstall?: boolean }> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("provider");
+        }),
+    };
+    const ca = {
+      ...makeTestCertificateAuthority(),
+      setup: (opts: { readonly force: boolean; readonly skipTrustInstall?: boolean }) =>
+        Effect.sync(() => {
+          caSetupOptions.push(opts);
+          calls.push("ca");
+        }),
+    };
+    const proxy = {
+      ...makeTestProxyService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("proxy");
+        }),
+    };
+    const ssh = {
+      ...makeTestSshService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("shell");
+        }),
+    };
+    const fileSync = {
+      ...TestFileSyncEngine,
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("file-sync");
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          flags: {
+            "skip-provider": true,
+            "skip-install-ca": true,
+            "skip-proxy": true,
+            "skip-shell-integration": true,
+            "skip-file-sync": true,
+          },
+        })
+        .pipe(Effect.provide(buildSetupLayersWithHostIntegrations(registry, { ca, proxy, ssh, fileSync }))),
+    );
+
+    expect(calls).toEqual(["ca"]);
+    expect(caSetupOptions).toEqual([{ force: false, skipTrustInstall: true }]);
+  });
+
   test("invokes the selected runtime provider setup and renders the install dir", async () => {
     let setupCalls = 0;
     const provider = {
@@ -108,6 +319,107 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(
       'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
     );
+  });
+
+  describe("system-runtime providers require an existing installation (US-200 AC5)", () => {
+    for (const id of ["docker", "podman"] as const) {
+      test(`--provider=${id} fails with remediation when the system runtime is unavailable`, async () => {
+        let setupCalls = 0;
+        const provider = {
+          ...TestRuntimeProvider,
+          id,
+          isAvailable: Effect.succeed(false),
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+
+        const exit = await Effect.runPromiseExit(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: id } })
+            .pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+
+        expect(exit._tag).toBe("Failure");
+        if (exit._tag !== "Failure") throw new Error("expected failure");
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag !== "Some") throw new Error("expected a typed failure");
+        const error = failure.value as {
+          readonly _tag?: string;
+          readonly providerId?: string;
+          readonly remediation?: string;
+        };
+        expect(error._tag).toBe("ProviderUnavailableError");
+        expect(error.providerId).toBe(id);
+        expect(error.remediation ?? "").toContain(`lando setup --provider=${id}`);
+        expect(setupCalls).toBe(0);
+      });
+
+      test(`--provider=${id} --skip-provider skips availability probing and provider setup`, async () => {
+        let setupCalls = 0;
+        const provider = {
+          ...TestRuntimeProvider,
+          id,
+          isAvailable: Effect.die("availability probe should be skipped"),
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+
+        const result = await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: id, "skip-provider": true } })
+            .pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+
+        expect(setupCalls).toBe(0);
+        expect(setupSpec.render?.(result)).toBe(
+          `setup complete: Lando runtime (${id})\nLANDO_INSTALL_DIR="/opt/lando"`,
+        );
+      });
+
+      test(`--provider=${id} proceeds when the system runtime is available`, async () => {
+        let setupCalls = 0;
+        const provider = {
+          ...TestRuntimeProvider,
+          id,
+          isAvailable: Effect.succeed(true),
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+
+        const result = await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: id } })
+            .pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+
+        expect(setupCalls).toBe(1);
+        expect(setupSpec.render?.(result)).toBe(
+          `setup complete: Lando runtime (${id})\nLANDO_INSTALL_DIR="/opt/lando"`,
+        );
+      });
+    }
   });
 
   test("honors an explicit provider flag when selecting setup provider", async () => {
@@ -140,6 +452,12 @@ describe("meta:setup command", () => {
     expect(setupCalls).toBe(1);
     expect(setupSpec.render?.(result)).toBe(
       'setup complete: Lando runtime (podman)\nLANDO_INSTALL_DIR="/opt/lando"',
+    );
+  });
+
+  test("host-proxy none remains honored when proxy setup is skipped", () => {
+    expect(shouldDisableHostProxyForSetup({ flags: { "skip-proxy": true, "host-proxy": "none" } })).toBe(
+      true,
     );
   });
 
