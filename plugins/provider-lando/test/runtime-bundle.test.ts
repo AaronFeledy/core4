@@ -363,6 +363,32 @@ describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifes
     }
   });
 
+  test("uses an explicit runtime bundle URL while keeping the pinned checksum", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-url-"));
+    try {
+      const overrideUrl = "https://mirror.example.invalid/lando-runtime.zip";
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeDefaultRuntimeBundleDownloader({
+        stateDir,
+        platform: "win32",
+        arch: "x64",
+        url: overrideUrl,
+        fetchImpl: fakeFetch(
+          new Map([[overrideUrl, { body: new TextEncoder().encode("tampered-mirror-bundle") }]]),
+          log,
+        ),
+      });
+
+      const exit = await Effect.runPromiseExit(downloader.download);
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
+      expect(log.calls).toBe(1);
+      expect(log.urls[0]).toBe(overrideUrl);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test("propagates the unsupported-platform error from the manifest resolver", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-unsupported-"));
     try {

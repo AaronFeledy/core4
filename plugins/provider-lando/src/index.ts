@@ -213,13 +213,26 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         platform,
         capabilities: resolvedCapabilities,
         isAvailable: Effect.succeed(true),
-        setup: () =>
+        setup: (setupOptions) =>
           setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
             ...(options.podmanMachine === undefined ? {} : { podmanMachine: options.podmanMachine }),
             platform,
-            ...(runtimeBundleDownloader === undefined ? {} : { runtimeBundleDownloader }),
+            ...(runtimeBundleDownloader === undefined
+              ? setupOptions.runtimeBundleUrl === undefined || stateDir === undefined
+                ? {}
+                : {
+                    runtimeBundleDownloader: makeDefaultRuntimeBundleDownloader({
+                      stateDir,
+                      platform,
+                      url: setupOptions.runtimeBundleUrl,
+                      ...(options.runtimeBundleFetchImpl === undefined
+                        ? {}
+                        : { fetchImpl: options.runtimeBundleFetchImpl }),
+                    }),
+                  }
+              : { runtimeBundleDownloader }),
             ...(stateDir === undefined ? {} : { stateDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),

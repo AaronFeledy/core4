@@ -217,6 +217,7 @@ export interface DefaultRuntimeBundleDownloaderOptions {
   readonly stateDir: string;
   readonly platform?: HostPlatform;
   readonly arch?: string;
+  readonly url?: string;
   /** Injectable for tests. Defaults to `globalThis.fetch` (Bun built-in). */
   readonly fetchImpl?: typeof fetch;
 }
@@ -234,7 +235,7 @@ export const makeDefaultRuntimeBundleDownloader = (
     const entry = yield* resolveRuntimeBundleEntry(platform, arch);
     const inner = makeRuntimeBundleDownloader({
       stateDir: options.stateDir,
-      entry,
+      entry: options.url === undefined ? entry : { ...entry, url: options.url },
       runtimeVersion: RUNTIME_BUNDLE_MANIFEST.runtimeVersion,
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     });
