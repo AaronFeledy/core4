@@ -58,7 +58,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 **Description:** As an embedding host, I can create Lando runtimes repeatedly without unwanted process mutation and with library-mode defaults that are safe for host applications.
 
 **Acceptance Criteria:**
-- [ ] Library-mode defaults are `logger: silent`, `renderer: json`, discovery booleans default `false`, telemetry enabled unless explicitly disabled, and signal handlers off unless requested.
+- [ ] Library-mode defaults are `logger: silent`, `renderer: json`, discovery booleans default `false`, telemetry disabled unless the host explicitly opts in (matching PRD-06 US-240), and signal handlers off unless requested.
 - [ ] `makeLandoRuntime` validates options through Effect Schema and returns one scoped Layer.
 - [ ] Repeated calls to `makeLandoRuntime` are safe, do not share mutable global state accidentally, and tear down all resources when the scope closes.
 - [ ] The runtime runs the same bootstrap sequence as CLI mode while avoiding global process mutation unless signal handlers are explicitly enabled.
