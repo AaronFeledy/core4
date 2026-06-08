@@ -239,6 +239,46 @@ describe("provider-lando setup", () => {
     }
   });
 
+  test("honors runtime-bundle-url over the default runtime-bundle downloader", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-override-bundle-"));
+    const calls: string[] = [];
+    let fetchedUrl: string | undefined;
+    const fetchImpl = ((input: RequestInfo | URL): Promise<Response> => {
+      fetchedUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+      return Promise.resolve(new Response(new TextEncoder().encode("tampered override runtime bundle")));
+    }) as typeof fetch;
+
+    try {
+      const provider = await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "win32",
+          podmanApi: { info: Effect.succeed({ version: { Version: "5.2.0" } }) },
+          podmanCommand: podmanCommand("podman version 5.2.0"),
+          podmanMachine: machineRunner("running", calls),
+          runtimeBundleFetchImpl: fetchImpl,
+          stateDir,
+        }),
+      );
+
+      const exit = await Effect.runPromiseExit(
+        provider.setup({ force: false, runtimeBundleUrl: "https://example.invalid/custom-runtime.zip" }),
+      );
+
+      expect(fetchedUrl).toBe("https://example.invalid/custom-runtime.zip");
+      expect(calls).toEqual([]);
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderBundleChecksumError);
+        }
+      }
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
   test("wires the default runtime-bundle downloader when provider setup has a state directory", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-default-bundle-"));
     const calls: string[] = [];
