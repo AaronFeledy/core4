@@ -6,10 +6,24 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { type Context, Effect, Layer } from "effect";
 
-import { ConfigService, HostProxyService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  CertificateAuthority,
+  ConfigService,
+  FileSyncEngine,
+  HostProxyService,
+  ProxyService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import {
+  TestFileSyncEngine,
+  makeTestCertificateAuthority,
+  makeTestProxyService,
+  makeTestSshService,
+} from "@lando/sdk/test";
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
@@ -32,6 +46,26 @@ const buildSetupLayers = (
   Layer.merge(
     Layer.succeed(RuntimeProviderRegistry, registry),
     Layer.succeed(ConfigService, makeConfigService(configOverrides)),
+  );
+
+const buildSetupLayersWithHostIntegrations = (
+  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  services: {
+    readonly ca: Context.Tag.Service<typeof CertificateAuthority>;
+    readonly proxy: Context.Tag.Service<typeof ProxyService>;
+    readonly ssh: Context.Tag.Service<typeof SshService>;
+    readonly fileSync: Context.Tag.Service<typeof FileSyncEngine>;
+  },
+  configOverrides: Partial<GlobalConfig> = {},
+): Layer.Layer<
+  ConfigService | RuntimeProviderRegistry | CertificateAuthority | ProxyService | SshService | FileSyncEngine
+> =>
+  Layer.mergeAll(
+    buildSetupLayers(registry, configOverrides),
+    Layer.succeed(CertificateAuthority, services.ca),
+    Layer.succeed(ProxyService, services.proxy),
+    Layer.succeed(SshService, services.ssh),
+    Layer.succeed(FileSyncEngine, services.fileSync),
   );
 
 const coreRoot = resolve(import.meta.dirname, "../..");
@@ -84,6 +118,126 @@ const normalizeSetupFailure = (stderr: string): string =>
     .join("\n");
 
 describe("meta:setup command", () => {
+  test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {
+    const calls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("provider");
+        }),
+    };
+    const ca = {
+      ...makeTestCertificateAuthority(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("ca");
+        }),
+    };
+    const proxy = {
+      ...makeTestProxyService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("proxy");
+        }),
+    };
+    const ssh = {
+      ...makeTestSshService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("shell");
+        }),
+    };
+    const fileSync = {
+      ...TestFileSyncEngine,
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("file-sync");
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando" })
+        .pipe(Effect.provide(buildSetupLayersWithHostIntegrations(registry, { ca, proxy, ssh, fileSync }))),
+    );
+
+    expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
+  });
+
+  test("honors setup skip flags for provider, CA trust install, proxy, shell, and file sync", async () => {
+    const calls: string[] = [];
+    const caSetupOptions: Array<{ readonly skipTrustInstall?: boolean }> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("provider");
+        }),
+    };
+    const ca = {
+      ...makeTestCertificateAuthority(),
+      setup: (opts: { readonly force: boolean; readonly skipTrustInstall?: boolean }) =>
+        Effect.sync(() => {
+          caSetupOptions.push(opts);
+          calls.push("ca");
+        }),
+    };
+    const proxy = {
+      ...makeTestProxyService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("proxy");
+        }),
+    };
+    const ssh = {
+      ...makeTestSshService(),
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("shell");
+        }),
+    };
+    const fileSync = {
+      ...TestFileSyncEngine,
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("file-sync");
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          flags: {
+            "skip-provider": true,
+            "skip-install-ca": true,
+            "skip-proxy": true,
+            "skip-shell-integration": true,
+            "skip-file-sync": true,
+          },
+        })
+        .pipe(Effect.provide(buildSetupLayersWithHostIntegrations(registry, { ca, proxy, ssh, fileSync }))),
+    );
+
+    expect(calls).toEqual(["ca"]);
+    expect(caSetupOptions).toEqual([{ force: false, skipTrustInstall: true }]);
+  });
+
   test("invokes the selected runtime provider setup and renders the install dir", async () => {
     let setupCalls = 0;
     const provider = {

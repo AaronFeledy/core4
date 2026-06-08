@@ -12,7 +12,14 @@ import { DateTime, Effect } from "effect";
 
 import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
-import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import {
+  CertificateAuthority,
+  ConfigService,
+  FileSyncEngine,
+  ProxyService,
+  RuntimeProviderRegistry,
+  SshService,
+} from "@lando/sdk/services";
 
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -50,6 +57,13 @@ const inputSkipFileSync = (input: unknown): boolean => {
   const flags = (input as { flags?: unknown }).flags;
   if (typeof flags !== "object" || flags === null) return false;
   return (flags as Record<string, unknown>)["skip-file-sync"] === true;
+};
+
+const inputBooleanFlag = (input: unknown, name: string): boolean => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return false;
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return false;
+  return (flags as Record<string, unknown>)[name] === true;
 };
 
 const inputHostProxyMode = (input: unknown): "auto" | "none" => {
@@ -103,17 +117,42 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
 
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
 
-      yield* Effect.scoped(provider.setup({ force: false }));
+      if (!inputBooleanFlag(input, "skip-provider")) {
+        yield* Effect.scoped(provider.setup({ force: false }));
+      }
 
-      if (inputHostProxyMode(input) === "none") {
+      const ca = yield* Effect.serviceOption(CertificateAuthority);
+      if (ca._tag === "Some") {
+        yield* ca.value.setup({
+          force: false,
+          ...(inputBooleanFlag(input, "skip-install-ca") ? { skipTrustInstall: true } : {}),
+        });
+      }
+
+      if (!inputBooleanFlag(input, "skip-proxy")) {
+        const proxy = yield* Effect.serviceOption(ProxyService);
+        if (proxy._tag === "Some") yield* proxy.value.setup();
+      }
+
+      if (!inputBooleanFlag(input, "skip-shell-integration")) {
+        const ssh = yield* Effect.serviceOption(SshService);
+        if (ssh._tag === "Some") yield* ssh.value.setup({ force: false });
+      }
+
+      if (!inputBooleanFlag(input, "skip-proxy") && inputHostProxyMode(input) === "none") {
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
       }
 
       if (provider.capabilities.bindMountPerformance === "slow" && !inputSkipFileSync(input)) {
-        const userDataRootRaw = yield* configService.get("userDataRoot");
-        if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
-          const downloader = makeMutagenDownloader();
-          yield* downloader.setup({ userDataRoot: userDataRootRaw });
+        const fileSync = yield* Effect.serviceOption(FileSyncEngine);
+        if (fileSync._tag === "Some") {
+          yield* Effect.scoped(fileSync.value.setup({ force: false }));
+        } else {
+          const userDataRootRaw = yield* configService.get("userDataRoot");
+          if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
+            const downloader = makeMutagenDownloader();
+            yield* downloader.setup({ userDataRoot: userDataRootRaw });
+          }
         }
       }
 
