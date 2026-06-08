@@ -20,7 +20,7 @@ import {
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
-import { redactDetails, redactString } from "./redact.ts";
+import { redactDetails, withApiReason } from "./redact.ts";
 
 const appNetworkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
@@ -84,44 +84,22 @@ const missingApi = () =>
     remediation: SETUP_REMEDIATION,
   });
 
-// Podman/Docker API error responses are JSON: `{ cause, message, response }`.
-const podmanReasonFromBody = (details: unknown): string | undefined => {
-  if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
-  const body = (details as { body?: unknown }).body;
-  if (typeof body !== "string" || body.trim().length === 0) return undefined;
-  let reason: string | undefined;
-  try {
-    const parsed = JSON.parse(body) as unknown;
-    if (typeof parsed === "object" && parsed !== null) {
-      const candidate = (parsed as { message?: unknown; cause?: unknown }).message;
-      const fallback = (parsed as { message?: unknown; cause?: unknown }).cause;
-      if (typeof candidate === "string" && candidate.trim().length > 0) reason = candidate.trim();
-      else if (typeof fallback === "string" && fallback.trim().length > 0) reason = fallback.trim();
-    }
-  } catch {
-    return undefined;
-  }
-  return reason === undefined ? undefined : redactString(reason);
-};
-
 const podmanFailure = (
   service: ServicePlan,
   operation: string,
   message: string,
   details?: unknown,
   cause?: unknown,
-) => {
-  const reason = podmanReasonFromBody(details);
-  return new ServiceStartError({
+) =>
+  new ServiceStartError({
     providerId: PROVIDER_ID,
     operation,
     service: service.name,
-    message: reason === undefined ? message : `${message} ${reason}`,
+    message: withApiReason(message, details),
     remediation: APPLY_REMEDIATION,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
   });
-};
 
 const request = (
   api: PodmanApiClient,
@@ -163,7 +141,10 @@ const inspectContainer = (
         new ProviderUnavailableError({
           providerId: PROVIDER_ID,
           operation: "bringUp.inspect",
-          message: `Podman inspect failed with HTTP ${response.status}.`,
+          message: withApiReason(`Podman inspect failed with HTTP ${response.status}.`, {
+            status: response.status,
+            body: response.body,
+          }),
           details: redactDetails({ name, status: response.status, body: response.body }),
           remediation: APPLY_REMEDIATION,
         }),
@@ -232,7 +213,10 @@ const ensureNetwork = (
                   new ProviderUnavailableError({
                     providerId: PROVIDER_ID,
                     operation: "bringUp.network",
-                    message: `Podman network create failed with HTTP ${response.status}.`,
+                    message: withApiReason(`Podman network create failed with HTTP ${response.status}.`, {
+                      status: response.status,
+                      body: response.body,
+                    }),
                     details: redactDetails({ status: response.status, body: response.body }),
                     remediation: APPLY_REMEDIATION,
                   }),

@@ -35,6 +35,7 @@ export {
   removeAppliedPlan,
 } from "./applied-state.ts";
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
+export { withApiReason } from "./redact.ts";
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
 export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";

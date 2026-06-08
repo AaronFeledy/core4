@@ -5,6 +5,7 @@ import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
+import { withApiReason } from "./redact.ts";
 
 const PROVIDER_ID = "lando";
 
@@ -108,7 +109,9 @@ export const inspect = (
         new ProviderUnavailableError({
           providerId: PROVIDER_ID,
           operation: "inspect",
-          message: `Podman inspect failed with HTTP ${response.status}.`,
+          message: withApiReason(`Podman inspect failed with HTTP ${response.status}.`, {
+            body: response.body,
+          }),
           details: { service: service.name, body: response.body },
         }),
       );

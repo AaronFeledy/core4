@@ -93,6 +93,31 @@ const redactDetails = (value: unknown): unknown => {
   if (typeof value === "string") return redactString(value);
   return value;
 };
+
+// Docker API error responses are JSON: `{ message: "..." }`.
+const apiReasonFromBody = (details: unknown): string | undefined => {
+  if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
+  const body = (details as { body?: unknown }).body;
+  if (typeof body !== "string" || body.trim().length === 0) return undefined;
+  let reason: string | undefined;
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (typeof parsed === "object" && parsed !== null) {
+      const candidate = (parsed as { message?: unknown; cause?: unknown }).message;
+      const fallback = (parsed as { message?: unknown; cause?: unknown }).cause;
+      if (typeof candidate === "string" && candidate.trim().length > 0) reason = candidate.trim();
+      else if (typeof fallback === "string" && fallback.trim().length > 0) reason = fallback.trim();
+    }
+  } catch {
+    return undefined;
+  }
+  return reason === undefined ? undefined : redactString(reason);
+};
+
+const withApiReason = (message: string, details: unknown): string => {
+  const reason = apiReasonFromBody(details);
+  return reason === undefined ? message : `${message} ${reason}`;
+};
 export interface DockerHttpRequest {
   readonly method: "GET" | "POST" | "DELETE";
   readonly path: `/${string}`;
@@ -170,7 +195,7 @@ const unavailable = (operation: string, message: string, details?: unknown, caus
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message,
+    message: withApiReason(message, details),
     ...(details === undefined ? {} : { details }),
     ...(cause === undefined ? {} : { cause }),
   });
@@ -189,7 +214,7 @@ const serviceStartFailure = (service: ServicePlan, message: string, details?: un
     providerId: PROVIDER_ID,
     operation: "apply",
     service: service.name,
-    message,
+    message: withApiReason(message, details),
     remediation: APPLY_REMEDIATION,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),

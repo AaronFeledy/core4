@@ -10,7 +10,12 @@ import {
 } from "@lando/container-runtime/transport";
 import { Effect, Stream } from "effect";
 
-import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
+import {
+  type PodmanApiClient,
+  type PodmanHttpRequest,
+  type PodmanHttpResponse,
+  withApiReason,
+} from "@lando/provider-lando";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 const PROVIDER_ID = "podman";
@@ -21,7 +26,7 @@ const unavailable = (operation: string, message: string, details?: unknown, caus
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message,
+    message: withApiReason(message, details),
     ...(details === undefined ? {} : { details }),
     ...(cause === undefined ? {} : { cause }),
   });
