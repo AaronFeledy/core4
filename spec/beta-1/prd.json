@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18) and schema publication (§7.8), ship the plugin authoring toolkit (§9.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, and build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform — then enter feature freeze. Stories follow the 11-PRD breakdown in `spec/beta-1/prd-beta-1-{01..11}-*.md` (US-200..US-278); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18) and schema publication (§7.8), ship the plugin authoring toolkit (§9.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, and build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform — then enter feature freeze. Stories follow the 11-PRD breakdown in `spec/beta-1/prd-beta-1-{01..11}-*.md` (US-200..US-279); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
   "userStories": [
     {
       "id": "US-200",
@@ -1402,6 +1402,23 @@
         "Lint passes."
       ],
       "priority": 79,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-279",
+      "title": "§17.9 criteria 20-27 acceptance harness green on linux-x64",
+      "description": "As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full §17.9 acceptance set in the last feature-adding phase.",
+      "acceptanceCriteria": [
+        "Criteria 20-24 pass on linux-x64: the compiled binary loads an external ESM plugin by absolute `file://` URL from a Lando-managed plugin store, loads an external TypeScript plugin where Bun supports the file type directly, resolves dependencies installed under an external plugin package root, rejects plugin contribution module paths that resolve outside the plugin package root, and marks a failed external plugin import unhealthy with a tagged `PluginLoadError` without preventing unrelated plugins from loading.",
+        "Criterion 25 passes: `bun run codegen:check` succeeds on a clean checkout with no uncommitted changes.",
+        "Criterion 26 passes: removing a bundled plugin from `core/build.config.ts` and rebuilding produces a binary that omits the plugin from `oclif.manifest.json` and `src/plugins/bundled.ts` with no code edits in `src/`.",
+        "Criterion 27 passes: adding a canonical recipe under `recipes/<id>/` with a valid `recipe.yml` ships via `bun run codegen` alone and is reachable via `lando init --recipe <id>` in the next built binary.",
+        "Tests pass.",
+        "Typecheck passes.",
+        "Lint passes."
+      ],
+      "priority": 80,
       "passes": false,
       "notes": ""
     }

@@ -4,7 +4,7 @@
 
 Beta 1 ends with the library API stable on the `next` channel and the §17.9 binary acceptance machinery green on the reference platform, linux-x64. This PRD depends on PRD-01 through PRD-10 because it verifies the whole product surface rather than one isolated subsystem.
 
-The library API must be safe for embedding hosts, contract-tested from workspace and packed installs, and separated from OCLIF. The binary acceptance harness must implement and run the nineteen §17.9 criteria on linux-x64 during Beta 1; all-platform acceptance remains the RC gate.
+The library API must be safe for embedding hosts, contract-tested from workspace and packed installs, and separated from OCLIF. The §17.9 acceptance set is **27 criteria** total (the `v4.0.0` release MUST list). Beta 1 is the last phase that adds feature surface, so the harness implements and runs **all 27 criteria** green on linux-x64 during Beta 1 — including external compiled-plugin loading (criteria 20–24) and the codegen/bundled-plugin/recipe gates (criteria 25–27). Only the all-platform acceptance pass is deferred to RC; RC and GA take bug fixes, not new feature surface.
 
 Depends on: **BETA1-01 through BETA1-10**.
 
@@ -22,7 +22,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 - Make `@lando/core/testing` stable on `next` with deterministic test runtime coverage and JSDoc on every export.
 - Contract-test library-mode defaults, `makeLandoRuntime`, CLI operations, and packed-install entry points.
 - Enforce plugin SDK compatibility through `requires."@lando/core": "^4.0.0"`.
-- Run the §17.9 nineteen-criteria acceptance harness green on linux-x64.
+- Run the §17.9 acceptance harness green on linux-x64: implement all 27 criteria (1–19 runtime/release/update/setup, 20–24 external compiled-plugin loading, 25–27 codegen/bundled-plugin/recipe gates), with only the all-platform pass deferred to RC.
 
 ## User Stories
 
@@ -120,6 +120,19 @@ Depends on: **BETA1-01 through BETA1-10**.
 - [ ] Typecheck passes.
 - [ ] Lint passes.
 
+### US-279: §17.9 criteria 20–27 acceptance harness green on linux-x64
+
+**Description:** As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full §17.9 acceptance set in the last feature-adding phase.
+
+**Acceptance Criteria:**
+- [ ] Criteria 20–24 pass on linux-x64: the compiled binary loads an external ESM plugin by absolute `file://` URL from a Lando-managed plugin store, loads an external TypeScript plugin where Bun supports the file type directly, resolves dependencies installed under an external plugin package root, rejects plugin contribution module paths that resolve outside the plugin package root, and marks a failed external plugin import unhealthy with a tagged `PluginLoadError` without preventing unrelated plugins from loading.
+- [ ] Criterion 25 passes: `bun run codegen:check` succeeds on a clean checkout with no uncommitted changes.
+- [ ] Criterion 26 passes: removing a bundled plugin from `core/build.config.ts` and rebuilding produces a binary that omits the plugin from `oclif.manifest.json` and `src/plugins/bundled.ts` with no code edits in `src/`.
+- [ ] Criterion 27 passes: adding a canonical recipe under `recipes/<id>/` with a valid `recipe.yml` ships via `bun run codegen` alone and is reachable via `lando init --recipe <id>` in the next built binary.
+- [ ] Tests pass.
+- [ ] Typecheck passes.
+- [ ] Lint passes.
+
 ## Functional Requirements
 
 - FR-1: Stable in-major entry points are `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli`.
@@ -128,7 +141,7 @@ Depends on: **BETA1-01 through BETA1-10**.
 - FR-4: `@lando/core/cli` exports Effect-returning operations for every built-in command except explicitly omitted interactive or install surfaces; operations return typed results, not rendered text.
 - FR-5: `@lando/core/cli` exposes `runTooling(...)` and config-translator operations without touching stdio or OCLIF.
 - FR-6: `makeLandoRuntime` must be scoped, option-validated, idempotent, CLI-bootstrap-equivalent, and safe from global process mutation unless signal handlers are enabled.
-- FR-7: The §17.9 acceptance harness must implement all nineteen criteria and run green on linux-x64 in Beta 1, with all-platform pass deferred to RC.
+- FR-7: The §17.9 acceptance set is 27 criteria. The Beta 1 harness MUST implement all 27 criteria — including external compiled-plugin loading (criteria 20–24) and the `codegen:check` / bundled-plugin-removal / recipe-codegen gates (criteria 25–27) — and run them green on linux-x64. Only the all-platform pass is deferred to RC; no §17.9 criterion is deferred to RC as new feature work.
 
 ## Non-Goals
 
@@ -164,7 +177,7 @@ Per [PRD-12 US-198](../alpha-3/prd-alpha-3-12-executable-guides.md) (`## Guide C
 | US-272 | Testing API and deterministic `TestRuntime` | `docs/guides/library/testing-runtime.mdx` | Required at story acceptance |
 | US-273, US-274 | Library entry points and `makeLandoRuntime` | `docs/guides/library/embedding-runtime.mdx` | Required at story acceptance |
 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Required at story acceptance |
-| US-276, US-277, US-278 | Linux-x64 §17.9 acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Required at story acceptance |
+| US-276, US-277, US-278, US-279 | Linux-x64 §17.9 acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Required at story acceptance |
 
 **CLI / source surface paths covered (drift gate input):**
 
