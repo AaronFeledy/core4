@@ -19,7 +19,7 @@ export { HealthcheckRunner };
 
 const HC_UNAVAILABLE_ID = "unavailable" as const;
 const HC_UNAVAILABLE_MESSAGE =
-  "HealthcheckRunner requires provider-exec. Run `lando setup` to install the provider (available in with US-104 full implementation).";
+  "HealthcheckRunner requires provider-exec. Run `lando setup` to install the provider (full implementation is not available yet).";
 
 export const HealthcheckRunnerUnavailableLive = Layer.succeed(HealthcheckRunner, {
   id: HC_UNAVAILABLE_ID,
