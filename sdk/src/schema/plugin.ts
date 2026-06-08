@@ -59,6 +59,19 @@ export const GlobalServiceContribution = Schema.Struct({
 });
 export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
 
+export const PluginSetupFlagContribution = Schema.Struct({
+  name: Schema.String,
+  type: Schema.Literal("boolean", "option"),
+  description: Schema.optional(Schema.String),
+  options: Schema.optional(Schema.Array(Schema.String)),
+});
+export type PluginSetupFlagContribution = typeof PluginSetupFlagContribution.Type;
+
+export const PluginSetupContribution = Schema.Struct({
+  flags: Schema.optional(Schema.Array(PluginSetupFlagContribution)),
+});
+export type PluginSetupContribution = typeof PluginSetupContribution.Type;
+
 /** Contribution surface — keys the plugin contributes to. */
 export const PluginContribution = Schema.Struct({
   /** Service types this plugin registers. */
@@ -83,6 +96,7 @@ export const PluginContribution = Schema.Struct({
   commands: Schema.optional(Schema.Array(Schema.String)),
   /** Global-app service contributions added by plugins. */
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
+  setup: Schema.optional(PluginSetupContribution),
 });
 export type PluginContribution = typeof PluginContribution.Type;
 

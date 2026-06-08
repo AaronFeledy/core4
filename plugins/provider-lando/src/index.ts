@@ -336,6 +336,17 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   api: 4,
   description: "Reference Lando-managed RuntimeProvider implementation.",
   enabled: true,
-  contributes: { providers: ["lando"] },
+  contributes: {
+    providers: ["lando"],
+    setup: {
+      flags: [
+        {
+          name: "runtime-bundle-url",
+          description: "Override the Lando-managed runtime bundle URL for setup.",
+          type: "option",
+        },
+      ],
+    },
+  },
   entry: "./src/index.ts",
 });

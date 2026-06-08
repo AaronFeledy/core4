@@ -16,6 +16,7 @@ import {
   SshService,
 } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
 import { type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import {
@@ -24,7 +25,8 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
-import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import SetupCommand, { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
+import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
 const makeConfigService = (
@@ -118,6 +120,28 @@ const normalizeSetupFailure = (stderr: string): string =>
     .join("\n");
 
 describe("meta:setup command", () => {
+  test("is registered at the minimal bootstrap level with the top-level setup alias", () => {
+    expect(setupSpec.bootstrap).toBe("minimal");
+    expect(SetupCommand.bootstrap).toBe("minimal");
+    expect(SetupCommand.aliases).toContain("setup");
+  });
+
+  test("exposes provider-contributed setup.flags in metadata and compiled parsing", () => {
+    expect(providerLandoManifest.contributes?.setup?.flags).toContainEqual({
+      name: "runtime-bundle-url",
+      description: "Override the Lando-managed runtime bundle URL for setup.",
+      type: "option",
+    });
+    expect(Object.keys(SetupCommand.flags)).toContain("runtime-bundle-url");
+
+    const input = compiledCommandInputFromArgv("meta:setup", [
+      "--runtime-bundle-url",
+      "https://example.invalid/lando-runtime.zip",
+    ]);
+
+    expect(input.flags["runtime-bundle-url"]).toBe("https://example.invalid/lando-runtime.zip");
+  });
+
   test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {
     const calls: string[] = [];
     const provider = {

@@ -81,6 +81,8 @@
 - `SharedNetworkMembershipPlan`
 - `PluginContribution`
 - `PluginName`
+- `PluginSetupContribution`
+- `PluginSetupFlagContribution`
 - `PortablePath`
 - `ProviderExtensionConfig`
 - `RecipeChoicesFrom`

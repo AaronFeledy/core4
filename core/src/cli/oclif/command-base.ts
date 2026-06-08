@@ -6,6 +6,7 @@ import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError
 import type { Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
+import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import {
@@ -224,7 +225,14 @@ export abstract class LandoCommandBase extends Command {
 
     const parsed = await this.parse(this.ctor);
 
-    const runtime = getCommandRuntimeLayer(this.ctor);
+    // `meta:setup` registers at bootstrap `minimal` so `lando setup` stays listable/runnable
+    // before the provider is prepared, but its effect needs the provider tier (RuntimeProviderRegistry)
+    // to call `provider.setup()`. Escalate the runtime to `provider` here; the compiled dispatch path
+    // (`run.ts`) does the same, keeping both paths in parity.
+    const runtime =
+      spec.id === "meta:setup"
+        ? makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "discovery" } })
+        : getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
       throw new LandoRuntimeBootstrapError({
         message: `OCLIF command ${this.id ?? spec.id} is missing a valid static bootstrap declaration.`,

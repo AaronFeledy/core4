@@ -113,7 +113,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "provider",
+  bootstrap: "minimal",
   run: (input) =>
     Effect.gen(function* () {
       const configService = yield* ConfigService;
@@ -209,6 +209,9 @@ export default class SetupCommand extends LandoCommandBase {
     "skip-file-sync": Flags.boolean({
       description: "Skip Mutagen binary download; deferred to first accelerated app:start.",
       default: false,
+    }),
+    "runtime-bundle-url": Flags.string({
+      description: "Override the Lando-managed runtime bundle URL for setup.",
     }),
     "host-proxy": Flags.string({
       description:

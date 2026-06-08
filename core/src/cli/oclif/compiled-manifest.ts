@@ -2460,6 +2460,13 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        "runtime-bundle-url": {
+          description: "Override the Lando-managed runtime bundle URL for setup.",
+          name: "runtime-bundle-url",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
         "host-proxy": {
           description:
             "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",
@@ -2485,9 +2492,9 @@ export const COMPILED_OCLIF_MANIFEST = {
         summary: "Run host setup (provider, CA, proxy, shell integration).",
         namespace: "meta",
         topLevelAlias: true,
-        bootstrap: "provider",
+        bootstrap: "minimal",
       },
-      bootstrap: "provider",
+      bootstrap: "minimal",
       isESM: true,
       relativePath: ["src", "cli", "oclif", "commands", "meta", "setup.ts"],
       aliasPermutations: ["setup"],
