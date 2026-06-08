@@ -26,6 +26,7 @@ import {
   makeTestSshService,
 } from "@lando/sdk/test";
 import SetupCommand, {
+  setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
 } from "../../src/cli/oclif/commands/meta/setup.ts";
@@ -121,6 +122,11 @@ const normalizeSetupFailure = (stderr: string): string =>
     .map((line) => line.trim().replace(/^.*Error: /u, ""))
     .filter((line) => line.includes("Podman") || line.includes("Install Podman"))
     .join("\n");
+
+const fileSyncSatisfiedLine = "file-sync: already satisfied (native bind mounts)";
+
+const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
+  `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
 
 describe("meta:setup command", () => {
   test("is registered at the minimal bootstrap level with the top-level setup alias", () => {
@@ -229,6 +235,96 @@ describe("meta:setup command", () => {
     expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
   });
 
+  test("reports file sync as already satisfied for native bind-mount providers", async () => {
+    const calls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("provider");
+        }),
+    };
+    const fileSync = {
+      ...TestFileSyncEngine,
+      setup: () => Effect.die("native bind-mount provider should not run file-sync setup"),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const result = await Effect.runPromise(
+      setupSpec.run({ installDir: "/opt/lando" }).pipe(
+        Effect.provide(
+          buildSetupLayersWithHostIntegrations(registry, {
+            ca: makeTestCertificateAuthority(),
+            proxy: makeTestProxyService(),
+            ssh: makeTestSshService(),
+            fileSync,
+          }),
+        ),
+      ),
+    );
+
+    expect(calls).toEqual(["provider"]);
+    expect(setupSpec.render?.(result)).toContain(fileSyncSatisfiedLine);
+  });
+
+  test("--skip-file-sync records deferred setup for the first accelerated app:start", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-file-sync-deferred-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        setup: () => Effect.void,
+      };
+      const fileSync = {
+        ...TestFileSyncEngine,
+        setup: () => Effect.die("--skip-file-sync should not run file-sync setup"),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando", flags: { "skip-file-sync": true } }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      const marker = JSON.parse(await readFile(setupDeferredFileSyncPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly engineId: string;
+        readonly resumeCommand: string;
+      };
+      expect(marker).toEqual({
+        status: "deferred",
+        engineId: "mutagen",
+        resumeCommand: "lando start",
+      });
+      expect(setupSpec.render?.(result)).toContain("file-sync: deferred until first accelerated app:start");
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("honors setup skip flags for provider, CA trust install, proxy, shell, and file sync", async () => {
     const calls: string[] = [];
     const caSetupOptions: Array<{ readonly skipTrustInstall?: boolean }> = [];
@@ -316,9 +412,7 @@ describe("meta:setup command", () => {
     );
 
     expect(setupCalls).toBe(1);
-    expect(setupSpec.render?.(result)).toBe(
-      'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
-    );
+    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
   });
 
   describe("system-runtime providers require an existing installation (US-200 AC5)", () => {
@@ -386,9 +480,7 @@ describe("meta:setup command", () => {
         );
 
         expect(setupCalls).toBe(0);
-        expect(setupSpec.render?.(result)).toBe(
-          `setup complete: Lando runtime (${id})\nLANDO_INSTALL_DIR="/opt/lando"`,
-        );
+        expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(id));
       });
 
       test(`--provider=${id} proceeds when the system runtime is available`, async () => {
@@ -415,9 +507,7 @@ describe("meta:setup command", () => {
         );
 
         expect(setupCalls).toBe(1);
-        expect(setupSpec.render?.(result)).toBe(
-          `setup complete: Lando runtime (${id})\nLANDO_INSTALL_DIR="/opt/lando"`,
-        );
+        expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(id));
       });
     }
   });
@@ -450,9 +540,7 @@ describe("meta:setup command", () => {
 
     expect(selectedProvider).toBe("podman");
     expect(setupCalls).toBe(1);
-    expect(setupSpec.render?.(result)).toBe(
-      'setup complete: Lando runtime (podman)\nLANDO_INSTALL_DIR="/opt/lando"',
-    );
+    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("podman"));
   });
 
   test("host-proxy none remains honored when proxy setup is skipped", () => {
@@ -491,9 +579,7 @@ describe("meta:setup command", () => {
     );
 
     expect(setupCalls).toBe(1);
-    expect(setupSpec.render?.(result)).toBe(
-      'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
-    );
+    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
     expect(status).toEqual({
       active: false,
       mode: "none",
@@ -531,9 +617,7 @@ describe("meta:setup command", () => {
         setupSpec.run({ installDir: "/opt/lando" }).pipe(Effect.provide(buildSetupLayers(registry))),
       );
 
-      expect(setupSpec.render?.(result)).toBe(
-        'setup complete: Lando runtime (lando)\nLANDO_INSTALL_DIR="/opt/lando"',
-      );
+      expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
       expect(JSON.parse(await readFile(providerStatePath(stateDir), "utf8"))).toEqual({
         podmanVersion: "5.2.0",
         runtimeBundleVersion: "0.0.0-test",

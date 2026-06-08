@@ -4,3 +4,18 @@
 - Verification: typecheck, lint passed; targeted tests green (setup.test.ts + docker/podman availability = 21 pass; full podman provider suite = 66 pass / 2 skip).
 - **Learnings for future iterations:** Bundled runtime providers gate availability two ways — docker uses STATIC capabilities so its `isAvailable` probe is the only reachability gate, while podman/lando introspect the socket (`api.info`) at construction so `registry.select` itself fails with remediation before `isAvailable` is ever read. Keep both providers' `isAvailable` honest (probe, never hardcode `true`) even when construction already gates them.
 ---
+## 2026-06-08 15:59 CDT - US-201
+- Completed the deferred file-sync resume path by making the first accelerated `app:start` publish clear progress messaging before it finishes Mutagen setup, preserving the existing setup-time deferred marker and native-provider no-op behavior.
+- Verification: typecheck, lint, focused setup/start tests, and serialized full test suite passed.
+- **Learnings for future iterations:** File-sync resume messaging should go through the task-tree progress seam (`task.detail`) so renderer modes receive the same user-visible setup status without direct stdout/stderr writes.
+---
+## 2026-06-08 16:35 CDT - US-201 Review
+- Fixed a destructive regression in the deferred file-sync resume path: the build step moved `engine.setup()` inside `startFileSyncSessions`, whose only error handler is `Effect.tapError(rollbackAppliedApp)` (destroys volumes + state). A transient Mutagen-download failure on the first accelerated `app:start` would therefore tear down the just-applied app. Setup failure now degrades to an un-accelerated start with clear stderr messaging instead of propagating, matching the pre-existing "engine unavailable -> skip" contract and removing the throw-vs-still-unavailable inconsistency. Added a regression test asserting no session creation, no provider.destroy, and the degrade message.
+- Review notes (rejected/deferred): Oracle flagged that the bundled app-layer `FileSyncEngine` (`makeFileSyncEngine()` with no `userDataRoot` + `makeUnavailableMutagenClient`) makes `setup()` a no-op and `isAvailable` permanently false, so AC4's resume is dormant in production. Rejected as out-of-scope for US-201: the diff does not touch the app layer/plugin, and a real fix needs the not-yet-implemented host-CLI-backed Mutagen client ("supplied by a later layer") — wiring `userDataRoot` alone changes nothing while the client stays fail-closed. Tracked as a known gap for the host-CLI-client story.
+- Verification: typecheck, lint, and focused start/setup/rebuild/restart scenario tests passed.
+- **Learnings for future iterations:** Any optional/best-effort step added inside `startFileSyncSessions` is under `rollbackAppliedApp` (destroy volumes+state); swallow its failure or a transient blip destroys a successfully-applied app.
+---
+## 2026-06-08 16:30 CDT - US-201 Verify
+- Built the compiled binary successfully with `cd core && bun run build`, but real setup/scenario verification could not run because the required `lando4-dev` sandbox entry path is unavailable from this shell: `.local/bin/lando4-dev --check` exits 127 with `wsl.exe is not available from this shell; run from the host distro`.
+- Blocker recorded: host-safety rules prohibit running `./core/dist/lando setup` or container/runtime scenarios on the host distro, so Verify cannot honestly pass until sandbox access is restored.
+---

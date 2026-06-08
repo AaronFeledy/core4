@@ -48,7 +48,9 @@ import { loadUserLandofile } from "../app-resolution.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 
 import {
+  type ProgressEmitter,
   publishTaskComplete,
+  publishTaskDetail,
   publishTaskFail,
   publishTaskStart,
   publishTreeComplete,
@@ -120,14 +122,33 @@ const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
-const startFileSyncSessions = (plan: AppPlan) =>
+const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
   Effect.gen(function* () {
     if (plan.fileSync.length === 0) return;
     const engineOption = yield* Effect.serviceOption(FileSyncEngine);
     if (engineOption._tag === "None") return;
 
     const engine = engineOption.value;
-    if (!(yield* engine.isAvailable)) return;
+    if (!(yield* engine.isAvailable)) {
+      yield* publishTaskDetail(events, {
+        taskId: "file-sync",
+        stream: "stdout",
+        line: "Completing deferred file-sync setup for accelerated mounts.",
+      });
+      // Swallow setup failure: propagating it reaches `rollbackAppliedApp`,
+      // which would destroy the just-applied app over a transient download blip.
+      const setupSucceeded = yield* Effect.scoped(engine.setup({ force: false })).pipe(
+        Effect.as(true),
+        Effect.catchAll(() =>
+          publishTaskDetail(events, {
+            taskId: "file-sync",
+            stream: "stderr",
+            line: "Deferred file-sync setup failed; continuing without accelerated mounts.",
+          }).pipe(Effect.as(false)),
+        ),
+      );
+      if (!setupSucceeded || !(yield* engine.isAvailable)) return;
+    }
 
     const createdRefs: Array<FileSyncSessionRef> = [];
     yield* Effect.forEach(
@@ -172,7 +193,7 @@ export const renderStartAppResult = (result: StartAppResult): string => {
  * Start the app discovered at the runtime's `cwd`.
  *
  * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanner`,
- * `RuntimeProviderRegistry`, `EventService`, `Logger`.
+ * `RuntimeProviderRegistry`, `EventService`.
  */
 export const startApp = (
   options: StartAppOptions = {},
@@ -292,7 +313,9 @@ export const startApp = (
       durationMs: Math.round(performance.now() - applyStart),
     });
 
-    yield* startFileSyncSessions(plan).pipe(Effect.tapError(() => rollbackAppliedApp(provider, plan)));
+    yield* startFileSyncSessions(plan, events).pipe(
+      Effect.tapError(() => rollbackAppliedApp(provider, plan)),
+    );
 
     yield* events.publish(
       PostAppStartEvent.make({
