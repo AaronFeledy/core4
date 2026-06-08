@@ -46,14 +46,14 @@ This work closes the remaining setup and uninstall feature surface called out by
 **Description:** As a user on a slow bind-mount provider, I get Mutagen acceleration prepared during setup, while users on native providers do no extra file-sync work.
 
 **Acceptance Criteria:**
-- [ ] Providers with `bindMountPerformance: "slow"` trigger `FileSyncEngine.setup()` during setup unless `--skip-file-sync` is passed.
-- [ ] Mutagen host CLI downloads to `<userDataRoot>/bin/mutagen` or `<userDataRoot>/bin/mutagen.exe` with a pinned checksum.
-- [ ] Per-platform Mutagen agents download to `<userDataRoot>/bin/mutagen-agents/mutagen-agent-<platform>` with pinned checksums.
-- [ ] `--skip-file-sync` records setup as deferred so the first accelerated `app:start` can finish file-sync setup with clear messaging.
-- [ ] Providers with `bindMountPerformance: "native"` report file sync as already satisfied and do not download Mutagen.
-- [ ] Tests pass
-- [ ] Typecheck passes
-- [ ] Lint passes
+- [x] Providers with `bindMountPerformance: "slow"` trigger `FileSyncEngine.setup()` during setup unless `--skip-file-sync` is passed.
+- [x] Mutagen host CLI downloads to `<userDataRoot>/bin/mutagen` or `<userDataRoot>/bin/mutagen.exe` with a pinned checksum.
+- [x] Per-platform Mutagen agents download to `<userDataRoot>/bin/mutagen-agents/mutagen-agent-<platform>` with pinned checksums.
+- [x] `--skip-file-sync` records setup as deferred so the first accelerated `app:start` can finish file-sync setup with clear messaging.
+- [x] Providers with `bindMountPerformance: "native"` report file sync as already satisfied and do not download Mutagen.
+- [x] Tests pass
+- [x] Typecheck passes
+- [x] Lint passes
 
 ### US-202: Setup validates corporate proxy and custom CA configuration before long downloads
 

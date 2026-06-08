@@ -5,6 +5,8 @@
  * This command skips Landofile loading, so the effective inputs are
  * `--provider > LANDO_PROVIDER > config > default`.
  */
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Flags } from "@oclif/core";
@@ -34,7 +36,22 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 interface SetupResult {
   readonly providerId: string;
   readonly installDir: string;
+  readonly fileSyncStatus: "deferred" | "installed" | "satisfied" | "unavailable";
 }
+
+export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
+  join(userDataRoot, "setup", "file-sync-deferred.json");
+
+const recordDeferredFileSyncSetup = (userDataRoot: string): Effect.Effect<void, never> =>
+  Effect.promise(async () => {
+    const markerPath = setupDeferredFileSyncPath(userDataRoot);
+    await mkdir(join(userDataRoot, "setup"), { recursive: true });
+    await writeFile(
+      markerPath,
+      `${JSON.stringify({ status: "deferred", engineId: "mutagen", resumeCommand: "lando start" })}\n`,
+      "utf-8",
+    );
+  }).pipe(Effect.catchAll(() => Effect.void));
 
 const sourceInstallDir = (): string =>
   fileURLToPath(new URL("../../../../../", import.meta.url)).replace(/[\\/]$/u, "");
@@ -181,20 +198,35 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
       }
 
-      if (provider.capabilities.bindMountPerformance === "slow" && !inputSkipFileSync(input)) {
+      const userDataRootRaw = yield* configService.get("userDataRoot");
+      const userDataRoot =
+        typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+      let fileSyncStatus: SetupResult["fileSyncStatus"] = "satisfied";
+
+      if (provider.capabilities.bindMountPerformance === "slow" && inputSkipFileSync(input)) {
+        fileSyncStatus = "deferred";
+        if (userDataRoot !== undefined) yield* recordDeferredFileSyncSetup(userDataRoot);
+      } else if (provider.capabilities.bindMountPerformance === "slow") {
         const fileSync = yield* Effect.serviceOption(FileSyncEngine);
         if (fileSync._tag === "Some") {
           yield* Effect.scoped(fileSync.value.setup({ force: false }));
+          fileSyncStatus = "installed";
         } else {
-          const userDataRootRaw = yield* configService.get("userDataRoot");
-          if (typeof userDataRootRaw === "string" && userDataRootRaw.length > 0) {
+          if (userDataRoot !== undefined) {
             const downloader = makeMutagenDownloader();
-            yield* downloader.setup({ userDataRoot: userDataRootRaw });
+            yield* downloader.setup({ userDataRoot });
+            fileSyncStatus = "installed";
+          } else {
+            fileSyncStatus = "unavailable";
           }
         }
       }
 
-      return { providerId: provider.id, installDir: inputInstallDir(input) ?? sourceInstallDir() };
+      return {
+        providerId: provider.id,
+        installDir: inputInstallDir(input) ?? sourceInstallDir(),
+        fileSyncStatus,
+      };
     }),
   render: (result) => {
     if (
@@ -205,7 +237,16 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
     ) {
       return undefined;
     }
-    return `setup complete: Lando runtime (${String(result.providerId)})\nLANDO_INSTALL_DIR="${String(result.installDir)}"`;
+    const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
+    const fileSyncLine =
+      status === "deferred"
+        ? "file-sync: deferred until first accelerated app:start"
+        : status === "installed"
+          ? "file-sync: installed"
+          : status === "unavailable"
+            ? "file-sync: unavailable (userDataRoot is not configured)"
+            : "file-sync: already satisfied (native bind mounts)";
+    return `setup complete: Lando runtime (${String(result.providerId)})\n${fileSyncLine}\nLANDO_INSTALL_DIR="${String(result.installDir)}"`;
   },
 };
 

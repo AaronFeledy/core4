@@ -127,7 +127,10 @@ const startFileSyncSessions = (plan: AppPlan) =>
     if (engineOption._tag === "None") return;
 
     const engine = engineOption.value;
-    if (!(yield* engine.isAvailable)) return;
+    if (!(yield* engine.isAvailable)) {
+      yield* Effect.scoped(engine.setup({ force: false }));
+      if (!(yield* engine.isAvailable)) return;
+    }
 
     const createdRefs: Array<FileSyncSessionRef> = [];
     yield* Effect.forEach(
