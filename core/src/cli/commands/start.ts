@@ -135,8 +135,19 @@ const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
         stream: "stdout",
         line: "Completing deferred file-sync setup for accelerated mounts.",
       });
-      yield* Effect.scoped(engine.setup({ force: false }));
-      if (!(yield* engine.isAvailable)) return;
+      // Swallow setup failure: propagating it reaches `rollbackAppliedApp`,
+      // which would destroy the just-applied app over a transient download blip.
+      const setupSucceeded = yield* Effect.scoped(engine.setup({ force: false })).pipe(
+        Effect.as(true),
+        Effect.catchAll(() =>
+          publishTaskDetail(events, {
+            taskId: "file-sync",
+            stream: "stderr",
+            line: "Deferred file-sync setup failed; continuing without accelerated mounts.",
+          }).pipe(Effect.as(false)),
+        ),
+      );
+      if (!setupSucceeded || !(yield* engine.isAvailable)) return;
     }
 
     const createdRefs: Array<FileSyncSessionRef> = [];
