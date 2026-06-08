@@ -60,6 +60,14 @@ const inputSkipFileSync = (input: unknown): boolean => {
   return (flags as Record<string, unknown>)["skip-file-sync"] === true;
 };
 
+const inputStringFlag = (input: unknown, name: string): string | undefined => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return undefined;
+  const flags = (input as { flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null) return undefined;
+  const value = (flags as Record<string, unknown>)[name];
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+};
+
 const inputBooleanFlag = (input: unknown, name: string): boolean => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return false;
   const flags = (input as { flags?: unknown }).flags;
@@ -134,13 +142,18 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
 
       const selectedProviderId = String(resolution.providerId);
-      if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
-        const available = yield* provider.isAvailable;
-        if (!available) return yield* Effect.fail(systemRuntimeUnavailableError(selectedProviderId));
-      }
-
       if (!inputBooleanFlag(input, "skip-provider")) {
-        yield* Effect.scoped(provider.setup({ force: false }));
+        if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
+          const available = yield* provider.isAvailable;
+          if (!available) return yield* Effect.fail(systemRuntimeUnavailableError(selectedProviderId));
+        }
+        const runtimeBundleUrl = inputStringFlag(input, "runtime-bundle-url");
+        yield* Effect.scoped(
+          provider.setup({
+            force: false,
+            ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
+          }),
+        );
       }
 
       const ca = yield* Effect.serviceOption(CertificateAuthority);

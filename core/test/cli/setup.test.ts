@@ -142,6 +142,36 @@ describe("meta:setup command", () => {
     expect(input.flags["runtime-bundle-url"]).toBe("https://example.invalid/lando-runtime.zip");
   });
 
+  test("passes runtime-bundle-url through to provider setup", async () => {
+    const setupOptions: Array<{ readonly force: boolean; readonly runtimeBundleUrl?: string }> = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: (options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
+        Effect.sync(() => {
+          setupOptions.push(options);
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          flags: { "runtime-bundle-url": "https://example.invalid/lando-runtime.zip" },
+        })
+        .pipe(Effect.provide(buildSetupLayers(registry))),
+    );
+
+    expect(setupOptions).toEqual([
+      { force: false, runtimeBundleUrl: "https://example.invalid/lando-runtime.zip" },
+    ]);
+  });
+
   test("runs provider, CA, proxy, shell integration, and file sync in deterministic order", async () => {
     const calls: string[] = [];
     const provider = {
@@ -327,6 +357,35 @@ describe("meta:setup command", () => {
         expect(error.providerId).toBe(id);
         expect(error.remediation ?? "").toContain(`lando setup --provider=${id}`);
         expect(setupCalls).toBe(0);
+      });
+
+      test(`--provider=${id} --skip-provider skips availability probing and provider setup`, async () => {
+        let setupCalls = 0;
+        const provider = {
+          ...TestRuntimeProvider,
+          id,
+          isAvailable: Effect.die("availability probe should be skipped"),
+          setup: () =>
+            Effect.sync(() => {
+              setupCalls += 1;
+            }),
+        };
+        const registry = {
+          list: Effect.succeed([ProviderId.make("lando"), ProviderId.make(id)]),
+          capabilities: Effect.succeed(provider.capabilities),
+          select: () => Effect.succeed(provider),
+        };
+
+        const result = await Effect.runPromise(
+          setupSpec
+            .run({ installDir: "/opt/lando", flags: { provider: id, "skip-provider": true } })
+            .pipe(Effect.provide(buildSetupLayers(registry))),
+        );
+
+        expect(setupCalls).toBe(0);
+        expect(setupSpec.render?.(result)).toBe(
+          `setup complete: Lando runtime (${id})\nLANDO_INSTALL_DIR="/opt/lando"`,
+        );
       });
 
       test(`--provider=${id} proceeds when the system runtime is available`, async () => {
