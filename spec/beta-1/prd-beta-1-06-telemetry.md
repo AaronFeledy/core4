@@ -4,7 +4,7 @@
 
 Telemetry (§2.4, §3.4, §4.2, §16.3, §17.6.3, and §18.1 through §18.6) turns the existing `Telemetry` service contract into a real runtime capability. Beta 1 ships a fire-and-forget transport, a documented event inventory, redaction rules, retention policy, default-on CLI behavior, library-mode default-off behavior, user opt-out controls, and first wired events for update outcomes and deprecated surface use.
 
-Depends on: **BETA1-03** (deprecation governance publishes `deprecation-used` and the consumption path this PRD records). PRD-02 closes the adjacent §14.2 telemetry decision; this PRD ships the inventory, redaction, transport, and controls.
+Depends on: **BETA1-03** (deprecation governance publishes `deprecation-used` and the consumption path this PRD records). This PRD owns and closes the §14.2 telemetry decision (event inventory, redaction rules, retention, defaults, and disablement controls); PRD-02 closes the other §14.2 decisions (Bun floor, OCLIF, auto-setup, Compose subset, sshAgent, plugin trust).
 
 ## Source References
 

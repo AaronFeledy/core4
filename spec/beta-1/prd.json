@@ -931,7 +931,7 @@
         "Compiled binaries run stages 1 through 5 and 7 through 13.",
         "The library package runs stages 1 through 6 and 11 through 13.",
         "Local rehearsal can run any prefix without secrets.",
-        "With `LOCAL_REHEARSAL=1`, stages 9, 10, 11 signature work, 12, and 13 skip with warnings when credentials are absent.",
+        "With `LOCAL_REHEARSAL=1`, stage 9 (sign), stage 10 (notarize), the GPG/cosign signing performed inside stage 11 (manifest), stage 12 (provenance & SBOM), and stage 13 (publish) skip with warnings when credentials are absent; the non-signing portion of stage 11 (writing `SHA256SUMS`/`SHA512SUMS`/`update-manifest.json`) still runs.",
         "Stage 7 can compile the maintainer's current platform locally without cross-platform signing secrets.",
         "Tests pass",
         "Typecheck passes",
