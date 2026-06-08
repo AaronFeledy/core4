@@ -410,11 +410,6 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
   const hostProxy = input.flags["host-proxy"];
-  if (hostProxy === "invalid") {
-    emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
-    process.exitCode = 1;
-    return;
-  }
   if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
     emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
     process.exitCode = 1;
