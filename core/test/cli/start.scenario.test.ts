@@ -885,6 +885,7 @@ describe("lando start", () => {
         }),
       list: () => Effect.succeed([]),
     };
+    const events: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
@@ -894,7 +895,10 @@ describe("lando start", () => {
         select: () => Effect.succeed(provider),
       }),
       Layer.succeed(EventService, {
-        publish: () => Effect.void,
+        publish: (event) =>
+          Effect.sync(() => {
+            events.push(event);
+          }),
         subscribe: () => Effect.die("not used"),
         subscribeQueue: Effect.die("not used"),
         waitFor: () => Effect.die("not used"),
@@ -906,6 +910,11 @@ describe("lando start", () => {
     await Effect.runPromise(startApp().pipe(Effect.provide(layer)));
 
     expect(calls).toEqual(["is-available", "setup", "is-available", "create:app-mount"]);
+    expect(events.find((event) => event._tag === "task.detail")).toMatchObject({
+      taskId: "file-sync",
+      stream: "stdout",
+      line: "Completing deferred file-sync setup for accelerated mounts.",
+    });
   });
 
   test("skips file-sync session creation when the engine reports unavailable", async () => {

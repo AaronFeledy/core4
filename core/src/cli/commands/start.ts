@@ -48,7 +48,9 @@ import { loadUserLandofile } from "../app-resolution.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 
 import {
+  type ProgressEmitter,
   publishTaskComplete,
+  publishTaskDetail,
   publishTaskFail,
   publishTaskStart,
   publishTreeComplete,
@@ -120,7 +122,7 @@ const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
-const startFileSyncSessions = (plan: AppPlan) =>
+const startFileSyncSessions = (plan: AppPlan, events: ProgressEmitter) =>
   Effect.gen(function* () {
     if (plan.fileSync.length === 0) return;
     const engineOption = yield* Effect.serviceOption(FileSyncEngine);
@@ -128,6 +130,11 @@ const startFileSyncSessions = (plan: AppPlan) =>
 
     const engine = engineOption.value;
     if (!(yield* engine.isAvailable)) {
+      yield* publishTaskDetail(events, {
+        taskId: "file-sync",
+        stream: "stdout",
+        line: "Completing deferred file-sync setup for accelerated mounts.",
+      });
       yield* Effect.scoped(engine.setup({ force: false }));
       if (!(yield* engine.isAvailable)) return;
     }
@@ -295,7 +302,9 @@ export const startApp = (
       durationMs: Math.round(performance.now() - applyStart),
     });
 
-    yield* startFileSyncSessions(plan).pipe(Effect.tapError(() => rollbackAppliedApp(provider, plan)));
+    yield* startFileSyncSessions(plan, events).pipe(
+      Effect.tapError(() => rollbackAppliedApp(provider, plan)),
+    );
 
     yield* events.publish(
       PostAppStartEvent.make({

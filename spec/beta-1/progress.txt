@@ -4,3 +4,8 @@
 - Verification: typecheck, lint passed; targeted tests green (setup.test.ts + docker/podman availability = 21 pass; full podman provider suite = 66 pass / 2 skip).
 - **Learnings for future iterations:** Bundled runtime providers gate availability two ways — docker uses STATIC capabilities so its `isAvailable` probe is the only reachability gate, while podman/lando introspect the socket (`api.info`) at construction so `registry.select` itself fails with remediation before `isAvailable` is ever read. Keep both providers' `isAvailable` honest (probe, never hardcode `true`) even when construction already gates them.
 ---
+## 2026-06-08 15:59 CDT - US-201
+- Completed the deferred file-sync resume path by making the first accelerated `app:start` publish clear progress messaging before it finishes Mutagen setup, preserving the existing setup-time deferred marker and native-provider no-op behavior.
+- Verification: typecheck, lint, focused setup/start tests, and serialized full test suite passed.
+- **Learnings for future iterations:** File-sync resume messaging should go through the task-tree progress seam (`task.detail`) so renderer modes receive the same user-visible setup status without direct stdout/stderr writes.
+---
