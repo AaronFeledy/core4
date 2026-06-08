@@ -20,7 +20,7 @@ import {
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
-import { redactDetails } from "./redact.ts";
+import { redactDetails, redactString } from "./redact.ts";
 
 const appNetworkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
@@ -84,22 +84,44 @@ const missingApi = () =>
     remediation: SETUP_REMEDIATION,
   });
 
+// Podman/Docker API error responses are JSON: `{ cause, message, response }`.
+const podmanReasonFromBody = (details: unknown): string | undefined => {
+  if (typeof details !== "object" || details === null || !("body" in details)) return undefined;
+  const body = (details as { body?: unknown }).body;
+  if (typeof body !== "string" || body.trim().length === 0) return undefined;
+  let reason: string | undefined;
+  try {
+    const parsed = JSON.parse(body) as unknown;
+    if (typeof parsed === "object" && parsed !== null) {
+      const candidate = (parsed as { message?: unknown; cause?: unknown }).message;
+      const fallback = (parsed as { message?: unknown; cause?: unknown }).cause;
+      if (typeof candidate === "string" && candidate.trim().length > 0) reason = candidate.trim();
+      else if (typeof fallback === "string" && fallback.trim().length > 0) reason = fallback.trim();
+    }
+  } catch {
+    return undefined;
+  }
+  return reason === undefined ? undefined : redactString(reason);
+};
+
 const podmanFailure = (
   service: ServicePlan,
   operation: string,
   message: string,
   details?: unknown,
   cause?: unknown,
-) =>
-  new ServiceStartError({
+) => {
+  const reason = podmanReasonFromBody(details);
+  return new ServiceStartError({
     providerId: PROVIDER_ID,
     operation,
     service: service.name,
-    message,
+    message: reason === undefined ? message : `${message} ${reason}`,
     remediation: APPLY_REMEDIATION,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
   });
+};
 
 const request = (
   api: PodmanApiClient,

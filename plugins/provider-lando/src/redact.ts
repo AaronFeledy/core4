@@ -6,7 +6,7 @@ const SECRET_KEY_PATTERN =
 const SECRET_ENV_PATTERN =
   /\b([A-Z][A-Z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Z0-9_]*)=([^\s,;"'\]\}]+)/gu;
 
-const redactString = (value: string): string =>
+export const redactString = (value: string): string =>
   value.replace(SECRET_ENV_PATTERN, (_, name) => `${String(name)}=${REDACTED}`);
 
 const redactArray = (value: ReadonlyArray<unknown>): Array<unknown> =>
