@@ -65,14 +65,18 @@ export const buildUninstallPlan = (options: UninstallOptions = {}): ReadonlyArra
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
   const execPath = options.execPath ?? process.execPath;
   const exists = options.exists ?? existsSync;
+  const managedProviderRuntime = join(userDataRoot, "providers", "lando");
+  const mutagenBinary = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
+  const mutagenAgents = join(userDataRoot, "bin", "mutagen-agents");
+  const globalAppState = join(userDataRoot, "global");
 
   return [
     {
       id: "managed-provider-runtime",
       label: "managed provider runtime",
-      target: join(userDataRoot, "providers", "lando"),
+      target: managedProviderRuntime,
       destructive: true,
-      status: pathStatus(join(userDataRoot, "providers", "lando"), exists),
+      status: pathStatus(managedProviderRuntime, exists),
       detail: "Remove Lando-managed runtime bundles when present.",
     },
     {
@@ -86,20 +90,17 @@ export const buildUninstallPlan = (options: UninstallOptions = {}): ReadonlyArra
     {
       id: "mutagen-binary",
       label: "Mutagen binary",
-      target: join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen"),
+      target: mutagenBinary,
       destructive: true,
-      status: pathStatus(
-        join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen"),
-        exists,
-      ),
+      status: pathStatus(mutagenBinary, exists),
       detail: "Remove the Lando-downloaded Mutagen host CLI when present.",
     },
     {
       id: "mutagen-agents",
       label: "Mutagen agents",
-      target: join(userDataRoot, "bin", "mutagen-agents"),
+      target: mutagenAgents,
       destructive: true,
-      status: pathStatus(join(userDataRoot, "bin", "mutagen-agents"), exists),
+      status: pathStatus(mutagenAgents, exists),
       detail: "Remove Lando-downloaded per-platform Mutagen agents when present.",
     },
     {
@@ -113,9 +114,9 @@ export const buildUninstallPlan = (options: UninstallOptions = {}): ReadonlyArra
     {
       id: "global-app-state",
       label: "global app state",
-      target: join(userDataRoot, "global"),
+      target: globalAppState,
       destructive: true,
-      status: pathStatus(join(userDataRoot, "global"), exists),
+      status: pathStatus(globalAppState, exists),
       detail: "Remove generated global app state when present.",
     },
     {

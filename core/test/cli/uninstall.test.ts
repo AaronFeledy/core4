@@ -96,6 +96,7 @@ describe("meta:uninstall", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
   test("destructive execution without --yes refuses and tells the user how to proceed", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
