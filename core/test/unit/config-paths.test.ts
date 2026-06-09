@@ -129,4 +129,39 @@ describe("config.yml userDataRoot layer (spec §7.5)", () => {
 
     expect(resolveUserDataRoot()).toBe("/xdg/data/lando");
   });
+
+  test("a later top-level scalar wins over an earlier nested block (matches ConfigService last-wins)", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data", LANDO_USER_CONF_ROOT: withConfRoot() });
+    writeConfig("userDataRoot:\n  nested: value\nuserDataRoot: /from/config\n");
+
+    expect(resolveUserDataRoot()).toBe("/from/config");
+  });
+
+  test("duplicate top-level userDataRoot keys keep the last value (matches ConfigService)", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data", LANDO_USER_CONF_ROOT: withConfRoot() });
+    writeConfig("userDataRoot: /first\nuserDataRoot: /second\n");
+
+    expect(resolveUserDataRoot()).toBe("/second");
+  });
+
+  test("an indented userDataRoot recorded on the root object is honored (matches ConfigService)", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data", LANDO_USER_CONF_ROOT: withConfRoot() });
+    writeConfig("defaultProviderId: lando\n  userDataRoot: /indented\n");
+
+    expect(resolveUserDataRoot()).toBe("/indented");
+  });
+
+  test("a YAML null userDataRoot falls back instead of becoming the literal path 'null'", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data", LANDO_USER_CONF_ROOT: withConfRoot() });
+    writeConfig("userDataRoot: null\n");
+
+    expect(resolveUserDataRoot()).toBe("/xdg/data/lando");
+  });
+
+  test("a malformed config.yml falls back to the platform default instead of breaking shell startup", () => {
+    setEnv({ HOME: "/home/test", XDG_DATA_HOME: "/xdg/data", LANDO_USER_CONF_ROOT: withConfRoot() });
+    writeConfig("userDataRoot: [unsupported]\n");
+
+    expect(resolveUserDataRoot()).toBe("/xdg/data/lando");
+  });
 });

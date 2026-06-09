@@ -1,49 +1,37 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const stripInlineComment = (value: string): string => value.replace(/\s+#.*$/, "");
-
-const unquoteScalar = (value: string): string => {
-  const trimmed = value.trim();
-  if (trimmed.length >= 2) {
-    const first = trimmed[0];
-    const last = trimmed.at(-1);
-    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-      return trimmed.slice(1, -1);
-    }
-  }
-  return trimmed;
-};
+import { parseMinimalYaml } from "./yaml-min.ts";
 
 /**
- * Read a single **top-level scalar** from `<userConfRoot>/config.yml` without
+ * Read a top-level string key from `<userConfRoot>/config.yml` without
  * constructing the Effect runtime or loading the full `ConfigService`.
  *
  * `resolveUserDataRoot` runs on the cold-start fast path (`lando shellenv`,
  * bootstrap `none`, no Effect runtime — spec §8.4 / PRD-02 US-004), so it cannot
- * use `ConfigService` (that module imports Effect). This zero-dependency reader
- * lets root resolution honor the config.yml layer required by the resolution
- * order in spec §7.5 (`spec/07-landofile-and-config.md`) while staying within
- * the fast-path budget. Any missing/unreadable/malformed file falls back to
- * `undefined` — shell startup must never break because global config has
- * unrelated content. Nested blocks (no scalar value) are ignored.
+ * use `ConfigService` (that module imports Effect). It instead parses the file
+ * with the SAME zero-dependency YAML subset parser `ConfigService` uses, so the
+ * config.yml layer required by the resolution order in spec §7.5
+ * (`spec/07-landofile-and-config.md`) is honored identically on both paths. Any
+ * missing/unreadable/malformed file falls back to `undefined`, and only a
+ * non-empty string value is accepted — a nested block, `null`, or boolean falls
+ * back like the merged config layer would, so shell startup never breaks.
  */
-const readConfigYamlTopLevelScalar = (key: string): string | undefined => {
+const readConfigYamlString = (key: string): string | undefined => {
   let text: string;
   try {
     text = readFileSync(join(resolveUserConfRoot(), "config.yml"), "utf8");
   } catch {
     return undefined;
   }
-  for (const rawLine of text.split(/\r?\n/u)) {
-    if (rawLine.length === 0 || /^\s/u.test(rawLine)) continue;
-    const match = stripInlineComment(rawLine).match(/^([A-Za-z0-9_-]+):(.*)$/u);
-    if (match === null || match[1] !== key) continue;
-    const nestedOrScalar = match[2]?.trim() ?? "";
-    if (nestedOrScalar === "") return undefined;
-    return unquoteScalar(nestedOrScalar);
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = parseMinimalYaml(text);
+  } catch {
+    return undefined;
   }
-  return undefined;
+  const value = parsed[key];
+  return typeof value === "string" && value !== "" ? value : undefined;
 };
 
 export const resolveUserDataRoot = (): string => {
@@ -51,7 +39,7 @@ export const resolveUserDataRoot = (): string => {
   // default. The env check short-circuits before any file IO so the fast path
   // stays IO-free when `LANDO_USER_DATA_ROOT` is set.
   if (process.env.LANDO_USER_DATA_ROOT !== undefined) return process.env.LANDO_USER_DATA_ROOT;
-  const configured = readConfigYamlTopLevelScalar("userDataRoot");
+  const configured = readConfigYamlString("userDataRoot");
   if (configured !== undefined && configured !== "") return configured;
   const xdg = process.env.XDG_DATA_HOME;
   const base = xdg !== undefined && xdg !== "" ? xdg : `${process.env.HOME ?? "."}/.local/share`;

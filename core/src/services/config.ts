@@ -7,73 +7,20 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
 import { resolveUserConfRoot, resolveUserDataRoot } from "../config/roots.ts";
+import { MinimalYamlError, parseMinimalYaml } from "../config/yaml-min.ts";
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
 
-const parseScalar = (value: string, path: string): unknown => {
-  const trimmed = value.trim();
-  if (trimmed === "") return "";
-  if (trimmed === "null") return null;
-  if (trimmed === "true") return true;
-  if (trimmed === "false") return false;
-  if (trimmed.startsWith("[") || trimmed.startsWith("{")) {
-    throw configError(path, `Unsupported YAML value: ${trimmed}`);
-  }
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1);
-  }
-  return trimmed;
-};
-
+// Shared with the Effect-free `resolveUserDataRoot` (`config/roots.ts`) so both
+// interpret `config.yml` identically; map its plain failures onto `ConfigError`.
 const parseConfigYaml = (text: string, path: string): Record<string, unknown> => {
-  const root: Record<string, unknown> = {};
-  const stack: Array<{ indent: number; value: Record<string, unknown> }> = [{ indent: -1, value: root }];
-
-  for (const [index, rawLine] of text.split(/\r?\n/).entries()) {
-    const withoutComment = rawLine.replace(/\s+#.*$/, "");
-    const trimmedLine = withoutComment.trim();
-    if (trimmedLine === "" || trimmedLine.startsWith("#")) continue;
-
-    const indent = withoutComment.match(/^ */)?.[0].length ?? 0;
-    const match = trimmedLine.match(/^([A-Za-z0-9_-]+):(.*)$/);
-    if (match === null) {
-      throw configError(path, `Malformed YAML at line ${index + 1}`);
-    }
-
-    let current = stack.at(-1);
-    while (stack.length > 1 && current !== undefined && indent <= current.indent) {
-      stack.pop();
-      current = stack.at(-1);
-    }
-
-    const parent = stack.at(-1);
-    if (parent === undefined) {
-      throw configError(path, `Malformed YAML at line ${index + 1}`);
-    }
-    if (indent <= parent.indent) {
-      throw configError(path, `Malformed YAML indentation at line ${index + 1}`);
-    }
-
-    const [, key, rawValue] = match;
-    if (key === undefined || rawValue === undefined) {
-      throw configError(path, `Malformed YAML at line ${index + 1}`);
-    }
-
-    if (rawValue.trim() === "") {
-      const nested: Record<string, unknown> = {};
-      parent.value[key] = nested;
-      stack.push({ indent, value: nested });
-      continue;
-    }
-
-    parent.value[key] = parseScalar(rawValue, path);
+  try {
+    return parseMinimalYaml(text);
+  } catch (cause) {
+    if (cause instanceof MinimalYamlError) throw configError(path, cause.message);
+    throw cause;
   }
-
-  return root;
 };
 
 const ENV_OVERLAY_PREFIX = "LANDO_CONFIG__";
