@@ -70,8 +70,8 @@ const expectShellenvOutput = (stdout: string): void => {
   const lines = stdout.trim().split("\n");
 
   expect(lines).toHaveLength(2);
-  expect(lines[0]).toStartWith("export LANDO_INSTALL_DIR=");
-  expect(lines[1]).toBe('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
+  expect(lines[0]).toStartWith("export LANDO_USER_DATA_ROOT=");
+  expect(lines[1]).toBe('export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"');
 };
 
 describe("CLI version fast path", () => {
@@ -104,15 +104,18 @@ describe("CLI shellenv fast path", () => {
     const bundled = await buildBundledCli();
     const homeWithoutLando = await mkdtemp(join(tmpdir(), "lando-home-without-"));
     const homeWithLando = await mkdtemp(join(tmpdir(), "lando-home-with-"));
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-data-"));
 
     try {
       await mkdir(join(homeWithLando, ".lando"));
 
       const withoutLando = await runCommand([process.execPath, bundled.path, "shellenv"], {
         HOME: homeWithoutLando,
+        LANDO_USER_DATA_ROOT: userDataRoot,
       });
       const withLando = await runCommand([process.execPath, bundled.path, "shellenv"], {
         HOME: homeWithLando,
+        LANDO_USER_DATA_ROOT: userDataRoot,
       });
 
       expect(withoutLando.exitCode).toBe(0);
@@ -125,6 +128,7 @@ describe("CLI shellenv fast path", () => {
       await bundled.cleanup();
       await rm(homeWithoutLando, { recursive: true, force: true });
       await rm(homeWithLando, { recursive: true, force: true });
+      await rm(userDataRoot, { recursive: true, force: true });
     }
   });
 

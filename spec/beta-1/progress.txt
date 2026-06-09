@@ -37,3 +37,19 @@
 - Verification: typecheck, lint, full `bun test` (3202 pass / 27 skip / 0 fail) passed.
 - **Learnings for future iterations:** Classify-on-throw seams (probe catch) must not be re-classified by their callers; assert the precise error kind through the *command* path, not just the probe, or the regression hides behind a direct-probe unit test.
 ---
+## 2026-06-08 21:15 CDT - US-202 Verify
+- Built the compiled binary and verified US-202 end-to-end inside `lando4-dev`: `setup --provider=podman --yes` completed cleanly; missing custom CA and proxy-auth scenarios failed before provider work with distinct `SetupNetworkTrustError` messages/remediation naming `network.ca.certs`/`LANDO_NETWORK_CA_CERTS` and `network.proxy`/`HTTP_PROXY`/`HTTPS_PROXY`; `NO_PROXY=github.com` bypass allowed setup to complete; adjacent `meta:setup`, Docker-unavailable remediation, setup help, and doctor help smoked successfully.
+- Blocker recorded: default managed-runtime `./core/dist/lando setup --yes` currently fails before provider setup because the pinned placeholder runtime bundle URL (`https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-linux-x64.tar.gz`) returns 404. Verification used the supported existing Podman provider path to exercise US-202 without fabricating a pass for the unreleased managed bundle.
+---
+## 2026-06-08 21:30 CDT - Babysit
+- PR: #319 https://github.com/AaronFeledy/core4/pull/319
+- CI outcome: pass
+- Review feedback: fixed (guide-drift gate flagged provider-lando/file-sync-mutagen surface paths owned by alpha-3 PRDs; added a truthful `Guide-Coverage-Skip` PR-body line since the changes only thread shared proxy/TLS network config through existing download paths, then pushed an empty commit so CI re-read the updated body)
+- Merge: merged (squash)
+---
+## 2026-06-08 22:58 CDT - US-203
+- Shipped the setup privilege and shell PATH integration surface: setup now carries `PrivilegeService` through provider/CA setup, applies shell profile integration through the privilege seam with failure reporting, and the concrete privilege layer handles Linux sudo askpass helpers.
+- `lando shellenv` now emits safe, non-mutating `<userDataRoot>/bin` snippets for POSIX and PowerShell, with source/compiled validation parity for supported `--shell` values.
+- Verification: typecheck, lint, build, full tests, compiled shellenv CLI QA, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Shellenv stays a read-only stdout command; persistent shell profile changes belong to setup and must route through `PrivilegeService`, with compiled/source flag validation kept in parity.
+---

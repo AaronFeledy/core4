@@ -25,16 +25,8 @@ if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0]
 }
 
 if (argv.length === 1 && argv[0] === "shellenv") {
-  const { dirname } = await import("node:path");
-  const { fileURLToPath } = await import("node:url");
-  // `process.execPath` is the cross-platform equivalent of /proc/self/exe — it returns
-  // the absolute path of the currently running executable on Linux, macOS, and Windows.
-  const installDir = import.meta.url.includes("$bunfs")
-    ? dirname(process.execPath)
-    : fileURLToPath(new URL("..", import.meta.url)).replace(/[\\/]$/, "");
-
-  console.log(`export LANDO_INSTALL_DIR="${installDir}"`);
-  console.log('export PATH="${LANDO_INSTALL_DIR}/bin:${PATH}"');
+  const { renderShellenv } = await import("../src/cli/commands/shellenv.ts");
+  console.log(renderShellenv("posix"));
   process.exit(0);
 }
 

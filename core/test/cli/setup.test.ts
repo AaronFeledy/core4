@@ -11,6 +11,7 @@ import {
   ConfigService,
   FileSyncEngine,
   HostProxyService,
+  PrivilegeService,
   ProxyService,
   RuntimeProviderRegistry,
   SshService,
@@ -78,9 +79,15 @@ const buildSetupLayersWithHostIntegrations = (
     Layer.succeed(FileSyncEngine, services.fileSync),
   );
 
+const buildSetupLayersWithPrivilege = (
+  registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
+  privilege: Context.Tag.Service<typeof PrivilegeService>,
+  configOverrides: Partial<GlobalConfig> = {},
+): Layer.Layer<ConfigService | RuntimeProviderRegistry | PrivilegeService> =>
+  Layer.mergeAll(buildSetupLayers(registry, configOverrides), Layer.succeed(PrivilegeService, privilege));
+
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
-const binaryDir = resolve(coreRoot, "dist");
 const binaryPath = resolve(coreRoot, "dist/lando");
 
 interface RunResult {
@@ -272,6 +279,121 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
+  });
+
+  test("threads PrivilegeService into provider and CA setup and uses it for shell profile integration", async () => {
+    const elevated: ReadonlyArray<string>[] = [];
+    const privilege = {
+      elevate: (command: ReadonlyArray<string>) =>
+        Effect.sync(() => {
+          elevated.push([...command]);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+    };
+    const providerSetupOptions: unknown[] = [];
+    const caSetupOptions: unknown[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: (options: unknown) =>
+        Effect.sync(() => {
+          providerSetupOptions.push(options);
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+    const ca = {
+      ...makeTestCertificateAuthority(),
+      setup: (options: unknown) =>
+        Effect.sync(() => {
+          caSetupOptions.push(options);
+        }),
+    };
+
+    await Effect.runPromise(
+      setupSpec.run({ installDir: "/opt/lando" }).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            buildSetupLayersWithPrivilege(registry, privilege, {
+              userDataRoot: "/tmp/Lando User's Data",
+            }),
+            Layer.succeed(CertificateAuthority, ca),
+          ),
+        ),
+      ),
+    );
+
+    expect(providerSetupOptions).toEqual([expect.objectContaining({ privilege })]);
+    expect(caSetupOptions).toEqual([expect.objectContaining({ privilege })]);
+    expect(elevated).toHaveLength(1);
+    expect(elevated[0]?.join(" ")).toContain("LANDO shellenv");
+    expect(elevated[0]?.join(" ")).toContain("/tmp/Lando User");
+  });
+
+  test("skip-shell-integration avoids shell profile writes while still allowing CA trust options", async () => {
+    const elevated: ReadonlyArray<string>[] = [];
+    const privilege = {
+      elevate: (command: ReadonlyArray<string>) =>
+        Effect.sync(() => {
+          elevated.push([...command]);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () => Effect.void,
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { "skip-shell-integration": true } })
+        .pipe(
+          Effect.provide(
+            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
+          ),
+        ),
+    );
+
+    expect(elevated).toEqual([]);
+  });
+
+  test("fails setup when shell profile integration returns a nonzero exit", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () => Effect.void,
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+    const privilege = {
+      elevate: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "sudo denied" }),
+    };
+
+    const exit = await Effect.runPromiseExit(
+      setupSpec
+        .run({ installDir: "/opt/lando" })
+        .pipe(
+          Effect.provide(
+            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
+          ),
+        ),
+    );
+
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    expect(failure._tag === "Some" ? failure.value._tag : undefined).toBe("ShellProfileIntegrationError");
   });
 
   test("validates network trust before provider and file-sync downloads and honors config proxy precedence", async () => {
@@ -1192,7 +1314,7 @@ describe("meta:setup command", () => {
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled setup install dir", () => {
-  test("matches source setup failure output and reports the same compiled install dir as shellenv", async () => {
+  test("matches source setup failure output and keeps shellenv on the user data bin path", async () => {
     const build = await runCommand([process.execPath, "run", "build"]);
     expect(build.exitCode).toBe(0);
 
@@ -1203,12 +1325,13 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     };
     const source = await runCommand([process.execPath, sourceCliPath, "setup"], coreRoot, commandEnv);
     const compiled = await runCommand([binaryPath, "setup"], coreRoot, commandEnv);
-    const shellenv = await runCommand([binaryPath, "shellenv"]);
+    const shellenv = await runCommand([binaryPath, "shellenv"], coreRoot, commandEnv);
 
     expect(compiled.exitCode).toBe(source.exitCode);
     expect(compiled.stdout).toBe(source.stdout);
     expect(normalizeSetupFailure(compiled.stderr)).toBe(normalizeSetupFailure(source.stderr));
-    expect(shellenv.stdout).toContain(`LANDO_INSTALL_DIR="${binaryDir}"`);
+    expect(shellenv.stdout).toContain(`LANDO_USER_DATA_ROOT='${commandEnv.LANDO_USER_DATA_ROOT}'`);
+    expect(shellenv.stdout).toContain('export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"');
     expect(compiled.stderr).toContain(`LANDO_INSTALL_DIR="${dirname(binaryPath)}"`);
   }, 120_000);
 });

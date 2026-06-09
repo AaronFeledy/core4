@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Flags } from "@oclif/core";
-import { DateTime, Effect } from "effect";
+import { Data, DateTime, Effect } from "effect";
 
 import { makeMutagenDownloader } from "@lando/file-sync-mutagen";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -19,6 +19,7 @@ import {
   CertificateAuthority,
   ConfigService,
   FileSyncEngine,
+  PrivilegeService,
   ProxyService,
   RuntimeProviderRegistry,
   SshService,
@@ -36,6 +37,7 @@ import {
   makeSetupNetworkTrustProbe,
   validateSetupNetworkTrust,
 } from "../../../commands/setup-network-trust.ts";
+import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -46,6 +48,11 @@ interface SetupResult {
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
 }
+
+export class ShellProfileIntegrationError extends Data.TaggedError("ShellProfileIntegrationError")<{
+  readonly message: string;
+  readonly stderr: string;
+}> {}
 
 export const setupDeferredFileSyncPath = (userDataRoot: string): string =>
   join(userDataRoot, "setup", "file-sync-deferred.json");
@@ -182,6 +189,8 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
       const networkProbe = inputNetworkProbe(input) ?? makeSetupNetworkTrustProbe(inputNetworkFetch(input));
       const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe);
+      const privilege = yield* Effect.serviceOption(PrivilegeService);
+      const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
 
       const selectedProviderId = String(resolution.providerId);
       if (!inputBooleanFlag(input, "skip-provider")) {
@@ -194,6 +203,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
           provider.setup({
             force: false,
             network,
+            ...privilegeOptions,
             ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
           }),
         );
@@ -203,6 +213,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       if (ca._tag === "Some") {
         yield* ca.value.setup({
           force: false,
+          ...privilegeOptions,
           ...(inputBooleanFlag(input, "skip-install-ca") ? { skipTrustInstall: true } : {}),
         });
       }
@@ -224,6 +235,23 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       const userDataRootRaw = globalConfig.userDataRoot;
       const userDataRoot =
         typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+
+      if (
+        !inputBooleanFlag(input, "skip-shell-integration") &&
+        privilege._tag === "Some" &&
+        userDataRoot !== undefined
+      ) {
+        const shellProfile = yield* installShellProfileIntegration(userDataRoot, privilege.value);
+        if (shellProfile.exitCode !== 0) {
+          return yield* Effect.fail(
+            new ShellProfileIntegrationError({
+              message: "Shell profile integration failed.",
+              stderr: shellProfile.stderr,
+            }),
+          );
+        }
+      }
+
       let fileSyncStatus: SetupResult["fileSyncStatus"] = "satisfied";
 
       if (provider.capabilities.bindMountPerformance === "slow" && inputSkipFileSync(input)) {

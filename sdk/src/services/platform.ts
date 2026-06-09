@@ -12,10 +12,12 @@ import type {
   SshError,
 } from "../errors/index.ts";
 import type { AppId, HealthcheckPlan, RoutePlan, ServiceName } from "../schema/index.ts";
+import type { PrivilegeService } from "./process.ts";
 
 export interface CaSetupOptions {
   readonly force: boolean;
   readonly skipTrustInstall?: boolean;
+  readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
 }
 
 export interface CertificateSpec {

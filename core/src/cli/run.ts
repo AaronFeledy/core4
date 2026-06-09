@@ -95,6 +95,7 @@ import {
   scratchStop,
 } from "./commands/scratch.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
+import { normalizeShellenvShell, renderShellenv } from "./commands/shellenv.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
@@ -1279,11 +1280,31 @@ const runMetaVersion = async (): Promise<void> => {
   emitResultLine(`@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`);
 };
 
-const runMetaShellenv = (): void => {
-  const installDir = dirname(process.execPath);
-  emitResultLine(
-    `export LANDO_INSTALL_DIR="${installDir}"\nexport PATH="\${LANDO_INSTALL_DIR}/bin:\${PATH}"`,
-  );
+const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
+
+const shellenvShellFromArgv = (argv: ReadonlyArray<string>): string | undefined => {
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg.startsWith("--shell=")) return arg.slice("--shell=".length);
+    if (arg === "--shell") return argv[index + 1];
+  }
+  return undefined;
+};
+
+const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
+  const shell = shellenvShellFromArgv(argv);
+  if (argv.includes("--shell") && shell === undefined) {
+    emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh");
+    process.exitCode = 2;
+    return;
+  }
+  if (shell !== undefined && !SHELLENV_SHELLS.includes(shell as (typeof SHELLENV_SHELLS)[number])) {
+    emitDiagnosticLine(`Expected --shell=${shell} to be one of: posix, powershell, pwsh`);
+    process.exitCode = 2;
+    return;
+  }
+  emitResultLine(renderShellenv(normalizeShellenvShell(shell)));
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
@@ -1500,8 +1521,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if (argv[0] === "meta:shellenv") {
-    runMetaShellenv();
+  if (argv[0] === "shellenv" || argv[0] === "meta:shellenv") {
+    runMetaShellenv(argv.slice(1));
     return;
   }
 

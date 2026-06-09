@@ -3,15 +3,19 @@
  *
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
-import { fileURLToPath } from "node:url";
-
+import { Flags } from "@oclif/core";
 import { Effect } from "effect";
 
+import { normalizeShellenvShell, renderShellenv } from "../../../commands/shellenv.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-const installDir = fileURLToPath(new URL("../../../../../", import.meta.url)).replace(/[\\/]$/, "");
-const shellenvOutput = `export LANDO_INSTALL_DIR="${installDir}"
-export PATH="\${LANDO_INSTALL_DIR}/bin:\${PATH}"`;
+const inputShell = (input: unknown) => {
+  if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";
+  const flags = (input as { readonly flags?: unknown }).flags;
+  if (typeof flags !== "object" || flags === null || !("shell" in flags)) return "posix";
+  const shell = (flags as { readonly shell?: unknown }).shell;
+  return normalizeShellenvShell(typeof shell === "string" ? shell : undefined);
+};
 
 export const shellenvSpec: LandoCommandSpec<string> = {
   id: "meta:shellenv",
@@ -19,13 +23,16 @@ export const shellenvSpec: LandoCommandSpec<string> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "none",
-  run: () => Effect.succeed(shellenvOutput),
+  run: (input) => Effect.succeed(renderShellenv(inputShell(input))),
   render: (result) => (typeof result === "string" ? result : undefined),
 };
 
 export default class ShellenvCommand extends LandoCommandBase {
   static override description = shellenvSpec.summary;
   static override aliases = [...resolveTopLevelAliases(shellenvSpec)];
+  static override flags = {
+    shell: Flags.string({ options: ["posix", "powershell", "pwsh"], default: "posix" }),
+  };
   static override landoSpec: LandoCommandSpec = shellenvSpec;
   static override bootstrap = shellenvSpec.bootstrap;
 

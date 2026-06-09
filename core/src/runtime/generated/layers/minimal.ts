@@ -19,6 +19,7 @@ import { LoggerLive } from "../../../logging/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
+import { PrivilegeServiceLive } from "../../../services/privilege.ts";
 import { SecretStoreLive } from "../../../services/secret-store.ts";
 import {
   type BootstrapLayerInputs,
@@ -35,5 +36,6 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) =>
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,
+    PrivilegeServiceLive,
     SecretStoreLive,
   );

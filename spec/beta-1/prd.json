@@ -72,8 +72,8 @@
         "Lint passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Setup now threads PrivilegeService into provider and CA setup, applies shell profile integration through PrivilegeService with nonzero-result failure handling, provides askpass-aware Linux sudo planning, and exposes POSIX/PowerShell shellenv snippets for <userDataRoot>/bin with source/compiled validation parity."
     },
     {
       "id": "US-204",
