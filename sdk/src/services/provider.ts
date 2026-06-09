@@ -15,6 +15,7 @@ import type {
   AppPlan,
   EndpointPlan,
   HostPlatform,
+  NetworkConfig,
   ProviderCapabilities,
   ProviderId,
   ServiceName,
@@ -32,6 +33,7 @@ export type ProviderError =
 export interface ProviderSetupOptions {
   readonly force: boolean;
   readonly runtimeBundleUrl?: string;
+  readonly network?: NetworkConfig;
 }
 
 export interface ProviderStatus {

@@ -1507,6 +1507,62 @@
             }
           ]
         },
+        "network": {
+          "additionalProperties": false,
+          "properties": {
+            "ca": {
+              "additionalProperties": false,
+              "properties": {
+                "certs": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "trustHost": {
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "proxy": {
+              "additionalProperties": false,
+              "properties": {
+                "http": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "https": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "noProxy": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
         "renderer": {
           "type": "string"
         },

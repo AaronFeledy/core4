@@ -25,6 +25,7 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
+import { classifySetupNetworkFailure } from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
   setupDeferredFileSyncPath,
   setupSpec,
@@ -177,7 +178,11 @@ describe("meta:setup command", () => {
     );
 
     expect(setupOptions).toEqual([
-      { force: false, runtimeBundleUrl: "https://example.invalid/lando-runtime.zip" },
+      expect.objectContaining({
+        force: false,
+        runtimeBundleUrl: "https://example.invalid/lando-runtime.zip",
+        network: expect.objectContaining({ ca: expect.objectContaining({ certs: [] }) }),
+      }),
     ]);
   });
 
@@ -233,6 +238,263 @@ describe("meta:setup command", () => {
     );
 
     expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
+  });
+
+  test("validates network trust before provider and file-sync downloads and honors config proxy precedence", async () => {
+    const calls: string[] = [];
+    const observedProviderNetworks: unknown[] = [];
+    const observedFileSyncNetworks: unknown[] = [];
+    const previousHttpsProxy = process.env.HTTPS_PROXY;
+    const previousHttpProxy = process.env.HTTP_PROXY;
+    const previousNoProxy = process.env.NO_PROXY;
+    process.env.HTTPS_PROXY = "http://env-proxy.example:8080";
+    process.env.HTTP_PROXY = "http://env-http-proxy.example:8080";
+    process.env.NO_PROXY = "env.example";
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
+        setup: (options: { readonly network?: unknown }) =>
+          Effect.sync(() => {
+            observedProviderNetworks.push(options.network);
+            calls.push("provider");
+          }),
+      };
+      const fileSync = {
+        ...TestFileSyncEngine,
+        setup: (options: { readonly network?: unknown }) =>
+          Effect.sync(() => {
+            observedFileSyncNetworks.push(options.network);
+            calls.push("file-sync");
+          }),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec
+          .run({
+            installDir: "/opt/lando",
+            _networkProbe: (network: {
+              readonly proxy: { readonly https?: string; readonly noProxy: readonly string[] };
+            }) =>
+              Effect.sync(() => {
+                expect(network.proxy.https).toBe("http://config-proxy.example:8080");
+                expect(network.proxy.noProxy).toEqual(["config.example"]);
+                calls.push("network");
+              }),
+          })
+          .pipe(
+            Effect.provide(
+              buildSetupLayersWithHostIntegrations(
+                registry,
+                {
+                  ca: makeTestCertificateAuthority(),
+                  proxy: makeTestProxyService(),
+                  ssh: makeTestSshService(),
+                  fileSync,
+                },
+                {
+                  network: {
+                    proxy: {
+                      https: "http://config-proxy.example:8080",
+                      noProxy: ["config.example"],
+                    },
+                    ca: { certs: [], trustHost: true },
+                  },
+                } as Partial<GlobalConfig>,
+              ),
+            ),
+          ),
+      );
+
+      expect(calls).toEqual(["network", "provider", "file-sync"]);
+      expect(observedProviderNetworks).toEqual(observedFileSyncNetworks);
+      expect(observedProviderNetworks[0]).toMatchObject({
+        proxy: { https: "http://config-proxy.example:8080", noProxy: ["config.example"] },
+      });
+    } finally {
+      if (previousHttpsProxy === undefined) Reflect.deleteProperty(process.env, "HTTPS_PROXY");
+      else process.env.HTTPS_PROXY = previousHttpsProxy;
+      if (previousHttpProxy === undefined) Reflect.deleteProperty(process.env, "HTTP_PROXY");
+      else process.env.HTTP_PROXY = previousHttpProxy;
+      if (previousNoProxy === undefined) Reflect.deleteProperty(process.env, "NO_PROXY");
+      else process.env.NO_PROXY = previousNoProxy;
+    }
+  });
+
+  test("loads configured and environment CA certificate files before provider setup", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-"));
+    const configCert = join(tempRoot, "config.pem");
+    const envCert = join(tempRoot, "env.pem");
+    await Bun.write(configCert, "-----BEGIN CERTIFICATE-----\nconfig\n-----END CERTIFICATE-----\n");
+    await Bun.write(envCert, "-----BEGIN CERTIFICATE-----\nenv\n-----END CERTIFICATE-----\n");
+    const previous = process.env.LANDO_NETWORK_CA_CERTS;
+    process.env.LANDO_NETWORK_CA_CERTS = JSON.stringify([envCert]);
+    const calls: string[] = [];
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: () =>
+          Effect.sync(() => {
+            calls.push("provider");
+          }),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec
+          .run({
+            installDir: "/opt/lando",
+            _networkProbe: (network: {
+              readonly ca: {
+                readonly certs: readonly string[];
+                readonly loadedCerts: readonly { readonly path: string }[];
+              };
+            }) =>
+              Effect.sync(() => {
+                expect(network.ca.certs).toEqual([configCert, envCert]);
+                expect(network.ca.loadedCerts.map((cert) => cert.path)).toEqual([configCert, envCert]);
+                calls.push("network");
+              }),
+          })
+          .pipe(
+            Effect.provide(
+              buildSetupLayers(registry, {
+                network: { ca: { certs: [configCert], trustHost: true } },
+              } as Partial<GlobalConfig>),
+            ),
+          ),
+      );
+
+      expect(calls).toEqual(["network", "provider"]);
+    } finally {
+      if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_NETWORK_CA_CERTS");
+      else process.env.LANDO_NETWORK_CA_CERTS = previous;
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("uses proxy environment variables when network.proxy config is unset", async () => {
+    const previousHttpsProxy = process.env.HTTPS_PROXY;
+    const previousHttpProxy = process.env.HTTP_PROXY;
+    const previousNoProxy = process.env.NO_PROXY;
+    process.env.HTTPS_PROXY = "http://env-https-proxy.example:8080";
+    process.env.HTTP_PROXY = "http://env-http-proxy.example:8080";
+    process.env.NO_PROXY = "localhost,internal.example";
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec
+          .run({
+            installDir: "/opt/lando",
+            _networkProbe: (network: {
+              readonly proxy: {
+                readonly http?: string;
+                readonly https?: string;
+                readonly noProxy: readonly string[];
+              };
+            }) =>
+              Effect.sync(() => {
+                expect(network.proxy).toEqual({
+                  http: "http://env-http-proxy.example:8080",
+                  https: "http://env-https-proxy.example:8080",
+                  noProxy: ["localhost", "internal.example"],
+                });
+              }),
+          })
+          .pipe(Effect.provide(buildSetupLayers(registry))),
+      );
+    } finally {
+      if (previousHttpsProxy === undefined) Reflect.deleteProperty(process.env, "HTTPS_PROXY");
+      else process.env.HTTPS_PROXY = previousHttpsProxy;
+      if (previousHttpProxy === undefined) Reflect.deleteProperty(process.env, "HTTP_PROXY");
+      else process.env.HTTP_PROXY = previousHttpProxy;
+      if (previousNoProxy === undefined) Reflect.deleteProperty(process.env, "NO_PROXY");
+      else process.env.NO_PROXY = previousNoProxy;
+    }
+  });
+
+  test("classifies setup network probe failures with actionable remediation", () => {
+    const cases = [
+      ["HTTP 407 Proxy Authentication Required", "proxy-authentication", "HTTP_PROXY"],
+      ["self signed certificate in certificate chain", "tls-interception", "LANDO_NETWORK_CA_CERTS"],
+      ["connect ETIMEDOUT github.com", "blocked-registry", "network.proxy"],
+    ] as const;
+
+    for (const [message, kind, remediationNeedle] of cases) {
+      const error = classifySetupNetworkFailure(new Error(message));
+      expect(error.kind).toBe(kind);
+      expect(error.remediation).toContain(remediationNeedle);
+    }
+  });
+
+  test("fails with missing custom CA remediation before long-download setup starts", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-missing-"));
+    const missingCert = join(tempRoot, "missing.pem");
+    let setupCalls = 0;
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: () =>
+          Effect.sync(() => {
+            setupCalls += 1;
+          }),
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const exit = await Effect.runPromiseExit(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(registry, {
+              network: { ca: { certs: [missingCert], trustHost: true } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag !== "Failure") throw new Error("expected failure");
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag !== "Some") throw new Error("expected a typed failure");
+      const error = failure.value as {
+        readonly _tag?: string;
+        readonly kind?: string;
+        readonly remediation?: string;
+      };
+      expect(error._tag).toBe("SetupNetworkTrustError");
+      expect(error.kind).toBe("missing-custom-ca");
+      expect(error.remediation ?? "").toContain("network.ca.certs");
+      expect(error.remediation ?? "").toContain("LANDO_NETWORK_CA_CERTS");
+      expect(setupCalls).toBe(0);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   test("reports file sync as already satisfied for native bind-mount providers", async () => {

@@ -540,6 +540,41 @@ describe("makeMutagenDownloader().setup()", () => {
     }
   });
 
+  test("passes resolved setup proxy and custom CA settings to Bun fetch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-test-network-"));
+    const fetchInits: BunFetchRequestInit[] = [];
+    const networkFetch: typeof fetch = ((
+      input: RequestInfo | URL,
+      init?: BunFetchRequestInit,
+    ): Promise<Response> => {
+      if (init !== undefined) fetchInits.push(init);
+      return fakeFetch()(input);
+    }) as typeof fetch;
+    try {
+      const downloader = makeMutagenDownloader();
+      const exit = await run(
+        downloader.setup({
+          userDataRoot: dir,
+          _testManifest: TEST_MANIFEST,
+          fetchImpl: networkFetch,
+          extractImpl: fakeExtract(),
+          network: {
+            proxy: { https: "http://proxy.example:8080", noProxy: [] },
+            ca: { trustHost: true, certs: ["/corp.pem"], loadedCerts: [{ pem: "CORP PEM" }] },
+          },
+        }),
+      );
+
+      expect(exit._tag).toBe("Success");
+      expect(fetchInits[0]).toMatchObject({
+        proxy: "http://proxy.example:8080",
+        tls: { ca: ["CORP PEM"] },
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("installed status requires marker plus host and agent binaries", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-test-"));
     try {

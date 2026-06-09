@@ -19,3 +19,8 @@
 - Built the compiled binary successfully with `cd core && bun run build`, but real setup/scenario verification could not run because the required `lando4-dev` sandbox entry path is unavailable from this shell: `.local/bin/lando4-dev --check` exits 127 with `wsl.exe is not available from this shell; run from the host distro`.
 - Blocker recorded: host-safety rules prohibit running `./core/dist/lando setup` or container/runtime scenarios on the host distro, so Verify cannot honestly pass until sandbox access is restored.
 ---
+## 2026-06-08 18:59 CDT - US-202
+- Implemented setup network-trust preflight so `lando setup` resolves proxy and CA settings before provider or Mutagen download work, fails early with classified remediation, and threads resolved proxy/TLS options into the Lando runtime bundle and Mutagen downloader fetch paths.
+- Verification: typecheck, lint, targeted setup/download/SDK compatibility tests, compiled parity targets, and serial full test suite passed.
+- **Learnings for future iterations:** Setup download paths should consume one resolved network-trust object from the setup preflight; plugin downloaders can use Bun fetch's `proxy` and `tls.ca` options directly while still respecting `NO_PROXY` bypasses.
+---

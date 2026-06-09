@@ -5,13 +5,55 @@ import { dirname, join, relative, resolve } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import type { HostPlatform } from "@lando/sdk/schema";
+import type { HostPlatform, NetworkConfig } from "@lando/sdk/schema";
 
 import manifestData from "../runtime-bundle-versions.json" with { type: "json" };
 
 import type { RuntimeBundle, RuntimeBundleDownloader } from "./setup.ts";
 
 const PROVIDER_ID = "lando";
+
+interface LoadedNetworkCaCert {
+  readonly pem: string;
+}
+
+type RuntimeBundleNetworkConfig = NetworkConfig & {
+  readonly ca?:
+    | (NonNullable<NetworkConfig["ca"]> & {
+        readonly loadedCerts?: ReadonlyArray<LoadedNetworkCaCert>;
+      })
+    | undefined;
+};
+
+const fetchInitForNetwork = (
+  url: string,
+  network: RuntimeBundleNetworkConfig | undefined,
+): BunFetchRequestInit | undefined => {
+  const parsedUrl = new URL(url);
+  const host = parsedUrl.hostname.toLowerCase();
+  const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
+  const hostWithPort = `${host}:${port}`;
+  const bypassProxy =
+    network?.proxy?.noProxy.some((raw) => {
+      const pattern = raw.toLowerCase();
+      if (pattern === "*") return true;
+      if (pattern === host || pattern === hostWithPort) return true;
+      if (pattern.startsWith(".")) return host.endsWith(pattern);
+      return host.endsWith(`.${pattern}`);
+    }) ?? false;
+  const proxyCandidate = bypassProxy
+    ? undefined
+    : parsedUrl.protocol === "https:"
+      ? (network?.proxy?.https ?? network?.proxy?.http)
+      : (network?.proxy?.http ?? network?.proxy?.https);
+  const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
+  const ca = network?.ca?.loadedCerts?.map((cert) => cert.pem);
+  if (proxy === undefined && (ca === undefined || ca.length === 0)) return undefined;
+  return {
+    ...(proxy === undefined ? {} : { proxy }),
+    ...(ca === undefined || ca.length === 0 ? {} : { tls: { ca } }),
+  };
+};
 
 export class ProviderBundleChecksumError extends ProviderUnavailableError {
   constructor(message: string, cause?: unknown) {
@@ -129,6 +171,7 @@ export interface RuntimeBundleDownloaderOptions {
   readonly stateDir: string;
   readonly entry: RuntimeBundleEntry;
   readonly runtimeVersion: string;
+  readonly network?: RuntimeBundleNetworkConfig;
   /** Injectable for tests. Defaults to `globalThis.fetch` (Bun built-in). */
   readonly fetchImpl?: typeof fetch;
 }
@@ -153,7 +196,7 @@ export const makeRuntimeBundleDownloader = (
 
     const fetched = yield* Effect.tryPromise({
       try: async () => {
-        const response = await fetchImpl(entry.url);
+        const response = await fetchImpl(entry.url, fetchInitForNetwork(entry.url, options.network));
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} ${response.statusText} while fetching ${entry.url}`);
         }
@@ -218,6 +261,7 @@ export interface DefaultRuntimeBundleDownloaderOptions {
   readonly platform?: HostPlatform;
   readonly arch?: string;
   readonly url?: string;
+  readonly network?: RuntimeBundleNetworkConfig;
   /** Injectable for tests. Defaults to `globalThis.fetch` (Bun built-in). */
   readonly fetchImpl?: typeof fetch;
 }
@@ -237,6 +281,7 @@ export const makeDefaultRuntimeBundleDownloader = (
       stateDir: options.stateDir,
       entry: options.url === undefined ? entry : { ...entry, url: options.url },
       runtimeVersion: RUNTIME_BUNDLE_MANIFEST.runtimeVersion,
+      ...(options.network === undefined ? {} : { network: options.network }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     });
     return yield* inner.download;
