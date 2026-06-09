@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -57,24 +57,35 @@ describe("meta:uninstall", () => {
       dryRun: false,
       yes: true,
     });
+    expect(uninstallOptionsFromInput({ flags: { yes: true, "keep-data": true } })).toMatchObject({
+      keepData: true,
+      purge: false,
+    });
+    expect(uninstallOptionsFromInput({ flags: { yes: true, purge: true } })).toMatchObject({
+      keepData: false,
+      purge: true,
+    });
   });
 
-  test("dry-run renders every uninstall step without mutating roots", async () => {
+  test("dry-run renders every uninstall step and previews the default keep-data mode", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       writeFileSync(join(root, "lando"), "binary", "utf-8");
+      const providerRuntime = join(userDataRoot, "providers", "lando");
       const result = await Effect.runPromise(
         metaUninstallSpec.run({
           flags: { "dry-run": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
-          _exists: (path: string) => path === userDataRoot || path === userCacheRoot,
+          _exists: (path: string) =>
+            path === providerRuntime || path === userDataRoot || path === userCacheRoot,
         }),
       );
 
       const output = formatUninstallResult(result);
       expect(output).toContain("uninstall plan (dry-run)");
+      expect(output).toContain("mode: keep-data");
       expect(output).toContain("managed provider runtime");
       expect(output).toContain("managed provider machines");
       expect(output).toContain("Mutagen binary");
@@ -88,8 +99,48 @@ describe("meta:uninstall", () => {
       expect(output).toContain("user cache root");
       expect(output).toContain("owned by Lando");
       expect(output).toContain("user-owned");
-      expect(output).toContain("skipped");
       expect(output).toContain("manual remediation");
+      expect(result.steps.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
+        status: "owned",
+      });
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        status: "skipped",
+      });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
+        status: "skipped",
+      });
+      expect(result.steps.find((step) => step.id === "global-app-state")).toMatchObject({
+        status: "skipped",
+      });
+      expect(output).toContain("rerun with --purge");
+      expect(await Bun.file(userDataRoot).exists()).toBe(false);
+      expect(await Bun.file(userCacheRoot).exists()).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("dry-run --purge previews data and cache roots as owned", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { "dry-run": true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _exists: (path: string) => path === userDataRoot || path === userCacheRoot,
+        }),
+      );
+
+      const output = formatUninstallResult(result);
+      expect(output).toContain("mode: purge");
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        status: "owned",
+      });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
+        status: "owned",
+      });
       expect(await Bun.file(userDataRoot).exists()).toBe(false);
       expect(await Bun.file(userCacheRoot).exists()).toBe(false);
     } finally {
@@ -152,6 +203,175 @@ describe("meta:uninstall", () => {
     });
   });
 
+  test("confirmed --keep-data removes owned toolchain entries but preserves data roots", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtime = join(userDataRoot, "providers", "lando");
+      const mutagen = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
+      const agents = join(userDataRoot, "bin", "mutagen-agents");
+      const globalState = join(userDataRoot, "global");
+      const binary = join(userDataRoot, "bin", "lando");
+      for (const path of [runtime, agents, globalState, userCacheRoot]) mkdirSync(path, { recursive: true });
+      writeFileSync(mutagen, "mutagen", "utf-8");
+      writeFileSync(binary, "lando", "utf-8");
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, "keep-data": true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: binary,
+        }),
+      );
+
+      expect(result.refused).toBe(false);
+      expect(existsSync(runtime)).toBe(false);
+      expect(existsSync(mutagen)).toBe(false);
+      expect(existsSync(agents)).toBe(false);
+      expect(existsSync(binary)).toBe(false);
+      expect(existsSync(userDataRoot)).toBe(true);
+      expect(existsSync(globalState)).toBe(true);
+      expect(existsSync(userCacheRoot)).toBe(true);
+      expect(result.steps.find((step) => step.id === "global-app-state")).toMatchObject({
+        status: "skipped",
+      });
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({ status: "skipped" });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({ status: "skipped" });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("confirmed --purge removes owned data and cache roots", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const binary = join(userDataRoot, "bin", "lando");
+      mkdirSync(join(userDataRoot, "global"), { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+      mkdirSync(join(userDataRoot, "bin"), { recursive: true });
+      writeFileSync(binary, "lando", "utf-8");
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: binary,
+        }),
+      );
+
+      expect(result.refused).toBe(false);
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(userCacheRoot)).toBe(false);
+      expect(formatUninstallResult(result)).toContain("removed");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("user-owned installed binary stays manual during confirmed purge", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const binary = join(root, "usr-local-bin-lando");
+      mkdirSync(userDataRoot, { recursive: true });
+      writeFileSync(binary, "lando", "utf-8");
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: binary,
+        }),
+      );
+
+      expect(existsSync(binary)).toBe(true);
+      expect(result.steps.find((step) => step.id === "installed-binary")).toMatchObject({
+        status: "user-owned",
+        outcome: "manual",
+      });
+      expect(formatUninstallResult(result)).toContain(`Remove ${binary} manually`);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("partial failures write a resumable uninstall report", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const runtime = join(userDataRoot, "providers", "lando");
+      const mutagen = join(userDataRoot, "bin", process.platform === "win32" ? "mutagen.exe" : "mutagen");
+      mkdirSync(runtime, { recursive: true });
+      mkdirSync(join(userDataRoot, "bin"), { recursive: true });
+      writeFileSync(mutagen, "mutagen", "utf-8");
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, "keep-data": true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _remove: async (path: string) => {
+            if (path === runtime) throw new Error("locked runtime");
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+
+      expect(result.failed).toBe(true);
+      expect(result.reportPath).toBe(join(userDataRoot, "uninstall", "report.json"));
+      const report = JSON.parse(readFileSync(result.reportPath, "utf-8"));
+      expect(report.status).toBe("failed");
+      expect(report.steps).toContainEqual(
+        expect.objectContaining({ id: "managed-provider-runtime", outcome: "failed" }),
+      );
+      expect(report.steps).toContainEqual(
+        expect.objectContaining({ id: "mutagen-binary", outcome: "completed" }),
+      );
+      expect(report.steps).toContainEqual(
+        expect.objectContaining({ id: "installed-binary", outcome: "manual" }),
+      );
+      expect(formatUninstallResult(result)).toContain("uninstall incomplete");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("purge failure after data-root removal does not recreate the data root for the report", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(join(userDataRoot, "global"), { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _remove: async (path: string) => {
+            if (path === userCacheRoot) throw new Error("locked cache root");
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+
+      expect(result.failed).toBe(true);
+      expect(result.reportPath).toBeUndefined();
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(join(userDataRoot, "uninstall"))).toBe(false);
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
+        outcome: "failed",
+      });
+      expect(formatUninstallResult(result)).toContain("Partial failure report: unavailable");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("source CLI dry-run and refusal exercise the real command surface", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
@@ -169,6 +389,11 @@ describe("meta:uninstall", () => {
       expect(refused.exitCode).toBe(1);
       expect(refused.stdout).toContain("uninstall refused");
       expect(refused.stdout).toContain("Rerun `lando uninstall --yes` after reviewing this plan.");
+
+      const keepData = await runCli(["uninstall", "--yes", "--keep-data"], env);
+      expect(keepData.exitCode).toBe(0);
+      expect(keepData.stdout).toContain("uninstall complete");
+      expect(keepData.stdout).toContain("mode: keep-data");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

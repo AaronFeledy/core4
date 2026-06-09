@@ -16,14 +16,21 @@ export const uninstallOptionsFromInput = (input: unknown): UninstallOptions => {
     readonly _userCacheRoot?: unknown;
     readonly _execPath?: unknown;
     readonly _exists?: unknown;
+    readonly _remove?: unknown;
   };
+  const purge = flags.purge === true;
   return {
     dryRun: flags["dry-run"] === true,
     yes: flags.yes === true,
+    keepData: flags["keep-data"] === true && !purge,
+    purge,
     ...(typeof extra._userDataRoot === "string" ? { userDataRoot: extra._userDataRoot } : {}),
     ...(typeof extra._userCacheRoot === "string" ? { userCacheRoot: extra._userCacheRoot } : {}),
     ...(typeof extra._execPath === "string" ? { execPath: extra._execPath } : {}),
     ...(typeof extra._exists === "function" ? { exists: extra._exists as (path: string) => boolean } : {}),
+    ...(typeof extra._remove === "function"
+      ? { remove: extra._remove as (path: string) => Promise<void> }
+      : {}),
   };
 };
 
@@ -48,6 +55,14 @@ export default class MetaUninstallCommand extends LandoCommandBase {
     yes: Flags.boolean({
       char: "y",
       description: "Confirm destructive uninstall execution after reviewing the plan.",
+      default: false,
+    }),
+    "keep-data": Flags.boolean({
+      description: "Remove Lando-owned toolchain files while preserving app data and global state.",
+      default: false,
+    }),
+    purge: Flags.boolean({
+      description: "Remove Lando-owned toolchain files and data roots after confirmation.",
       default: false,
     }),
   };

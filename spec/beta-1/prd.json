@@ -126,8 +126,8 @@
         "Lint passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "`lando uninstall --yes --keep-data` now removes owned toolchain targets while preserving user data roots, global app state, and app-affecting caches; `--purge` opts into deleting owned data/cache roots; user-owned binaries remain manual; partial failures write a resumable uninstall report with per-step outcomes."
     },
     {
       "id": "US-207",

@@ -2554,6 +2554,18 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        "keep-data": {
+          description: "Remove Lando-owned toolchain files while preserving app data and global state.",
+          name: "keep-data",
+          allowNo: false,
+          type: "boolean",
+        },
+        purge: {
+          description: "Remove Lando-owned toolchain files and data roots after confirmation.",
+          name: "purge",
+          allowNo: false,
+          type: "boolean",
+        },
       },
       hasDynamicHelp: false,
       hidden: false,
