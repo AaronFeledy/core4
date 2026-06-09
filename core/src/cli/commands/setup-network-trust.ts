@@ -255,8 +255,8 @@ export const validateSetupNetworkTrust = (
 ): Effect.Effect<ResolvedSetupNetworkTrust, SetupNetworkTrustError> =>
   Effect.gen(function* () {
     const resolved = yield* resolveSetupNetworkTrust(config);
-    yield* (probe ?? defaultSetupNetworkTrustProbe)(resolved).pipe(
-      Effect.mapError(classifySetupNetworkFailure),
-    );
+    // Probe already returns a classified SetupNetworkTrustError; re-classifying its
+    // generic message here would downgrade proxy-authentication to blocked-registry.
+    yield* (probe ?? defaultSetupNetworkTrustProbe)(resolved);
     return resolved;
   });

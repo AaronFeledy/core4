@@ -592,6 +592,57 @@ describe("meta:setup command", () => {
     expect(failure.value.kind).toBe("proxy-authentication");
   });
 
+  test("preserves proxy authentication classification through the full setup path", async () => {
+    let setupCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const exit = await Effect.runPromiseExit(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          _networkFetch: async () =>
+            new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
+        })
+        .pipe(
+          Effect.provide(
+            buildSetupLayers(registry, {
+              network: {
+                proxy: { https: "http://proxy.example:8080", noProxy: [] },
+                ca: { certs: [], trustHost: true },
+              },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("expected proxy authentication failure");
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
+    const error = failure.value as {
+      readonly _tag?: string;
+      readonly kind?: string;
+      readonly remediation?: string;
+    };
+    expect(error._tag).toBe("SetupNetworkTrustError");
+    expect(error.kind).toBe("proxy-authentication");
+    expect(error.remediation ?? "").toContain("network.proxy");
+    expect(setupCalls).toBe(0);
+  });
+
   test("fails with missing custom CA remediation before long-download setup starts", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-network-ca-missing-"));
     const missingCert = join(tempRoot, "missing.pem");

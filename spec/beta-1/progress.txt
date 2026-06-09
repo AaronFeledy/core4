@@ -29,3 +29,9 @@
 - Verification: focused setup tests, setup CLI help surface, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:** Network-dependent setup behavior should keep the resolver pure and inject only the fetch/probe seam in command tests; this proves ordering and proxy/TLS options without requiring real corporate network infrastructure.
 ---
+## 2026-06-08 21:10 CDT - US-202 Review
+- Fixed a misclassification in the setup network-trust preflight: `validateSetupNetworkTrust` re-ran `classifySetupNetworkFailure` on the probe's already-classified error, so through the real `lando setup` path an HTTP 407 proxy-authentication failure was downgraded to `blocked-registry` (wrong remediation, violating AC4/AC5). The existing 407 test only exercised the probe directly and missed it. Removed the redundant re-classification and added a full-path regression test asserting the `proxy-authentication` kind survives to the command boundary.
+- Review notes: AC1 config-proxy-precedence is all-or-nothing (a partial `network.proxy` ignores env for the unset field) — accepted as a reasonable block-level precedence reading, not a blocker. `fetchInitForNetwork` is duplicated across core + the two plugin packages — accepted given the package boundaries (no shared seam without new SDK surface).
+- Verification: typecheck, lint, full `bun test` (3202 pass / 27 skip / 0 fail) passed.
+- **Learnings for future iterations:** Classify-on-throw seams (probe catch) must not be re-classified by their callers; assert the precise error kind through the *command* path, not just the probe, or the regression hides behind a direct-probe unit test.
+---
