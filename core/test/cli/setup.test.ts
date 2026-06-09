@@ -609,33 +609,51 @@ describe("meta:setup command", () => {
   });
 
   test("fails setup when shell profile integration returns a nonzero exit", async () => {
-    const provider = {
-      ...TestRuntimeProvider,
-      id: "lando",
-      setup: () => Effect.void,
-    };
-    const registry = {
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    };
-    const privilege = {
-      elevate: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "sudo denied" }),
-    };
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-profile-fail-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+      const privilege = {
+        elevate: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "sudo denied" }),
+      };
 
-    const exit = await Effect.runPromiseExit(
-      setupSpec
-        .run({ installDir: "/opt/lando" })
-        .pipe(
-          Effect.provide(
-            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
-          ),
-        ),
-    );
+      const exit = await Effect.runPromiseExit(
+        setupSpec
+          .run({ installDir: "/opt/lando" })
+          .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot }))),
+      );
 
-    const failure = Cause.failureOption(exit.cause);
-    expect(failure._tag).toBe("Some");
-    expect(failure._tag === "Some" ? failure.value._tag : undefined).toBe("ShellProfileIntegrationError");
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+          readonly remediation?: string;
+        }>;
+      };
+      const shellSteps = readiness.steps.filter((step) => step.id === "shell");
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      expect(failure._tag === "Some" ? failure.value._tag : undefined).toBe("ShellProfileIntegrationError");
+      expect(shellSteps).toHaveLength(1);
+      expect(shellSteps[0]).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          evidence: expect.stringContaining("sudo denied"),
+          remediation: expect.stringContaining("sudo denied"),
+        }),
+      );
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
   });
 
   test("validates network trust before provider and file-sync downloads and honors config proxy precedence", async () => {

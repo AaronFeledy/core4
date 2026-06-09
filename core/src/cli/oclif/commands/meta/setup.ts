@@ -203,7 +203,9 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
       const readinessSteps: SetupReadinessStep[] = [];
       const recordReadiness = (step: SetupReadinessStep): Effect.Effect<void, never> => {
-        readinessSteps.push(step);
+        const existingIndex = readinessSteps.findIndex((candidate) => candidate.id === step.id);
+        if (existingIndex === -1) readinessSteps.push(step);
+        else readinessSteps[existingIndex] = step;
         return writeSetupReadiness(userDataRoot, selectedProviderId, readinessSteps);
       };
       const recordFailure = (id: string, cause: unknown): Effect.Effect<void, never> =>
