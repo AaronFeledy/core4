@@ -53,3 +53,9 @@
 - Verification: typecheck, lint, build, full tests, compiled shellenv CLI QA, and Oracle reviewer gate passed.
 - **Learnings for future iterations:** Shellenv stays a read-only stdout command; persistent shell profile changes belong to setup and must route through `PrivilegeService`, with compiled/source flag validation kept in parity.
 ---
+## 2026-06-09 11:04 CDT - US-204
+- Completed setup readiness reporting: setup writes atomic per-step evidence, preserves failed partial summaries, successful reruns replace interrupted readiness with a ready summary, and doctor renders the latest redacted setup-readiness diagnostic for support triage.
+- Verification: focused setup/doctor tests, typecheck, lint, full tests, and source CLI doctor QA passed.
+- **Learnings for future iterations:**
+  - Read persisted diagnostic summaries through a sanitizing seam; persisted files may be hand-edited or come from older versions, so renderers should not assume secrets were redacted at write time.
+---

@@ -26,6 +26,7 @@ import {
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
+import { type SetupReadinessSummary, readSetupReadiness } from "./setup-readiness.ts";
 
 export type DoctorError =
   | ConfigError
@@ -281,6 +282,58 @@ const buildFileSyncDoctorCheck = (
     } satisfies DoctorCheck;
   });
 
+const setupReadinessStepContextKey = (id: string): string =>
+  `step${id
+    .split("-")
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join("")}`;
+
+const buildSetupReadinessDoctorCheck = (
+  summary: SetupReadinessSummary,
+  provider: { readonly id: string; readonly displayName: string; readonly version: string },
+  selection?: DoctorSelectionRecord,
+): DoctorCheck => {
+  const failedStep = summary.steps.find((step) => step.status === "failed" || step.status === "unavailable");
+  const status: DoctorStatus = summary.status === "ready" ? "pass" : "warn";
+  const context: Record<string, string> = {
+    providerId: provider.id,
+    providerKind: providerKindFor(provider.id),
+    providerVersion: provider.version,
+    setupStatus: summary.status,
+    updatedAt: summary.updatedAt,
+  };
+  if (failedStep !== undefined) context.lastFailedStep = failedStep.id;
+  for (const step of summary.steps) {
+    context[setupReadinessStepContextKey(step.id)] = step.status;
+    if (step.status === "failed" || step.status === "unavailable")
+      context[`${setupReadinessStepContextKey(step.id)}Evidence`] = step.evidence;
+  }
+  return {
+    name: "setup-readiness",
+    status,
+    severity: status === "pass" ? "info" : "warn",
+    providerId: provider.id,
+    providerName: provider.displayName,
+    providerVersion: provider.version,
+    providerKind: providerKindFor(provider.id),
+    runtimeStatus: summary.status,
+    runtime: { running: summary.status === "ready", message: summary.status },
+    capabilities: {},
+    context,
+    solutions:
+      failedStep === undefined
+        ? []
+        : [
+            {
+              kind: "manual" as const,
+              description: failedStep.remediation ?? "Rerun `lando setup` to resume host setup.",
+              command: "lando setup",
+            },
+          ],
+    ...(selection === undefined ? {} : { selection }),
+  };
+};
+
 export const doctor = (
   options: DoctorOptions = {},
 ): Effect.Effect<DoctorResult, DoctorError, ConfigService | RuntimeProviderRegistry> =>
@@ -384,7 +437,18 @@ export const doctor = (
           })
         : [];
 
-    return { checks: [primaryCheck, ...conflictChecks, ...fileSyncChecks] };
+    const userDataRootRaw = yield* configService
+      .get("userDataRoot")
+      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const userDataRoot =
+      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    const setupReadiness = yield* readSetupReadiness(userDataRoot);
+    const setupReadinessChecks: ReadonlyArray<DoctorCheck> =
+      setupReadiness === undefined
+        ? []
+        : [buildSetupReadinessDoctorCheck(setupReadiness, provider, selection)];
+
+    return { checks: [primaryCheck, ...conflictChecks, ...fileSyncChecks, ...setupReadinessChecks] };
   });
 
 const renderCapabilityValue = (value: unknown): string => {
@@ -421,6 +485,12 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
   ];
   if (check.runtime.version !== undefined) lines.push(`runtimeVersion: ${check.runtime.version}`);
   if (check.selection !== undefined) lines.push(...renderSelectionLines(check.selection));
+  if (check.name === "setup-readiness") {
+    for (const [field, value] of Object.entries(check.context)) {
+      if (field === "providerId" || field === "providerKind" || field === "providerVersion") continue;
+      lines.push(`${field}: ${value}`);
+    }
+  }
   for (const [field, value] of Object.entries(check.capabilities)) {
     lines.push(`${field}: ${renderCapabilityValue(value)}`);
   }
@@ -446,6 +516,16 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "providerKind",
   "providerVersion",
   "runtimeStatus",
+  "setupStatus",
+  "updatedAt",
+  "lastFailedStep",
+  "stepProvider",
+  "stepCa",
+  "stepProxy",
+  "stepProxyEvidence",
+  "stepShell",
+  "stepFileSync",
+  "stepFileSyncEvidence",
   "runtimeVersion",
   "bundleVersion",
   "platform",

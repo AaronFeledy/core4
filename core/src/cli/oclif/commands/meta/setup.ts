@@ -37,6 +37,12 @@ import {
   makeSetupNetworkTrustProbe,
   validateSetupNetworkTrust,
 } from "../../../commands/setup-network-trust.ts";
+import {
+  type SetupReadinessStep,
+  setupFailureEvidence,
+  setupFailureRemediation,
+  writeSetupReadiness,
+} from "../../../commands/setup-readiness.ts";
 import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
@@ -188,15 +194,36 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
 
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
       const networkProbe = inputNetworkProbe(input) ?? makeSetupNetworkTrustProbe(inputNetworkFetch(input));
-      const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe);
       const privilege = yield* Effect.serviceOption(PrivilegeService);
       const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
 
       const selectedProviderId = String(resolution.providerId);
+      const userDataRootRaw = globalConfig.userDataRoot;
+      const userDataRoot =
+        typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+      const readinessSteps: SetupReadinessStep[] = [];
+      const recordReadiness = (step: SetupReadinessStep): Effect.Effect<void, never> => {
+        readinessSteps.push(step);
+        return writeSetupReadiness(userDataRoot, selectedProviderId, readinessSteps);
+      };
+      const recordFailure = (id: string, cause: unknown): Effect.Effect<void, never> =>
+        recordReadiness({
+          id,
+          status: "failed",
+          evidence: setupFailureEvidence(id, cause),
+          remediation: setupFailureRemediation(id, cause),
+        });
+      const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
+        Effect.tapError((cause) => recordFailure("network", cause)),
+      );
       if (!inputBooleanFlag(input, "skip-provider")) {
         if (selectedProviderId in SYSTEM_RUNTIME_PROVIDERS) {
           const available = yield* provider.isAvailable;
-          if (!available) return yield* Effect.fail(systemRuntimeUnavailableError(selectedProviderId));
+          if (!available) {
+            const error = systemRuntimeUnavailableError(selectedProviderId);
+            yield* recordFailure("provider", error);
+            return yield* Effect.fail(error);
+          }
         }
         const runtimeBundleUrl = inputStringFlag(input, "runtime-bundle-url");
         yield* Effect.scoped(
@@ -206,35 +233,75 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
             ...privilegeOptions,
             ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
           }),
-        );
+        ).pipe(Effect.tapError((cause) => recordFailure("provider", cause)));
+        yield* recordReadiness({
+          id: "provider",
+          status: "satisfied",
+          evidence: `Provider ${selectedProviderId} setup completed.`,
+        });
+      } else {
+        yield* recordReadiness({
+          id: "provider",
+          status: "skipped",
+          evidence: `Provider ${selectedProviderId} setup skipped by --skip-provider.`,
+        });
       }
 
       const ca = yield* Effect.serviceOption(CertificateAuthority);
       if (ca._tag === "Some") {
-        yield* ca.value.setup({
-          force: false,
-          ...privilegeOptions,
-          ...(inputBooleanFlag(input, "skip-install-ca") ? { skipTrustInstall: true } : {}),
+        yield* ca.value
+          .setup({
+            force: false,
+            ...privilegeOptions,
+            ...(inputBooleanFlag(input, "skip-install-ca") ? { skipTrustInstall: true } : {}),
+          })
+          .pipe(Effect.tapError((cause) => recordFailure("ca", cause)));
+        yield* recordReadiness({
+          id: "ca",
+          status: inputBooleanFlag(input, "skip-install-ca") ? "skipped" : "satisfied",
+          evidence: inputBooleanFlag(input, "skip-install-ca")
+            ? "Certificate authority trust installation skipped by --skip-install-ca."
+            : "Certificate authority setup completed.",
         });
       }
 
       if (!inputBooleanFlag(input, "skip-proxy")) {
         const proxy = yield* Effect.serviceOption(ProxyService);
-        if (proxy._tag === "Some") yield* proxy.value.setup();
+        if (proxy._tag === "Some") {
+          yield* proxy.value.setup().pipe(Effect.tapError((cause) => recordFailure("proxy", cause)));
+          yield* recordReadiness({ id: "proxy", status: "satisfied", evidence: "Proxy setup completed." });
+        }
+      } else {
+        yield* recordReadiness({
+          id: "proxy",
+          status: "skipped",
+          evidence: "Proxy setup skipped by --skip-proxy.",
+        });
       }
 
       if (!inputBooleanFlag(input, "skip-shell-integration")) {
         const ssh = yield* Effect.serviceOption(SshService);
-        if (ssh._tag === "Some") yield* ssh.value.setup({ force: false });
+        if (ssh._tag === "Some") {
+          yield* ssh.value
+            .setup({ force: false })
+            .pipe(Effect.tapError((cause) => recordFailure("shell", cause)));
+          yield* recordReadiness({
+            id: "shell",
+            status: "satisfied",
+            evidence: "Shell integration setup completed.",
+          });
+        }
+      } else {
+        yield* recordReadiness({
+          id: "shell",
+          status: "skipped",
+          evidence: "Shell integration skipped by --skip-shell-integration.",
+        });
       }
 
       if (shouldDisableHostProxyForSetup(input)) {
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
       }
-
-      const userDataRootRaw = globalConfig.userDataRoot;
-      const userDataRoot =
-        typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
 
       if (
         !inputBooleanFlag(input, "skip-shell-integration") &&
@@ -243,6 +310,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       ) {
         const shellProfile = yield* installShellProfileIntegration(userDataRoot, privilege.value);
         if (shellProfile.exitCode !== 0) {
+          yield* recordFailure("shell", shellProfile.stderr);
           return yield* Effect.fail(
             new ShellProfileIntegrationError({
               message: "Shell profile integration failed.",
@@ -257,20 +325,52 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       if (provider.capabilities.bindMountPerformance === "slow" && inputSkipFileSync(input)) {
         fileSyncStatus = "deferred";
         if (userDataRoot !== undefined) yield* recordDeferredFileSyncSetup(userDataRoot);
+        yield* recordReadiness({
+          id: "file-sync",
+          status: "deferred",
+          evidence: "File-sync setup deferred until first accelerated app:start.",
+          remediation: "Run `lando start` to finish deferred file-sync setup for accelerated mounts.",
+        });
       } else if (provider.capabilities.bindMountPerformance === "slow") {
         const fileSync = yield* Effect.serviceOption(FileSyncEngine);
         if (fileSync._tag === "Some") {
-          yield* Effect.scoped(fileSync.value.setup({ force: false, network }));
+          yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
+            Effect.tapError((cause) => recordFailure("file-sync", cause)),
+          );
           fileSyncStatus = "installed";
+          yield* recordReadiness({
+            id: "file-sync",
+            status: "installed",
+            evidence: "File-sync setup installed Mutagen acceleration.",
+          });
         } else {
           if (userDataRoot !== undefined) {
             const downloader = makeMutagenDownloader();
-            yield* downloader.setup({ userDataRoot, network });
+            yield* downloader
+              .setup({ userDataRoot, network })
+              .pipe(Effect.tapError((cause) => recordFailure("file-sync", cause)));
             fileSyncStatus = "installed";
+            yield* recordReadiness({
+              id: "file-sync",
+              status: "installed",
+              evidence: "File-sync setup downloaded Mutagen acceleration.",
+            });
           } else {
             fileSyncStatus = "unavailable";
+            yield* recordReadiness({
+              id: "file-sync",
+              status: "unavailable",
+              evidence: "File-sync setup could not run because userDataRoot is not configured.",
+              remediation: "Configure userDataRoot and rerun `lando setup`.",
+            });
           }
         }
+      } else {
+        yield* recordReadiness({
+          id: "file-sync",
+          status: "satisfied",
+          evidence: "Native bind mounts satisfy file-sync setup.",
+        });
       }
 
       return {
