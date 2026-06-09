@@ -282,7 +282,7 @@ export const uninstall = (options: UninstallOptions = {}): Effect.Effect<Uninsta
       refused: !dryRun && !yes,
       mode,
       failed: false,
-      steps: buildUninstallPlan(options, requestedMode),
+      steps: buildUninstallPlan(options, mode),
     };
   });
 

@@ -67,22 +67,25 @@ describe("meta:uninstall", () => {
     });
   });
 
-  test("dry-run renders every uninstall step without mutating roots", async () => {
+  test("dry-run renders every uninstall step and previews the default keep-data mode", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {
       writeFileSync(join(root, "lando"), "binary", "utf-8");
+      const providerRuntime = join(userDataRoot, "providers", "lando");
       const result = await Effect.runPromise(
         metaUninstallSpec.run({
           flags: { "dry-run": true },
           _userDataRoot: userDataRoot,
           _userCacheRoot: userCacheRoot,
           _execPath: join(root, "lando"),
-          _exists: (path: string) => path === userDataRoot || path === userCacheRoot,
+          _exists: (path: string) =>
+            path === providerRuntime || path === userDataRoot || path === userCacheRoot,
         }),
       );
 
       const output = formatUninstallResult(result);
       expect(output).toContain("uninstall plan (dry-run)");
+      expect(output).toContain("mode: keep-data");
       expect(output).toContain("managed provider runtime");
       expect(output).toContain("managed provider machines");
       expect(output).toContain("Mutagen binary");
@@ -96,8 +99,48 @@ describe("meta:uninstall", () => {
       expect(output).toContain("user cache root");
       expect(output).toContain("owned by Lando");
       expect(output).toContain("user-owned");
-      expect(output).toContain("skipped");
       expect(output).toContain("manual remediation");
+      expect(result.steps.find((step) => step.id === "managed-provider-runtime")).toMatchObject({
+        status: "owned",
+      });
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        status: "skipped",
+      });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
+        status: "skipped",
+      });
+      expect(result.steps.find((step) => step.id === "global-app-state")).toMatchObject({
+        status: "skipped",
+      });
+      expect(output).toContain("rerun with --purge");
+      expect(await Bun.file(userDataRoot).exists()).toBe(false);
+      expect(await Bun.file(userCacheRoot).exists()).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("dry-run --purge previews data and cache roots as owned", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { "dry-run": true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _exists: (path: string) => path === userDataRoot || path === userCacheRoot,
+        }),
+      );
+
+      const output = formatUninstallResult(result);
+      expect(output).toContain("mode: purge");
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        status: "owned",
+      });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
+        status: "owned",
+      });
       expect(await Bun.file(userDataRoot).exists()).toBe(false);
       expect(await Bun.file(userCacheRoot).exists()).toBe(false);
     } finally {
