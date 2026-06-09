@@ -223,6 +223,60 @@ describe("meta:doctor command", () => {
     expect(text).toContain("lando setup");
   });
 
+  test("consumes the latest setup readiness summary with redacted failure remediation", async () => {
+    const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-setup-readiness-"));
+    try {
+      await mkdir(join(dataRoot, "setup"), { recursive: true });
+      await writeFile(
+        join(dataRoot, "setup", "readiness.json"),
+        `${JSON.stringify({
+          status: "failed",
+          providerId: "podman",
+          updatedAt: "1970-01-01T00:00:00.000Z",
+          steps: [
+            { id: "provider", status: "satisfied", evidence: "Provider lando setup completed." },
+            {
+              id: "proxy",
+              status: "failed",
+              evidence: "Proxy setup failed: HTTP_PROXY_PASSWORD=super-secret",
+              remediation: "Rerun `lando setup`; HTTP_PROXY_PASSWORD=super-secret",
+            },
+          ],
+        })}\n`,
+        "utf-8",
+      );
+      const provider = { ...TestRuntimeProvider, id: "lando" };
+      const result = await Effect.runPromise(
+        doctor().pipe(Effect.provide(buildLayers(provider, { userDataRoot: dataRoot }))),
+      );
+      const text = renderDoctorResult(result);
+      const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
+      const setupCheck = result.checks.find((check) => check.name === "setup-readiness");
+
+      expect(setupCheck?.status).toBe("warn");
+      expect(setupCheck?.context.setupProviderId).toBe("podman");
+      expect(setupCheck?.context.lastFailedStep).toBe("proxy");
+      expect(setupCheck?.context.stepProvider).toBe("satisfied");
+      expect(setupCheck?.context.stepProxy).toBe("failed");
+      expect(setupCheck?.solutions[0]?.command).toBe("lando setup");
+      expect(text).toContain("setup-readiness: warn");
+      expect(text).toContain("setupProviderId: podman");
+      expect(text).toContain("lastFailedStep: proxy");
+      expect(text).toContain("[REDACTED]");
+      expect(text).not.toContain("super-secret");
+      expect(ndjson).toContain("[REDACTED]");
+      expect(ndjson).not.toContain("super-secret");
+
+      const payloads = ndjson
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      expect(payloads.some((payload) => payload.name === "setup-readiness")).toBe(true);
+    } finally {
+      await rm(dataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("missing runtime version omits runtimeVersion fields without breaking output", async () => {
     const provider = {
       ...TestRuntimeProvider,

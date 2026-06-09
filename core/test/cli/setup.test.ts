@@ -135,6 +135,7 @@ const normalizeSetupFailure = (stderr: string): string =>
     .join("\n");
 
 const fileSyncSatisfiedLine = "file-sync: already satisfied (native bind mounts)";
+const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, "setup", "readiness.json");
 
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
   `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
@@ -281,6 +282,247 @@ describe("meta:setup command", () => {
     expect(calls).toEqual(["provider", "ca", "proxy", "shell", "file-sync"]);
   });
 
+  test("writes already-satisfied evidence for every completed setup step", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+        }>;
+      };
+
+      expect(setupSpec.render?.(result)).toContain(fileSyncSatisfiedLine);
+      expect(readiness.status).toBe("ready");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "satisfied"],
+        ["proxy", "satisfied"],
+        ["shell", "satisfied"],
+        ["file-sync", "satisfied"],
+      ]);
+      expect(
+        readiness.steps.every((step) => typeof step.evidence === "string" && step.evidence.length > 0),
+      ).toBe(true);
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("records unavailable evidence when host integration services are absent", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-unavailable-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec
+          .run({ installDir: "/opt/lando" })
+          .pipe(Effect.provide(buildSetupLayers(registry, { userDataRoot }))),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+          readonly remediation?: string;
+        }>;
+      };
+
+      expect(readiness.status).toBe("failed");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "unavailable"],
+        ["proxy", "unavailable"],
+        ["shell", "unavailable"],
+        ["file-sync", "satisfied"],
+      ]);
+      for (const stepId of ["ca", "proxy", "shell"]) {
+        const step = readiness.steps.find((entry) => entry.id === stepId);
+        expect(step?.evidence).toContain("not available");
+        expect(step?.remediation).toContain(`On ${process.platform}`);
+      }
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("persists partial readiness with redacted remediation when setup is interrupted", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-fail-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+      const proxy = {
+        ...makeTestProxyService(),
+        setup: () => Effect.fail(new Error("proxy failed HTTP_PROXY_PASSWORD=super-secret")),
+      };
+
+      const exit = await Effect.runPromiseExit(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy,
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly remediation?: string;
+        }>;
+      };
+
+      expect(readiness.status).toBe("failed");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "satisfied"],
+        ["proxy", "failed"],
+      ]);
+      expect(JSON.stringify(readiness)).toContain("[REDACTED]");
+      expect(JSON.stringify(readiness)).not.toContain("super-secret");
+      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain("lando setup");
+      expect(readiness.steps.find((step) => step.id === "proxy")?.remediation).toContain(
+        `On ${process.platform}`,
+      );
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("rerunning setup after an interruption replaces partial readiness with a ready summary", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-resume-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+      const failingProxy = {
+        ...makeTestProxyService(),
+        setup: () => Effect.fail(new Error("proxy interrupted")),
+      };
+
+      const firstExit = await Effect.runPromiseExit(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: failingProxy,
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+      expect(firstExit._tag).toBe("Failure");
+
+      await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayersWithHostIntegrations(
+              registry,
+              {
+                ca: makeTestCertificateAuthority(),
+                proxy: makeTestProxyService(),
+                ssh: makeTestSshService(),
+                fileSync: TestFileSyncEngine,
+              },
+              { userDataRoot },
+            ),
+          ),
+        ),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{ readonly id: string; readonly status: string }>;
+      };
+
+      expect(readiness.status).toBe("ready");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "satisfied"],
+        ["proxy", "satisfied"],
+        ["shell", "satisfied"],
+        ["file-sync", "satisfied"],
+      ]);
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("threads PrivilegeService into provider and CA setup and uses it for shell profile integration", async () => {
     const elevated: ReadonlyArray<string>[] = [];
     const privilege = {
@@ -367,33 +609,51 @@ describe("meta:setup command", () => {
   });
 
   test("fails setup when shell profile integration returns a nonzero exit", async () => {
-    const provider = {
-      ...TestRuntimeProvider,
-      id: "lando",
-      setup: () => Effect.void,
-    };
-    const registry = {
-      list: Effect.succeed([ProviderId.make("lando")]),
-      capabilities: Effect.succeed(provider.capabilities),
-      select: () => Effect.succeed(provider),
-    };
-    const privilege = {
-      elevate: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "sudo denied" }),
-    };
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-profile-fail-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+      const privilege = {
+        elevate: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "sudo denied" }),
+      };
 
-    const exit = await Effect.runPromiseExit(
-      setupSpec
-        .run({ installDir: "/opt/lando" })
-        .pipe(
-          Effect.provide(
-            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
-          ),
-        ),
-    );
+      const exit = await Effect.runPromiseExit(
+        setupSpec
+          .run({ installDir: "/opt/lando" })
+          .pipe(Effect.provide(buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot }))),
+      );
 
-    const failure = Cause.failureOption(exit.cause);
-    expect(failure._tag).toBe("Some");
-    expect(failure._tag === "Some" ? failure.value._tag : undefined).toBe("ShellProfileIntegrationError");
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+          readonly remediation?: string;
+        }>;
+      };
+      const shellSteps = readiness.steps.filter((step) => step.id === "shell");
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      expect(failure._tag === "Some" ? failure.value._tag : undefined).toBe("ShellProfileIntegrationError");
+      expect(shellSteps).toHaveLength(1);
+      expect(shellSteps[0]).toEqual(
+        expect.objectContaining({
+          status: "failed",
+          evidence: expect.stringContaining("sudo denied"),
+          remediation: expect.stringContaining("sudo denied"),
+        }),
+      );
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
   });
 
   test("validates network trust before provider and file-sync downloads and honors config proxy precedence", async () => {
@@ -994,7 +1254,7 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
   });
 
-  describe("system-runtime providers require an existing installation (US-200 AC5)", () => {
+  describe("system-runtime providers require an existing installation", () => {
     for (const id of ["docker", "podman"] as const) {
       test(`--provider=${id} fails with remediation when the system runtime is unavailable`, async () => {
         let setupCalls = 0;

@@ -42,4 +42,13 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
+  <Scenario id="doctor-setup-readiness" render={false} reason="The setup-readiness check consumes the persisted summary written by lando setup; unit tests cover the exact JSON and redaction behavior">
+    <Step name="setup-readiness">
+      <Variable name="summaryPath" value="<userDataRoot>/setup/readiness.json" display="lando setup writes the persisted readiness summary consumed by doctor" />
+      <Variable name="checkName" value="setup-readiness" display="lando doctor reports the latest setup readiness state as a dedicated check" />
+      <Variable name="stepContext" value="provider, ca, proxy, shell, file-sync" display="The check exposes each setup step status in structured context" />
+      <Variable name="remediation" value="Rerun `lando setup` to resume or repair the first failed setup step." display="Failed or unavailable setup steps surface a manual lando setup remediation" />
+    </Step>
+  </Scenario>
+
 </Guide>

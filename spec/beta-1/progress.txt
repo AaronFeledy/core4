@@ -53,3 +53,21 @@
 - Verification: typecheck, lint, build, full tests, compiled shellenv CLI QA, and Oracle reviewer gate passed.
 - **Learnings for future iterations:** Shellenv stays a read-only stdout command; persistent shell profile changes belong to setup and must route through `PrivilegeService`, with compiled/source flag validation kept in parity.
 ---
+## 2026-06-09 11:04 CDT - US-204
+- Completed setup readiness reporting: setup writes atomic per-step evidence, preserves failed partial summaries, successful reruns replace interrupted readiness with a ready summary, and doctor renders the latest redacted setup-readiness diagnostic for support triage.
+- Verification: focused setup/doctor tests, typecheck, lint, full tests, and source CLI doctor QA passed.
+- **Learnings for future iterations:**
+  - Read persisted diagnostic summaries through a sanitizing seam; persisted files may be hand-edited or come from older versions, so renderers should not assume secrets were redacted at write time.
+---
+## 2026-06-09 11:29 CDT - US-204
+- Tightened setup readiness completion after review: absent CA/proxy/shell integration services now appear as unavailable readiness steps with remediation instead of disappearing, and doctor preserves the provider id from the setup run in its readiness diagnostic.
+- Verification: focused setup/doctor regressions, typecheck, lint, full tests, source CLI doctor QA, and Oracle reviewer gate passed.
+- **Learnings for future iterations:**
+  - Readiness summaries should enumerate every expected setup stage even when the live runtime lacks an optional service; omitted steps are ambiguous for support.
+---
+## 2026-06-09 12:10 CDT - US-204 Review
+- Hardened secret redaction for the new setup-readiness evidence/remediation that now persists network/proxy/download failure `cause.message` to a support-consumed file (`readiness.json` → `lando doctor`). The shared `redactString` previously only redacted env-style `KEY=value`, so a corporate proxy URL with embedded credentials (`http://user:pass@proxy`), a `Bearer <token>` header, or a signed-download `?token=`/`X-Amz-Signature=` query param would leak into readiness output, violating AC5 "without leaking secrets". Added URL-userinfo, bearer-token, and key-anchored secret-query-param redaction (anchored so substring matches like `?design=` are not redacted) plus a regression test.
+- Review notes (rejected): `installed` vs `satisfied` step vocabulary — AC2 ("reported as satisfied with evidence, not silently skipped") is met since every step records non-empty evidence; distinguishing newly-done from already-present needs service-contract changes (out of scope). Swallowed readiness writes (`catchAll`→void) — intentional resilience; failing real host setup because a diagnostic write failed would be worse, and doctor already degrades on a missing summary. Partial-summary false `ready` after an abnormal SIGKILL between steps — real but edge-case; the modeled interruption (a step throwing) correctly records `failed`, idempotent rerun resume works, and no AC requires accurate completeness reporting after a hard kill — left as a noted limitation to keep the diff focused.
+- Verification: typecheck, lint, full `bun test` (3225 pass / 27 skip / 0 fail) passed.
+- **Learnings for future iterations:** When a story starts persisting raw exception messages to support/diagnostic artifacts, the redaction seam must cover URL-embedded credentials and signed-URL query secrets, not just env-style `KEY=value` — proxy/download errors routinely carry both.
+---
