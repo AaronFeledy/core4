@@ -1236,7 +1236,7 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
   });
 
-  describe("system-runtime providers require an existing installation (US-200 AC5)", () => {
+  describe("system-runtime providers require an existing installation", () => {
     for (const id of ["docker", "podman"] as const) {
       test(`--provider=${id} fails with remediation when the system runtime is unavailable`, async () => {
         let setupCalls = 0;
