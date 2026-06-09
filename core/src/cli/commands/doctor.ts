@@ -299,6 +299,7 @@ const buildSetupReadinessDoctorCheck = (
     providerId: provider.id,
     providerKind: providerKindFor(provider.id),
     providerVersion: provider.version,
+    setupProviderId: summary.providerId,
     setupStatus: summary.status,
     updatedAt: summary.updatedAt,
   };
@@ -515,6 +516,7 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "providerId",
   "providerKind",
   "providerVersion",
+  "setupProviderId",
   "runtimeStatus",
   "setupStatus",
   "updatedAt",

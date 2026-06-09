@@ -59,3 +59,9 @@
 - **Learnings for future iterations:**
   - Read persisted diagnostic summaries through a sanitizing seam; persisted files may be hand-edited or come from older versions, so renderers should not assume secrets were redacted at write time.
 ---
+## 2026-06-09 11:29 CDT - US-204
+- Tightened setup readiness completion after review: absent CA/proxy/shell integration services now appear as unavailable readiness steps with remediation instead of disappearing, and doctor preserves the provider id from the setup run in its readiness diagnostic.
+- Verification: focused setup/doctor regressions, typecheck, lint, full tests, source CLI doctor QA, and Oracle reviewer gate passed.
+- **Learnings for future iterations:**
+  - Readiness summaries should enumerate every expected setup stage even when the live runtime lacks an optional service; omitted steps are ambiguous for support.
+---

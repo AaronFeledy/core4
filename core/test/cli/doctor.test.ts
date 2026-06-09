@@ -231,7 +231,7 @@ describe("meta:doctor command", () => {
         join(dataRoot, "setup", "readiness.json"),
         `${JSON.stringify({
           status: "failed",
-          providerId: "lando",
+          providerId: "podman",
           updatedAt: "1970-01-01T00:00:00.000Z",
           steps: [
             { id: "provider", status: "satisfied", evidence: "Provider lando setup completed." },
@@ -254,11 +254,13 @@ describe("meta:doctor command", () => {
       const setupCheck = result.checks.find((check) => check.name === "setup-readiness");
 
       expect(setupCheck?.status).toBe("warn");
+      expect(setupCheck?.context.setupProviderId).toBe("podman");
       expect(setupCheck?.context.lastFailedStep).toBe("proxy");
       expect(setupCheck?.context.stepProvider).toBe("satisfied");
       expect(setupCheck?.context.stepProxy).toBe("failed");
       expect(setupCheck?.solutions[0]?.command).toBe("lando setup");
       expect(text).toContain("setup-readiness: warn");
+      expect(text).toContain("setupProviderId: podman");
       expect(text).toContain("lastFailedStep: proxy");
       expect(text).toContain("[REDACTED]");
       expect(text).not.toContain("super-secret");

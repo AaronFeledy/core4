@@ -340,6 +340,55 @@ describe("meta:setup command", () => {
     }
   });
 
+  test("records unavailable evidence when host integration services are absent", async () => {
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-unavailable-"));
+    try {
+      const provider = {
+        ...TestRuntimeProvider,
+        id: "lando",
+        capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "native" as const },
+        setup: () => Effect.void,
+      };
+      const registry = {
+        list: Effect.succeed([ProviderId.make("lando")]),
+        capabilities: Effect.succeed(provider.capabilities),
+        select: () => Effect.succeed(provider),
+      };
+
+      await Effect.runPromise(
+        setupSpec
+          .run({ installDir: "/opt/lando" })
+          .pipe(Effect.provide(buildSetupLayers(registry, { userDataRoot }))),
+      );
+
+      const readiness = JSON.parse(await readFile(setupReadinessPath(userDataRoot), "utf-8")) as {
+        readonly status: string;
+        readonly steps: ReadonlyArray<{
+          readonly id: string;
+          readonly status: string;
+          readonly evidence?: string;
+          readonly remediation?: string;
+        }>;
+      };
+
+      expect(readiness.status).toBe("failed");
+      expect(readiness.steps.map((step) => [step.id, step.status])).toEqual([
+        ["provider", "satisfied"],
+        ["ca", "unavailable"],
+        ["proxy", "unavailable"],
+        ["shell", "unavailable"],
+        ["file-sync", "satisfied"],
+      ]);
+      for (const stepId of ["ca", "proxy", "shell"]) {
+        const step = readiness.steps.find((entry) => entry.id === stepId);
+        expect(step?.evidence).toContain("not available");
+        expect(step?.remediation).toContain(`On ${process.platform}`);
+      }
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("persists partial readiness with redacted remediation when setup is interrupted", async () => {
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-setup-readiness-fail-"));
     try {

@@ -213,6 +213,15 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
           evidence: setupFailureEvidence(id, cause),
           remediation: setupFailureRemediation(id, cause),
         });
+      const recordUnavailable = (id: string, serviceName: string): Effect.Effect<void, never> => {
+        const message = `${serviceName} setup service is not available.`;
+        return recordReadiness({
+          id,
+          status: "unavailable",
+          evidence: message,
+          remediation: setupFailureRemediation(id, message),
+        });
+      };
       const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe).pipe(
         Effect.tapError((cause) => recordFailure("network", cause)),
       );
@@ -263,6 +272,14 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
             ? "Certificate authority trust installation skipped by --skip-install-ca."
             : "Certificate authority setup completed.",
         });
+      } else if (inputBooleanFlag(input, "skip-install-ca")) {
+        yield* recordReadiness({
+          id: "ca",
+          status: "skipped",
+          evidence: "Certificate authority trust installation skipped by --skip-install-ca.",
+        });
+      } else {
+        yield* recordUnavailable("ca", "Certificate authority");
       }
 
       if (!inputBooleanFlag(input, "skip-proxy")) {
@@ -270,6 +287,8 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         if (proxy._tag === "Some") {
           yield* proxy.value.setup().pipe(Effect.tapError((cause) => recordFailure("proxy", cause)));
           yield* recordReadiness({ id: "proxy", status: "satisfied", evidence: "Proxy setup completed." });
+        } else {
+          yield* recordUnavailable("proxy", "Proxy");
         }
       } else {
         yield* recordReadiness({
@@ -290,6 +309,8 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
             status: "satisfied",
             evidence: "Shell integration setup completed.",
           });
+        } else {
+          yield* recordUnavailable("shell", "Shell integration");
         }
       } else {
         yield* recordReadiness({

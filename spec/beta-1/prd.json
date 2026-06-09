@@ -91,7 +91,7 @@
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Setup now records atomic step-by-step readiness summaries with evidence, preserves partial failure state for safe reruns, replaces partial readiness after a successful rerun, and lando doctor consumes the redacted summary as a setup-readiness diagnostic with platform-specific remediation."
+      "notes": "Setup now records atomic step-by-step readiness summaries with evidence, preserves partial failure state for safe reruns, records unavailable host-integration steps with platform-specific redacted remediation, replaces partial readiness after a successful rerun, and lando doctor consumes the redacted setup-readiness diagnostic including the provider id from the setup run."
     },
     {
       "id": "US-205",
