@@ -91,6 +91,7 @@ interface CreateContainerBody {
 interface FakeApiHooks {
   readonly failStartFor?: ReadonlySet<string>;
   readonly failCreateFor?: ReadonlySet<string>;
+  readonly startFailureBody?: string;
 }
 
 const makeFakeApi = (hooks: FakeApiHooks = {}) => {
@@ -145,7 +146,10 @@ const makeFakeApi = (hooks: FakeApiHooks = {}) => {
         }
         if (request.method === "POST" && action === "start") {
           if (hooks.failStartFor?.has(name) === true) {
-            return { status: 500, body: `forced start failure for ${name}` };
+            return {
+              status: 500,
+              body: hooks.startFailureBody ?? `forced start failure for ${name}`,
+            };
           }
           if (running.has(name)) {
             return { status: 304, body: "" };
@@ -466,6 +470,56 @@ describe("provider-lando bringUp", () => {
       status: 500,
       body: "forced start failure for lando-bringupapp-database",
     });
+  });
+
+  test("surfaces the Podman API failure reason in the error message", async () => {
+    const fake = makeFakeApi({
+      failStartFor: new Set(["lando-bringupapp-database"]),
+      startFailureBody: JSON.stringify({
+        cause: "bind: permission denied",
+        message:
+          "rootlessport cannot expose privileged port 80, you can add 'net.ipv4.ip_unprivileged_port_start=80' to /etc/sysctl.conf (currently 1024); APP_SECRET=hunter2",
+        response: 500,
+      }),
+    });
+
+    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const startError = Array.from(Cause.failures(exit.cause)).find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError).toBeDefined();
+    if (startError === undefined) return;
+    expect(startError.message).toContain("Podman container start failed with HTTP 500.");
+    expect(startError.message).toContain("rootlessport cannot expose privileged port 80");
+    expect(startError.message).toContain("net.ipv4.ip_unprivileged_port_start=80");
+    expect(startError.message).not.toContain("hunter2");
+    expect(startError.message).toContain("APP_SECRET=[REDACTED]");
+  });
+
+  test("keeps the base message when the Podman failure body is not JSON", async () => {
+    const fake = makeFakeApi({ failStartFor: new Set(["lando-bringupapp-database"]) });
+
+    const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi: fake.api }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const startError = Array.from(Cause.failures(exit.cause)).find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError).toBeDefined();
+    if (startError === undefined) return;
+    expect(startError.message).toBe("Podman container start failed with HTTP 500.");
   });
 
   test("redacts credential-like env values in error details", async () => {

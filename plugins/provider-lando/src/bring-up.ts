@@ -20,7 +20,7 @@ import {
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
-import { redactDetails } from "./redact.ts";
+import { redactDetails, withApiReason } from "./redact.ts";
 
 const appNetworkName = landoAppNetworkName;
 const networkNames = landoNetworkNames;
@@ -95,7 +95,7 @@ const podmanFailure = (
     providerId: PROVIDER_ID,
     operation,
     service: service.name,
-    message,
+    message: withApiReason(message, details),
     remediation: APPLY_REMEDIATION,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
@@ -141,7 +141,10 @@ const inspectContainer = (
         new ProviderUnavailableError({
           providerId: PROVIDER_ID,
           operation: "bringUp.inspect",
-          message: `Podman inspect failed with HTTP ${response.status}.`,
+          message: withApiReason(`Podman inspect failed with HTTP ${response.status}.`, {
+            status: response.status,
+            body: response.body,
+          }),
           details: redactDetails({ name, status: response.status, body: response.body }),
           remediation: APPLY_REMEDIATION,
         }),
@@ -210,7 +213,10 @@ const ensureNetwork = (
                   new ProviderUnavailableError({
                     providerId: PROVIDER_ID,
                     operation: "bringUp.network",
-                    message: `Podman network create failed with HTTP ${response.status}.`,
+                    message: withApiReason(`Podman network create failed with HTTP ${response.status}.`, {
+                      status: response.status,
+                      body: response.body,
+                    }),
                     details: redactDetails({ status: response.status, body: response.body }),
                     remediation: APPLY_REMEDIATION,
                   }),

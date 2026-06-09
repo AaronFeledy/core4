@@ -206,6 +206,7 @@ const makeFakeApi = () => {
 interface FakeDockerApiHooks {
   readonly failStartFor?: ReadonlySet<string>;
   readonly failCreateFor?: ReadonlySet<string>;
+  readonly startFailureBody?: string;
   readonly volumes?: Set<string>;
 }
 
@@ -251,7 +252,10 @@ const makeFakeApiWithHooks = (hooks: FakeDockerApiHooks = {}) => {
         if (request.path.endsWith("/start")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/start".length));
           if (hooks.failStartFor?.has(name) === true) {
-            return { status: 500, body: `forced start failure for ${name}` };
+            return {
+              status: 500,
+              body: hooks.startFailureBody ?? `forced start failure for ${name}`,
+            };
           }
           if (running.has(name)) {
             return { status: 304, body: "" };
@@ -936,6 +940,39 @@ describe("provider-docker RuntimeProvider contract", () => {
     expect(details?.status).toBe(500);
     expect(details?.body).toContain("[REDACTED]");
     expect(details?.body).not.toContain("hunter2");
+  });
+
+  test("surfaces the Docker API failure reason in the error message", async () => {
+    const fake = makeFakeApiWithHooks({
+      failStartFor: new Set(["lando-myapp-db"]),
+      startFailureBody: JSON.stringify({
+        message:
+          "driver failed programming external connectivity: bind 0.0.0.0:80: address already in use; APP_TOKEN=hunter2",
+      }),
+    });
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux", dockerApi: fake.api }))),
+    );
+
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(makeMultiServicePlan(), { reconcile: true })),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) return;
+    const startError = Array.from(Cause.failures(exit.cause)).find(
+      (error) =>
+        typeof error === "object" &&
+        error !== null &&
+        "_tag" in error &&
+        (error as { _tag: string })._tag === "ServiceStartError",
+    ) as ServiceStartError | undefined;
+    expect(startError).toBeDefined();
+    if (startError === undefined) return;
+    expect(startError.message).toContain("Docker container start failed with HTTP 500.");
+    expect(startError.message).toContain("bind 0.0.0.0:80: address already in use");
+    expect(startError.message).not.toContain("hunter2");
+    expect(startError.message).toContain("APP_TOKEN=[REDACTED]");
   });
 
   test("destroy with volumes:true removes app-scoped volumes; default preserves them", async () => {

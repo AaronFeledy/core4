@@ -6,7 +6,7 @@ import { type AppPlan, type AppRef, ProviderId, type ServicePlan } from "@lando/
 import type { EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
-import { redactDetails } from "./redact.ts";
+import { redactDetails, withApiReason } from "./redact.ts";
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
@@ -59,7 +59,7 @@ const podmanFailure = (operation: string, message: string, details?: unknown, ca
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message,
+    message: withApiReason(message, details),
     remediation: DESTROY_REMEDIATION,
     ...(details === undefined ? {} : { details: redactDetails(details) }),
     ...(cause === undefined ? {} : { cause }),
