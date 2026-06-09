@@ -91,3 +91,9 @@
 - Verification: typecheck, lint passed; focused uninstall + not-implemented + deferred-commands + dispatch-parity suites green (43 pass / 0 fail). Working tree clean since the build commit, so the build step's full-suite run stands.
 - **Learnings for future iterations:** When a preview/plan command (US-205) hands its plan to a later destructive command (US-206), path-ownership checks that are "good enough" for a read-only preview (string-prefix containment) must be re-hardened to canonical-path containment before any deletion executes — review the ownership seam, not just the new deletion code, when the destructive story lands.
 ---
+## 2026-06-09 16:50 CDT - US-206
+- Completed destructive uninstall execution modes: keep-data now removes owned toolchain targets while preserving app-affecting data and global state, purge opts into owned data/cache removal, user-owned binaries remain manual, and partial failures persist a resumable report.
+- Verification: red/green uninstall TDD, source and compiled CLI QA, guide scenarios, typecheck, lint, build, full tests, and Oracle reviewer gate passed.
+- **Learnings for future iterations:**
+  - Destructive uninstall needs mode-aware planning even for previews; keep-data should mark protected data roots skipped while purge should keep them eligible for owned removal.
+---

@@ -1,0 +1,32 @@
+---
+id: setup-uninstall-and-purge
+provider: test
+platforms: [darwin, linux, win32]
+timeout: 60000
+tags: [beta, docs, setup, uninstall]
+---
+
+<Guide>
+  <Scenario id="uninstall-preview-and-confirmation" render={false} reason="The first-class uninstall command is host-destructive when confirmed, so this scenario documents the safe preview and confirmation surface without deleting host files">
+    <Step name="preview">
+      <Variable name="dryRun" value="uninstall --dry-run" display="Prints the full owned, user-owned, skipped, and manual-remediation plan without changing the system" />
+      <Variable name="refusal" value="uninstall" display="Without --yes, destructive execution is refused and the same plan tells the user to rerun after review" />
+      <Variable name="confirmation" value="--yes" display="Confirmed execution is required before any Lando-owned toolchain or data target is removed" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="keep-data-vs-purge" render={false} reason="The command-level contract separates toolchain removal from deliberate data destruction; unit tests exercise the filesystem mutations with temporary roots">
+    <Step name="modes">
+      <Variable name="keepData" value="uninstall --yes --keep-data" display="Removes Lando-owned toolchain targets while preserving user data roots, app data, global app state, and app-affecting caches" />
+      <Variable name="purge" value="uninstall --yes --purge" display="Opts into deliberate removal of Lando-owned data and cache roots in addition to toolchain targets" />
+      <Variable name="manualBinary" value="user-owned installed binary" display="A binary outside Lando's managed bin directory is never removed automatically; the plan prints exact manual removal steps" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="resumable-report" render={false} reason="Partial-failure report persistence is validated by focused command tests using an injected remover that fails one target">
+    <Step name="report">
+      <Variable name="reportPath" value="&lt;userDataRoot&gt;/uninstall/report.json" display="A failed confirmed uninstall writes a resumable report containing completed, failed, skipped, and manual steps" />
+      <Variable name="rerun" value="same uninstall command" display="After remediation, rerun the same keep-data or purge command to resume remaining owned removals" />
+    </Step>
+  </Scenario>
+</Guide>
