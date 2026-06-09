@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { NetworkConfig } from "./config.ts";
 import { FileSyncMode as FileSyncModeSchema } from "./file-sync.ts";
 import { AppRef } from "./networking.ts";
 import { AbsolutePath, PortablePath, ServiceName } from "./primitives.ts";
@@ -46,6 +47,7 @@ export type FileSyncEngineCapabilities = Schema.Schema.Type<typeof FileSyncEngin
 export const FileSyncSetupOptions = Schema.Struct({
   /** Re-run setup even if the engine reports `isAvailable: true`. */
   force: Schema.Boolean,
+  network: Schema.optional(NetworkConfig),
 });
 export type FileSyncSetupOptions = Schema.Schema.Type<typeof FileSyncSetupOptions>;
 

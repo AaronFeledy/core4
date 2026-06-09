@@ -13,6 +13,25 @@ export const TelemetryConfig = Schema.Struct({
 });
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
+export const NetworkProxyConfig = Schema.Struct({
+  http: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
+  https: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
+  noProxy: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+});
+export type NetworkProxyConfig = typeof NetworkProxyConfig.Type;
+
+export const NetworkCaConfig = Schema.Struct({
+  trustHost: Schema.optionalWith(Schema.Boolean, { default: () => true }),
+  certs: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+});
+export type NetworkCaConfig = typeof NetworkCaConfig.Type;
+
+export const NetworkConfig = Schema.Struct({
+  proxy: Schema.optional(NetworkProxyConfig),
+  ca: Schema.optional(NetworkCaConfig),
+});
+export type NetworkConfig = typeof NetworkConfig.Type;
+
 /**
  * GlobalConfig — host-root fields resolved at the `global` bootstrap level.
  * (envPrefix, domain, landoFile, pre/postLandoFiles, userCacheRoot,
@@ -30,5 +49,6 @@ export const GlobalConfig = Schema.Struct({
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: false }) }),
   renderer: Schema.optional(Schema.String),
+  network: Schema.optional(NetworkConfig),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

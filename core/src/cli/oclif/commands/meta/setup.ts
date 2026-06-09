@@ -30,6 +30,12 @@ import {
   resolveProviderSelection,
 } from "../../../../providers/precedence.ts";
 import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
+import {
+  type SetupNetworkTrustFetch,
+  type SetupNetworkTrustProbe,
+  makeSetupNetworkTrustProbe,
+  validateSetupNetworkTrust,
+} from "../../../commands/setup-network-trust.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -86,6 +92,18 @@ const inputBooleanFlag = (input: unknown, name: string): boolean => inputFlags(i
 
 const inputHostProxyMode = (input: unknown): "auto" | "none" =>
   inputFlags(input)?.["host-proxy"] === "none" ? "none" : "auto";
+
+const inputNetworkProbe = (input: unknown): SetupNetworkTrustProbe | undefined => {
+  if (typeof input !== "object" || input === null || !("_networkProbe" in input)) return undefined;
+  const probe = input._networkProbe;
+  return typeof probe === "function" ? (probe as SetupNetworkTrustProbe) : undefined;
+};
+
+const inputNetworkFetch = (input: unknown): SetupNetworkTrustFetch | undefined => {
+  if (typeof input !== "object" || input === null || !("_networkFetch" in input)) return undefined;
+  const fetchImpl = input._networkFetch;
+  return typeof fetchImpl === "function" ? (fetchImpl as SetupNetworkTrustFetch) : undefined;
+};
 
 export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
   inputHostProxyMode(input) === "none";
@@ -147,10 +165,11 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
     Effect.gen(function* () {
       const configService = yield* ConfigService;
       const registry = yield* RuntimeProviderRegistry;
+      const globalConfig = yield* configService.load;
 
       const flag = inputProviderFlag(input);
       const env = readProviderEnvVar(process.env);
-      const configRaw = yield* configService.get("defaultProviderId");
+      const configRaw = globalConfig.defaultProviderId;
       const config = configRaw ?? undefined;
 
       const resolution = resolveProviderSelection({
@@ -161,6 +180,8 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       });
 
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
+      const networkProbe = inputNetworkProbe(input) ?? makeSetupNetworkTrustProbe(inputNetworkFetch(input));
+      const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe);
 
       const selectedProviderId = String(resolution.providerId);
       if (!inputBooleanFlag(input, "skip-provider")) {
@@ -172,6 +193,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         yield* Effect.scoped(
           provider.setup({
             force: false,
+            network,
             ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
           }),
         );
@@ -199,7 +221,7 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
         yield* HostProxyServiceDisabled.setup({ mode: "none" });
       }
 
-      const userDataRootRaw = yield* configService.get("userDataRoot");
+      const userDataRootRaw = globalConfig.userDataRoot;
       const userDataRoot =
         typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
       let fileSyncStatus: SetupResult["fileSyncStatus"] = "satisfied";
@@ -210,12 +232,12 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       } else if (provider.capabilities.bindMountPerformance === "slow") {
         const fileSync = yield* Effect.serviceOption(FileSyncEngine);
         if (fileSync._tag === "Some") {
-          yield* Effect.scoped(fileSync.value.setup({ force: false }));
+          yield* Effect.scoped(fileSync.value.setup({ force: false, network }));
           fileSyncStatus = "installed";
         } else {
           if (userDataRoot !== undefined) {
             const downloader = makeMutagenDownloader();
-            yield* downloader.setup({ userDataRoot });
+            yield* downloader.setup({ userDataRoot, network });
             fileSyncStatus = "installed";
           } else {
             fileSyncStatus = "unavailable";

@@ -32,16 +32,18 @@ const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
 interface FetchCallLog {
   calls: number;
   urls: string[];
+  init?: BunFetchRequestInit;
 }
 
 const fakeFetch = (
   responses: Map<string, { body: Uint8Array; status?: number }>,
   log: FetchCallLog,
 ): typeof fetch =>
-  ((input: RequestInfo | URL): Promise<Response> => {
+  ((input: RequestInfo | URL, init?: BunFetchRequestInit): Promise<Response> => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
     log.calls += 1;
     log.urls.push(url);
+    log.init = init;
     const match = responses.get(url);
     if (match === undefined) {
       return Promise.resolve(new Response("not found", { status: 404, statusText: "Not Found" }));
@@ -187,6 +189,31 @@ describe("makeRuntimeBundleDownloader (test seam: explicit entry)", () => {
       const cachePath = runtimeBundleCachePath(stateDir, entry);
       const onDisk = await readFile(cachePath);
       expect(new Uint8Array(onDisk.buffer, onDisk.byteOffset, onDisk.byteLength)).toEqual(bytes);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("passes resolved setup proxy and custom CA settings to Bun fetch", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-network-"));
+    try {
+      const bytes = new TextEncoder().encode("network-aware-bundle");
+      const entry = syntheticEntry("synthetic-network.tar.gz", bytes);
+      const log: FetchCallLog = { calls: 0, urls: [] };
+      const downloader = makeRuntimeBundleDownloader({
+        stateDir,
+        entry,
+        runtimeVersion: "9.9.9-test",
+        network: {
+          proxy: { https: "http://proxy.example:8080", noProxy: [] },
+          ca: { trustHost: true, certs: ["/corp.pem"], loadedCerts: [{ pem: "CORP PEM" }] },
+        },
+        fetchImpl: fakeFetch(new Map([[entry.url, { body: bytes }]]), log),
+      });
+
+      await Effect.runPromise(downloader.download);
+
+      expect(log.init).toMatchObject({ proxy: "http://proxy.example:8080", tls: { ca: ["CORP PEM"] } });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

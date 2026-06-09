@@ -13,7 +13,7 @@ import { gunzipSync, inflateRawSync } from "node:zlib";
 import { Effect, Schema } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
-import type { HostPlatform } from "@lando/sdk/schema";
+import type { HostPlatform, NetworkConfig } from "@lando/sdk/schema";
 
 import manifestData from "../mutagen-versions.json" with { type: "json" };
 
@@ -285,13 +285,53 @@ interface InstallBinaryOptions {
   readonly extractImpl: ExtractImpl;
 }
 
+interface LoadedNetworkConfig extends NetworkConfig {
+  readonly ca?:
+    | (NonNullable<NetworkConfig["ca"]> & {
+        readonly loadedCerts?: ReadonlyArray<{ readonly pem: string }>;
+      })
+    | undefined;
+}
+
+const fetchInitForNetwork = (
+  url: string,
+  network: NetworkConfig | undefined,
+): BunFetchRequestInit | undefined => {
+  const parsedUrl = new URL(url);
+  const loaded = network as LoadedNetworkConfig | undefined;
+  const host = parsedUrl.hostname.toLowerCase();
+  const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
+  const hostWithPort = `${host}:${port}`;
+  const bypassProxy =
+    loaded?.proxy?.noProxy.some((raw) => {
+      const pattern = raw.toLowerCase();
+      if (pattern === "*") return true;
+      if (pattern === host || pattern === hostWithPort) return true;
+      if (pattern.startsWith(".")) return host.endsWith(pattern);
+      return host.endsWith(`.${pattern}`);
+    }) ?? false;
+  const proxyCandidate = bypassProxy
+    ? undefined
+    : parsedUrl.protocol === "https:"
+      ? (loaded?.proxy?.https ?? loaded?.proxy?.http)
+      : (loaded?.proxy?.http ?? loaded?.proxy?.https);
+  const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
+  const ca = loaded?.ca?.loadedCerts?.map((cert) => cert.pem);
+  if (proxy === undefined && (ca === undefined || ca.length === 0)) return undefined;
+  return {
+    ...(proxy === undefined ? {} : { proxy }),
+    ...(ca === undefined || ca.length === 0 ? {} : { tls: { ca } }),
+  };
+};
+
 const downloadVerifiedArchive = (
   entry: MutagenBinaryEntry,
   fetchImpl: typeof fetch,
+  network: NetworkConfig | undefined,
 ): Effect.Effect<Uint8Array, FileSyncStartError> =>
   Effect.tryPromise({
     try: async () => {
-      const response = await fetchImpl(entry.url);
+      const response = await fetchImpl(entry.url, fetchInitForNetwork(entry.url, network));
       if (!response.ok) {
         throw new Error(`HTTP ${response.status} ${response.statusText} fetching ${entry.url}`);
       }
@@ -350,6 +390,7 @@ export interface MutagenSetupOptions {
   readonly userDataRoot: string;
   /** Re-download even if the currently installed version matches the manifest. */
   readonly force?: boolean;
+  readonly network?: NetworkConfig;
   /** Injectable for tests. Defaults to `globalThis.fetch` (Bun built-in). */
   readonly fetchImpl?: typeof fetch;
   /** Injectable for tests. Defaults to {@link defaultExtract}. */
@@ -495,7 +536,7 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
       // Linux/macOS host archives include the agent payload, so one verified
       // host download can supply both the CLI and the agents. Windows host zips
       // do not, so fetch each pinned agent archive separately there.
-      const hostArchiveBytes = yield* downloadVerifiedArchive(hostEntry, fetchImpl);
+      const hostArchiveBytes = yield* downloadVerifiedArchive(hostEntry, fetchImpl, options.network);
 
       yield* installBinaryFromArchive({
         archiveBytes: hostArchiveBytes,
@@ -506,7 +547,9 @@ export const makeMutagenDownloader = (): MutagenDownloader => ({
 
       for (const [agentKey, agentEntry] of Object.entries(manifest.agents)) {
         const agentArchiveBytes =
-          platform === "win32" ? yield* downloadVerifiedArchive(agentEntry, fetchImpl) : hostArchiveBytes;
+          platform === "win32"
+            ? yield* downloadVerifiedArchive(agentEntry, fetchImpl, options.network)
+            : hostArchiveBytes;
         yield* installBinaryFromArchive({
           archiveBytes: agentArchiveBytes,
           entry: agentEntry,

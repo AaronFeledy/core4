@@ -165,18 +165,21 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
   }
-  const makeSetupRuntimeBundleDownloader = (url?: string): RuntimeBundleDownloader | undefined =>
+  const makeSetupRuntimeBundleDownloader = (
+    url?: string,
+    network?: Parameters<typeof makeDefaultRuntimeBundleDownloader>[0]["network"],
+  ): RuntimeBundleDownloader | undefined =>
     stateDir === undefined
       ? undefined
       : makeDefaultRuntimeBundleDownloader({
           stateDir,
           platform,
           ...(url === undefined ? {} : { url }),
+          ...(network === undefined ? {} : { network }),
           ...(options.runtimeBundleFetchImpl === undefined
             ? {}
             : { fetchImpl: options.runtimeBundleFetchImpl }),
         });
-  const runtimeBundleDownloader = options.runtimeBundleDownloader ?? makeSetupRuntimeBundleDownloader();
   const capabilities =
     podmanApi === undefined
       ? Effect.succeed(mvpProviderCapabilities(platform))
@@ -224,8 +227,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ...(() => {
               const setupRuntimeBundleDownloader =
                 setupOptions.runtimeBundleUrl === undefined
-                  ? runtimeBundleDownloader
-                  : makeSetupRuntimeBundleDownloader(setupOptions.runtimeBundleUrl);
+                  ? (options.runtimeBundleDownloader ??
+                    makeSetupRuntimeBundleDownloader(undefined, setupOptions.network))
+                  : makeSetupRuntimeBundleDownloader(setupOptions.runtimeBundleUrl, setupOptions.network);
               return setupRuntimeBundleDownloader === undefined
                 ? {}
                 : { runtimeBundleDownloader: setupRuntimeBundleDownloader };

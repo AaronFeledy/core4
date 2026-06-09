@@ -74,7 +74,10 @@
 - `MatcherSchemaRef`
 - `MountInput`
 - `MountPlan`
+- `NetworkCaConfig`
+- `NetworkConfig`
 - `NetworkPlan`
+- `NetworkProxyConfig`
 - `NetworkingPlan`
 - `PerAppBridgePlan`
 - `PlanMetadata`
@@ -139,11 +142,13 @@
 ## Additive Beta service fields
 
 - `ProviderSetupOptions.runtimeBundleUrl`
+- `ProviderSetupOptions.network`
 
 ## Additive Beta schema fields
 
 - `ConfigLintViolation.line`
 - `ConfigLintViolation.column`
+- `FileSyncSetupOptions.network`
 - `LandofileShape.includes`
 - `LandofileShape.secrets`
 
