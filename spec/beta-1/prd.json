@@ -108,8 +108,8 @@
         "Lint passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "meta:uninstall is now a minimal-bootstrap command with top-level uninstall alias. Dry-run and confirmation-gated preview render the full owned/user-owned/skipped/manual-remediation plan for managed provider runtime/machines, Mutagen binaries/agents, CA trust, global app state, caches, installed binary, shell entries, userDataRoot, and userCacheRoot without mutating host state; installed-binary ownership is path-normalized for POSIX and Windows-style managed bin paths."
     },
     {
       "id": "US-206",

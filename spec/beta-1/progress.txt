@@ -71,3 +71,16 @@
 - Verification: typecheck, lint, full `bun test` (3225 pass / 27 skip / 0 fail) passed.
 - **Learnings for future iterations:** When a story starts persisting raw exception messages to support/diagnostic artifacts, the redaction seam must cover URL-embedded credentials and signed-URL query secrets, not just env-style `KEY=value` — proxy/download errors routinely carry both.
 ---
+
+## 2026-06-09 12:54 CDT - Babysit
+- PR: #322 https://github.com/AaronFeledy/core4/pull/322
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium "shell readiness duplicated" — setup now replaces readiness steps by id so doctor surfaces the actual shell-profile failure; documented new setup-readiness doctor check to clear guide-drift gate)
+- Merge: merged (squash)
+---
+
+## 2026-06-09 14:21 CDT - US-205
+- Shipped the first-class uninstall preview surface: `meta:uninstall`/`uninstall` now register at minimal bootstrap, render the full dry-run/refusal plan across provider runtime/machines, Mutagen assets, CA trust, global state, caches, binary, shell entries, and data/cache roots, and refuse destructive execution without `--yes`.
+- Verification: typecheck, lint, build, focused uninstall/dispatch tests, source+compiled CLI dry-run/refusal QA, and full tests passed.
+- **Learnings for future iterations:** Promoting a deferred command to MVP requires removing it from deferred plans and every hard-coded deferred parity probe while adding both the OCLIF MVP allowlist entry and the compiled `run.ts` branch. Installed-binary ownership checks must normalize slash styles so Windows-style `<userDataRoot>\bin\lando.exe` paths classify as Lando-owned.
+---

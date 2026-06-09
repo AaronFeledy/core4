@@ -99,6 +99,7 @@ import { normalizeShellenvShell, renderShellenv } from "./commands/shellenv.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
+import { renderUninstallResult, uninstall } from "./commands/uninstall.ts";
 import { version as versionOperation } from "./commands/version.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
@@ -115,6 +116,7 @@ import {
 } from "./oclif/commands/meta/global/status.ts";
 import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/uninstall.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
+import { uninstallOptionsFromInput } from "./oclif/commands/meta/uninstall.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
 import {
@@ -1115,6 +1117,18 @@ const runMetaGlobalUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
+const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
+  const input = compiledCommandInputFromArgv("meta:uninstall", argv);
+  return runCompiledCommand(
+    uninstall({
+      ...uninstallOptionsFromInput(input),
+      execPath: process.execPath,
+    }),
+    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    renderUninstallResult,
+  );
+};
+
 const runMetaGlobalInstall = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:install", argv);
   return runCompiledCommand(
@@ -1523,6 +1537,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "shellenv" || argv[0] === "meta:shellenv") {
     runMetaShellenv(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "uninstall" || argv[0] === "meta:uninstall") {
+    await runMetaUninstall(argv.slice(1));
     return;
   }
 
