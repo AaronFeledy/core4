@@ -112,6 +112,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:plugin:trust-authoring-root",
   "meta:setup",
   "meta:shellenv",
+  "meta:uninstall",
   "meta:version",
   "meta:x",
 ]);

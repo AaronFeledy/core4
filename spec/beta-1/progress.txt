@@ -71,3 +71,23 @@
 - Verification: typecheck, lint, full `bun test` (3225 pass / 27 skip / 0 fail) passed.
 - **Learnings for future iterations:** When a story starts persisting raw exception messages to support/diagnostic artifacts, the redaction seam must cover URL-embedded credentials and signed-URL query secrets, not just env-style `KEY=value` — proxy/download errors routinely carry both.
 ---
+
+## 2026-06-09 12:54 CDT - Babysit
+- PR: #322 https://github.com/AaronFeledy/core4/pull/322
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium "shell readiness duplicated" — setup now replaces readiness steps by id so doctor surfaces the actual shell-profile failure; documented new setup-readiness doctor check to clear guide-drift gate)
+- Merge: merged (squash)
+---
+
+## 2026-06-09 14:21 CDT - US-205
+- Shipped the first-class uninstall preview surface: `meta:uninstall`/`uninstall` now register at minimal bootstrap, render the full dry-run/refusal plan across provider runtime/machines, Mutagen assets, CA trust, global state, caches, binary, shell entries, and data/cache roots, and refuse destructive execution without `--yes`.
+- Verification: typecheck, lint, build, focused uninstall/dispatch tests, source+compiled CLI dry-run/refusal QA, and full tests passed.
+- **Learnings for future iterations:** Promoting a deferred command to MVP requires removing it from deferred plans and every hard-coded deferred parity probe while adding both the OCLIF MVP allowlist entry and the compiled `run.ts` branch. Installed-binary ownership checks must normalize slash styles so Windows-style `<userDataRoot>\bin\lando.exe` paths classify as Lando-owned.
+---
+
+## 2026-06-09 14:42 CDT - US-205 Review
+- Reviewed `lando uninstall` preview against PRD-01 US-205: minimal-bootstrap registration + `uninstall` alias, dry-run/refusal/`--yes` gating, the 11-item owned/user-owned/skipped/manual plan, and the read-only `buildUninstallPlan` (no rm/destroy/trust-store/shell mutation even with `--yes`) all verified. No code changes needed — both reviewer lanes passed with no blocking issues.
+- Review notes (deferred): `installedBinaryStatus` uses normalized string-prefix containment (trailing-slash guard prevents `/bin2` false positives, Windows drive paths case-folded) — adequate for preview-only US-205, but US-206 must harden to canonical `resolve()`/`relative()` containment (resolving `..`/symlinks) before this plan drives real deletion. Repeated `join()` per step + optional `assertNever(status)` left as-is (NITPICK, not worth churning a focused review diff).
+- Verification: typecheck, lint passed; focused uninstall + not-implemented + deferred-commands + dispatch-parity suites green (43 pass / 0 fail). Working tree clean since the build commit, so the build step's full-suite run stands.
+- **Learnings for future iterations:** When a preview/plan command (US-205) hands its plan to a later destructive command (US-206), path-ownership checks that are "good enough" for a read-only preview (string-prefix containment) must be re-hardened to canonical-path containment before any deletion executes — review the ownership seam, not just the new deletion code, when the destructive story lands.
+---

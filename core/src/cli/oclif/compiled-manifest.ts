@@ -2540,7 +2540,21 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: ["uninstall"],
       args: {},
       description: "Remove Lando-owned installed files after confirmation.",
-      flags: {},
+      flags: {
+        "dry-run": {
+          description: "Print the uninstall plan without changing the system.",
+          name: "dry-run",
+          allowNo: false,
+          type: "boolean",
+        },
+        yes: {
+          char: "y",
+          description: "Confirm destructive uninstall execution after reviewing the plan.",
+          name: "yes",
+          allowNo: false,
+          type: "boolean",
+        },
+      },
       hasDynamicHelp: false,
       hidden: false,
       hiddenAliases: [],
