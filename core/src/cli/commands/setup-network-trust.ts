@@ -39,6 +39,24 @@ export type SetupNetworkTrustProbe = (
   network: ResolvedSetupNetworkTrust,
 ) => Effect.Effect<void, SetupNetworkTrustError>;
 
+export type SetupNetworkTrustFetch = (
+  input: string | URL | Request,
+  init?: BunFetchRequestInit,
+) => Promise<Response>;
+
+const SETUP_NETWORK_PROBE_URL = "https://github.com/";
+
+const platformNetworkHint = (): string => {
+  switch (process.platform) {
+    case "darwin":
+      return "On macOS, export proxy variables in the shell that runs Lando or set network.proxy, and point network.ca.certs/LANDO_NETWORK_CA_CERTS at readable PEM files for intercepted TLS.";
+    case "win32":
+      return "On Windows, set user or process HTTP_PROXY/HTTPS_PROXY/NO_PROXY values or network.proxy, and point network.ca.certs/LANDO_NETWORK_CA_CERTS at readable PEM files.";
+    default:
+      return "On Linux, export HTTP_PROXY/HTTPS_PROXY/NO_PROXY in the shell that runs Lando or set network.proxy, and point network.ca.certs/LANDO_NETWORK_CA_CERTS at readable PEM files.";
+  }
+};
+
 const firstEnv = (env: NodeJS.ProcessEnv, names: ReadonlyArray<string>): string | undefined => {
   for (const name of names) {
     const value = env[name];
@@ -95,11 +113,44 @@ const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNet
       new SetupNetworkTrustError({
         kind: "missing-custom-ca",
         message: `Custom CA certificate could not be read: ${path}`,
-        remediation:
-          "Fix network.ca.certs in the global config or LANDO_NETWORK_CA_CERTS so every path points to a readable PEM certificate for this platform, then rerun `lando setup`.",
+        remediation: `Fix network.ca.certs in the global config or LANDO_NETWORK_CA_CERTS so every path points to a readable PEM certificate, then rerun \`lando setup\`. ${platformNetworkHint()}`,
         cause,
       }),
   });
+
+const shouldBypassProxy = (url: string, noProxy: ReadonlyArray<string>): boolean => {
+  const parsedUrl = new URL(url);
+  const host = parsedUrl.hostname.toLowerCase();
+  const port = parsedUrl.port || (parsedUrl.protocol === "https:" ? "443" : "80");
+  const hostWithPort = `${host}:${port}`;
+  return noProxy.some((raw) => {
+    const pattern = raw.toLowerCase();
+    if (pattern === "*") return true;
+    if (pattern === host || pattern === hostWithPort) return true;
+    if (pattern.startsWith(".")) return host.endsWith(pattern);
+    return host.endsWith(`.${pattern}`);
+  });
+};
+
+const fetchInitForNetwork = (
+  url: string,
+  network: ResolvedSetupNetworkTrust,
+): BunFetchRequestInit | undefined => {
+  const parsedUrl = new URL(url);
+  const bypassProxy = shouldBypassProxy(url, network.proxy.noProxy);
+  const proxyCandidate = bypassProxy
+    ? undefined
+    : parsedUrl.protocol === "https:"
+      ? (network.proxy.https ?? network.proxy.http)
+      : (network.proxy.http ?? network.proxy.https);
+  const proxy = typeof proxyCandidate === "string" && proxyCandidate.length > 0 ? proxyCandidate : undefined;
+  const ca = network.ca.loadedCerts.map((cert) => cert.pem);
+  if (proxy === undefined && ca.length === 0) return undefined;
+  return {
+    ...(proxy === undefined ? {} : { proxy }),
+    ...(ca.length === 0 ? {} : { tls: { ca } }),
+  };
+};
 
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const text = cause instanceof Error ? `${cause.name} ${cause.message}` : String(cause);
@@ -108,8 +159,7 @@ export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustEr
     return new SetupNetworkTrustError({
       kind: "proxy-authentication",
       message: "The configured proxy requires authentication before Lando can download setup artifacts.",
-      remediation:
-        "Update network.proxy in the global config, or HTTP_PROXY / HTTPS_PROXY, with valid proxy credentials. Proxy credentials are redacted from diagnostics.",
+      remediation: `Update network.proxy in the global config, or HTTP_PROXY / HTTPS_PROXY, with valid proxy credentials. Proxy credentials are redacted from diagnostics. ${platformNetworkHint()}`,
       cause,
     });
   }
@@ -117,16 +167,14 @@ export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustEr
     return new SetupNetworkTrustError({
       kind: "tls-interception",
       message: "TLS validation failed while checking setup download access.",
-      remediation:
-        "If a corporate TLS interceptor is present, add its root certificate to network.ca.certs or LANDO_NETWORK_CA_CERTS, then rerun `lando setup`.",
+      remediation: `If a corporate TLS interceptor is present, add its root certificate to network.ca.certs or LANDO_NETWORK_CA_CERTS, then rerun \`lando setup\`. ${platformNetworkHint()}`,
       cause,
     });
   }
   return new SetupNetworkTrustError({
     kind: "blocked-registry",
     message: "The setup artifact registry could not be reached through the configured network path.",
-    remediation:
-      "Allow GitHub release downloads and Lando runtime bundle URLs through the corporate proxy/firewall, or update network.proxy / HTTP_PROXY / HTTPS_PROXY / NO_PROXY for this platform.",
+    remediation: `Allow GitHub release downloads and Lando runtime bundle URLs through the corporate proxy/firewall, or update network.proxy / HTTP_PROXY / HTTPS_PROXY / NO_PROXY. ${platformNetworkHint()}`,
     cause,
   });
 };
@@ -170,14 +218,45 @@ export const resolveSetupNetworkTrust = (
     };
   });
 
+export const makeSetupNetworkTrustProbe =
+  (fetchImpl: SetupNetworkTrustFetch = globalThis.fetch): SetupNetworkTrustProbe =>
+  (network) => {
+    const hasTrustToValidate =
+      network.proxy.http !== undefined ||
+      network.proxy.https !== undefined ||
+      network.ca.loadedCerts.length > 0;
+    if (!hasTrustToValidate) return Effect.void;
+
+    return Effect.tryPromise({
+      try: async () => {
+        const response = await fetchImpl(SETUP_NETWORK_PROBE_URL, {
+          method: "HEAD",
+          redirect: "manual",
+          ...fetchInitForNetwork(SETUP_NETWORK_PROBE_URL, network),
+        });
+        if (response.status === 407) {
+          throw new Error(`HTTP 407 Proxy Authentication Required probing ${SETUP_NETWORK_PROBE_URL}`);
+        }
+        if (!response.ok && (response.status < 300 || response.status >= 400)) {
+          throw new Error(
+            `HTTP ${response.status} ${response.statusText} probing ${SETUP_NETWORK_PROBE_URL}`,
+          );
+        }
+      },
+      catch: classifySetupNetworkFailure,
+    });
+  };
+
+export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = makeSetupNetworkTrustProbe();
+
 export const validateSetupNetworkTrust = (
   config: GlobalConfig,
   probe?: SetupNetworkTrustProbe,
 ): Effect.Effect<ResolvedSetupNetworkTrust, SetupNetworkTrustError> =>
   Effect.gen(function* () {
     const resolved = yield* resolveSetupNetworkTrust(config);
-    if (probe !== undefined) {
-      yield* probe(resolved).pipe(Effect.mapError(classifySetupNetworkFailure));
-    }
+    yield* (probe ?? defaultSetupNetworkTrustProbe)(resolved).pipe(
+      Effect.mapError(classifySetupNetworkFailure),
+    );
     return resolved;
   });

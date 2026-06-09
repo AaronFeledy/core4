@@ -31,7 +31,9 @@ import {
 } from "../../../../providers/precedence.ts";
 import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
 import {
+  type SetupNetworkTrustFetch,
   type SetupNetworkTrustProbe,
+  makeSetupNetworkTrustProbe,
   validateSetupNetworkTrust,
 } from "../../../commands/setup-network-trust.ts";
 
@@ -95,6 +97,12 @@ const inputNetworkProbe = (input: unknown): SetupNetworkTrustProbe | undefined =
   if (typeof input !== "object" || input === null || !("_networkProbe" in input)) return undefined;
   const probe = input._networkProbe;
   return typeof probe === "function" ? (probe as SetupNetworkTrustProbe) : undefined;
+};
+
+const inputNetworkFetch = (input: unknown): SetupNetworkTrustFetch | undefined => {
+  if (typeof input !== "object" || input === null || !("_networkFetch" in input)) return undefined;
+  const fetchImpl = input._networkFetch;
+  return typeof fetchImpl === "function" ? (fetchImpl as SetupNetworkTrustFetch) : undefined;
 };
 
 export const shouldDisableHostProxyForSetup = (input: unknown): boolean =>
@@ -172,7 +180,8 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
       });
 
       const provider = yield* registry.select(setupProviderPlan(resolution.providerId));
-      const network = yield* validateSetupNetworkTrust(globalConfig, inputNetworkProbe(input));
+      const networkProbe = inputNetworkProbe(input) ?? makeSetupNetworkTrustProbe(inputNetworkFetch(input));
+      const network = yield* validateSetupNetworkTrust(globalConfig, networkProbe);
 
       const selectedProviderId = String(resolution.providerId);
       if (!inputBooleanFlag(input, "skip-provider")) {

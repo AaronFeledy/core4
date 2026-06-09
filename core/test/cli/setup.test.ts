@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, type Context, Effect, Layer } from "effect";
 
 import {
@@ -25,7 +25,10 @@ import {
   makeTestProxyService,
   makeTestSshService,
 } from "@lando/sdk/test";
-import { classifySetupNetworkFailure } from "../../src/cli/commands/setup-network-trust.ts";
+import {
+  classifySetupNetworkFailure,
+  makeSetupNetworkTrustProbe,
+} from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
   setupDeferredFileSyncPath,
   setupSpec,
@@ -130,6 +133,27 @@ const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): str
   `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
 
 describe("meta:setup command", () => {
+  const originalNetworkEnv = {
+    HTTP_PROXY: process.env.HTTP_PROXY,
+    HTTPS_PROXY: process.env.HTTPS_PROXY,
+    NO_PROXY: process.env.NO_PROXY,
+    http_proxy: process.env.http_proxy,
+    https_proxy: process.env.https_proxy,
+    no_proxy: process.env.no_proxy,
+    LANDO_NETWORK_CA_CERTS: process.env.LANDO_NETWORK_CA_CERTS,
+  };
+
+  beforeEach(() => {
+    for (const key of Object.keys(originalNetworkEnv)) Reflect.deleteProperty(process.env, key);
+  });
+
+  afterEach(() => {
+    for (const [key, value] of Object.entries(originalNetworkEnv)) {
+      if (value === undefined) Reflect.deleteProperty(process.env, key);
+      else process.env[key] = value;
+    }
+  });
+
   test("is registered at the minimal bootstrap level with the top-level setup alias", () => {
     expect(setupSpec.bootstrap).toBe("minimal");
     expect(SetupCommand.bootstrap).toBe("minimal");
@@ -172,9 +196,19 @@ describe("meta:setup command", () => {
       setupSpec
         .run({
           installDir: "/opt/lando",
+          _networkFetch: async () => new Response(null, { status: 204 }),
           flags: { "runtime-bundle-url": "https://example.invalid/lando-runtime.zip" },
         })
-        .pipe(Effect.provide(buildSetupLayers(registry))),
+        .pipe(
+          Effect.provide(
+            buildSetupLayers(registry, {
+              network: {
+                proxy: { https: "http://proxy.example:8080", noProxy: [] },
+                ca: { certs: [], trustHost: true },
+              },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
     );
 
     expect(setupOptions).toEqual([
@@ -446,6 +480,116 @@ describe("meta:setup command", () => {
       expect(error.kind).toBe(kind);
       expect(error.remediation).toContain(remediationNeedle);
     }
+  });
+
+  test("default network trust probe uses resolved proxy and CA settings before setup downloads", async () => {
+    const calls: string[] = [];
+    const fetchInits: BunFetchRequestInit[] = [];
+    const fetcher = async (_url: string | URL | Request, init?: BunFetchRequestInit): Promise<Response> => {
+      calls.push("network");
+      if (init !== undefined) fetchInits.push(init);
+      return new Response(null, { status: 204 });
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () =>
+        Effect.sync(() => {
+          calls.push("provider");
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec.run({ installDir: "/opt/lando", _networkFetch: fetcher }).pipe(
+        Effect.provide(
+          buildSetupLayers(registry, {
+            network: {
+              proxy: { https: "http://proxy.example:8080", noProxy: [] },
+              ca: { certs: [], trustHost: true },
+            },
+          } as Partial<GlobalConfig>),
+        ),
+      ),
+    );
+
+    expect(calls).toEqual(["network", "provider"]);
+    expect(fetchInits[0]).toMatchObject({ method: "HEAD", proxy: "http://proxy.example:8080" });
+  });
+
+  test("default network trust probe classifies blocked registry failures before setup downloads", async () => {
+    let setupCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const exit = await Effect.runPromiseExit(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          _networkFetch: async () => {
+            throw new Error("connect ETIMEDOUT github.com");
+          },
+        })
+        .pipe(
+          Effect.provide(
+            buildSetupLayers(registry, {
+              network: {
+                proxy: { https: "http://proxy.example:8080", noProxy: [] },
+                ca: { certs: [], trustHost: true },
+              },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("expected setup network trust failure");
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
+    const error = failure.value as {
+      readonly _tag?: string;
+      readonly kind?: string;
+      readonly remediation?: string;
+    };
+    expect(error._tag).toBe("SetupNetworkTrustError");
+    expect(error.kind).toBe("blocked-registry");
+    expect(error.remediation ?? "").toContain("network.proxy");
+    expect(setupCalls).toBe(0);
+  });
+
+  test("network trust probe maps HTTP 407 responses to proxy authentication failures", async () => {
+    const probe = makeSetupNetworkTrustProbe(
+      async () => new Response(null, { status: 407, statusText: "Proxy Authentication Required" }),
+    );
+    const exit = await Effect.runPromiseExit(
+      probe({
+        proxy: { https: "http://proxy.example:8080", noProxy: [] },
+        ca: { trustHost: true, certs: [], loadedCerts: [] },
+      }),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag !== "Failure") throw new Error("expected proxy authentication failure");
+    const failure = Cause.failureOption(exit.cause);
+    expect(failure._tag).toBe("Some");
+    if (failure._tag !== "Some") throw new Error("expected typed setup network trust failure");
+    expect(failure.value.kind).toBe("proxy-authentication");
   });
 
   test("fails with missing custom CA remediation before long-download setup starts", async () => {

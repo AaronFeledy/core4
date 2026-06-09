@@ -24,3 +24,8 @@
 - Verification: typecheck, lint, targeted setup/download/SDK compatibility tests, compiled parity targets, and serial full test suite passed.
 - **Learnings for future iterations:** Setup download paths should consume one resolved network-trust object from the setup preflight; plugin downloaders can use Bun fetch's `proxy` and `tls.ca` options directly while still respecting `NO_PROXY` bypasses.
 ---
+## 2026-06-08 20:50 CDT - US-202 Build
+- Finished the in-flight setup network-trust story by committing the remaining probe hardening: configured proxy/CA trust now triggers an actual pre-download HEAD probe with injectable fetch, uses Bun fetch proxy/TLS options, classifies HTTP 407 before provider setup, and includes platform-specific remediation in network-trust failures.
+- Verification: focused setup tests, setup CLI help surface, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Network-dependent setup behavior should keep the resolver pure and inject only the fetch/probe seam in command tests; this proves ordering and proxy/TLS options without requiring real corporate network infrastructure.
+---
