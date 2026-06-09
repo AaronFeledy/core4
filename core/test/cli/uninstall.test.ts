@@ -337,6 +337,41 @@ describe("meta:uninstall", () => {
     }
   });
 
+  test("purge failure after data-root removal does not recreate the data root for the report", async () => {
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(join(userDataRoot, "global"), { recursive: true });
+      mkdirSync(userCacheRoot, { recursive: true });
+
+      const result = await Effect.runPromise(
+        metaUninstallSpec.run({
+          flags: { yes: true, purge: true },
+          _userDataRoot: userDataRoot,
+          _userCacheRoot: userCacheRoot,
+          _execPath: join(root, "lando"),
+          _remove: async (path: string) => {
+            if (path === userCacheRoot) throw new Error("locked cache root");
+            rmSync(path, { recursive: true, force: true });
+          },
+        }),
+      );
+
+      expect(result.failed).toBe(true);
+      expect(result.reportPath).toBeUndefined();
+      expect(existsSync(userDataRoot)).toBe(false);
+      expect(existsSync(join(userDataRoot, "uninstall"))).toBe(false);
+      expect(result.steps.find((step) => step.id === "user-data-root")).toMatchObject({
+        outcome: "completed",
+      });
+      expect(result.steps.find((step) => step.id === "user-cache-root")).toMatchObject({
+        outcome: "failed",
+      });
+      expect(formatUninstallResult(result)).toContain("Partial failure report: unavailable");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("source CLI dry-run and refusal exercise the real command surface", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {

@@ -255,7 +255,9 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
   }
 
   const failed = executed.some((step) => step.outcome === "failed");
-  const reportPath = failed ? await writeUninstallReport(userDataRoot, mode, executed) : undefined;
+  // Skip the report when the data root was purged: writing it would recreate the just-removed root.
+  const reportPath =
+    failed && existsSync(userDataRoot) ? await writeUninstallReport(userDataRoot, mode, executed) : undefined;
   return {
     dryRun: false,
     refused: false,
