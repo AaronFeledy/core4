@@ -141,8 +141,10 @@
 
 ## Additive Beta service fields
 
+- `CaSetupOptions.privilege`
 - `ProviderSetupOptions.runtimeBundleUrl`
 - `ProviderSetupOptions.network`
+- `ProviderSetupOptions.privilege`
 
 ## Additive Beta schema fields
 

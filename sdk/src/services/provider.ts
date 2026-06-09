@@ -20,6 +20,7 @@ import type {
   ProviderId,
   ServiceName,
 } from "../schema/index.ts";
+import type { PrivilegeService } from "./process.ts";
 
 export type ProviderError =
   | ProviderCapabilityError
@@ -34,6 +35,7 @@ export interface ProviderSetupOptions {
   readonly force: boolean;
   readonly runtimeBundleUrl?: string;
   readonly network?: NetworkConfig;
+  readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
 }
 
 export interface ProviderStatus {

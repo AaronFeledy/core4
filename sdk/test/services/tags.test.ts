@@ -15,6 +15,7 @@ import {
   Logger,
   PluginRegistry,
   PluginTrustStore,
+  PrivilegeService,
   ProcessRunner,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -94,6 +95,7 @@ const EXPECTED_TAGS = [
     ],
   },
   { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
+  { tag: PrivilegeService, key: "@lando/core/PrivilegeService", methods: ["elevate"] },
   { tag: ShellRunner, key: "@lando/core/ShellRunner", methods: ["exec", "run", "runScript"] },
 ] as const;
 
@@ -169,6 +171,7 @@ describe("Effect service tags", () => {
         "writeFile",
       ],
       ["run", "stream"],
+      ["elevate"],
       ["exec", "run", "runScript"],
     ];
 

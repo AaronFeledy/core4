@@ -2504,7 +2504,16 @@ export const COMPILED_OCLIF_MANIFEST = {
       aliases: ["shellenv"],
       args: {},
       description: "Print shell-profile snippets to integrate Lando into your PATH.",
-      flags: {},
+      flags: {
+        shell: {
+          name: "shell",
+          default: "posix",
+          hasDynamicHelp: false,
+          multiple: false,
+          options: ["posix", "powershell", "pwsh"],
+          type: "option",
+        },
+      },
       hasDynamicHelp: false,
       hidden: false,
       hiddenAliases: [],

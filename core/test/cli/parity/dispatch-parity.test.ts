@@ -151,10 +151,8 @@ const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
 describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", () => {
   beforeAll(async () => {
-    if (!(await Bun.file(compiledBinary).exists())) {
-      const build = await runProcess([process.execPath, "run", "build:compile"], { cwd: coreRoot });
-      expect(build.exitCode, `build:compile failed: ${build.stderr}`).toBe(0);
-    }
+    const build = await runProcess([process.execPath, "run", "build:compile"], { cwd: coreRoot });
+    expect(build.exitCode, `build:compile failed: ${build.stderr}`).toBe(0);
   }, 240_000);
 
   describe("MVP canonical ids dispatch (not NotImplementedError) at parity", () => {
@@ -177,6 +175,26 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       // shared normalizer neutralizes the absolute path so the snippet shape
       // is compared for equality.
       expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+    }, 30_000);
+
+    test("meta:shellenv invalid --shell fails on both paths", async () => {
+      const source = await runSourceCli(["meta:shellenv", "--shell=fish"]);
+      const compiled = await runCompiledCli(["meta:shellenv", "--shell=fish"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Expected --shell=fish to be one of: posix, powershell, pwsh");
+    }, 30_000);
+
+    test("meta:shellenv missing --shell value fails on both paths", async () => {
+      const source = await runSourceCli(["meta:shellenv", "--shell"]);
+      const compiled = await runCompiledCli(["meta:shellenv", "--shell"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Flag --shell expects one of these values: posix, powershell, pwsh");
     }, 30_000);
 
     test("app:start with no Landofile: both fail with LandofileNotFoundError, not NotImplementedError", async () => {
