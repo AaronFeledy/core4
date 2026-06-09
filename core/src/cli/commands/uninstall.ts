@@ -46,7 +46,7 @@ export interface UninstallResult {
 
 export interface UninstallReport {
   readonly status: "completed" | "failed";
-  readonly mode: "keep-data" | "purge";
+  readonly mode: UninstallMode;
   readonly updatedAt: string;
   readonly steps: ReadonlyArray<UninstallPlanStep>;
 }
@@ -96,7 +96,7 @@ const outcomeForSkippedStep = (step: UninstallPlanStep): UninstallStepOutcome =>
   return "skipped";
 };
 
-const stepWithMode = (step: UninstallPlanStep, mode: "keep-data" | "purge"): UninstallPlanStep => {
+const stepWithMode = (step: UninstallPlanStep, mode: UninstallMode): UninstallPlanStep => {
   if (mode === "keep-data" && keepDataProtectedStepIds.has(step.id)) {
     return {
       ...step,
@@ -115,7 +115,7 @@ const stepWithMode = (step: UninstallPlanStep, mode: "keep-data" | "purge"): Uni
 
 export const buildUninstallPlan = (
   options: UninstallOptions = {},
-  mode?: "keep-data" | "purge",
+  mode?: UninstallMode,
 ): ReadonlyArray<UninstallPlanStep> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const userCacheRoot = options.userCacheRoot ?? resolveUserCacheRoot();
@@ -221,7 +221,7 @@ export const buildUninstallPlan = (
 
 const writeUninstallReport = (
   userDataRoot: string,
-  mode: "keep-data" | "purge",
+  mode: UninstallMode,
   steps: ReadonlyArray<UninstallPlanStep>,
 ): Promise<string> => {
   const reportPath = uninstallReportPath(userDataRoot);
@@ -234,10 +234,7 @@ const writeUninstallReport = (
   return writeFileAtomicViaRename(reportPath, `${JSON.stringify(report, null, 2)}\n`).then(() => reportPath);
 };
 
-const executeUninstall = async (
-  options: UninstallOptions,
-  mode: "keep-data" | "purge",
-): Promise<UninstallResult> => {
+const executeUninstall = async (options: UninstallOptions, mode: UninstallMode): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const remove = options.remove ?? defaultRemove;
   const steps = buildUninstallPlan(options, mode);
@@ -273,7 +270,7 @@ export const uninstall = (options: UninstallOptions = {}): Effect.Effect<Uninsta
   Effect.promise(async () => {
     const dryRun = options.dryRun === true;
     const yes = options.yes === true;
-    const requestedMode: ("keep-data" | "purge") | undefined =
+    const requestedMode: UninstallMode | undefined =
       options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
     const mode = requestedMode ?? "keep-data";
     if (!dryRun && yes) return executeUninstall(options, mode);
