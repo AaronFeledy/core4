@@ -73,7 +73,7 @@ const splitNoProxy = (value: string | undefined): ReadonlyArray<string> =>
         .map((item) => item.trim())
         .filter((item) => item.length > 0);
 
-const proxyConfigHasExplicitValue = (proxy: GlobalConfig["network"] extends infer N ? N : never): boolean => {
+const proxyConfigHasExplicitValue = (proxy: GlobalConfig["network"]): boolean => {
   if (proxy === undefined || typeof proxy !== "object" || proxy === null || !("proxy" in proxy)) return false;
   const candidate = proxy.proxy;
   if (candidate === undefined) return false;
