@@ -105,6 +105,25 @@ describe("ci runbook", () => {
     expect(betaDecisions).toContain("windows-x64");
   });
 
+  test("keeps the Beta 1 OCLIF major decision synchronized with package metadata", async () => {
+    const [betaDecisions, corePackage] = await Promise.all([
+      readText(betaDecisionsPath),
+      readText(corePackagePath),
+    ]);
+    const parsedCorePackage = JSON.parse(corePackage);
+
+    expect(parsedCorePackage.dependencies["@oclif/core"]).toBe("^4.11.2");
+    expect(parsedCorePackage.devDependencies.oclif).toBe("^4.23.0");
+
+    expect(betaDecisions).toContain("OCLIF major lock decision");
+    expect(betaDecisions).toContain("stay on OCLIF v4");
+    expect(betaDecisions).toContain("@oclif/core ^4.11.2");
+    expect(betaDecisions).toContain("oclif ^4.23.0");
+    expect(betaDecisions).toContain("dual dispatch");
+    expect(betaDecisions).toContain("runCompiledCli");
+    expect(betaDecisions).toContain("compiled-binary dispatch parity");
+  });
+
   test("links the runbook from README and pull request templates", async () => {
     const readme = await readText(readmePath);
     const templates = await listPrTemplates();

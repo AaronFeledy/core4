@@ -139,7 +139,6 @@ These remain unresolved at the time of this draft and should be addressed before
 | Decision | Options |
 |---|---|
 | Bun version floor | Latest stable at GA that supports `--bytecode` for every cross-compile target listed in §2.1. Documented minimum (`>=1.2`?). |
-| OCLIF major version | OCLIF v4 (current) or wait for v5? |
 | How much provider setup is automatic | Aggressive auto-setup vs. guided opt-in |
 | Telemetry data inventory and privacy controls | Telemetry is core and enabled by default; finalize event inventory, redaction, retention, and disablement controls |
 | Exact Compose compatibility subset | Support common Compose features and every Compose feature Lando uses internally; document the accepted key matrix and reject unsupported keys with remediation |
@@ -151,6 +150,7 @@ These remain unresolved at the time of this draft and should be addressed before
 
 | Decision | Resolution |
 |---|---|
+| OCLIF major version | **Resolved: stay on OCLIF v4 for Beta 1.** The source-mode CLI remains pinned to the current OCLIF v4 line (`@oclif/core ^4.11.2`, `oclif ^4.23.0`) while the compiled binary keeps the permanent `runCompiledCli` dual-dispatch path and parity tests described below. |
 | Compiled-binary CLI dispatch unification | **Resolved as option (b): dual dispatch is permanent.** The spike (§14 Appendix D.1) proved that `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile` binary through any supported public API — `Config.load` → `findRoot` cannot locate the package root next to a relocated single-file binary, and the `module-loader` runtime `import()` of a computed absolute path is never embedded by the bundler. Both break inside `$bunfs`, so `runCompiledCli` remains the compiled-mode router. §8.4.1's parity rules are now normative and the compiled-binary dispatch parity test layer ships in §13.1 (`core/test/cli/parity/`), covering every canonical command id (`MVP_COMMAND_IDS` plus the §17.1 stage-7 deferred-command set). |
 
 **Deferred to post-v4.0 (architecture must not preclude these):**

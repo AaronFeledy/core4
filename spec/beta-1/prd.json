@@ -176,8 +176,8 @@
         "Lint passes."
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Beta 1 stays on OCLIF v4, preserving @oclif/core ^4.11.2 and oclif ^4.23.0 in core package metadata, documenting compatibility notes and keeping permanent dual dispatch with compiled-binary dispatch parity tests authoritative."
     },
     {
       "id": "US-210",
