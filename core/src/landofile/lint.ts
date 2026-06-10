@@ -58,18 +58,20 @@ const isRejectedComposeTopLevelKey = (key: string): boolean =>
 const composeSuggestedFix = (issue: {
   readonly _tag: string;
   readonly path: ReadonlyArray<PropertyKey>;
+  readonly message: string;
 }): string | undefined => {
   // Compose matrix governs top-level keys only; nested issues keep their precise remediation.
   if (issue.path.length !== 1) return undefined;
   const key = String(issue.path[0]);
+  if (issue._tag === "Unexpected" && isRejectedComposeTopLevelKey(key)) {
+    return `Unsupported Compose top-level key "${key}". Supported top-level Compose keys are ${COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY}; version is deprecated. ${REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION[key]}`;
+  }
+  if (issue._tag !== "Type" || issue.message.startsWith("Expected undefined")) return undefined;
   if (isAcceptedComposeTopLevelKey(key)) {
     return `The top-level Compose key "${key}" is accepted, but this value does not match Lando's supported schema-backed subset. Use only the supported shape for ${key}.`;
   }
   if (isDeprecatedComposeTopLevelKey(key)) {
     return `The top-level Compose key "${key}" is accepted only for compatibility and is ignored by Lando. Remove it from new Landofiles.`;
-  }
-  if (issue._tag === "Unexpected" && isRejectedComposeTopLevelKey(key)) {
-    return `Unsupported Compose top-level key "${key}". Supported top-level Compose keys are ${COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY}; version is deprecated. ${REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION[key]}`;
   }
   return undefined;
 };

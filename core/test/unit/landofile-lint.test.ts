@@ -106,6 +106,8 @@ describe("lintLandofile", () => {
       expect(violation?.suggestedFix).toBe(
         'Remove the unknown key "bogus_nested"; it is not part of the canonical Landofile schema.',
       );
+      const parentViolation = exit.value.violations.find((entry) => entry.path === "services");
+      expect(parentViolation?.suggestedFix).toBeUndefined();
     }
   });
 
