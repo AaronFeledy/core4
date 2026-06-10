@@ -118,3 +118,9 @@
 - **Multi-agent collision (transparency):** a concurrent agent on this same branch/tree had independently implemented most of US-207 (the run.ts/shellenv/dual-dispatch/dispatch-parity/guide changes) but left it uncommitted and went idle ~18:35; its rogue full-suite `bun test` was rebuilding `core/dist/lando` mid-run and caused intermittent `ENOENT`/`(deleted)` failures in the compiled-binary parity tests until terminated. I reviewed that work diff-by-diff (coherent + correct), layered my complementary hardening on top, verified the combined tree against every gate, and committed only the US-207 unit — deliberately EXCLUDING unrelated concurrent artifacts (`spec/alpha/`, `spec/alpha2/`, `spec/beta/`, `core/test/build/alpha-platform-deferrals.test.ts`).
 - **Learnings for future iterations:** Before diagnosing compiled-binary test flakiness, check for a rogue/leftover background `bun test`/`build:compile` rebuilding `core/dist/lando` — a concurrent rebuild surfaces as `ENOENT`/`/proc/self/exe " (deleted)"`, which looks like a test bug but is environmental; parity normalizers must strip that `(deleted)` marker. When two workers land on one story in one working tree, stage explicit per-file lists (never `git add -A`) to keep unrelated concurrent work out of the commit.
 ---
+
+## 2026-06-09 20:35 CDT - US-207 Build
+- Finished the in-flight dispatch parity branch by hardening the uninstall renderer exit-code seam and adding shellenv unknown-flag parity coverage, preserving identical source and compiled behavior for setup/shellenv/uninstall.
+- Verification: focused parity/renderer/command suites, typecheck, lint, renderer-boundary check, full tests, and source+compiled CLI QA passed.
+- **Learnings for future iterations:** Renderer result helpers that set process exit status should expose an injectable setter for tests, so renderer-boundary tests can assert exit behavior without leaking global `process.exitCode` between cases.
+---
