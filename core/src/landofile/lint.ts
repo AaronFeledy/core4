@@ -59,7 +59,8 @@ const composeSuggestedFix = (issue: {
   readonly _tag: string;
   readonly path: ReadonlyArray<PropertyKey>;
 }): string | undefined => {
-  if (issue.path.length === 0) return undefined;
+  // Compose matrix governs top-level keys only; nested issues keep their precise remediation.
+  if (issue.path.length !== 1) return undefined;
   const key = String(issue.path[0]);
   if (isAcceptedComposeTopLevelKey(key)) {
     return `The top-level Compose key "${key}" is accepted, but this value does not match Lando's supported schema-backed subset. Use only the supported shape for ${key}.`;

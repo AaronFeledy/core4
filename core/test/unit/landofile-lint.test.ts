@@ -96,6 +96,19 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("a nested unknown key under an accepted top-level key keeps precise remediation", async () => {
+    await write("name: myapp\nservices:\n  web:\n    image: node:20\n    bogus_nested: 1\n");
+    const exit = await lint(dir);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(false);
+      const violation = exit.value.violations.find((entry) => entry.path === "services.web.bogus_nested");
+      expect(violation?.suggestedFix).toBe(
+        'Remove the unknown key "bogus_nested"; it is not part of the canonical Landofile schema.',
+      );
+    }
+  });
+
   test("a wrong-typed value is reported as a violation with a path", async () => {
     await write("name: myapp\nruntime: 3\n");
     const exit = await lint(dir);
