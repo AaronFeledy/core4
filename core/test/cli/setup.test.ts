@@ -35,6 +35,7 @@ import SetupCommand, {
   setupSpec,
   shouldDisableHostProxyForSetup,
 } from "../../src/cli/oclif/commands/meta/setup.ts";
+import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
@@ -182,6 +183,38 @@ describe("meta:setup command", () => {
     ]);
 
     expect(input.flags["runtime-bundle-url"]).toBe("https://example.invalid/lando-runtime.zip");
+  });
+
+  test("accepts --yes and --no-interactive without changing the guided setup default", async () => {
+    let setupCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      setup: () =>
+        Effect.sync(() => {
+          setupCalls += 1;
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    expect(Object.keys(SetupCommand.flags)).toContain("no-interactive");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.flags["no-interactive"]?.type).toBe("boolean");
+    const input = compiledCommandInputFromArgv("meta:setup", ["--yes", "--no-interactive"]);
+    expect(input.flags.yes).toBe(true);
+    expect(input.flags["no-interactive"]).toBe(true);
+
+    const result = await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: input.flags })
+        .pipe(Effect.provide(buildSetupLayers(registry))),
+    );
+
+    expect(setupCalls).toBe(1);
+    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
   });
 
   test("passes runtime-bundle-url through to provider setup", async () => {

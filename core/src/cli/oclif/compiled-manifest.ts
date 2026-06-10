@@ -2426,6 +2426,12 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
+        "no-interactive": {
+          description: "Do not prompt; fail or use documented non-interactive setup defaults.",
+          name: "no-interactive",
+          allowNo: false,
+          type: "boolean",
+        },
         provider: {
           description:
             "Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection.",

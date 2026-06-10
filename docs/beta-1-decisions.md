@@ -15,3 +15,15 @@ Beta 1 will stay on OCLIF v4. The current package metadata remains authoritative
 Rationale: source mode depends on OCLIF v4 command loading, manifest generation, hooks, help, and parser behavior, while the compiled `$bunfs` binary deliberately does not route through OCLIF. The permanent compiled path is the hand-rolled `runCompiledCli` router, and the compatibility contract is the existing dual dispatch model: shared command implementations, shared renderers, and the compiled-binary dispatch parity tests that compare source and compiled behavior for representative commands and failure cases.
 
 Compatibility notes: OCLIF remains isolated to the OCLIF adapter surface and source-mode command execution. New command work must preserve the existing dependency ranges unless an explicit migration story updates source-mode loading, manifest generation, hooks, and parity coverage together. A future OCLIF v5 migration must not attempt to remove dual dispatch or make the compiled binary depend on OCLIF runtime discovery.
+
+## Provider auto-setup default decision
+
+Beta 1 chooses guided opt-in for provider setup. `lando setup` is the explicit setup entrypoint, and routine first-run commands report readiness/remediation instead of aggressively provisioning providers behind the user's back.
+
+Defaults:
+
+- Interactive: `lando setup` uses the managed `lando` provider default unless `--provider` or provider precedence selects another provider. It may perform the explicit setup steps the command names, but app lifecycle commands do not auto-run setup.
+- Non-interactive: `lando setup --no-interactive` uses the same defaults without prompting. It must fail with remediation rather than asking follow-up questions or silently choosing an aggressive alternative.
+- CI: CI and scripted use should pass explicit inputs such as `lando setup --yes`, `lando setup --provider=lando`, or skip flags. `--yes` confirms setup prompts; it does not change provider precedence or make first-run app commands provision providers implicitly.
+
+Rejected alternative: aggressive auto-setup is not the default. If a system provider such as Docker or Podman is selected but unavailable, setup fails with remediation to install and start that runtime or rerun `lando setup --provider=lando` for the bundled managed runtime. This keeps provider readiness checks explicit and avoids host mutation from a normal `lando start`.

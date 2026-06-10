@@ -150,3 +150,9 @@
 - Verification: focused decision guards (`oclif-major-lock.test.ts` + `ci-runbook.test.ts`) green, `bun run typecheck` clean, `bun run lint` clean, full `bun test` = 3291 pass / 27 skip / 0 fail.
 - **Learnings for future iterations:** When a prior Build step leaves a decision story verified-but-uncommitted (operator quit before commit), the follow-up Build step's job is to re-verify and commit the exact story-scoped file set — not to re-implement. Stage an explicit file list so unrelated concurrent edits in the same tree never ride along.
 ---
+## 2026-06-10 12:25 CDT - US-210
+- Closed the provider auto-setup default decision as guided opt-in: `lando setup` remains the explicit setup surface, interactive/non-interactive/CI defaults share the same provider precedence, and unavailable system providers fail with remediation instead of triggering aggressive background provisioning.
+- Added the setup-default guide and tests locking the decision note, resolved §14.2 row, guide index entry, and `--yes`/`--no-interactive` setup parsing behavior.
+- Verification: typecheck, lint, build, focused setup/decision tests, guide coverage/lint, guide scenario generation, source+compiled CLI QA, and full tests passed.
+- **Learnings for future iterations:** Decision stories that affect setup UX should be locked in three places at once: `docs/beta-1-decisions.md`, the §14.2 open/resolved decision table, and a small build test that asserts the user guide and guide index row exist so the PRD acceptance cannot drift from docs.
+---
