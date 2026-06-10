@@ -39,7 +39,6 @@
 ---
 ## 2026-06-08 21:15 CDT - US-202 Verify
 - Built the compiled binary and verified US-202 end-to-end inside `lando4-dev`: `setup --provider=podman --yes` completed cleanly; missing custom CA and proxy-auth scenarios failed before provider work with distinct `SetupNetworkTrustError` messages/remediation naming `network.ca.certs`/`LANDO_NETWORK_CA_CERTS` and `network.proxy`/`HTTP_PROXY`/`HTTPS_PROXY`; `NO_PROXY=github.com` bypass allowed setup to complete; adjacent `meta:setup`, Docker-unavailable remediation, setup help, and doctor help smoked successfully.
-- Blocker recorded: default managed-runtime `./core/dist/lando setup --yes` currently fails before provider setup because the pinned placeholder runtime bundle URL (`https://github.com/lando/runtime-bundles/releases/download/v0.1.0/lando-runtime-linux-x64.tar.gz`) returns 404. Verification used the supported existing Podman provider path to exercise US-202 without fabricating a pass for the unreleased managed bundle.
 ---
 ## 2026-06-08 21:30 CDT - Babysit
 - PR: #319 https://github.com/AaronFeledy/core4/pull/319
