@@ -162,3 +162,9 @@
 - Verification: red/green focused tests, typecheck, lint, guide coverage/lint/scenario generation, manual `app:config:lint --format=json` QA, and full tests passed.
 - **Learnings for future iterations:** Effect Schema's `TemplateLiteral` index signature decodes `x-*` keys correctly, but its raw JSON Schema output needs a small Landofile-specific post-process to publish `additionalProperties:false` plus `^x-` `patternProperties` instead of the generic property-name schema.
 ---
+
+## 2026-06-10 14:25 CDT - US-211 Review
+- review-work (2 Oracles) returned PASS/PASS with no blockers; all six acceptance criteria met. Fixed one real regression both Oracles and hands-on QA flagged: `composeSuggestedFix` in `core/src/landofile/lint.ts` keyed off `path[0]` at any depth, so a nested unknown key under an accepted top-level key (e.g. `services.web.bogus`) got the generic top-level Compose message instead of the precise "Remove the unknown key" remediation. Constrained the matrix to `path.length === 1` and added a regression test locking nested-key behavior.
+- Review notes (rejected): the `services: "Expected undefined"` duplicate ParseResult violation on nested errors is a pre-existing Effect quirk (`onExcessProperty:"error"` + `errors:"all"` on optional record-valued props) — reproduces with the pre-change plain `Schema.Struct`, so out of scope. `delete schema.propertyNames` vs `= undefined` in json-schema.ts — cosmetic nitpick with no functional impact (JSON.stringify omits undefined) and would churn the SDK snapshot; rejected.
+- Verification: typecheck, lint, focused lint/compose/schema suites (45), and CLI QA of `app:config:lint --format=json` confirm precise nested remediation restored and top-level accepted/deprecated/rejected behavior intact.
+---
