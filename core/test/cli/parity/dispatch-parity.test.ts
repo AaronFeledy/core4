@@ -1,27 +1,24 @@
 /**
  * Compiled-binary dispatch parity test layer.
  *
- * The compiled-binary CLI dispatch unification decision resolved to
- * option (b): the spike proved `@oclif/core`'s `execute()`
- * cannot dispatch inside a `bun build --compile` single-file binary, so the two
- * dispatch paths — source-mode OCLIF `execute()` and the compiled hand-rolled
- * `runCompiledCli` — are permanent. The parity rules are therefore
- * normative, and THIS layer enforces them across every canonical command id in
- * the compiled registry (`MVP_COMMAND_IDS` plus the stage-7
- * deferred-command set).
+ * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
+ * single-file binary, so the two dispatch paths — source-mode OCLIF `execute()`
+ * and the compiled hand-rolled `runCompiledCli` — are permanent. This layer
+ * enforces parity between them across every canonical command id in the compiled
+ * registry (`MVP_COMMAND_IDS` plus the deferred-command set).
  *
  * Two parts:
  *
  *   Part 1 — structural parity (no spawn; runs on every platform). The canonical
  *   command-id universe is `Object.keys(compiledCommands)`. Every id is
- *   classified as exactly one of MVP-implemented or deferred; every MVP id has a
+ *   classified as exactly one of implemented or deferred; every implemented id has a
  *   compiled-dispatch branch in `core/src/cli/run.ts`; every deferred id has a
  *   registered deferral plan and NO bespoke dispatch branch (it routes through
- *   the generic `notImplementedErrorForCommand` fallthrough). This is the
- *   exhaustive coverage of the AC's "every canonical command id".
+ *   the generic `notImplementedErrorForCommand` fallthrough). This exhaustively
+ *   covers every canonical command id.
  *
  *   Part 2 — behavioral parity (drives the compiled binary on linux-x64). The
- *   two shipping paths are semantically identical for representative MVP commands
+ *   two shipping paths are semantically identical for representative implemented commands
  *   (including `meta:version` / `meta:shellenv`, whose canonical forms must
  *   dispatch — not emit `NotImplementedError`) and for the deferred set.
  */

@@ -331,8 +331,8 @@ const emitDiagnosticLine = (text: string): void => {
 /**
  * Validate a compiled-dispatch argv against a command's flag/arg definitions the
  * same way OCLIF's parser rejects malformed invocations, so the `$bunfs` binary
- * stays at parity with source mode for setup/shellenv/uninstall (spec §8.4.1,
- * §13.1). Returns the OCLIF-equivalent diagnostic, or `undefined` when valid.
+ * stays at parity with source mode for setup/shellenv/uninstall. Returns the
+ * OCLIF-equivalent diagnostic, or `undefined` when valid.
  * Mirrors the consumption rules in `compiledCommandInputFromArgv`: a value flag
  * consumes the following token (even a `-`-prefixed one) as its value, and `--`
  * terminates flag parsing so everything after it is positional.
