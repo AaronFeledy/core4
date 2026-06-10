@@ -280,6 +280,13 @@ It demonstrates:
 - A `Stream<LogChunk>` implementation backed by the private log API.
 - Provider-extension schema for Compose passthrough, custom labels, registry credentials.
 
+**Runtime-bundle source resolution.** The bundle `lando setup` downloads is resolved from a manifest of per-platform `{ url, sha256, filename, sizeBytes }` entries. Production resolves the manifest bundled into the plugin (`runtime-bundle-versions.json`, §17.2), whose entries MUST be `https://` URLs pinned to published release artifacts. A dev/CI escape hatch lets `lando setup` redirect to a locally-built bundle **without ever weakening verification**:
+
+- `LANDO_RUNTIME_BUNDLE_MANIFEST=<path>` supplies an alternate manifest (identical schema) that replaces the bundled one for the run.
+- The paired `--runtime-bundle-url` and `--runtime-bundle-sha256` flags override a single resolved entry's URL and checksum **together** — supplying one without the other is rejected, because a URL swap that keeps the pinned checksum can never verify a different artifact.
+
+Override-loaded entries MAY use `file://` URLs so neither CI nor a developer needs to stand up a server; the bundled production manifest MUST NOT. In every path the downloaded bytes are rejected unless `sha256(bytes)` equals the active entry's checksum — the override **redirects** verification to the locally-built artifact's checksum, it never disables it. There is no flag that skips checksum verification. Precedence: `LANDO_RUNTIME_BUNDLE_MANIFEST` > `--runtime-bundle-url` + `--runtime-bundle-sha256` > bundled pinned manifest.
+
 **`bindMountPerformance` declaration.** `@lando/provider-lando` declares per platform: `native` on Linux (the runtime is on the host filesystem), `slow` on macOS (the managed Podman machine is a VM with VM-mediated file sharing), `slow` on Windows (managed machine on WSL2 or Hyper-V; even WSL-resident projects pay for the Windows↔WSL boundary on host-mounted paths). The planner consults the live capability report at `app:start`, so a user who later adopts a future native macOS Linux container substrate sees the value flip without code changes.
 
 `@lando/provider-lando` is bundled and active by default. Removing it from a distribution is supported.

@@ -135,6 +135,8 @@ This work closes the remaining setup and uninstall feature surface called out by
 - [ ] Parity tests cover flags, aliases, unknown flags, dry-run rendering, destructive confirmation, and representative failure cases.
 - [ ] Compiled-binary tests verify no OCLIF-only assumptions are required for setup or uninstall.
 - [ ] Renderer-boundary tests confirm command output flows through the renderer seam.
+- [ ] `lando setup` resolves the runtime bundle from a manifest and verifies SHA-256; `--runtime-bundle-url` requires a paired `--runtime-bundle-sha256`, and `LANDO_RUNTIME_BUNDLE_MANIFEST` redirects to a local bundle with verification still enforced.
+- [ ] CI runs the real `lando setup` runtime-bundle download+verify path against a current-commit bundle via `scripts/build-runtime-bundle.ts --local` + `LANDO_RUNTIME_BUNDLE_MANIFEST`.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -142,7 +144,7 @@ This work closes the remaining setup and uninstall feature surface called out by
 ## Functional Requirements
 
 - FR-1: `lando setup` MUST run provider, CA, proxy, shell-integration, and file-sync setup through plugin subscribers and direct service calls.
-- FR-2: `lando setup` MUST accept `--yes`, `--provider=<id>`, `--skip-provider`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, and `--skip-file-sync`.
+- FR-2: `lando setup` MUST accept `--yes`, `--provider=<id>`, `--skip-provider`, `--skip-proxy`, `--skip-install-ca`, `--skip-shell-integration`, `--skip-file-sync`, `--runtime-bundle-url`, and `--runtime-bundle-sha256`.
 - FR-3: Provider setup flags supplied by `setup.flags` MUST be represented in command metadata and parsed by both dispatch paths.
 - FR-4: The default provider path MUST install the Lando-managed runtime; `docker` and `podman` provider choices MUST require an existing system runtime.
 - FR-5: CA trust-store installation and any privileged host changes MUST go through `PrivilegeService`.
@@ -155,6 +157,8 @@ This work closes the remaining setup and uninstall feature surface called out by
 - FR-12: `lando uninstall` MUST support `--dry-run`, require `--yes` for destructive execution, and enumerate every destructive step before execution.
 - FR-13: `--keep-data` and `--purge` MUST split toolchain removal from deliberate data destruction.
 - FR-14: OCLIF source dispatch and compiled `$bunfs` dispatch MUST stay in parity for setup, shellenv, and uninstall.
+- FR-15: `lando setup` MUST resolve the Lando-managed runtime bundle from a per-platform manifest and MUST support redirecting to a locally-built bundle via `LANDO_RUNTIME_BUNDLE_MANIFEST` or the paired `--runtime-bundle-url`/`--runtime-bundle-sha256` flags, with SHA-256 verification always enforced and never disabled (§5.8.1). Override-loaded manifest entries MAY use `file://` URLs; the bundled production manifest MUST stay `https://`-pinned.
+- FR-16: CI MUST verify the real `lando setup` runtime-bundle download-and-verify path against a bundle built from the current commit, using `scripts/build-runtime-bundle.ts --local` + `LANDO_RUNTIME_BUNDLE_MANIFEST` (§13.5).
 
 ## Non-Goals
 
