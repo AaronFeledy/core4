@@ -224,8 +224,8 @@
         "Lint passes."
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Beta 1 rejects sshAgent.sidecar:false; sshAgent.sidecar:true remains the default and only supported path. Landofile schema/lint now accepts true or omitted sidecar config and rejects false with direct remediation; decision docs and the SSH sidecar guide publish the reserved false behavior."
     },
     {
       "id": "US-213",

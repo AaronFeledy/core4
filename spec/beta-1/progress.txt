@@ -175,3 +175,9 @@
 - Review feedback: fixed (scoped `composeSuggestedFix` to suppress top-level Compose remediation on nested parent-path violations + regression tests; added Guide-Coverage-Skip for internal-only lint.ts scoping change)
 - Merge: merged (squash)
 ---
+## 2026-06-10 16:05 CDT - US-212
+- Closed the SSH-agent sidecar opt-out decision as reject-direct-mount: `sshAgent.sidecar: true` remains the default supported path, while `sshAgent.sidecar: false` is reserved and fails Landofile validation with remediation instead of silently enabling host-agent socket mounts.
+- Published the decision in Beta 1 docs, moved the §14.2 row to resolved, and updated the SSH sidecar guide to identify the rejected direct-mount path.
+- Verification: red/green schema, lint, decision-doc, SDK compatibility, guide lint, generated guide scenarios, CLI `app:config:lint --format=json` QA, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Reserved boolean opt-outs can be represented as `Schema.optional(Schema.Literal(true))` to accept omitted/default and explicit true while rejecting false with targeted lint remediation.
+---

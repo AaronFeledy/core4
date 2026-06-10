@@ -76,6 +76,11 @@ const composeSuggestedFix = (issue: {
   return undefined;
 };
 
+const sshAgentSuggestedFix = (issue: { readonly path: ReadonlyArray<PropertyKey> }): string | undefined => {
+  if (issue.path.map(String).join(".") !== "sshAgent.sidecar") return undefined;
+  return "The `sshAgent.sidecar: false` direct host SSH-agent socket mount is reserved and rejected in Beta 1. Use the supported sidecar path (`sshAgent.sidecar: true`, the default) instead.";
+};
+
 const violationFromIssue = (issue: {
   readonly _tag: string;
   readonly path: ReadonlyArray<PropertyKey>;
@@ -84,6 +89,7 @@ const violationFromIssue = (issue: {
   const path = issue.path.map(String).join(".");
   const key = lastKey(issue.path);
   const suggestedFix =
+    sshAgentSuggestedFix(issue) ??
     composeSuggestedFix(issue) ??
     (issue._tag === "Unexpected"
       ? `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`

@@ -116,6 +116,7 @@
 - `ScenarioProps`
 - `ServiceConfig`
 - `SkipProps`
+- `SshAgentConfig`
 - `StepProps`
 - `StorageInput`
 - `StorageScope`
@@ -162,6 +163,7 @@
 - `LandofileShape.networks`
 - `LandofileShape.configs`
 - `LandofileShape.secrets`
+- `LandofileShape.sshAgent`
 - `LandofileShape.version`
 - `LandofileShape.x-*`
 

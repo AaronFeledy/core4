@@ -117,7 +117,7 @@ Required behaviors:
 Behavior in v4.0:
 
 - `sshAgent.sidecar: true` is the default (global setting; per-service override `packages.ssh-agent.sidecar:`). The sidecar mode is **decided** for v4.0.
-- Whether a `sshAgent.sidecar: false` opt-out is permitted (reverting to the v3-era direct-mount behavior) remains an open decision (§14.2). Until that decision lands, the spec treats `false` as reserved: setting it MAY produce a warning today and MAY be rejected at GA.
+- `sshAgent.sidecar: false` is reserved and rejected in Beta 1. Direct host SSH-agent socket mounts do not ship; users must use the supported sidecar path instead.
 - Plugins MAY provide alternate SSH-agent implementations via the `features` contribution surface. Alternate implementations MUST declare their security posture in the feature manifest so `lando doctor` can surface non-default agent forwarding.
 
 ### 10.5 Healthchecks and scanner

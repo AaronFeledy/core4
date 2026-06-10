@@ -18,6 +18,7 @@ tags: [beta, docs, subsystems, ssh, sidecar]
   <Scenario id="ssh-sidecar-design" render={false} reason="Sidecar forwarding of the SSH agent Unix socket requires a running sidecar container; the live path exercises opt-in via sshAgent:true and provider-exec TTY wrapping">
     <Step name="sidecar-design">
       <Variable name="optIn" value="sshAgent: true (per service in Landofile)" display="Services opt in to SSH agent forwarding via sshAgent: true" />
+      <Variable name="reservedDirectMount" value="sshAgent.sidecar: false" display="Reserved and rejected direct host SSH-agent socket mount; use the sidecar default instead" />
       <Variable name="socketPath" value="SshAgentSocket.socketPath" display="Unix socket path forwarded into the app network by the sidecar" />
       <Variable name="featureId" value="lando.ssh-agent" display="SSH_AGENT_FEATURE_ID — the service feature identifier contributed by @lando/service-lando" />
     </Step>

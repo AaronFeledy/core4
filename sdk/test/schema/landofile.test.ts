@@ -45,6 +45,7 @@ describe("LandofileShape — schema gate", () => {
       "networks",
       "secrets",
       "services",
+      "sshAgent",
       "tooling",
       "version",
       "volumes",
@@ -93,6 +94,33 @@ describe("LandofileShape — schema gate", () => {
       const rejectionRow = issues.find((row) => row.path.includes("template"));
       expect(rejectionRow).toBeDefined();
       expect(rejectionRow?._tag).toBe("Unexpected");
+    }
+  });
+
+  test("strict decoding preserves the SSH-agent sidecar default and true opt-in", () => {
+    const omitted = Schema.decodeUnknownEither(LandofileShape)(
+      { name: "myapp" },
+      { onExcessProperty: "error" },
+    );
+    const explicit = Schema.decodeUnknownEither(LandofileShape)(
+      { name: "myapp", sshAgent: { sidecar: true } },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isRight(omitted)).toBe(true);
+    expect(Either.isRight(explicit)).toBe(true);
+  });
+
+  test("strict decoding rejects reserved direct SSH-agent socket mounts", () => {
+    const result = Schema.decodeUnknownEither(LandofileShape)(
+      { name: "myapp", sshAgent: { sidecar: false } },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((row) => row.path.join(".") === "sshAgent.sidecar")).toBe(true);
     }
   });
 });

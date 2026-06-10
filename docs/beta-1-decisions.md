@@ -35,3 +35,11 @@ Beta 1 freezes the top-level Compose project subset accepted directly by a Lando
 Unsupported Compose project keys fail closed through the canonical schema/lint surface instead of being silently dropped. Known rejected Compose keys carry targeted remediation: `profiles` should be modeled as separate Landofile fragments selected with `includes:`, while non-`x-*` extension data should move to an `x-*` key or provider-specific `providers.<provider-id>` configuration. Arbitrary unsupported keys use the generic canonical-schema remediation and should be removed or handled by a config translator.
 
 The published guide matrix is checked against the schema constants so documentation, JSON Schema, and `app:config:lint` remain aligned.
+
+## SSH-agent sidecar opt-out decision
+
+Beta 1 rejects `sshAgent.sidecar: false`. The supported path remains the sidecar-based SSH-agent forwarding model, with `sshAgent.sidecar: true` as the default.
+
+Rationale: direct host SSH-agent socket mounts recreate the v3-era risk where every opted-in service can access the host agent directly. Shipping that fallback would require a separate security model, platform constraints, diagnostics, and remediation surface. Beta 1 keeps the safer sidecar default and fails closed instead of silently accepting partial direct-mount support.
+
+Config behavior: `sshAgent.sidecar: true` is accepted and equivalent to the default. `sshAgent.sidecar: false` is reserved and rejected by Landofile validation with remediation pointing users back to the supported sidecar path; no direct host SSH-agent socket mount fallback ships in Beta 1.
