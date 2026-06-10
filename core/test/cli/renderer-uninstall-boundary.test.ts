@@ -48,17 +48,21 @@ describe("uninstall output flows through the renderer seam", () => {
     const root = mkdtempSync(join(tmpdir(), "lando-uninstall-renderer-"));
     try {
       const io = createBufferedRendererIO();
+      let exitCode: number | undefined;
       await runWithRendererHandling(uninstall(isolatedOptions(root)), {
         runtime: Layer.empty,
         rendererMode: "lando",
         io,
-        render: renderUninstallResult,
+        render: (result) =>
+          renderUninstallResult(result, (code) => {
+            exitCode = code;
+          }),
         formatError: () => "unexpected uninstall failure",
       });
 
       expect(io.stdout()).toContain("uninstall refused");
       expect(io.stderr()).toBe("");
-      expect(process.exitCode).toBe(1);
+      expect(exitCode).toBe(1);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

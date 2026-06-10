@@ -311,7 +311,12 @@ export const formatUninstallResult = (result: UninstallResult): string => {
   return [heading, ...lines, ...trailer].join("\n");
 };
 
-export const renderUninstallResult = (result: UninstallResult): string => {
-  if (result.refused || result.failed) process.exitCode = 1;
+export const renderUninstallResult = (
+  result: UninstallResult,
+  setExitCode: (code: number) => void = (code) => {
+    process.exitCode = code;
+  },
+): string => {
+  if (result.refused || result.failed) setExitCode(1);
   return formatUninstallResult(result);
 };

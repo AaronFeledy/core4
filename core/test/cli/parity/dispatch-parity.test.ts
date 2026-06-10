@@ -213,6 +213,16 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.stderr).toContain("Flag --shell expects one of these values: posix, powershell, pwsh");
     }, 30_000);
 
+    test("shellenv alias rejects unknown flags on both paths", async () => {
+      const source = await runSourceCli(["shellenv", "--definitely-not-a-shellenv-flag"]);
+      const compiled = await runCompiledCli(["shellenv", "--definitely-not-a-shellenv-flag"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Nonexistent flag: --definitely-not-a-shellenv-flag");
+    }, 30_000);
+
     test("setup alias rejects unknown flags on both paths", async () => {
       const source = await runSourceCli(["setup", "--definitely-not-a-setup-flag"]);
       const compiled = await runCompiledCli(["setup", "--definitely-not-a-setup-flag"]);
