@@ -1,27 +1,24 @@
 /**
  * Compiled-binary dispatch parity test layer.
  *
- * The compiled-binary CLI dispatch unification decision resolved to
- * option (b): the spike proved `@oclif/core`'s `execute()`
- * cannot dispatch inside a `bun build --compile` single-file binary, so the two
- * dispatch paths — source-mode OCLIF `execute()` and the compiled hand-rolled
- * `runCompiledCli` — are permanent. The parity rules are therefore
- * normative, and THIS layer enforces them across every canonical command id in
- * the compiled registry (`MVP_COMMAND_IDS` plus the stage-7
- * deferred-command set).
+ * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
+ * single-file binary, so the two dispatch paths — source-mode OCLIF `execute()`
+ * and the compiled hand-rolled `runCompiledCli` — are permanent. This layer
+ * enforces parity between them across every canonical command id in the compiled
+ * registry (`MVP_COMMAND_IDS` plus the deferred-command set).
  *
  * Two parts:
  *
  *   Part 1 — structural parity (no spawn; runs on every platform). The canonical
  *   command-id universe is `Object.keys(compiledCommands)`. Every id is
- *   classified as exactly one of MVP-implemented or deferred; every MVP id has a
+ *   classified as exactly one of implemented or deferred; every implemented id has a
  *   compiled-dispatch branch in `core/src/cli/run.ts`; every deferred id has a
  *   registered deferral plan and NO bespoke dispatch branch (it routes through
- *   the generic `notImplementedErrorForCommand` fallthrough). This is the
- *   exhaustive coverage of the AC's "every canonical command id".
+ *   the generic `notImplementedErrorForCommand` fallthrough). This exhaustively
+ *   covers every canonical command id.
  *
  *   Part 2 — behavioral parity (drives the compiled binary on linux-x64). The
- *   two shipping paths are semantically identical for representative MVP commands
+ *   two shipping paths are semantically identical for representative implemented commands
  *   (including `meta:version` / `meta:shellenv`, whose canonical forms must
  *   dispatch — not emit `NotImplementedError`) and for the deferred set.
  */
@@ -137,6 +134,22 @@ const runSourceCli = (args: ReadonlyArray<string>, opts?: { cwd?: string; env?: 
 const runCompiledCli = (args: ReadonlyArray<string>, opts?: { cwd?: string; env?: Record<string, string> }) =>
   runProcess([compiledBinary, ...args], opts);
 
+/**
+ * Throwaway `LANDO_USER_*` roots so uninstall planning reads test-owned dirs,
+ * not the host's real Lando state. The identical env feeds both dispatch paths,
+ * so any path in the plan matches across paths (and the normalizer collapses it).
+ */
+const makeIsolatedEnv = (): { readonly env: Record<string, string>; readonly cleanup: () => void } => {
+  const root = mkdtempSync(join(tmpdir(), "lando-parity-roots-"));
+  const env = {
+    ...process.env,
+    LANDO_USER_DATA_ROOT: join(root, "data"),
+    LANDO_USER_CACHE_ROOT: join(root, "cache"),
+    LANDO_USER_CONF_ROOT: join(root, "conf"),
+  } as Record<string, string>;
+  return { env, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+};
+
 const lastJsonLine = (output: string): unknown => {
   const lines = output
     .split("\n")
@@ -195,6 +208,198 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
       expect(compiled.stderr).toContain("Flag --shell expects one of these values: posix, powershell, pwsh");
+    }, 30_000);
+
+    test("shellenv alias rejects unknown flags on both paths", async () => {
+      const source = await runSourceCli(["shellenv", "--definitely-not-a-shellenv-flag"]);
+      const compiled = await runCompiledCli(["shellenv", "--definitely-not-a-shellenv-flag"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Nonexistent flag: --definitely-not-a-shellenv-flag");
+    }, 30_000);
+
+    test("setup alias rejects unknown flags on both paths", async () => {
+      const source = await runSourceCli(["setup", "--definitely-not-a-setup-flag"]);
+      const compiled = await runCompiledCli(["setup", "--definitely-not-a-setup-flag"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Nonexistent flag: --definitely-not-a-setup-flag");
+    }, 30_000);
+
+    test("meta:setup representative validation failure matches on both paths", async () => {
+      const source = await runSourceCli(["meta:setup", "--host-proxy=bad"]);
+      const compiled = await runCompiledCli(["meta:setup", "--host-proxy=bad"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(normalizeOutput(compiled.stderr)).toContain("Invalid --host-proxy value");
+    }, 30_000);
+
+    test("uninstall dry-run renders the same safety plan on both paths", async () => {
+      const source = await runSourceCli(["uninstall", "--dry-run"]);
+      const compiled = await runCompiledCli(["uninstall", "--dry-run"]);
+
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+      expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+      expect(compiled.stderr).toBe("");
+    }, 30_000);
+
+    test("meta:uninstall without --yes refuses destructively on both paths", async () => {
+      const source = await runSourceCli(["meta:uninstall"]);
+      const compiled = await runCompiledCli(["meta:uninstall"]);
+
+      expect(source.exitCode).toBe(1);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(normalizeOutput(compiled.stdout)).toContain("uninstall refused");
+      expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+    }, 30_000);
+
+    test("meta:uninstall rejects unknown flags on both paths", async () => {
+      const source = await runSourceCli(["meta:uninstall", "--definitely-not-an-uninstall-flag"]);
+      const compiled = await runCompiledCli(["meta:uninstall", "--definitely-not-an-uninstall-flag"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Nonexistent flag: --definitely-not-an-uninstall-flag");
+    }, 30_000);
+
+    test("setup top-level alias and meta:setup canonical id dispatch identically on each path", async () => {
+      const sourceAlias = await runSourceCli(["setup", "--host-proxy=bad"]);
+      const sourceCanonical = await runSourceCli(["meta:setup", "--host-proxy=bad"]);
+      const compiledAlias = await runCompiledCli(["setup", "--host-proxy=bad"]);
+      const compiledCanonical = await runCompiledCli(["meta:setup", "--host-proxy=bad"]);
+
+      expect(sourceAlias.exitCode).toBe(sourceCanonical.exitCode);
+      expect(normalizeOutput(sourceAlias.stdout)).toBe(normalizeOutput(sourceCanonical.stdout));
+      expect(normalizeOutput(sourceAlias.stderr)).toBe(normalizeOutput(sourceCanonical.stderr));
+
+      expect(compiledAlias.exitCode).toBe(compiledCanonical.exitCode);
+      expect(normalizeOutput(compiledAlias.stdout)).toBe(normalizeOutput(compiledCanonical.stdout));
+      expect(normalizeOutput(compiledAlias.stderr)).toBe(normalizeOutput(compiledCanonical.stderr));
+
+      expect(compiledAlias.exitCode).toBe(sourceAlias.exitCode);
+    }, 30_000);
+
+    test("shellenv top-level alias and meta:shellenv canonical id print the same snippet on each path", async () => {
+      const sourceAlias = await runSourceCli(["shellenv"]);
+      const sourceCanonical = await runSourceCli(["meta:shellenv"]);
+      const compiledAlias = await runCompiledCli(["shellenv"]);
+      const compiledCanonical = await runCompiledCli(["meta:shellenv"]);
+
+      expect(sourceAlias.exitCode, `source stderr: ${sourceAlias.stderr}`).toBe(0);
+      expect(compiledAlias.exitCode, `compiled stderr: ${compiledAlias.stderr}`).toBe(0);
+      expect(normalizeOutput(sourceAlias.stdout)).toBe(normalizeOutput(sourceCanonical.stdout));
+      expect(normalizeOutput(compiledAlias.stdout)).toBe(normalizeOutput(compiledCanonical.stdout));
+      expect(normalizeOutput(compiledAlias.stdout)).toBe(normalizeOutput(sourceAlias.stdout));
+    }, 30_000);
+
+    test("uninstall top-level alias and meta:uninstall canonical id render the same dry-run plan on each path", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        const sourceAlias = await runSourceCli(["uninstall", "--dry-run"], { env: isolated.env });
+        const sourceCanonical = await runSourceCli(["meta:uninstall", "--dry-run"], { env: isolated.env });
+        const compiledAlias = await runCompiledCli(["uninstall", "--dry-run"], { env: isolated.env });
+        const compiledCanonical = await runCompiledCli(["meta:uninstall", "--dry-run"], {
+          env: isolated.env,
+        });
+
+        expect(sourceAlias.exitCode, `source stderr: ${sourceAlias.stderr}`).toBe(0);
+        expect(compiledAlias.exitCode, `compiled stderr: ${compiledAlias.stderr}`).toBe(0);
+        expect(normalizeOutput(sourceAlias.stdout)).toBe(normalizeOutput(sourceCanonical.stdout));
+        expect(normalizeOutput(compiledAlias.stdout)).toBe(normalizeOutput(compiledCanonical.stdout));
+        expect(normalizeOutput(compiledAlias.stdout)).toBe(normalizeOutput(sourceAlias.stdout));
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("uninstall --purge dry-run previews owned data and cache roots at parity on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        const source = await runSourceCli(["uninstall", "--dry-run", "--purge"], { env: isolated.env });
+        const compiled = await runCompiledCli(["uninstall", "--dry-run", "--purge"], { env: isolated.env });
+
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode).toBe(source.exitCode);
+        expect(source.stdout).toContain("mode: purge");
+        expect(normalizeOutput(compiled.stdout)).toBe(normalizeOutput(source.stdout));
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("meta:uninstall rejects --yes=false / --purge=false (boolean flags take no value) on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        for (const malformed of [
+          ["meta:uninstall", "--yes=false"],
+          ["meta:uninstall", "--purge=false"],
+          ["uninstall", "--dry-run=false"],
+        ]) {
+          const source = await runSourceCli(malformed, { env: isolated.env });
+          const compiled = await runCompiledCli(malformed, { env: isolated.env });
+
+          expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
+          expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
+          expect(compiled.stdout).toBe("");
+          expect(compiled.stderr).toContain("Unexpected argument: false");
+        }
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("uninstall rejects extra positionals and tokens after `--` on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        for (const malformed of [
+          ["uninstall", "--dry-run", "extra-positional"],
+          ["uninstall", "--dry-run", "--", "--bad"],
+        ]) {
+          const source = await runSourceCli(malformed, { env: isolated.env });
+          const compiled = await runCompiledCli(malformed, { env: isolated.env });
+
+          expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
+          expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
+          expect(compiled.stdout).toBe("");
+          expect(compiled.stderr).toContain("Unexpected argument:");
+        }
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("meta:setup rejects a value flag with no value (bare or followed by another flag) on both paths", async () => {
+      for (const malformed of [
+        ["meta:setup", "--provider"],
+        ["meta:setup", "--provider", "--yes"],
+        ["meta:setup", "--host-proxy"],
+      ]) {
+        const source = await runSourceCli(malformed);
+        const compiled = await runCompiledCli(malformed);
+
+        expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
+        expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
+        expect(compiled.stdout).toBe("");
+        expect(compiled.stderr).toContain("expects");
+      }
+    }, 30_000);
+
+    test("meta:shellenv rejects tokens after `--` on both paths", async () => {
+      const source = await runSourceCli(["meta:shellenv", "--", "--bad"]);
+      const compiled = await runCompiledCli(["meta:shellenv", "--", "--bad"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Unexpected argument: --bad");
     }, 30_000);
 
     test("app:start with no Landofile: both fail with LandofileNotFoundError, not NotImplementedError", async () => {

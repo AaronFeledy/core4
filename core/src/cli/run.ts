@@ -95,7 +95,7 @@ import {
   scratchStop,
 } from "./commands/scratch.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
-import { normalizeShellenvShell, renderShellenv } from "./commands/shellenv.ts";
+import { renderShellenv } from "./commands/shellenv.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
@@ -116,6 +116,7 @@ import {
 } from "./oclif/commands/meta/global/status.ts";
 import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/uninstall.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
+import { shellenvShellFromInput } from "./oclif/commands/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "./oclif/commands/meta/uninstall.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
@@ -161,6 +162,7 @@ type OclifFlagDefinition = {
   readonly char?: string;
   readonly aliases?: ReadonlyArray<string>;
   readonly multiple?: boolean;
+  readonly options?: ReadonlyArray<string>;
 };
 
 type OclifArgDefinition = Record<string, unknown>;
@@ -326,6 +328,76 @@ const emitDiagnosticLine = (text: string): void => {
   );
 };
 
+/**
+ * Validate a compiled-dispatch argv against a command's flag/arg definitions the
+ * same way OCLIF's parser rejects malformed invocations, so the `$bunfs` binary
+ * stays at parity with source mode for setup/shellenv/uninstall. Returns the
+ * OCLIF-equivalent diagnostic, or `undefined` when valid.
+ * Mirrors the consumption rules in `compiledCommandInputFromArgv`: a value flag
+ * consumes the following token (even a `-`-prefixed one) as its value, and `--`
+ * terminates flag parsing so everything after it is positional.
+ */
+const flagTokenOf = (arg: string): string => {
+  const equalsIndex = arg.indexOf("=");
+  return equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+};
+
+const invocationParityError = (commandId: string, argv: ReadonlyArray<string>): string | undefined => {
+  const command = commandSpecForId(commandId);
+  if (command === undefined) return undefined;
+  const flagDefinitions = flagDefinitionsForCommand(command);
+  const flagTokens = flagNameByToken(flagDefinitions);
+  const maxPositionals = Object.keys(argDefinitionsForCommand(command)).length;
+  const positionals: string[] = [];
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg === "--") {
+      for (let rest = index + 1; rest < argv.length; rest += 1) {
+        const value = argv[rest];
+        if (value !== undefined) positionals.push(value);
+      }
+      break;
+    }
+    if (!arg.startsWith("-") || arg === "-") {
+      positionals.push(arg);
+      continue;
+    }
+    const equalsIndex = arg.indexOf("=");
+    const token = flagTokenOf(arg);
+    const flagName = flagTokens.get(token);
+    if (flagName === undefined) return `Nonexistent flag: ${token}`;
+    const definition = flagDefinitions[flagName] ?? {};
+    if (definition.type === "boolean") {
+      // A boolean flag takes no value; `--flag=value` is a parse error in OCLIF.
+      if (equalsIndex !== -1) return `Unexpected argument: ${arg.slice(equalsIndex + 1)}`;
+      continue;
+    }
+    if (equalsIndex !== -1) continue;
+    const next = argv[index + 1];
+    const nextIsFlag = next !== undefined && next !== "-" && flagTokens.has(flagTokenOf(next));
+    // OCLIF reports a missing value when the next token is absent or is itself a
+    // recognized flag; an option flag's diagnostic enumerates its allowed values.
+    if (next === undefined || nextIsFlag) {
+      return definition.options === undefined
+        ? `Flag ${token} expects a value`
+        : `Flag ${token} expects one of these values: ${definition.options.join(", ")}`;
+    }
+    index += 1;
+  }
+  const extra = positionals[maxPositionals];
+  if (extra !== undefined) return `Unexpected argument: ${extra}`;
+  return undefined;
+};
+
+const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<string>): boolean => {
+  const diagnostic = invocationParityError(commandId, argv);
+  if (diagnostic === undefined) return false;
+  emitDiagnosticLine(diagnostic);
+  process.exitCode = 2;
+  return true;
+};
+
 const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
   runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
@@ -410,12 +482,13 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
 const parseFixFlag = (argv: ReadonlyArray<string>): boolean => argv.some((arg) => arg === "--fix");
 
 const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
   const hostProxy = input.flags["host-proxy"];
   if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
     emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
-    process.exitCode = 1;
+    process.exitCode = 2;
     return;
   }
   const exit = await Effect.runPromiseExit(
@@ -1118,6 +1191,7 @@ const runMetaGlobalUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:uninstall", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("meta:uninstall", argv);
   return runCompiledCommand(
     uninstall({
@@ -1296,18 +1370,10 @@ const runMetaVersion = async (): Promise<void> => {
 
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
-const shellenvShellFromArgv = (argv: ReadonlyArray<string>): string | undefined => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-    if (arg.startsWith("--shell=")) return arg.slice("--shell=".length);
-    if (arg === "--shell") return argv[index + 1];
-  }
-  return undefined;
-};
-
 const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
-  const shell = shellenvShellFromArgv(argv);
+  if (rejectInvalidInvocation("meta:shellenv", argv)) return;
+  const input = compiledCommandInputFromArgv("meta:shellenv", argv);
+  const shell = input.flags.shell;
   if (argv.includes("--shell") && shell === undefined) {
     emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh");
     process.exitCode = 2;
@@ -1318,7 +1384,7 @@ const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
     process.exitCode = 2;
     return;
   }
-  emitResultLine(renderShellenv(normalizeShellenvShell(shell)));
+  emitResultLine(renderShellenv(shellenvShellFromInput(input)));
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {

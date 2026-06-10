@@ -1,6 +1,17 @@
 import { describe, expect, test } from "bun:test";
 
-import { stripAnsi } from "./normalize.ts";
+import { normalizeOutput, stripAnsi } from "./normalize.ts";
+
+describe("normalizeOutput", () => {
+  test("strips the /proc/self/exe ' (deleted)' runtime marker so a rebuilt binary path stays at parity", () => {
+    const withMarker =
+      "- installed binary: user-owned — /home/me/dist/lando (deleted). Remove /home/me/dist/lando (deleted) manually.";
+    const withoutMarker =
+      "- installed binary: user-owned — /home/me/dist/lando. Remove /home/me/dist/lando manually.";
+    expect(normalizeOutput(withMarker)).toBe(normalizeOutput(withoutMarker));
+    expect(normalizeOutput(withMarker)).not.toContain("(deleted)");
+  });
+});
 
 describe("stripAnsi", () => {
   test("strips SGR color sequences", () => {

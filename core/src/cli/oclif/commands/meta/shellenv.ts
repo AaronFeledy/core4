@@ -9,7 +9,7 @@ import { Effect } from "effect";
 import { normalizeShellenvShell, renderShellenv } from "../../../commands/shellenv.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
-const inputShell = (input: unknown) => {
+export const shellenvShellFromInput = (input: unknown) => {
   if (typeof input !== "object" || input === null || !("flags" in input)) return "posix";
   const flags = (input as { readonly flags?: unknown }).flags;
   if (typeof flags !== "object" || flags === null || !("shell" in flags)) return "posix";
@@ -23,7 +23,7 @@ export const shellenvSpec: LandoCommandSpec<string> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "none",
-  run: (input) => Effect.succeed(renderShellenv(inputShell(input))),
+  run: (input) => Effect.succeed(renderShellenv(shellenvShellFromInput(input))),
   render: (result) => (typeof result === "string" ? result : undefined),
 };
 

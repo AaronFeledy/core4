@@ -1,0 +1,37 @@
+---
+id: setup-compiled-binary-parity
+provider: test
+platforms: [linux]
+timeout: 60000
+tags: [beta, docs, setup, uninstall, compiled]
+---
+
+<Guide>
+  <Scenario id="setup-and-shellenv-dispatch" render={false} reason="Source and compiled setup/shellenv parity is exercised by the compiled-binary dispatch parity suite after building core/dist/lando">
+    <Step name="setup-aliases">
+      <Variable name="setup" value="setup" display="The top-level setup alias dispatches to the same meta:setup command helper in source and compiled paths" />
+      <Variable name="metaSetup" value="meta:setup" display="The canonical setup id remains registered as an MVP command with a compiled runCompiledCli branch" />
+      <Variable name="unknownFlag" value="setup --definitely-not-a-setup-flag" display="Unknown setup flags fail with the same non-existent-flag diagnostic in both paths" />
+    </Step>
+    <Step name="shellenv">
+      <Variable name="command" value="shellenv --shell=pwsh" display="Shellenv parsing is shared through the command input helper so pwsh normalizes to the PowerShell snippet in both paths" />
+      <Variable name="failure" value="meta:shellenv --shell=fish" display="Invalid shell values fail before runtime bootstrap in source and compiled paths" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="uninstall-preview-parity" render={false} reason="The uninstall command can be previewed safely, but confirmed execution is destructive and is covered by focused temporary-root command tests">
+    <Step name="preview">
+      <Variable name="dryRun" value="uninstall --dry-run" display="Source and compiled paths render the same non-mutating safety plan" />
+      <Variable name="refusal" value="meta:uninstall" display="Without --yes, both paths refuse destructive execution and render the same reviewed-plan reminder" />
+      <Variable name="unknownFlag" value="meta:uninstall --definitely-not-an-uninstall-flag" display="Unknown uninstall flags fail with the same non-existent-flag diagnostic in both paths" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="renderer-boundary-contract" render={false} reason="Renderer-boundary lint is a source gate rather than a reader-visible CLI transcript">
+    <Step name="output-routing">
+      <Variable name="renderer" value="core/src/cli/renderer-boundary.ts" display="Command results route through Renderer output stdout and diagnostics route through Renderer output stderr" />
+      <Variable name="gate" value="bun run check:renderer-boundary" display="The gate rejects direct console/process writes under core/src and plugins outside the documented first-byte carve-outs" />
+      <Variable name="parityTests" value="core/test/cli/parity/dispatch-parity.test.ts" display="Compiled-binary parity tests exercise setup, shellenv, and uninstall through the real source and compiled CLI surfaces" />
+    </Step>
+  </Scenario>
+</Guide>
