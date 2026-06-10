@@ -1,26 +1,30 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { envOverlay, resolveConfigFileRoot } from "./overlay.ts";
 import { parseMinimalYaml } from "./yaml-min.ts";
 
 /**
- * Read a top-level string key from `<userConfRoot>/config.yml` without
- * constructing the Effect runtime or loading the full `ConfigService`.
+ * Read a top-level string key from `config.yml` without constructing the Effect
+ * runtime or loading the full `ConfigService`.
  *
  * `resolveUserDataRoot` runs on the cold-start fast path (`lando shellenv`,
  * bootstrap `none`, no Effect runtime — spec §8.4 / PRD-02 US-004), so it cannot
- * use `ConfigService` (that module imports Effect). It instead parses the file
- * with the SAME zero-dependency YAML subset parser `ConfigService` uses, so the
- * config.yml layer required by the resolution order in spec §7.5
- * (`spec/07-landofile-and-config.md`) is honored identically on both paths. Any
- * missing/unreadable/malformed file falls back to `undefined`, and only a
- * non-empty string value is accepted — a nested block, `null`, or boolean falls
- * back like the merged config layer would, so shell startup never breaks.
+ * use `ConfigService` (that module imports Effect). It instead locates the file
+ * with the SAME overlay-aware conf-root resolver (`resolveConfigFileRoot`, so
+ * `LANDO_CONFIG__user_conf_root` is honored) and parses it with the SAME YAML
+ * subset parser `ConfigService` uses, so the config.yml layer required by the
+ * resolution order in spec §7.5 (`spec/07-landofile-and-config.md`) is honored
+ * identically on both paths. Any missing/unreadable/malformed file falls back to
+ * `undefined`, and only a non-empty string value is accepted — a nested block,
+ * `null`, or boolean falls back like the merged config layer would, so shell
+ * startup never breaks.
  */
 const readConfigYamlString = (key: string): string | undefined => {
+  const confRoot = resolveConfigFileRoot(resolveUserConfRoot(), envOverlay());
   let text: string;
   try {
-    text = readFileSync(join(resolveUserConfRoot(), "config.yml"), "utf8");
+    text = readFileSync(join(confRoot, "config.yml"), "utf8");
   } catch {
     return undefined;
   }

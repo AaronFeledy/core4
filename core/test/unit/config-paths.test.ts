@@ -10,6 +10,7 @@ const ENV_KEYS = [
   "HOME",
   "LANDO_USER_CONF_ROOT",
   "LANDO_USER_DATA_ROOT",
+  "LANDO_CONFIG__user_conf_root",
   "XDG_CONFIG_HOME",
   "XDG_DATA_HOME",
 ] as const;
@@ -163,5 +164,34 @@ describe("config.yml userDataRoot layer (spec §7.5)", () => {
     writeConfig("userDataRoot: [unsupported]\n");
 
     expect(resolveUserDataRoot()).toBe("/xdg/data/lando");
+  });
+
+  test("LANDO_CONFIG__user_conf_root redirects which config.yml is read (matches ConfigService)", () => {
+    setEnv({
+      HOME: "/home/test",
+      XDG_DATA_HOME: "/xdg/data",
+      LANDO_CONFIG__user_conf_root: withConfRoot(),
+    });
+    writeConfig("userDataRoot: /from/overlay/config\n");
+
+    expect(resolveUserDataRoot()).toBe("/from/overlay/config");
+  });
+
+  test("LANDO_CONFIG__user_conf_root wins over LANDO_USER_CONF_ROOT for the config.yml path", () => {
+    const ignoredRoot = mkdtempSync(join(tmpdir(), "lando-conf-ignored-"));
+    writeFileSync(join(ignoredRoot, "config.yml"), "userDataRoot: /from/ignored\n");
+    setEnv({
+      HOME: "/home/test",
+      XDG_DATA_HOME: "/xdg/data",
+      LANDO_USER_CONF_ROOT: ignoredRoot,
+      LANDO_CONFIG__user_conf_root: withConfRoot(),
+    });
+    writeConfig("userDataRoot: /from/overlay\n");
+
+    try {
+      expect(resolveUserDataRoot()).toBe("/from/overlay");
+    } finally {
+      rmSync(ignoredRoot, { recursive: true, force: true });
+    }
   });
 });
