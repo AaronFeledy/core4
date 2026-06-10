@@ -16,6 +16,9 @@
  *   `@lando/core/cli`. This file does not install signal handlers directly.
  */
 
+import { basename } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { CORE_VERSION } from "../src/version.ts";
 
 const argv = Bun.argv.slice(2);
@@ -24,16 +27,25 @@ if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0]
   process.exit(0);
 }
 
-if (argv.length === 1 && argv[0] === "shellenv") {
-  const { renderShellenv } = await import("../src/cli/commands/shellenv.ts");
-  console.log(renderShellenv("posix"));
-  process.exit(0);
-}
+const main = async (): Promise<void> => {
+  if (argv.length === 1 && argv[0] === "shellenv") {
+    const { renderShellenv } = await import("../src/cli/commands/shellenv.ts");
+    console.log(renderShellenv("posix"));
+    process.exit(0);
+  }
 
-const { runCli } = await import("@lando/core/cli");
+  const { runCli } = await import("@lando/core/cli");
+  const execName = basename(process.execPath).toLowerCase();
+  const isCompiledExecutable = execName !== "bun" && execName !== "bun.exe";
+  const rootUrl = isCompiledExecutable ? pathToFileURL(process.execPath).href : import.meta.url;
 
-await runCli({
-  argv,
-  // Hand the import.meta URL to OCLIF so it can resolve the package root.
-  rootUrl: import.meta.url,
+  await runCli({
+    argv,
+    rootUrl,
+  });
+};
+
+main().catch((error: unknown) => {
+  console.error(error);
+  process.exit(1);
 });

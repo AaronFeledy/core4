@@ -192,7 +192,7 @@ ${setupBunSteps}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
-          bun build ./core/bin/lando.ts --compile --target=${platform.bunTarget} --outfile ./dist/${platform.binaryName} --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=${platform.bunTarget} --outfile ./dist/${platform.binaryName} --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
       - name: Smoke test binary

@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 4 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the §14.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (§18) and schema publication (§7.8), ship the plugin authoring toolkit (§9.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (§19) with public transcripts + library-mode guides + e2e @smoke, and build the §17 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform — then enter feature freeze. Stories follow the 11-PRD breakdown in `spec/beta-1/prd-beta-1-{01..11}-*.md` (US-200..US-279); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: §17 release = spec/15, §18 deprecation = spec/16, §19 guides = spec/17).",
+  "description": "Phase 4 Beta 1 PRDs for Lando v4 'governance + the last feature surface': complete the cross-platform `lando setup` and ship a first-class `lando uninstall`, close the \u00a714.2 open decisions (Bun floor, OCLIF lock, auto-setup level, Compose subset, sshAgent.sidecar opt-out, plugin trust model), land deprecation governance (\u00a718) and schema publication (\u00a77.8), ship the plugin authoring toolkit (\u00a79.10), wire telemetry with redaction + opt-out, complete the executable-guides pipeline (\u00a719) with public transcripts + library-mode guides + e2e @smoke, and build the \u00a717 release machinery (13-stage release.ts orchestrator, code signing, CycloneDX SBOM, SLSA provenance, cosign, self-update, curl-pipe installers) running green on the reference linux-x64 platform \u2014 then enter feature freeze. Stories follow the 11-PRD breakdown in `spec/beta-1/prd-beta-1-{01..11}-*.md` (US-200..US-279); each story has a corresponding US-XXX section with full TDD acceptance criteria. Source of truth: `spec/ROADMAP.md` Phase 4 and the spec parts in `spec/{01..19}-*.md` (note: \u00a717 release = spec/15, \u00a718 deprecation = spec/16, \u00a719 guides = spec/17).",
   "userStories": [
     {
       "id": "US-200",
@@ -83,7 +83,7 @@
         "Re-running `lando setup` never corrupts existing provider state, CA trust, Mutagen binaries, shell entries, or proxy state.",
         "Already-satisfied steps are reported as satisfied with evidence, not silently skipped.",
         "Interrupted setup can resume from the last safe point without forcing users to delete data roots.",
-        "Setup writes a structured readiness summary consumed by `lando doctor` §10.9 diagnostics.",
+        "Setup writes a structured readiness summary consumed by `lando doctor` \u00a710.9 diagnostics.",
         "Every readiness failure includes per-platform remediation and enough detail for support triage without leaking secrets.",
         "Tests pass",
         "Typecheck passes",
@@ -160,8 +160,8 @@
         "Lint passes."
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Kept the Bun floor at >=1.3.14 with .bun-version pinned to 1.3.14, documented the Beta 1 decision, and made local/CI/nightly release validation compile the canonical binary with --bytecode across all five configured targets."
     },
     {
       "id": "US-209",
@@ -268,10 +268,10 @@
       "description": "As a plugin author, I need a canonical deprecation notice schema so every public surface describes deprecation state the same way.",
       "acceptanceCriteria": [
         "`DeprecationNotice` is published from `@lando/sdk` and re-exported by `@lando/core/schema`.",
-        "The schema includes `since`, `removeIn`, `severity`, `replacement`, `note`, `docsUrl`, and `ticket` with the defaults and required fields from §18.2.",
+        "The schema includes `since`, `removeIn`, `severity`, `replacement`, `note`, `docsUrl`, and `ticket` with the defaults and required fields from \u00a718.2.",
         "`removeIn` validation rejects patch removals, past releases, and missing values once a notice is older than 12 months.",
         "Structural dedupe uses `since`, `removeIn`, and `note`.",
-        "The §13.2 schema snapshot gate round-trips the notice losslessly and emits `dist/schemas/deprecation-notice.json`.",
+        "The \u00a713.2 schema snapshot gate round-trips the notice losslessly and emits `dist/schemas/deprecation-notice.json`.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -339,7 +339,7 @@
       "title": "Contract-field and manifest-field deprecation",
       "description": "As a core maintainer or plugin author, I need command, tooling, recipe, service, provider, and plugin surfaces to carry deprecation notices through their existing contracts.",
       "acceptanceCriteria": [
-        "Built-in commands, flags, args, service types, service features, route filters, lifecycle events, event fields, render events, and provider extensions accept deprecation contract fields where §18.5 assigns them.",
+        "Built-in commands, flags, args, service types, service features, route filters, lifecycle events, event fields, render events, and provider extensions accept deprecation contract fields where \u00a718.5 assigns them.",
         "Plugin command, whole-plugin, plugin manifest field, `globalServices:`, recipe, prompt, tooling task, tooling flag, and tooling arg deprecations are accepted through manifest or YAML fields.",
         "Plugin loading validates deprecation notices, records them in `DeprecationService`, and fails invalid notices before the deprecated surface is used.",
         "Alias-scoped deprecations are tracked separately from canonical command deprecations.",
@@ -498,14 +498,14 @@
     },
     {
       "id": "US-228",
-      "title": "Merge-blocking §13.2 schema gate",
+      "title": "Merge-blocking \u00a713.2 schema gate",
       "description": "As a maintainer, I need CI to block schema changes that lack tests, annotations, stable JSON output, or docs generation.",
       "acceptanceCriteria": [
         "Every public schema has a dedicated `bun test` file that covers a happy path, an error path, and encode/decode round-trip behavior.",
         "The schema gate verifies required annotations, decodes examples, generates JSON Schema successfully, and checks stable output.",
         "Generated reference docs build without hand edits.",
         "New public schemas are rejected unless they have round-trip tests and required annotations.",
-        "The gate is wired into the merge-blocking §13.4 CI path.",
+        "The gate is wired into the merge-blocking \u00a713.4 CI path.",
         "Tests pass.",
         "Typecheck passes.",
         "Lint passes."
@@ -802,7 +802,7 @@
       "title": "Library-mode guides through `<Run runtime=\"...\">`",
       "description": "As an embedding user, I need executable guides that can exercise `@lando/core` library APIs through `<Run runtime=\"...\">`, not just shell CLI commands.",
       "acceptanceCriteria": [
-        "`<Run runtime=\"library\">` or the exact §19 runtime-target spelling generates scenario code that imports and executes `@lando/core` library APIs.",
+        "`<Run runtime=\"library\">` or the exact \u00a719 runtime-target spelling generates scenario code that imports and executes `@lando/core` library APIs.",
         "Library-mode guide runs receive a complete `ScenarioContext` with `guideId`, `scenarioId`, `variant`, `testDir`, `runtime`, `vars`, `shell`, `events`, `transcript`, and `fixtures`.",
         "Library-mode guide runs can use `@lando/core/testing` helpers without routing through `runCli`.",
         "Display-vs-execute binding stays explicit; author-visible prose is never inferred from library code.",
@@ -856,7 +856,7 @@
       "title": "Full `lint:guides` quality gates",
       "description": "As a docs maintainer, I need `bun run lint:guides` to block guide patterns that make public docs and executable scenarios drift apart.",
       "acceptanceCriteria": [
-        "Raw fenced shell blocks are forbidden inside `<Guide>` content unless wrapped in the approved display-only component form from §19.",
+        "Raw fenced shell blocks are forbidden inside `<Guide>` content unless wrapped in the approved display-only component form from \u00a719.",
         "Display-vs-execute binding is required for every executable `<Run>`, with no inferred command rewriting.",
         "Hidden blocks, test-only scenarios, fixtures, and internal traces are excluded from public transcript output by linted rule, not convention.",
         "Source mapping metadata is required for every generated scenario block and fails lint when missing.",
@@ -1001,8 +1001,8 @@
       "description": "As a Linux user, I can verify downloaded binaries through a signed checksum manifest and cosign signature.",
       "acceptanceCriteria": [
         "Linux release artifacts produce a `SHA256SUMS` manifest (in the Manifest stage, stage 11) covering linux-x64 and linux-arm64 binaries.",
-        "`SHA256SUMS` and `SHA512SUMS` are generated and GPG-signed in the Manifest stage (stage 11) when release credentials are present — Linux is signed at the manifest layer, not in the Sign stage (stage 9), per §17.1.",
-        "`SHA256SUMS` is cosign-signed in the Provenance & SBOM stage (stage 12) per §17.5 (keyless cosign; see PRD-09 US-260).",
+        "`SHA256SUMS` and `SHA512SUMS` are generated and GPG-signed in the Manifest stage (stage 11) when release credentials are present \u2014 Linux is signed at the manifest layer, not in the Sign stage (stage 9), per \u00a717.1.",
+        "`SHA256SUMS` is cosign-signed in the Provenance & SBOM stage (stage 12) per \u00a717.5 (keyless cosign; see PRD-09 US-260).",
         "Verification confirms checksum coverage and both the GPG and cosign signatures before the Publish stage (stage 13).",
         "Tests cover manifest generation, missing binary failure, GPG command construction, cosign command construction, and local rehearsal skipping.",
         "Tests pass",
@@ -1302,8 +1302,8 @@
     },
     {
       "id": "US-273",
-      "title": "Full §16.2 library contract suite + `docs/redactions` export gap",
-      "description": "As a package consumer, I need every public library entry point to resolve, obey import boundaries, and match the §16.2 stability contract.",
+      "title": "Full \u00a716.2 library contract suite + `docs/redactions` export gap",
+      "description": "As a package consumer, I need every public library entry point to resolve, obey import boundaries, and match the \u00a716.2 stability contract.",
       "acceptanceCriteria": [
         "`core/test/library/entry-points-export.test.ts` verifies `@lando/core`, `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, `@lando/core/cli`, `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions`.",
         "`core/test/library/import-boundary.test.ts` proves the default entry is OCLIF-free and `@lando/core/oclif` is internal-only.",
@@ -1354,7 +1354,7 @@
     },
     {
       "id": "US-276",
-      "title": "§17.9 criteria 1-9 acceptance harness green on linux-x64",
+      "title": "\u00a717.9 criteria 1-9 acceptance harness green on linux-x64",
       "description": "As a release engineer, I can run the first half of the binary acceptance harness on linux-x64 and prove release, signing, supply-chain, and update behavior work on the reference platform.",
       "acceptanceCriteria": [
         "Criterion 1 passes: clean checkout plus `bun run release` produces a signed, checksum-manifested local binary that launches and reports version.",
@@ -1371,7 +1371,7 @@
     },
     {
       "id": "US-277",
-      "title": "§17.9 criteria 10-14 acceptance harness green on linux-x64",
+      "title": "\u00a717.9 criteria 10-14 acceptance harness green on linux-x64",
       "description": "As a release engineer, I can verify installers, compiled import boundaries, Mutagen embedding policy, and setup file-sync behavior on linux-x64.",
       "acceptanceCriteria": [
         "Criterion 10 passes: `install.sh` on a clean linux-x64 container installs to `<userDataRoot>/bin/lando`, verifies the embedded GPG trust root, runs `lando version`, and matches `lando shellenv` path output.",
@@ -1389,7 +1389,7 @@
     },
     {
       "id": "US-278",
-      "title": "§17.9 criteria 15-19 acceptance harness green on linux-x64",
+      "title": "\u00a717.9 criteria 15-19 acceptance harness green on linux-x64",
       "description": "As a release engineer, I can verify the final runtime, bytecode, AOT, performance, and level-none import-boundary criteria on linux-x64.",
       "acceptanceCriteria": [
         "Criterion 15 passes: `app:start` on a slow provider with bind mount engages `FileSyncEngine`, and repeat starts reuse file-sync sessions.",
@@ -1407,8 +1407,8 @@
     },
     {
       "id": "US-279",
-      "title": "§17.9 criteria 20-27 acceptance harness green on linux-x64",
-      "description": "As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full §17.9 acceptance set in the last feature-adding phase.",
+      "title": "\u00a717.9 criteria 20-27 acceptance harness green on linux-x64",
+      "description": "As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full \u00a717.9 acceptance set in the last feature-adding phase.",
       "acceptanceCriteria": [
         "Criteria 20-24 pass on linux-x64: the compiled binary loads an external ESM plugin by absolute `file://` URL from a Lando-managed plugin store, loads an external TypeScript plugin where Bun supports the file type directly, resolves dependencies installed under an external plugin package root, rejects plugin contribution module paths that resolve outside the plugin package root, and marks a failed external plugin import unhealthy with a tagged `PluginLoadError` without preventing unrelated plugins from loading.",
         "Criterion 25 passes: `bun run codegen:check` succeeds on a clean checkout with no uncommitted changes.",

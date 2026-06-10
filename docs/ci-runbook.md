@@ -4,7 +4,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; update that file first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64`; the stable `static-checks` summary job is the branch-protection check.
+CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64`; the stable `static-checks` summary job is the branch-protection check.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -60,6 +60,8 @@ bun run build
 ```
 
 Each build job uploads its binary artifact with 14-day retention. Each build job emits a `::notice title=ci-timing::...` line and has a timeout cap (30 minutes for Unix targets, 35 minutes for Windows). If a build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-<platform> > Artifacts > lando-<platform>`; for example, `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
+
+All platform binary builds use `bun build --compile --bytecode` against `core/bin/lando.ts`; the nightly distribution rehearsal repeats that bytecode compile for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64` so a target-specific Bun blocker is caught before release.
 
 ## Tooling hot-path perf budget
 

@@ -46,7 +46,7 @@ ${bunSetupStep}
       - name: Build Linux x64 binary
         run: |
           bun run --filter='@lando/core' build:manifest
-          bun build ./core/bin/lando.ts --compile --target=bun-linux-x64 --outfile ./core/dist/lando --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./core/dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
           ./core/dist/lando --version
 
@@ -102,11 +102,11 @@ ${bunSetupStep}
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
-          bun build ./core/bin/lando.ts --compile --target=bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --target=bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --target=bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --target=bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --target=bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-x64
           bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-arm64
           bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-x64

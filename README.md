@@ -75,7 +75,7 @@ and template engines all ship as separate packages.
 
 ## Toolchain
 
-- **Runtime:** Bun (≥ 1.3.14, see `engines` and `.bun-version`). Node is not supported.
+- **Runtime:** Bun (>=1.3.14, see `engines` and `.bun-version`). Node is not supported.
 - **Package manager:** `bun install`. `package-lock.json` and `yarn.lock` are forbidden.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
@@ -147,7 +147,7 @@ All command output flows through the `Renderer` service; pick a mode with
 
 ## Building from source
 
-The compiled binary is produced with `bun build --compile` targeting
+The compiled binary is produced with `bun build --compile --bytecode` targeting
 `core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for five
 platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and
 `windows-x64`. The source CLI dispatches through OCLIF; the compiled `$bunfs`

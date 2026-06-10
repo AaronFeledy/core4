@@ -303,7 +303,7 @@ jobs:
       - name: Build darwin-arm64 binary
         run: |
           mkdir -p dist
-          bun build ./core/bin/lando.ts --compile --target=bun-darwin-arm64 --outfile ./dist/lando --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -351,7 +351,7 @@ jobs:
       - name: Build darwin-x64 binary
         run: |
           mkdir -p dist
-          bun build ./core/bin/lando.ts --compile --target=bun-darwin-x64 --outfile ./dist/lando --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -399,7 +399,7 @@ jobs:
       - name: Build linux-arm64 binary
         run: |
           mkdir -p dist
-          bun build ./core/bin/lando.ts --compile --target=bun-linux-arm64 --outfile ./dist/lando --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -447,7 +447,7 @@ jobs:
       - name: Build linux-x64 binary
         run: |
           mkdir -p dist
-          bun build ./core/bin/lando.ts --compile --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -495,7 +495,7 @@ jobs:
       - name: Build windows-x64 binary
         run: |
           mkdir -p dist
-          bun build ./core/bin/lando.ts --compile --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external
+          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
 
       - name: Smoke test binary
