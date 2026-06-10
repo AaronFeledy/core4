@@ -423,6 +423,10 @@ export default class SetupCommand extends LandoCommandBase {
   static override aliases = [...resolveTopLevelAliases(setupSpec)];
   static override flags = {
     yes: Flags.boolean({ description: "Skip confirmation prompts.", default: false }),
+    "no-interactive": Flags.boolean({
+      description: "Do not prompt; fail or use documented non-interactive setup defaults.",
+      default: false,
+    }),
     provider: Flags.string({
       description:
         "Choose a provider (e.g. lando, docker, podman). Overrides Landofile/env/config selection.",

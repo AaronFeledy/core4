@@ -1,0 +1,33 @@
+---
+id: provider-auto-setup
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, setup, providers]
+---
+
+<Guide>
+  <Scenario id="guided-opt-in-default" render={false} reason="Setup default UX is covered by command tests; this guide keeps the reader-facing contract synchronized with the Beta 1 decision">
+    <Step name="default-model">
+      <Variable name="decision" value="guided opt-in" display="Provider setup is explicit: run lando setup before app lifecycle commands need a provider" />
+      <Variable name="defaultProvider" value="lando setup --provider=lando" display="The bundled managed provider is the capability default when no flag, env, or config selects another provider" />
+      <Variable name="noImplicitSetup" value="lando start" display="First-run app commands report readiness or remediation; they do not aggressively provision providers in the background" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="non-interactive-and-ci" render={false} reason="Non-interactive setup is deterministic and covered by setup argv parsing tests">
+    <Step name="scripted-setup">
+      <Variable name="nonInteractive" value="lando setup --no-interactive" display="Uses the same guided defaults without follow-up prompts" />
+      <Variable name="confirmed" value="lando setup --yes" display="Confirms setup prompts but does not change provider precedence" />
+      <Variable name="ci" value="lando setup --yes --provider=lando" display="Recommended CI shape: choose the provider and confirmation mode explicitly" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejected-aggressive-alternative" render={false} reason="The unavailable system-provider remediation path is asserted in setup command tests">
+    <Step name="system-provider-remediation">
+      <Variable name="podman" value="lando setup --provider=podman" display="Requires an existing Podman installation and fails with remediation when Podman is unavailable" />
+      <Variable name="docker" value="lando setup --provider=docker" display="Requires an existing Docker installation and fails with remediation when Docker is unavailable" />
+      <Variable name="managedRuntime" value="lando setup --provider=lando" display="Use the bundled managed runtime instead of selecting an unavailable system provider" />
+    </Step>
+  </Scenario>
+</Guide>
