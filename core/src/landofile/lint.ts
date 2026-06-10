@@ -78,7 +78,7 @@ const composeSuggestedFix = (issue: {
 
 const sshAgentSuggestedFix = (issue: { readonly path: ReadonlyArray<PropertyKey> }): string | undefined => {
   if (issue.path.map(String).join(".") !== "sshAgent.sidecar") return undefined;
-  return "The `sshAgent.sidecar: false` direct host SSH-agent socket mount is reserved and rejected in Beta 1. Use the supported sidecar path (`sshAgent.sidecar: true`, the default) instead.";
+  return "The `sshAgent.sidecar: false` direct host SSH-agent socket mount is reserved and rejected. Use the supported sidecar path (`sshAgent.sidecar: true`, the default) instead.";
 };
 
 const violationFromIssue = (issue: {
