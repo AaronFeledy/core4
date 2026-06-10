@@ -137,3 +137,16 @@
 - **Learnings for future iterations:**
   - `bun build --compile --bytecode` rejects top-level await in the CLI entry and can preserve `import.meta.url` as the source `.ts` path, so compiled-mode detection must use `process.execPath`/the executable name instead of relying only on `$bunfs` or the entry URL.
 ---
+
+## 2026-06-10 08:35 CDT - US-209
+- Closed the OCLIF major-version decision for Beta 1 by staying on OCLIF v4, preserving the current package ranges, and documenting that source-mode OCLIF remains paired with the permanent compiled `runCompiledCli` dual-dispatch parity contract.
+- **Multi-agent collision + coherence fix (transparency):** this Build step was implemented concurrently in one working tree — the initial decision-doc/spec/ci-runbook/prd edits (08:22-08:24) landed from a sibling worker that was then interrupted by a looper-TUI quit (08:25:49) before completing its verification. On review I found the §14.2 table was left self-contradictory: the sibling added the `OCLIF major version` row to "Resolved since this draft" but did NOT remove the stale row from the "Open decisions" table, so the decision was listed as both open and resolved. Removed the stale open-decisions row so the spec is coherent, and added `core/test/build/oclif-major-lock.test.ts` whose third case asserts the open→resolved move (regression guard the sibling's ci-runbook test lacked).
+- Verification: focused decision-note guards (`oclif-major-lock.test.ts` + `ci-runbook.test.ts` OCLIF case) = 7 pass / 0 fail; `bun run typecheck` (tsc -b) clean; `bun run lint` (biome) clean. NOT committed: the operator requested quit from the looper TUI after the sibling's edits, so the verified working tree is left for the operator to commit or discard.
+- **Learnings for future iterations:** OCLIF major upgrades must be their own migration story because source-mode loading, manifest generation, hooks, help/plugin behavior, and compiled/source parity all have to move together while compiled dispatch stays hand-rolled. When a decision moves from "open" to "resolved" in the §14.2 table, it must be REMOVED from the Open-decisions table in the same edit, not just appended to Resolved — otherwise the spec contradicts itself and the guard test must assert both halves of the move.
+---
+
+## 2026-06-10 09:05 CDT - US-209 Build
+- Finished the in-flight OCLIF major-lock branch: verified the decision-only story is complete and story-scoped, then committed it. Beta 1 stays on OCLIF v4; the decision note, the §14.2 open→resolved move, and the package-metadata sync guards are all in place, and the compiled `runCompiledCli` dual-dispatch parity contract is documented as preserved.
+- Verification: focused decision guards (`oclif-major-lock.test.ts` + `ci-runbook.test.ts`) green, `bun run typecheck` clean, `bun run lint` clean, full `bun test` = 3291 pass / 27 skip / 0 fail.
+- **Learnings for future iterations:** When a prior Build step leaves a decision story verified-but-uncommitted (operator quit before commit), the follow-up Build step's job is to re-verify and commit the exact story-scoped file set — not to re-implement. Stage an explicit file list so unrelated concurrent edits in the same tree never ride along.
+---
