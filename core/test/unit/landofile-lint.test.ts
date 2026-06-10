@@ -127,10 +127,25 @@ describe("lintLandofile", () => {
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
-      const violation = exit.value.violations.find((entry) => entry.path === "sshAgent.sidecar");
+      const violation = exit.value.violations.find(
+        (entry) => entry.path === "sshAgent.sidecar" && entry.message === "Expected true, actual false",
+      );
       expect(violation?.suggestedFix).toContain("reserved");
       expect(violation?.suggestedFix).toContain("sshAgent.sidecar: true");
       expect(violation?.suggestedFix).toContain("direct host SSH-agent socket mount");
+    }
+  });
+
+  test("non-false invalid sshAgent.sidecar values use generic schema remediation", async () => {
+    await write('name: myapp\nsshAgent:\n  sidecar: "false"\n');
+    const exit = await lint(dir);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(false);
+      const sidecarViolations = exit.value.violations.filter((entry) => entry.path === "sshAgent.sidecar");
+      expect(sidecarViolations.length).toBeGreaterThan(0);
+      expect(sidecarViolations.every((entry) => entry.suggestedFix === undefined)).toBe(true);
+      expect(sidecarViolations.some((entry) => entry.message === 'Expected true, actual "false"')).toBe(true);
     }
   });
 
