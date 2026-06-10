@@ -16,6 +16,10 @@
 - `BunShellScriptFrontMatter`
 - `CertificatePlan`
 - `CommandSpec`
+- `COMPOSE_DEPRECATED_TOP_LEVEL_KEYS`
+- `COMPOSE_EXTENSION_TOP_LEVEL_PATTERN`
+- `COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY`
+- `COMPOSE_TOP_LEVEL_KEYS`
 - `ComposeSecretConfig`
 - `ConfigLintResult`
 - `ConfigLintViolation`
@@ -153,7 +157,13 @@
 - `ConfigLintViolation.column`
 - `FileSyncSetupOptions.network`
 - `LandofileShape.includes`
+- `LandofileShape.include`
+- `LandofileShape.volumes`
+- `LandofileShape.networks`
+- `LandofileShape.configs`
 - `LandofileShape.secrets`
+- `LandofileShape.version`
+- `LandofileShape.x-*`
 
 ## Additive Alpha errors
 

@@ -38,20 +38,39 @@ describe("LandofileShape — schema gate", () => {
     const schema = getJsonSchema("LandofileShape") as { readonly properties?: Record<string, unknown> };
     const properties = schema.properties ?? {};
 
-    for (const key of ["includes", "secrets", "services", "tooling"] as const) {
+    for (const key of [
+      "configs",
+      "include",
+      "includes",
+      "networks",
+      "secrets",
+      "services",
+      "tooling",
+      "version",
+      "volumes",
+    ] as const) {
       expect(properties).toHaveProperty(key);
     }
+    expect(JSON.stringify(schema)).toContain('"^x-"');
+    expect(schema).toHaveProperty("additionalProperties", false);
     expect(properties).not.toHaveProperty("template");
   });
 
-  test("strict decoding accepts top-level Compose secrets", () => {
+  test("strict decoding accepts the frozen top-level Compose subset", () => {
     const result = Schema.decodeUnknownEither(LandofileShape)(
       {
         name: "myapp",
+        version: "3.9",
+        services: { web: { image: "node:20" } },
+        volumes: { data: { name: "myapp-data" } },
+        networks: { frontend: { name: "myapp-frontend" } },
+        configs: { app_config: { file: "./config.json" } },
         secrets: {
           db_password: { file: "./.secrets/db-password" },
           api_token: { environment: "LANDO_SECRET_API_TOKEN" },
         },
+        include: ["./compose.yml"],
+        "x-team": { owner: "platform" },
       },
       { onExcessProperty: "error" },
     );

@@ -1909,7 +1909,40 @@
     "LandofileShape": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
+      "patternProperties": {
+        "^x-": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        }
+      },
       "properties": {
+        "configs": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "external": {
+                "type": "boolean"
+              },
+              "file": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "include": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "includes": {
           "items": {
             "anyOf": [
@@ -1945,6 +1978,27 @@
         },
         "name": {
           "type": "string"
+        },
+        "networks": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "driver": {
+                "type": "string"
+              },
+              "external": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
         },
         "provider": {
           "type": "string"
@@ -2518,6 +2572,30 @@
         },
         "toolingEngine": {
           "type": "string"
+        },
+        "version": {
+          "type": "string"
+        },
+        "volumes": {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "driver": {
+                "type": "string"
+              },
+              "external": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
         }
       },
       "required": [],
