@@ -27,3 +27,11 @@ Defaults:
 - CI: CI and scripted use should pass explicit inputs such as `lando setup --yes`, `lando setup --provider=lando`, or skip flags. `--yes` confirms setup prompts; it does not change provider precedence or make first-run app commands provision providers implicitly.
 
 Rejected alternative: aggressive auto-setup is not the default. If a system provider such as Docker or Podman is selected but unavailable, setup fails with remediation to install and start that runtime or rerun `lando setup --provider=lando` for the bundled managed runtime. This keeps provider readiness checks explicit and avoids host mutation from a normal `lando start`.
+
+## Compose compatibility subset decision
+
+Beta 1 freezes the top-level Compose project subset accepted directly by a Landofile as `services`, `volumes`, `networks`, `configs`, `secrets`, `include`, and `x-*` extension keys. Compose `version:` is accepted for compatibility, ignored by Lando, and treated as deprecated for new Landofiles.
+
+Unsupported Compose project keys fail closed through the canonical schema/lint surface instead of being silently dropped. Known rejected Compose keys carry targeted remediation: `profiles` should be modeled as separate Landofile fragments selected with `includes:`, while non-`x-*` extension data should move to an `x-*` key or provider-specific `providers.<provider-id>` configuration. Arbitrary unsupported keys use the generic canonical-schema remediation and should be removed or handled by a config translator.
+
+The published guide matrix is checked against the schema constants so documentation, JSON Schema, and `app:config:lint` remain aligned.

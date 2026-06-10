@@ -16,7 +16,14 @@ import { dirname } from "node:path";
 import { Effect, Either, ParseResult, Schema } from "effect";
 
 import { LandofileNotFoundError } from "@lando/sdk/errors";
-import { type ConfigLintResult, type ConfigLintViolation, LandofileShape } from "@lando/sdk/schema";
+import {
+  COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
+  COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY,
+  COMPOSE_TOP_LEVEL_KEYS,
+  type ConfigLintResult,
+  type ConfigLintViolation,
+  LandofileShape,
+} from "@lando/sdk/schema";
 
 import { LANDOFILE_NAME, findLandofilePath } from "./discovery.ts";
 import { parseLandofile } from "./parser.ts";
@@ -32,6 +39,40 @@ const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 
+const REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION: Readonly<Record<string, string>> = {
+  profiles:
+    "Profiles are not part of Lando's portable Compose subset. Split profile-specific config into separate Landofile fragments and select them with includes: instead.",
+  extensions:
+    "Compose extensions are accepted only as x-* top-level keys. Rename this key to an x-* extension or move provider-specific data under providers.<provider-id>.",
+};
+
+const isAcceptedComposeTopLevelKey = (key: string): boolean =>
+  (COMPOSE_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key) || key.startsWith("x-");
+
+const isDeprecatedComposeTopLevelKey = (key: string): boolean =>
+  (COMPOSE_DEPRECATED_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key);
+
+const isRejectedComposeTopLevelKey = (key: string): boolean =>
+  Object.prototype.hasOwnProperty.call(REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION, key);
+
+const composeSuggestedFix = (issue: {
+  readonly _tag: string;
+  readonly path: ReadonlyArray<PropertyKey>;
+}): string | undefined => {
+  if (issue.path.length === 0) return undefined;
+  const key = String(issue.path[0]);
+  if (isAcceptedComposeTopLevelKey(key)) {
+    return `The top-level Compose key "${key}" is accepted, but this value does not match Lando's supported schema-backed subset. Use only the supported shape for ${key}.`;
+  }
+  if (isDeprecatedComposeTopLevelKey(key)) {
+    return `The top-level Compose key "${key}" is accepted only for compatibility and is ignored by Lando. Remove it from new Landofiles.`;
+  }
+  if (issue._tag === "Unexpected" && isRejectedComposeTopLevelKey(key)) {
+    return `Unsupported Compose top-level key "${key}". Supported top-level Compose keys are ${COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY}; version is deprecated. ${REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION[key]}`;
+  }
+  return undefined;
+};
+
 const violationFromIssue = (issue: {
   readonly _tag: string;
   readonly path: ReadonlyArray<PropertyKey>;
@@ -40,11 +81,12 @@ const violationFromIssue = (issue: {
   const path = issue.path.map(String).join(".");
   const key = lastKey(issue.path);
   const suggestedFix =
-    issue._tag === "Unexpected"
+    composeSuggestedFix(issue) ??
+    (issue._tag === "Unexpected"
       ? `Remove the unknown key${key === undefined ? "" : ` "${key}"`}; it is not part of the canonical Landofile schema.`
       : issue._tag === "Missing"
         ? `Add the required "${key ?? path}" field.`
-        : undefined;
+        : undefined);
   return suggestedFix === undefined
     ? { path, message: issue.message }
     : { path, message: issue.message, suggestedFix };

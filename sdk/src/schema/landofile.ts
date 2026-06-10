@@ -271,25 +271,59 @@ export const ComposeSecretConfig = Schema.Struct({
 });
 export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
 
+export const COMPOSE_TOP_LEVEL_KEYS = [
+  "services",
+  "volumes",
+  "networks",
+  "configs",
+  "secrets",
+  "include",
+] as const;
+export const COMPOSE_DEPRECATED_TOP_LEVEL_KEYS = ["version"] as const;
+export const COMPOSE_EXTENSION_TOP_LEVEL_PATTERN = "x-*" as const;
+export const COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY = `${COMPOSE_TOP_LEVEL_KEYS.join(", ")}, ${COMPOSE_EXTENSION_TOP_LEVEL_PATTERN}`;
+
+const ComposeNamedResourceConfig = Schema.Struct({
+  name: Schema.optional(Schema.String),
+  external: Schema.optional(Schema.Boolean),
+  driver: Schema.optional(Schema.String),
+});
+
+const ComposeConfigConfig = Schema.Struct({
+  file: Schema.optional(Schema.String),
+  external: Schema.optional(Schema.Boolean),
+  name: Schema.optional(Schema.String),
+});
+
 /**
  * LandofileShape — the authored Landofile shape.
  * Excludes fields not modeled here: toolingDefaults:, toolingIncludes:,
- * commandAliases:, events:, env_file:, keys:, volumes:, networks:,
- * configs:, include:, x-* extensions, plugins:, pluginDirs:.
+ * commandAliases:, events:, env_file:, keys:, plugins:, pluginDirs:.
  */
-export const LandofileShape = Schema.Struct({
+const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(Schema.String),
   runtime: Schema.optional(Schema.Literal(4)),
   recipe: Schema.optional(Schema.String),
   provider: Schema.optional(ProviderId),
   toolingEngine: Schema.optional(Schema.String),
+  version: Schema.optional(Schema.String),
   includes: Schema.optional(Schema.Array(IncludeEntry)),
+  include: Schema.optional(Schema.Array(Schema.String)),
+  volumes: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
+  networks: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
+  configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
   tooling: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingTaskShape })),
 });
+
+export const LandofileShape = Schema.asSchema(
+  LandofileShapeBase.pipe(
+    Schema.extend(Schema.Record({ key: Schema.TemplateLiteral("x-", Schema.String), value: Schema.Unknown })),
+  ),
+);
 export type LandofileShape = typeof LandofileShape.Type;
 
 export const defineLandofile = <T extends LandofileShape>(value: T): T => value;

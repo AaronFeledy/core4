@@ -208,8 +208,8 @@
         "Lint passes."
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Compose top-level key matrix frozen as schema constants (COMPOSE_TOP_LEVEL_KEYS/DEPRECATED/EXTENSION in sdk/src/schema/landofile.ts); LandofileShape accepts services/volumes/networks/configs/secrets/include/version/x-* (x-* via Schema.extend TemplateLiteral) and published JSON Schema keeps additionalProperties:false with ^x- patternProperties. Per-key remediation (accepted/deprecated/rejected) in core/src/landofile/lint.ts composeSuggestedFix. Published guide docs/guides/config/compose-compatibility.mdx + INDEX.md row; spec \u00a714.2 moved to Resolved. Schema-backed drift test core/test/build/compose-compatibility-docs.test.ts. Verified: typecheck, lint, guide gates, focused tests, manual app:config:lint QA, and full bun test pass."
     },
     {
       "id": "US-212",

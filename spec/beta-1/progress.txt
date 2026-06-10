@@ -156,3 +156,9 @@
 - Verification: typecheck, lint, build, focused setup/decision tests, guide coverage/lint, guide scenario generation, source+compiled CLI QA, and full tests passed.
 - **Learnings for future iterations:** Decision stories that affect setup UX should be locked in three places at once: `docs/beta-1-decisions.md`, the §14.2 open/resolved decision table, and a small build test that asserts the user guide and guide index row exist so the PRD acceptance cannot drift from docs.
 ---
+## 2026-06-10 13:50 CDT - US-211
+- Shipped the Compose compatibility matrix: the schema now accepts the frozen top-level subset (`services`, `volumes`, `networks`, `configs`, `secrets`, `include`, `x-*`) plus deprecated `version`, and `app:config:lint` fails closed with targeted remediation for rejected Compose keys.
+- Published the user guide and locked it with schema-constant tests so the guide, guide index, decision note, JSON Schema, and validation behavior stay aligned.
+- Verification: red/green focused tests, typecheck, lint, guide coverage/lint/scenario generation, manual `app:config:lint --format=json` QA, and full tests passed.
+- **Learnings for future iterations:** Effect Schema's `TemplateLiteral` index signature decodes `x-*` keys correctly, but its raw JSON Schema output needs a small Landofile-specific post-process to publish `additionalProperties:false` plus `^x-` `patternProperties` instead of the generic property-name schema.
+---

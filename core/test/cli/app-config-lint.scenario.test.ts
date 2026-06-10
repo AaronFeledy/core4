@@ -135,6 +135,18 @@ describe("lando app:config:lint (source dispatch)", () => {
     });
   });
 
+  test("--format=json reports rejected Compose top-level keys with targeted remediation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: bad-app\nprofiles: [dev]\n");
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      expect(result.exitCode).not.toBe(0);
+      const parsed = JSON.parse(result.stdout) as ConfigLintResult;
+      const violation = parsed.violations.find((entry) => entry.path === "profiles");
+      expect(violation?.suggestedFix).toContain("Unsupported Compose top-level key");
+      expect(violation?.suggestedFix).toContain("includes:");
+    });
+  });
+
   test("--format=json preserves template render diagnostic locations", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "template: definitely-missing\nname: bad-app\n");

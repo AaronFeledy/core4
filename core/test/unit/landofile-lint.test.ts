@@ -49,6 +49,53 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("top-level Compose subset keys lint clean while version is accepted as deprecated", async () => {
+    await write(
+      [
+        "name: myapp",
+        'version: "3.9"',
+        "services:",
+        "  web:",
+        "    image: node:20",
+        "volumes:",
+        "  data: {}",
+        "networks:",
+        "  frontend: {}",
+        "configs:",
+        "  app_config:",
+        "    file: ./config.json",
+        "secrets:",
+        "  db_password:",
+        "    file: ./.secrets/db-password",
+        "include:",
+        "  - ./compose.yml",
+        "x-team:",
+        "  owner: platform",
+        "",
+      ].join("\n"),
+    );
+    const exit = await lint(dir);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(true);
+      expect(exit.value.violations).toHaveLength(0);
+    }
+  });
+
+  test("unsupported top-level Compose keys get class-specific remediation", async () => {
+    await write("name: myapp\nprofiles: [dev]\n");
+    const exit = await lint(dir);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(false);
+      const violation = exit.value.violations.find((entry) => entry.path === "profiles");
+      expect(violation?.suggestedFix).toContain("Unsupported Compose top-level key");
+      expect(violation?.suggestedFix).toContain(
+        "services, volumes, networks, configs, secrets, include, x-*",
+      );
+    }
+  });
+
   test("a wrong-typed value is reported as a violation with a path", async () => {
     await write("name: myapp\nruntime: 3\n");
     const exit = await lint(dir);

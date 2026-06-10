@@ -34,6 +34,8 @@ import { EmbeddingPluginPolicy, GlobalServiceContribution, PluginManifest } from
 import { AppId, BootstrapLevel, HostPlatform, ProviderId, ServiceName } from "./primitives.ts";
 import { ServiceInfo } from "./service-info.ts";
 
+type JsonObject = Record<string, unknown>;
+
 // JSON Schema accessors.
 
 const JSON_SCHEMA_REGISTRY = {
@@ -80,6 +82,19 @@ const JSON_SCHEMA_REGISTRY = {
 } as const;
 
 export type JsonSchemaName = keyof typeof JSON_SCHEMA_REGISTRY;
+
+const landofileJsonSchema = (): JsonObject => {
+  const schema = JSONSchema.make(LandofileShape) as unknown as JsonObject;
+  schema.additionalProperties = false;
+  schema.patternProperties = {
+    "^x-": {
+      $id: "/schemas/unknown",
+      title: "unknown",
+    },
+  };
+  schema.propertyNames = undefined;
+  return schema;
+};
 
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
   switch (schemaName) {
@@ -130,7 +145,7 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     case "ProviderCapabilities":
       return JSONSchema.make(ProviderCapabilities);
     case "LandofileShape":
-      return JSONSchema.make(LandofileShape);
+      return landofileJsonSchema();
     case "GlobalConfig":
       return JSONSchema.make(GlobalConfig);
     case "ConfigLintViolation":
