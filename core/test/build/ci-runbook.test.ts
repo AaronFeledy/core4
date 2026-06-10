@@ -6,6 +6,10 @@ import { describe, expect, test } from "bun:test";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const runbookPath = resolve(repoRoot, "docs/ci-runbook.md");
 const readmePath = resolve(repoRoot, "README.md");
+const betaDecisionsPath = resolve(repoRoot, "docs/beta-1-decisions.md");
+const rootPackagePath = resolve(repoRoot, "package.json");
+const corePackagePath = resolve(repoRoot, "core/package.json");
+const bunVersionPath = resolve(repoRoot, ".bun-version");
 const githubPath = resolve(repoRoot, ".github");
 
 const readText = async (path: string): Promise<string> => Bun.file(path).text();
@@ -72,6 +76,33 @@ describe("ci runbook", () => {
     expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
     expect(runbook).toContain("provider-matrix-diagnostics-<cell>");
     expect(runbook).toContain("not listed under branch protection");
+  });
+
+  test("keeps the Beta 1 Bun floor decision synchronized across docs and package metadata", async () => {
+    const [runbook, readme, betaDecisions, rootPackage, corePackage, bunVersion] = await Promise.all([
+      readText(runbookPath),
+      readText(readmePath),
+      readText(betaDecisionsPath),
+      readText(rootPackagePath),
+      readText(corePackagePath),
+      readText(bunVersionPath),
+    ]);
+
+    expect(JSON.parse(rootPackage).engines.bun).toBe(">=1.3.14");
+    expect(JSON.parse(corePackage).engines.bun).toBe(">=1.3.14");
+    expect(bunVersion.trim()).toBe("1.3.14");
+
+    for (const surface of [runbook, readme, betaDecisions]) {
+      expect(surface).toContain(">=1.3.14");
+      expect(surface).toContain("--bytecode");
+    }
+
+    expect(betaDecisions).toContain("Bun floor decision");
+    expect(betaDecisions).toContain("linux-x64");
+    expect(betaDecisions).toContain("linux-arm64");
+    expect(betaDecisions).toContain("darwin-x64");
+    expect(betaDecisions).toContain("darwin-arm64");
+    expect(betaDecisions).toContain("windows-x64");
   });
 
   test("links the runbook from README and pull request templates", async () => {

@@ -39,6 +39,13 @@ const runCommand = async (cmd: Array<string>, cwd = coreRoot): Promise<RunResult
   return { exitCode, stdout, stderr };
 };
 
+describe("compiled binary build command", () => {
+  test("uses bytecode for the canonical compiled entry", () => {
+    expect(corePackage.scripts["build:compile"]).toContain("bun build ./bin/lando.ts --compile --bytecode");
+    expect(corePackage.scripts["build:compile"]).toContain("bun run ../scripts/sanitize-compiled-binary.ts");
+  });
+});
+
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compiled Linux x64 binary", () => {
   test("builds an executable lando binary with version and help fast paths", async () => {
     const build = await runCommand([process.execPath, "run", "build"]);

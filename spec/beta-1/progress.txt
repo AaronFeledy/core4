@@ -130,3 +130,10 @@
 - Verification: typecheck, lint, dispatch-parity (28), setup (39), and uninstall/shellenv/renderer/dual-dispatch/deferred/not-implemented suites pass; manual QA driving both `bun core/bin/lando.ts` and `core/dist/lando` confirms exit-code + message parity for every fixed case.
 - **Learnings for future iterations:** Dual-dispatch parity is not just unknown-flag rejection — the compiled hand-rolled parser must replicate OCLIF's full parse-error surface (boolean flags reject `=value`; value flags reject a missing value or a following recognized flag; no-arg commands reject positionals incl. after `--`). Verify parity empirically against BOTH `bin/lando.ts` and `dist/lando`, not by reading the parser, since `compiledCommandInputFromArgv` silently over-accepts where OCLIF errors.
 ---
+## 2026-06-10 00:16 CDT - US-208
+- Confirmed the Beta 1 Bun floor stays at `>=1.3.14`, documented the decision and target coverage, and aligned local, CI, and nightly binary compilation on `bun build --compile --bytecode` for every configured release target.
+- Hardened the compiled entry for bytecode by removing top-level await and keeping compiled-mode dispatch detection stable when bytecode preserves the source entry URL.
+- Verification: typecheck, lint, full tests, focused CI/runbook/compile/parity tests, and bytecode-built compiled CLI smoke passed.
+- **Learnings for future iterations:**
+  - `bun build --compile --bytecode` rejects top-level await in the CLI entry and can preserve `import.meta.url` as the source `.ts` path, so compiled-mode detection must use `process.execPath`/the executable name instead of relying only on `$bunfs` or the entry URL.
+---
