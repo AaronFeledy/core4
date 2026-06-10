@@ -104,3 +104,17 @@
 - Verification: typecheck, lint, and focused uninstall + dispatch-parity + manifest + deferred/not-implemented suites pass. Full `bun test` shows only non-deterministic flakiness in heavy subprocess/build suites (compile-binary, dev:guides, ci-codegen, biome-lint, docs:scenario) — a different subset each run, all green in isolation, none touching uninstall.
 - **Learnings for future iterations:** When a read-only preview command (US-205) gains a destructive executor with mode selection (US-206), the dry-run/refusal preview must plan with the *resolved* default mode, not the *explicitly requested* mode — otherwise `--dry-run` and `--yes` diverge and the safety preview lies about what will be destroyed.
 ---
+
+## [2026-06-09 18:19 CDT] - Babysit
+- PR: #324 https://github.com/AaronFeledy/core4/pull/324
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium: failure report recreated a purged data root — guarded report write with existsSync(userDataRoot) + regression test)
+- Merge: merged (squash)
+---
+
+## 2026-06-09 19:30 CDT - US-207
+- Locked source↔compiled dispatch parity for setup/shellenv/uninstall: compiled `runCompiledCli` now rejects unknown flags (`rejectUnknownFlag`) for `meta:setup`/`meta:uninstall` and aligns the `--host-proxy` invalid-value exit code to OCLIF's `2`; shellenv parsing is shared through the exported `shellenvShellFromInput` helper. Added behavioral parity coverage (alias≡canonical for setup/shellenv/uninstall, `--purge` dry-run, unknown-flag, dry-run, refusal), a dual-dispatch argv-parser parity case, a renderer-boundary test proving uninstall results flow through the Renderer seam, the `compiled-binary-setup-parity` executable guide + INDEX row, and hardened the parity normalizer to strip the Linux `/proc/self/exe " (deleted)"` runtime marker so a rebuilt `dist/lando` stays at parity.
+- Verification: typecheck (tsc -b), biome, check:renderer-boundary, check:guide-coverage, lint:guides, the guide scenario (dev:guides --once), 120 focused setup/uninstall/shellenv/parity/renderer/deferred/not-implemented tests, manual QA driving BOTH `bun core/bin/lando.ts` and `core/dist/lando` for the alias/dry-run/refusal/host-proxy cases, and a 3× determinism re-run of the dispatch-parity suite all pass.
+- **Multi-agent collision (transparency):** a concurrent agent on this same branch/tree had independently implemented most of US-207 (the run.ts/shellenv/dual-dispatch/dispatch-parity/guide changes) but left it uncommitted and went idle ~18:35; its rogue full-suite `bun test` was rebuilding `core/dist/lando` mid-run and caused intermittent `ENOENT`/`(deleted)` failures in the compiled-binary parity tests until terminated. I reviewed that work diff-by-diff (coherent + correct), layered my complementary hardening on top, verified the combined tree against every gate, and committed only the US-207 unit — deliberately EXCLUDING unrelated concurrent artifacts (`spec/alpha/`, `spec/alpha2/`, `spec/beta/`, `core/test/build/alpha-platform-deferrals.test.ts`).
+- **Learnings for future iterations:** Before diagnosing compiled-binary test flakiness, check for a rogue/leftover background `bun test`/`build:compile` rebuilding `core/dist/lando` — a concurrent rebuild surfaces as `ENOENT`/`/proc/self/exe " (deleted)"`, which looks like a test bug but is environmental; parity normalizers must strip that `(deleted)` marker. When two workers land on one story in one working tree, stage explicit per-file lists (never `git add -A`) to keep unrelated concurrent work out of the commit.
+---

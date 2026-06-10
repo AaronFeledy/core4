@@ -21,6 +21,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-01 | US-079 | @lando/provider-podman on Windows via Podman Desktop | `docs/guides/setup/provider-podman-windows.mdx` | Shipped |
 | PRD-01 | US-082 | provider selection precedence + conflict diagnostics | `docs/guides/setup/provider-selection.mdx` | Shipped |
 | PRD-01 | US-205, US-206 | safe uninstall and purge choices | `docs/guides/setup/uninstall-and-purge.mdx` | Shipped |
+| PRD-01 | US-207 | source and compiled setup parity | `docs/guides/setup/compiled-binary-setup-parity.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |

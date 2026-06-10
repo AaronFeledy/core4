@@ -22,6 +22,10 @@ const VERSION_TRIPLE_PATTERN = /\d+\.\d+\.\d+\s+[a-z0-9]+-[a-z0-9]+\s+node-v?[\d
 const SEMVER_PATTERN = /\bv?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?\b/g;
 const ABSOLUTE_PATH_PATTERN = /(?:\/[A-Za-z0-9._$-]+)+/g;
 const DURATION_PATTERN = /\b\d+(?:\.\d+)?\s?(?:ms|s|µs|us|ns)\b/gi;
+// Linux appends " (deleted)" to a /proc/self/exe-derived path when the running
+// binary's file was replaced (e.g. a test rebuilt dist/lando mid-suite). The
+// marker is an OS runtime artifact, not Lando output, so it is dropped.
+const PROC_SELF_EXE_DELETED_MARKER = / \(deleted\)/g;
 
 // Char-code scan (not a regex) so the ESC control byte avoids Biome's noControlCharactersInRegex.
 export const stripAnsi = (value: string): string => {
@@ -50,6 +54,7 @@ export const stripAnsi = (value: string): string => {
  */
 export const normalizeOutput = (value: string): string =>
   stripAnsi(value)
+    .replace(PROC_SELF_EXE_DELETED_MARKER, "")
     .replace(ISO_TIMESTAMP_PATTERN, "<TS>")
     .replace(VERSION_TRIPLE_PATTERN, "<VERSION_TRIPLE>")
     .replace(DURATION_PATTERN, "<DUR>")

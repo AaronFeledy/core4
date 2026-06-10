@@ -95,7 +95,7 @@ import {
   scratchStop,
 } from "./commands/scratch.ts";
 import { renderShellAppResult, shellApp } from "./commands/shell.ts";
-import { normalizeShellenvShell, renderShellenv } from "./commands/shellenv.ts";
+import { renderShellenv } from "./commands/shellenv.ts";
 import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
@@ -116,6 +116,7 @@ import {
 } from "./oclif/commands/meta/global/status.ts";
 import { globalUninstallOptionsFromInput } from "./oclif/commands/meta/global/uninstall.ts";
 import { setupSpec } from "./oclif/commands/meta/setup.ts";
+import { shellenvShellFromInput } from "./oclif/commands/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "./oclif/commands/meta/uninstall.ts";
 import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
@@ -326,6 +327,29 @@ const emitDiagnosticLine = (text: string): void => {
   );
 };
 
+const unknownFlagForCommand = (commandId: string, argv: ReadonlyArray<string>): string | undefined => {
+  const command = commandSpecForId(commandId);
+  if (command === undefined) return undefined;
+  const flagTokens = flagNameByToken(flagDefinitionsForCommand(command));
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === undefined) continue;
+    if (arg === "--") return undefined;
+    if (!arg.startsWith("-") || arg === "-") continue;
+    const token = arg.includes("=") ? arg.slice(0, arg.indexOf("=")) : arg;
+    if (!flagTokens.has(token)) return token;
+  }
+  return undefined;
+};
+
+const rejectUnknownFlag = (commandId: string, argv: ReadonlyArray<string>): boolean => {
+  const unknown = unknownFlagForCommand(commandId, argv);
+  if (unknown === undefined) return false;
+  emitDiagnosticLine(`Nonexistent flag: ${unknown}`);
+  process.exitCode = 2;
+  return true;
+};
+
 const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
   runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
@@ -410,12 +434,13 @@ const parseProviderFlag = (argv: ReadonlyArray<string>): string | undefined => {
 const parseFixFlag = (argv: ReadonlyArray<string>): boolean => argv.some((arg) => arg === "--fix");
 
 const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectUnknownFlag("meta:setup", argv)) return;
   const installDir = dirname(process.execPath);
   const input = compiledCommandInputFromArgv("meta:setup", argv);
   const hostProxy = input.flags["host-proxy"];
   if (hostProxy !== undefined && hostProxy !== "auto" && hostProxy !== "none") {
     emitDiagnosticLine("Invalid --host-proxy value. Expected one of: auto, none.");
-    process.exitCode = 1;
+    process.exitCode = 2;
     return;
   }
   const exit = await Effect.runPromiseExit(
@@ -1118,6 +1143,7 @@ const runMetaGlobalUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
 };
 
 const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectUnknownFlag("meta:uninstall", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("meta:uninstall", argv);
   return runCompiledCommand(
     uninstall({
@@ -1296,18 +1322,10 @@ const runMetaVersion = async (): Promise<void> => {
 
 const SHELLENV_SHELLS = ["posix", "powershell", "pwsh"] as const;
 
-const shellenvShellFromArgv = (argv: ReadonlyArray<string>): string | undefined => {
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    if (arg === undefined) continue;
-    if (arg.startsWith("--shell=")) return arg.slice("--shell=".length);
-    if (arg === "--shell") return argv[index + 1];
-  }
-  return undefined;
-};
-
 const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
-  const shell = shellenvShellFromArgv(argv);
+  if (rejectUnknownFlag("meta:shellenv", argv)) return;
+  const input = compiledCommandInputFromArgv("meta:shellenv", argv);
+  const shell = input.flags.shell;
   if (argv.includes("--shell") && shell === undefined) {
     emitDiagnosticLine("Flag --shell expects one of these values: posix, powershell, pwsh");
     process.exitCode = 2;
@@ -1318,7 +1336,7 @@ const runMetaShellenv = (argv: ReadonlyArray<string> = []): void => {
     process.exitCode = 2;
     return;
   }
-  emitResultLine(renderShellenv(normalizeShellenvShell(shell)));
+  emitResultLine(renderShellenv(shellenvShellFromInput(input)));
 };
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {

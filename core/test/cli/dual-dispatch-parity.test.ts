@@ -16,6 +16,8 @@ import {
   globalStatusOptionsFromInput,
 } from "../../src/cli/oclif/commands/meta/global/status.ts";
 import { globalUninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/uninstall.ts";
+import { shellenvShellFromInput } from "../../src/cli/oclif/commands/meta/shellenv.ts";
+import { uninstallOptionsFromInput } from "../../src/cli/oclif/commands/meta/uninstall.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 
 const compiledInput = (
@@ -147,6 +149,23 @@ describe("dual-dispatch argv parser parity", () => {
       globalUninstallOptionsFromInput(compiledInput("meta:global:uninstall", ["proxy", "--purge"])),
     ).toEqual({
       plugin: "proxy",
+      purge: true,
+    });
+  });
+
+  test("setup, shellenv, and uninstall helpers consume compiled argv input", () => {
+    expect(
+      compiledInput("meta:setup", ["--yes", "--provider=podman", "--skip-file-sync"]).flags,
+    ).toMatchObject({
+      yes: true,
+      provider: "podman",
+      "skip-file-sync": true,
+    });
+    expect(shellenvShellFromInput(compiledInput("meta:shellenv", ["--shell=pwsh"]))).toBe("powershell");
+    expect(uninstallOptionsFromInput(compiledInput("meta:uninstall", ["--dry-run", "--purge"]))).toEqual({
+      dryRun: true,
+      yes: false,
+      keepData: false,
       purge: true,
     });
   });
