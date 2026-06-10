@@ -231,7 +231,6 @@ export type ToolingTaskShape = typeof ToolingTaskShape.Type;
  *   Defaults to `:host` when omitted.
  * - `desc:` / `description:` / `summary:` — short help text. `desc` is
  *   accepted as an alias for `description` by script-backed tooling.
- *   list.
  *
  * Unsupported fields (`aliases`, `topLevelAlias`, `bootstrap`,
  * `flags`, `args`, `passThrough`, `sources`, `generates`, `status`,

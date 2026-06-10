@@ -36,8 +36,6 @@ import { ServiceInfo } from "./service-info.ts";
 
 type JsonObject = Record<string, unknown>;
 
-// JSON Schema accessors.
-
 const JSON_SCHEMA_REGISTRY = {
   DeprecationNotice,
   GuideFrontmatter,
