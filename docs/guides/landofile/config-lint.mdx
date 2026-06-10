@@ -31,6 +31,8 @@ tags: [beta, docs, landofile, config, lint]
       <Variable name="violationFields" value="path, message, suggestedFix" display="Each violation carries a dot-joined path, a message, and an optional suggested fix" />
       <Variable name="unknownKey" value='Remove the unknown key "…"; it is not part of the canonical Landofile schema.' display="Unknown keys surface as excess-property violations (schema-only — never a NotImplementedError)" />
     </Step>
+
+    `sshAgent.sidecar: false` is also a schema violation: the direct host SSH-agent socket mount is reserved, so `app:config:lint` points users to the supported sidecar path (`sshAgent.sidecar: true`, or omit the field to use the default).
   </Scenario>
 
   <Scenario id="doctor-app" render={false} reason="lando doctor --app reuses the same lintLandofile pass; the shared-source-of-truth wiring is covered by the doctor-report tests">
