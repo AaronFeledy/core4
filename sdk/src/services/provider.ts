@@ -34,6 +34,7 @@ export type ProviderError =
 export interface ProviderSetupOptions {
   readonly force: boolean;
   readonly runtimeBundleUrl?: string;
+  readonly runtimeBundleSha256?: string;
   readonly network?: NetworkConfig;
   readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
 }

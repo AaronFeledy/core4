@@ -79,6 +79,7 @@ export type {
 export {
   ProviderBundleChecksumError,
   RUNTIME_BUNDLE_MANIFEST,
+  RUNTIME_BUNDLE_MANIFEST_ENV,
   makeDefaultRuntimeBundleDownloader,
   makeRuntimeBundleDownloader,
   resolveRuntimeBundleEntry,
@@ -86,6 +87,7 @@ export {
 } from "./runtime-bundle.ts";
 export type {
   DefaultRuntimeBundleDownloaderOptions,
+  OverrideRuntimeBundleManifest,
   RuntimeBundleDownloaderOptions,
   RuntimeBundleEntry,
   RuntimeBundleManifest,
@@ -167,6 +169,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   }
   const makeSetupRuntimeBundleDownloader = (
     url?: string,
+    sha256?: string,
     network?: Parameters<typeof makeDefaultRuntimeBundleDownloader>[0]["network"],
   ): RuntimeBundleDownloader | undefined =>
     stateDir === undefined
@@ -175,6 +178,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           stateDir,
           platform,
           ...(url === undefined ? {} : { url }),
+          ...(sha256 === undefined ? {} : { sha256 }),
           ...(network === undefined ? {} : { network }),
           ...(options.runtimeBundleFetchImpl === undefined
             ? {}
@@ -228,8 +232,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               const setupRuntimeBundleDownloader =
                 setupOptions.runtimeBundleUrl === undefined
                   ? (options.runtimeBundleDownloader ??
-                    makeSetupRuntimeBundleDownloader(undefined, setupOptions.network))
-                  : makeSetupRuntimeBundleDownloader(setupOptions.runtimeBundleUrl, setupOptions.network);
+                    makeSetupRuntimeBundleDownloader(undefined, undefined, setupOptions.network))
+                  : makeSetupRuntimeBundleDownloader(
+                      setupOptions.runtimeBundleUrl,
+                      setupOptions.runtimeBundleSha256,
+                      setupOptions.network,
+                    );
               return setupRuntimeBundleDownloader === undefined
                 ? {}
                 : { runtimeBundleDownloader: setupRuntimeBundleDownloader };
@@ -357,6 +365,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
         {
           name: "runtime-bundle-url",
           description: "Override the Lando-managed runtime bundle URL for setup.",
+          type: "option",
+        },
+        {
+          name: "runtime-bundle-sha256",
+          description: "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
           type: "option",
         },
       ],

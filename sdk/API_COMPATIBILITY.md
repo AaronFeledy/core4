@@ -143,6 +143,7 @@
 
 - `CaSetupOptions.privilege`
 - `ProviderSetupOptions.runtimeBundleUrl`
+- `ProviderSetupOptions.runtimeBundleSha256`
 - `ProviderSetupOptions.network`
 - `ProviderSetupOptions.privilege`
 

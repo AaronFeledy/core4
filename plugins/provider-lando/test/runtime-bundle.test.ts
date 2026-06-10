@@ -3,11 +3,13 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit } from "effect";
 
 import {
   ProviderBundleChecksumError,
   RUNTIME_BUNDLE_MANIFEST,
+  RUNTIME_BUNDLE_MANIFEST_ENV,
   makeDefaultRuntimeBundleDownloader,
   resolveRuntimeBundleEntry,
   runtimeBundleCachePath,
@@ -390,7 +392,7 @@ describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifes
     }
   });
 
-  test("uses an explicit runtime bundle URL while keeping the pinned checksum", async () => {
+  test("rejects a URL override that is not paired with a SHA-256 override", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-runtime-bundle-default-url-"));
     try {
       const overrideUrl = "https://mirror.example.invalid/lando-runtime.zip";
@@ -408,9 +410,10 @@ describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifes
 
       const exit = await Effect.runPromiseExit(downloader.download);
       const failure = expectFailure(exit);
-      expect(failure).toBeInstanceOf(ProviderBundleChecksumError);
-      expect(log.calls).toBe(1);
-      expect(log.urls[0]).toBe(overrideUrl);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect(failure).not.toBeInstanceOf(ProviderBundleChecksumError);
+      expect((failure as ProviderUnavailableError).message).toContain("must be supplied together");
+      expect(log.calls).toBe(0);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }
@@ -432,6 +435,161 @@ describe("makeDefaultRuntimeBundleDownloader (routes through the shipped manifes
       expect(failure).toBeInstanceOf(ProviderUnavailableError);
       expect((failure as ProviderUnavailableError).message).toContain("win32-arm64");
       expect(log.calls).toBe(0);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+});
+
+const localManifest = (
+  entry: RuntimeBundleEntry,
+  platformKey = "linux-x64",
+  runtimeVersion = "9.9.9-local",
+): string => JSON.stringify({ schemaVersion: 1, runtimeVersion, bundles: { [platformKey]: entry } });
+
+const stageLocalBundle = async (dir: string, filename: string, bytes: Uint8Array): Promise<string> => {
+  const bundlePath = join(dir, filename);
+  await writeFile(bundlePath, bytes);
+  return pathToFileURL(bundlePath).href;
+};
+
+describe("makeDefaultRuntimeBundleDownloader (local bundle override)", () => {
+  test("LANDO_RUNTIME_BUNDLE_MANIFEST redirects to a file:// bundle and verifies its SHA", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-"));
+    try {
+      const bytes = new TextEncoder().encode("locally-built-bundle");
+      const url = await stageLocalBundle(stateDir, "local-linux-x64.tar.gz", bytes);
+      const entry: RuntimeBundleEntry = {
+        url,
+        sha256: sha256(bytes),
+        filename: "local-linux-x64.tar.gz",
+        sizeBytes: bytes.byteLength,
+      };
+      const manifestPath = join(stateDir, "manifest.json");
+      await writeFile(manifestPath, localManifest(entry));
+
+      const bundle = await Effect.runPromise(
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          env: { [RUNTIME_BUNDLE_MANIFEST_ENV]: manifestPath },
+          fetchImpl: throwingFetch,
+        }).download,
+      );
+
+      expect(bundle.bytes).toEqual(bytes);
+      expect(bundle.sha256).toBe(entry.sha256);
+      expect(bundle.version).toBe("9.9.9-local");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a file:// bundle whose bytes do not match the override SHA fails closed", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-mismatch-"));
+    try {
+      const bytes = new TextEncoder().encode("locally-built-bundle");
+      const url = await stageLocalBundle(stateDir, "local-linux-x64.tar.gz", bytes);
+      const entry: RuntimeBundleEntry = {
+        url,
+        sha256: sha256(new TextEncoder().encode("different")),
+        filename: "local-linux-x64.tar.gz",
+        sizeBytes: bytes.byteLength,
+      };
+      const manifestPath = join(stateDir, "manifest.json");
+      await writeFile(manifestPath, localManifest(entry));
+
+      const exit = await Effect.runPromiseExit(
+        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
+          .download,
+      );
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderBundleChecksumError);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("an override manifest with no entry for the host platform fails closed", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-missing-"));
+    try {
+      const bytes = new TextEncoder().encode("x");
+      const url = await stageLocalBundle(stateDir, "local.tar.gz", bytes);
+      const entry: RuntimeBundleEntry = {
+        url,
+        sha256: sha256(bytes),
+        filename: "local.tar.gz",
+        sizeBytes: bytes.byteLength,
+      };
+      const manifestPath = join(stateDir, "manifest.json");
+      await writeFile(manifestPath, localManifest(entry, "darwin-arm64"));
+
+      const exit = await Effect.runPromiseExit(
+        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
+          .download,
+      );
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect((failure as ProviderUnavailableError).message).toContain("linux-x64");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("an invalid override manifest fails closed with remediation citing the env var", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-env-invalid-"));
+    try {
+      const manifestPath = join(stateDir, "manifest.json");
+      await writeFile(manifestPath, "{ not json");
+      const exit = await Effect.runPromiseExit(
+        makeDefaultRuntimeBundleDownloader({ stateDir, platform: "linux", arch: "x64", manifestPath })
+          .download,
+      );
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect((failure as ProviderUnavailableError).remediation).toContain(RUNTIME_BUNDLE_MANIFEST_ENV);
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a URL override without a paired SHA-256 is rejected before any download", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-unpaired-"));
+    try {
+      const exit = await Effect.runPromiseExit(
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          url: "https://example.test/x.tar.gz",
+          fetchImpl: throwingFetch,
+        }).download,
+      );
+      const failure = expectFailure(exit);
+      expect(failure).toBeInstanceOf(ProviderUnavailableError);
+      expect((failure as ProviderUnavailableError).message).toContain("must be supplied together");
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("paired URL + SHA-256 override a single entry and verify the bytes", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-rb-paired-"));
+    try {
+      const bytes = new TextEncoder().encode("mirror-built-bundle");
+      const url = await stageLocalBundle(stateDir, "mirror.tar.gz", bytes);
+      const bundle = await Effect.runPromise(
+        makeDefaultRuntimeBundleDownloader({
+          stateDir,
+          platform: "linux",
+          arch: "x64",
+          url,
+          sha256: sha256(bytes),
+          fetchImpl: throwingFetch,
+        }).download,
+      );
+      expect(bundle.bytes).toEqual(bytes);
+      expect(bundle.sha256).toBe(sha256(bytes));
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

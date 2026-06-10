@@ -237,12 +237,14 @@ export const setupSpec: LandoCommandSpec<SetupResult, unknown, ConfigService | R
           }
         }
         const runtimeBundleUrl = inputStringFlag(input, "runtime-bundle-url");
+        const runtimeBundleSha256 = inputStringFlag(input, "runtime-bundle-sha256");
         yield* Effect.scoped(
           provider.setup({
             force: false,
             network,
             ...privilegeOptions,
             ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
+            ...(runtimeBundleSha256 === undefined ? {} : { runtimeBundleSha256 }),
           }),
         ).pipe(Effect.tapError((cause) => recordFailure("provider", cause)));
         yield* recordReadiness({
@@ -435,6 +437,9 @@ export default class SetupCommand extends LandoCommandBase {
     }),
     "runtime-bundle-url": Flags.string({
       description: "Override the Lando-managed runtime bundle URL for setup.",
+    }),
+    "runtime-bundle-sha256": Flags.string({
+      description: "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
     }),
     "host-proxy": Flags.string({
       description:
