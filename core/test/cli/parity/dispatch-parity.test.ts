@@ -338,6 +338,73 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       }
     }, 30_000);
 
+    test("meta:uninstall rejects --yes=false / --purge=false (boolean flags take no value) on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        for (const malformed of [
+          ["meta:uninstall", "--yes=false"],
+          ["meta:uninstall", "--purge=false"],
+          ["uninstall", "--dry-run=false"],
+        ]) {
+          const source = await runSourceCli(malformed, { env: isolated.env });
+          const compiled = await runCompiledCli(malformed, { env: isolated.env });
+
+          expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
+          expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
+          expect(compiled.stdout).toBe("");
+          expect(compiled.stderr).toContain("Unexpected argument: false");
+        }
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("uninstall rejects extra positionals and tokens after `--` on both paths", async () => {
+      const isolated = makeIsolatedEnv();
+      try {
+        for (const malformed of [
+          ["uninstall", "--dry-run", "extra-positional"],
+          ["uninstall", "--dry-run", "--", "--bad"],
+        ]) {
+          const source = await runSourceCli(malformed, { env: isolated.env });
+          const compiled = await runCompiledCli(malformed, { env: isolated.env });
+
+          expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
+          expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
+          expect(compiled.stdout).toBe("");
+          expect(compiled.stderr).toContain("Unexpected argument:");
+        }
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("meta:setup rejects a value flag with no value (bare or followed by another flag) on both paths", async () => {
+      for (const malformed of [
+        ["meta:setup", "--provider"],
+        ["meta:setup", "--provider", "--yes"],
+        ["meta:setup", "--host-proxy"],
+      ]) {
+        const source = await runSourceCli(malformed);
+        const compiled = await runCompiledCli(malformed);
+
+        expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
+        expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
+        expect(compiled.stdout).toBe("");
+        expect(compiled.stderr).toContain("expects");
+      }
+    }, 30_000);
+
+    test("meta:shellenv rejects tokens after `--` on both paths", async () => {
+      const source = await runSourceCli(["meta:shellenv", "--", "--bad"]);
+      const compiled = await runCompiledCli(["meta:shellenv", "--", "--bad"]);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Unexpected argument: --bad");
+    }, 30_000);
+
     test("app:start with no Landofile: both fail with LandofileNotFoundError, not NotImplementedError", async () => {
       const cwd = mkdtempSync(join(tmpdir(), "lando-parity-nostart-"));
       try {
