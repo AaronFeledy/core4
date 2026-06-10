@@ -32,14 +32,14 @@ describe("US-209 OCLIF major lock decision", () => {
     const betaDecisions = await readText(betaDecisionsPath);
 
     expect(betaDecisions).toContain("## OCLIF major lock decision");
-    // Cites the current state per AC1.
+    // Cites the current dependency ranges.
     expect(betaDecisions).toContain("@oclif/core");
     expect(betaDecisions).toContain("^4.11.2");
     expect(betaDecisions).toContain("^4.23.0");
-    // Chooses to stay on v4 per AC2.
+    // Records the choice to stay on v4.
     expect(betaDecisions).toMatch(/stay on OCLIF v4/i);
     expect(betaDecisions).not.toMatch(/move to OCLIF v5/i);
-    // Preserves the permanent dual-dispatch parity assumption per AC2 + FR-2.
+    // Preserves the permanent dual-dispatch parity assumption.
     expect(betaDecisions).toMatch(/dual[- ]dispatch/i);
     expect(betaDecisions).toMatch(/parity/i);
   });
