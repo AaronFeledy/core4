@@ -2467,6 +2467,13 @@ export const COMPILED_OCLIF_MANIFEST = {
           multiple: false,
           type: "option",
         },
+        "runtime-bundle-sha256": {
+          description: "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
+          name: "runtime-bundle-sha256",
+          hasDynamicHelp: false,
+          multiple: false,
+          type: "option",
+        },
         "host-proxy": {
           description:
             "Configure the host-proxy DNS mechanism. `auto` (default) selects the per-platform default; `none` opts out for users managing their own DNS.",

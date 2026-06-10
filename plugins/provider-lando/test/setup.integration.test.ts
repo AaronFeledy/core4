@@ -261,7 +261,11 @@ describe("provider-lando setup", () => {
       );
 
       const exit = await Effect.runPromiseExit(
-        provider.setup({ force: false, runtimeBundleUrl: "https://example.invalid/custom-runtime.zip" }),
+        provider.setup({
+          force: false,
+          runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
+          runtimeBundleSha256: "a".repeat(64),
+        }),
       );
 
       expect(fetchedUrl).toBe("https://example.invalid/custom-runtime.zip");

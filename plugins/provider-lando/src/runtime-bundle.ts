@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { Effect, Schema } from "effect";
 
@@ -86,6 +87,60 @@ export type RuntimeBundleManifest = Schema.Schema.Type<typeof RuntimeBundleManif
 
 export const RUNTIME_BUNDLE_MANIFEST: RuntimeBundleManifest =
   Schema.decodeUnknownSync(RuntimeBundleManifestSchema)(manifestData);
+
+/**
+ * Env var that redirects `lando setup` to a locally-built runtime bundle.
+ *
+ * Points at an alternate manifest (identical shape to the bundled one, but
+ * `file://` URLs are permitted). Verification stays enforced against each
+ * entry's pinned SHA-256 — the override redirects verification, it never
+ * disables it. See spec §5.8.1 / §13.5.
+ */
+export const RUNTIME_BUNDLE_MANIFEST_ENV = "LANDO_RUNTIME_BUNDLE_MANIFEST";
+
+const OverrideRuntimeBundleEntrySchema = Schema.Struct({
+  url: Schema.String.pipe(Schema.pattern(/^(?:https|file):\/\//u)),
+  sha256: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
+  filename: Schema.String.pipe(Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+  sizeBytes: Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0)),
+});
+
+const OverrideRuntimeBundleManifestSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  runtimeVersion: Schema.String.pipe(Schema.minLength(1)),
+  bundles: Schema.Record({ key: Schema.String, value: OverrideRuntimeBundleEntrySchema }),
+});
+
+export type OverrideRuntimeBundleManifest = Schema.Schema.Type<typeof OverrideRuntimeBundleManifestSchema>;
+
+const overrideManifestError = (path: string, detail: string, cause?: unknown): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: `Runtime-bundle override manifest at ${path} ${detail}.`,
+    remediation: `Point ${RUNTIME_BUNDLE_MANIFEST_ENV} at a valid runtime-bundle manifest (schemaVersion 1, per-platform { url, sha256, filename, sizeBytes }), or unset it to use the bundled pinned manifest.`,
+    ...(cause === undefined ? {} : { cause }),
+  });
+
+const loadOverrideManifest = (
+  path: string,
+): Effect.Effect<OverrideRuntimeBundleManifest, ProviderUnavailableError> =>
+  Effect.tryPromise({
+    try: () => readFile(path, "utf8"),
+    catch: (cause) => overrideManifestError(path, "could not be read", cause),
+  }).pipe(
+    Effect.flatMap((text) =>
+      Effect.try({
+        try: () => JSON.parse(text) as unknown,
+        catch: (cause) => overrideManifestError(path, "is not valid JSON", cause),
+      }),
+    ),
+    Effect.flatMap((data) =>
+      Schema.decodeUnknown(OverrideRuntimeBundleManifestSchema)(data).pipe(
+        Effect.mapError((cause) => overrideManifestError(path, "failed schema validation", cause)),
+      ),
+    ),
+  );
 
 const platformArchKey = (platform: HostPlatform, arch: string): string => `${platform}-${arch}`;
 
@@ -196,6 +251,10 @@ export const makeRuntimeBundleDownloader = (
 
     const fetched = yield* Effect.tryPromise({
       try: async () => {
+        if (entry.url.startsWith("file://")) {
+          const buffer = await readFile(fileURLToPath(entry.url));
+          return new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        }
         const response = await fetchImpl(entry.url, fetchInitForNetwork(entry.url, options.network));
         if (!response.ok) {
           throw new Error(`HTTP ${response.status} ${response.statusText} while fetching ${entry.url}`);
@@ -261,10 +320,30 @@ export interface DefaultRuntimeBundleDownloaderOptions {
   readonly platform?: HostPlatform;
   readonly arch?: string;
   readonly url?: string;
+  readonly sha256?: string;
+  readonly manifestPath?: string;
   readonly network?: RuntimeBundleNetworkConfig;
+  /** Injectable for tests. Defaults to `process.env`. */
+  readonly env?: Record<string, string | undefined>;
   /** Injectable for tests. Defaults to `globalThis.fetch` (Bun built-in). */
   readonly fetchImpl?: typeof fetch;
 }
+
+const pairedOverrideError = (): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: "Runtime-bundle URL and SHA-256 overrides must be supplied together.",
+    remediation:
+      "Pass both --runtime-bundle-url and --runtime-bundle-sha256 (a URL swap that keeps the pinned checksum can never verify a different artifact), or neither.",
+  });
+
+const overrideEntryMissingError = (
+  platform: HostPlatform,
+  arch: string,
+  manifestPath: string,
+): ProviderUnavailableError =>
+  overrideManifestError(manifestPath, `has no entry for ${platformArchKey(platform, arch)}`);
 
 export const makeDefaultRuntimeBundleDownloader = (
   options: DefaultRuntimeBundleDownloaderOptions,
@@ -276,11 +355,35 @@ export const makeDefaultRuntimeBundleDownloader = (
     if (platform === undefined) {
       return yield* Effect.fail(unsupportedHostPlatformError());
     }
-    const entry = yield* resolveRuntimeBundleEntry(platform, arch);
+    if ((options.url === undefined) !== (options.sha256 === undefined)) {
+      return yield* Effect.fail(pairedOverrideError());
+    }
+
+    const env = options.env ?? process.env;
+    const manifestPath = options.manifestPath ?? env[RUNTIME_BUNDLE_MANIFEST_ENV];
+
+    let entry: RuntimeBundleEntry;
+    let runtimeVersion = RUNTIME_BUNDLE_MANIFEST.runtimeVersion;
+    if (typeof manifestPath === "string" && manifestPath.length > 0) {
+      const manifest = yield* loadOverrideManifest(manifestPath);
+      const resolved = manifest.bundles[platformArchKey(platform, arch)];
+      if (resolved === undefined) {
+        return yield* Effect.fail(overrideEntryMissingError(platform, arch, manifestPath));
+      }
+      entry = resolved;
+      runtimeVersion = manifest.runtimeVersion;
+    } else {
+      entry = yield* resolveRuntimeBundleEntry(platform, arch);
+    }
+
+    const finalEntry =
+      options.url === undefined
+        ? entry
+        : { ...entry, url: options.url, sha256: options.sha256 ?? entry.sha256 };
     const inner = makeRuntimeBundleDownloader({
       stateDir: options.stateDir,
-      entry: options.url === undefined ? entry : { ...entry, url: options.url },
-      runtimeVersion: RUNTIME_BUNDLE_MANIFEST.runtimeVersion,
+      entry: finalEntry,
+      runtimeVersion,
       ...(options.network === undefined ? {} : { network: options.network }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     });

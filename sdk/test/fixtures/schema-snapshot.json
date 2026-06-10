@@ -53,6 +53,11 @@
                 "description": "Override the Lando-managed runtime bundle URL for setup.",
                 "name": "runtime-bundle-url",
                 "type": "option"
+              },
+              {
+                "description": "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
+                "name": "runtime-bundle-sha256",
+                "type": "option"
               }
             ]
           }
