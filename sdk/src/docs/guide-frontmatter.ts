@@ -1,26 +1,11 @@
 import { Either, type ParseResult, Schema } from "effect";
 
 import { NotImplementedError } from "../errors/index.ts";
+import { DeprecationNotice, DeprecationSeverity } from "../schema/deprecation.ts";
 
 const GUIDE_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
-export const DeprecationSeverity = Schema.Literal("info", "warn", "error");
-export type DeprecationSeverity = typeof DeprecationSeverity.Type;
-
-export const DeprecationNotice = Schema.Struct({
-  since: Schema.String,
-  removeIn: Schema.optional(Schema.String),
-  severity: Schema.optionalWith(DeprecationSeverity, { default: () => "warn" as const }),
-  replacement: Schema.optional(Schema.String),
-  note: Schema.String,
-  docsUrl: Schema.optional(Schema.String),
-  ticket: Schema.optional(Schema.String),
-}).annotations({
-  identifier: "DeprecationNotice",
-  title: "Deprecation Notice",
-  description: "A structured deprecation declaration attached to a public surface.",
-});
-export type DeprecationNotice = typeof DeprecationNotice.Type;
+export { DeprecationNotice, DeprecationSeverity };
 
 export const GuideId = Schema.String.pipe(
   Schema.pattern(GUIDE_ID_PATTERN, {

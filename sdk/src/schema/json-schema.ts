@@ -17,11 +17,12 @@ import {
   VariableProps,
   VerifyProps,
 } from "../docs/components/props.ts";
-import { DeprecationNotice, GuideFrontmatter } from "../docs/guide-frontmatter.ts";
+import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
 import { Transcript } from "../docs/transcript.ts";
 import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import { GlobalConfig } from "./config.ts";
+import { DeprecationNotice, DeprecationNoticeJsonShape } from "./deprecation.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -101,7 +102,7 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
     case "BootstrapLevel":
       return JSONSchema.make(BootstrapLevel);
     case "DeprecationNotice":
-      return JSONSchema.make(DeprecationNotice);
+      return JSONSchema.make(DeprecationNoticeJsonShape);
     case "GuideFrontmatter":
       return JSONSchema.make(GuideFrontmatter);
     case "GuideProps":

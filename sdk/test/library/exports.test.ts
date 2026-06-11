@@ -16,6 +16,8 @@ describe("@lando/sdk package exports", () => {
     const schema = await import("@lando/sdk/schema");
 
     expect(schema.BootstrapLevel).toBeDefined();
+    expect(schema.DeprecationNotice).toBeDefined();
+    expect(schema.structuralDeprecationKey).toBeDefined();
     expect(schema.BOOTSTRAP_RANK).toBeDefined();
     expect(schema.AppRef).toBeDefined();
     expect(schema.AppPlan).toBeDefined();
@@ -45,6 +47,7 @@ describe("@lando/sdk package exports", () => {
 
     for (const schemaName of [
       "BootstrapLevel",
+      "DeprecationNotice",
       "AppRef",
       "AppPlan",
       "ServicePlan",
@@ -66,6 +69,13 @@ describe("@lando/sdk package exports", () => {
       expect(jsonSchema).toBeDefined();
       expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     }
+  });
+
+  test("core schema re-exports the canonical deprecation notice", async () => {
+    const sdkSchema = await import("@lando/sdk/schema");
+    const coreSchema = await import("@lando/core/schema");
+
+    expect(coreSchema.DeprecationNotice).toBe(sdkSchema.DeprecationNotice);
   });
 
   test("errors entry point exports the canonical tagged errors", async () => {

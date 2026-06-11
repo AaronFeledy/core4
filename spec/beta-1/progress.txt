@@ -216,3 +216,9 @@
 - Review notes (rejected): Code Quality's MAJOR "extract a shared OCLIF/compiled arg parser + add trust parity tests" is out of scope — run.ts hand-parsing every command id is the permanent compiled-dispatch architecture (not introduced here), valid `list`/`revoke`/`<name>` input dispatches identically on both paths and the §13.1 structural parity test passes; the only divergences (tolerating an extra positional, missing-name error wording) are abnormal-input edge cases that both still error/exit non-zero. The "plugin literally named list/revoke" positional collision is acceptable for Beta 1 (such names remain revocable via `plugin:trust revoke <name>`) and matches the published grammar.
 - Verification: focused decision build test green; edits are markdown-only with no test asserting the changed lines, so the build commit's typecheck/lint/full-suite results stand.
 ---
+## 2026-06-11 01:58 CDT - US-215
+- Shipped the canonical `DeprecationNotice` schema from the SDK schema surface and core schema re-export, including semver/docs URL validation, severity defaulting, remove-schedule validation, and the structural dedupe key.
+- Extended the schema snapshot generator to emit the `dist/schemas/deprecation-notice.json` artifact and locked standalone plus nested JSON Schema metadata preservation without recursive `$ref` output.
+- Verification: red/green focused tests, schema artifact QA, typecheck, lint, full tests, and high-rigor reviewer gate passed.
+- **Learnings for future iterations:** Effect filtered schemas can drop or distort JSON Schema metadata; for canonical public schemas with refinements, attach a non-recursive `jsonSchema` fragment and assert both direct `JSONSchema.make(...)` and nested schema snapshots preserve metadata without `$defs` self-recursion.
+---
