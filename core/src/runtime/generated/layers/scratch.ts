@@ -13,27 +13,17 @@
 
 import { Layer } from "effect";
 
-import { CacheServiceLive } from "../../../cache/service.ts";
 import { LandofileServiceLive } from "../../../landofile/service.ts";
-import { makePluginRegistryLive } from "../../../plugins/registry.ts";
 import { ScratchRegistryLive } from "../../../scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../../scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../../scratch-app/service.ts";
-import { ConfigServiceLive } from "../../../services/config.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
-import { makeMinimalBootstrapLayer } from "./minimal.ts";
 import { makeProviderBootstrapLayer } from "./provider.ts";
 
 export const makeScratchBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const providerBase = makeProviderBootstrapLayer(inputs);
-  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);
-  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
-  const plannerLive = AppPlannerLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
-  );
+  const plannerLive = AppPlannerLive.pipe(Layer.provide(providerBase));
   const scratchDeps = Layer.mergeAll(
     providerBase,
     LandofileServiceLive,

@@ -24,4 +24,22 @@ describe("generated bootstrap layers", () => {
     expect(source).not.toContain("Layer.mergeAll(");
     expect(source).not.toContain("Layer.provide(");
   });
+
+  test("higher plugin-aware bootstrap tiers reuse deprecation-populated plugin layers", async () => {
+    const tooling = await readFile(resolve(generatedLayersDir, "tooling.ts"), "utf8");
+    const provider = await readFile(resolve(generatedLayersDir, "provider.ts"), "utf8");
+    const global = await readFile(resolve(generatedLayersDir, "global.ts"), "utf8");
+    const scratch = await readFile(resolve(generatedLayersDir, "scratch.ts"), "utf8");
+    const app = await readFile(resolve(generatedLayersDir, "app.ts"), "utf8");
+
+    expect(tooling).toContain("makePluginsBootstrapLayer(inputs)");
+    expect(provider).toContain("makePluginsBootstrapLayer(inputs)");
+    expect(global).toContain("makeProviderBootstrapLayer(inputs)");
+    expect(scratch).toContain("makeProviderBootstrapLayer(inputs)");
+    expect(app).toContain("makeProviderBootstrapLayer(inputs)");
+
+    for (const source of [tooling, provider, global, scratch, app]) {
+      expect(source).not.toContain("makePluginRegistryLive");
+    }
+  });
 });
