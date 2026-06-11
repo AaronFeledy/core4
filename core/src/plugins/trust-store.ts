@@ -19,8 +19,7 @@ const configError = (path: string, message: string, cause?: unknown): ConfigErro
 
 const quoted = (value: string): string => JSON.stringify(value);
 
-const uniqueSorted = (values: ReadonlyArray<string>): ReadonlyArray<string> =>
-  [...new Set(values)].sort((left, right) => left.localeCompare(right));
+const uniqueSorted = (values: ReadonlyArray<string>): ReadonlyArray<string> => [...new Set(values)].sort();
 
 const emitTrustYaml = (state: PluginTrustState): string =>
   [

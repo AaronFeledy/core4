@@ -12,6 +12,7 @@ export * from "./landofile.ts";
 export * from "./mounts.ts";
 export * from "./networking.ts";
 export * from "./plugin.ts";
+export * from "./plugin-trust.ts";
 export * from "./primitives.ts";
 export * from "./recipe.ts";
 export * from "./service-info.ts";

@@ -90,6 +90,8 @@
 - `PluginName`
 - `PluginSetupContribution`
 - `PluginSetupFlagContribution`
+- `PluginTrustList`
+- `PluginTrustState`
 - `PortablePath`
 - `ProviderExtensionConfig`
 - `RecipeChoicesFrom`
@@ -143,6 +145,7 @@
 - `VerifyProps`
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
+- `isSortedUniquePluginTrustList`
 
 ## Additive Beta service fields
 
