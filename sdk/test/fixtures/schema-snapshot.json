@@ -2468,6 +2468,17 @@
           "required": [],
           "type": "object"
         },
+        "sshAgent": {
+          "additionalProperties": false,
+          "properties": {
+            "sidecar": {
+              "enum": [true],
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
         "tooling": {
           "additionalProperties": {
             "additionalProperties": false,

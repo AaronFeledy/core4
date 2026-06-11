@@ -270,6 +270,11 @@ export const ComposeSecretConfig = Schema.Struct({
 });
 export type ComposeSecretConfig = typeof ComposeSecretConfig.Type;
 
+export const SshAgentConfig = Schema.Struct({
+  sidecar: Schema.optional(Schema.Literal(true)),
+});
+export type SshAgentConfig = typeof SshAgentConfig.Type;
+
 export const COMPOSE_TOP_LEVEL_KEYS = [
   "services",
   "volumes",
@@ -312,6 +317,7 @@ const LandofileShapeBase = Schema.Struct({
   networks: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
   configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
+  sshAgent: Schema.optional(SshAgentConfig),
   services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
