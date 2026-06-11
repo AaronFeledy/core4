@@ -235,3 +235,10 @@
 - **Learnings for future iterations:**
   - Keep deprecation registration in bootstrap/registry walks and the use path as a single keyed state update; future renderer/event/doctor stories should consume the same summary/lookup API rather than re-walking manifests.
 ---
+
+## 2026-06-11 15:55 CDT - Babysit
+- PR: #335 https://github.com/AaronFeledy/core4/pull/335
+- CI outcome: pass
+- Review feedback: rejected (Bugbot "Registry severity ignored on use" triaged as not-a-defect — §18.3 makes DeprecationUse.notice the runtime authority for `use`; register/lookup is a separate doctor/config index and no production `.use()` call sites exist, so the mismatch is unreachable; documented in a PR reply)
+- Merge: merged (squash)
+---
