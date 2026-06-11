@@ -48,6 +48,7 @@
 - `landoServiceNetworkAliases`
 - `landoSharedNetworkName`
 - `sameAppMountTarget`
+- `structuralDeprecationKey`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`

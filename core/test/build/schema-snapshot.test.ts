@@ -8,6 +8,7 @@ import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const snapshotPath = resolve(repoRoot, "sdk/test/fixtures/schema-snapshot.json");
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
+const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
 
 const runGenerator = (): void => {
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
@@ -44,10 +45,22 @@ describe("schema snapshot gate", () => {
 
     expect(Object.keys(snapshot.sdkSchemas).sort()).toEqual([...snapshot.scope.sdkSchemas].sort());
     expect(snapshot.scope.sdkSchemas).toContain("PluginManifest");
+    expect(snapshot.scope.sdkSchemas).toContain("DeprecationNotice");
     expect(snapshot.scope.sdkSchemas).toContain("AppPlan");
 
     const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
     expect(snapshot.scope.bundledPluginManifests).toEqual(bundledNames);
     expect(snapshot.bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
+  });
+
+  test("generator emits the deprecation notice schema artifact", async () => {
+    runGenerator();
+
+    const artifact = JSON.parse(await readFile(deprecationNoticeArtifactPath, "utf8")) as Record<
+      string,
+      unknown
+    >;
+    expect(artifact.$schema).toBe("http://json-schema.org/draft-07/schema#");
+    expect(JSON.stringify(artifact)).toContain("Deprecation Notice");
   });
 });

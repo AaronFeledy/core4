@@ -1045,12 +1045,15 @@
           "description": "A structured deprecation declaration attached to a public surface.",
           "properties": {
             "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
               "type": "string"
             },
             "note": {
               "type": "string"
             },
             "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
               "type": "string"
             },
             "replacement": {
@@ -1061,6 +1064,7 @@
               "type": "string"
             },
             "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
               "type": "string"
             },
             "ticket": {
@@ -1644,12 +1648,15 @@
           "description": "A structured deprecation declaration attached to a public surface.",
           "properties": {
             "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
               "type": "string"
             },
             "note": {
               "type": "string"
             },
             "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
               "type": "string"
             },
             "replacement": {
@@ -1660,6 +1667,7 @@
               "type": "string"
             },
             "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
               "type": "string"
             },
             "ticket": {

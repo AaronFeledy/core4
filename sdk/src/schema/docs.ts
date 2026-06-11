@@ -1,11 +1,11 @@
 export {
-  DeprecationNotice,
-  DeprecationSeverity,
   GuideFrontmatter,
   GuideId,
   decodeGuideFrontmatter,
   decodeGuideFrontmatterEither,
 } from "../docs/guide-frontmatter.ts";
+export { DeprecationNotice, DeprecationSeverity, structuralDeprecationKey } from "./deprecation.ts";
+export type { StructuralDeprecationKey } from "./deprecation.ts";
 export {
   CleanupProps,
   GuideProps,

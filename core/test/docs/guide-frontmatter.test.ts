@@ -23,7 +23,7 @@ describe("GuideFrontmatter", () => {
       platforms: ["linux", "darwin"],
       tags: ["tutorial"],
       skip: { reason: "waiting for fixture", until: "2026-01-01" },
-      deprecated: { since: "4.0.0", note: "Use the updated guide." },
+      deprecated: { since: "4.0.0", removeIn: "5.0.0", note: "Use the updated guide." },
     });
 
     expect(decoded.timeout).toBe(60000);

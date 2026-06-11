@@ -4,10 +4,12 @@
  *
  * Scope:
  *   - JSON Schema output for the public `@lando/sdk/schema` registry
+ *   - committed standalone schema artifacts generated from that registry
  *   - decoded manifests for the in-binary bundled plugins only
  *
  * Out-of-tree plugin manifests are intentionally not discovered here.
  */
+import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { Schema } from "effect";
@@ -17,6 +19,8 @@ import { type JsonSchemaName, PluginManifest, getJsonSchema } from "../sdk/src/s
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
+const SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/schemas");
+const DEPRECATION_NOTICE_ARTIFACT = resolve(SCHEMA_ARTIFACT_DIR, "deprecation-notice.json");
 
 const SDK_SCHEMA_NAMES = [
   "DeprecationNotice",
@@ -99,9 +103,14 @@ const renderSnapshot = (): string => {
 
 const main = async (): Promise<void> => {
   await Bun.write(OUTPUT, renderSnapshot());
+  await mkdir(SCHEMA_ARTIFACT_DIR, { recursive: true });
+  await Bun.write(
+    DEPRECATION_NOTICE_ARTIFACT,
+    `${JSON.stringify(stable(getJsonSchema("DeprecationNotice")), null, 2)}\n`,
+  );
 
   const check = Bun.spawn({
-    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT],
+    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT, DEPRECATION_NOTICE_ARTIFACT],
     cwd: REPO_ROOT,
     stdout: "ignore",
     stderr: "inherit",
