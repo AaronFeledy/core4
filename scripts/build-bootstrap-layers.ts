@@ -47,6 +47,7 @@ const renderMinimal = (): string =>
   [
     'import { Layer } from "effect";',
     "",
+    'import { DeprecationServiceLive } from "../../../deprecation/service.ts";',
     'import { CacheServiceLive } from "../../../cache/service.ts";',
     'import { LoggerLive } from "../../../logging/service.ts";',
     'import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";',
@@ -63,6 +64,7 @@ const renderMinimal = (): string =>
     "    Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),",
     "    Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),",
     "    ConfigServiceLive,",
+    "    DeprecationServiceLive,",
     "    PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),",
     "    CacheServiceLive,",
     "    FileSystemLive,",
@@ -72,13 +74,35 @@ const renderMinimal = (): string =>
     "",
   ].join("\n");
 
-const renderAlias = (level: "plugins" | "commands"): string =>
+const renderAlias = (level: "commands"): string =>
   [
     'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
     'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
     "",
     `export const make${capitalize(level)}BootstrapLayer = (inputs: BootstrapLayerInputs) =>`,
     "  makeMinimalBootstrapLayer(inputs);",
+    "",
+  ].join("\n");
+
+const renderPlugins = (): string =>
+  [
+    'import { Layer } from "effect";',
+    "",
+    'import { DeprecationPluginRegistryLive } from "../../../deprecation/plugin-registry.ts";',
+    'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    "",
+    "export const makePluginsBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);",
+    "  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(",
+    "    Layer.provide(minimalRuntimeLive),",
+    "  );",
+    "  const deprecationRegistryLive = DeprecationPluginRegistryLive.pipe(",
+    "    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive)),",
+    "  );",
+    "  return Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, deprecationRegistryLive);",
+    "};",
     "",
   ].join("\n");
 
@@ -297,7 +321,7 @@ const renderIndex = (): string =>
 const renderers: Record<string, () => string> = {
   none: renderNone,
   minimal: renderMinimal,
-  plugins: () => renderAlias("plugins"),
+  plugins: renderPlugins,
   commands: () => renderAlias("commands"),
   tooling: renderTooling,
   provider: renderProvider,

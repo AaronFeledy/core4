@@ -48,6 +48,33 @@ const OptionalHttpUrl = Schema.String.pipe(
 export const DeprecationSeverity = Schema.Literal("info", "warn", "error");
 export type DeprecationSeverity = typeof DeprecationSeverity.Type;
 
+export const DeprecationSurfaceKind = Schema.Literal(
+  "command",
+  "flag",
+  "arg",
+  "tooling-task",
+  "recipe",
+  "recipe-prompt",
+  "landofile-key",
+  "config-key",
+  "env-override",
+  "schema",
+  "schema-field",
+  "event",
+  "event-field",
+  "render-event",
+  "service-type",
+  "service-feature",
+  "route-filter",
+  "provider-extension",
+  "manifest-field",
+  "manifest-contribution",
+  "plugin",
+  "export",
+  "tagged-error",
+);
+export type DeprecationSurfaceKind = typeof DeprecationSurfaceKind.Type;
+
 const DEPRECATION_NOTICE_JSON_SCHEMA_METADATA = {
   title: "Deprecation Notice",
   description: "A structured deprecation declaration attached to a public surface.",
@@ -145,3 +172,18 @@ export const structuralDeprecationKey = (notice: DeprecationNotice): StructuralD
   removeIn: notice.removeIn,
   note: notice.note,
 });
+
+export const DeprecationUse = Schema.Struct({
+  kind: DeprecationSurfaceKind,
+  id: Schema.String,
+  notice: DeprecationNotice,
+  callsite: Schema.optional(Schema.String),
+  app: Schema.optional(Schema.String),
+  plugin: Schema.optional(Schema.String),
+  timestamp: Schema.DateTimeUtc,
+}).annotations({
+  identifier: "DeprecationUse",
+  title: "Deprecation Use",
+  description: "A recorded runtime use of a deprecated public surface.",
+});
+export type DeprecationUse = typeof DeprecationUse.Type;

@@ -6,6 +6,8 @@ export * from "./config-lint.ts";
 export {
   DeprecationNotice,
   DeprecationSeverity,
+  DeprecationSurfaceKind,
+  DeprecationUse,
   type StructuralDeprecationKey,
   structuralDeprecationKey,
 } from "./deprecation.ts";

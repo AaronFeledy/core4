@@ -1,5 +1,6 @@
 /** Tagged error exports for the SDK. */
 export * from "./config.ts";
+export * from "./deprecation.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global.ts";

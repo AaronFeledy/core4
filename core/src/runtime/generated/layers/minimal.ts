@@ -15,6 +15,7 @@ import { Layer } from "effect";
 
 import { Renderer, Telemetry } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
+import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
@@ -33,6 +34,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) =>
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
     Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),
     ConfigServiceLive,
+    DeprecationServiceLive,
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,

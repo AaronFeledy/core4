@@ -31,6 +31,8 @@
 - `DependencyPlan`
 - `DeprecationNotice`
 - `DeprecationSeverity`
+- `DeprecationSurfaceKind`
+- `DeprecationUse`
 - `EndpointInput`
 - `EndpointPlan`
 - `EmbeddingPluginDiscoveryPolicy`
@@ -176,6 +178,8 @@
 - `ConfigTranslateError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
+- `DeprecationContradictionError`
+- `DeprecatedSurfaceError`
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`
 - `LandofileExpressionParseError`
@@ -191,6 +195,7 @@
 - `CommandFramework`
 - `CommandRegistry`
 - `ConfigTranslator`
+- `DeprecationService`
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`

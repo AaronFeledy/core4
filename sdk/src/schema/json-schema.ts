@@ -22,7 +22,7 @@ import { Transcript } from "../docs/transcript.ts";
 import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import { GlobalConfig } from "./config.ts";
-import { DeprecationNotice, DeprecationNoticeJsonShape } from "./deprecation.ts";
+import { DeprecationNotice, DeprecationNoticeJsonShape, DeprecationUse } from "./deprecation.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
@@ -40,6 +40,7 @@ type JsonObject = Record<string, unknown>;
 
 const JSON_SCHEMA_REGISTRY = {
   DeprecationNotice,
+  DeprecationUse,
   GuideFrontmatter,
   GuideProps,
   ScenarioProps,
@@ -103,6 +104,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(BootstrapLevel);
     case "DeprecationNotice":
       return JSONSchema.make(DeprecationNoticeJsonShape);
+    case "DeprecationUse":
+      return JSONSchema.make(DeprecationUse);
     case "GuideFrontmatter":
       return JSONSchema.make(GuideFrontmatter);
     case "GuideProps":

@@ -1,11 +1,14 @@
 /** Effect service tags for the SDK. */
-import type { Context, Effect, Queue, Schema, Scope, Stream } from "effect";
+import type { Context, Effect, Option, Queue, Schema, Scope, Stream } from "effect";
 
 type _ServiceTagCompatContext = typeof Context.Tag;
 
 import type {
   AbsolutePath,
   AppPlan,
+  DeprecationNotice,
+  DeprecationSurfaceKind,
+  DeprecationUse,
   GlobalConfig,
   HostPlatform,
   LandofileShape,
@@ -48,6 +51,8 @@ import type {
   ShellExecError,
   ToolingExecError,
 } from "../errors/index.ts";
+
+import type { DeprecatedSurfaceError, DeprecationContradictionError } from "../errors/index.ts";
 
 import type { ToolingEngineResult, ToolingInvocation } from "./cli.ts";
 import type { ConfigTranslatorShape } from "./config-translator.ts";
@@ -111,6 +116,7 @@ export * from "./cache.ts";
 export * from "./cli.ts";
 export * from "./config-translator.ts";
 export * from "./config.ts";
+export * from "./deprecation.ts";
 export * from "./events.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
@@ -279,6 +285,35 @@ export declare class PluginTrustStore extends Context.Tag("@lando/core/PluginTru
     readonly untrustPlugin: (name: string) => Effect.Effect<void, ConfigError>;
     readonly isAuthoringRootTrusted: (path: string) => Effect.Effect<boolean, ConfigError>;
     readonly trustAuthoringRoot: (path: string) => Effect.Effect<void, ConfigError>;
+  }
+>() {}
+
+export interface DeprecationSummaryEntry extends DeprecationUse {
+  readonly count: number;
+}
+
+export declare class DeprecationService extends Context.Tag("@lando/core/DeprecationService")<
+  DeprecationService,
+  {
+    readonly use: (use: DeprecationUse) => Effect.Effect<void, DeprecatedSurfaceError>;
+    readonly summary: () => Effect.Effect<ReadonlyArray<DeprecationSummaryEntry>>;
+    readonly lookup: (
+      kind: DeprecationSurfaceKind,
+      id: string,
+    ) => Effect.Effect<Option.Option<DeprecationNotice>>;
+    readonly register: (
+      source: "core" | "plugin" | "schema-walk",
+      kind: DeprecationSurfaceKind,
+      id: string,
+      notice: DeprecationNotice,
+    ) => Effect.Effect<void>;
+    readonly registerAlias: (
+      source: "core" | "plugin" | "schema-walk",
+      kind: DeprecationSurfaceKind,
+      canonicalId: string,
+      aliasId: string,
+      aliasNotice?: DeprecationNotice,
+    ) => Effect.Effect<void, DeprecationContradictionError>;
   }
 >() {}
 

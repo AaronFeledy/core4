@@ -17,6 +17,8 @@ describe("@lando/sdk package exports", () => {
 
     expect(schema.BootstrapLevel).toBeDefined();
     expect(schema.DeprecationNotice).toBeDefined();
+    expect(schema.DeprecationSurfaceKind).toBeDefined();
+    expect(schema.DeprecationUse).toBeDefined();
     expect(schema.structuralDeprecationKey).toBeDefined();
     expect(schema.BOOTSTRAP_RANK).toBeDefined();
     expect(schema.AppRef).toBeDefined();
@@ -48,6 +50,7 @@ describe("@lando/sdk package exports", () => {
     for (const schemaName of [
       "BootstrapLevel",
       "DeprecationNotice",
+      "DeprecationUse",
       "AppRef",
       "AppPlan",
       "ServicePlan",
@@ -122,6 +125,8 @@ describe("@lando/sdk package exports", () => {
     expect(errors.ConfigTranslateError).toBeDefined();
     expect(errors.ConfigTranslatorConflictError).toBeDefined();
     expect(errors.ConfigTranslateNoTranslatorsError).toBeDefined();
+    expect(errors.DeprecatedSurfaceError).toBeDefined();
+    expect(errors.DeprecationContradictionError).toBeDefined();
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
@@ -154,6 +159,7 @@ describe("@lando/sdk package exports", () => {
     expect(services.LandofileService).toBeDefined();
     expect(services.GlobalAppService).toBeDefined();
     expect(services.ScratchAppService).toBeDefined();
+    expect(services.DeprecationService).toBeDefined();
     expect(services.PluginRegistry).toBeDefined();
     expect(services.PluginTrustStore).toBeDefined();
     expect(services.RuntimeProvider).toBeDefined();

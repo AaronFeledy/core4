@@ -24,6 +24,7 @@ const DEPRECATION_NOTICE_ARTIFACT = resolve(SCHEMA_ARTIFACT_DIR, "deprecation-no
 
 const SDK_SCHEMA_NAMES = [
   "DeprecationNotice",
+  "DeprecationUse",
   "GuideFrontmatter",
   "GuideProps",
   "ScenarioProps",
