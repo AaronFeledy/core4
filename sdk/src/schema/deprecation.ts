@@ -80,6 +80,7 @@ const DEPRECATION_NOTICE_JSON_SCHEMA = {
     docsUrl: {
       type: "string",
       format: "uri",
+      pattern: "^[Hh][Tt][Tt][Pp][Ss]?://",
     },
     ticket: {
       type: "string",

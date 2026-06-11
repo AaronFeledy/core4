@@ -1046,6 +1046,7 @@
           "properties": {
             "docsUrl": {
               "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
               "type": "string"
             },
             "note": {
@@ -1648,6 +1649,7 @@
           "properties": {
             "docsUrl": {
               "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
               "type": "string"
             },
             "note": {
