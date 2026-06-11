@@ -78,6 +78,7 @@ export interface PluginAddOptions {
 export interface PluginAddResult {
   readonly pluginName: string;
   readonly pluginVersion: string;
+  readonly trustName: string;
   readonly pluginsRoot: string;
   readonly entry: string;
   readonly trusted: boolean;
@@ -324,23 +325,22 @@ const defaultPrompter: PluginAddPrompter = {
 
 const ensureTrust = async (
   manifest: PluginManifest,
-  packageDir: string,
+  trustName: string,
   options: PluginAddOptions,
   persistentStore?: typeof PersistentPluginTrustStore.Service,
 ): Promise<"flag" | "persistent" | "prompt" | "session"> => {
   const store = options.trustStore ?? globalTrustStore;
-  if (store.has(manifest.name)) return "session";
+  if (store.has(trustName)) return "session";
   if (
     persistentStore !== undefined &&
-    ((await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name))) ||
-      (await Effect.runPromise(persistentStore.isAuthoringRootTrusted(resolve(packageDir)))))
+    (await Effect.runPromise(persistentStore.isPluginTrusted(trustName)))
   ) {
-    store.add(manifest.name);
+    store.add(trustName);
     return "persistent";
   }
   if (options.trust === true) {
-    store.add(manifest.name);
-    if (persistentStore !== undefined) await Effect.runPromise(persistentStore.trustPlugin(manifest.name));
+    store.add(trustName);
+    if (persistentStore !== undefined) await Effect.runPromise(persistentStore.trustPlugin(trustName));
     return "flag";
   }
   if (options.nonInteractive === true) {
@@ -349,7 +349,7 @@ const ensureTrust = async (
   const prompter = options.prompter ?? defaultPrompter;
   const ok = await prompter.confirmTrust({ pluginName: manifest.name, spec: options.spec });
   if (!ok) throw trustRejectedError(manifest.name);
-  store.add(manifest.name);
+  store.add(trustName);
   return "prompt";
 };
 
@@ -440,24 +440,24 @@ export const pluginAdd = (
     const hasPostinstall = yield* Effect.promise(() => packageDeclaresPostinstall(packageDir));
     const persistentStoreOption = yield* Effect.serviceOption(PersistentPluginTrustStore);
     const persistentStore = persistentStoreOption._tag === "Some" ? persistentStoreOption.value : undefined;
+    const trustName = packageName;
 
     const trustStoreForRollback = options.trustStore ?? globalTrustStore;
-    const hadTrustBefore = trustStoreForRollback.has(manifest.name);
+    const hadTrustBefore = trustStoreForRollback.has(trustName);
     const trustSource = yield* Effect.tryPromise({
       try: async () => {
         if (hasPostinstall && options.trust !== true) {
-          if (trustStoreForRollback.has(manifest.name)) return "session";
+          if (trustStoreForRollback.has(trustName)) return "session";
           if (
             persistentStore !== undefined &&
-            ((await Effect.runPromise(persistentStore.isPluginTrusted(manifest.name))) ||
-              (await Effect.runPromise(persistentStore.isAuthoringRootTrusted(resolve(packageDir)))))
+            (await Effect.runPromise(persistentStore.isPluginTrusted(trustName)))
           ) {
-            trustStoreForRollback.add(manifest.name);
+            trustStoreForRollback.add(trustName);
             return "persistent";
           }
           return "untrusted";
         }
-        return ensureTrust(manifest, packageDir, options, persistentStore);
+        return ensureTrust(manifest, trustName, options, persistentStore);
       },
       catch: (cause) =>
         cause instanceof NotImplementedError
@@ -479,7 +479,7 @@ export const pluginAdd = (
           Effect.promise(async () => {
             if (createdPackageDir !== undefined)
               await rm(createdPackageDir, { recursive: true, force: true });
-            if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(manifest.name);
+            if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
           }),
         ),
       );
@@ -488,7 +488,7 @@ export const pluginAdd = (
         if (failedPackageDir !== undefined) {
           yield* Effect.promise(() => rm(failedPackageDir, { recursive: true, force: true }));
         }
-        if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(manifest.name);
+        if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(trustName);
         return yield* Effect.fail(
           installFailure(options.spec, `trusted postinstall exited ${postinstallExit.exitCode}`),
         );
@@ -505,7 +505,7 @@ export const pluginAdd = (
       } catch (cause) {
         if (createdPackageDir !== undefined) await rm(createdPackageDir, { recursive: true, force: true });
         if (!hadTrustBefore && trustSource !== "session" && trustSource !== "untrusted") {
-          trustStoreForRollback.delete(manifest.name);
+          trustStoreForRollback.delete(trustName);
         }
         throw cause;
       }
@@ -518,6 +518,7 @@ export const pluginAdd = (
     return {
       pluginName: manifest.name,
       pluginVersion: manifest.version,
+      trustName,
       pluginsRoot,
       entry: packageDir,
       trusted: trustSource !== "untrusted",
@@ -529,5 +530,5 @@ export const renderPluginAddResult = (result: PluginAddResult): string =>
   `installed: ${result.pluginName}@${result.pluginVersion}\ntrusted: ${result.trustSource}\nplugins-root: ${result.pluginsRoot}${
     result.trusted
       ? ""
-      : `\nremediation: run \`lando meta:plugin:trust ${result.pluginName}\` to allow the plugin postinstall path.`
+      : `\nremediation: run \`lando meta:plugin:trust ${result.trustName}\` to allow the plugin postinstall path.`
   }`;

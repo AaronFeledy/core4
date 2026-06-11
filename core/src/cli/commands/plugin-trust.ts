@@ -19,6 +19,17 @@ export interface PluginTrustAuthoringRootResult {
   readonly path: string;
 }
 
+export interface PluginTrustListResult {
+  readonly kind: "list";
+  readonly trustedPlugins: ReadonlyArray<string>;
+  readonly trustedAuthoringRoots: ReadonlyArray<string>;
+}
+
+export interface PluginTrustRevokeResult {
+  readonly kind: "revoke";
+  readonly pluginName: string;
+}
+
 export const pluginTrust = (input: { readonly name: string; readonly cacheRoot?: string }): Effect.Effect<
   PluginTrustResult,
   ConfigError | NotImplementedError,
@@ -67,8 +78,56 @@ export const pluginTrustAuthoringRoot = (input: {
     return { kind: "authoring-root", path: resolved };
   });
 
+export const pluginTrustList = (): Effect.Effect<PluginTrustListResult, ConfigError, PluginTrustStore> =>
+  Effect.gen(function* () {
+    const store = yield* PluginTrustStore;
+    const state = yield* store.read;
+    return {
+      kind: "list",
+      trustedPlugins: state.trustedPlugins,
+      trustedAuthoringRoots: state.trustedAuthoringRoots,
+    };
+  });
+
+export const pluginTrustRevoke = (input: {
+  readonly name: string;
+  readonly cacheRoot?: string;
+}): Effect.Effect<PluginTrustRevokeResult, ConfigError | NotImplementedError, PluginTrustStore> =>
+  Effect.gen(function* () {
+    const { name } = input;
+    if (name.trim() === "" || !REGISTRY_NAME_RE.test(name)) {
+      return yield* Effect.fail(
+        new NotImplementedError({
+          message: `Invalid plugin name: ${name}`,
+          commandId: "meta:plugin:trust",
+          remediation: "Pass an npm plugin package name, e.g. `lando plugin:trust revoke @lando/plugin-php`.",
+        }),
+      );
+    }
+    const store = yield* PluginTrustStore;
+    yield* store.untrustPlugin(name);
+    yield* invalidatePluginCommandCache({
+      ...(input.cacheRoot === undefined ? {} : { cacheRoot: input.cacheRoot }),
+    });
+    return { kind: "revoke", pluginName: name };
+  });
+
 export const renderPluginTrustResult = (result: PluginTrustResult): string =>
   `trusted-plugin: ${result.pluginName}`;
 
 export const renderPluginTrustAuthoringRootResult = (result: PluginTrustAuthoringRootResult): string =>
   `trusted-authoring-root: ${result.path}`;
+
+const listSection = (heading: string, values: ReadonlyArray<string>): string =>
+  values.length === 0
+    ? `${heading}: []`
+    : [`${heading}:`, ...values.map((value) => `  - ${value}`)].join("\n");
+
+export const renderPluginTrustListResult = (result: PluginTrustListResult): string =>
+  [
+    listSection("trusted-plugins", result.trustedPlugins),
+    listSection("trusted-authoring-roots", result.trustedAuthoringRoots),
+  ].join("\n");
+
+export const renderPluginTrustRevokeResult = (result: PluginTrustRevokeResult): string =>
+  `revoked-plugin: ${result.pluginName}`;

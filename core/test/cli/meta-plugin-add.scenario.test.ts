@@ -323,7 +323,7 @@ describe("meta:plugin:add command", () => {
     expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3", "package.json"))).toBe(true);
   });
 
-  test("trusts postinstall plugins under a persistent authoring root", async () => {
+  test("does not apply authoring-root trust to npm registry installs", async () => {
     const bytes = await makeNpmTarball({
       "package.json": JSON.stringify({
         name: "@lando/plugin-postinstall",
@@ -354,9 +354,51 @@ describe("meta:plugin:add command", () => {
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
     );
 
-    expect(result.trusted).toBe(true);
-    expect(result.trustSource).toBe("persistent");
-    expect(trustStore.has("@lando/plugin-postinstall")).toBe(true);
+    expect(result.trusted).toBe(false);
+    expect(result.trustSource).toBe("untrusted");
+    expect(trustStore.has("@lando/plugin-postinstall")).toBe(false);
+  });
+
+  test("does not inherit persistent trust from an attacker-controlled manifest name", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-evil",
+        version: "1.2.3",
+        scripts: { postinstall: "node postinstall.js" },
+        landoPlugin: {
+          name: "@lando/plugin-trusted",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "export {};\n",
+      "postinstall.js": "throw new Error('must not run during gated install');\n",
+    });
+    const persistentStore = makePluginTrustStore(join(userDataRoot, "plugin-trust.yml"));
+    await Effect.runPromise(persistentStore.trustPlugin("@lando/plugin-trusted"));
+    const spawns: Array<unknown> = [];
+
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-evil",
+        nonInteractive: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-evil", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore: new Set<string>(),
+        bunSelfSpawner: {
+          spawn: async (options) => {
+            spawns.push(options);
+            return { exitCode: 0 };
+          },
+        },
+      }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
+    );
+
+    expect(result.pluginName).toBe("@lando/plugin-trusted");
+    expect(result.trusted).toBe(false);
+    expect(result.trustSource).toBe("untrusted");
+    expect(spawns).toHaveLength(0);
   });
 
   test("runs trusted postinstall through BunSelfRunner install lifecycle events", async () => {

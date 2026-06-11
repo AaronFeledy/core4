@@ -259,8 +259,8 @@
         "Lint passes."
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Plugin trust model finalized: list/revoke ship now on the existing trust command, trust remains non-expiring until revoked, npm/registry trust keys on requested package identity, git sources require explicit session trust, local/link trust uses resolved authoring roots only, and the --trust/non-interactive/prompt flag model is published."
     },
     {
       "id": "US-215",

@@ -1,0 +1,26 @@
+---
+id: trust-management
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, trust]
+---
+
+<Guide>
+  <Scenario id="manage-plugin-trust" render={false} reason="Core scenario tests exercise the file-backed trust store and command renderers directly so guide CI does not mutate a real user trust file">
+    <Step name="inspect-trust">
+      <Variable name="command" value="lando plugin:trust list" display="Print the non-expiring trusted plugin names and trusted authoring roots from &lt;userConfRoot&gt;/plugin-trust.yml" />
+      <Variable name="output" value="trusted-plugins:" display="List output includes trusted-plugins and trusted-authoring-roots sections, using [] for empty sections" />
+    </Step>
+    <Step name="revoke-plugin-trust">
+      <Variable name="command" value="lando plugin:trust revoke @lando/plugin-php" display="Remove a persisted npm/registry plugin trust entry and invalidate plugin command caches" />
+      <Variable name="output" value="revoked-plugin: @lando/plugin-php" display="The command prints the exact revoked plugin name after the trust store write succeeds" />
+    </Step>
+    <Step name="scope-and-flags">
+      <Variable name="registry" value="requested package identity" display="npm/registry trust is keyed to the requested package identity, not package-controlled manifest names" />
+      <Variable name="git" value="explicit --trust" display="git plugin sources require explicit install-session trust until a git-source identity policy ships" />
+      <Variable name="local" value="resolved absolute authoring roots" display="local and linked plugin workflows use trusted resolved authoring roots; registry cache paths do not inherit authoring-root trust" />
+      <Variable name="nonInteractive" value="postinstall disabled" display="non-interactive untrusted postinstall installs stay inert and print remediation instead of prompting" />
+    </Step>
+  </Scenario>
+</Guide>

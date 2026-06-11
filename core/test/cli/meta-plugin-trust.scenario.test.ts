@@ -12,8 +12,12 @@ import { writePluginCommandCacheStrict } from "../../src/cache/command-index-wri
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,
+  pluginTrustList,
+  pluginTrustRevoke,
   renderPluginTrustAuthoringRootResult,
+  renderPluginTrustListResult,
   renderPluginTrustResult,
+  renderPluginTrustRevokeResult,
 } from "../../src/cli/commands/plugin-trust.ts";
 import { makePluginTrustStore } from "../../src/plugins/trust-store.ts";
 
@@ -113,5 +117,42 @@ describe("meta:plugin:trust commands", () => {
       resolve(userConfRoot, "A-root"),
       resolve(userConfRoot, "z-root"),
     ]);
+  });
+
+  test("lists trusted plugins and authoring roots", async () => {
+    const layer = trustLayer(userConfRoot);
+    await Effect.runPromise(pluginTrust({ name: "@lando/plugin-node" }).pipe(Effect.provide(layer)));
+    const root = resolve(userConfRoot, "authoring", "plugin");
+    await Effect.runPromise(pluginTrustAuthoringRoot({ path: root }).pipe(Effect.provide(layer)));
+
+    const result = await Effect.runPromise(pluginTrustList().pipe(Effect.provide(layer)));
+
+    expect(result.kind).toBe("list");
+    expect(result.trustedPlugins).toEqual(["@lando/plugin-node"]);
+    expect(result.trustedAuthoringRoots).toEqual([root]);
+    expect(renderPluginTrustListResult(result)).toBe(
+      `trusted-plugins:\n  - @lando/plugin-node\ntrusted-authoring-roots:\n  - ${root}`,
+    );
+  });
+
+  test("revokes plugin trust and invalidates the plugin-command cache", async () => {
+    const layer = trustLayer(userConfRoot);
+    const cacheRoot = await mkdtemp(join(tmpdir(), "lando-plugin-trust-cache-"));
+    try {
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot }));
+      await Effect.runPromise(pluginTrust({ name: "@lando/plugin-node" }).pipe(Effect.provide(layer)));
+
+      const result = await Effect.runPromise(
+        pluginTrustRevoke({ name: "@lando/plugin-node", cacheRoot }).pipe(Effect.provide(layer)),
+      );
+
+      expect(result.kind).toBe("revoke");
+      expect(renderPluginTrustRevokeResult(result)).toBe("revoked-plugin: @lando/plugin-node");
+      await expect(readFile(cachePath)).rejects.toMatchObject({ code: "ENOENT" });
+      const store = await Effect.runPromise(PluginTrustStore.pipe(Effect.provide(layer)));
+      expect(await Effect.runPromise(store.isPluginTrusted("@lando/plugin-node"))).toBe(false);
+    } finally {
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
   });
 });
