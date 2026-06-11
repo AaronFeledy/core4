@@ -241,6 +241,7 @@
       "ServiceInfo",
       "EmbeddingPluginPolicy",
       "PluginManifest",
+      "PluginTrustState",
       "GlobalServiceContribution",
       "FileSyncEngineCapabilities",
       "FileSyncSessionSpec",
@@ -2895,6 +2896,31 @@
       },
       "required": ["name", "version", "api"],
       "type": "object"
+    },
+    "PluginTrustState": {
+      "$defs": {
+        "PluginTrustState": {
+          "additionalProperties": false,
+          "properties": {
+            "trustedAuthoringRoots": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "trustedPlugins": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["trustedPlugins", "trustedAuthoringRoots"],
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/PluginTrustState",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "ProviderCapabilities": {
       "$schema": "http://json-schema.org/draft-07/schema#",

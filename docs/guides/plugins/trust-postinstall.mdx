@@ -1,0 +1,24 @@
+---
+id: trust-postinstall
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, trust]
+---
+
+<Guide>
+  <Scenario id="trust-plugin-postinstall" render={false} reason="Core scenario tests install deterministic tarball fixtures and fake BunSelfRunner spawns so guide CI does not execute arbitrary package postinstall scripts">
+    <Step name="persistent-plugin-trust">
+      <Variable name="command" value="lando plugin:trust @lando/plugin-php" display="Persist a trusted npm plugin name in &lt;userConfRoot&gt;/plugin-trust.yml and invalidate the plugin command cache" />
+      <Variable name="output" value="trusted-plugin: @lando/plugin-php" display="The command prints the exact trusted plugin name after the trust store write succeeds" />
+    </Step>
+    <Step name="authoring-root-trust">
+      <Variable name="command" value="lando plugin:trust-authoring-root /absolute/path/to/plugin" display="Trust a resolved absolute plugin authoring root for local development workflows" />
+      <Variable name="output" value="trusted-authoring-root: /absolute/path/to/plugin" display="Relative paths are rejected; absolute paths are resolved before persistence" />
+    </Step>
+    <Step name="postinstall-gating">
+      <Variable name="untrusted" value="postinstall disabled" display="Untrusted plugin installs never execute package postinstall scripts by default, including non-interactive installs" />
+      <Variable name="trusted" value="BunSelfRunner install" display="Trusted postinstall execution routes through the recursion-guarded BunSelfRunner install child and publishes pre/post bun-self-exec events" />
+    </Step>
+  </Scenario>
+</Guide>

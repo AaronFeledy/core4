@@ -30,6 +30,7 @@ import {
 } from "./file-sync-engine.ts";
 import { LandofileShape } from "./landofile.ts";
 import { AppRef, ProviderCapabilities } from "./networking.ts";
+import { PluginTrustState } from "./plugin-trust.ts";
 import { EmbeddingPluginPolicy, GlobalServiceContribution, PluginManifest } from "./plugin.ts";
 import { AppId, BootstrapLevel, HostPlatform, ProviderId, ServiceName } from "./primitives.ts";
 import { ServiceInfo } from "./service-info.ts";
@@ -71,6 +72,7 @@ const JSON_SCHEMA_REGISTRY = {
   ServiceInfo,
   EmbeddingPluginPolicy,
   PluginManifest,
+  PluginTrustState,
   GlobalServiceContribution,
   FileSyncEngineCapabilities,
   FileSyncSessionSpec,
@@ -164,6 +166,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return JSONSchema.make(EmbeddingPluginPolicy);
     case "PluginManifest":
       return JSONSchema.make(PluginManifest);
+    case "PluginTrustState":
+      return JSONSchema.make(PluginTrustState);
     case "GlobalServiceContribution":
       return JSONSchema.make(GlobalServiceContribution);
     case "FileSyncEngineCapabilities":

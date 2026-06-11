@@ -242,8 +242,8 @@
         "Lint passes."
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Plugin trust now persists sorted unique plugin names and authoring roots, trust commands invalidate plugin command cache and render exact trust lines, and trusted postinstall execution runs through the recursion-guarded BunSelfRunner install path with lifecycle events while untrusted installs remain inert."
     },
     {
       "id": "US-214",

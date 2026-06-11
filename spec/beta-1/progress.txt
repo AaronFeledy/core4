@@ -1,3 +1,6 @@
+## Codebase Patterns
+- Plugin install trust is a two-phase path: package extraction/manifest validation is inert and must not run lifecycle scripts; only a trusted result may run a package postinstall through `bunSelfInstall` / BunSelfRunner so pre/post bun-self-exec events and the recursion guard are preserved.
+
 ## 2026-06-08 10:12 CDT - US-200 Review
 - Reviewed `lando setup` orchestration against PRD-01. Build step committed the docker AC5 isAvailable probe but left the equivalent podman fix uncommitted in the working tree; committed it as a focused review fix so no half-finished change reaches the push step. Podman's bundled construction already fails with remediation via construction-time `api.info` capability introspection, so the change is defense-in-depth/consistency (replaces a latent `isAvailable: true` lie with a real probe) and keeps the docker/podman availability surface symmetric. Added podman availability unit test.
 - Review notes: AC1 (meta:setup at minimal + top-level alias), AC2/AC3 (deterministic orchestration + skip flags), AC4 (provider setup.flags), AC5 (docker probes daemon, podman caps-introspection) all verified against PRD; no rejected/deferred findings of note.
@@ -186,4 +189,16 @@
 - CI outcome: pass
 - Review feedback: fixed (narrowed sshAgent lint remediation to the exact reserved-false schema violation shape `_tag: "Type"`/`Expected true, actual false` per Bugbot, and documented that remediation in the config-lint guide to clear the guide-drift gate)
 - Merge: merged (squash)
+---
+## 2026-06-10 19:55 CDT - US-213
+- Shipped the plugin trust surface and postinstall gate: trust state is schema-published as sorted unique plugin/root lists, trust commands persist and invalidate the plugin command cache, untrusted postinstall packages remain inert, and trusted postinstall execution routes through the recursion-guarded BunSelfRunner install path with pre/post lifecycle events.
+- Added the plugin trust/postinstall guide and locked trust command, schema, and postinstall gating behavior with focused scenarios.
+- Verification: typecheck, lint, build, guide coverage/lint/scenario generation, focused trust tests, source+compiled CLI QA, and full tests passed.
+- **Learnings for future iterations:** Keep plugin package extraction inert; any trusted lifecycle script execution belongs in the separate BunSelfRunner install step after trust resolution so untrusted installs cannot run scripts and observers still get bun-self-exec events.
+---
+## 2026-06-10 20:30 CDT - US-213 Review
+- Reviewed the plugin-trust + postinstall-gating commit against PRD-02 US-213 via the 5-lane review-work pass. All 8 acceptance criteria verified: schema-published sorted-unique trust lists (the store's `.sort()` now matches the schema's `previous < value` UTF-16 ordering so it can never persist a state its own schema rejects), both trust commands render exact lines and invalidate the plugin command cache, and trusted-only postinstall execution routes through the recursion-guarded `bunSelfInstall` path while untrusted (incl. non-interactive) installs stay inert. No in-scope blocker required a code change.
+- Review notes (deferred to US-214, which explicitly owns trust scope/keying): (1) postinstall trust keys on attacker-controllable `manifest.name`/`landoPlugin.name` rather than the requested package identity, so a package could claim an already-trusted name and inherit postinstall permission; (2) `isAuthoringRootTrusted` is evaluated against the npm cache install target, so trusting a parent of the plugins root would auto-trust future registry plugins. Both are pre-existing in the trust-decision block (unchanged by this commit) and concern npm/registry + authoring-root trust scope — exactly US-214's AC. Recorded as US-214 inputs rather than fixed here to avoid pre-empting that story's scope decision.
+- Review notes (rejected): `publishBunSelfEvent`'s `event as never` is not a schema bypass — `EventService.publish` takes the intentionally open `LandoEvent` interface and AC4 requires these ad-hoc tags. Retaining persistent trust after a failed `--trust` install is a defensible explicit-intent choice, not an escalation. The `Effect.promise` spawn pattern is pre-existing in `bunSelfRun` and not introduced by this story.
+- Verification: typecheck, lint, full tests (3321 pass / 0 fail), focused trust scenarios, guide-coverage, renderer-boundary, and schema-snapshot codegen (no drift) all passed.
 ---

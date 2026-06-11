@@ -24,6 +24,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-01 | US-207 | source and compiled setup parity | `docs/guides/setup/compiled-binary-setup-parity.mdx` | Shipped |
 | PRD-02 | US-210 | Provider setup default UX | `docs/guides/setup/provider-auto-setup.mdx` | Shipped |
 | PRD-02 | US-211 | Compose subset compatibility matrix | `docs/guides/config/compose-compatibility.mdx` | Shipped |
+| PRD-02 | US-213 | Plugin trust commands and postinstall gating | `docs/guides/plugins/trust-postinstall.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |

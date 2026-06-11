@@ -4,9 +4,9 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Queue, Stream } from "effect";
 
-import { ConfigService, PluginTrustStore } from "@lando/sdk/services";
+import { ConfigService, EventService, type LandoEvent, PluginTrustStore } from "@lando/sdk/services";
 
 import { writePluginCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
 import { pluginAdd } from "../../src/cli/commands/plugin-add.ts";
@@ -28,6 +28,14 @@ const pluginAddLayer = (
   dataRoot: string,
   trustStore = makePluginTrustStore(join(dataRoot, "plugin-trust.yml")),
 ) => Layer.merge(fakeConfigService(dataRoot), Layer.succeed(PluginTrustStore, trustStore));
+
+const recordingEventLayer = (events: LandoEvent[]) =>
+  Layer.succeed(EventService, {
+    publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
+    subscribe: () => Stream.empty,
+    subscribeQueue: Queue.unbounded<LandoEvent>(),
+    waitFor: () => Effect.fail(new Error("not implemented")),
+  } as never);
 
 const writePluginManifest = async (
   packageDir: string,
@@ -290,6 +298,7 @@ describe("meta:plugin:add command", () => {
       "index.js": "export {};\n",
       "postinstall.js": "throw new Error('must not run during gated install');\n",
     });
+    const spawns: Array<unknown> = [];
 
     const result = await Effect.runPromise(
       pluginAdd({
@@ -298,12 +307,19 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore: new Set<string>(),
+        bunSelfSpawner: {
+          spawn: async (options) => {
+            spawns.push(options);
+            return { exitCode: 0 };
+          },
+        },
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
     expect(result.pluginName).toBe("@lando/plugin-postinstall");
     expect(result.trusted).toBe(false);
     expect(result.trustSource).toBe("untrusted");
+    expect(spawns).toHaveLength(0);
     expect(await exists(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3", "package.json"))).toBe(true);
   });
 
@@ -334,12 +350,75 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore,
+        bunSelfSpawner: { spawn: async () => ({ exitCode: 0 }) },
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
     );
 
     expect(result.trusted).toBe(true);
     expect(result.trustSource).toBe("persistent");
     expect(trustStore.has("@lando/plugin-postinstall")).toBe(true);
+  });
+
+  test("runs trusted postinstall through BunSelfRunner install lifecycle events", async () => {
+    const bytes = await makeNpmTarball({
+      "package.json": JSON.stringify({
+        name: "@lando/plugin-postinstall",
+        version: "1.2.3",
+        scripts: { postinstall: "node postinstall.js" },
+        landoPlugin: {
+          name: "@lando/plugin-postinstall",
+          version: "1.2.3",
+          api: 4,
+          entry: "index.js",
+        },
+      }),
+      "index.js": "export {};\n",
+      "postinstall.js": "await Bun.write('postinstall-ran.txt', 'yes');\n",
+    });
+    const events: LandoEvent[] = [];
+    const spawns: Array<{
+      readonly cmd: ReadonlyArray<string>;
+      readonly cwd: string;
+      readonly env: Readonly<Record<string, string>>;
+    }> = [];
+
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-postinstall",
+        trust: true,
+        registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
+        fetcher: fetcherFor(bytes),
+        trustStore: new Set<string>(),
+        bunSelfSpawner: {
+          spawn: async (options) => {
+            spawns.push(options);
+            return { exitCode: 0 };
+          },
+        },
+      }).pipe(Effect.provide(Layer.merge(pluginAddLayer(userDataRoot), recordingEventLayer(events)))),
+    );
+
+    expect(result.trusted).toBe(true);
+    expect(result.trustSource).toBe("flag");
+    expect(spawns).toHaveLength(1);
+    expect(spawns[0]?.cmd.slice(1)).toEqual(["install"]);
+    expect(spawns[0]?.cwd).toBe(join(pluginsRoot, "@lando/plugin-postinstall", "1.2.3"));
+    expect(spawns[0]?.env.LANDO_DISALLOW_BUN_BE_BUN_REENTRY).toBe("1");
+    expect(events.map((event) => event._tag)).toEqual(["pre-bun-self-exec", "post-bun-self-exec"]);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        _tag: "pre-bun-self-exec",
+        verb: "install",
+        callerSubsystem: "plugin-install:meta:plugin:add:@lando/plugin-postinstall",
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        _tag: "post-bun-self-exec",
+        verb: "install",
+        exitCode: 0,
+      }),
+    );
   });
 
   test("removes authoring-root-derived session trust when registry recording cannot write", async () => {
@@ -370,6 +449,7 @@ describe("meta:plugin:add command", () => {
         registryClient: clientFor(packumentFor("@lando/plugin-postinstall", bytes)),
         fetcher: fetcherFor(bytes),
         trustStore,
+        bunSelfSpawner: { spawn: async () => ({ exitCode: 0 }) },
       }).pipe(Effect.provide(pluginAddLayer(userDataRoot, persistentStore))),
     );
 
@@ -754,20 +834,15 @@ describe("meta:plugin:add command", () => {
       },
     };
 
-    const altUserConfRoot = await mkdtemp(join(tmpdir(), "lando-trust-isolation-"));
-    try {
-      const result = await Effect.runPromise(
-        pluginAdd({
-          spec: "@lando/plugin-isolation",
-          spawner,
-          prompter,
-          trustStore: new Set<string>(),
-        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-      );
-      expect(result.trustSource).toBe("prompt");
-      expect(promptCalls).toBe(1);
-    } finally {
-      await rm(altUserConfRoot, { recursive: true, force: true });
-    }
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-isolation",
+        spawner,
+        prompter,
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(result.trustSource).toBe("prompt");
+    expect(promptCalls).toBe(1);
   });
 });

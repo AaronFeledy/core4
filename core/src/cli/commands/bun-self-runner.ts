@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import { NotImplementedError } from "@lando/sdk/errors";
+import { EventService } from "@lando/sdk/services";
 
 export interface BunSelfSpawnerOptions {
   readonly cmd: ReadonlyArray<string>;
@@ -17,6 +18,8 @@ export interface BunSelfRunOptions {
   readonly cwd?: string;
   readonly spawner?: BunSelfSpawner;
   readonly execPath?: string;
+  readonly callerSubsystem?: string;
+  readonly verb?: string;
 }
 
 export interface BunSelfRunResult {
@@ -26,6 +29,8 @@ export interface BunSelfRunResult {
 export interface BunSelfXOptions extends BunSelfRunOptions {
   readonly spec: string;
 }
+
+export interface BunSelfInstallOptions extends Omit<BunSelfRunOptions, "argv" | "verb"> {}
 
 export const BUN_SELF_REENTRY_ENV = "LANDO_DISALLOW_BUN_BE_BUN_REENTRY" as const;
 export const BUN_BE_BUN_ENV = "BUN_BE_BUN" as const;
@@ -65,6 +70,13 @@ export const childEnv = (parentEnv: NodeJS.ProcessEnv): Record<string, string> =
   return env;
 };
 
+const publishBunSelfEvent = (event: Readonly<Record<string, unknown>>) =>
+  Effect.serviceOption(EventService).pipe(
+    Effect.flatMap((events) =>
+      events._tag === "Some" ? events.value.publish(event as never).pipe(Effect.ignore) : Effect.void,
+    ),
+  );
+
 export const bunSelfRun = (
   options: BunSelfRunOptions,
 ): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
@@ -82,6 +94,17 @@ export const bunSelfRun = (
     const spawner = options.spawner ?? defaultBunSelfSpawner;
     const execPath = options.execPath ?? process.execPath;
     const cwd = options.cwd ?? process.cwd();
+    const verb = options.verb ?? options.argv[0] ?? "run";
+    const callerSubsystem = options.callerSubsystem ?? "cli:meta:bun";
+    yield* publishBunSelfEvent({
+      _tag: "pre-bun-self-exec",
+      verb,
+      callerSubsystem,
+      argv: [...options.argv],
+      cwd,
+      mode: "embedded",
+      timestamp: new Date().toISOString(),
+    });
     const { exitCode } = yield* Effect.promise(() =>
       spawner.spawn({
         cmd: [execPath, ...options.argv],
@@ -89,8 +112,23 @@ export const bunSelfRun = (
         cwd,
       }),
     );
+    yield* publishBunSelfEvent({
+      _tag: "post-bun-self-exec",
+      verb,
+      callerSubsystem,
+      argv: [...options.argv],
+      cwd,
+      mode: "embedded",
+      exitCode,
+      timestamp: new Date().toISOString(),
+    });
     return { exitCode };
   });
 
 export const bunSelfX = (options: BunSelfXOptions): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
   bunSelfRun({ ...options, argv: ["x", options.spec, ...options.argv] });
+
+export const bunSelfInstall = (
+  options: BunSelfInstallOptions = {},
+): Effect.Effect<BunSelfRunResult, NotImplementedError> =>
+  bunSelfRun({ ...options, argv: ["install"], verb: "install" });

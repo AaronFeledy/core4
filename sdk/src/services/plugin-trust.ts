@@ -1,11 +1,8 @@
 import { Context, type Effect } from "effect";
 
 import type { ConfigError } from "../errors/index.ts";
-
-export interface PluginTrustState {
-  readonly trustedPlugins: ReadonlyArray<string>;
-  readonly trustedAuthoringRoots: ReadonlyArray<string>;
-}
+import type { PluginTrustState } from "../schema/index.ts";
+export type { PluginTrustState } from "../schema/index.ts";
 
 export class PluginTrustStore extends Context.Tag("@lando/core/PluginTrustStore")<
   PluginTrustStore,

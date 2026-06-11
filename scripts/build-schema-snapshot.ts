@@ -53,6 +53,7 @@ const SDK_SCHEMA_NAMES = [
   "ServiceInfo",
   "EmbeddingPluginPolicy",
   "PluginManifest",
+  "PluginTrustState",
   "GlobalServiceContribution",
   "FileSyncEngineCapabilities",
   "FileSyncSessionSpec",

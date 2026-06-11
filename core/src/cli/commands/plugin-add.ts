@@ -17,6 +17,8 @@ import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { publish } from "../../recipes/git-source.ts";
+import { type BunSelfSpawner, bunSelfInstall, defaultBunSelfSpawner } from "./bun-self-runner.ts";
+
 import {
   DEFAULT_NPM_REGISTRY_URL,
   type NpmPackument,
@@ -68,6 +70,7 @@ export interface PluginAddOptions {
   readonly registryClient?: NpmRegistryClient;
   readonly fetcher?: TarballRecipeFetcher;
   readonly extractor?: TarballRecipeExtractor;
+  readonly bunSelfSpawner?: BunSelfSpawner;
   readonly prompter?: PluginAddPrompter;
   readonly trustStore?: PluginTrustStore;
 }
@@ -87,7 +90,7 @@ const trustNonInteractiveError = (spec: string): NotImplementedError =>
   new NotImplementedError({
     message: "Plugin trust prompt cannot run non-interactively without --trust.",
     commandId: "meta:plugin:add",
-    remediation: `Re-run \`lando plugin:add ${spec} --trust\` to confirm the plugin should run as trusted host code. Persistent trust storage is deferred to Beta.`,
+    remediation: `Re-run \`lando plugin:add ${spec} --trust\` to confirm the plugin should run as trusted host code, or persist trust first with \`lando plugin:trust <name>\`.`,
   });
 
 const trustRejectedError = (pluginName: string): NotImplementedError =>
@@ -465,6 +468,32 @@ export const pluginAdd = (
               remediation: "Re-run with --trust to bypass the prompt.",
             }),
     });
+
+    if (hasPostinstall && trustSource !== "untrusted") {
+      const postinstallExit = yield* bunSelfInstall({
+        cwd: packageDir,
+        spawner: options.bunSelfSpawner ?? defaultBunSelfSpawner,
+        callerSubsystem: `plugin-install:meta:plugin:add:${manifest.name}`,
+      }).pipe(
+        Effect.tapError(() =>
+          Effect.promise(async () => {
+            if (createdPackageDir !== undefined)
+              await rm(createdPackageDir, { recursive: true, force: true });
+            if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(manifest.name);
+          }),
+        ),
+      );
+      if (postinstallExit.exitCode !== 0) {
+        const failedPackageDir = createdPackageDir;
+        if (failedPackageDir !== undefined) {
+          yield* Effect.promise(() => rm(failedPackageDir, { recursive: true, force: true }));
+        }
+        if (!hadTrustBefore && trustSource !== "session") trustStoreForRollback.delete(manifest.name);
+        return yield* Effect.fail(
+          installFailure(options.spec, `trusted postinstall exited ${postinstallExit.exitCode}`),
+        );
+      }
+    }
 
     yield* Effect.promise(async () => {
       try {
