@@ -834,20 +834,15 @@ describe("meta:plugin:add command", () => {
       },
     };
 
-    const altUserConfRoot = await mkdtemp(join(tmpdir(), "lando-trust-isolation-"));
-    try {
-      const result = await Effect.runPromise(
-        pluginAdd({
-          spec: "@lando/plugin-isolation",
-          spawner,
-          prompter,
-          trustStore: new Set<string>(),
-        }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
-      );
-      expect(result.trustSource).toBe("prompt");
-      expect(promptCalls).toBe(1);
-    } finally {
-      await rm(altUserConfRoot, { recursive: true, force: true });
-    }
+    const result = await Effect.runPromise(
+      pluginAdd({
+        spec: "@lando/plugin-isolation",
+        spawner,
+        prompter,
+        trustStore: new Set<string>(),
+      }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
+    );
+    expect(result.trustSource).toBe("prompt");
+    expect(promptCalls).toBe(1);
   });
 });
