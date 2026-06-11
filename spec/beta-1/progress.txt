@@ -181,3 +181,9 @@
 - Verification: red/green schema, lint, decision-doc, SDK compatibility, guide lint, generated guide scenarios, CLI `app:config:lint --format=json` QA, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:** Reserved boolean opt-outs can be represented as `Schema.optional(Schema.Literal(true))` to accept omitted/default and explicit true while rejecting false with targeted lint remediation.
 ---
+## 2026-06-10 18:05 CDT - Babysit
+- PR: #331 https://github.com/AaronFeledy/core4/pull/331
+- CI outcome: pass
+- Review feedback: fixed (narrowed sshAgent lint remediation to the exact reserved-false schema violation shape `_tag: "Type"`/`Expected true, actual false` per Bugbot, and documented that remediation in the config-lint guide to clear the guide-drift gate)
+- Merge: merged (squash)
+---
