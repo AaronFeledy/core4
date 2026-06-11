@@ -1,4 +1,3 @@
-/** Public Effect schemas for SDK contracts. */
 export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
