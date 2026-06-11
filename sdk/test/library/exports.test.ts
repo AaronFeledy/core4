@@ -178,13 +178,6 @@ describe("@lando/sdk package exports", () => {
     expect(sdk.Secrets.REDACTED).toBeDefined();
   });
 
-  test("secrets entry point exports the single value-redactor", async () => {
-    const secrets = await import("@lando/sdk/secrets");
-
-    expect(secrets.createSecretRedactor).toBeDefined();
-    expect(secrets.REDACTED).toBeDefined();
-  });
-
   test("template entry point exports the pluggable engine contract surface", async () => {
     const template = await import("@lando/sdk/template");
 

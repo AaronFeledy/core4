@@ -4,6 +4,7 @@
  *
  * Scope:
  *   - JSON Schema output for the public `@lando/sdk/schema` registry
+ *   - committed standalone schema artifacts generated from that registry
  *   - decoded manifests for the in-binary bundled plugins only
  *
  * Out-of-tree plugin manifests are intentionally not discovered here.
