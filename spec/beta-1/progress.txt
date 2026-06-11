@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Registry plugin postinstall trust keys on the requested package identity (`plugin:add` spec after version stripping), never package-controlled manifest names; authoring-root trust is only for local/link flows and must not apply to managed registry cache paths.
 - Plugin install trust is a two-phase path: package extraction/manifest validation is inert and must not run lifecycle scripts; only a trusted result may run a package postinstall through `bunSelfInstall` / BunSelfRunner so pre/post bun-self-exec events and the recursion guard are preserved.
 
 ## 2026-06-08 10:12 CDT - US-200 Review
@@ -201,4 +202,11 @@
 - Review notes (deferred to US-214, which explicitly owns trust scope/keying): (1) postinstall trust keys on attacker-controllable `manifest.name`/`landoPlugin.name` rather than the requested package identity, so a package could claim an already-trusted name and inherit postinstall permission; (2) `isAuthoringRootTrusted` is evaluated against the npm cache install target, so trusting a parent of the plugins root would auto-trust future registry plugins. Both are pre-existing in the trust-decision block (unchanged by this commit) and concern npm/registry + authoring-root trust scope — exactly US-214's AC. Recorded as US-214 inputs rather than fixed here to avoid pre-empting that story's scope decision.
 - Review notes (rejected): `publishBunSelfEvent`'s `event as never` is not a schema bypass — `EventService.publish` takes the intentionally open `LandoEvent` interface and AC4 requires these ad-hoc tags. Retaining persistent trust after a failed `--trust` install is a defensible explicit-intent choice, not an escalation. The `Effect.promise` spawn pattern is pre-existing in `bunSelfRun` and not introduced by this story.
 - Verification: typecheck, lint, full tests (3321 pass / 0 fail), focused trust scenarios, guide-coverage, renderer-boundary, and schema-snapshot codegen (no drift) all passed.
+---
+
+## 2026-06-10 21:45 CDT - US-214
+- Finalized the plugin trust model: trust list/revoke now ship on the plugin trust command, trust is non-expiring until revoked, npm/registry trust is keyed to the requested package identity, and authoring-root trust is scoped away from registry cache installs.
+- Published the flag model and source-scope decision, added the trust-management guide, and locked the decision/guide surface with build tests.
+- Verification: typecheck, lint, renderer-boundary, focused trust tests, guide coverage/lint/scenario, source+compiled CLI QA, build, and full tests passed.
+- **Learnings for future iterations:** Registry plugin postinstall trust must key on the requested package spec identity, not package-controlled manifest names; authoring-root trust is for local/link flows and must not make managed registry cache paths trusted.
 ---

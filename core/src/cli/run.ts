@@ -67,8 +67,12 @@ import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,
+  pluginTrustList,
+  pluginTrustRevoke,
   renderPluginTrustAuthoringRootResult,
+  renderPluginTrustListResult,
   renderPluginTrustResult,
+  renderPluginTrustRevokeResult,
 } from "./commands/plugin-trust.ts";
 import { poweroff, renderPoweroffResult } from "./commands/poweroff.ts";
 import { rebuildApp, renderRebuildAppResult } from "./commands/rebuild.ts";
@@ -1294,7 +1298,38 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
 };
 
 const runMetaPluginTrust = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const name = argv.find((arg) => !arg.startsWith("-"));
+  const action = argv.find((arg) => !arg.startsWith("-"));
+  if (action === "list") {
+    await runCompiledCommand(
+      pluginTrustList(),
+      makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+      renderPluginTrustListResult,
+    );
+    return;
+  }
+  if (action === "revoke") {
+    const name = argv.slice(argv.indexOf(action) + 1).find((arg) => !arg.startsWith("-"));
+    if (name === undefined) {
+      emitDiagnosticLine(
+        commandErrorMessage(
+          new NotImplementedError({
+            message: "meta:plugin:trust revoke requires a plugin name argument.",
+            commandId: "meta:plugin:trust",
+            remediation: "Pass the plugin name, e.g. `lando plugin:trust revoke @lando/plugin-php`.",
+          }),
+        ),
+      );
+      process.exitCode = 1;
+      return;
+    }
+    await runCompiledCommand(
+      pluginTrustRevoke({ name }),
+      makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+      renderPluginTrustRevokeResult,
+    );
+    return;
+  }
+  const name = action;
   if (name === undefined) {
     emitDiagnosticLine(
       commandErrorMessage(

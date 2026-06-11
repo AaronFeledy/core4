@@ -2265,13 +2265,18 @@ export const COMPILED_OCLIF_MANIFEST = {
     "meta:plugin:trust": {
       aliases: ["plugin:trust"],
       args: {
-        name: {
-          description: "Plugin name.",
-          name: "name",
+        action: {
+          description: "Plugin name, list, or revoke.",
+          name: "action",
           required: true,
         },
+        name: {
+          description: "Plugin name to revoke.",
+          name: "name",
+          required: false,
+        },
       },
-      description: "Trust an installed plugin.",
+      description: "Manage trusted plugin postinstall entries.",
       flags: {},
       hasDynamicHelp: false,
       hidden: false,
@@ -2284,7 +2289,7 @@ export const COMPILED_OCLIF_MANIFEST = {
       enableJsonFlag: false,
       landoSpec: {
         id: "meta:plugin:trust",
-        summary: "Trust an installed plugin.",
+        summary: "Manage trusted plugin postinstall entries.",
         namespace: "meta",
         topLevelAlias: true,
         bootstrap: "minimal",
