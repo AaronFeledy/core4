@@ -1,6 +1,12 @@
 import { Either, JSONSchema, Schema } from "effect";
 
-import { DeprecationNotice, getJsonSchema, structuralDeprecationKey } from "@lando/sdk/schema";
+import {
+  DeprecationNotice,
+  DeprecationSurfaceKind,
+  DeprecationUse,
+  getJsonSchema,
+  structuralDeprecationKey,
+} from "@lando/sdk/schema";
 
 const decode = (input: unknown) => Schema.decodeUnknownEither(DeprecationNotice)(input);
 
@@ -56,5 +62,35 @@ describe("DeprecationNotice", () => {
     const jsonSchema = getJsonSchema("DeprecationNotice") as Record<string, unknown>;
     expect(jsonSchema.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(JSON.stringify(jsonSchema)).toContain("Deprecation Notice");
+  });
+});
+
+describe("DeprecationUse", () => {
+  test("decodes a runtime deprecation use with timestamp metadata", () => {
+    const decoded = Schema.decodeUnknownEither(DeprecationUse)({
+      kind: "command",
+      id: "app:start",
+      notice: {
+        since: "4.1.0",
+        severity: "warn",
+        note: "Use app:up instead.",
+      },
+      callsite: "start",
+      app: "myapp",
+      plugin: "@lando/core",
+      timestamp: "2026-06-11T16:00:00.000Z",
+    });
+
+    expect(decoded._tag).toBe("Right");
+    if (decoded._tag === "Right") {
+      expect(decoded.right.kind).toBe("command");
+      expect(decoded.right.id).toBe("app:start");
+    }
+  });
+
+  test("rejects unknown deprecation surface kinds", () => {
+    const decoded = Schema.decodeUnknownEither(DeprecationSurfaceKind)("not-a-surface");
+
+    expect(decoded._tag).toBe("Left");
   });
 });

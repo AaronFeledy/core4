@@ -31,6 +31,8 @@
 - `DependencyPlan`
 - `DeprecationNotice`
 - `DeprecationSeverity`
+- `DeprecationSurfaceKind`
+- `DeprecationUse`
 - `EndpointInput`
 - `EndpointPlan`
 - `EmbeddingPluginDiscoveryPolicy`
@@ -170,12 +172,15 @@
 - `LandofileShape.sshAgent`
 - `LandofileShape.version`
 - `LandofileShape.x-*`
+- `PluginManifest.deprecated`
 
 ## Additive Alpha errors
 
 - `ConfigTranslateError`
 - `ConfigTranslateNoTranslatorsError`
 - `ConfigTranslatorConflictError`
+- `DeprecationContradictionError`
+- `DeprecatedSurfaceError`
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`
 - `LandofileExpressionParseError`
@@ -191,6 +196,7 @@
 - `CommandFramework`
 - `CommandRegistry`
 - `ConfigTranslator`
+- `DeprecationService`
 - `FileSyncEngine`
 - `GlobalAppService`
 - `HealthcheckRunner`

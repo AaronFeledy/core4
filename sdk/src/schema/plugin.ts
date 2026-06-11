@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { DeprecationNotice } from "./deprecation.ts";
 import { PluginName } from "./primitives.ts";
 
 export const EmbeddingPluginPolicyMode = Schema.Literal("none", "bundled-only", "explicit", "discovery");
@@ -107,6 +108,8 @@ export const PluginManifest = Schema.Struct({
   description: Schema.optional(Schema.String),
   enabled: Schema.optional(Schema.Boolean),
   bundled: Schema.optional(Schema.Boolean),
+  /** Whole-plugin deprecation notice registered by DeprecationService. */
+  deprecated: Schema.optional(DeprecationNotice),
   contributes: Schema.optional(PluginContribution),
   /** Entry module path relative to plugin package root. */
   entry: Schema.optional(Schema.String),

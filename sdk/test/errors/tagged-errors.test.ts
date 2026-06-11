@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Either, Exit, Schema } from "effect";
 
 import {
+  DeprecatedSurfaceError,
+  DeprecationContradictionError,
   GlobalAutoStartError,
   GlobalServiceMissingError,
   LandoRuntimeBootstrapError,
@@ -11,6 +13,91 @@ import {
   PluginLoadError,
   ProviderCapabilityError,
 } from "@lando/sdk/errors";
+
+const deprecationNoticeFixture = {
+  since: "4.1.0",
+  severity: "warn" as const,
+  note: "Use the replacement surface.",
+};
+
+describe("DeprecatedSurfaceError", () => {
+  test("carries the spec-mandated payload fields", () => {
+    const fields = Object.keys(DeprecatedSurfaceError.fields);
+    expect(fields).toContain("kind");
+    expect(fields).toContain("id");
+    expect(fields).toContain("notice");
+  });
+
+  test("constructs with the deprecated surface payload", () => {
+    const error = new DeprecatedSurfaceError({
+      kind: "command",
+      id: "app:start",
+      notice: deprecationNoticeFixture,
+    });
+
+    expect(error._tag).toBe("DeprecatedSurfaceError");
+    expect(error.kind).toBe("command");
+    expect(error.id).toBe("app:start");
+    expect(error.notice.note).toBe("Use the replacement surface.");
+  });
+
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
+    const error = new DeprecatedSurfaceError({
+      kind: "command",
+      id: "app:start",
+      notice: deprecationNoticeFixture,
+    });
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("DeprecatedSurfaceError");
+        expect(failure.value).toBeInstanceOf(DeprecatedSurfaceError);
+      }
+    }
+  });
+});
+
+describe("DeprecationContradictionError", () => {
+  test("carries the spec-mandated payload fields", () => {
+    const fields = Object.keys(DeprecationContradictionError.fields);
+    expect(fields).toContain("canonicalId");
+    expect(fields).toContain("aliasId");
+    expect(fields).toContain("canonicalNotice");
+  });
+
+  test("constructs with canonical and alias identifiers", () => {
+    const error = new DeprecationContradictionError({
+      canonicalId: "app:start",
+      aliasId: "start",
+      canonicalNotice: deprecationNoticeFixture,
+    });
+
+    expect(error._tag).toBe("DeprecationContradictionError");
+    expect(error.canonicalId).toBe("app:start");
+    expect(error.aliasId).toBe("start");
+  });
+
+  test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
+    const error = new DeprecationContradictionError({
+      canonicalId: "app:start",
+      aliasId: "start",
+      canonicalNotice: deprecationNoticeFixture,
+    });
+    const exit = await Effect.runPromiseExit(Effect.failCause(Cause.fail(error)));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value._tag).toBe("DeprecationContradictionError");
+        expect(failure.value).toBeInstanceOf(DeprecationContradictionError);
+      }
+    }
+  });
+});
 
 describe("LandofileParseError", () => {
   test("carries the spec-mandated payload fields", () => {

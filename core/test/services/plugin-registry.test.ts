@@ -89,7 +89,12 @@ const writeInstalledPluginRegistry = async (
 
 const writeInstalledPluginPackage = async (
   pluginsRoot: string,
-  plugin: { readonly name: string; readonly version: string; readonly description?: string },
+  plugin: {
+    readonly name: string;
+    readonly version: string;
+    readonly description?: string;
+    readonly deprecated?: unknown;
+  },
 ) => {
   const packageRoot = join(pluginsRoot, plugin.name, plugin.version);
   await mkdir(packageRoot, { recursive: true });
@@ -104,6 +109,7 @@ const writeInstalledPluginPackage = async (
           version: plugin.version,
           api: 4,
           description: plugin.description,
+          deprecated: plugin.deprecated,
           entry: "index.js",
         },
       },
@@ -117,7 +123,12 @@ const writeInstalledPluginPackage = async (
 
 const writeInstalledPlugin = async (
   pluginsRoot: string,
-  plugin: { readonly name: string; readonly version: string; readonly description?: string },
+  plugin: {
+    readonly name: string;
+    readonly version: string;
+    readonly description?: string;
+    readonly deprecated?: unknown;
+  },
 ) => {
   const packageRoot = await writeInstalledPluginPackage(pluginsRoot, plugin);
   await writeInstalledPluginRegistry(pluginsRoot, [{ ...plugin, path: packageRoot }]);
@@ -244,6 +255,28 @@ describe("PluginRegistryLive", () => {
       name: "@example/user-plugin",
       version: "1.0.0",
       description: "user source",
+    });
+  });
+
+  test("preserves deprecated notices from decoded installed plugin manifests", async () => {
+    await writeInstalledPlugin(join(userDataRoot, "plugins"), {
+      name: "@example/deprecated-plugin",
+      version: "1.0.0",
+      deprecated: {
+        since: "4.2.0",
+        severity: "warn",
+        note: "Use @example/replacement-plugin.",
+      },
+    });
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/deprecated-plugin")),
+    );
+
+    expect(manifest.deprecated).toEqual({
+      since: "4.2.0",
+      severity: "warn",
+      note: "Use @example/replacement-plugin.",
     });
   });
 

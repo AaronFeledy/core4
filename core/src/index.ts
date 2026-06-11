@@ -23,6 +23,7 @@ export {
   CacheService,
   CommandRegistry,
   ConfigService,
+  DeprecationService,
   EventService,
   FileSystem,
   LandofileService,

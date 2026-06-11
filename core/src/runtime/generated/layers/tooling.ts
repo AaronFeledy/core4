@@ -14,20 +14,15 @@
 import { Layer } from "effect";
 
 import { LandofileServiceLive } from "../../../landofile/service.ts";
-import { makePluginRegistryLive } from "../../../plugins/registry.ts";
 import { CommandRegistryLive } from "../../../services/command-registry.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
-import { makeMinimalBootstrapLayer } from "./minimal.ts";
+import { makePluginsBootstrapLayer } from "./plugins.ts";
 
 export const makeToolingBootstrapLayer = (inputs: BootstrapLayerInputs) => {
-  const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);
-  const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(
-    Layer.provide(minimalRuntimeLive),
-  );
+  const pluginsRuntimeLive = makePluginsBootstrapLayer(inputs);
   return Layer.mergeAll(
-    minimalRuntimeLive,
-    pluginRegistryLive,
+    pluginsRuntimeLive,
     LandofileServiceLive,
-    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginRegistryLive))),
+    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginsRuntimeLive))),
   );
 };
