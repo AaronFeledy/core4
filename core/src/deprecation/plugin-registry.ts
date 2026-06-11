@@ -7,7 +7,7 @@ type DeprecatedPluginManifest = PluginManifest & {
   readonly deprecated?: DeprecationNotice;
 };
 
-export const registerPluginDeprecations = (manifests: ReadonlyArray<PluginManifest>) =>
+const registerPluginDeprecations = (manifests: ReadonlyArray<PluginManifest>) =>
   Effect.gen(function* () {
     const deprecations = yield* DeprecationService;
     for (const manifest of manifests as ReadonlyArray<DeprecatedPluginManifest>) {

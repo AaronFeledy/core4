@@ -9,7 +9,6 @@ type DeprecationKey = `${DeprecationSurfaceKind}:${string}`;
 interface DeprecationUseRecord {
   readonly use: DeprecationUse;
   readonly count: number;
-  readonly warned: boolean;
 }
 
 interface DeprecationState {
@@ -30,7 +29,6 @@ const makeDeprecationService = (
       uses.set(key, {
         use: existing?.use ?? use,
         count: (existing?.count ?? 0) + 1,
-        warned: true,
       });
       return { ...current, uses };
     }).pipe(
