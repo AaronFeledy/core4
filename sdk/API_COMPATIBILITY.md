@@ -172,6 +172,7 @@
 - `LandofileShape.sshAgent`
 - `LandofileShape.version`
 - `LandofileShape.x-*`
+- `PluginManifest.deprecated`
 
 ## Additive Alpha errors
 
