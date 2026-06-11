@@ -2,7 +2,7 @@ import { type Context, Effect, Layer, Option, Ref } from "effect";
 
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import type { DeprecationNotice, DeprecationSurfaceKind, DeprecationUse } from "@lando/sdk/schema";
-import { DeprecationService, type DeprecationSummaryEntry } from "@lando/sdk/services";
+import { DeprecationService, type DeprecationSummaryEntry, EventService } from "@lando/sdk/services";
 
 type DeprecationKey = `${DeprecationSurfaceKind}:${string}`;
 
@@ -20,6 +20,7 @@ const deprecationKey = (kind: DeprecationSurfaceKind, id: string): DeprecationKe
 
 const makeDeprecationService = (
   state: Ref.Ref<DeprecationState>,
+  eventService: Option.Option<Context.Tag.Service<typeof EventService>>,
 ): Context.Tag.Service<typeof DeprecationService> => ({
   use: (use) =>
     Ref.update(state, (current) => {
@@ -32,6 +33,13 @@ const makeDeprecationService = (
       });
       return { ...current, uses };
     }).pipe(
+      Effect.flatMap(() =>
+        Option.match(eventService, {
+          onNone: () => Effect.void,
+          onSome: (events) =>
+            events.publish({ _tag: "deprecation-used", use }).pipe(Effect.catchAll(() => Effect.void)),
+        }),
+      ),
       Effect.flatMap(() =>
         use.notice.severity === "error"
           ? Effect.fail(new DeprecatedSurfaceError({ kind: use.kind, id: use.id, notice: use.notice }))
@@ -75,7 +83,9 @@ const makeDeprecationService = (
 
 export const DeprecationServiceLive = Layer.effect(
   DeprecationService,
-  Ref.make<DeprecationState>({ registry: new Map(), uses: new Map() }).pipe(
-    Effect.map(makeDeprecationService),
-  ),
+  Effect.gen(function* () {
+    const state = yield* Ref.make<DeprecationState>({ registry: new Map(), uses: new Map() });
+    const eventService = yield* Effect.serviceOption(EventService);
+    return makeDeprecationService(state, eventService);
+  }),
 );

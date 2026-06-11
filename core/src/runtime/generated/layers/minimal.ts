@@ -16,9 +16,11 @@ import { Layer } from "effect";
 import { Renderer, Telemetry } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
+import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
+import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { PrivilegeServiceLive } from "../../../services/privilege.ts";
 import { SecretStoreLive } from "../../../services/secret-store.ts";
@@ -34,7 +36,16 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) =>
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
     Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),
     ConfigServiceLive,
-    DeprecationServiceLive,
+    EventServiceLive,
+    DeprecationServiceLive.pipe(Layer.provide(EventServiceLive)),
+    DeprecationTelemetryLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          EventServiceLive,
+          Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),
+        ),
+      ),
+    ),
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,

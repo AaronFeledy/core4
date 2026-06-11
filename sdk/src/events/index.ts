@@ -1,6 +1,7 @@
 export * from "./app.ts";
 export * from "./bootstrap.ts";
 export * from "./cli.ts";
+export * from "./deprecation.ts";
 export * from "./global.ts";
 export * from "./lifecycle.ts";
 export * from "./message.ts";

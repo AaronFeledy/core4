@@ -14,6 +14,7 @@ import {
 } from "./app.ts";
 import { BeforeExitEvent, PostBootstrapEvent, PreBootstrapEvent, ReadyEvent } from "./bootstrap.ts";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "./cli.ts";
+import { DeprecationUsedEvent } from "./deprecation.ts";
 import {
   PostGlobalStartEvent,
   PostGlobalStopEvent,
@@ -87,6 +88,7 @@ export const LandoEvent = Schema.Union(
   CliCommandInitEvent,
   CliCommandRunEvent,
   CliCommandErrorEvent,
+  DeprecationUsedEvent,
   TaskTreeStartEvent,
   TaskStartEvent,
   TaskDetailEvent,
