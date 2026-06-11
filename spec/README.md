@@ -240,7 +240,7 @@ If you are looking for…
 | Plugin-contributed config translators | 10 | §9.5 |
 | Plugin install/update flow | 10 | §9.6 |
 | Plugin postinstall-script trust policy | 10 | §9.6 |
-| `lando plugin trust*` open decisions | 01 | §14.2 |
+| `lando plugin trust*` model (resolved: list/revoke shipped, non-expiring) | 01 | §14.2 |
 | Plugin authoring toolkit (`meta:plugin:new`/`test`/`build`/`link`/`unlink`/`publish`) | 10 | §9.10 |
 | Plugin loading rules | 10 | §9.7 |
 | `LandoPluginContext` | 10 | §9.8 |

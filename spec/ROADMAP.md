@@ -385,7 +385,7 @@ Complete the breadth surface — every canonical service type, both providers on
 
 **Plugin install:**
 - npm source full
-- Postinstall script trust gating (mechanism in place — exact UX still open per §14.2)
+- Postinstall script trust gating (mechanism in place; trust UX resolved per §14.2 — non-expiring trust, `meta:plugin:trust list`/`revoke` shipped)
 - System + user + app discovery sources working
 
 **Library API:**
@@ -453,7 +453,7 @@ Land the last feature surface — release engineering, governance, the plugin au
 - Telemetry: event inventory documented, redaction rules implemented, retention defined, disablement controls shipped
 - Compose compatibility subset documented + every accepted/rejected key has a remediation message
 - `sshAgent.sidecar: false` opt-out: ship-or-reject decided
-- Plugin postinstall trust model: command surface shipped (`meta:plugin:trust <name>`, `meta:plugin:trust-authoring-root <abs>`, possibly `list`/`revoke`); `<userConfRoot>/plugin-trust.yml` schema published
+- Plugin postinstall trust model: command surface shipped (`meta:plugin:trust <name>`, `meta:plugin:trust-authoring-root <abs>`, `meta:plugin:trust list`, `meta:plugin:trust revoke <name>`); trust is non-expiring until revoked and npm/registry trust keys on the requested package identity; `<userConfRoot>/plugin-trust.yml` schema published
 
 **Plugin authoring toolkit (§9.10):**
 - `meta:plugin:new` (scaffold)
