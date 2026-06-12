@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { LandofileNotFoundError, LandofileParseError } from "@lando/sdk/errors";
+import { LandofileNotFoundError, LandofileParseError, type NotImplementedError } from "@lando/sdk/errors";
 import type { LandofileIncludeError, LandofileLockMismatchError } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 
@@ -13,6 +13,7 @@ import {
   updateLandofileIncludes,
 } from "../../landofile/includes.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
+import { rejectBetaToolingFeatures } from "../../landofile/tooling-beta.ts";
 
 export type {
   IncludeUpdateEntry,
@@ -31,6 +32,7 @@ export interface AppIncludesUpdateOptions {
 export type AppIncludesUpdateError =
   | LandofileNotFoundError
   | LandofileParseError
+  | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError;
 
@@ -69,6 +71,7 @@ export const appIncludesUpdate = (
         }),
     });
     const parsed = yield* parseLandofile({ file: filePath, content, cwd: appRoot });
+    yield* rejectBetaToolingFeatures(filePath, parsed);
     const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
     if (decoded._tag === "Left") {
       return yield* Effect.fail(

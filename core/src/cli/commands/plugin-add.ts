@@ -152,7 +152,7 @@ const decodePackageJson = (content: string, packageDir: string): PluginManifest 
     });
   }
   const candidate = (parsed as { landoPlugin?: unknown })?.landoPlugin ?? parsed;
-  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate);
+  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate, { onExcessProperty: "error" });
   if (Either.isLeft(decoded)) {
     const nameField = (parsed as { name?: unknown })?.name;
     const name = typeof nameField === "string" ? nameField : undefined;

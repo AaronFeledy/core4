@@ -282,6 +282,39 @@ export const assertJsonSchemaDeprecationsValid = (jsonSchema: unknown): readonly
   return invalidPaths;
 };
 
+export interface SchemaDeprecationEntry {
+  readonly path: string;
+  readonly notice: DeprecationNotice;
+}
+
+const collectJsonSchemaDeprecations = (
+  value: unknown,
+  path: string,
+  entries: Array<SchemaDeprecationEntry>,
+): void => {
+  if (Array.isArray(value)) {
+    value.forEach((child, index) => collectJsonSchemaDeprecations(child, `${path}[${index}]`, entries));
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+
+  const record = value as JsonObject;
+  const notice = record["x-deprecation"];
+  if (validateDeprecationNotice(notice)) entries.push({ path, notice });
+
+  for (const [key, child] of Object.entries(record)) {
+    collectJsonSchemaDeprecations(child, path === "$" ? `$.${key}` : `${path}.${key}`, entries);
+  }
+};
+
+export const schemaDeprecationsFromJsonSchema = (
+  jsonSchema: unknown,
+): ReadonlyArray<SchemaDeprecationEntry> => {
+  const entries: Array<SchemaDeprecationEntry> = [];
+  collectJsonSchemaDeprecations(jsonSchema, "$", entries);
+  return entries;
+};
+
 const schemaTitle = (name: string, ast: AST.AST): string => {
   const title = ast.annotations[AST.TitleAnnotationId];
   return typeof title === "string" ? title : name;

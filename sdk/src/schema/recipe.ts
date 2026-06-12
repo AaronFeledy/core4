@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { DeprecationNotice } from "./deprecation.ts";
+
 // Recipe manifest schema with prompt and post-init action shapes.
 // Unsupported fields (the `editor` prompt type) are intentionally absent
 // from the schema and are rejected before strict decode so users see a
@@ -78,6 +80,7 @@ export const RecipePrompt = Schema.Struct({
   validate: Schema.optional(RecipePromptValidate),
   choices: Schema.optional(Schema.Array(RecipePromptChoice)),
   choicesFrom: Schema.optional(RecipeChoicesFrom),
+  deprecated: Schema.optional(DeprecationNotice),
 });
 export type RecipePrompt = typeof RecipePrompt.Type;
 
@@ -206,6 +209,7 @@ export const RecipeManifest = Schema.Struct({
   title: Schema.String,
   description: Schema.String,
   version: RecipeVersion,
+  deprecated: Schema.optional(DeprecationNotice),
   authors: Schema.optional(Schema.Array(Schema.String)),
   tags: Schema.optional(Schema.Array(Schema.String)),
   requires: Schema.optional(RecipeRequires),

@@ -4,6 +4,8 @@ import type { DiscoveredBunShellScript } from "../landofile/bun-sh-discovery.ts"
 import type { CommandIndexEntry } from "./command-index.ts";
 
 const summaryForTask = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";
+const contributionId = (entry: string | { readonly id: string }): string =>
+  typeof entry === "string" ? entry : entry.id;
 
 export const compileToolingCommands = (landofile: LandofileShape): ReadonlyArray<CommandIndexEntry> => {
   const tooling = landofile.tooling;
@@ -49,7 +51,8 @@ export const compilePluginCommands = (
   const seen = new Set<string>();
   const entries: CommandIndexEntry[] = [];
   for (const manifest of manifests) {
-    for (const id of manifest.contributes?.commands ?? []) {
+    for (const command of manifest.contributes?.commands ?? []) {
+      const id = contributionId(command);
       if (seen.has(id)) continue;
       seen.add(id);
       entries.push({ id, summary: "", hidden: false });

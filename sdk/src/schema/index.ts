@@ -13,6 +13,7 @@ export {
   deprecateSchema,
   formatDeprecationNotice,
   getSchemaDeprecation,
+  validateDeprecationNotice,
   type StructuralDeprecationKey,
   type SchemaDeprecationAnnotation,
   structuralDeprecationKey,

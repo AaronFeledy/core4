@@ -39,6 +39,7 @@ export {
   assertJsonSchemaDeprecationsValid,
   getJsonSchemaWithDeprecations,
   renderSchemaReferenceMarkdown,
+  schemaDeprecationsFromJsonSchema,
   withSchemaDeprecations,
 } from "./json-schema-deprecations.ts";
 
@@ -90,6 +91,7 @@ const JSON_SCHEMA_REGISTRY = {
 } as const;
 
 export type JsonSchemaName = keyof typeof JSON_SCHEMA_REGISTRY;
+export const JSON_SCHEMA_NAMES = Object.keys(JSON_SCHEMA_REGISTRY) as ReadonlyArray<JsonSchemaName>;
 
 const landofileJsonSchema = (): JsonObject => {
   const schema = getJsonSchemaWithDeprecations(LandofileShape) as JsonObject;

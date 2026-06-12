@@ -497,6 +497,44 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
 });
 
 describe("LandofileServiceLive — tooling: parsing (US-017)", () => {
+  test("parses tooling deprecation metadata without enabling runtime flag or arg definitions", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: myapp",
+          "tooling:",
+          "  legacy:",
+          "    cmd: legacy",
+          "    deprecated:",
+          "      since: 4.2.0",
+          "      severity: warn",
+          "      note: Use replacement tooling.",
+          "    flags:",
+          "      old-flag:",
+          "        deprecated:",
+          "          since: 4.2.0",
+          "          severity: warn",
+          "          note: Use --new-flag.",
+          "    args:",
+          "      oldArg:",
+          "        deprecated:",
+          "          since: 4.2.0",
+          "          severity: warn",
+          "          note: Use newArg.",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+
+      expect(landofile.tooling?.legacy?.deprecated?.note).toBe("Use replacement tooling.");
+      expect(landofile.tooling?.legacy?.flags?.["old-flag"]?.deprecated?.note).toBe("Use --new-flag.");
+      expect(landofile.tooling?.legacy?.args?.oldArg?.deprecated?.note).toBe("Use newArg.");
+    });
+  });
+
   test("parses tooling tasks with cmds, service, description, and Alpha vars forms", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
@@ -613,6 +651,38 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
   test("rejects per-task `engine:` field with remediation", async () => {
     await assertRejectsLandofile(
       ["name: myapp", "tooling:", "  echo:", "    cmd: echo hi", "    engine: host", ""],
+      "not supported yet",
+    );
+  });
+
+  test("rejects runtime tooling `flags:` metadata other than deprecation notices", async () => {
+    await assertRejectsLandofile(
+      [
+        "name: myapp",
+        "tooling:",
+        "  echo:",
+        "    cmd: echo hi",
+        "    flags:",
+        "      verbose:",
+        "        type: boolean",
+        "",
+      ],
+      "not supported yet",
+    );
+  });
+
+  test("rejects runtime tooling `args:` metadata other than deprecation notices", async () => {
+    await assertRejectsLandofile(
+      [
+        "name: myapp",
+        "tooling:",
+        "  echo:",
+        "    cmd: echo hi",
+        "    args:",
+        "      target:",
+        "        description: Deployment target",
+        "",
+      ],
       "not supported yet",
     );
   });

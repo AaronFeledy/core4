@@ -190,8 +190,16 @@ const requirePluginContract = (condition: boolean, assertion: string, details?: 
 
 const isLayer = (value: unknown): boolean => Layer.isLayer(value);
 
-const hasNonEmptyStringEntries = (values: ReadonlyArray<string> | undefined): boolean =>
-  values === undefined || values.every(isNonEmptyString);
+const hasNonEmptyContributionEntries = (values: ReadonlyArray<unknown> | undefined): boolean =>
+  values === undefined ||
+  values.every(
+    (value) =>
+      isNonEmptyString(value) ||
+      (typeof value === "object" && value !== null && "id" in value && isNonEmptyString(value.id)),
+  );
+
+const contributionId = (value: string | { readonly id: string }): string =>
+  typeof value === "string" ? value : value.id;
 
 /**
  * runPluginContract arguments:
@@ -203,7 +211,9 @@ const hasNonEmptyStringEntries = (values: ReadonlyArray<string> | undefined): bo
  */
 export const runPluginContract = (input: PluginContractInput): Effect.Effect<void, ContractFailure> =>
   Effect.gen(function* () {
-    const decodedManifest = Schema.decodeUnknownEither(PluginManifest)(input.manifest);
+    const decodedManifest = Schema.decodeUnknownEither(PluginManifest)(input.manifest, {
+      onExcessProperty: "error",
+    });
 
     yield* requirePluginContract(
       Either.isRight(decodedManifest),
@@ -231,7 +241,7 @@ export const runPluginContract = (input: PluginContractInput): Effect.Effect<voi
     for (const [key, values] of Object.entries(contributions)) {
       if (Array.isArray(values) && key !== "globalServices") {
         yield* requirePluginContract(
-          hasNonEmptyStringEntries(values),
+          hasNonEmptyContributionEntries(values),
           `contribution ${key} contains only non-empty ids`,
           values,
         );
@@ -262,7 +272,8 @@ export const runPluginContract = (input: PluginContractInput): Effect.Effect<voi
       );
     }
 
-    for (const id of contributions.serviceTypes ?? []) {
+    for (const entry of contributions.serviceTypes ?? []) {
+      const id = contributionId(entry);
       yield* requirePluginContract(
         input.serviceTypes?.has(id) === true,
         `serviceTypes static map contains declared id ${id}`,
@@ -270,7 +281,8 @@ export const runPluginContract = (input: PluginContractInput): Effect.Effect<voi
       );
     }
 
-    for (const id of contributions.templateEngines ?? []) {
+    for (const entry of contributions.templateEngines ?? []) {
+      const id = contributionId(entry);
       yield* requirePluginContract(
         input.templateEngines?.has(id) === true,
         `templateEngines static map contains declared id ${id}`,

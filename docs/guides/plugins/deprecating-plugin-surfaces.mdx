@@ -1,0 +1,26 @@
+---
+id: deprecating-plugin-surfaces
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, deprecations]
+---
+
+<Guide>
+  <Scenario id="deprecate-plugin-surfaces" render={false} reason="Core and SDK tests exercise manifest decoding and DeprecationService registry population directly; this guide documents the author-facing manifest shape without loading arbitrary plugin code">
+    <Step name="plugin-manifest">
+      <Variable name="field" value="deprecated" display="Attach a DeprecationNotice to the plugin manifest root to deprecate the whole plugin" />
+      <Variable name="notice" value="since, removeIn, severity, replacement, note, docsUrl, ticket" display="Every deprecation field uses the canonical DeprecationNotice contract" />
+    </Step>
+    <Step name="contribution-entries">
+      <Variable name="commands" value="contributes.commands[].deprecated" display="Command contribution entries may use object form with id and deprecated notice" />
+      <Variable name="globalServices" value="contributes.globalServices[].deprecated" display="Global-service contributions carry their own notice and register separately from the whole plugin" />
+      <Variable name="setupFlags" value="contributes.setup.flags[].deprecated" display="Setup flags contributed by a plugin can be deprecated independently" />
+    </Step>
+    <Step name="yaml-surfaces">
+      <Variable name="recipe" value="recipe.yml#deprecated" display="Recipes can mark the whole recipe deprecated" />
+      <Variable name="prompt" value="recipe.yml#prompts[].deprecated" display="Recipe prompts can carry prompt-scoped notices" />
+      <Variable name="tooling" value="tooling.&lt;name&gt;.deprecated" display="Landofile tooling tasks, flags, and args accept scoped deprecation notices" />
+    </Step>
+  </Scenario>
+</Guide>

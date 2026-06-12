@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Cause, Effect, Exit } from "effect";
 
 import { renderIncludesVerifyResult } from "@lando/core/cli/operations";
 import type { IncludeVerifyReport } from "@lando/core/cli/operations";
+import { appIncludesVerify } from "../../src/cli/commands/app-includes-verify.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -134,6 +136,38 @@ describe("lando app:includes:verify (source dispatch)", () => {
       const result = await runCli(["app:includes:verify"], dir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("no remote includes");
+    });
+  });
+
+  test("rejects unsupported tooling arg metadata before verifying includes", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: demo",
+          "tooling:",
+          "  echo:",
+          "    cmd: echo hi",
+          "    args:",
+          "      target:",
+          "        description: Deployment target",
+          "",
+        ].join("\n"),
+      );
+
+      const exit = await Effect.runPromiseExit(appIncludesVerify({ cwd: dir }));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
+          expect((failure.value as { message: string }).message).toContain(
+            'Tooling args field "description"',
+          );
+        }
+      }
     });
   });
 

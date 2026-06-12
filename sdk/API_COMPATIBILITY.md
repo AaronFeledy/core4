@@ -24,12 +24,14 @@
 - `ComposeSecretConfig`
 - `ConfigLintResult`
 - `ConfigLintViolation`
+- `ContributionRef`
 - `CleanupProps`
 - `DataStoreMountPlan`
 - `defineLandofile`
 - `defineRecipe`
 - `DataStorePlan`
 - `DependencyPlan`
+- `DeprecatedContributionRef`
 - `DeprecationNotice`
 - `DeprecationSeverity`
 - `DeprecationSurfaceKind`
@@ -58,7 +60,9 @@
 - `getSchemaDeprecation`
 - `getJsonSchemaWithDeprecations`
 - `renderSchemaReferenceMarkdown`
+- `schemaDeprecationsFromJsonSchema`
 - `structuralDeprecationKey`
+- `validateDeprecationNotice`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`
@@ -79,6 +83,7 @@
 - `IncludeEntry`
 - `InspectProps`
 - `IsolateMode`
+- `JSON_SCHEMA_NAMES`
 - `LANDO_SHARED_CROSS_APP_NETWORK`
 - `MatcherAnyOf`
 - `MatcherNot`
@@ -137,6 +142,8 @@
 - `TabsProps`
 - `TelemetryConfig`
 - `TemplateRenderContext`
+- `ToolingArgShape`
+- `ToolingFlagShape`
 - `ToolingTaskShape`
 - `ToolingVar`
 - `ToolingVarDefault`

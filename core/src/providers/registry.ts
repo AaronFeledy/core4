@@ -27,6 +27,9 @@ import {
 
 type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
 
+const contributionId = (entry: string | { readonly id: string }): string =>
+  typeof entry === "string" ? entry : entry.id;
+
 const providers: Readonly<Record<string, RuntimeProviderShape>> = {};
 
 const toProviderUnavailable = (cause: unknown) =>
@@ -74,7 +77,9 @@ const makeRuntimeProviderRegistry = (
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
-      manifests.flatMap((manifest) => manifest.contributes?.providers ?? []).map((id) => ProviderId.make(id)),
+      manifests
+        .flatMap((manifest) => manifest.contributes?.providers ?? [])
+        .map((entry) => ProviderId.make(contributionId(entry))),
     ),
     toProviderUnavailable,
   );
