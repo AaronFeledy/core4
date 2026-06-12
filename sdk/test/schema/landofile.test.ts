@@ -146,6 +146,37 @@ describe("LandofileShape (MVP)", () => {
     }
   });
 
+  test("ToolingTaskShape accepts task, flag, and arg deprecation notices", () => {
+    const notice = {
+      since: "4.2.0",
+      severity: "warn" as const,
+      note: "Use the replacement tooling surface.",
+    };
+
+    const decoded = Schema.decodeUnknownSync(ToolingTaskShape)({
+      service: "appserver",
+      cmd: "legacy",
+      deprecated: notice,
+      flags: {
+        legacy: {
+          type: "boolean",
+          description: "Legacy flag",
+          deprecated: notice,
+        },
+      },
+      args: {
+        target: {
+          description: "Legacy arg",
+          deprecated: notice,
+        },
+      },
+    });
+
+    expect(decoded.deprecated).toEqual(notice);
+    expect(decoded.flags?.legacy?.deprecated).toEqual(notice);
+    expect(decoded.args?.target?.deprecated).toEqual(notice);
+  });
+
   test("strict decoding rejects Compose keys outside the MVP allowlist (e.g. `deploy`)", () => {
     const withDisallowedKey = {
       name: "myapp",

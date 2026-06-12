@@ -37,12 +37,7 @@ interface BetaFinding {
 
 const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-  const obj = parsed as Record<string, unknown>;
-  if (Object.hasOwn(obj, "deprecated")) {
-    return {
-      message: `Recipe-wide \`deprecated:\` notice is not supported in recipes at ${source}.`,
-    };
-  }
+  void source;
   return undefined;
 };
 
@@ -59,11 +54,6 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
     if (prompt.type === "editor") {
       return {
         message: `Prompt type \`editor\` in prompt "${name}" is not supported in recipes at ${source}.`,
-      };
-    }
-    if (Object.hasOwn(prompt, "deprecated")) {
-      return {
-        message: `Per-prompt \`deprecated:\` notice in prompt "${name}" is not supported in recipes at ${source}.`,
       };
     }
   }

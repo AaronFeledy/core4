@@ -27,6 +27,15 @@ export const EmbeddingPluginPolicy = Schema.Union(
 );
 export type EmbeddingPluginPolicy = typeof EmbeddingPluginPolicy.Type;
 
+export const DeprecatedContributionRef = Schema.Struct({
+  id: Schema.String,
+  deprecated: Schema.optional(DeprecationNotice),
+});
+export type DeprecatedContributionRef = typeof DeprecatedContributionRef.Type;
+
+export const ContributionRef = Schema.Union(Schema.String, DeprecatedContributionRef);
+export type ContributionRef = typeof ContributionRef.Type;
+
 // Plugin manifest — declared by every plugin's package.json + plugin.yaml.
 
 /**
@@ -57,6 +66,7 @@ export const GlobalServiceContribution = Schema.Struct({
   summary: Schema.optional(Schema.String),
   /** Canonical command ids contributed by the same plugin that operate on this service. */
   commands: Schema.optional(Schema.Array(Schema.String)),
+  deprecated: Schema.optional(DeprecationNotice),
 });
 export type GlobalServiceContribution = typeof GlobalServiceContribution.Type;
 
@@ -65,6 +75,7 @@ export const PluginSetupFlagContribution = Schema.Struct({
   type: Schema.Literal("boolean", "option"),
   description: Schema.optional(Schema.String),
   options: Schema.optional(Schema.Array(Schema.String)),
+  deprecated: Schema.optional(DeprecationNotice),
 });
 export type PluginSetupFlagContribution = typeof PluginSetupFlagContribution.Type;
 
@@ -76,25 +87,25 @@ export type PluginSetupContribution = typeof PluginSetupContribution.Type;
 /** Contribution surface — keys the plugin contributes to. */
 export const PluginContribution = Schema.Struct({
   /** Service types this plugin registers. */
-  serviceTypes: Schema.optional(Schema.Array(Schema.String)),
+  serviceTypes: Schema.optional(Schema.Array(ContributionRef)),
   /** Service features this plugin registers. */
-  serviceFeatures: Schema.optional(Schema.Array(Schema.String)),
+  serviceFeatures: Schema.optional(Schema.Array(ContributionRef)),
   /** Provider ids registered. */
-  providers: Schema.optional(Schema.Array(Schema.String)),
+  providers: Schema.optional(Schema.Array(ContributionRef)),
   /** Proxy ids registered. */
-  proxies: Schema.optional(Schema.Array(Schema.String)),
+  proxies: Schema.optional(Schema.Array(ContributionRef)),
   /** Logger ids registered. */
-  loggers: Schema.optional(Schema.Array(Schema.String)),
+  loggers: Schema.optional(Schema.Array(ContributionRef)),
   /** Renderer ids registered. */
-  renderers: Schema.optional(Schema.Array(Schema.String)),
+  renderers: Schema.optional(Schema.Array(ContributionRef)),
   /** Template engine ids registered. */
-  templateEngines: Schema.optional(Schema.Array(Schema.String)),
+  templateEngines: Schema.optional(Schema.Array(ContributionRef)),
   /** File-sync engine ids registered. */
-  fileSyncEngines: Schema.optional(Schema.Array(Schema.String)),
+  fileSyncEngines: Schema.optional(Schema.Array(ContributionRef)),
   /** CA ids registered. */
-  cas: Schema.optional(Schema.Array(Schema.String)),
+  cas: Schema.optional(Schema.Array(ContributionRef)),
   /** Built-in commands registered. */
-  commands: Schema.optional(Schema.Array(Schema.String)),
+  commands: Schema.optional(Schema.Array(ContributionRef)),
   /** Global-app service contributions added by plugins. */
   globalServices: Schema.optional(Schema.Array(GlobalServiceContribution)),
   setup: Schema.optional(PluginSetupContribution),

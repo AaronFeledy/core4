@@ -256,3 +256,9 @@
 - Verification: typecheck, lint, schema codegen, focused deprecation/schema/export tests, full tests, and Oracle reviewer gate passed.
 - **Learnings for future iterations:** Schema deprecation metadata should use one custom Effect Schema annotation symbol and one AST unwrapping helper so JSON Schema, reference docs, and optional/union-wrapped fields cannot drift.
 ---
+
+## 2026-06-12 09:10 CDT - US-219
+- Shipped contract-field and manifest-field deprecations across plugin manifests, recipe manifests, Landofile tooling, built-in command/alias/flag/arg contracts, built-in event/render/service/route surfaces, and the schema/plugin registry walks that populate `DeprecationService`. Invalid deprecation notices now fail strict manifest decoding before plugin surfaces can be used, while command caches and provider/planner consumers preserve contribution object refs by id.
+- Verification: focused RED→GREEN built-in contract walk test, focused deprecation/schema/manifest/cache/plugin-registry matrix, typecheck, lint, schema snapshot codegen, guide coverage/lint, story guide scenario, and compiled parity suites passed. Full `bun test` completed once with only self-induced concurrent guide/build races, then targeted reruns passed; isolated `core/test/scripts/dev-guides.test.ts` still shows an unrelated dev-guides harness failure (`no generated scenario output found for dev-guides-red`) outside this story's surfaces.
+- **Learnings for future iterations:** Plugin contribution arrays can now contain either string ids or `{ id, deprecated }` objects, so every command-cache/planner/provider consumer must normalize with a contribution-id helper before sorting, fingerprinting, or resolving ids. Do not run `bun test` concurrently with `dev:guides` or `build:compile`; generated guide output and `core/dist/lando` are shared artifacts and will race.
+---

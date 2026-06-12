@@ -56,6 +56,31 @@ requires:
     expect(manifest.requires?.hostTools).toEqual(["git"]);
   });
 
+  test("metadata and prompts preserve deprecation notices", async () => {
+    const yaml = `id: deprecated-recipe
+title: Deprecated Recipe
+description: Recipe declares deprecation metadata.
+version: 0.1.0
+deprecated:
+  since: 4.2.0
+  severity: warn
+  note: Use a newer recipe.
+prompts:
+  - name: oldName
+    type: text
+    message: Old name?
+    deprecated:
+      since: 4.2.0
+      severity: warn
+      note: Use newName.
+`;
+    const exit = await runParse("test://deprecated-recipe", yaml);
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (!Exit.isSuccess(exit)) return;
+    expect(exit.value.deprecated?.note).toBe("Use a newer recipe.");
+    expect(exit.value.prompts?.[0]?.deprecated?.note).toBe("Use newName.");
+  });
+
   test("runs: explicit allowlist decodes and is preserved", async () => {
     const yaml = `id: run-allowlist
 title: Run allowlist
@@ -294,20 +319,20 @@ version: 0.0.1
     }
   });
 
-  test("top-level `deprecated:` is rejected with remediation", async () => {
+  test("top-level `deprecated:` validates the canonical notice contract", async () => {
     const yaml = `${baseHeader}deprecated:
   since: 4.0.0
   note: replaced by node-postgres-v2
 `;
     const exit = await runParse("test://beta-deprecated", yaml);
     const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.message).toContain("deprecated");
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("removeIn"))).toBe(true);
     }
   });
 
-  test("per-prompt `deprecated:` is rejected with remediation", async () => {
+  test("per-prompt `deprecated:` validates the canonical notice contract", async () => {
     const yaml = `${baseHeader}prompts:
   - name: legacy
     type: text
@@ -318,9 +343,9 @@ version: 0.0.1
 `;
     const exit = await runParse("test://beta-prompt-deprecated", yaml);
     const error = expectFailure(exit);
-    expect(error).toBeInstanceOf(NotImplementedError);
-    if (error instanceof NotImplementedError) {
-      expect(error.message).toContain("legacy");
+    expect(error).toBeInstanceOf(RecipeManifestValidationError);
+    if (error instanceof RecipeManifestValidationError) {
+      expect(error.issues.some((issue) => issue.includes("prompts.0.deprecated"))).toBe(true);
     }
   });
 

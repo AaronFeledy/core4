@@ -232,16 +232,20 @@ const collectFileSyncEntries = (params: {
 
 const resolveFileSyncEngineId = (
   manifests: ReadonlyArray<{
-    readonly contributes?: { readonly fileSyncEngines?: ReadonlyArray<string> | undefined } | undefined;
+    readonly contributes?:
+      | { readonly fileSyncEngines?: ReadonlyArray<string | { readonly id: string }> | undefined }
+      | undefined;
   }>,
 ): string | undefined => {
   for (const manifest of manifests) {
-    const ids = manifest.contributes?.fileSyncEngines ?? [];
+    const ids = (manifest.contributes?.fileSyncEngines ?? []).map((entry) =>
+      typeof entry === "string" ? entry : entry.id,
+    );
     if (ids.includes("mutagen")) return "mutagen";
   }
   for (const manifest of manifests) {
-    const id = (manifest.contributes?.fileSyncEngines ?? [])[0];
-    if (id !== undefined) return id;
+    const entry = (manifest.contributes?.fileSyncEngines ?? [])[0];
+    if (entry !== undefined) return typeof entry === "string" ? entry : entry.id;
   }
   return undefined;
 };
@@ -469,8 +473,10 @@ const planApp = (
       );
       if (cached !== null) return cached;
     }
-    const registeredServiceTypeIds = manifests.flatMap(
-      (manifest) => manifest.contributes?.serviceTypes ?? [],
+    const registeredServiceTypeIds = manifests.flatMap((manifest) =>
+      (manifest.contributes?.serviceTypes ?? []).map((entry) =>
+        typeof entry === "string" ? entry : entry.id,
+      ),
     );
 
     for (const [name, service] of Object.entries(landofile.services ?? {})) {

@@ -80,9 +80,6 @@ const BETA_TOOLING_TASK_KEYS: ReadonlyArray<{ key: string }> = [
   { key: "namespace" },
   { key: "internal" },
   { key: "hostProxyAllowed" },
-  { key: "deprecated" },
-  { key: "flags" },
-  { key: "args" },
   { key: "examples" },
   { key: "usage" },
 ];
