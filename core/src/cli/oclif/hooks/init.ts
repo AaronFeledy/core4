@@ -13,6 +13,7 @@ import { Either, Schema } from "effect";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { BootstrapLevel, type BootstrapLevel as BootstrapLevelType } from "@lando/sdk/schema";
 
+import { cliRuntimeOptions } from "../../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../../runtime/layer.ts";
 
 type LandoCommandClass = Command.Class & {
@@ -59,5 +60,8 @@ export const initHook: Hook<"init"> = async ({ config, context, id }) => {
     }
     throw error;
   }
-  commandRuntimeLayers.set(CommandClass, makeLandoRuntime({ bootstrap, plugins: { policy: "discovery" } }));
+  commandRuntimeLayers.set(
+    CommandClass,
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } })),
+  );
 };

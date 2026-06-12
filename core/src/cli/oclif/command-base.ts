@@ -6,6 +6,7 @@ import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError
 import type { Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
+import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
@@ -232,7 +233,7 @@ export abstract class LandoCommandBase extends Command {
     // (`run.ts`) does the same, keeping both paths in parity.
     const runtime =
       spec.id === "meta:setup"
-        ? makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "discovery" } })
+        ? makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }))
         : getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
       throw new LandoRuntimeBootstrapError({

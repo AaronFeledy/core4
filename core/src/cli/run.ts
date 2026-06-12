@@ -21,6 +21,7 @@ import type {
   ScratchAppService,
 } from "@lando/sdk/services";
 
+import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
@@ -425,7 +426,7 @@ const runStart = async (): Promise<void> => {
   try {
     await runCompiledCommand(
       startApp({ signal: controller.signal }),
-      makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderStartAppResult,
     );
   } finally {
@@ -437,7 +438,7 @@ const runStart = async (): Promise<void> => {
 const runStop = (): Promise<void> =>
   runCompiledCommand(
     stopApp(),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderStopAppResult,
   );
 
@@ -446,7 +447,7 @@ const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
   if (name === undefined) throw new Error("Missing tooling command name");
   return runCompiledCommand(
     runTooling({ name, args: argv.slice(1), renderProgress: true }),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderRunToolingResult,
     { renderEvents: true, plainTaskEvents: "detail-only" },
   );
@@ -455,7 +456,7 @@ const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
 const runInfo = (): Promise<void> =>
   runCompiledCommand(
     infoApp(),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderInfoAppResult,
   );
 
@@ -464,7 +465,7 @@ const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
     destroyApp({ volumes, yes }),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderDestroyAppResult,
   );
 };
@@ -501,7 +502,11 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
         installDir,
         flags: input.flags,
       })
-      .pipe(Effect.provide(makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "discovery" } }))),
+      .pipe(
+        Effect.provide(
+          makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
+        ),
+      ),
   );
   if (Exit.isSuccess(exit)) {
     const rendered = setupSpec.render?.(exit.value);
@@ -524,7 +529,7 @@ const runRestart = async (): Promise<void> => {
   try {
     await runCompiledCommand(
       restartApp({ signal: controller.signal }),
-      makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderRestartAppResult,
     );
   } finally {
@@ -541,7 +546,7 @@ const runRebuild = async (): Promise<void> => {
   try {
     await runCompiledCommand(
       rebuildApp({ signal: controller.signal }),
-      makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderRebuildAppResult,
     );
   } finally {
@@ -560,7 +565,7 @@ const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
   }
   return runCompiledCommand(
     logsApp(logsOptionsFromInput(input)),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderLogsAppResult,
   );
 };
@@ -589,7 +594,7 @@ const runAppConfig = (argv: ReadonlyArray<string>): Promise<void> => {
   const { format } = parseAppConfigArgv(argv);
   return runCompiledCommand(
     appConfig(),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     (value) => renderAppConfigResult(value, format),
   );
 };
@@ -618,7 +623,7 @@ const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => {
   const { format } = parseAppConfigLintArgv(argv);
   return runCompiledCommand(
     appConfigLint(),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderConfigLintResult(value, format),
   );
 };
@@ -655,7 +660,7 @@ const runAppConfigTranslate = (argv: ReadonlyArray<string>): Promise<void> => {
   const { write, format } = parseAppConfigTranslateArgv(argv);
   return runCompiledCommand(
     appConfigTranslate({ write }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderConfigTranslateResult(value, format),
   );
 };
@@ -684,7 +689,7 @@ const runAppIncludesUpdate = (argv: ReadonlyArray<string>): Promise<void> => {
   const { check, format } = parseAppIncludesUpdateArgv(argv);
   return runCompiledCommand(
     appIncludesUpdate({ check }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderIncludesUpdateResult(value, format),
   );
 };
@@ -712,7 +717,7 @@ const runAppIncludesVerify = (argv: ReadonlyArray<string>): Promise<void> => {
   const { format } = parseAppIncludesVerifyArgv(argv);
   return runCompiledCommand(
     appIncludesVerify(),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderIncludesVerifyResult(value, format),
   );
 };
@@ -720,7 +725,7 @@ const runAppIncludesVerify = (argv: ReadonlyArray<string>): Promise<void> => {
 const runAppCacheRefresh = (): Promise<void> =>
   runCompiledCommand(
     refreshAppCache(),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderAppCacheRefreshResult,
   );
 
@@ -734,7 +739,7 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(fix ? { fix: true } : {}),
       ...(app ? { app: true } : {}),
     }),
-    makeLandoRuntime({ bootstrap: "provider", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
     (value) =>
       activeRendererMode === "json" ? renderDoctorReportAsNdjson(value) : renderDoctorReport(value),
   );
@@ -832,7 +837,7 @@ const runExec = (argv: ReadonlyArray<string>): Promise<void> => {
       ...(parsed.user === undefined ? {} : { user: parsed.user }),
       ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
     }),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderExecAppResult,
   );
 };
@@ -937,7 +942,7 @@ const runSsh = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
       ...(parsed.user === undefined ? {} : { user: parsed.user }),
     }),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderExecAppResult,
   );
 };
@@ -984,7 +989,7 @@ const runShell = (
       ...(parsed.service === undefined ? {} : { service: parsed.service }),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
     }),
-    makeLandoRuntime({ bootstrap: "app", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderShellAppResult,
   );
 };
@@ -1000,7 +1005,7 @@ const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
   return runCompiledCommand(
     listServices(),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderAppsListResult(value, format),
   );
 };
@@ -1011,7 +1016,7 @@ const runAppsPoweroff = async (argv: ReadonlyArray<string>): Promise<void> => {
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
     poweroff({ keepGlobal, keepScratch, yes }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPoweroffResult,
   );
 };
@@ -1047,22 +1052,23 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
       ...(path === undefined ? {} : { path }),
       format,
     } as Parameters<typeof config>[0]),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderConfigResult,
   );
 };
 
 const globalRuntimeLayer = () =>
-  makeLandoRuntime({ bootstrap: "global", plugins: { policy: "discovery" } }) as Layer.Layer<
+  makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "global", plugins: { policy: "discovery" } }),
+  ) as Layer.Layer<
     GlobalAppService | PluginRegistry | RuntimeProviderRegistry | AppPlanner | FileSystem | EventService,
     LandoRuntimeBootstrapError
   >;
 
 const scratchRuntimeLayer = () =>
-  makeLandoRuntime({ bootstrap: "scratch", plugins: { policy: "discovery" } }) as Layer.Layer<
-    ScratchAppService,
-    LandoRuntimeBootstrapError
-  >;
+  makeLandoRuntime(
+    cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
+  ) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
 
 const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
@@ -1202,7 +1208,7 @@ const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => {
       ...uninstallOptionsFromInput(input),
       execPath: process.execPath,
     }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderUninstallResult,
   );
 };
@@ -1270,7 +1276,7 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
   }
   await runCompiledCommand(
     pluginAdd({ spec, trust, nonInteractive: process.stdin.isTTY !== true }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginAddResult,
   );
 };
@@ -1292,7 +1298,7 @@ const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> =
   }
   await runCompiledCommand(
     pluginRemove({ name }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginRemoveResult,
   );
 };
@@ -1302,7 +1308,7 @@ const runMetaPluginTrust = async (argv: ReadonlyArray<string>): Promise<void> =>
   if (action === "list") {
     await runCompiledCommand(
       pluginTrustList(),
-      makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
       renderPluginTrustListResult,
     );
     return;
@@ -1324,7 +1330,7 @@ const runMetaPluginTrust = async (argv: ReadonlyArray<string>): Promise<void> =>
     }
     await runCompiledCommand(
       pluginTrustRevoke({ name }),
-      makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
       renderPluginTrustRevokeResult,
     );
     return;
@@ -1345,7 +1351,7 @@ const runMetaPluginTrust = async (argv: ReadonlyArray<string>): Promise<void> =>
   }
   await runCompiledCommand(
     pluginTrust({ name }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginTrustResult,
   );
 };
@@ -1367,7 +1373,7 @@ const runMetaPluginTrustAuthoringRoot = async (argv: ReadonlyArray<string>): Pro
   }
   await runCompiledCommand(
     pluginTrustAuthoringRoot({ path }),
-    makeLandoRuntime({ bootstrap: "minimal", plugins: { policy: "discovery" } }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginTrustAuthoringRootResult,
   );
 };
