@@ -289,3 +289,9 @@
 - Review feedback: fixed (Cursor Bugbot Medium findings: built-in aliases now inherit the canonical command's deprecation notice, and unsupported tooling flags/args/deprecated metadata are rejected via a shared scanner wired through service discovery, config translate, and includes verify/update)
 - Merge: merged (squash)
 ---
+
+## 2026-06-12 14:58 CDT - US-220
+- Shipped TSDoc deprecation enforcement for public TypeScript surfaces: `markDeprecated()` now records Effect-returning export usage through `DeprecationService.use` while preserving the wrapped callable, tagged errors can publish static deprecation metadata, and the lint gate rejects public `@deprecated` exports without runtime metadata or matching note/replacement text.
+- Verification: focused deprecation/export compatibility tests, `check:deprecations`, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Keep deprecated public TypeScript exports Effect-returning when using `markDeprecated()` so runtime recording can ride the ambient `DeprecationService`; the TSDoc text must include the notice note and replacement so IDE/API output stays aligned with machine-readable metadata.
+---
