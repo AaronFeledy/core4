@@ -302,3 +302,9 @@
 - Verification: focused deprecation/scripts/exports tests, full `core/test/deprecation` + `core/test/scripts` suites, typecheck, and lint (incl. `check:deprecations`) passed.
 - **Learnings for future iterations:** TypeScript JSDoc attaches to the enclosing `VariableStatement`, not the `VariableDeclaration`, so any AST scanner enforcing tag rules on `const x = ...; export { x }` must resolve the statement, not the declaration.
 ---
+
+## 2026-06-12 17:38 CDT - US-220 Build
+- Finished the in-flight deprecation TSDoc enforcement branch by extending the lint gate to catch deprecated local function declarations that are later exposed through named exports without `markDeprecated`, matching the existing local variable/class named-export enforcement.
+- Verification: focused red/green regression, deprecation lint script surface, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Named-export deprecation checks must collect every local declaration shape that can carry TSDoc (`const`, `function`, and `class`), otherwise a deprecated local can bypass runtime `markDeprecated` enforcement simply by being exported separately.
+---
