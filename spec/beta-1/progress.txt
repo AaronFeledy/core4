@@ -257,8 +257,28 @@
 - **Learnings for future iterations:** Schema deprecation metadata should use one custom Effect Schema annotation symbol and one AST unwrapping helper so JSON Schema, reference docs, and optional/union-wrapped fields cannot drift.
 ---
 
+## 2026-06-12 07:55 CDT - US-251
+- Shipped the release orchestrator stage contract: the release script now exposes a fixed 13-stage pipeline, preserves artifact-family filtering without reordering, routes argv-shaped and shell-shaped work through separate Bun runner paths, and reports first-stage failures with tagged release metadata for operators.
+- Verification: RED focused test failed on the missing orchestrator export before implementation; focused release tests, typecheck, lint, manual injected-runner release surface, and Oracle review passed. Full test suite has one isolated pre-existing package-export identity failure in `sdk/test/library/exports.test.ts`, reproducible outside release files.
+- **Learnings for future iterations:** Keep release stages data-driven and injectable; tests should exercise `runRelease` with fake runners so release-order, target filtering, and failure wrapping are proven without accidentally executing publish/signing commands.
+---
+
+## 2026-06-12 08:25 CDT - US-251 Review
+- Review tightened the release stage contract: strict TypeScript issues were fixed, release errors now report concrete artifact-family metadata, and the publish stage remains part of binary traversal without executing npm publishing for binary-only runs.
+- Review notes (deferred/rejected): Beta/next npm publishing remains follow-on release-publish scope; US-251 only locks ordering, runner shape, and error wrapping.
+- Verification: focused release tests, typecheck, lint, and changed-file diagnostics passed.
+- **Learnings for future iterations:** Release stage metadata should model the future artifact-family matrix even while a stage body is still stubbed, so later stories do not have to undo tests that encoded a temporary skip.
+---
+
 ## 2026-06-12 09:10 CDT - US-219
 - Shipped contract-field and manifest-field deprecations across plugin manifests, recipe manifests, Landofile tooling, built-in command/alias/flag/arg contracts, built-in event/render/service/route surfaces, and the schema/plugin registry walks that populate `DeprecationService`. Invalid deprecation notices now fail strict manifest decoding before plugin surfaces can be used, while command caches and provider/planner consumers preserve contribution object refs by id.
 - Verification: focused RED→GREEN built-in contract walk test, focused deprecation/schema/manifest/cache/plugin-registry matrix, typecheck, lint, schema snapshot codegen, guide coverage/lint, story guide scenario, and compiled parity suites passed. Full `bun test` completed once with only self-induced concurrent guide/build races, then targeted reruns passed; isolated `core/test/scripts/dev-guides.test.ts` still shows an unrelated dev-guides harness failure (`no generated scenario output found for dev-guides-red`) outside this story's surfaces.
 - **Learnings for future iterations:** Plugin contribution arrays can now contain either string ids or `{ id, deprecated }` objects, so every command-cache/planner/provider consumer must normalize with a contribution-id helper before sorting, fingerprinting, or resolving ids. Do not run `bun test` concurrently with `dev:guides` or `build:compile`; generated guide output and `core/dist/lando` are shared artifacts and will race.
+---
+
+## 2026-06-12 11:40 CDT - Babysit
+- PR: #338 https://github.com/AaronFeledy/core4/pull/338
+- CI outcome: pass
+- Review feedback: fixed (Cursor Bugbot flagged library bundle stage building all workspaces; release stage now builds only release packages)
+- Merge: merged (squash)
 ---
