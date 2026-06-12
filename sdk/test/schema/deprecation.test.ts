@@ -223,6 +223,46 @@ describe("schema deprecation annotations", () => {
     );
   });
 
+  test("propagates optionalWith transformation field deprecations to JSON Schema and reference docs", () => {
+    const OptionalWithSchema = Schema.Struct({
+      oldField: Schema.optionalWith(deprecateField(Schema.String, notice), { default: () => "legacy" }),
+      newField: Schema.String,
+    });
+    const jsonSchema = getJsonSchemaWithDeprecations(OptionalWithSchema) as {
+      readonly properties?: Record<
+        string,
+        { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown }
+      >;
+    };
+    const markdown = renderSchemaReferenceMarkdown("OptionalWithDeprecatedSchema", OptionalWithSchema);
+
+    expect(jsonSchema.properties?.oldField?.deprecated).toBe(true);
+    expect(jsonSchema.properties?.oldField?.["x-deprecation"]).toEqual(notice);
+    expect(jsonSchema.properties?.newField?.deprecated).toBeUndefined();
+    expect(markdown).toContain(
+      "| `oldField` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+    );
+  });
+
+  test("propagates union branch field deprecations to matching JSON Schema anyOf members", () => {
+    const UnionSchema = Schema.Union(
+      Schema.Struct({ kind: Schema.Literal("old"), oldField: deprecateField(Schema.String, notice) }),
+      Schema.Struct({ kind: Schema.Literal("new"), newField: Schema.String }),
+    );
+    const jsonSchema = getJsonSchemaWithDeprecations(UnionSchema) as {
+      readonly anyOf?: ReadonlyArray<{
+        readonly properties?: Record<
+          string,
+          { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown }
+        >;
+      }>;
+    };
+
+    expect(jsonSchema.anyOf?.[0]?.properties?.oldField?.deprecated).toBe(true);
+    expect(jsonSchema.anyOf?.[0]?.properties?.oldField?.["x-deprecation"]).toEqual(notice);
+    expect(jsonSchema.anyOf?.[1]?.properties?.newField?.deprecated).toBeUndefined();
+  });
+
   test("omits generated reference field table when no fields are deprecated", () => {
     const markdown = renderSchemaReferenceMarkdown(
       "NoDeprecatedFieldsSchema",

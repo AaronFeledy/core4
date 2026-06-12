@@ -24,6 +24,7 @@ const findSchemaDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
 
   if (AST.isRefinement(ast)) return findSchemaDeprecation(ast.from);
   if (AST.isSuspend(ast)) return findSchemaDeprecation(ast.f());
+  if (AST.isTransformation(ast)) return findSchemaDeprecation(ast.from);
   if (AST.isUnion(ast)) {
     for (const member of ast.types) {
       const memberNotice = findSchemaDeprecation(member);
@@ -37,16 +38,24 @@ const findSchemaDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
 const findTupleElementDeprecation = (element: TupleElement): DeprecationNotice | undefined =>
   getSchemaDeprecation(element) ?? findSchemaDeprecation(element.type);
 
+const schemaReferenceAst = (ast: AST.AST): AST.AST => {
+  if (AST.isRefinement(ast)) return schemaReferenceAst(ast.from);
+  if (AST.isSuspend(ast)) return schemaReferenceAst(ast.f());
+  if (AST.isTransformation(ast)) return schemaReferenceAst(ast.from);
+  return ast;
+};
+
 const findSchemaReferenceDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
   const notice = findSchemaDeprecation(ast);
   if (notice !== undefined) return notice;
 
-  if (AST.isTupleType(ast)) {
-    for (const element of ast.elements) {
+  const referenceAst = schemaReferenceAst(ast);
+  if (AST.isTupleType(referenceAst)) {
+    for (const element of referenceAst.elements) {
       const elementNotice = getSchemaDeprecation(element) ?? findSchemaReferenceDeprecation(element.type);
       if (elementNotice !== undefined) return elementNotice;
     }
-    for (const rest of ast.rest) {
+    for (const rest of referenceAst.rest) {
       const restNotice = getSchemaDeprecation(rest) ?? findSchemaReferenceDeprecation(rest.type);
       if (restNotice !== undefined) return restNotice;
     }
@@ -71,6 +80,14 @@ const schemaProperties = (target: unknown): Record<string, unknown> | undefined 
   return properties !== null && typeof properties === "object" && !Array.isArray(properties)
     ? (properties as Record<string, unknown>)
     : undefined;
+};
+
+const unionBranchSchemas = (target: unknown): readonly unknown[] | undefined => {
+  const targetObject = jsonObject(target);
+  if (targetObject === undefined) return undefined;
+  if (Array.isArray(targetObject.anyOf)) return targetObject.anyOf;
+  if (Array.isArray(targetObject.oneOf)) return targetObject.oneOf;
+  return undefined;
 };
 
 const applyTupleElementDeprecations = (target: unknown, element: TupleElement): void => {
@@ -100,6 +117,16 @@ const applyTupleDeprecations = (target: unknown, ast: AST.TupleType): void => {
   if (rest !== undefined && restSchema !== undefined) applyTupleElementDeprecations(restSchema, rest);
 };
 
+const applyUnionDeprecations = (target: unknown, ast: AST.Union): void => {
+  const branches = unionBranchSchemas(target);
+  if (branches !== undefined && branches.length === ast.types.length) {
+    for (const [index, member] of ast.types.entries()) applyDeprecationsFromAst(branches[index], member);
+    return;
+  }
+
+  for (const member of ast.types) applyDeprecationsFromAst(target, member);
+};
+
 const applyDeprecationsFromAst = (target: unknown, ast: AST.AST): void => {
   applyDeprecation(target, ast);
 
@@ -113,8 +140,13 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST): void => {
     return;
   }
 
+  if (AST.isTransformation(ast)) {
+    applyDeprecationsFromAst(target, ast.from);
+    return;
+  }
+
   if (AST.isUnion(ast)) {
-    for (const member of ast.types) applyDeprecationsFromAst(target, member);
+    applyUnionDeprecations(target, ast);
     return;
   }
 
@@ -186,7 +218,7 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(name: string
   const notice = getSchemaDeprecation(schema.ast);
   if (notice !== undefined) lines.push("> [!WARNING]", `> ${formatDeprecationNotice(notice)}`, "");
 
-  const ast = AST.isRefinement(schema.ast) ? schema.ast.from : schema.ast;
+  const ast = schemaReferenceAst(schema.ast);
   if (AST.isTypeLiteral(ast) && ast.propertySignatures.length > 0) {
     const rows: string[] = [];
     for (const property of ast.propertySignatures) {
