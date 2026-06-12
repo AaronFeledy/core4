@@ -102,6 +102,35 @@ describe("appConfigTranslate", () => {
     });
   });
 
+  test("rejects unsupported tooling flag metadata before translation", async () => {
+    const cwd = await makeAppDir(
+      [
+        "name: demo",
+        "runtime: 4",
+        "tooling:",
+        "  echo:",
+        "    cmd: echo hi",
+        "    flags:",
+        "      verbose:",
+        "        type: boolean",
+        "",
+      ].join("\n"),
+    );
+    const translators = [makeTranslator("v3", { services: { db: { type: "mysql:8.0" } } })];
+
+    const exit = await runExit(appConfigTranslate({ cwd, translators }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
+        expect((failure.value as { message: string }).message).toContain('Tooling flags field "type"');
+      }
+    }
+  });
+
   test("fails with LandofileNotFoundError when there is no Landofile", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-translate-empty-"));
     dirs.push(dir);

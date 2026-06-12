@@ -8,6 +8,7 @@ import {
   ConfigTranslateNoTranslatorsError,
   LandofileNotFoundError,
   LandofileParseError,
+  type NotImplementedError,
 } from "@lando/sdk/errors";
 import type { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import { LandofileShape } from "@lando/sdk/schema";
@@ -18,6 +19,7 @@ import { runConfigTranslators } from "../../landofile/config-translate.ts";
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import { mergeLandofiles } from "../../landofile/merge.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
+import { rejectBetaToolingFeatures } from "../../landofile/tooling-beta.ts";
 import { emitLandofileYaml } from "../../landofile/yaml-emit.ts";
 
 export type AppConfigTranslateFormat = "text" | "json";
@@ -39,6 +41,7 @@ export interface AppConfigTranslateResult {
 export type AppConfigTranslateError =
   | LandofileNotFoundError
   | LandofileParseError
+  | NotImplementedError
   | ConfigTranslateNoTranslatorsError
   | ConfigTranslateError
   | ConfigTranslatorConflictError;
@@ -94,6 +97,7 @@ export const appConfigTranslate = (
         }),
     });
     const parsed = yield* parseLandofile({ file: inputPath, content, cwd: appRoot });
+    yield* rejectBetaToolingFeatures(inputPath, parsed);
     const currentDecoded = decodeLandofile(parsed, { onExcessProperty: "error" });
     if (currentDecoded._tag === "Left") {
       return yield* Effect.fail(
@@ -115,6 +119,7 @@ export const appConfigTranslate = (
     });
 
     const merged = mergeLandofiles([parsed as Record<string, unknown>, fragment as Record<string, unknown>]);
+    yield* rejectBetaToolingFeatures(inputPath, merged);
     const mergedDecoded = decodeLandofile(merged, { onExcessProperty: "error" });
     if (mergedDecoded._tag === "Left") {
       return yield* Effect.fail(
