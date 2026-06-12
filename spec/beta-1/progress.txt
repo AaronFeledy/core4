@@ -308,3 +308,10 @@
 - Verification: focused red/green regression, deprecation lint script surface, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:** Named-export deprecation checks must collect every local declaration shape that can carry TSDoc (`const`, `function`, and `class`), otherwise a deprecated local can bypass runtime `markDeprecated` enforcement simply by being exported separately.
 ---
+
+## 2026-06-12 18:35 CDT - US-220 Review
+- Reviewed the build step's deprecation-gate hardening (explicit markDeprecated export-id overload + MISMATCHED enforcement, deprecated-function named-export catch, type-only skip, external re-export skip). No in-scope blockers found; made no code changes.
+- Review notes (rejected): Oracle flagged three lint-gate shapes as unenforced — external re-exports (`export { x } from "./mod"`), `export default` expressions, and `export enum`/`export namespace`. Rejected as theoretical: the scanned source (sdk/src, core/src, plugins) currently has ZERO `@deprecated` tags, no deprecated default exports, and no enums/namespaces, so none is a real false-pass. The external re-export skip is the correct single-file-scan decision (cross-module bindings aren't in same-file localDeclarations, so checking them would false-positive on every source-tagged re-export); real deprecated runtime exports are enforced on their source declaration. Cross-module resolution / default+enum+namespace fail-cases are forward-looking hardening, out of scope for US-220.
+- Verification: typecheck, lint (incl. check:deprecations gate), and full `bun test` (3400 pass / 0 fail) passed.
+- **Learnings for future iterations:** If the deprecation model later tags a barrel-only re-export, `export default`, an enum, or a namespace as `@deprecated`, `scripts/check-deprecations.ts` will silently pass it — harden those AST shapes (and add cross-module resolution for re-exports) at that point.
+---
