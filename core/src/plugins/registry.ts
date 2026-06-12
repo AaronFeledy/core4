@@ -37,7 +37,7 @@ const loadInstalledPluginManifest = async (packageRoot: string): Promise<PluginM
     throw pluginManifestError(`Plugin package.json is invalid: ${packageJsonPath}`, cause);
   }
   const candidate = (parsed as { landoPlugin?: unknown }).landoPlugin ?? parsed;
-  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate);
+  const decoded = Schema.decodeUnknownEither(PluginManifest)(candidate, { onExcessProperty: "error" });
   if (Either.isLeft(decoded)) {
     throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.left);
   }

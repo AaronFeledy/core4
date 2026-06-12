@@ -5,6 +5,7 @@ import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Stream } from "
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import type { DeprecationNotice } from "@lando/sdk/schema";
 import { DeprecationService, EventService, PluginRegistry, Telemetry } from "@lando/sdk/services";
+import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
 import { DeprecationPluginRegistryLive } from "../../src/deprecation/plugin-registry.ts";
 import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../src/deprecation/telemetry.ts";
@@ -198,6 +199,14 @@ describe("DeprecationServiceLive", () => {
           version: "1.0.0",
           api: 4,
           deprecated: pluginNotice,
+          contributes: {
+            commands: [{ id: "meta:legacy", deprecated: pluginNotice }],
+            serviceTypes: [{ id: "legacy:php", deprecated: pluginNotice }],
+            globalServices: [{ id: "legacy-global", deprecated: pluginNotice }],
+            setup: {
+              flags: [{ name: "legacy-setup", type: "boolean", deprecated: pluginNotice }],
+            },
+          },
         },
       ]),
       load: () => Effect.die("not used"),
@@ -208,10 +217,110 @@ describe("DeprecationServiceLive", () => {
     const lookup = await Effect.runPromise(
       Effect.gen(function* () {
         const service = yield* DeprecationService;
-        return yield* service.lookup("plugin", "@lando/legacy-plugin");
+        return {
+          plugin: yield* service.lookup("plugin", "@lando/legacy-plugin"),
+          command: yield* service.lookup("command", "meta:legacy"),
+          serviceType: yield* service.lookup("service-type", "legacy:php"),
+          globalService: yield* service.lookup(
+            "manifest-contribution",
+            "@lando/legacy-plugin:globalServices.legacy-global",
+          ),
+          setupFlag: yield* service.lookup("flag", "@lando/legacy-plugin:setup.legacy-setup"),
+        };
       }).pipe(Effect.provide(Layer.mergeAll(deps, DeprecationPluginRegistryLive.pipe(Layer.provide(deps))))),
     );
 
+    expect(Option.isSome(lookup.plugin)).toBe(true);
+    expect(Option.isSome(lookup.command)).toBe(true);
+    expect(Option.isSome(lookup.serviceType)).toBe(true);
+    expect(Option.isSome(lookup.globalService)).toBe(true);
+    expect(Option.isSome(lookup.setupFlag)).toBe(true);
+  });
+
+  test("deprecated built-in commands register implicit top-level aliases with the canonical notice", async () => {
+    const commandNotice: DeprecationNotice = {
+      since: "4.2.0",
+      severity: "warn",
+      note: "Use app:up instead.",
+    };
+
+    const lookup = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* DeprecationService;
+        yield* registerBuiltInContractDeprecations(service, {
+          commands: [
+            {
+              id: "app:legacy-start",
+              deprecated: commandNotice,
+              topLevelAlias: true,
+            },
+          ],
+        });
+        return yield* service.lookup("command", "legacy-start");
+      }).pipe(Effect.provide(DeprecationServiceLive)),
+    );
+
     expect(Option.isSome(lookup)).toBe(true);
+  });
+
+  test("built-in command contract deprecations and alias deprecations are registered separately", async () => {
+    const commandNotice: DeprecationNotice = {
+      since: "4.2.0",
+      severity: "warn",
+      note: "Use meta:doctor instead.",
+    };
+    const aliasNotice: DeprecationNotice = {
+      since: "4.2.0",
+      severity: "warn",
+      note: "Use doctor instead.",
+    };
+    const flagNotice: DeprecationNotice = {
+      since: "4.2.0",
+      severity: "warn",
+      note: "Use --format=json instead.",
+    };
+
+    const lookup = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* DeprecationService;
+        yield* registerBuiltInContractDeprecations(service, {
+          commands: [
+            {
+              id: "meta:legacy-doctor",
+              deprecated: commandNotice,
+              aliases: [{ name: "legacy-doctor", deprecated: aliasNotice }],
+              flags: { legacy: { deprecated: flagNotice } },
+            },
+          ],
+          lifecycleEvents: [{ id: "pre-legacy", deprecated: commandNotice }],
+          eventFields: [{ id: "pre-legacy.legacyField", deprecated: commandNotice }],
+          renderEvents: [{ id: "legacy.render", deprecated: commandNotice }],
+          serviceTypes: [{ id: "legacy-service", deprecated: commandNotice }],
+          serviceFeatures: [{ id: "legacy-feature", deprecated: commandNotice }],
+          routeFilters: [{ id: "legacy-filter", deprecated: commandNotice }],
+        });
+        return {
+          command: yield* service.lookup("command", "meta:legacy-doctor"),
+          alias: yield* service.lookup("command", "legacy-doctor"),
+          flag: yield* service.lookup("flag", "meta:legacy-doctor --legacy"),
+          lifecycleEvent: yield* service.lookup("event", "pre-legacy"),
+          eventField: yield* service.lookup("event-field", "pre-legacy.legacyField"),
+          renderEvent: yield* service.lookup("render-event", "legacy.render"),
+          serviceType: yield* service.lookup("service-type", "legacy-service"),
+          serviceFeature: yield* service.lookup("service-feature", "legacy-feature"),
+          routeFilter: yield* service.lookup("route-filter", "legacy-filter"),
+        };
+      }).pipe(Effect.provide(DeprecationServiceLive)),
+    );
+
+    expect(Option.isSome(lookup.command)).toBe(true);
+    expect(Option.isSome(lookup.alias)).toBe(true);
+    expect(Option.isSome(lookup.flag)).toBe(true);
+    expect(Option.isSome(lookup.lifecycleEvent)).toBe(true);
+    expect(Option.isSome(lookup.eventField)).toBe(true);
+    expect(Option.isSome(lookup.renderEvent)).toBe(true);
+    expect(Option.isSome(lookup.serviceType)).toBe(true);
+    expect(Option.isSome(lookup.serviceFeature)).toBe(true);
+    expect(Option.isSome(lookup.routeFilter)).toBe(true);
   });
 });

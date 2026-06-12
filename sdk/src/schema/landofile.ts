@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { BuildScript } from "./artifacts.ts";
+import { DeprecationNotice } from "./deprecation.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
 
@@ -184,6 +185,22 @@ export type ToolingVarPrompt = typeof ToolingVarPrompt.Type;
 export const ToolingVar = Schema.Union(ToolingVarLiteral, ToolingVarDefault, ToolingVarSh, ToolingVarPrompt);
 export type ToolingVar = typeof ToolingVar.Type;
 
+export const ToolingFlagShape = Schema.Struct({
+  type: Schema.optional(Schema.Literal("boolean", "option")),
+  description: Schema.optional(Schema.String),
+  default: Schema.optional(ToolingVarLiteral),
+  deprecated: Schema.optional(DeprecationNotice),
+});
+export type ToolingFlagShape = typeof ToolingFlagShape.Type;
+
+export const ToolingArgShape = Schema.Struct({
+  description: Schema.optional(Schema.String),
+  required: Schema.optional(Schema.Boolean),
+  default: Schema.optional(ToolingVarLiteral),
+  deprecated: Schema.optional(DeprecationNotice),
+});
+export type ToolingArgShape = typeof ToolingArgShape.Type;
+
 /**
  * ToolingTaskShape — Landofile `tooling.<name>` task entry accepted by this
  * schema.
@@ -195,6 +212,9 @@ export type ToolingVar = typeof ToolingVar.Type;
  * - `cmds:` — sequential command list (strings only in this schema).
  * - `vars:` — accepted `ToolingVar` forms only.
  *
+ * Supported deprecation metadata:
+ * `deprecated:`, `flags.<name>.deprecated:`, and `args.<name>.deprecated:`.
+ *
  * Unsupported fields rejected by `LandofileService` with remediation:
  * `deps:`, step-objects in `cmds:` (`task:`, `command:`, `defer:`,
  * `for:`, `cmd:` step overrides), `engine:`, `bootstrap:`, `dotenv:`,
@@ -203,7 +223,7 @@ export type ToolingVar = typeof ToolingVar.Type;
  * `preconditions:`, `if:`, `run:`, `platforms:`, `prompt:` (task-level),
  * `silent:`, `output:`, `failFast:`, `disabled:`, `aliases:`,
  * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
- * `deprecated:`, `flags:`, `args:`, `examples:`, `usage:`.
+ * `examples:`, `usage:`.
  */
 export const ToolingTaskShape = Schema.Struct({
   service: Schema.optional(Schema.String),
@@ -212,6 +232,9 @@ export const ToolingTaskShape = Schema.Struct({
   cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
   cmds: Schema.optional(Schema.Array(Schema.String)),
   vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVar })),
+  deprecated: Schema.optional(DeprecationNotice),
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingFlagShape })),
+  args: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingArgShape })),
 });
 export type ToolingTaskShape = typeof ToolingTaskShape.Type;
 

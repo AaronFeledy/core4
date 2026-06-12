@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Cause, Effect, Exit } from "effect";
 
 import { renderIncludesUpdateResult } from "@lando/core/cli/operations";
 import type { IncludeUpdateReport } from "@lando/core/cli/operations";
+import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -99,6 +101,35 @@ describe("lando app:includes:update (source dispatch)", () => {
       const result = await runCli(["app:includes:update"], dir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("no remote includes");
+    });
+  });
+
+  test("rejects non-object tooling flag metadata before updating includes", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: demo",
+          "tooling:",
+          "  echo:",
+          "    cmd: echo hi",
+          "    flags:",
+          "      verbose: true",
+          "",
+        ].join("\n"),
+      );
+
+      const exit = await Effect.runPromiseExit(appIncludesUpdate({ cwd: dir }));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
+          expect((failure.value as { message: string }).message).toContain('Tooling flags entry "verbose"');
+        }
+      }
     });
   });
 

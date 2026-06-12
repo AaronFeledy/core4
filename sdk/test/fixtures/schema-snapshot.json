@@ -1698,6 +1698,43 @@
       "type": "object"
     },
     "GlobalServiceContribution": {
+      "$defs": {
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
@@ -1712,6 +1749,9 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "deprecated": {
+          "$ref": "#/$defs/DeprecationNotice"
         },
         "enabledByDefault": {
           "type": "boolean"
@@ -2017,6 +2057,43 @@
       "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "LandofileShape": {
+      "$defs": {
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "patternProperties": {
@@ -2593,6 +2670,40 @@
           "additionalProperties": {
             "additionalProperties": false,
             "properties": {
+              "args": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "default": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "deprecated": {
+                      "$ref": "#/$defs/DeprecationNotice"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
               "cmd": {
                 "anyOf": [
                   {
@@ -2612,8 +2723,46 @@
                 },
                 "type": "array"
               },
+              "deprecated": {
+                "$ref": "#/$defs/DeprecationNotice"
+              },
               "description": {
                 "type": "string"
+              },
+              "flags": {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "default": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "boolean"
+                        }
+                      ]
+                    },
+                    "deprecated": {
+                      "$ref": "#/$defs/DeprecationNotice"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "enum": ["boolean", "option"],
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
               },
               "service": {
                 "type": "string"
@@ -2882,19 +3031,70 @@
           "properties": {
             "cas": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "commands": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "fileSyncEngines": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
@@ -2913,6 +3113,9 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "deprecated": {
+                    "$ref": "#/$defs/DeprecationNotice"
                   },
                   "enabledByDefault": {
                     "type": "boolean"
@@ -2947,37 +3150,139 @@
             },
             "loggers": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "providers": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "proxies": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "renderers": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "serviceFeatures": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
             "serviceTypes": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             },
@@ -2988,6 +3293,9 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
                       "description": {
                         "type": "string"
                       },
@@ -3016,7 +3324,24 @@
             },
             "templateEngines": {
               "items": {
-                "type": "string"
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deprecated": {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      },
+                      "id": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["id"],
+                    "type": "object"
+                  }
+                ]
               },
               "type": "array"
             }

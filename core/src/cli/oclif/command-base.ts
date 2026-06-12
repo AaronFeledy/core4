@@ -3,6 +3,7 @@ import { Command } from "@oclif/core";
 import { Effect, type Layer } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import type { DeprecationNotice } from "@lando/sdk/schema";
 import type { Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
@@ -36,9 +37,14 @@ export type LandoCommandNamespace = "app" | "apps" | "meta";
  *   - `"name"`: register the given name as the top-level alias instead of
  *     the auto-derived name. Multi-segment values like `"plugin:add"` are
  *     accepted.
- *   - `["a", "b"]`: register multiple top-level aliases.
+ *   - `{ name, deprecated }`: register an alias with its own deprecation notice.
+ *   - `["a", { name, deprecated }]`: register multiple top-level aliases.
  */
-export type LandoTopLevelAlias = boolean | string | ReadonlyArray<string>;
+export type LandoAliasSpec = string | { readonly name: string; readonly deprecated?: DeprecationNotice };
+export type LandoTopLevelAlias = boolean | LandoAliasSpec | ReadonlyArray<LandoAliasSpec>;
+
+const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAliasSpec> =>
+  Array.isArray(value);
 
 export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   /**
@@ -50,8 +56,9 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly summary: string;
   readonly description?: string;
   readonly namespace: LandoCommandNamespace;
+  readonly deprecated?: DeprecationNotice;
   readonly topLevelAlias?: LandoTopLevelAlias;
-  readonly aliases?: ReadonlyArray<string>;
+  readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;
   readonly hidden?: boolean;
   readonly bootstrap:
@@ -153,7 +160,7 @@ export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined 
 
 /** Resolve the OCLIF `aliases` array from `topLevelAlias` and any explicit aliases. */
 export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {
-  const explicit = spec.aliases ?? [];
+  const explicit = (spec.aliases ?? []).map((alias) => (typeof alias === "string" ? alias : alias.name));
   const top = spec.topLevelAlias;
 
   if (top === false || top === undefined) {
@@ -169,7 +176,13 @@ export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<st
     return Array.from(new Set([...explicit, top]));
   }
 
-  return Array.from(new Set([...explicit, ...top]));
+  if (!isAliasArray(top)) {
+    return Array.from(new Set([...explicit, top.name]));
+  }
+
+  return Array.from(
+    new Set([...explicit, ...top.map((alias) => (typeof alias === "string" ? alias : alias.name))]),
+  );
 };
 
 /**

@@ -3,6 +3,9 @@ import { deserialize, serialize } from "node:v8";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
+const contributionId = (entry: string | { readonly id: string }): string =>
+  typeof entry === "string" ? entry : entry.id;
+
 export const COMMAND_INDEX_SCHEMA_VERSION = 1n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
@@ -93,7 +96,9 @@ export const derivePluginCommandIdsByPlugin = (
         (manifest) =>
           [
             manifest.name,
-            [...(manifest.contributes?.commands ?? [])].sort((a, b) => a.localeCompare(b)),
+            [...(manifest.contributes?.commands ?? [])]
+              .map(contributionId)
+              .sort((a, b) => a.localeCompare(b)),
           ] as const,
       )
       .sort(([a], [b]) => a.localeCompare(b)),

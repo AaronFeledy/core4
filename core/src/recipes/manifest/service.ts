@@ -35,17 +35,6 @@ interface BetaFinding {
   readonly message: string;
 }
 
-const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-  const obj = parsed as Record<string, unknown>;
-  if (Object.hasOwn(obj, "deprecated")) {
-    return {
-      message: `Recipe-wide \`deprecated:\` notice is not supported in recipes at ${source}.`,
-    };
-  }
-  return undefined;
-};
-
 const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
   const obj = parsed as Record<string, unknown>;
@@ -59,11 +48,6 @@ const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefine
     if (prompt.type === "editor") {
       return {
         message: `Prompt type \`editor\` in prompt "${name}" is not supported in recipes at ${source}.`,
-      };
-    }
-    if (Object.hasOwn(prompt, "deprecated")) {
-      return {
-        message: `Per-prompt \`deprecated:\` notice in prompt "${name}" is not supported in recipes at ${source}.`,
       };
     }
   }
@@ -92,8 +76,7 @@ const scanPostInitBeta = (parsed: unknown, source: string): BetaFinding | undefi
 };
 
 const rejectBetaSections = (source: string, parsed: unknown): Effect.Effect<unknown, NotImplementedError> => {
-  const finding =
-    scanTopLevelBeta(parsed, source) ?? scanPromptBeta(parsed, source) ?? scanPostInitBeta(parsed, source);
+  const finding = scanPromptBeta(parsed, source) ?? scanPostInitBeta(parsed, source);
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({
