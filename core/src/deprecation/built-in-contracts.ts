@@ -56,8 +56,11 @@ const isDeprecatedField = (value: unknown): value is DeprecatedFieldContract =>
 const aliasName = (entry: DeprecationContractAliasEntry): string =>
   typeof entry === "string" ? entry : entry.name;
 
-const aliasNotice = (entry: DeprecationContractAliasEntry): DeprecationNotice | undefined =>
-  typeof entry === "string" ? undefined : entry.deprecated;
+const aliasNotice = (
+  entry: DeprecationContractAliasEntry,
+  canonicalNotice: DeprecationNotice | undefined,
+): DeprecationNotice | undefined =>
+  typeof entry === "string" ? canonicalNotice : (entry.deprecated ?? canonicalNotice);
 
 const isAliasEntryArray = (
   value: Exclude<DeprecationContractTopLevelAlias, undefined>,
@@ -89,7 +92,7 @@ export const registerBuiltInCommandDeprecations = (
           "command",
           command.id,
           aliasName(entry),
-          aliasNotice(entry),
+          aliasNotice(entry, command.deprecated),
         );
       }
       for (const [name, spec] of Object.entries(command.flags ?? {})) {

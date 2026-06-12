@@ -237,6 +237,32 @@ describe("DeprecationServiceLive", () => {
     expect(Option.isSome(lookup.setupFlag)).toBe(true);
   });
 
+  test("deprecated built-in commands register implicit top-level aliases with the canonical notice", async () => {
+    const commandNotice: DeprecationNotice = {
+      since: "4.2.0",
+      severity: "warn",
+      note: "Use app:up instead.",
+    };
+
+    const lookup = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* DeprecationService;
+        yield* registerBuiltInContractDeprecations(service, {
+          commands: [
+            {
+              id: "app:legacy-start",
+              deprecated: commandNotice,
+              topLevelAlias: true,
+            },
+          ],
+        });
+        return yield* service.lookup("command", "legacy-start");
+      }).pipe(Effect.provide(DeprecationServiceLive)),
+    );
+
+    expect(Option.isSome(lookup)).toBe(true);
+  });
+
   test("built-in command contract deprecations and alias deprecations are registered separately", async () => {
     const commandNotice: DeprecationNotice = {
       since: "4.2.0",
