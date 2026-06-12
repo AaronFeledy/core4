@@ -295,3 +295,10 @@
 - Verification: focused deprecation/export compatibility tests, `check:deprecations`, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:** Keep deprecated public TypeScript exports Effect-returning when using `markDeprecated()` so runtime recording can ride the ambient `DeprecationService`; the TSDoc text must include the notice note and replacement so IDE/API output stays aligned with machine-readable metadata.
 ---
+
+## 2026-06-12 15:23 CDT - US-220 Review
+- Closed a soundness hole in the new `scripts/check-deprecations.ts` lint gate: a public deprecated export whose TSDoc `@deprecated` sat on the local declaration and was re-exported via a bare untagged `export { name }` slipped through unrecorded. The gate now resolves the local declaration's tag node so these exports are enforced like any other; added a regression test.
+- Review notes (rejected): deprecated `interface`/type-only exports stay unflagged (cannot be wrapped by `markDeprecated()` at runtime); imported-notice text parity degrading to "non-empty TSDoc passes" kept as acceptable graceful degradation, not a blocker.
+- Verification: focused deprecation/scripts/exports tests, full `core/test/deprecation` + `core/test/scripts` suites, typecheck, and lint (incl. `check:deprecations`) passed.
+- **Learnings for future iterations:** TypeScript JSDoc attaches to the enclosing `VariableStatement`, not the `VariableDeclaration`, so any AST scanner enforcing tag rules on `const x = ...; export { x }` must resolve the statement, not the declaration.
+---
