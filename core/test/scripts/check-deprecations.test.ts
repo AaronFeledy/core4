@@ -6,17 +6,33 @@ import { describe, expect, test } from "bun:test";
 
 import { checkDeprecationTsdoc } from "../../../scripts/check-deprecations.ts";
 
+type DeprecationOffender = Awaited<ReturnType<typeof checkDeprecationTsdoc>>["offenders"][number];
+
 const makeFixtureRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-deprecations-"));
+
+const withFixtureRoot = async (run: (root: string) => Promise<void>): Promise<void> => {
+  const root = await makeFixtureRoot();
+  try {
+    await run(root);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+};
 
 const write = async (root: string, path: string, content: string): Promise<void> => {
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content, "utf8");
 };
 
+const offenderSummaries = (root: string, offenders: readonly DeprecationOffender[]): string[] =>
+  offenders.map(
+    (offender) =>
+      `${relative(root, offender.file)}:${offender.line}:${offender.exportName}:${offender.reason}`,
+  );
+
 describe("deprecation TSDoc lint gate", () => {
   test("passes public deprecated exports with markDeprecated or tagged-error metadata", async () => {
-    const root = await makeFixtureRoot();
-    try {
+    await withFixtureRoot(async (root) => {
       await write(
         root,
         "sdk/src/public.ts",
@@ -36,14 +52,11 @@ describe("deprecation TSDoc lint gate", () => {
       );
 
       expect(await checkDeprecationTsdoc({ root })).toEqual({ ok: true, offenders: [] });
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+    });
   });
 
   test("fails public deprecated exports without runtime metadata", async () => {
-    const root = await makeFixtureRoot();
-    try {
+    await withFixtureRoot(async (root) => {
       await write(
         root,
         "sdk/src/public.ts",
@@ -58,23 +71,15 @@ describe("deprecation TSDoc lint gate", () => {
       const result = await checkDeprecationTsdoc({ root });
 
       expect(result.ok).toBe(false);
-      expect(
-        result.offenders.map(
-          (offender) =>
-            `${relative(root, offender.file)}:${offender.line}:${offender.exportName}:${offender.reason}`,
-        ),
-      ).toEqual([
+      expect(offenderSummaries(root, result.offenders)).toEqual([
         "sdk/src/public.ts:3:oldApi:missing markDeprecated(notice, impl) wrapper",
         "sdk/src/public.ts:5:OldError:missing static readonly deprecation metadata",
       ]);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+    });
   });
 
   test("rejects non-tagged classes and stale TSDoc text", async () => {
-    const root = await makeFixtureRoot();
-    try {
+    await withFixtureRoot(async (root) => {
       await write(
         root,
         "sdk/src/public.ts",
@@ -94,23 +99,15 @@ describe("deprecation TSDoc lint gate", () => {
       const result = await checkDeprecationTsdoc({ root });
 
       expect(result.ok).toBe(false);
-      expect(
-        result.offenders.map(
-          (offender) =>
-            `${relative(root, offender.file)}:${offender.line}:${offender.exportName}:${offender.reason}`,
-        ),
-      ).toEqual([
+      expect(offenderSummaries(root, result.offenders)).toEqual([
         "sdk/src/public.ts:6:oldApi:@deprecated text must include DeprecationNotice note/replacement",
         "sdk/src/public.ts:8:OldThing:static readonly deprecation metadata is only accepted on tagged errors",
       ]);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+    });
   });
 
   test("checks deprecated named export declarations against local runtime metadata", async () => {
-    const root = await makeFixtureRoot();
-    try {
+    await withFixtureRoot(async (root) => {
       await write(
         root,
         "sdk/src/public.ts",
@@ -130,20 +127,14 @@ describe("deprecation TSDoc lint gate", () => {
       const result = await checkDeprecationTsdoc({ root });
 
       expect(result.ok).toBe(false);
-      expect(
-        result.offenders.map(
-          (offender) =>
-            `${relative(root, offender.file)}:${offender.line}:${offender.exportName}:${offender.reason}`,
-        ),
-      ).toEqual(["sdk/src/public.ts:10:missingRuntime:missing markDeprecated(notice, impl) wrapper"]);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:10:missingRuntime:missing markDeprecated(notice, impl) wrapper",
+      ]);
+    });
   });
 
   test("flags a deprecated local declaration exported via an untagged named export", async () => {
-    const root = await makeFixtureRoot();
-    try {
+    await withFixtureRoot(async (root) => {
       await write(
         root,
         "sdk/src/public.ts",
@@ -158,14 +149,9 @@ describe("deprecation TSDoc lint gate", () => {
       const result = await checkDeprecationTsdoc({ root });
 
       expect(result.ok).toBe(false);
-      expect(
-        result.offenders.map(
-          (offender) =>
-            `${relative(root, offender.file)}:${offender.line}:${offender.exportName}:${offender.reason}`,
-        ),
-      ).toEqual(["sdk/src/public.ts:5:oldApi:missing markDeprecated(notice, impl) wrapper"]);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:5:oldApi:missing markDeprecated(notice, impl) wrapper",
+      ]);
+    });
   });
 });

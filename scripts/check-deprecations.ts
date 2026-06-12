@@ -21,6 +21,11 @@ interface CheckDeprecationTsdocOptions {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 const SCANNED_ROOTS = ["sdk/src", "core/src", "plugins"] as const;
+const MISSING_MARK_DEPRECATED_REASON = "missing markDeprecated(notice, impl) wrapper";
+const MISSING_DEPRECATION_METADATA_REASON = "missing static readonly deprecation metadata";
+const STALE_TSDOC_REASON = "@deprecated text must include DeprecationNotice note/replacement";
+const INVALID_DEPRECATION_METADATA_REASON =
+  "static readonly deprecation metadata is only accepted on tagged errors";
 
 const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   try {
@@ -43,17 +48,14 @@ const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   }
 };
 
-const hasExportModifier = (node: ts.Node): boolean =>
-  ts.canHaveModifiers(node) &&
-  (ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword) ?? false);
+const hasModifier = (node: ts.Node, kind: ts.SyntaxKind): boolean =>
+  ts.canHaveModifiers(node) && (ts.getModifiers(node)?.some((modifier) => modifier.kind === kind) ?? false);
 
-const hasReadonlyModifier = (node: ts.Node): boolean =>
-  ts.canHaveModifiers(node) &&
-  (ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.ReadonlyKeyword) ?? false);
+const hasExportModifier = (node: ts.Node): boolean => hasModifier(node, ts.SyntaxKind.ExportKeyword);
 
-const hasStaticModifier = (node: ts.Node): boolean =>
-  ts.canHaveModifiers(node) &&
-  (ts.getModifiers(node)?.some((modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword) ?? false);
+const hasReadonlyModifier = (node: ts.Node): boolean => hasModifier(node, ts.SyntaxKind.ReadonlyKeyword);
+
+const hasStaticModifier = (node: ts.Node): boolean => hasModifier(node, ts.SyntaxKind.StaticKeyword);
 
 const hasDeprecatedTag = (node: ts.Node): boolean => ts.getJSDocDeprecatedTag(node) !== undefined;
 
@@ -202,24 +204,14 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
       for (const declaration of statement.declarationList.declarations) {
         const exportName = propertyNameText(declaration.name) ?? "<destructured>";
         if (!isMarkDeprecatedCall(declaration.initializer)) {
-          offenders.push(
-            offender(source, file, statement, exportName, "missing markDeprecated(notice, impl) wrapper"),
-          );
+          offenders.push(offender(source, file, statement, exportName, MISSING_MARK_DEPRECATED_REASON));
         } else if (
           !tsdocMatchesNotice(
             deprecatedTagText(statement),
             markDeprecatedNoticeText(declaration.initializer, notices),
           )
         ) {
-          offenders.push(
-            offender(
-              source,
-              file,
-              statement,
-              exportName,
-              "@deprecated text must include DeprecationNotice note/replacement",
-            ),
-          );
+          offenders.push(offender(source, file, statement, exportName, STALE_TSDOC_REASON));
         }
       }
       continue;
@@ -232,7 +224,7 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
           file,
           statement,
           statement.name?.text ?? "<default>",
-          "missing markDeprecated(notice, impl) wrapper",
+          MISSING_MARK_DEPRECATED_REASON,
         ),
       );
       continue;
@@ -242,34 +234,16 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
       const exportName = statement.name?.text ?? "<default>";
       const metadata = deprecationMetadata(statement);
       if (metadata !== undefined && !isTaggedErrorClass(statement)) {
-        offenders.push(
-          offender(
-            source,
-            file,
-            statement,
-            exportName,
-            "static readonly deprecation metadata is only accepted on tagged errors",
-          ),
-        );
+        offenders.push(offender(source, file, statement, exportName, INVALID_DEPRECATION_METADATA_REASON));
       } else if (!hasTaggedErrorDeprecationMetadata(statement)) {
-        offenders.push(
-          offender(source, file, statement, exportName, "missing static readonly deprecation metadata"),
-        );
+        offenders.push(offender(source, file, statement, exportName, MISSING_DEPRECATION_METADATA_REASON));
       } else if (
         !tsdocMatchesNotice(
           deprecatedTagText(statement),
           noticeTextFromExpression(metadata?.initializer, notices),
         )
       ) {
-        offenders.push(
-          offender(
-            source,
-            file,
-            statement,
-            exportName,
-            "@deprecated text must include DeprecationNotice note/replacement",
-          ),
-        );
+        offenders.push(offender(source, file, statement, exportName, STALE_TSDOC_REASON));
       }
       continue;
     }
@@ -290,32 +264,20 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
         const tagNode = exportTagged ? statement : (localTagNode as ts.Node);
 
         if (declaration === undefined) {
-          offenders.push(
-            offender(source, file, statement, exportedName, "missing markDeprecated(notice, impl) wrapper"),
-          );
+          offenders.push(offender(source, file, statement, exportedName, MISSING_MARK_DEPRECATED_REASON));
           continue;
         }
 
         if (ts.isVariableDeclaration(declaration)) {
           if (!isMarkDeprecatedCall(declaration.initializer)) {
-            offenders.push(
-              offender(source, file, statement, exportedName, "missing markDeprecated(notice, impl) wrapper"),
-            );
+            offenders.push(offender(source, file, statement, exportedName, MISSING_MARK_DEPRECATED_REASON));
           } else if (
             !tsdocMatchesNotice(
               deprecatedTagText(tagNode),
               markDeprecatedNoticeText(declaration.initializer, notices),
             )
           ) {
-            offenders.push(
-              offender(
-                source,
-                file,
-                statement,
-                exportedName,
-                "@deprecated text must include DeprecationNotice note/replacement",
-              ),
-            );
+            offenders.push(offender(source, file, statement, exportedName, STALE_TSDOC_REASON));
           }
           continue;
         }
@@ -323,17 +285,11 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
         const metadata = deprecationMetadata(declaration);
         if (metadata !== undefined && !isTaggedErrorClass(declaration)) {
           offenders.push(
-            offender(
-              source,
-              file,
-              statement,
-              exportedName,
-              "static readonly deprecation metadata is only accepted on tagged errors",
-            ),
+            offender(source, file, statement, exportedName, INVALID_DEPRECATION_METADATA_REASON),
           );
         } else if (!hasTaggedErrorDeprecationMetadata(declaration)) {
           offenders.push(
-            offender(source, file, statement, exportedName, "missing static readonly deprecation metadata"),
+            offender(source, file, statement, exportedName, MISSING_DEPRECATION_METADATA_REASON),
           );
         } else if (
           !tsdocMatchesNotice(
@@ -341,15 +297,7 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
             noticeTextFromExpression(metadata?.initializer, notices),
           )
         ) {
-          offenders.push(
-            offender(
-              source,
-              file,
-              statement,
-              exportedName,
-              "@deprecated text must include DeprecationNotice note/replacement",
-            ),
-          );
+          offenders.push(offender(source, file, statement, exportedName, STALE_TSDOC_REASON));
         }
       }
     }
