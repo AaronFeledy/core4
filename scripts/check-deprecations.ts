@@ -75,7 +75,7 @@ const propertyNameText = (name: ts.PropertyName | ts.BindingName | undefined): s
 };
 
 const markDeprecatedImportBindings = (source: ts.SourceFile): ReadonlySet<string> => {
-  const bindings = new Set<string>(["markDeprecated"]);
+  const bindings = new Set<string>();
 
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly === true) continue;

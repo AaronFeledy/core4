@@ -80,8 +80,13 @@ describe("deprecation TSDoc lint gate", () => {
         "sdk/src/public.ts",
         `
           const md = (_notice: unknown, _id: string, impl: () => string) => impl;
+          function markDeprecated(_notice: unknown, _id: string, impl: () => string) {
+            return impl;
+          }
           /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
           export const oldApi = md({ since: "4.2.0", note: "Use newApi instead." }, "oldApi", () => "ok");
+          /** @deprecated Deprecated since 4.2.0. Use newerApi instead. */
+          export const olderApi = markDeprecated({ since: "4.2.0", note: "Use newerApi instead." }, "olderApi", () => "ok");
         `,
       );
 
@@ -89,7 +94,8 @@ describe("deprecation TSDoc lint gate", () => {
 
       expect(result.ok).toBe(false);
       expect(offenderSummaries(root, result.offenders)).toEqual([
-        "sdk/src/public.ts:4:oldApi:missing markDeprecated(notice, impl) wrapper",
+        "sdk/src/public.ts:7:oldApi:missing markDeprecated(notice, impl) wrapper",
+        "sdk/src/public.ts:9:olderApi:missing markDeprecated(notice, impl) wrapper",
       ]);
     });
   });
