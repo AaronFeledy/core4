@@ -12,6 +12,7 @@ type JsonObject = Record<string, unknown>;
 type SchemaLike = Schema.Schema.All;
 type JsonSchemaInput = Parameters<typeof JSONSchema.make>[0];
 type TupleElement = AST.OptionalType | AST.Type;
+type TraversalContext = { readonly root: JsonObject };
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -32,6 +33,16 @@ const findSchemaDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
     }
   }
 
+  return undefined;
+};
+
+const findJsonNodeDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
+  const notice = getSchemaDeprecation(ast);
+  if (notice !== undefined) return notice;
+
+  if (AST.isRefinement(ast)) return findJsonNodeDeprecation(ast.from);
+  if (AST.isSuspend(ast)) return findJsonNodeDeprecation(ast.f());
+  if (AST.isTransformation(ast)) return findJsonNodeDeprecation(ast.from);
   return undefined;
 };
 
@@ -73,7 +84,28 @@ const setDeprecation = (target: unknown, notice: DeprecationNotice | undefined):
 };
 
 const applyDeprecation = (target: unknown, ast: AST.AST): void =>
-  setDeprecation(target, findSchemaDeprecation(ast));
+  setDeprecation(target, findJsonNodeDeprecation(ast));
+
+const decodeJsonPointerSegment = (segment: string): string => {
+  const decoded = segment.includes("%") ? decodeURIComponent(segment) : segment;
+  return decoded.replace(/~1/g, "/").replace(/~0/g, "~");
+};
+
+const localRefTarget = (target: unknown, context: TraversalContext): unknown => {
+  const ref = jsonObject(target)?.$ref;
+  if (typeof ref !== "string" || !ref.startsWith("#/")) return undefined;
+
+  let current: unknown = context.root;
+  for (const segment of ref.slice(2).split("/").map(decodeJsonPointerSegment)) {
+    const currentObject = jsonObject(current);
+    if (currentObject === undefined) return undefined;
+    current = currentObject[segment];
+  }
+  return current;
+};
+
+const jsonSchemaTarget = (target: unknown, context: TraversalContext): unknown =>
+  localRefTarget(target, context) ?? target;
 
 const schemaProperties = (target: unknown): Record<string, unknown> | undefined => {
   const properties = jsonObject(target)?.properties;
@@ -90,12 +122,16 @@ const unionBranchSchemas = (target: unknown): readonly unknown[] | undefined => 
   return undefined;
 };
 
-const applyTupleElementDeprecations = (target: unknown, element: TupleElement): void => {
+const applyTupleElementDeprecations = (
+  target: unknown,
+  element: TupleElement,
+  context: TraversalContext,
+): void => {
   setDeprecation(target, findTupleElementDeprecation(element));
-  applyDeprecationsFromAst(target, element.type);
+  applyDeprecationsFromAst(target, element.type, context);
 };
 
-const applyTupleDeprecations = (target: unknown, ast: AST.TupleType): void => {
+const applyTupleDeprecations = (target: unknown, ast: AST.TupleType, context: TraversalContext): void => {
   const targetObject = jsonObject(target);
   if (targetObject === undefined) return;
 
@@ -108,69 +144,110 @@ const applyTupleDeprecations = (target: unknown, ast: AST.TupleType): void => {
   if (fixedItems !== undefined) {
     for (const [index, element] of ast.elements.entries()) {
       const itemSchema = fixedItems[index];
-      if (itemSchema !== undefined) applyTupleElementDeprecations(itemSchema, element);
+      if (itemSchema !== undefined) applyTupleElementDeprecations(itemSchema, element, context);
     }
   }
 
   const restSchema = Array.isArray(targetObject.items) ? targetObject.additionalItems : targetObject.items;
   const rest = ast.rest[0];
-  if (rest !== undefined && restSchema !== undefined) applyTupleElementDeprecations(restSchema, rest);
+  if (rest !== undefined && restSchema !== undefined)
+    applyTupleElementDeprecations(restSchema, rest, context);
 };
 
-const applyUnionDeprecations = (target: unknown, ast: AST.Union): void => {
+const emittedUnionMember = (ast: AST.Union): AST.AST | undefined => {
+  const emittedMembers = ast.types.filter(
+    (member) => member._tag !== "UndefinedKeyword" && member._tag !== "NeverKeyword",
+  );
+  return emittedMembers.length === 1 ? emittedMembers[0] : undefined;
+};
+
+const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: TraversalContext): void => {
   const branches = unionBranchSchemas(target);
   if (branches !== undefined && branches.length === ast.types.length) {
-    for (const [index, member] of ast.types.entries()) applyDeprecationsFromAst(branches[index], member);
+    for (const [index, member] of ast.types.entries())
+      applyDeprecationsFromAst(branches[index], member, context);
     return;
   }
 
-  for (const member of ast.types) applyDeprecationsFromAst(target, member);
+  const member = emittedUnionMember(ast);
+  if (member !== undefined) applyDeprecationsFromAst(target, member, context);
 };
 
-const applyDeprecationsFromAst = (target: unknown, ast: AST.AST): void => {
-  applyDeprecation(target, ast);
+const indexSignatureJsonSchema = (target: unknown, signature: AST.IndexSignature): unknown => {
+  const targetObject = jsonObject(target);
+  if (targetObject === undefined) return undefined;
+
+  switch (signature.parameter._tag) {
+    case "StringKeyword":
+    case "SymbolKeyword":
+      return targetObject.additionalProperties;
+    case "TemplateLiteral":
+    case "Refinement":
+      return Object.values(jsonObject(targetObject.patternProperties) ?? {})[0];
+  }
+};
+
+const applyIndexSignatureDeprecations = (
+  target: unknown,
+  ast: AST.TypeLiteral,
+  context: TraversalContext,
+): void => {
+  for (const signature of ast.indexSignatures) {
+    const indexSchema = indexSignatureJsonSchema(target, signature);
+    if (indexSchema !== undefined) applyDeprecationsFromAst(indexSchema, signature.type, context);
+  }
+};
+
+const applyDeprecationsFromAst = (target: unknown, ast: AST.AST, context: TraversalContext): void => {
+  const targetSchema = jsonSchemaTarget(target, context);
+
+  if (AST.isUnion(ast)) {
+    setDeprecation(targetSchema, getSchemaDeprecation(ast));
+    applyUnionDeprecations(targetSchema, ast, context);
+    return;
+  }
+
+  applyDeprecation(targetSchema, ast);
 
   if (AST.isRefinement(ast)) {
-    applyDeprecationsFromAst(target, ast.from);
+    applyDeprecationsFromAst(targetSchema, ast.from, context);
     return;
   }
 
   if (AST.isSuspend(ast)) {
-    applyDeprecationsFromAst(target, ast.f());
+    applyDeprecationsFromAst(targetSchema, ast.f(), context);
     return;
   }
 
   if (AST.isTransformation(ast)) {
-    applyDeprecationsFromAst(target, ast.from);
-    return;
-  }
-
-  if (AST.isUnion(ast)) {
-    applyUnionDeprecations(target, ast);
+    applyDeprecationsFromAst(targetSchema, ast.from, context);
     return;
   }
 
   if (AST.isTupleType(ast)) {
-    applyTupleDeprecations(target, ast);
+    applyTupleDeprecations(targetSchema, ast, context);
     return;
   }
 
   if (AST.isTypeLiteral(ast)) {
-    const properties = schemaProperties(target);
-    if (properties === undefined) return;
-    for (const property of ast.propertySignatures) {
-      if (typeof property.name !== "string") continue;
-      const propertySchema = properties[property.name];
-      if (propertySchema === undefined) continue;
-      setDeprecation(propertySchema, getSchemaDeprecation(property));
-      applyDeprecationsFromAst(propertySchema, property.type);
+    const properties = schemaProperties(targetSchema);
+    if (properties !== undefined) {
+      for (const property of ast.propertySignatures) {
+        if (typeof property.name !== "string") continue;
+        const propertySchema = properties[property.name];
+        if (propertySchema === undefined) continue;
+        setDeprecation(propertySchema, getSchemaDeprecation(property));
+        applyDeprecationsFromAst(propertySchema, property.type, context);
+      }
     }
+    applyIndexSignatureDeprecations(targetSchema, ast, context);
   }
 };
 
 export const withSchemaDeprecations = <S extends SchemaLike>(schema: S, jsonSchema: unknown): unknown => {
   const copy = cloneJson(jsonSchema);
-  applyDeprecationsFromAst(copy, schema.ast);
+  const root = jsonObject(copy);
+  if (root !== undefined) applyDeprecationsFromAst(root, schema.ast, { root });
   return copy;
 };
 
