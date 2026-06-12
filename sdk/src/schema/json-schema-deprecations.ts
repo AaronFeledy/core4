@@ -163,10 +163,15 @@ const emittedUnionMember = (ast: AST.Union): AST.AST | undefined => {
 
 const applyUnionDeprecations = (target: unknown, ast: AST.Union, context: TraversalContext): void => {
   const branches = unionBranchSchemas(target);
-  if (branches !== undefined && branches.length === ast.types.length) {
-    for (const [index, member] of ast.types.entries())
-      applyDeprecationsFromAst(branches[index], member, context);
-    return;
+  if (branches !== undefined) {
+    const emittedMembers = ast.types.filter(
+      (member) => member._tag !== "UndefinedKeyword" && member._tag !== "NeverKeyword",
+    );
+    if (branches.length === emittedMembers.length) {
+      for (const [index, member] of emittedMembers.entries())
+        applyDeprecationsFromAst(branches[index], member, context);
+      return;
+    }
   }
 
   const member = emittedUnionMember(ast);

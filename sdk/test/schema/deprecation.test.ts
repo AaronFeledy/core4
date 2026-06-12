@@ -325,6 +325,36 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.anyOf?.[1]?.deprecated).toBeUndefined();
   });
 
+  test("propagates deprecations in nullish unions where Effect drops Undefined from JSON Schema", () => {
+    const NullishUnionSchema = Schema.Struct({
+      nullishField: Schema.Union(
+        Schema.Struct({ kind: Schema.Literal("old"), oldField: deprecateField(Schema.String, notice) }),
+        Schema.Struct({ kind: Schema.Literal("new"), newField: Schema.String }),
+        Schema.Undefined,
+      ),
+    });
+    const jsonSchema = getJsonSchemaWithDeprecations(NullishUnionSchema) as {
+      readonly properties?: Record<
+        string,
+        {
+          readonly anyOf?: ReadonlyArray<{
+            readonly properties?: Record<
+              string,
+              { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown }
+            >;
+          }>;
+        }
+      >;
+    };
+
+    expect(jsonSchema.properties?.nullishField?.anyOf).toHaveLength(2);
+    expect(jsonSchema.properties?.nullishField?.anyOf?.[0]?.properties?.oldField?.deprecated).toBe(true);
+    expect(jsonSchema.properties?.nullishField?.anyOf?.[0]?.properties?.oldField?.["x-deprecation"]).toEqual(
+      notice,
+    );
+    expect(jsonSchema.properties?.nullishField?.anyOf?.[1]?.properties?.newField?.deprecated).toBeUndefined();
+  });
+
   test("propagates record value deprecations to emitted index-signature schemas", () => {
     const StringRecord = Schema.Record({ key: Schema.String, value: deprecateField(Schema.String, notice) });
     const PatternRecord = Schema.Record({
