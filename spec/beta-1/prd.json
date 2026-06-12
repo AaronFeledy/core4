@@ -920,8 +920,8 @@
         "Lint passes"
       ],
       "priority": 52,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Release orchestrator now exports a fixed 13-stage model and injectable runner, preserves target filtering without reordering, routes argv-shaped stages through Bun.spawn and shell-shaped publish work through Bun.$, and wraps first-stage failures in ReleaseStageError with stage id, artifact family, command summary, and remediation."
     },
     {
       "id": "US-252",

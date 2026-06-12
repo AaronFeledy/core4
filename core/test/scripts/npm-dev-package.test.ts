@@ -74,8 +74,7 @@ describe("npm dev package preparation", () => {
     const source = await Bun.file(releaseScriptPath).text();
 
     expect(source).toContain("prepareNpmAlphaPackages");
-    expect(source).toContain("for (const packageName of releasePackageNames)");
-    expect(source).toContain("bun run --filter=${packageName} build");
+    expect(source).toContain("releasePackageNames.map");
     expect(source).toContain("npm publish --workspace ${packageName} --access public --tag dev --provenance");
     expect(source).toContain("npm view @lando/core dist-tags.dev --json");
   });

@@ -256,3 +256,9 @@
 - Verification: typecheck, lint, schema codegen, focused deprecation/schema/export tests, full tests, and Oracle reviewer gate passed.
 - **Learnings for future iterations:** Schema deprecation metadata should use one custom Effect Schema annotation symbol and one AST unwrapping helper so JSON Schema, reference docs, and optional/union-wrapped fields cannot drift.
 ---
+
+## 2026-06-12 07:55 CDT - US-251
+- Shipped the release orchestrator stage contract: the release script now exposes a fixed 13-stage pipeline, preserves artifact-family filtering without reordering, routes argv-shaped and shell-shaped work through separate Bun runner paths, and reports first-stage failures with tagged release metadata for operators.
+- Verification: RED focused test failed on the missing orchestrator export before implementation; focused release tests, typecheck, lint, manual injected-runner release surface, and Oracle review passed. Full test suite has one isolated pre-existing package-export identity failure in `sdk/test/library/exports.test.ts`, reproducible outside release files.
+- **Learnings for future iterations:** Keep release stages data-driven and injectable; tests should exercise `runRelease` with fake runners so release-order, target filtering, and failure wrapping are proven without accidentally executing publish/signing commands.
+---
