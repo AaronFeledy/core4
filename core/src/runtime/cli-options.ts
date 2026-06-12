@@ -17,7 +17,7 @@ export const resolveCliTelemetryEnabled = (): boolean => {
   try {
     return loadGlobalConfigSync().telemetry.enabled;
   } catch {
-    return false;
+    return true;
   }
 };
 
@@ -25,5 +25,5 @@ export const cliRuntimeOptions = <TBootstrap extends BootstrapLevel>(
   options: LandoRuntimeOptions & { readonly bootstrap: TBootstrap },
 ): LandoRuntimeOptions & { readonly bootstrap: TBootstrap; readonly telemetry: boolean } => ({
   ...options,
-  telemetry: resolveCliTelemetryEnabled(),
+  telemetry: options.telemetry ?? (options.bootstrap === "none" ? false : resolveCliTelemetryEnabled()),
 });

@@ -63,4 +63,30 @@ describe("CLI runtime telemetry precedence", () => {
       await expect(readCliTelemetry()).resolves.toBe(false);
     });
   });
+
+  test("malformed config.yml without an explicit telemetry env keeps the CLI default on", async () => {
+    await withEnv({}, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: [\n");
+      await expect(readCliTelemetry()).resolves.toBe(true);
+    });
+  });
+
+  test("explicit runtime telemetry option wins before env and config", async () => {
+    await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "1" }, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
+      const context = await Effect.runPromise(
+        Effect.scoped(
+          Layer.build(makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", telemetry: false }))),
+        ),
+      );
+      expect(Context.get(context, Telemetry).enabled).toBe(false);
+    });
+  });
+
+  test("none bootstrap runtime options do not read global config", async () => {
+    await withEnv({}, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: [\n");
+      expect(cliRuntimeOptions({ bootstrap: "none" }).telemetry).toBe(false);
+    });
+  });
 });
