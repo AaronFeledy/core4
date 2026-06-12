@@ -331,8 +331,8 @@
         "Lint passes."
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Schema deprecation annotations now propagate DeprecationNotice metadata into JSON Schema, generated reference markdown, and schema documentation annotations; the schema snapshot gate validates emitted x-deprecation payloads."
     },
     {
       "id": "US-219",

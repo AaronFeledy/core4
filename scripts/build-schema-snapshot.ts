@@ -15,7 +15,12 @@ import { resolve } from "node:path";
 import { Schema } from "effect";
 
 import { BUNDLED_PLUGINS } from "../core/src/plugins/bundled.ts";
-import { type JsonSchemaName, PluginManifest, getJsonSchema } from "../sdk/src/schema/index.ts";
+import {
+  type JsonSchemaName,
+  PluginManifest,
+  assertJsonSchemaDeprecationsValid,
+  getJsonSchema,
+} from "../sdk/src/schema/index.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
@@ -82,6 +87,12 @@ const renderSnapshot = (): string => {
   const sdkSchemas = Object.fromEntries(
     SDK_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(getJsonSchema(schemaName))]),
   );
+  for (const [schemaName, jsonSchema] of Object.entries(sdkSchemas)) {
+    const invalidPaths = assertJsonSchemaDeprecationsValid(jsonSchema);
+    if (invalidPaths.length > 0) {
+      throw new Error(`${schemaName} emits invalid x-deprecation payloads at ${invalidPaths.join(", ")}`);
+    }
+  }
   const bundledPluginManifests = BUNDLED_PLUGINS.map((plugin) => ({
     name: plugin.name,
     manifest: stable(Schema.encodeSync(PluginManifest)(plugin.manifest)),

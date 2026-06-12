@@ -8,6 +8,7 @@
 - `AppMountPlan`
 - `ArtifactBuildSpec`
 - `ArtifactRef`
+- `assertJsonSchemaDeprecationsValid`
 - `BuildBlock`
 - `BuildPhase`
 - `BuildPlan`
@@ -33,6 +34,9 @@
 - `DeprecationSeverity`
 - `DeprecationSurfaceKind`
 - `DeprecationUse`
+- `SchemaDeprecationAnnotationId`
+- `deprecateField`
+- `deprecateSchema`
 - `EndpointInput`
 - `EndpointPlan`
 - `EmbeddingPluginDiscoveryPolicy`
@@ -50,6 +54,10 @@
 - `landoServiceNetworkAliases`
 - `landoSharedNetworkName`
 - `sameAppMountTarget`
+- `formatDeprecationNotice`
+- `getSchemaDeprecation`
+- `getJsonSchemaWithDeprecations`
+- `renderSchemaReferenceMarkdown`
 - `structuralDeprecationKey`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
@@ -146,6 +154,7 @@
 - `UseFixtureProps`
 - `VariableProps`
 - `VerifyProps`
+- `withSchemaDeprecations`
 - `decodeGuideFrontmatter`
 - `decodeGuideFrontmatterEither`
 - `isSortedUniquePluginTrustList`

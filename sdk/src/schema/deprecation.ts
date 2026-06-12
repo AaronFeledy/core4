@@ -1,4 +1,5 @@
-import { Schema } from "effect";
+import { Either, Schema } from "effect";
+import type * as AST from "effect/SchemaAST";
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 const MIN_UNSCHEDULED_DEPRECATION_SINCE = { major: 4, minor: 1, patch: 0 } as const satisfies Semver;
@@ -172,6 +173,42 @@ export const structuralDeprecationKey = (notice: DeprecationNotice): StructuralD
   removeIn: notice.removeIn,
   note: notice.note,
 });
+
+export const SchemaDeprecationAnnotationId: unique symbol = Symbol.for("lando/schema/DeprecationNotice");
+
+export type SchemaDeprecationAnnotation = DeprecationNotice;
+
+type DeprecatedSchemaAnnotations = {
+  readonly [SchemaDeprecationAnnotationId]: DeprecationNotice;
+  readonly documentation?: string;
+};
+
+export const formatDeprecationNotice = (notice: DeprecationNotice): string => {
+  const parts = [`Deprecated since ${notice.since}`];
+  if (notice.removeIn !== undefined) parts.push(`remove in ${notice.removeIn}`);
+  const schedule = `${parts.join("; ")}.`;
+  const replacement = notice.replacement === undefined ? "" : ` Use ${notice.replacement} instead.`;
+  return `${schedule}${replacement} ${notice.note}`;
+};
+
+const deprecatedAnnotations = (notice: DeprecationNotice): DeprecatedSchemaAnnotations => ({
+  [SchemaDeprecationAnnotationId]: notice,
+  documentation: formatDeprecationNotice(notice),
+});
+
+export const deprecateSchema = <S extends Schema.Annotable.All>(schema: S, notice: DeprecationNotice) =>
+  schema.annotations(deprecatedAnnotations(notice));
+
+export const deprecateField = <S extends Schema.Annotable.All>(schema: S, notice: DeprecationNotice) =>
+  schema.annotations(deprecatedAnnotations(notice));
+
+export const getSchemaDeprecation = (annotated: AST.Annotated): DeprecationNotice | undefined => {
+  const notice = annotated.annotations[SchemaDeprecationAnnotationId];
+  return Schema.is(DeprecationNotice)(notice) ? notice : undefined;
+};
+
+export const validateDeprecationNotice = (notice: unknown): notice is DeprecationNotice =>
+  Either.isRight(Schema.decodeUnknownEither(DeprecationNotice)(notice, { onExcessProperty: "error" }));
 
 export const DeprecationUse = Schema.Struct({
   kind: DeprecationSurfaceKind,
