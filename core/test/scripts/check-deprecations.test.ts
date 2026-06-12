@@ -43,7 +43,7 @@ describe("deprecation TSDoc lint gate", () => {
           import type { DeprecationNotice } from "@lando/sdk/schema";
           const notice: DeprecationNotice = { since: "4.2.0", note: "Use newApi instead.", replacement: "newApi" };
           /** @deprecated Deprecated since 4.2.0. Use newApi instead. Use newApi instead. */
-          export const oldApi = markDeprecated(notice, () => Effect.succeed("ok"));
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
           /** @deprecated Deprecated since 4.2.0. Use NewError instead. */
           export class OldError extends Schema.TaggedError<OldError>()("OldError", { message: Schema.String }) {
             static readonly deprecation: DeprecationNotice = { since: "4.2.0", note: "Use NewError instead." };
@@ -88,7 +88,7 @@ describe("deprecation TSDoc lint gate", () => {
           import { markDeprecated } from "@lando/sdk/services";
           import type { DeprecationNotice } from "@lando/sdk/schema";
           /** @deprecated Deprecated since 4.2.0. Use oldApi instead. */
-          export const oldApi = markDeprecated({ since: "4.2.0", note: "Use newApi instead.", replacement: "newApi" }, () => Effect.succeed("ok"));
+          export const oldApi = markDeprecated({ since: "4.2.0", note: "Use newApi instead.", replacement: "newApi" }, "oldApi", () => Effect.succeed("ok"));
           /** @deprecated Deprecated since 4.2.0. Use NewThing instead. */
           export class OldThing {
             static readonly deprecation: DeprecationNotice = { since: "4.2.0", note: "Use NewThing instead." };
@@ -115,7 +115,7 @@ describe("deprecation TSDoc lint gate", () => {
           import { Effect } from "effect";
           import { markDeprecated } from "@lando/sdk/services";
           const goodNotice = { since: "4.2.0", note: "Use newApi instead.", replacement: "newApi" };
-          const oldApi = markDeprecated(goodNotice, () => Effect.succeed("ok"));
+          const oldApi = markDeprecated(goodNotice, "oldApi", () => Effect.succeed("ok"));
           const missingRuntime = () => Effect.succeed("ok");
           /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
           export { oldApi };
@@ -152,6 +152,43 @@ describe("deprecation TSDoc lint gate", () => {
       expect(offenderSummaries(root, result.offenders)).toEqual([
         "sdk/src/public.ts:5:oldApi:missing markDeprecated(notice, impl) wrapper",
       ]);
+    });
+  });
+
+  test("requires markDeprecated explicit ids for anonymous exported implementations", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          export const oldApi = markDeprecated({ since: "4.2.0", note: "Use newApi instead." }, () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationTsdoc({ root });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:5:oldApi:markDeprecated export id must match exported name",
+      ]);
+    });
+  });
+
+  test("ignores deprecated external named re-exports without local bindings", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          export { oldApi } from "./internal.ts";
+        `,
+      );
+
+      expect(await checkDeprecationTsdoc({ root })).toEqual({ ok: true, offenders: [] });
     });
   });
 });

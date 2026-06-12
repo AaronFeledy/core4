@@ -22,6 +22,7 @@ interface CheckDeprecationTsdocOptions {
 const repoRoot = resolve(import.meta.dirname, "..");
 const SCANNED_ROOTS = ["sdk/src", "core/src", "plugins"] as const;
 const MISSING_MARK_DEPRECATED_REASON = "missing markDeprecated(notice, impl) wrapper";
+const MISMATCHED_MARK_DEPRECATED_ID_REASON = "markDeprecated export id must match exported name";
 const MISSING_DEPRECATION_METADATA_REASON = "missing static readonly deprecation metadata";
 const STALE_TSDOC_REASON = "@deprecated text must include DeprecationNotice note/replacement";
 const INVALID_DEPRECATION_METADATA_REASON =
@@ -80,6 +81,25 @@ const isMarkDeprecatedCall = (expression: ts.Expression | undefined): boolean =>
   if (ts.isPropertyAccessExpression(callee)) return propertyNameText(callee.name) === "markDeprecated";
   return false;
 };
+
+const markDeprecatedExportId = (expression: ts.Expression | undefined): string | undefined => {
+  if (expression === undefined || !ts.isCallExpression(expression) || !isMarkDeprecatedCall(expression)) {
+    return undefined;
+  }
+
+  const explicitId = stringLiteralValue(expression.arguments[1]);
+  if (explicitId !== undefined) return explicitId;
+
+  const impl = expression.arguments[1];
+  if (impl === undefined) return undefined;
+  if ((ts.isFunctionExpression(impl) || ts.isFunctionDeclaration(impl)) && impl.name !== undefined) {
+    return impl.name.text;
+  }
+  return undefined;
+};
+
+const markDeprecatedTracksExport = (expression: ts.Expression | undefined, exportName: string): boolean =>
+  markDeprecatedExportId(expression) === exportName;
 
 interface NoticeText {
   readonly note?: string;
@@ -205,6 +225,8 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
         const exportName = propertyNameText(declaration.name) ?? "<destructured>";
         if (!isMarkDeprecatedCall(declaration.initializer)) {
           offenders.push(offender(source, file, statement, exportName, MISSING_MARK_DEPRECATED_REASON));
+        } else if (!markDeprecatedTracksExport(declaration.initializer, exportName)) {
+          offenders.push(offender(source, file, statement, exportName, MISMATCHED_MARK_DEPRECATED_ID_REASON));
         } else if (
           !tsdocMatchesNotice(
             deprecatedTagText(statement),
@@ -251,7 +273,8 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
     if (
       ts.isExportDeclaration(statement) &&
       statement.exportClause !== undefined &&
-      ts.isNamedExports(statement.exportClause)
+      ts.isNamedExports(statement.exportClause) &&
+      statement.moduleSpecifier === undefined
     ) {
       const exportTagged = hasDeprecatedTag(statement);
       for (const element of statement.exportClause.elements) {
@@ -271,6 +294,10 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
         if (ts.isVariableDeclaration(declaration)) {
           if (!isMarkDeprecatedCall(declaration.initializer)) {
             offenders.push(offender(source, file, statement, exportedName, MISSING_MARK_DEPRECATED_REASON));
+          } else if (!markDeprecatedTracksExport(declaration.initializer, exportedName)) {
+            offenders.push(
+              offender(source, file, statement, exportedName, MISMATCHED_MARK_DEPRECATED_ID_REASON),
+            );
           } else if (
             !tsdocMatchesNotice(
               deprecatedTagText(tagNode),
