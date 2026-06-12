@@ -179,6 +179,59 @@ describe("deprecation TSDoc lint gate", () => {
     });
   });
 
+  test("ignores deprecated type-only named exports", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          interface InternalShape {
+            readonly name: string;
+          }
+          type InternalAlias = {
+            readonly id: string;
+          };
+          /** @deprecated Deprecated since 4.2.0. Use NewShape instead. */
+          export type { InternalShape as OldShape };
+          /** @deprecated Deprecated since 4.2.0. Use NewAlias instead. */
+          export { type InternalAlias as OldAlias };
+          /** @deprecated Deprecated since 4.2.0. Use NewInline instead. */
+          interface OldInline {
+            readonly enabled: boolean;
+          }
+          /** @deprecated Deprecated since 4.2.0. Use NewNamed instead. */
+          type OldNamed = {
+            readonly value: string;
+          };
+          export { OldInline, OldNamed };
+        `,
+      );
+
+      expect(await checkDeprecationTsdoc({ root })).toEqual({ ok: true, offenders: [] });
+    });
+  });
+
+  test("still flags deprecated runtime named exports without markDeprecated", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          const oldApi = () => "ok";
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          export { oldApi };
+        `,
+      );
+
+      const result = await checkDeprecationTsdoc({ root });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:4:oldApi:missing markDeprecated(notice, impl) wrapper",
+      ]);
+    });
+  });
+
   test("requires markDeprecated explicit ids for anonymous exported implementations", async () => {
     await withFixtureRoot(async (root) => {
       await write(

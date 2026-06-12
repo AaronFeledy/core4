@@ -211,6 +211,7 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
     string,
     ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration
   >();
+  const localTypeDeclarations = new Map<string, ts.InterfaceDeclaration | ts.TypeAliasDeclaration>();
 
   for (const statement of source.statements) {
     if (ts.isVariableStatement(statement)) {
@@ -224,6 +225,9 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
     }
     if (ts.isClassDeclaration(statement) && statement.name !== undefined) {
       localDeclarations.set(statement.name.text, statement);
+    }
+    if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
+      localTypeDeclarations.set(statement.name.text, statement);
     }
   }
 
@@ -284,11 +288,17 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
       ts.isNamedExports(statement.exportClause) &&
       statement.moduleSpecifier === undefined
     ) {
+      if (statement.isTypeOnly) continue;
+
       const exportTagged = hasDeprecatedTag(statement);
       for (const element of statement.exportClause.elements) {
+        if (element.isTypeOnly) continue;
+
         const exportedName = element.name.text;
         const localName = element.propertyName?.text ?? exportedName;
         const declaration = localDeclarations.get(localName);
+        if (declaration === undefined && localTypeDeclarations.has(localName)) continue;
+
         const localTagNode = declaration === undefined ? undefined : localDeclarationTagNode(declaration);
         const localTagged = localTagNode !== undefined && hasDeprecatedTag(localTagNode);
         if (!exportTagged && !localTagged) continue;
