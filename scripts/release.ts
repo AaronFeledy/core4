@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Lando v4 release orchestrator — runs the fixed Beta release pipeline.
+ * Lando v4 release orchestrator — runs the fixed release pipeline.
  *
  * The orchestrator owns stage ordering. Artifact families may skip stages, but
  * flags/config cannot reorder the canonical sequence.
@@ -107,7 +107,10 @@ const stageMatchesTarget = (stage: ReleaseStage, target: ArtifactTarget): boolea
   return stage.forLibrary;
 };
 
-const artifactFamilyForStage = (stage: ReleaseStage, target: ArtifactTarget): ReleaseArtifactFamily => {
+const artifactFamilyForStage = (
+  stage: Pick<ReleaseStage, "forBinary" | "forLibrary">,
+  target: ArtifactTarget,
+): ReleaseArtifactFamily => {
   if (target === "binary" || target === "library") return target;
   if (stage.forBinary && stage.forLibrary) return "binary+library";
   if (stage.forBinary) return "binary";
@@ -128,7 +131,10 @@ const npmAlphaPublishScript = (): string =>
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 
 const spawnStage =
-  (stage: Pick<ReleaseStage, "id" | "commandSummary" | "remediation">, cmd: ReadonlyArray<string>) =>
+  (
+    stage: Pick<ReleaseStage, "id" | "forBinary" | "forLibrary" | "commandSummary" | "remediation">,
+    cmd: ReadonlyArray<string>,
+  ) =>
   async ({ runner, target }: ReleaseStageContext): Promise<void> => {
     await runner.spawn({
       stageId: stage.id,
@@ -140,7 +146,10 @@ const spawnStage =
   };
 
 const shellStage =
-  (stage: Pick<ReleaseStage, "id" | "commandSummary" | "remediation">, script: string) =>
+  (
+    stage: Pick<ReleaseStage, "id" | "forBinary" | "forLibrary" | "commandSummary" | "remediation">,
+    script: string,
+  ) =>
   async ({ logger, runner, target }: ReleaseStageContext): Promise<void> => {
     if (stage.id === "13-publish" && target === "binary") {
       logger("[release] skip 13-publish (binary artifact publishing not yet wired)");
@@ -167,7 +176,13 @@ const defineStage = (
     readonly command: ReadonlyArray<string> | string;
   },
 ): ReleaseStage => {
-  const base = { id: stage.id, commandSummary: stage.commandSummary, remediation: stage.remediation };
+  const base = {
+    id: stage.id,
+    forBinary: stage.forBinary,
+    forLibrary: stage.forLibrary,
+    commandSummary: stage.commandSummary,
+    remediation: stage.remediation,
+  };
   const run =
     stage.kind === "spawn"
       ? spawnStage(base, stage.command as ReadonlyArray<string>)
