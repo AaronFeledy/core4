@@ -276,3 +276,8 @@
 - Review feedback: fixed (Cursor Bugbot flagged library bundle stage building all workspaces; release stage now builds only release packages)
 - Merge: merged (squash)
 ---
+## 2026-06-12 11:50 CDT - US-240
+- Shipped telemetry default precedence: global config now defaults telemetry on for CLI mode, CLI runtime construction resolves valid config/env before building the Telemetry layer, `LANDO_CONFIG__TELEMETRY__ENABLED=0` disables telemetry ahead of runtime construction, and `makeLandoRuntime` remains library default-off unless the embedding host opts in.
+- Verification: focused telemetry/config/runtime/schema tests, typecheck, lint, and source CLI smoke passed. Full `bun test` is blocked by a pre-existing unrelated `sdk/test/library/exports.test.ts` `DeprecationNotice` core-vs-SDK identity failure, reproduced outside this story worktree.
+- **Learnings for future iterations:** Keep shared CLI-runtime helpers outside `core/src/cli/`; OCLIF discovery/test harnesses can misinterpret new root CLI files as command modules.
+---

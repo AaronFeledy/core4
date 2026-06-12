@@ -722,8 +722,8 @@
         "Lint passes."
       ],
       "priority": 41,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "CLI runtime construction now resolves telemetry from valid global config/env before building the Telemetry layer, defaults CLI/global config to enabled, preserves makeLandoRuntime library default-off unless telemetry is explicitly opted in, and honors LANDO_CONFIG__TELEMETRY__ENABLED=0 over config true."
     },
     {
       "id": "US-241",
