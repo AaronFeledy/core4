@@ -68,7 +68,7 @@ describe("ConfigServiceLive", () => {
       const config = await loadConfig();
 
       expect(config.userConfRoot === dir).toBe(true);
-      expect(config.telemetry).toEqual({ enabled: false });
+      expect(config.telemetry).toEqual({ enabled: true });
     });
   });
 

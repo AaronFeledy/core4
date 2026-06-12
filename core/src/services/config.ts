@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { type Context, Effect, Layer, Schema } from "effect";
@@ -33,16 +34,15 @@ const mergeConfig = (fileConfig: Record<string, unknown>, overlay: Record<string
   return deepMerge(deepMerge(deepMerge(base, fileConfig), rootEnvOverlay()), overlay);
 };
 
-const loadConfig = async (): Promise<GlobalConfig> => {
+export const loadGlobalConfigSync = (): GlobalConfig => {
   const overlay = envOverlay();
   const userConfRoot = resolveConfigFileRoot(resolveUserConfRoot(), overlay);
   const path = join(userConfRoot, "config.yml");
-  const file = Bun.file(path);
   let fileConfig: Record<string, unknown> = {};
 
-  if (await file.exists()) {
+  if (existsSync(path)) {
     try {
-      fileConfig = parseConfigYaml(await file.text(), path);
+      fileConfig = parseConfigYaml(readFileSync(path, "utf8"), path);
     } catch (cause) {
       if (cause instanceof ConfigError) throw cause;
       throw configError(path, `Failed to parse config file: ${path}`, cause);
@@ -56,6 +56,8 @@ const loadConfig = async (): Promise<GlobalConfig> => {
     throw configError(path, `Invalid config file: ${path}`, cause);
   }
 };
+
+const loadConfig = async (): Promise<GlobalConfig> => loadGlobalConfigSync();
 
 const configService: Context.Tag.Service<typeof ConfigService> = {
   load: Effect.tryPromise({

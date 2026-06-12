@@ -129,7 +129,7 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
     await withEnv({}, async (dir) => {
       const config = await loadConfig();
       expect(config.userConfRoot === dir).toBe(true);
-      expect(config.telemetry.enabled).toBe(false);
+      expect(config.telemetry.enabled).toBe(true);
       expect(config.defaultProviderId).toBe("lando");
     });
   });

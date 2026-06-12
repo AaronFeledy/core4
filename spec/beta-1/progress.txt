@@ -282,6 +282,22 @@
 - Review feedback: fixed (Cursor Bugbot flagged library bundle stage building all workspaces; release stage now builds only release packages)
 - Merge: merged (squash)
 ---
+## 2026-06-12 11:50 CDT - US-240
+- Shipped telemetry default precedence: global config now defaults telemetry on for CLI mode, CLI runtime construction resolves valid config/env before building the Telemetry layer, `LANDO_CONFIG__TELEMETRY__ENABLED=0` disables telemetry ahead of runtime construction, and `makeLandoRuntime` remains library default-off unless the embedding host opts in.
+- Verification: focused telemetry/config/runtime/schema tests, typecheck, lint, and source CLI smoke passed. Full `bun test` is blocked by a pre-existing unrelated `sdk/test/library/exports.test.ts` `DeprecationNotice` core-vs-SDK identity failure, reproduced outside this story worktree.
+- **Learnings for future iterations:** Keep shared CLI-runtime helpers outside `core/src/cli/`; OCLIF discovery/test harnesses can misinterpret new root CLI files as command modules.
+---
+## 2026-06-12 12:25 CDT - US-240 Review
+- Fixed review blockers in telemetry precedence: explicit runtime telemetry now wins before env/config, level-none runtime options avoid global config I/O, malformed config without an explicit telemetry env preserves CLI default-on, and the required telemetry defaults guide plus SDK compatibility note are shipped.
+- Review notes (deferred/rejected): full `bun test` remains blocked only by the pre-existing `sdk/test/library/exports.test.ts` DeprecationNotice core-vs-SDK identity failure reproduced outside this story.
+- Verification: focused telemetry/config/runtime/schema tests, guide lint, guide coverage, typecheck, lint, and source CLI smoke passed.
+- **Learnings for future iterations:** Runtime helpers imported by OCLIF init must special-case `bootstrap: "none"` so fast-path commands do not start reading global config before command execution.
+---
+## 2026-06-12 12:45 CDT - US-240 Verify
+- Verified the freshly compiled binary for telemetry defaults and precedence through real `config` and `version` command surfaces, including env-disabled telemetry over config true and malformed config with/without explicit telemetry env.
+- Setup sandbox blocker: `core4-agent2` does not contain `.local/DEV-ENV.md` or `.local/bin/lando4-dev`; US-240 has no provider/setup behavior, so verification used host-safe compiled config/runtime surfaces instead of fabricating a setup run.
+- **Learnings for future iterations:** Secondary worktrees may not carry `.local/` sandbox helpers; verify prompt setup runs are only possible from worktrees that include those local harness files.
+---
 
 ## 2026-06-12 13:30 CDT - Babysit
 - PR: #339 https://github.com/AaronFeledy/core4/pull/339
