@@ -202,6 +202,37 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.properties?.optionalOldField?.["x-deprecation"]).toEqual(notice);
   });
 
+  test("propagates array element deprecations to JSON Schema items and reference docs", () => {
+    const ArraySchema = Schema.Struct({ oldValues: Schema.Array(deprecateField(Schema.String, notice)) });
+    const jsonSchema = getJsonSchemaWithDeprecations(ArraySchema) as {
+      readonly properties?: Record<
+        string,
+        {
+          readonly deprecated?: boolean;
+          readonly items?: { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown };
+        }
+      >;
+    };
+    const markdown = renderSchemaReferenceMarkdown("ArrayDeprecatedSchema", ArraySchema);
+
+    expect(jsonSchema.properties?.oldValues?.deprecated).toBeUndefined();
+    expect(jsonSchema.properties?.oldValues?.items?.deprecated).toBe(true);
+    expect(jsonSchema.properties?.oldValues?.items?.["x-deprecation"]).toEqual(notice);
+    expect(markdown).toContain(
+      "| `oldValues` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+    );
+  });
+
+  test("omits generated reference field table when no fields are deprecated", () => {
+    const markdown = renderSchemaReferenceMarkdown(
+      "NoDeprecatedFieldsSchema",
+      Schema.Struct({ newField: Schema.String }),
+    );
+
+    expect(markdown).toBe("# NoDeprecatedFieldsSchema\n");
+    expect(markdown).not.toContain("| Field | Deprecation |");
+  });
+
   test("renders generated reference callouts from schema deprecation metadata", () => {
     const markdown = renderSchemaReferenceMarkdown("ExampleDeprecatedSchema", ExampleSchema);
 

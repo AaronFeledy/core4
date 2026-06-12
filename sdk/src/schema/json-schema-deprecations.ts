@@ -11,8 +11,12 @@ import {
 type JsonObject = Record<string, unknown>;
 type SchemaLike = Schema.Schema.All;
 type JsonSchemaInput = Parameters<typeof JSONSchema.make>[0];
+type TupleElement = AST.OptionalType | AST.Type;
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
+
+const jsonObject = (value: unknown): JsonObject | undefined =>
+  value !== null && typeof value === "object" && !Array.isArray(value) ? (value as JsonObject) : undefined;
 
 const findSchemaDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
   const notice = getSchemaDeprecation(ast);
@@ -24,6 +28,27 @@ const findSchemaDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
     for (const member of ast.types) {
       const memberNotice = findSchemaDeprecation(member);
       if (memberNotice !== undefined) return memberNotice;
+    }
+  }
+
+  return undefined;
+};
+
+const findTupleElementDeprecation = (element: TupleElement): DeprecationNotice | undefined =>
+  getSchemaDeprecation(element) ?? findSchemaDeprecation(element.type);
+
+const findSchemaReferenceDeprecation = (ast: AST.AST): DeprecationNotice | undefined => {
+  const notice = findSchemaDeprecation(ast);
+  if (notice !== undefined) return notice;
+
+  if (AST.isTupleType(ast)) {
+    for (const element of ast.elements) {
+      const elementNotice = getSchemaDeprecation(element) ?? findSchemaReferenceDeprecation(element.type);
+      if (elementNotice !== undefined) return elementNotice;
+    }
+    for (const rest of ast.rest) {
+      const restNotice = getSchemaDeprecation(rest) ?? findSchemaReferenceDeprecation(rest.type);
+      if (restNotice !== undefined) return restNotice;
     }
   }
 
@@ -42,11 +67,37 @@ const applyDeprecation = (target: unknown, ast: AST.AST): void =>
   setDeprecation(target, findSchemaDeprecation(ast));
 
 const schemaProperties = (target: unknown): Record<string, unknown> | undefined => {
-  if (target === null || typeof target !== "object") return undefined;
-  const properties = (target as JsonObject).properties;
+  const properties = jsonObject(target)?.properties;
   return properties !== null && typeof properties === "object" && !Array.isArray(properties)
     ? (properties as Record<string, unknown>)
     : undefined;
+};
+
+const applyTupleElementDeprecations = (target: unknown, element: TupleElement): void => {
+  setDeprecation(target, findTupleElementDeprecation(element));
+  applyDeprecationsFromAst(target, element.type);
+};
+
+const applyTupleDeprecations = (target: unknown, ast: AST.TupleType): void => {
+  const targetObject = jsonObject(target);
+  if (targetObject === undefined) return;
+
+  const fixedItems = Array.isArray(targetObject.prefixItems)
+    ? targetObject.prefixItems
+    : Array.isArray(targetObject.items)
+      ? targetObject.items
+      : undefined;
+
+  if (fixedItems !== undefined) {
+    for (const [index, element] of ast.elements.entries()) {
+      const itemSchema = fixedItems[index];
+      if (itemSchema !== undefined) applyTupleElementDeprecations(itemSchema, element);
+    }
+  }
+
+  const restSchema = Array.isArray(targetObject.items) ? targetObject.additionalItems : targetObject.items;
+  const rest = ast.rest[0];
+  if (rest !== undefined && restSchema !== undefined) applyTupleElementDeprecations(restSchema, rest);
 };
 
 const applyDeprecationsFromAst = (target: unknown, ast: AST.AST): void => {
@@ -64,6 +115,11 @@ const applyDeprecationsFromAst = (target: unknown, ast: AST.AST): void => {
 
   if (AST.isUnion(ast)) {
     for (const member of ast.types) applyDeprecationsFromAst(target, member);
+    return;
+  }
+
+  if (AST.isTupleType(ast)) {
+    applyTupleDeprecations(target, ast);
     return;
   }
 
@@ -132,14 +188,14 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(name: string
 
   const ast = AST.isRefinement(schema.ast) ? schema.ast.from : schema.ast;
   if (AST.isTypeLiteral(ast) && ast.propertySignatures.length > 0) {
-    lines.push("| Field | Deprecation |", "| --- | --- |");
+    const rows: string[] = [];
     for (const property of ast.propertySignatures) {
       if (typeof property.name !== "string") continue;
-      const propertyNotice = getSchemaDeprecation(property) ?? findSchemaDeprecation(property.type);
+      const propertyNotice = getSchemaDeprecation(property) ?? findSchemaReferenceDeprecation(property.type);
       if (propertyNotice === undefined) continue;
-      lines.push(`| \`${property.name}\` | ${formatDeprecationNotice(propertyNotice)} |`);
+      rows.push(`| \`${property.name}\` | ${formatDeprecationNotice(propertyNotice)} |`);
     }
-    lines.push("");
+    if (rows.length > 0) lines.push("| Field | Deprecation |", "| --- | --- |", ...rows, "");
   }
 
   return `${lines.join("\n").trimEnd()}\n`;
