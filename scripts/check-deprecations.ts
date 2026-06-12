@@ -181,7 +181,9 @@ const hasTaggedErrorDeprecationMetadata = (node: ts.ClassDeclaration): boolean =
 
 // JSDoc for `const x = ...` attaches to the enclosing VariableStatement, not the
 // VariableDeclaration, so resolve the statement to detect a `@deprecated` local export.
-const localDeclarationTagNode = (declaration: ts.VariableDeclaration | ts.ClassDeclaration): ts.Node => {
+const localDeclarationTagNode = (
+  declaration: ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration,
+): ts.Node => {
   if (ts.isVariableDeclaration(declaration)) {
     const statement = declaration.parent?.parent;
     if (statement !== undefined && ts.isVariableStatement(statement)) return statement;
@@ -205,7 +207,10 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
   const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const offenders: DeprecationTsdocOffender[] = [];
   const notices = localNoticeBindings(source);
-  const localDeclarations = new Map<string, ts.VariableDeclaration | ts.ClassDeclaration>();
+  const localDeclarations = new Map<
+    string,
+    ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration
+  >();
 
   for (const statement of source.statements) {
     if (ts.isVariableStatement(statement)) {
@@ -213,6 +218,9 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
         const name = propertyNameText(declaration.name);
         if (name !== undefined) localDeclarations.set(name, declaration);
       }
+    }
+    if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
+      localDeclarations.set(statement.name.text, statement);
     }
     if (ts.isClassDeclaration(statement) && statement.name !== undefined) {
       localDeclarations.set(statement.name.text, statement);
@@ -306,6 +314,11 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
           ) {
             offenders.push(offender(source, file, statement, exportedName, STALE_TSDOC_REASON));
           }
+          continue;
+        }
+
+        if (ts.isFunctionDeclaration(declaration)) {
+          offenders.push(offender(source, file, statement, exportedName, MISSING_MARK_DEPRECATED_REASON));
           continue;
         }
 

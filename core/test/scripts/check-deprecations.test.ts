@@ -155,6 +155,30 @@ describe("deprecation TSDoc lint gate", () => {
     });
   });
 
+  test("flags a deprecated local function exported via an untagged named export", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          function oldApi() {
+            return Effect.succeed("ok");
+          }
+          export { oldApi };
+        `,
+      );
+
+      const result = await checkDeprecationTsdoc({ root });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:7:oldApi:missing markDeprecated(notice, impl) wrapper",
+      ]);
+    });
+  });
+
   test("requires markDeprecated explicit ids for anonymous exported implementations", async () => {
     await withFixtureRoot(async (root) => {
       await write(
