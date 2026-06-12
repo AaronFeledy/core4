@@ -1,24 +1,28 @@
 import { describe, expect, test } from "bun:test";
 
+import { releasePackageNames } from "../../../scripts/prepare-npm-dev-packages";
 import { RELEASE_STAGES, runRelease } from "../../../scripts/release";
 
 describe("release orchestrator", () => {
   test("defines and runs all release stages in the required fixed order", async () => {
     const observed: Array<string> = [];
+    const observeStage = (stageId: string): void => {
+      if (observed.at(-1) !== stageId) observed.push(stageId);
+    };
 
     await runRelease({
       target: "all",
       runner: {
         spawn: async ({ stageId }) => {
-          observed.push(stageId);
+          observeStage(stageId);
         },
         shell: async ({ stageId }) => {
-          observed.push(stageId);
+          observeStage(stageId);
         },
       },
       logger: (line) => {
         const skippedStage = line.match(/^\[release\] skip (\d+-[a-z-]+)/)?.[1];
-        if (skippedStage) observed.push(skippedStage);
+        if (skippedStage) observeStage(skippedStage);
       },
     });
 
@@ -69,14 +73,14 @@ describe("release orchestrator", () => {
   });
 
   test("uses spawn for argv-precise stages and shell for shell-shaped publish work", async () => {
-    const spawnStages: Array<string> = [];
+    const spawnStages: Array<{ stageId: string; cmd: ReadonlyArray<string> }> = [];
     const shellStages: Array<string> = [];
 
     await runRelease({
       target: "library",
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          spawnStages.push(`${stageId}:${cmd.join(" ")}`);
+          spawnStages.push({ stageId, cmd });
         },
         shell: async ({ stageId, script }) => {
           shellStages.push(`${stageId}:${script}`);
@@ -85,8 +89,14 @@ describe("release orchestrator", () => {
       logger: () => {},
     });
 
-    expect(spawnStages).toContain("1-codegen:bun run scripts/codegen.ts");
-    expect(spawnStages).toContain("6-library-bundle:bun run build");
+    expect(spawnStages).toContainEqual({ stageId: "1-codegen", cmd: ["bun", "run", "scripts/codegen.ts"] });
+    expect(spawnStages.filter(({ stageId }) => stageId === "6-library-bundle")).toEqual(
+      releasePackageNames.map((packageName) => ({
+        stageId: "6-library-bundle",
+        cmd: ["bun", "run", `--filter=${packageName}`, "build"],
+      })),
+    );
+    expect(spawnStages).not.toContainEqual({ stageId: "6-library-bundle", cmd: ["bun", "run", "build"] });
     expect(shellStages.some((entry) => entry.startsWith("13-publish:before_latest="))).toBe(true);
     expect(shellStages.some((entry) => entry.startsWith("1-codegen:"))).toBe(false);
   });

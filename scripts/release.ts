@@ -128,21 +128,26 @@ const npmAlphaPublishScript = (): string =>
     "npm view @lando/core dist-tags.dev --json | grep -Eq '\"?4\\.0\\.0-alpha\\.[0-9]+\"?'",
   ].join("\n");
 
+const libraryBundleCommands = (): ReadonlyArray<ReadonlyArray<string>> =>
+  releasePackageNames.map((packageName) => ["bun", "run", `--filter=${packageName}`, "build"]);
+
 const defaultRemediation = "Fix the failed release stage and rerun scripts/release.ts from a clean tree.";
 
 const spawnStage =
   (
     stage: Pick<ReleaseStage, "id" | "forBinary" | "forLibrary" | "commandSummary" | "remediation">,
-    cmd: ReadonlyArray<string>,
+    commands: ReadonlyArray<ReadonlyArray<string>>,
   ) =>
   async ({ runner, target }: ReleaseStageContext): Promise<void> => {
-    await runner.spawn({
-      stageId: stage.id,
-      artifactFamily: artifactFamilyForStage(stage, target),
-      summary: stage.commandSummary,
-      remediation: stage.remediation,
-      cmd,
-    });
+    for (const cmd of commands) {
+      await runner.spawn({
+        stageId: stage.id,
+        artifactFamily: artifactFamilyForStage(stage, target),
+        summary: stage.commandSummary,
+        remediation: stage.remediation,
+        cmd,
+      });
+    }
   };
 
 const shellStage =
@@ -173,7 +178,7 @@ const skipStage =
 
 const defineStage = (
   stage: Omit<ReleaseStage, "run"> & {
-    readonly command: ReadonlyArray<string> | string;
+    readonly command: ReadonlyArray<string> | ReadonlyArray<ReadonlyArray<string>> | string;
   },
 ): ReleaseStage => {
   const base = {
@@ -183,9 +188,12 @@ const defineStage = (
     commandSummary: stage.commandSummary,
     remediation: stage.remediation,
   };
+  const spawnCommands = Array.isArray(stage.command[0])
+    ? (stage.command as ReadonlyArray<ReadonlyArray<string>>)
+    : [stage.command as ReadonlyArray<string>];
   const run =
     stage.kind === "spawn"
-      ? spawnStage(base, stage.command as ReadonlyArray<string>)
+      ? spawnStage(base, spawnCommands)
       : stage.kind === "shell"
         ? shellStage(base, stage.command as string)
         : skipStage(stage.command as string);
@@ -256,9 +264,9 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     forBinary: false,
     forLibrary: true,
     kind: "spawn",
-    commandSummary: "bun run build",
+    commandSummary: "bun run --filter=<release package> build",
     remediation: defaultRemediation,
-    command: ["bun", "run", "build"],
+    command: libraryBundleCommands(),
   }),
   defineStage({
     id: "7-compile",
