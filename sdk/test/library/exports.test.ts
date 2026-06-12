@@ -17,8 +17,13 @@ describe("@lando/sdk package exports", () => {
 
     expect(schema.BootstrapLevel).toBeDefined();
     expect(schema.DeprecationNotice).toBeDefined();
+    expect(schema.SchemaDeprecationAnnotationId).toBeDefined();
     expect(schema.DeprecationSurfaceKind).toBeDefined();
     expect(schema.DeprecationUse).toBeDefined();
+    expect(schema.deprecateField).toBeDefined();
+    expect(schema.deprecateSchema).toBeDefined();
+    expect(schema.formatDeprecationNotice).toBeDefined();
+    expect(schema.getSchemaDeprecation).toBeDefined();
     expect(schema.structuralDeprecationKey).toBeDefined();
     expect(schema.BOOTSTRAP_RANK).toBeDefined();
     expect(schema.AppRef).toBeDefined();
@@ -42,6 +47,8 @@ describe("@lando/sdk package exports", () => {
     expect(schema.RecipeChoicesFrom).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
+    expect(schema.getJsonSchemaWithDeprecations).toBeDefined();
+    expect(schema.renderSchemaReferenceMarkdown).toBeDefined();
   });
 
   test("schema entry point exposes JSON Schema for the canonical contract surface", async () => {

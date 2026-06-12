@@ -3,6 +3,7 @@
 - Deprecation registry population belongs in the plugins bootstrap layer via `DeprecationPluginRegistryLive`; keep the minimal `DeprecationServiceLive` empty and O(1), and call `register` only from registration/bootstrap walks, never from use hot paths.
 - Registry plugin postinstall trust keys on the requested package identity (`plugin:add` spec after version stripping), never package-controlled manifest names; authoring-root trust is only for local/link flows and must not apply to managed registry cache paths.
 - Plugin install trust is a two-phase path: package extraction/manifest validation is inert and must not run lifecycle scripts; only a trusted result may run a package postinstall through `bunSelfInstall` / BunSelfRunner so pre/post bun-self-exec events and the recursion guard are preserved.
+- Schema deprecation metadata should use the shared `SchemaDeprecationAnnotationId` annotation and AST unwrapping helpers so JSON Schema, generated reference content, and optional/union-wrapped fields stay in sync.
 
 ## 2026-06-08 10:12 CDT - US-200 Review
 - Reviewed `lando setup` orchestration against PRD-01. Build step committed the docker AC5 isAvailable probe but left the equivalent podman fix uncommitted in the working tree; committed it as a focused review fix so no half-finished change reaches the push step. Podman's bundled construction already fails with remediation via construction-time `api.info` capability introspection, so the change is defense-in-depth/consistency (replaces a latent `isAvailable: true` lie with a real probe) and keeps the docker/podman availability surface symmetric. Added podman availability unit test.
@@ -249,4 +250,9 @@
 - Verification: focused deprecation/schema/export tests, library API QA, codegen regeneration check, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:**
   - Deprecation observers should subscribe late to the shared event stream; keep telemetry as an event consumer so future deprecation surfaces do not grow parallel reporting hooks.
+---
+## 2026-06-11 19:25 CDT - US-218
+- Shipped schema-level deprecation annotation propagation: `DeprecationNotice` can now be attached to schemas and fields, JSON Schema output emits `deprecated: true` plus valid `x-deprecation`, generated reference markdown and schema documentation text use the same annotation metadata, and the schema snapshot gate rejects invalid emitted deprecation payloads.
+- Verification: typecheck, lint, schema codegen, focused deprecation/schema/export tests, full tests, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Schema deprecation metadata should use one custom Effect Schema annotation symbol and one AST unwrapping helper so JSON Schema, reference docs, and optional/union-wrapped fields cannot drift.
 ---

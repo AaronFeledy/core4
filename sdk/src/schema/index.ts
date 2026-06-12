@@ -8,7 +8,13 @@ export {
   DeprecationSeverity,
   DeprecationSurfaceKind,
   DeprecationUse,
+  SchemaDeprecationAnnotationId,
+  deprecateField,
+  deprecateSchema,
+  formatDeprecationNotice,
+  getSchemaDeprecation,
   type StructuralDeprecationKey,
+  type SchemaDeprecationAnnotation,
   structuralDeprecationKey,
 } from "./deprecation.ts";
 export * from "./docs.ts";

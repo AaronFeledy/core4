@@ -5,7 +5,12 @@ import {
   DeprecationNotice,
   DeprecationSurfaceKind,
   DeprecationUse,
+  assertJsonSchemaDeprecationsValid,
+  deprecateField,
+  deprecateSchema,
   getJsonSchema,
+  getJsonSchemaWithDeprecations,
+  renderSchemaReferenceMarkdown,
   structuralDeprecationKey,
 } from "@lando/sdk/schema";
 
@@ -121,5 +126,111 @@ describe("DeprecationUsedEvent", () => {
       expect(decoded.right._tag).toBe("deprecation-used");
       expect(decoded.right.use.id).toBe("app:start");
     }
+  });
+});
+
+describe("schema deprecation annotations", () => {
+  const notice = {
+    since: "4.2.0",
+    removeIn: "5.0.0",
+    severity: "warn" as const,
+    replacement: "newField",
+    note: "Use newField instead.",
+    docsUrl: "https://docs.lando.dev/deprecations/old-field",
+  };
+
+  const ExampleSchema = deprecateSchema(
+    Schema.Struct({
+      oldField: deprecateField(Schema.String, notice),
+      newField: Schema.String,
+    }).annotations({
+      identifier: "ExampleDeprecatedSchema",
+      title: "Example Deprecated Schema",
+      description: "A schema used to prove schema-level deprecation propagation.",
+    }),
+    notice,
+  );
+
+  test("emits deprecated JSON Schema metadata for annotated schemas and fields", () => {
+    const jsonSchema = getJsonSchemaWithDeprecations(ExampleSchema) as {
+      readonly deprecated?: boolean;
+      readonly "x-deprecation"?: unknown;
+      readonly properties?: Record<
+        string,
+        { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown }
+      >;
+    };
+
+    expect(jsonSchema.deprecated).toBe(true);
+    expect(jsonSchema["x-deprecation"]).toEqual(notice);
+    expect(jsonSchema.properties?.oldField?.deprecated).toBe(true);
+    expect(jsonSchema.properties?.oldField?.["x-deprecation"]).toEqual(notice);
+    expect(jsonSchema.properties?.newField?.deprecated).toBeUndefined();
+  });
+
+  test("validates emitted x-deprecation payloads against DeprecationNotice", () => {
+    const valid = getJsonSchemaWithDeprecations(ExampleSchema);
+    expect(assertJsonSchemaDeprecationsValid(valid)).toEqual([]);
+
+    const invalid = {
+      type: "object",
+      deprecated: true,
+      "x-deprecation": { since: "next", note: "Use another surface." },
+    };
+
+    expect(assertJsonSchemaDeprecationsValid(invalid)).toEqual(["$"]);
+    expect(
+      assertJsonSchemaDeprecationsValid({
+        type: "object",
+        deprecated: true,
+        "x-deprecation": { since: "4.2.0", removeIn: "5.0.0", note: "Use another surface.", extra: true },
+      }),
+    ).toEqual(["$"]);
+  });
+
+  test("propagates nested optional field deprecations", () => {
+    const jsonSchema = getJsonSchemaWithDeprecations(
+      Schema.Struct({ optionalOldField: Schema.optional(deprecateField(Schema.String, notice)) }),
+    ) as {
+      readonly properties?: Record<
+        string,
+        { readonly deprecated?: boolean; readonly "x-deprecation"?: unknown }
+      >;
+    };
+
+    expect(jsonSchema.properties?.optionalOldField?.deprecated).toBe(true);
+    expect(jsonSchema.properties?.optionalOldField?.["x-deprecation"]).toEqual(notice);
+  });
+
+  test("renders generated reference callouts from schema deprecation metadata", () => {
+    const markdown = renderSchemaReferenceMarkdown("ExampleDeprecatedSchema", ExampleSchema);
+
+    expect(markdown).toContain(
+      "> [!WARNING]\n> Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.",
+    );
+    expect(markdown).toContain(
+      "| `oldField` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+    );
+  });
+
+  test("renders generated reference callouts for nested optional field deprecations", () => {
+    const markdown = renderSchemaReferenceMarkdown(
+      "ExampleOptionalDeprecatedSchema",
+      Schema.Struct({ optionalOldField: Schema.optional(deprecateField(Schema.String, notice)) }),
+    );
+
+    expect(markdown).toContain(
+      "| `optionalOldField` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+    );
+  });
+
+  test("adds hover documentation where schema annotations support it", () => {
+    const docs = Object.getOwnPropertySymbols(ExampleSchema.ast.annotations).map(
+      (key) => ExampleSchema.ast.annotations[key],
+    );
+
+    expect(docs).toContain(
+      "Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.",
+    );
   });
 });
