@@ -55,6 +55,45 @@ describe("deprecation TSDoc lint gate", () => {
     });
   });
 
+  test("accepts deprecated exports using an aliased markDeprecated import", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated as md } from "@lando/sdk/services";
+          const notice = { since: "4.2.0", note: "Use newApi instead.", replacement: "newApi" };
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          export const oldApi = md(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      expect(await checkDeprecationTsdoc({ root })).toEqual({ ok: true, offenders: [] });
+    });
+  });
+
+  test("rejects deprecated exports using an unrelated local call", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          const md = (_notice: unknown, _id: string, impl: () => string) => impl;
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          export const oldApi = md({ since: "4.2.0", note: "Use newApi instead." }, "oldApi", () => "ok");
+        `,
+      );
+
+      const result = await checkDeprecationTsdoc({ root });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:4:oldApi:missing markDeprecated(notice, impl) wrapper",
+      ]);
+    });
+  });
+
   test("fails public deprecated exports without runtime metadata", async () => {
     await withFixtureRoot(async (root) => {
       await write(

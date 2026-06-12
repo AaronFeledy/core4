@@ -74,16 +74,45 @@ const propertyNameText = (name: ts.PropertyName | ts.BindingName | undefined): s
   return undefined;
 };
 
-const isMarkDeprecatedCall = (expression: ts.Expression | undefined): boolean => {
+const markDeprecatedImportBindings = (source: ts.SourceFile): ReadonlySet<string> => {
+  const bindings = new Set<string>(["markDeprecated"]);
+
+  for (const statement of source.statements) {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly === true) continue;
+    const namedBindings = statement.importClause?.namedBindings;
+    if (namedBindings === undefined || !ts.isNamedImports(namedBindings)) continue;
+
+    for (const element of namedBindings.elements) {
+      if (element.isTypeOnly) continue;
+      if ((element.propertyName?.text ?? element.name.text) === "markDeprecated") {
+        bindings.add(element.name.text);
+      }
+    }
+  }
+
+  return bindings;
+};
+
+const isMarkDeprecatedCall = (
+  expression: ts.Expression | undefined,
+  importedBindings: ReadonlySet<string>,
+): boolean => {
   if (expression === undefined || !ts.isCallExpression(expression)) return false;
   const callee = expression.expression;
-  if (ts.isIdentifier(callee)) return callee.text === "markDeprecated";
+  if (ts.isIdentifier(callee)) return importedBindings.has(callee.text);
   if (ts.isPropertyAccessExpression(callee)) return propertyNameText(callee.name) === "markDeprecated";
   return false;
 };
 
-const markDeprecatedExportId = (expression: ts.Expression | undefined): string | undefined => {
-  if (expression === undefined || !ts.isCallExpression(expression) || !isMarkDeprecatedCall(expression)) {
+const markDeprecatedExportId = (
+  expression: ts.Expression | undefined,
+  importedBindings: ReadonlySet<string>,
+): string | undefined => {
+  if (
+    expression === undefined ||
+    !ts.isCallExpression(expression) ||
+    !isMarkDeprecatedCall(expression, importedBindings)
+  ) {
     return undefined;
   }
 
@@ -98,8 +127,11 @@ const markDeprecatedExportId = (expression: ts.Expression | undefined): string |
   return undefined;
 };
 
-const markDeprecatedTracksExport = (expression: ts.Expression | undefined, exportName: string): boolean =>
-  markDeprecatedExportId(expression) === exportName;
+const markDeprecatedTracksExport = (
+  expression: ts.Expression | undefined,
+  exportName: string,
+  importedBindings: ReadonlySet<string>,
+): boolean => markDeprecatedExportId(expression, importedBindings) === exportName;
 
 interface NoticeText {
   readonly note?: string;
@@ -207,6 +239,7 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
   const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const offenders: DeprecationTsdocOffender[] = [];
   const notices = localNoticeBindings(source);
+  const markDeprecatedBindings = markDeprecatedImportBindings(source);
   const localDeclarations = new Map<
     string,
     ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration
@@ -235,9 +268,9 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
     if (ts.isVariableStatement(statement) && hasExportModifier(statement) && hasDeprecatedTag(statement)) {
       for (const declaration of statement.declarationList.declarations) {
         const exportName = propertyNameText(declaration.name) ?? "<destructured>";
-        if (!isMarkDeprecatedCall(declaration.initializer)) {
+        if (!isMarkDeprecatedCall(declaration.initializer, markDeprecatedBindings)) {
           offenders.push(offender(source, file, statement, exportName, MISSING_MARK_DEPRECATED_REASON));
-        } else if (!markDeprecatedTracksExport(declaration.initializer, exportName)) {
+        } else if (!markDeprecatedTracksExport(declaration.initializer, exportName, markDeprecatedBindings)) {
           offenders.push(offender(source, file, statement, exportName, MISMATCHED_MARK_DEPRECATED_ID_REASON));
         } else if (
           !tsdocMatchesNotice(
@@ -310,9 +343,11 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
         }
 
         if (ts.isVariableDeclaration(declaration)) {
-          if (!isMarkDeprecatedCall(declaration.initializer)) {
+          if (!isMarkDeprecatedCall(declaration.initializer, markDeprecatedBindings)) {
             offenders.push(offender(source, file, statement, exportedName, MISSING_MARK_DEPRECATED_REASON));
-          } else if (!markDeprecatedTracksExport(declaration.initializer, exportedName)) {
+          } else if (
+            !markDeprecatedTracksExport(declaration.initializer, exportedName, markDeprecatedBindings)
+          ) {
             offenders.push(
               offender(source, file, statement, exportedName, MISMATCHED_MARK_DEPRECATED_ID_REASON),
             );
