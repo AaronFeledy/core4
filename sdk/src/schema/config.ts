@@ -5,11 +5,11 @@ import { AbsolutePath, ProviderId } from "./primitives.ts";
 // Global config — the host-level merged config.
 
 /**
- * Telemetry opt-in. `enabled` defaults to `false` so a partial decode is
- * always safe.
+ * Telemetry defaults on for CLI global config. Library runtimes do not use this
+ * schema default for their host decision; they stay opt-in at runtime creation.
  */
 export const TelemetryConfig = Schema.Struct({
-  enabled: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  enabled: Schema.optionalWith(Schema.Boolean, { default: () => true }),
 });
 export type TelemetryConfig = typeof TelemetryConfig.Type;
 
@@ -47,7 +47,7 @@ export const GlobalConfig = Schema.Struct({
   userDataRoot: Schema.optional(AbsolutePath),
   userConfRoot: Schema.optional(AbsolutePath),
   defaultProviderId: Schema.optional(Schema.Union(ProviderId, Schema.Null)),
-  telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: false }) }),
+  telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),
   network: Schema.optional(NetworkConfig),
 });

@@ -242,16 +242,16 @@ describe("GlobalConfig (MVP)", () => {
     expect(decoded.telemetry?.enabled).toBe(false);
   });
 
-  test("telemetry.enabled defaults to false when omitted from the input", () => {
+  test("telemetry.enabled defaults to true when omitted from the input", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({
       telemetry: {},
     });
-    expect(decoded.telemetry?.enabled).toBe(false);
+    expect(decoded.telemetry?.enabled).toBe(true);
   });
 
   test("decodes an empty object (every field is optional at MVP)", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({});
-    expect(decoded.telemetry.enabled).toBe(false);
+    expect(decoded.telemetry.enabled).toBe(true);
   });
 
   test("defaultProviderId accepts an explicit null (opt-out signal)", () => {
