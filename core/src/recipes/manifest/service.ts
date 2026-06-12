@@ -35,12 +35,6 @@ interface BetaFinding {
   readonly message: string;
 }
 
-const scanTopLevelBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-  void source;
-  return undefined;
-};
-
 const scanPromptBeta = (parsed: unknown, source: string): BetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
   const obj = parsed as Record<string, unknown>;
@@ -82,8 +76,7 @@ const scanPostInitBeta = (parsed: unknown, source: string): BetaFinding | undefi
 };
 
 const rejectBetaSections = (source: string, parsed: unknown): Effect.Effect<unknown, NotImplementedError> => {
-  const finding =
-    scanTopLevelBeta(parsed, source) ?? scanPromptBeta(parsed, source) ?? scanPostInitBeta(parsed, source);
+  const finding = scanPromptBeta(parsed, source) ?? scanPostInitBeta(parsed, source);
   if (finding === undefined) return Effect.succeed(parsed);
   return Effect.fail(
     new NotImplementedError({

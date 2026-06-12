@@ -49,6 +49,10 @@ import { resolveUserCacheRoot } from "../cache/paths.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
+type ContributionRef = string | { readonly id: string };
+
+const contributionId = (entry: ContributionRef): string => (typeof entry === "string" ? entry : entry.id);
+
 const GLOBAL_SCOPE_REMEDIATION =
   "Use scope: app or scope: service. Storage scope: global is deferred until global app support lands.";
 
@@ -233,19 +237,17 @@ const collectFileSyncEntries = (params: {
 const resolveFileSyncEngineId = (
   manifests: ReadonlyArray<{
     readonly contributes?:
-      | { readonly fileSyncEngines?: ReadonlyArray<string | { readonly id: string }> | undefined }
+      | { readonly fileSyncEngines?: ReadonlyArray<ContributionRef> | undefined }
       | undefined;
   }>,
 ): string | undefined => {
   for (const manifest of manifests) {
-    const ids = (manifest.contributes?.fileSyncEngines ?? []).map((entry) =>
-      typeof entry === "string" ? entry : entry.id,
-    );
+    const ids = (manifest.contributes?.fileSyncEngines ?? []).map(contributionId);
     if (ids.includes("mutagen")) return "mutagen";
   }
   for (const manifest of manifests) {
     const entry = (manifest.contributes?.fileSyncEngines ?? [])[0];
-    if (entry !== undefined) return typeof entry === "string" ? entry : entry.id;
+    if (entry !== undefined) return contributionId(entry);
   }
   return undefined;
 };
@@ -474,9 +476,7 @@ const planApp = (
       if (cached !== null) return cached;
     }
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
-      (manifest.contributes?.serviceTypes ?? []).map((entry) =>
-        typeof entry === "string" ? entry : entry.id,
-      ),
+      (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );
 
     for (const [name, service] of Object.entries(landofile.services ?? {})) {

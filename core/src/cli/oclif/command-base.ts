@@ -36,14 +36,11 @@ export type LandoCommandNamespace = "app" | "apps" | "meta";
  *   - `"name"`: register the given name as the top-level alias instead of
  *     the auto-derived name. Multi-segment values like `"plugin:add"` are
  *     accepted.
- *   - `["a", "b"]`: register multiple top-level aliases.
+ *   - `{ name, deprecated }`: register an alias with its own deprecation notice.
+ *   - `["a", { name, deprecated }]`: register multiple top-level aliases.
  */
 export type LandoAliasSpec = string | { readonly name: string; readonly deprecated?: DeprecationNotice };
-export type LandoTopLevelAlias =
-  | boolean
-  | string
-  | { readonly name: string; readonly deprecated?: DeprecationNotice }
-  | ReadonlyArray<LandoAliasSpec>;
+export type LandoTopLevelAlias = boolean | LandoAliasSpec | ReadonlyArray<LandoAliasSpec>;
 
 const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAliasSpec> =>
   Array.isArray(value);
