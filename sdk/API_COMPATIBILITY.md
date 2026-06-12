@@ -2,6 +2,10 @@
 
 `@lando/sdk` is the stable public plugin-author surface. Compatibility tests freeze the currently supported schema names and service tag signatures; Alpha additions must remain additive and be listed here.
 
+## Compatibility notes
+
+- `GlobalConfig.telemetry.enabled` and `TelemetryConfig.enabled` decode omitted values as `true` for CLI global-config defaults; embedding hosts still get library-mode telemetry disabled unless they opt in through runtime construction.
+
 ## Additive Alpha schema exports
 
 - `AbsolutePath`

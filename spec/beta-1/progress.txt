@@ -281,3 +281,9 @@
 - Verification: focused telemetry/config/runtime/schema tests, typecheck, lint, and source CLI smoke passed. Full `bun test` is blocked by a pre-existing unrelated `sdk/test/library/exports.test.ts` `DeprecationNotice` core-vs-SDK identity failure, reproduced outside this story worktree.
 - **Learnings for future iterations:** Keep shared CLI-runtime helpers outside `core/src/cli/`; OCLIF discovery/test harnesses can misinterpret new root CLI files as command modules.
 ---
+## 2026-06-12 12:25 CDT - US-240 Review
+- Fixed review blockers in telemetry precedence: explicit runtime telemetry now wins before env/config, level-none runtime options avoid global config I/O, malformed config without an explicit telemetry env preserves CLI default-on, and the required telemetry defaults guide plus SDK compatibility note are shipped.
+- Review notes (deferred/rejected): full `bun test` remains blocked only by the pre-existing `sdk/test/library/exports.test.ts` DeprecationNotice core-vs-SDK identity failure reproduced outside this story.
+- Verification: focused telemetry/config/runtime/schema tests, guide lint, guide coverage, typecheck, lint, and source CLI smoke passed.
+- **Learnings for future iterations:** Runtime helpers imported by OCLIF init must special-case `bootstrap: "none"` so fast-path commands do not start reading global config before command execution.
+---

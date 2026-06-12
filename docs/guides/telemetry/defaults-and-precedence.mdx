@@ -1,0 +1,32 @@
+---
+id: telemetry-defaults-and-precedence
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, telemetry, config]
+---
+
+<Guide>
+  <Scenario id="cli-default" render={false} reason="CLI telemetry defaults are verified by the CLI runtime telemetry tests without requiring a provider-backed app">
+    <Step name="default-on">
+      <Variable name="default" value="on" display="CLI runs construct telemetry as enabled when no flag, env overlay, or config value overrides it" />
+      <Variable name="configDefault" value="telemetry.enabled=true" display="GlobalConfig decoding now treats an omitted telemetry setting as enabled for CLI config" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="precedence" render={false} reason="The precedence chain is covered by the CLI runtime telemetry tests and env-overlay service tests">
+    <Step name="chain">
+      <Variable name="order" value="runtime option > env > config > default" display="The highest-precedence telemetry source wins" />
+      <Variable name="envOff" value="LANDO_CONFIG__TELEMETRY__ENABLED=0" display="An env overlay disables telemetry before runtime construction, even if config.yml enables it" />
+      <Variable name="configOff" value="telemetry.enabled: false" display="A valid global config setting disables CLI telemetry when no env overlay is present" />
+      <Variable name="runtimeOption" value="telemetry: false" display="An explicit runtime telemetry option wins before env and config resolution" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="library-default" render={false} reason="Library runtime defaults are verified by makeLandoRuntime tests and documented for embedding hosts">
+    <Step name="default-off">
+      <Variable name="libraryDefault" value="off" display="Library runtimes keep telemetry disabled unless the embedding host explicitly opts in" />
+      <Variable name="libraryOptIn" value="telemetry: true" display="Embedding hosts opt in at runtime construction" />
+    </Step>
+  </Scenario>
+</Guide>
