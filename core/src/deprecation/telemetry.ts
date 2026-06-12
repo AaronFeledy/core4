@@ -11,9 +11,7 @@ export const DeprecationTelemetryLive = Layer.scopedDiscard(
     const queue = yield* events.subscribeQueue;
     yield* Stream.fromQueue(queue).pipe(
       Stream.filter((event) => event._tag === "deprecation-used"),
-      Stream.runForEach((event) =>
-        event.use === undefined ? Effect.void : telemetry.record("deprecation-used", { use: event.use }),
-      ),
+      Stream.runForEach((event) => telemetry.record("deprecation-used", { use: event.use })),
       Effect.catchAll(() => Effect.void),
       Effect.forkScoped,
     );

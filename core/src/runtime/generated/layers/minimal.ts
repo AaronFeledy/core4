@@ -30,25 +30,21 @@ import {
   makeLibraryTelemetry,
 } from "../../bootstrap-layer-support.ts";
 
-export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) =>
-  Layer.mergeAll(
+export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
+  const telemetryLive = Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled));
+
+  return Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
-    Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),
+    telemetryLive,
     ConfigServiceLive,
     EventServiceLive,
     DeprecationServiceLive.pipe(Layer.provide(EventServiceLive)),
-    DeprecationTelemetryLive.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          EventServiceLive,
-          Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),
-        ),
-      ),
-    ),
+    DeprecationTelemetryLive.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, telemetryLive))),
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,
     PrivilegeServiceLive,
     SecretStoreLive,
   );
+};
