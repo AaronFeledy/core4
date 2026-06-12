@@ -269,3 +269,10 @@
 - Verification: focused release tests, typecheck, lint, and changed-file diagnostics passed.
 - **Learnings for future iterations:** Release stage metadata should model the future artifact-family matrix even while a stage body is still stubbed, so later stories do not have to undo tests that encoded a temporary skip.
 ---
+
+## 2026-06-12 11:40 CDT - Babysit
+- PR: #338 https://github.com/AaronFeledy/core4/pull/338
+- CI outcome: pass
+- Review feedback: fixed (Cursor Bugbot flagged library bundle stage building all workspaces; release stage now builds only release packages)
+- Merge: merged (squash)
+---
