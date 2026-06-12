@@ -16,9 +16,11 @@ import { Layer } from "effect";
 import { Renderer, Telemetry } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
+import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
+import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { PrivilegeServiceLive } from "../../../services/privilege.ts";
 import { SecretStoreLive } from "../../../services/secret-store.ts";
@@ -28,16 +30,21 @@ import {
   makeLibraryTelemetry,
 } from "../../bootstrap-layer-support.ts";
 
-export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) =>
-  Layer.mergeAll(
+export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
+  const telemetryLive = Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled));
+
+  return Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
-    Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled)),
+    telemetryLive,
     ConfigServiceLive,
-    DeprecationServiceLive,
+    EventServiceLive,
+    DeprecationServiceLive.pipe(Layer.provide(EventServiceLive)),
+    DeprecationTelemetryLive.pipe(Layer.provide(Layer.mergeAll(EventServiceLive, telemetryLive))),
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
     CacheServiceLive,
     FileSystemLive,
     PrivilegeServiceLive,
     SecretStoreLive,
   );
+};

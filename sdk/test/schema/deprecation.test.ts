@@ -1,5 +1,6 @@
 import { Either, JSONSchema, Schema } from "effect";
 
+import { DeprecationUsedEvent, LandoEvent } from "@lando/sdk/events";
 import {
   DeprecationNotice,
   DeprecationSurfaceKind,
@@ -92,5 +93,33 @@ describe("DeprecationUse", () => {
     const decoded = Schema.decodeUnknownEither(DeprecationSurfaceKind)("not-a-surface");
 
     expect(decoded._tag).toBe("Left");
+  });
+});
+
+describe("DeprecationUsedEvent", () => {
+  test("decodes a deprecation-used event payload and participates in the event union", () => {
+    const payload = {
+      _tag: "deprecation-used",
+      use: {
+        kind: "command",
+        id: "app:start",
+        notice: {
+          since: "4.1.0",
+          severity: "warn",
+          note: "Use app:up instead.",
+        },
+        timestamp: "2026-06-11T16:00:00.000Z",
+      },
+    };
+
+    const decoded = Schema.decodeUnknownEither(DeprecationUsedEvent)(payload);
+    const event = Schema.decodeUnknownEither(LandoEvent)(payload);
+
+    expect(decoded._tag).toBe("Right");
+    expect(event._tag).toBe("Right");
+    if (decoded._tag === "Right") {
+      expect(decoded.right._tag).toBe("deprecation-used");
+      expect(decoded.right.use.id).toBe("app:start");
+    }
   });
 });

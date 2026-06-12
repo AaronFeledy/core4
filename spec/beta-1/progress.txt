@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Deprecation runtime usage should emit through `EventService` from `DeprecationService.use` after recording the use and before any severity error; telemetry consumes that same event from a scoped subscriber, not a second deprecation path.
 - Deprecation registry population belongs in the plugins bootstrap layer via `DeprecationPluginRegistryLive`; keep the minimal `DeprecationServiceLive` empty and O(1), and call `register` only from registration/bootstrap walks, never from use hot paths.
 - Registry plugin postinstall trust keys on the requested package identity (`plugin:add` spec after version stripping), never package-controlled manifest names; authoring-root trust is only for local/link flows and must not apply to managed registry cache paths.
 - Plugin install trust is a two-phase path: package extraction/manifest validation is inert and must not run lifecycle scripts; only a trusted result may run a package postinstall through `bunSelfInstall` / BunSelfRunner so pre/post bun-self-exec events and the recursion guard are preserved.
@@ -241,4 +242,11 @@
 - CI outcome: pass
 - Review feedback: rejected (Bugbot "Registry severity ignored on use" triaged as not-a-defect — §18.3 makes DeprecationUse.notice the runtime authority for `use`; register/lookup is a separate doctor/config index and no production `.use()` call sites exist, so the mismatch is unreachable; documented in a PR reply)
 - Merge: merged (squash)
+---
+
+## 2026-06-11 17:35 CDT - US-217
+- Shipped the typed `deprecation-used` lifecycle event: deprecated runtime use is recorded, published through `EventService`, visible to library subscribers, and consumed by telemetry from the same event stream without aborting the originating behavior on subscriber failure.
+- Verification: focused deprecation/schema/export tests, library API QA, codegen regeneration check, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:**
+  - Deprecation observers should subscribe late to the shared event stream; keep telemetry as an event consumer so future deprecation surfaces do not grow parallel reporting hooks.
 ---
