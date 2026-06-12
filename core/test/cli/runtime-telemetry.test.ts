@@ -71,6 +71,16 @@ describe("CLI runtime telemetry precedence", () => {
     });
   });
 
+  test("unrelated invalid config keeps explicit telemetry config off", async () => {
+    await withEnv({}, async (dir) => {
+      await writeFile(
+        join(dir, "config.yml"),
+        ["defaultProviderId: 42", "telemetry:", "  enabled: false", ""].join("\n"),
+      );
+      await expect(readCliTelemetry()).resolves.toBe(false);
+    });
+  });
+
   test("explicit runtime telemetry option wins before env and config", async () => {
     await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "1" }, async (dir) => {
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
