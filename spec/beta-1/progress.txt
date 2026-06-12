@@ -287,3 +287,8 @@
 - Verification: focused telemetry/config/runtime/schema tests, guide lint, guide coverage, typecheck, lint, and source CLI smoke passed.
 - **Learnings for future iterations:** Runtime helpers imported by OCLIF init must special-case `bootstrap: "none"` so fast-path commands do not start reading global config before command execution.
 ---
+## 2026-06-12 12:45 CDT - US-240 Verify
+- Verified the freshly compiled binary for telemetry defaults and precedence through real `config` and `version` command surfaces, including env-disabled telemetry over config true and malformed config with/without explicit telemetry env.
+- Setup sandbox blocker: `core4-agent2` does not contain `.local/DEV-ENV.md` or `.local/bin/lando4-dev`; US-240 has no provider/setup behavior, so verification used host-safe compiled config/runtime surfaces instead of fabricating a setup run.
+- **Learnings for future iterations:** Secondary worktrees may not carry `.local/` sandbox helpers; verify prompt setup runs are only possible from worktrees that include those local harness files.
+---
