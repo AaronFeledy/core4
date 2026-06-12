@@ -262,3 +262,10 @@
 - Verification: RED focused test failed on the missing orchestrator export before implementation; focused release tests, typecheck, lint, manual injected-runner release surface, and Oracle review passed. Full test suite has one isolated pre-existing package-export identity failure in `sdk/test/library/exports.test.ts`, reproducible outside release files.
 - **Learnings for future iterations:** Keep release stages data-driven and injectable; tests should exercise `runRelease` with fake runners so release-order, target filtering, and failure wrapping are proven without accidentally executing publish/signing commands.
 ---
+
+## 2026-06-12 08:25 CDT - US-251 Review
+- Review tightened the release stage contract: strict TypeScript issues were fixed, release errors now report concrete artifact-family metadata, and the publish stage remains part of binary traversal without executing npm publishing for binary-only runs.
+- Review notes (deferred/rejected): Beta/next npm publishing remains follow-on release-publish scope; US-251 only locks ordering, runner shape, and error wrapping.
+- Verification: focused release tests, typecheck, lint, and changed-file diagnostics passed.
+- **Learnings for future iterations:** Release stage metadata should model the future artifact-family matrix even while a stage body is still stubbed, so later stories do not have to undo tests that encoded a temporary skip.
+---

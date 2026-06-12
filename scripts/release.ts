@@ -10,11 +10,12 @@ import { $ } from "bun";
 import { prepareNpmAlphaPackages, releasePackageNames } from "./prepare-npm-dev-packages.ts";
 
 export type ArtifactTarget = "all" | "binary" | "library";
+export type ReleaseArtifactFamily = "binary" | "library" | "binary+library";
 export type ReleaseRunnerKind = "spawn" | "shell" | "skip";
 
 export interface ReleaseCommand {
   readonly stageId: string;
-  readonly artifactFamily: ArtifactTarget;
+  readonly artifactFamily: ReleaseArtifactFamily;
   readonly summary: string;
   readonly remediation: string;
 }
@@ -61,10 +62,10 @@ export class ReleaseStageError extends Error {
 
   constructor(
     readonly stageId: string,
-    readonly artifactFamily: ArtifactTarget,
+    readonly artifactFamily: ReleaseArtifactFamily,
     readonly commandSummary: string,
     readonly remediation: string,
-    readonly cause: unknown,
+    override readonly cause: unknown,
   ) {
     super(`Release stage ${stageId} failed for ${artifactFamily}: ${commandSummary}`);
     this.name = "ReleaseStageError";
@@ -106,6 +107,13 @@ const stageMatchesTarget = (stage: ReleaseStage, target: ArtifactTarget): boolea
   return stage.forLibrary;
 };
 
+const artifactFamilyForStage = (stage: ReleaseStage, target: ArtifactTarget): ReleaseArtifactFamily => {
+  if (target === "binary" || target === "library") return target;
+  if (stage.forBinary && stage.forLibrary) return "binary+library";
+  if (stage.forBinary) return "binary";
+  return "library";
+};
+
 const npmAlphaPublishScript = (): string =>
   [
     'before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"',
@@ -124,7 +132,7 @@ const spawnStage =
   async ({ runner, target }: ReleaseStageContext): Promise<void> => {
     await runner.spawn({
       stageId: stage.id,
-      artifactFamily: target,
+      artifactFamily: artifactFamilyForStage(stage, target),
       summary: stage.commandSummary,
       remediation: stage.remediation,
       cmd,
@@ -133,10 +141,15 @@ const spawnStage =
 
 const shellStage =
   (stage: Pick<ReleaseStage, "id" | "commandSummary" | "remediation">, script: string) =>
-  async ({ runner, target }: ReleaseStageContext): Promise<void> => {
+  async ({ logger, runner, target }: ReleaseStageContext): Promise<void> => {
+    if (stage.id === "13-publish" && target === "binary") {
+      logger("[release] skip 13-publish (binary artifact publishing not yet wired)");
+      return;
+    }
+
     await runner.shell({
       stageId: stage.id,
-      artifactFamily: target,
+      artifactFamily: artifactFamilyForStage(stage, target),
       summary: stage.commandSummary,
       remediation: stage.remediation,
       script,
@@ -303,7 +316,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
     id: "13-publish",
     label: "Publish",
     description: "Publish @lando/core and bundled workspace packages to npm on the dev tag.",
-    forBinary: false,
+    forBinary: true,
     forLibrary: true,
     kind: "shell",
     commandSummary: "prepare alpha packages and publish npm workspaces on the dev tag",
@@ -314,7 +327,7 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
 
 const defaultRunner: ReleaseRunner = {
   spawn: async ({ cmd }) => {
-    const proc = Bun.spawn(cmd, { stdout: "inherit", stderr: "inherit" });
+    const proc = Bun.spawn([...cmd], { stdout: "inherit", stderr: "inherit" });
     const exitCode = await proc.exited;
     if (exitCode !== 0) throw new Error(`Command exited ${exitCode}: ${cmd.join(" ")}`);
   },
@@ -342,7 +355,13 @@ export const runRelease = async ({
     try {
       await stage.run({ target, runner, logger });
     } catch (cause) {
-      throw new ReleaseStageError(stage.id, target, stage.commandSummary, stage.remediation, cause);
+      throw new ReleaseStageError(
+        stage.id,
+        artifactFamilyForStage(stage, target),
+        stage.commandSummary,
+        stage.remediation,
+        cause,
+      );
     }
   }
 
