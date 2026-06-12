@@ -17,14 +17,30 @@ export type DeprecatedCallable<
 
 const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
-export const markDeprecated = <
+export function markDeprecated<
+  Args extends ReadonlyArray<unknown>,
+  Return extends Effect.Effect<unknown, unknown, unknown>,
+>(notice: DeprecationNotice, impl: (...args: Args) => Return): DeprecatedCallable<Args, Return>;
+export function markDeprecated<
   Args extends ReadonlyArray<unknown>,
   Return extends Effect.Effect<unknown, unknown, unknown>,
 >(
   notice: DeprecationNotice,
+  exportId: string,
   impl: (...args: Args) => Return,
-): DeprecatedCallable<Args, Return> => {
-  const id = impl.name.length === 0 ? "deprecated-export" : impl.name;
+): DeprecatedCallable<Args, Return>;
+export function markDeprecated<
+  Args extends ReadonlyArray<unknown>,
+  Return extends Effect.Effect<unknown, unknown, unknown>,
+>(
+  notice: DeprecationNotice,
+  exportIdOrImpl: string | ((...args: Args) => Return),
+  maybeImpl?: (...args: Args) => Return,
+): DeprecatedCallable<Args, Return> {
+  const exportId = typeof exportIdOrImpl === "string" ? exportIdOrImpl : undefined;
+  const impl = typeof exportIdOrImpl === "function" ? exportIdOrImpl : maybeImpl;
+  if (impl === undefined) throw new TypeError("markDeprecated requires an implementation");
+  const id = exportId ?? (impl.name.length === 0 ? "deprecated-export" : impl.name);
   const deprecated = ((...args: Args): DeprecatedEffectReturn<Return> => {
     const result = impl(...args);
     const recorded = Effect.serviceOption(DeprecationService).pipe(
@@ -41,7 +57,7 @@ export const markDeprecated = <
 
   Object.defineProperty(deprecated, "deprecation", { value: notice, enumerable: true });
   return deprecated;
-};
+}
 
 export interface DeprecationSummaryEntry extends DeprecationUse {
   readonly count: number;

@@ -34,9 +34,9 @@ const DeprecationServiceWithEventsLive = DeprecationServiceLive.pipe(Layer.provi
 
 describe("DeprecationServiceLive", () => {
   test("markDeprecated records export usage and preserves callable behavior", async () => {
-    const legacyAdd = markDeprecated(warningNotice, function legacyAdd(left: number, right: number) {
-      return Effect.succeed(left + right);
-    });
+    const legacyAdd = markDeprecated(warningNotice, "legacyAdd", (left: number, right: number) =>
+      Effect.succeed(left + right),
+    );
 
     const result = await Effect.runPromise(
       Effect.gen(function* () {
@@ -51,6 +51,22 @@ describe("DeprecationServiceLive", () => {
     expect(result.summary[0]?.id).toBe("legacyAdd");
     expect(result.summary[0]?.count).toBe(1);
     expect(legacyAdd.deprecation).toEqual(warningNotice);
+  });
+
+  test("markDeprecated keeps explicit export ids distinct for anonymous implementations", async () => {
+    const oldApi = markDeprecated(warningNotice, "oldApi", () => Effect.succeed("old"));
+    const olderApi = markDeprecated(warningNotice, "olderApi", () => Effect.succeed("older"));
+
+    const summary = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* oldApi();
+        yield* olderApi();
+        const deprecations = yield* DeprecationService;
+        return yield* deprecations.summary();
+      }).pipe(Effect.provide(DeprecationServiceLive)),
+    );
+
+    expect(summary.map((entry) => entry.id).sort()).toEqual(["oldApi", "olderApi"]);
   });
 
   test("publishes deprecation-used after recording usage", async () => {
