@@ -93,6 +93,51 @@ interface ToolingBetaFinding {
   readonly description: string;
 }
 
+const scanToolingInputMetadataForBeta = (
+  taskName: string,
+  task: Readonly<Record<string, unknown>>,
+  section: "flags" | "args",
+): ToolingBetaFinding | undefined => {
+  const metadata = task[section];
+  if (
+    metadata === undefined ||
+    metadata === null ||
+    typeof metadata !== "object" ||
+    Array.isArray(metadata)
+  ) {
+    return undefined;
+  }
+
+  for (const [name, value] of Object.entries(metadata as Record<string, unknown>)) {
+    if (value === null || typeof value !== "object" || Array.isArray(value)) {
+      return {
+        task: taskName,
+        key: `${section}.${name}`,
+        description: `Tooling ${section} entry "${name}"`,
+      };
+    }
+
+    const keys = Object.keys(value as Record<string, unknown>);
+    const unsupportedKey = keys.find((key) => key !== "deprecated");
+    if (unsupportedKey !== undefined) {
+      return {
+        task: taskName,
+        key: `${section}.${name}.${unsupportedKey}`,
+        description: `Tooling ${section} field "${unsupportedKey}"`,
+      };
+    }
+    if (!Object.hasOwn(value, "deprecated")) {
+      return {
+        task: taskName,
+        key: `${section}.${name}`,
+        description: `Tooling ${section} entry "${name}" without deprecation metadata`,
+      };
+    }
+  }
+
+  return undefined;
+};
+
 const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => {
   if (parsed === null || typeof parsed !== "object") return undefined;
   const tooling = (parsed as Record<string, unknown>).tooling;
@@ -112,6 +157,11 @@ const scanToolingForBeta = (parsed: unknown): ToolingBetaFinding | undefined => 
         };
       }
     }
+
+    const unsupportedInputMetadata =
+      scanToolingInputMetadataForBeta(taskName, task, "flags") ??
+      scanToolingInputMetadataForBeta(taskName, task, "args");
+    if (unsupportedInputMetadata !== undefined) return unsupportedInputMetadata;
 
     const cmds = task.cmds;
     if (Array.isArray(cmds)) {
