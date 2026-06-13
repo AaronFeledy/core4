@@ -57,7 +57,9 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 Stability rules:
 
 - The default entry (`@lando/core`), `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, and `@lando/core/cli` are **semver-stable** within a major version. Breaking changes bump the major.
-- `@lando/core/testing`, `@lando/core/docs/components`, and `@lando/core/docs/redactions` are unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA they follow the standard semver rule.
+- `@lando/core/testing` is API-stable and supported on the `next` channel for Beta 1; it is also published on `dev`, and it still follows §13.7 channel promotion, so it is not published on the `stable` release channel until v4.0.0 GA. After GA it follows the standard semver rule.
+- `@lando/core/docs/components` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
+- `@lando/core/docs/redactions` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
 - `@lando/core/oclif` is **internal**. It is exported only because the OCLIF compiled-binary build needs it; embedding hosts MUST NOT import it. Tests enforce the boundary.
 - Any symbol not listed above is internal and may change between patch versions.
 
@@ -394,7 +396,7 @@ test("injecting the test provider", async () => {
 - Hosts pin a major (`"@lando/core": "^4.0.0"`). Patch and minor bumps are safe.
 - Plugin compatibility (the `requires."@lando/core"` field in plugin manifests, §9.4) governs plugin loading. A host that contributes plugins in `plugins.layers` is responsible for keeping them aligned with its core version; a host that uses `plugins.manifests` benefits from automatic compatibility checks at plugin load.
 - Schema versioning: every schema includes a discriminated `apiVersion` or equivalent; round-trip encode/decode is part of the schema gates (§13.2). Hosts that persist plan caches across core versions MUST consult the cache's version header (§12.2).
-- The `@lando/core/testing` API is unstable on `stable` channel until v4.0.0 GA. It is published on `next` and `dev` (§13.7) for early adopters.
+- The `@lando/core/testing` API is stable and supported on the `next` channel for Beta 1, and is also published on `dev` (§13.7). It is not promoted to the `stable` release channel until v4.0.0 GA.
 
 ### 16.10 Non-goals
 

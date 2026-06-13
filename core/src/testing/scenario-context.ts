@@ -19,82 +19,191 @@ import { FileSystemLive } from "../services/file-system.ts";
 import { CORE_VERSION } from "../version.ts";
 import { type TestRuntime, makeTestRuntime } from "./test-runtime.ts";
 
+/**
+ * Scenario runner layer used by generated guide tests.
+ * `scenario` runs against the source test harness, while `e2e` runs the compiled binary.
+ */
 export type ScenarioContextLayer = "scenario" | "e2e";
 
 type ScenarioRunnerKind = "scenario" | "e2e" | "testOnlyFake";
 
+/**
+ * Variable value made available to a scenario.
+ * `display` can carry the reader-facing value when it differs from the raw value.
+ */
 export interface ScenarioVariable {
+  /** Raw value passed to scenario code. */
   readonly value: string;
+  /** Optional display value for documentation output. */
   readonly display?: string;
 }
 
+/**
+ * Captured result from a scenario CLI invocation.
+ * It includes normalized command arguments, captured streams, exit status, and recorded events.
+ */
 export interface ScenarioRunResult {
+  /** Optional SDK error tag parsed from command stderr. */
   readonly _tag?: string;
+  /** Command arguments after removing a leading `lando`, when present. */
   readonly command: ReadonlyArray<string>;
+  /** Captured standard output. */
   readonly stdout: string;
+  /** Captured standard error. */
   readonly stderr: string;
+  /** Process exit code or in-process command status. */
   readonly exitCode: number;
+  /** Events recorded for the run. */
   readonly events: ReadonlyArray<LandoEvent>;
 }
 
+/**
+ * Options applied to a scenario CLI run.
+ * Answers are appended to init commands as `--answer=name=value` flags.
+ */
 export interface ScenarioRunOptions {
+  /** Prompt answers keyed by prompt name. */
   readonly answers?: Readonly<Record<string, string>>;
 }
 
+/**
+ * Input accepted by the guide `<Inspect>` helper.
+ * It records a file, JSON file, event list, or last command output into the transcript.
+ */
 export interface ScenarioInspectProps {
+  /** Text file path, relative to the scenario test directory. */
   readonly file?: string;
+  /** JSON file path, relative to the scenario test directory. */
   readonly json?: string;
+  /** Records the scenario event list when true. */
   readonly events?: true;
+  /** Records the last run frame's stdout when true or when no other target is set. */
   readonly output?: true;
 }
 
+/**
+ * Transcript frame shape emitted by scenario actions.
+ * The concrete frame schema comes from the SDK docs component contract.
+ */
 export type ScenarioTranscriptFrame = TranscriptFrame;
 
+/**
+ * Mutable transcript buffer for a running scenario.
+ * Frames are skipped while the context is inside `hidden` execution.
+ */
 export interface ScenarioTranscript {
+  /** Frames recorded so far for this scenario. */
   readonly frames: ReadonlyArray<ScenarioTranscriptFrame>;
+  /**
+   * Appends a frame unless transcript recording is hidden.
+   * @param frame Frame to add to the scenario transcript.
+   * @returns An effect that records the frame.
+   */
   readonly append: (frame: ScenarioTranscriptFrame) => Effect.Effect<void>;
 }
 
+/**
+ * Fixture helpers available to guide scenarios.
+ * Fixtures are copied into the scenario temp directory and become the working directory.
+ */
 export interface ScenarioFixtures {
+  /**
+   * Copies a named fixture into the scenario temp directory.
+   * @param name Fixture directory name under the guide fixture search paths.
+   * @returns The copied fixture path inside the scenario temp directory.
+   */
   readonly use: (
     name: string,
   ) => Effect.Effect<string, GuideFixtureNotFoundError | GuideFixtureSymlinkError | FileSystemError>;
 }
 
+/**
+ * Runtime state and helpers for one executable guide scenario.
+ * The context owns a temp directory, records transcript frames, and exposes CLI, fixture, inspect, and hidden execution helpers.
+ */
 export interface ScenarioContext {
+  /** Guide identifier used for transcript and fixture paths. */
   readonly guideId: string;
+  /** Scenario identifier used for transcript output. */
   readonly scenarioId: string;
+  /** Runner layer selected for the scenario. */
   readonly layer: ScenarioContextLayer;
+  /** Whether the generated guide scenario is reader-visible. */
   readonly render: boolean;
+  /** Variant values for the scenario. Currently empty for generated scenarios. */
   readonly variant: Readonly<Record<string, never>>;
+  /** Temporary directory that contains the scenario workspace. */
   readonly testDir: string;
+  /** Deterministic runtime services available to the scenario. */
   readonly runtime: TestRuntime;
+  /** Scenario variables keyed by variable name. */
   readonly vars: Map<string, ScenarioVariable>;
+  /**
+   * Runs a Lando CLI command in the current scenario working directory.
+   * @param command Command string or pre-split argv. A leading `lando` is ignored.
+   * @param options Optional prompt answers for init commands.
+   * @returns The captured command result and records a run frame.
+   */
   readonly runCli: (
     command: string | ReadonlyArray<string>,
     options?: ScenarioRunOptions,
   ) => Effect.Effect<ScenarioRunResult, unknown>;
+  /**
+   * Rejects shell commands, which are not implemented for guide scenarios.
+   * @param command Shell command from a guide `<Run shell="...">` block.
+   * @returns A failed effect with `NotImplementedError`.
+   */
   readonly shell: (command: string) => Effect.Effect<never, NotImplementedError>;
+  /**
+   * Records read-only scenario state into the transcript.
+   * @param props Target to inspect, such as file, JSON, events, or output.
+   * @returns An effect that appends an inspect frame.
+   */
   readonly inspect: (props: ScenarioInspectProps) => Effect.Effect<void>;
-  // Runs `effect` with transcript recording suppressed so `<Hidden>` guide blocks
-  // execute without emitting reader-visible frames; depth-counted and always restored.
+  /**
+   * Runs an effect with transcript recording suppressed.
+   * @param effect Effect to run without reader-visible transcript frames.
+   * @returns The wrapped effect with hidden depth restored afterward.
+   */
   readonly hidden: <A, E, R>(effect: Effect.Effect<A, E, R>) => Effect.Effect<A, E, R>;
-  // Only the `testOnlyFake` runner records events here. The `scenario` and `e2e`
-  // runners do not bridge the real EventService, so this stays empty under them —
-  // event-based assertions are meaningful only with `testOnlyFake`.
+  /**
+   * Events captured by the scenario context.
+   * Only the `testOnlyFake` runner records events here, since the other runners don't bridge the real event service.
+   */
   readonly events: ReadonlyArray<LandoEvent>;
+  /** Transcript buffer for this scenario. */
   readonly transcript: ScenarioTranscript;
+  /** Fixture helpers for this scenario. */
   readonly fixtures: ScenarioFixtures;
 }
 
+/**
+ * Effect service tag for the active scenario context.
+ * Scenario bodies receive this service automatically from `withScenarioContext` and factory runners.
+ */
 export const ScenarioContext = Context.GenericTag<ScenarioContext>("@lando/core/ScenarioContext");
 
+/**
+ * Options used to create a scenario context.
+ * Callers identify the guide and scenario, then may override rendering, variables, runtime, or CLI execution.
+ */
 export interface WithScenarioContextOptions {
+  /** Guide identifier for fixtures and transcript output. */
   readonly guideId: string;
+  /** Scenario identifier for temp directory and transcript output. */
   readonly scenarioId: string;
+  /** Whether the scenario should be marked reader-visible in transcripts. Defaults to true. */
   readonly render?: boolean;
+  /** Variables available to scenario code. */
   readonly vars?: ReadonlyMap<string, ScenarioVariable>;
+  /** Runtime services to expose through the context. Defaults to provider bootstrap test runtime. */
   readonly runtime?: TestRuntime;
+  /**
+   * Optional CLI runner override used instead of the built-in runners.
+   * @param command Parsed command arguments after scenario command normalization.
+   * @param options Run options passed by the scenario.
+   * @returns A promise for the command result to record.
+   */
   readonly runCli?: (
     command: ReadonlyArray<string>,
     options?: ScenarioRunOptions,
@@ -765,23 +874,52 @@ const withScenarioContextInternal = <A, E, R>(
     ),
   );
 
+/**
+ * Runs a scenario body with a temporary context backed by the test-only fake runner.
+ * The temp directory is cleaned up unless scenario preservation environment variables are set, and a transcript is persisted after the body exits.
+ * @param options Context creation options for the guide scenario.
+ * @param body Effectful scenario body that receives the created context.
+ * @returns The body effect with the scenario context service provided.
+ */
 export const withScenarioContext = <A, E, R>(
   options: WithScenarioContextOptions,
   body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | Cause.UnknownException, Exclude<R, Scope.Scope>> =>
   withScenarioContextInternal(options, "testOnlyFake", body);
 
+/**
+ * Factory for running scenario bodies against each supported runner.
+ * All methods create a temp scenario context, provide the `ScenarioContext` service, and persist a transcript on exit.
+ */
 export const ScenarioContextFactory = {
+  /**
+   * Runs with the source in-process scenario runner.
+   * @param options Context creation options for the guide scenario.
+   * @param body Effectful scenario body that receives the created context.
+   * @returns The body effect with source-mode scenario CLI behavior.
+   */
   scenario: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E | Cause.UnknownException, Exclude<R, Scope.Scope>> =>
     withScenarioContextInternal(options, "scenario", body),
+  /**
+   * Runs with the compiled binary e2e runner.
+   * @param options Context creation options for the guide scenario.
+   * @param body Effectful scenario body that receives the created context.
+   * @returns The body effect with compiled-binary CLI behavior.
+   */
   e2e: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,
   ): Effect.Effect<A, E | Cause.UnknownException, Exclude<R, Scope.Scope>> =>
     withScenarioContextInternal(options, "e2e", body),
+  /**
+   * Runs with the deterministic fake runner used by unit tests.
+   * @param options Context creation options for the guide scenario.
+   * @param body Effectful scenario body that receives the created context.
+   * @returns The body effect with fake scenario CLI behavior.
+   */
   testOnlyFake: <A, E, R>(
     options: WithScenarioContextOptions,
     body: (context: ScenarioContext) => Effect.Effect<A, E, R>,

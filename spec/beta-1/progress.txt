@@ -449,3 +449,14 @@
 - Review feedback: fixed (resolved merge conflict with main across schema/guide/spec files, regenerated schema snapshot, and added a Guide-Coverage-Skip line for the incidental ast.ts import-cycle edit to satisfy the guide-drift gate)
 - Merge: merged (squash)
 ---
+
+## 2026-06-13 - US-272
+- Promoted `@lando/core/testing` to a declared-stable surface on the `next` channel for Beta 1 (docs/components and docs/redactions stay unstable until GA), and made the deterministic in-memory `TestRuntime` satisfy every default service tag at each bootstrap level.
+- `makeTestRuntime`/`provideTestRuntime` now provide level-precise layers: minimal adds Renderer/Telemetry/EventService/DeprecationService/PluginTrustStore/CacheService/PrivilegeService/SecretStore; provider adds PluginRegistry/RuntimeProviderRegistry/GlobalAppService; global adds AppPlanner; scratch adds AppPlanner/LandofileService/ScratchAppService (+ core-private ScratchRegistry/ScratchResourceScanner); app adds AppPlanner/LandofileService/CommandRegistry/ToolingEngine/FileSyncEngine. All doubles are deterministic, in-memory, and never touch real disk/network or process streams; the Renderer double records output into an in-memory call bucket. Heavy lookup/load methods fail deterministically with their own tagged errors rather than performing IO.
+- Provider contract now also runs against the `RuntimeProvider` resolved from the TestRuntime layer (not just the directly-imported fake), and every `@lando/core/testing` export carries JSDoc and is asserted by both workspace and packed-install resolution tests. Shipped the executable guide `docs/guides/library/testing-runtime.mdx` (+ INDEX row).
+- Verification: typecheck, lint, guide gates (lint:guides + check:guide-coverage), focused testing/library suites, the 9-file TestRuntime-consumer regression set, and the generated guide scenarios passed.
+- **Learnings for future iterations:**
+  - When widening what `TestRuntime` provides, keep it strictly additive and level-keyed: existing consumers merge their own overrides, so the doubles must not change behavior for tests that already supply a service. A per-`bootstrap` conditional return type keeps each level's provided service union precise without `as any`.
+  - The deterministic doubles must never hit process streams (renderer-boundary gate) — route Renderer `output.stdout/stderr` into an in-memory call bucket on the runtime's `calls`.
+  - The combined `core/test/library` + `core/test/testing` run can spuriously time out under heavy concurrent load on the heavy init-runner scenario; it passes cleanly in isolation. Run heavy scenario suites serially or with generous timeouts rather than treating a timeout as a regression.
+---

@@ -1,0 +1,46 @@
+---
+id: testing-runtime
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, library, testing]
+---
+
+<Guide>
+  <Scenario id="deterministic-runtime" render={false} reason="The testing runtime suite verifies deterministic doubles without requiring a provider backed app">
+    <Step name="runtime-doubles">
+      <Variable name="factory" value="makeTestRuntime()" display="makeTestRuntime() creates an isolated test runtime for library hosts" />
+      <Variable name="filesystem" value="in-memory" display="The FileSystem double records calls and never writes to the real disk" />
+      <Variable name="logger" value="captured" display="The Logger double records messages for assertions without printing by default" />
+      <Variable name="processRunner" value="captured" display="The ProcessRunner double records commands and never reaches the host shell or network" />
+      <Variable name="determinism" value="repeatable" display="The same runtime inputs produce identical recorded calls across runs" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="default-service-tags" render={false} reason="Bootstrap level coverage is verified by testing runtime contract tests without starting a provider backed app">
+    <Step name="bootstrap-levels">
+      <Variable name="minimal" value="provided" display="provideTestRuntime({ bootstrap: 'minimal' }) provides the minimal service set" />
+      <Variable name="provider" value="provided" display="provideTestRuntime({ bootstrap: 'provider' }) adds provider level services" />
+      <Variable name="global" value="provided" display="provideTestRuntime({ bootstrap: 'global' }) adds global app services" />
+      <Variable name="scratch" value="provided" display="provideTestRuntime({ bootstrap: 'scratch' }) adds scratch app services" />
+      <Variable name="app" value="provided" display="provideTestRuntime({ bootstrap: 'app' }) adds the full app service set" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="provider-contract" render={false} reason="Provider bootstrap tests verify the default fake provider contract without starting containers">
+    <Step name="test-provider">
+      <Variable name="bootstrap" value="provider" display="The provider bootstrap layer resolves a RuntimeProvider by default" />
+      <Variable name="provider" value="TestRuntimeProvider" display="The default fake provider is TestRuntimeProvider" />
+      <Variable name="id" value="test" display="The fake provider reports the stable provider id test" />
+      <Variable name="contract" value="valid" display="The fake provider satisfies the RuntimeProvider contract used by core tests" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="runtime-overrides" render={false} reason="Override behavior is covered by testing runtime tests without requiring a provider backed app">
+    <Step name="host-customization">
+      <Variable name="withService" value="tag override" display="withService(tag, impl) lets hosts replace one service tag" />
+      <Variable name="with" value="RuntimeProvider" display="with: { RuntimeProvider } swaps the provider implementation for a test host" />
+      <Variable name="channel" value="next" display="@lando/core/testing is stable on the next channel for Beta 1" />
+    </Step>
+  </Scenario>
+</Guide>
