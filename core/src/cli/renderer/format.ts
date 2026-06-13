@@ -16,10 +16,7 @@ const isMessageEvent = (event: LandoEvent): boolean =>
 const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
 
 const isRenderableEvent = (event: LandoEvent): boolean =>
-  isTaskTreeEvent(event) ||
-  isMessageEvent(event) ||
-  isPaintBannerEvent(event) ||
-  event._tag === "deprecation-used";
+  isTaskTreeEvent(event) || isMessageEvent(event) || isPaintBannerEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
