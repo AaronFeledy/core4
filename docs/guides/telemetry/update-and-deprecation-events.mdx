@@ -1,0 +1,32 @@
+---
+id: telemetry-update-and-deprecation-events
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, telemetry, update, deprecation]
+---
+
+<Guide>
+  <Scenario id="update-outcome" render={false} reason="Update telemetry is covered by focused command tests without downloading or replacing a binary">
+    <Step name="allowed-fields">
+      <Variable name="event" value="update-outcome" display="The update command records its outcome through the Telemetry service" />
+      <Variable name="fields" value="version,targetVersion,channel,platform,outcome" display="Only the canonical inventory fields are emitted" />
+      <Variable name="outcomes" value="success,signature_failure,launch_probe_failure,permission_failure,network_failure" display="Every update result maps to one approved category" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="deprecation-used" render={false} reason="Deprecation event consumption is covered by DeprecationService telemetry tests">
+    <Step name="event-bus">
+      <Variable name="source" value="deprecation-used" display="DeprecationService publishes the runtime event after recording usage" />
+      <Variable name="sink" value="Telemetry.record" display="Telemetry observes the shared event stream instead of a parallel deprecation reporter" />
+      <Variable name="fields" value="kind,id,since,severity" display="Deprecation telemetry omits callsites, app ids, plugin ids, and timestamps" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="disabled" render={false} reason="Disablement is covered by telemetry-off update and deprecation tests">
+    <Step name="no-recording">
+      <Variable name="disabled" value="telemetry.enabled=false" display="Disabled telemetry suppresses update outcome and deprecation telemetry records" />
+      <Variable name="deprecationBehavior" value="unchanged" display="Deprecation recording, renderer behavior, and doctor summaries continue to use the normal deprecation path" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -105,6 +105,7 @@ import { renderStartAppResult, startApp } from "./commands/start.ts";
 import { renderStopAppResult, stopApp } from "./commands/stop.ts";
 import { renderRunToolingResult, runTooling } from "./commands/tooling.ts";
 import { renderUninstallResult, uninstall } from "./commands/uninstall.ts";
+import { update } from "./commands/update.ts";
 import { version as versionOperation } from "./commands/version.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { logsDeferredErrorFromInput, logsOptionsFromInput } from "./oclif/commands/app/logs.ts";
@@ -1649,6 +1650,16 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "uninstall" || argv[0] === "meta:uninstall") {
     await runMetaUninstall(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "update" || argv[0] === "meta:update") {
+    if (rejectInvalidInvocation("meta:update", argv.slice(1))) return;
+    await runCompiledCommand(
+      update(),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
+      () => undefined,
+    );
     return;
   }
 

@@ -28,6 +28,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-02 | US-214 | Trust list/revoke and scope decision | `docs/guides/plugins/trust-management.mdx` | Shipped |
 | PRD-06 | US-240 | CLI default-on and library default-off telemetry behavior | `docs/guides/telemetry/defaults-and-precedence.mdx` | Shipped |
 | PRD-06 | US-241 | Telemetry opt-out controls | `docs/guides/telemetry/disable-telemetry.mdx` | Shipped |
+| PRD-06 | US-242 | Update outcome and deprecation telemetry visibility | `docs/guides/telemetry/update-and-deprecation-events.mdx` | Shipped |
 | PRD-03 | US-219 | Plugin manifest and globalServices deprecations | `docs/guides/plugins/deprecating-plugin-surfaces.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |

@@ -354,3 +354,8 @@
 - Setup sandbox blocker: `core4-agent2` does not contain `.local/DEV-ENV.md` or `.local/bin/lando4-dev`, so the mandatory `lando setup` sandbox run could not be performed from this worktree without faking host setup verification.
 - **Learnings for future iterations:** Secondary worktrees may not carry `.local/` sandbox helpers; verify steps that require `lando4-dev` must run from a worktree where those local harness files exist.
 ---
+## 2026-06-12 22:45 CDT - US-242
+- Shipped update outcome and deprecation telemetry wiring: `lando update` now records sanitized outcome categories through `Telemetry.record`, `deprecation-used` telemetry is consumed from the shared event stream with inventory-approved fields only, and telemetry-disabled runs suppress both telemetry paths without changing deprecation behavior.
+- Verification: RED focused tests failed before implementation; focused update/deprecation/deferred tests, typecheck, lint, build, guide coverage/lint/scenario generation, source+compiled CLI update QA, and reviewer gate passed. Full tests have one pre-existing unrelated SDK/core `DeprecationNotice` identity failure reproduced in isolation.
+- **Learnings for future iterations:** Telemetry event helpers should own the machine-readable inventory and construct exact payloads before calling `Telemetry.record`; never pass raw event/use/error objects into telemetry sinks.
+---

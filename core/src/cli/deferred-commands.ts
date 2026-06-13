@@ -45,11 +45,6 @@ const META_EVENTS_FOLLOW_PLAN: DeferredCommandPlan = {
     "`meta:events:follow` is not available yet. Use `--renderer=json` on a specific command to observe its event stream.",
 };
 
-const META_UPDATE_PLAN: DeferredCommandPlan = {
-  summary: "Self-update (`meta:update`) is not available yet.",
-  remediation: "`meta:update` is not available yet. Re-download the binary by hand.",
-};
-
 export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = new Map<
   string,
   DeferredCommandPlan
@@ -69,7 +64,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
   ["meta:recipes:list", META_RECIPES_LIST_PLAN],
   ["meta:events:follow", META_EVENTS_FOLLOW_PLAN],
-  ["meta:update", META_UPDATE_PLAN],
 ]);
 
 export const deferredCommandPlan = (commandId: string): DeferredCommandPlan | undefined =>
