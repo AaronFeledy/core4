@@ -594,6 +594,35 @@ describe("deprecation release gate", () => {
     });
   });
 
+  test("enforces registry notices bound to local identifiers", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "plugins/plugin-example/src/index.ts",
+        `
+          const commandNotice = { since: "4.2.0", removeIn: "5.0.0", note: "Use example:new." };
+          export const manifest = {
+            name: "@lando/plugin-example",
+            contributes: {
+              commands: [{ id: "example:old", deprecated: commandNotice }],
+            },
+          };
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.2.0", "5.0.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "plugins/plugin-example/src/index.ts:6:example:old:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
   test("rejects patch, same-release, and past removeIn schedules", async () => {
     await withFixtureRoot(async (root) => {
       await write(

@@ -558,6 +558,7 @@ const releaseUseFromRegistryObject = (
   source: ts.SourceFile,
   file: string,
   object: ts.ObjectLiteralExpression,
+  bindings: ReadonlyMap<string, NoticeText>,
 ): ReleaseNoticeUse | undefined => {
   let id: string | undefined;
   let notice: ReleaseNotice | undefined;
@@ -568,7 +569,7 @@ const releaseUseFromRegistryObject = (
     const name = propertyNameText(property.name);
     if (name === "id" || name === "name") id ??= stringLiteralValue(property.initializer);
     if (name === "deprecated") {
-      notice = releaseNoticeFromNoticeText(noticeTextFromObjectLiteral(property.initializer));
+      notice = releaseNoticeFromNoticeText(noticeTextFromExpression(property.initializer, bindings));
       noticeNode = property;
     }
   }
@@ -581,11 +582,12 @@ const releaseUseFromRegistryObject = (
 const collectRegistryReleaseNotices = (
   source: ts.SourceFile,
   file: string,
+  bindings: ReadonlyMap<string, NoticeText>,
 ): ReadonlyArray<ReleaseNoticeUse> => {
   const uses: ReleaseNoticeUse[] = [];
   const visit = (node: ts.Node): void => {
     if (ts.isObjectLiteralExpression(node)) {
-      const use = releaseUseFromRegistryObject(source, file, node);
+      const use = releaseUseFromRegistryObject(source, file, node, bindings);
       if (use !== undefined) uses.push(use);
     }
     ts.forEachChild(node, visit);
@@ -695,7 +697,7 @@ const collectReleaseNoticesFromFile = async (file: string): Promise<ReadonlyArra
     }
   }
 
-  return [...uses, ...collectRegistryReleaseNotices(source, file)].sort(
+  return [...uses, ...collectRegistryReleaseNotices(source, file, notices)].sort(
     (left, right) => left.line - right.line || left.exportName.localeCompare(right.exportName),
   );
 };
