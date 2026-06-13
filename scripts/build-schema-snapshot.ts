@@ -16,7 +16,7 @@ import { Schema } from "effect";
 
 import { BUNDLED_PLUGINS } from "../core/src/plugins/bundled.ts";
 import {
-  type JsonSchemaName,
+  JSON_SCHEMA_NAMES,
   PluginManifest,
   assertJsonSchemaDeprecationsValid,
   getJsonSchema,
@@ -25,53 +25,12 @@ import {
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
 const SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/schemas");
-const DEPRECATION_NOTICE_ARTIFACT = resolve(SCHEMA_ARTIFACT_DIR, "deprecation-notice.json");
 
-const SDK_SCHEMA_NAMES = [
-  "DeprecationNotice",
-  "DeprecationUse",
-  "GuideFrontmatter",
-  "GuideProps",
-  "ScenarioProps",
-  "StepProps",
-  "RunProps",
-  "VerifyProps",
-  "CleanupProps",
-  "VariableProps",
-  "HiddenProps",
-  "InspectProps",
-  "TabsProps",
-  "TabProps",
-  "InlineProps",
-  "SkipProps",
-  "UseFixtureProps",
-  "MatcherSchema",
-  "Transcript",
-  "PublicTranscript",
-  "BootstrapLevel",
-  "AppRef",
-  "AppPlan",
-  "ServicePlan",
-  "ProviderCapabilities",
-  "LandofileShape",
-  "GlobalConfig",
-  "ConfigLintViolation",
-  "ConfigLintResult",
-  "AppId",
-  "ServiceName",
-  "ProviderId",
-  "HostPlatform",
-  "ServiceInfo",
-  "EmbeddingPluginPolicy",
-  "PluginManifest",
-  "PluginTrustState",
-  "GlobalServiceContribution",
-  "FileSyncEngineCapabilities",
-  "FileSyncSessionSpec",
-  "FileSyncSessionInfo",
-  "FileSyncEventChunk",
-  "FileSyncPlan",
-] as const satisfies ReadonlyArray<JsonSchemaName>;
+const artifactFilename = (schemaName: string): string =>
+  `${schemaName
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .toLowerCase()}.json`;
 
 const stable = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stable);
@@ -84,9 +43,17 @@ const stable = (value: unknown): unknown => {
   );
 };
 
+const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unknown => {
+  try {
+    return getJsonSchema(schemaName);
+  } catch (cause) {
+    throw new Error(`Failed to generate JSON Schema for ${schemaName}.`, { cause });
+  }
+};
+
 const renderSnapshot = (): string => {
   const sdkSchemas = Object.fromEntries(
-    SDK_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(getJsonSchema(schemaName))]),
+    JSON_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(generateJsonSchema(schemaName))]),
   );
   for (const [schemaName, jsonSchema] of Object.entries(sdkSchemas)) {
     const invalidPaths = assertJsonSchemaDeprecationsValid(jsonSchema);
@@ -103,7 +70,7 @@ const renderSnapshot = (): string => {
     stable({
       generatedBy: "scripts/build-schema-snapshot.ts",
       scope: {
-        sdkSchemas: SDK_SCHEMA_NAMES,
+        sdkSchemas: JSON_SCHEMA_NAMES,
         bundledPluginManifests: bundledPluginManifests.map((plugin) => plugin.name),
       },
       sdkSchemas,
@@ -117,20 +84,22 @@ const renderSnapshot = (): string => {
 const main = async (): Promise<void> => {
   await Bun.write(OUTPUT, renderSnapshot());
   await mkdir(SCHEMA_ARTIFACT_DIR, { recursive: true });
-  await Bun.write(
-    DEPRECATION_NOTICE_ARTIFACT,
-    `${JSON.stringify(stable(getJsonSchema("DeprecationNotice")), null, 2)}\n`,
-  );
+  const artifactPaths: string[] = [];
+  for (const schemaName of JSON_SCHEMA_NAMES) {
+    const artifactPath = resolve(SCHEMA_ARTIFACT_DIR, artifactFilename(schemaName));
+    artifactPaths.push(artifactPath);
+    await Bun.write(artifactPath, `${JSON.stringify(stable(generateJsonSchema(schemaName)), null, 2)}\n`);
+  }
 
   const check = Bun.spawn({
-    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT, DEPRECATION_NOTICE_ARTIFACT],
+    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT, ...artifactPaths],
     cwd: REPO_ROOT,
     stdout: "ignore",
     stderr: "inherit",
   });
   const exitCode = await check.exited;
   if (exitCode !== 0) {
-    throw new Error(`biome check exited with code ${exitCode} for ${OUTPUT}`);
+    throw new Error(`biome check exited with code ${exitCode} for generated schema artifacts`);
   }
 
   console.log(`[build-schema-snapshot] wrote ${OUTPUT}`);

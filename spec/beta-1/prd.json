@@ -439,8 +439,8 @@
         "Lint passes."
       ],
       "priority": 25,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Public SDK JSON Schema export now uses JSON_SCHEMA_NAMES as the single generator scope, includes Landofile/service/tooling/route/healthcheck/expression/error/event/plugin/recipe contracts, emits stable draft-07 dist/schemas artifacts for every registry entry, and preserves schema/deprecation metadata through the existing AST traversal/deprecation seam."
     },
     {
       "id": "US-225",

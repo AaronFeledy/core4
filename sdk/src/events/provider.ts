@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { AppRef, ServiceName } from "../schema/index.ts";
+import { AppRef } from "../schema/networking.ts";
+import { ServiceName } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
 export const PreProviderApplyEvent = Schema.TaggedStruct("pre-provider-apply", {

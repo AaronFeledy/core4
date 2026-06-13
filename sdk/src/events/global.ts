@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { AppPlan, AppRef } from "../schema/index.ts";
+import { AppPlan } from "../schema/app-plan.ts";
+import { AppRef } from "../schema/networking.ts";
 import { Timestamp } from "./_shared.ts";
 
 /**
