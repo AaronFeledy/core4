@@ -88,6 +88,9 @@
 - `InspectProps`
 - `IsolateMode`
 - `JSON_SCHEMA_NAMES`
+- `publicSchemaMetadataIndex`
+- `publicSchemaRegistry`
+- `schemaArtifactFilename`
 - `LANDO_SHARED_CROSS_APP_NETWORK`
 - `MatcherAnyOf`
 - `MatcherNot`

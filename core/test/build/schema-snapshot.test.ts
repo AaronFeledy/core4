@@ -3,13 +3,18 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { JSON_SCHEMA_NAMES } from "../../../sdk/src/schema/index.ts";
+import {
+  JSON_SCHEMA_NAMES,
+  publicSchemaMetadataIndex,
+  publicSchemaRegistry,
+} from "../../../sdk/src/schema/index.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const snapshotPath = resolve(repoRoot, "sdk/test/fixtures/schema-snapshot.json");
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
+const metadataIndexPath = resolve(repoRoot, "dist/schemas/index.json");
 
 const schemaArtifactPath = (schemaName: string): string =>
   resolve(
@@ -67,6 +72,25 @@ describe("schema snapshot gate", () => {
     const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
     expect(snapshot.scope.bundledPluginManifests).toEqual(bundledNames);
     expect(snapshot.bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
+  });
+
+  test("public registry drives schema names and metadata index", async () => {
+    runGenerator();
+
+    const generated = JSON.parse(
+      await readFile(metadataIndexPath, "utf8"),
+    ) as typeof publicSchemaMetadataIndex;
+
+    expect(Object.keys(publicSchemaRegistry)).toEqual(JSON_SCHEMA_NAMES);
+    expect(generated).toEqual(publicSchemaMetadataIndex);
+    expect(generated.map((entry) => entry.id)).toEqual(JSON_SCHEMA_NAMES);
+    expect(generated.find((entry) => entry.id === "DeprecationNotice")).toMatchObject({
+      title: "Deprecation Notice",
+      packageExport: "@lando/sdk/schema#DeprecationNotice",
+      jsonSchemaPath: "dist/schemas/deprecation-notice.json",
+      docsPath: "docs/reference/schemas/deprecation-notice.mdx",
+      deprecated: false,
+    });
   });
 
   test("generator emits the deprecation notice schema artifact", async () => {
