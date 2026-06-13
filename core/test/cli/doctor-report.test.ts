@@ -3,19 +3,30 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, Effect, Layer } from "effect";
+import { type Context, DateTime, Effect, Layer } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import {
+  type DeprecationNotice,
+  type DeprecationSurfaceKind,
+  type GlobalConfig,
+  ProviderId,
+} from "@lando/sdk/schema";
+import { DeprecationService } from "@lando/sdk/services";
 
 import {
   type DoctorReport,
   doctorReport,
   renderDoctorReport,
+  renderDoctorReportAsJson,
   renderDoctorReportAsNdjson,
+  renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 
 const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
   list: Effect.succeed([ProviderId.make(provider.id)]),
@@ -40,14 +51,39 @@ const buildConfigService = (
 
 const buildLayers = (
   provider: typeof TestRuntimeProvider,
-): Layer.Layer<ConfigService | RuntimeProviderRegistry> =>
-  Layer.merge(
+): Layer.Layer<ConfigService | RuntimeProviderRegistry | DeprecationService> =>
+  Layer.mergeAll(
     Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
     Layer.succeed(ConfigService, buildConfigService()),
+    DeprecationServiceLive,
   );
 
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
   Effect.runPromise(doctorReport().pipe(Effect.provide(buildLayers(provider))));
+
+const deprecationNotice = (overrides: Partial<DeprecationNotice> = {}): DeprecationNotice => ({
+  since: "4.1.0",
+  severity: "warn",
+  replacement: "new-surface",
+  removeIn: "5.0.0",
+  note: "Old surface is deprecated.",
+  docsUrl: "https://docs.lando.dev/deprecations/old-surface",
+  ...overrides,
+});
+
+const useDeprecation = (kind: DeprecationSurfaceKind, id: string, notice = deprecationNotice()) =>
+  Effect.gen(function* () {
+    const deprecations = yield* DeprecationService;
+    yield* deprecations.register("core", kind, id, notice);
+    yield* deprecations.use({
+      kind,
+      id,
+      notice,
+      app: "doctor-app",
+      plugin: kind === "plugin" || kind === "manifest-contribution" ? "legacy-plugin" : undefined,
+      timestamp: DateTime.unsafeMake("2026-06-13T00:00:00.000Z"),
+    });
+  });
 
 describe("meta:doctor combined report", () => {
   test("aggregates the selected provider checks, every subsystem check, and the global-app check", async () => {
@@ -168,5 +204,120 @@ describe("meta:doctor combined report", () => {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  test("doctor --deprecations renders populated deprecation entries from summary and lookup", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* useDeprecation("recipe", "legacy-app-recipe");
+        yield* useDeprecation("plugin", "legacy-plugin");
+        yield* useDeprecation("manifest-contribution", "globalServices.legacy-proxy");
+        yield* useDeprecation("landofile-key", "services.web.legacy");
+        yield* useDeprecation("config-key", "legacy.config");
+        yield* useDeprecation("env-override", "LANDO_LEGACY");
+        yield* useDeprecation("command", "app:legacy");
+        yield* useDeprecation("event", "legacy-event");
+        yield* useDeprecation("command", "app:legacy");
+        return yield* doctorReport({ deprecations: true });
+      }).pipe(Effect.provide(buildLayers(provider))),
+    );
+
+    expect(report.deprecations?.entries.map((entry) => `${entry.kind}:${entry.id}`)).toContain(
+      "command:app:legacy",
+    );
+    expect(report.deprecations?.entries).toHaveLength(8);
+    const command = report.deprecations?.entries.find((entry) => entry.kind === "command");
+    expect(command).toMatchObject({
+      id: "app:legacy",
+      severity: "warn",
+      since: "4.1.0",
+      removeIn: "5.0.0",
+      replacement: "new-surface",
+      note: "Old surface is deprecated.",
+      docsUrl: "https://docs.lando.dev/deprecations/old-surface",
+      source: "app:doctor-app",
+      count: 2,
+    });
+
+    const text = renderDoctorReport(report);
+    expect(text).toContain("deprecations:");
+    expect(text).toContain(
+      "kind | id | severity | since | removeIn | replacement | note | docsUrl | source | count",
+    );
+    expect(text).toContain("command | app:legacy | warn | 4.1.0 | 5.0.0 | new-surface");
+    expect(text).toContain("manifest-contribution | globalServices.legacy-proxy");
+  });
+
+  test("doctor --deprecations empty report states no deprecations were used or registered", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await Effect.runPromise(
+      doctorReport({ deprecations: true }).pipe(Effect.provide(buildLayers(provider))),
+    );
+
+    expect(report.deprecations?.entries).toEqual([]);
+    expect(renderDoctorReport(report)).toContain("No deprecations were used or registered for the app.");
+  });
+
+  test("doctor deprecation machine output exposes structured data independent of warning suppression", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    process.env.LANDO_DEPRECATION_WARNINGS = "0";
+    try {
+      const report = await Effect.runPromise(
+        Effect.gen(function* () {
+          yield* useDeprecation("env-override", "LANDO_LEGACY");
+          return yield* doctorReport({ deprecations: true });
+        }).pipe(Effect.provide(buildLayers(provider))),
+      );
+
+      const json = JSON.parse(renderDoctorReportAsJson(report)) as DoctorReport;
+      expect(json.deprecations?.entries[0]).toMatchObject({ kind: "env-override", id: "LANDO_LEGACY" });
+
+      const yaml = renderDoctorReportAsYaml(report);
+      expect(yaml).toContain("deprecations:");
+      expect(yaml).toContain("kind: env-override");
+      expect(yaml).toContain("id: LANDO_LEGACY");
+    } finally {
+      process.env.LANDO_DEPRECATION_WARNINGS = undefined;
+    }
+  });
+
+  test("doctor deprecation json format stays parseable when info-level deprecations exist", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const io = createBufferedRendererIO();
+    let exitCode = 0;
+
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        yield* useDeprecation("command", "app:legacy", deprecationNotice({ severity: "info" }));
+        return yield* doctorReport({ deprecations: true, format: "json" });
+      }),
+      {
+        runtime: buildLayers(provider),
+        rendererMode: "plain",
+        io,
+        suppressDeprecationDiagnostics: true,
+        render: renderDoctorReportAsJson,
+        formatError: (error) => String(error),
+        setExitCode: (code) => {
+          exitCode = code;
+        },
+      },
+    );
+
+    const parsed = JSON.parse(io.stdout()) as DoctorReport;
+    expect(exitCode).toBe(0);
+    expect(io.stderr()).toBe("");
+    expect(parsed.deprecations?.entries[0]).toMatchObject({ kind: "command", id: "app:legacy" });
+  });
+
+  test("meta:doctor suppresses renderer diagnostics only for deprecation machine formats", () => {
+    expect(
+      metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true, format: "json" } }),
+    ).toBe(true);
+    expect(
+      metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true, format: "yaml" } }),
+    ).toBe(true);
+    expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true } })).toBe(false);
   });
 });

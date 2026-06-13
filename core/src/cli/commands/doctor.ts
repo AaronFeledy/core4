@@ -119,6 +119,8 @@ export interface DoctorOptions {
    * `lando app:config:lint`). Defaults to `false`.
    */
   readonly app?: boolean | undefined;
+  readonly deprecations?: boolean | undefined;
+  readonly format?: "text" | "json" | "yaml" | undefined;
 }
 
 const CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<

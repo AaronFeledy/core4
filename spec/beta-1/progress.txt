@@ -397,3 +397,9 @@
 - Review feedback: fixed (Bugbot: registry-style deprecation scanning now resolves identifier-bound notice objects via local notice bindings, not just inline literals; earlier "stale gate uses wrong release" finding already resolved on branch)
 - Merge: merged (squash)
 ---
+## 2026-06-13 04:17 CDT - US-223
+- Shipped `lando doctor --deprecations`: doctor now adds a dedicated deprecation report from `DeprecationService.summary()` enriched through `lookup(kind,id)`, with plain columns plus structured JSON/YAML output for machine consumers.
+- Source and compiled doctor dispatch both accept `--deprecations` and `--format=json|yaml|text`; machine formats suppress post-run deprecation diagnostics so stdout stays parseable while the report still contains deprecation data.
+- Verification: red/green doctor report tests, source and compiled CLI QA in `lando4-dev`, build, typecheck, lint, full tests, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Machine-readable commands that intentionally include deprecation data must suppress the renderer's post-run deprecation diagnostics entirely, not only warn-level messages, or info summaries can contaminate JSON/YAML stdout.
+---

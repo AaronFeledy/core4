@@ -98,6 +98,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly renderEvents?: boolean;
   readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
+  readonly suppressDeprecationDiagnostics?: boolean;
   readonly render?: (value: A) => string | undefined;
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
@@ -239,7 +240,9 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const providedExit = yield* Effect.exit(
       Effect.gen(function* () {
         const commandExit = yield* Effect.exit(effect);
-        yield* renderDeprecationDiagnostics(options.deprecationWarnings ?? true);
+        if (options.suppressDeprecationDiagnostics !== true) {
+          yield* renderDeprecationDiagnostics(options.deprecationWarnings ?? true);
+        }
         return commandExit;
       }).pipe(Effect.provide(commandLayer)),
     );
