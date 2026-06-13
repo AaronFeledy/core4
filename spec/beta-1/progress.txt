@@ -449,3 +449,10 @@
 - Review feedback: fixed (resolved merge conflict with main across schema/guide/spec files, regenerated schema snapshot, and added a Guide-Coverage-Skip line for the incidental ast.ts import-cycle edit to satisfy the guide-drift gate)
 - Merge: merged (squash)
 ---
+
+## 2026-06-13 12:45 CDT - US-225
+- Shipped the central public schema registry and metadata index: `@lando/sdk/schema` now exposes the registry, metadata index, and artifact filename helper; `@lando/core/schema` re-exports the same objects; schema snapshot generation writes the metadata index from that registry.
+- Added the schema-registry guide and coverage row so the public registry surface is documented alongside the generated schema artifacts.
+- Verification: typecheck, lint, focused schema/export tests, guide coverage/lint/scenario, and full tests passed.
+- **Learnings for future iterations:** Treat `publicSchemaRegistry` as the single schema-publication source of truth; JSON Schema artifacts, metadata, docs inputs, and core re-exports should derive from it rather than introducing another schema list.
+---
