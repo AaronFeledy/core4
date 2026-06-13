@@ -197,6 +197,16 @@ const appConfigCheckLine = (result: ConfigLintResult): string =>
     violations: result.violations,
   });
 
+const deprecationsCheckLine = (result: DoctorDeprecationReport): string =>
+  JSON.stringify({
+    _tag: "doctor.check",
+    name: "deprecations",
+    status: "pass",
+    severity: "info",
+    context: { entries: String(result.entries.length) },
+    entries: result.entries,
+  });
+
 export interface DoctorReportNdjsonOptions {
   readonly now?: Date;
 }
@@ -216,14 +226,16 @@ export const renderDoctorReportAsNdjson = (
     ...checkLinesFromNdjson(renderSubsystemDoctorResultAsNdjson(report.subsystems, { now })),
     ...checkLinesFromNdjson(renderGlobalAppDoctorResultAsNdjson(report.globalApp, { now })),
   );
+  if (report.deprecations !== undefined) lines.push(deprecationsCheckLine(report.deprecations));
   if (report.appConfig !== undefined) lines.push(appConfigCheckLine(report.appConfig));
   const checks = [...report.provider.checks, ...report.subsystems.checks, ...report.globalApp.checks];
+  const deprecationsCheckCount = report.deprecations === undefined ? 0 : 1;
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   lines.push(
     JSON.stringify({
       _tag: "doctor.complete",
       timestamp,
-      checks: checks.length + (report.appConfig === undefined ? 0 : 1),
+      checks: checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1),
       failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
       warned: checks.filter((check) => check.status === "warn").length,
     }),

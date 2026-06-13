@@ -277,6 +277,29 @@ describe("meta:doctor combined report", () => {
       expect(yaml).toContain("deprecations:");
       expect(yaml).toContain("kind: env-override");
       expect(yaml).toContain("id: LANDO_LEGACY");
+
+      const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
+      const lines = ndjson
+        .trimEnd()
+        .split("\n")
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+      const deprecations = lines.slice(1, -1).find((line) => line.name === "deprecations");
+      expect(deprecations).toMatchObject({
+        _tag: "doctor.check",
+        name: "deprecations",
+        status: "pass",
+        severity: "info",
+        context: { entries: "1" },
+      });
+      expect(
+        (deprecations?.entries as ReadonlyArray<Record<string, unknown>> | undefined)?.[0],
+      ).toMatchObject({
+        kind: "env-override",
+        id: "LANDO_LEGACY",
+        severity: "warn",
+        count: 1,
+      });
+      expect(lines.at(-1)).toMatchObject({ checks: 9 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }
