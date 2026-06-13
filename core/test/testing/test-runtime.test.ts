@@ -358,6 +358,62 @@ describe("@lando/core/testing", () => {
     });
   });
 
+  test("scratch bootstrap keeps scratch service and registry doubles consistent", async () => {
+    const layer = provideTestRuntime({ bootstrap: "scratch" });
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const registry = yield* ScratchRegistry;
+
+          const handle = yield* scratch.acquire({
+            source: { kind: "recipe", ref: "empty" },
+            detached: true,
+            isolate: "full",
+          });
+          const resolved = yield* scratch.resolveById(handle.id);
+          const summaries = yield* scratch.list();
+          const registryEntry = yield* registry.get(handle.id);
+          const registryEntries = yield* registry.list();
+          const registryEnvelope = yield* registry.read();
+          yield* scratch.destroy(handle.id);
+          const summariesAfterDestroy = yield* scratch.list();
+          const registryEntriesAfterDestroy = yield* registry.list();
+
+          return {
+            handle,
+            resolved,
+            summaries,
+            registryEntry,
+            registryEntries,
+            registryEnvelope,
+            summariesAfterDestroy,
+            registryEntriesAfterDestroy,
+          };
+        }),
+      ).pipe(Effect.provide(layer)),
+    );
+
+    expect(result.resolved).toEqual(result.handle);
+    expect(result.summaries).toHaveLength(1);
+    expect(result.summaries[0]?.id).toBe(result.handle.id);
+    expect(result.registryEntry).toEqual(result.registryEntries[0]);
+    expect(result.registryEntries).toEqual(result.registryEnvelope.entries);
+    expect(result.registryEntry).toMatchObject({
+      id: result.handle.id,
+      source: result.summaries[0]?.source,
+      isolate: result.summaries[0]?.mode,
+      detached: true,
+      rootPath: String(result.summaries[0]?.app.root),
+      status: "running",
+      createdAt: result.summaries[0]?.created,
+      updatedAt: result.summaries[0]?.created,
+    });
+    expect(result.summariesAfterDestroy).toEqual([]);
+    expect(result.registryEntriesAfterDestroy).toEqual([]);
+  });
+
   test("provider bootstrap supports RuntimeProvider overrides", async () => {
     const injectedProvider = { ...TestRuntimeProvider, id: "injected-test" };
 

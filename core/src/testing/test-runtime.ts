@@ -694,6 +694,19 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       buildResults: AbsolutePath.make(`${instanceRoot}/build-results`),
     };
   };
+  const scratchRegistryEntryFromSummary = (
+    summary: ScratchSummary,
+    paths: ReturnType<typeof scratchPaths>,
+  ): ScratchRegistryEntry => ({
+    id: summary.id,
+    source: summary.source,
+    isolate: summary.mode,
+    detached: summary.status === "detached",
+    rootPath: String(paths.root),
+    status: "running",
+    createdAt: summary.created,
+    updatedAt: summary.created,
+  });
   const scratchHandle = (summary: ScratchSummary) => ({ id: summary.id, app: summary.app });
   const scratchInfo = (summary: ScratchSummary): ScratchInfo => ({
     ...summary,
@@ -720,6 +733,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
           status: input.detached ? "detached" : "attached",
         };
         scratchSummaries.set(id, summary);
+        scratchRegistryEntries.set(id, scratchRegistryEntryFromSummary(summary, paths));
         return scratchHandle(summary);
       }),
     resolveById: (id) =>
@@ -744,6 +758,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       Effect.flatMap(scratchService.resolveById(id), (handle) =>
         Effect.sync(() => {
           scratchSummaries.delete(id);
+          scratchRegistryEntries.delete(id);
           return handle;
         }),
       ),
