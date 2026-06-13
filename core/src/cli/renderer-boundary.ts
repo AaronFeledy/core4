@@ -1,8 +1,7 @@
 import { Cause, Effect, Exit, Layer, Option } from "effect";
 
 import type { DeprecationUse } from "@lando/sdk/schema";
-import { ConfigService, type EventService, Renderer } from "@lando/sdk/services";
-import { DeprecationService } from "@lando/sdk/services";
+import { ConfigService, DeprecationService, type EventService, Renderer } from "@lando/sdk/services";
 
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
@@ -117,10 +116,10 @@ export interface ResolveCliDeprecationWarningsResult {
 export const resolveCliDeprecationWarnings = (
   options: ResolveCliDeprecationWarningsOptions,
 ): ResolveCliDeprecationWarningsResult => {
+  const disabledByFlag = options.argv.includes("--no-deprecation-warnings");
   const remainingArgv = options.argv.filter((arg) => arg !== "--no-deprecation-warnings");
   return {
-    enabled:
-      !options.argv.includes("--no-deprecation-warnings") && options.env.LANDO_DEPRECATION_WARNINGS !== "0",
+    enabled: !disabledByFlag && options.env.LANDO_DEPRECATION_WARNINGS !== "0",
     remainingArgv,
   };
 };

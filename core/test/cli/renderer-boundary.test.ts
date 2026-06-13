@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { DateTime, Effect, Layer } from "effect";
 
 import type { DeprecationNotice } from "@lando/sdk/schema";
-import { DeprecationService } from "@lando/sdk/services";
-import { EventService, Renderer } from "@lando/sdk/services";
+import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import {
   makeRendererServiceLiveForMode,
