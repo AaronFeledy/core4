@@ -315,3 +315,9 @@
 - Verification: typecheck, lint (incl. check:deprecations gate), and full `bun test` (3400 pass / 0 fail) passed.
 - **Learnings for future iterations:** If the deprecation model later tags a barrel-only re-export, `export default`, an enum, or a namespace as `@deprecated`, `scripts/check-deprecations.ts` will silently pass it — harden those AST shapes (and add cross-module resolution for re-exports) at that point.
 ---
+
+## 2026-06-12 19:17 CDT - US-220 Verify
+- Verified US-220 against the real compiled binary in `lando4-dev`: fresh `core` build, isolated `setup --provider=podman --yes --no-interactive`, temp-app `app:config:lint`, `list`, `doctor --format=json`, and binary `--version` all completed cleanly; host gates `check:deprecations`, focused deprecation/script suites, typecheck, lint, and full tests passed.
+- Fixed a lint-gate soundness blocker: local functions named `markDeprecated` no longer satisfy the public `@deprecated` runtime-wrapper requirement; only imported `markDeprecated` bindings from the SDK-style import path are accepted, while aliased imports still pass.
+- **Learnings for future iterations:** Deprecation enforcement should treat `markDeprecated` as an imported public SDK helper, not a magic local identifier, or user code can shadow the name and bypass runtime `DeprecationService.use` recording.
+---
