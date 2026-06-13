@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
 
 import {
   AppPlanner,
@@ -32,7 +32,63 @@ import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test"
 import { ScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
 
+const CacheValue = Schema.Struct({
+  name: Schema.String,
+  count: Schema.Number,
+});
+
+type LayerOutput<LayerValue> = LayerValue extends Layer.Layer<infer Output, infer _Error, infer _Input>
+  ? Output
+  : never;
+
+type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <
+  Value,
+>() => Value extends Right ? 1 : 2
+  ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
+    ? true
+    : false
+  : false;
+
+type AssertType<Value extends true> = Value;
+
+type ScratchOrAppBootstrap = "scratch" | "app";
+const makeScratchOrAppRuntime = (bootstrap: ScratchOrAppBootstrap) => makeTestRuntime({ bootstrap });
+type ScratchOrAppRuntime = ReturnType<typeof makeScratchOrAppRuntime>;
+type ExpectedScratchOrAppServices =
+  | Logger
+  | Renderer
+  | Telemetry
+  | ConfigService
+  | EventService
+  | DeprecationService
+  | PluginTrustStore
+  | CacheService
+  | FileSystem
+  | PrivilegeService
+  | SecretStore
+  | ProcessRunner
+  | PluginRegistry
+  | RuntimeProviderRegistry
+  | RuntimeProvider
+  | GlobalAppService
+  | AppPlanner
+  | LandofileService
+  | ScratchAppService
+  | ScratchRegistry
+  | ScratchResourceScanner
+  | CommandRegistry
+  | ToolingEngine
+  | FileSyncEngine;
+
+const distributiveBootstrapReturnCheck: AssertType<
+  TypeEquals<LayerOutput<ScratchOrAppRuntime["layer"]>, ExpectedScratchOrAppServices>
+> = true;
+
 describe("@lando/core/testing", () => {
+  test("bootstrap union return types remain distributive", () => {
+    expect(distributiveBootstrapReturnCheck).toBe(true);
+  });
+
   test("makeTestRuntime provides in-memory service doubles and records calls", async () => {
     const runtime = makeTestRuntime({ files: { "/app/.lando.yml": "name: app" } });
 
@@ -76,6 +132,54 @@ describe("@lando/core/testing", () => {
     );
 
     expect(config.telemetry).toEqual({ enabled: false });
+  });
+
+  test("EventService double publishes events to queues and waiters", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+    const firstEvent = { _tag: "test-runtime:event", value: 1 };
+    const secondEvent = { _tag: "test-runtime:event", value: 2 };
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const queue = yield* events.subscribeQueue;
+          const waiter = yield* events
+            .waitFor("test-runtime:event", (event) => event.value === 2)
+            .pipe(Effect.fork);
+
+          yield* Effect.sleep("10 millis");
+          yield* events.publish(firstEvent);
+          const queued = yield* Queue.take(queue);
+          yield* events.publish(secondEvent);
+          const waited = yield* Fiber.join(waiter);
+
+          return { queued, waited };
+        }),
+      ).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result).toEqual({ queued: firstEvent, waited: secondEvent });
+    expect(runtime.calls.events).toEqual([firstEvent, secondEvent]);
+  });
+
+  test("CacheService double stores values in memory and reports misses", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const cache = yield* CacheService;
+
+        yield* cache.write("cache:value", { name: "app", count: 1 }, 1);
+        const hit = yield* cache.read("cache:value", CacheValue);
+        const miss = yield* cache.read("cache:missing", CacheValue);
+        yield* cache.writeAtomic("/cache/blob", "payload");
+
+        return { hit, miss, atomic: runtime.files.get("/cache/blob") };
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result).toEqual({ hit: { name: "app", count: 1 }, miss: null, atomic: "payload" });
   });
 
   describe("bootstrap levels provide every tag", () => {

@@ -1,9 +1,15 @@
 /**
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
-import { type Context, DateTime, Effect, Layer, Option, Queue, Schema, Stream } from "effect";
+import { Cause, type Context, DateTime, Effect, Layer, Option, PubSub, Schema, Stream } from "effect";
 
-import { EventError, PluginLoadError, ScratchAppNotFoundError, SecretNotFoundError } from "@lando/sdk/errors";
+import {
+  CacheError,
+  EventError,
+  PluginLoadError,
+  ScratchAppNotFoundError,
+  SecretNotFoundError,
+} from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -51,6 +57,10 @@ import {
  * Re-export of the SDK's contract-valid deterministic runtime provider fixture.
  */
 export { TestRuntimeProvider } from "@lando/sdk/test";
+/**
+ * Re-export of Effect's deterministic test clock utilities for callers using this test runtime.
+ */
+export { TestClock, TestContext } from "effect";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import {
@@ -106,6 +116,7 @@ export interface FileSystemCall {
 export interface TestRuntimeCalls {
   readonly logger: LoggerCall[];
   readonly renderer: RendererCall[];
+  readonly events: LandoEvent[];
   readonly fileSystem: FileSystemCall[];
   readonly processRunner: ProcessSpawnOptions[];
   readonly config: Array<"load" | `get:${string}`>;
@@ -158,15 +169,17 @@ type AppTestRuntimeServices =
   | ToolingEngine
   | FileSyncEngine;
 
-type TestRuntimeServicesFor<Bootstrap extends TestBootstrapLevel> = Bootstrap extends "minimal"
-  ? MinimalTestRuntimeServices
-  : Bootstrap extends "provider"
-    ? ProviderTestRuntimeServices
-    : Bootstrap extends "global"
-      ? GlobalTestRuntimeServices
-      : Bootstrap extends "scratch"
-        ? ScratchTestRuntimeServices
-        : AppTestRuntimeServices;
+type TestRuntimeServicesFor<Bootstrap extends TestBootstrapLevel> = Bootstrap extends unknown
+  ? Bootstrap extends "minimal"
+    ? MinimalTestRuntimeServices
+    : Bootstrap extends "provider"
+      ? ProviderTestRuntimeServices
+      : Bootstrap extends "global"
+        ? GlobalTestRuntimeServices
+        : Bootstrap extends "scratch"
+          ? ScratchTestRuntimeServices
+          : AppTestRuntimeServices
+  : never;
 
 interface TestRuntimeFor<Bootstrap extends TestBootstrapLevel> {
   readonly layer: Layer.Layer<TestRuntimeServicesFor<Bootstrap>>;
@@ -309,6 +322,30 @@ const registryEntriesFrom = (
 ): ReadonlyArray<ScratchRegistryEntry> =>
   Array.from(entries.values()).sort((left, right) => left.id.localeCompare(right.id));
 
+interface TestCacheEntry {
+  readonly value: unknown;
+}
+
+const eventError = (event: string, message: string, cause?: unknown): EventError =>
+  new EventError({ message, event, ...(cause === undefined ? {} : { cause }) });
+
+const decodeCacheValue = <A, I>(key: string, value: unknown, schema?: Schema.Schema<A, I>) => {
+  if (schema === undefined) {
+    return Effect.succeed(value as A);
+  }
+
+  return Schema.decodeUnknown(schema)(value).pipe(
+    Effect.mapError(
+      (decodeError) =>
+        new CacheError({
+          message: `Cached value for ${key} failed schema decode.`,
+          key,
+          decodeError,
+        }),
+    ),
+  );
+};
+
 /**
  * Creates a fresh deterministic Effect layer, call recorder, and in-memory file map.
  */
@@ -321,6 +358,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const calls: TestRuntimeCalls = {
     logger: [],
     renderer: [],
+    events: [],
     fileSystem: [],
     processRunner: [],
     config: [],
@@ -332,6 +370,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const providerId = providerIdFrom(runtimeProvider);
   let pluginTrustState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
   const secrets = new Map<string, string>();
+  const cacheEntries = new Map<string, TestCacheEntry>();
   const scratchSummaries = new Map<string, ScratchSummary>();
   const scratchRegistryEntries = new Map<string, ScratchRegistryEntry>();
   const fileSyncSessions = new Map<FileSyncSessionRef, FileSyncSessionInfo>();
@@ -371,16 +410,35 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     record: () => Effect.void,
   };
 
+  const eventPubSub = Effect.runSync(PubSub.unbounded<LandoEvent>());
   const eventService: Context.Tag.Service<typeof EventService> = {
-    publish: () => Effect.void,
-    subscribe: () => Stream.empty,
-    subscribeQueue: Queue.unbounded<LandoEvent>(),
-    waitFor: (name) =>
-      Effect.fail(
-        new EventError({
-          message: `No events are published by the deterministic TestRuntime EventService: ${name}`,
-          event: name,
-        }),
+    publish: (event) =>
+      Effect.sync(() => {
+        calls.events.push(event);
+      }).pipe(
+        Effect.zipRight(PubSub.publish(eventPubSub, event)),
+        Effect.asVoid,
+        Effect.catchSomeCause((cause) =>
+          Cause.isDie(cause)
+            ? Option.some(
+                Effect.fail(eventError(event._tag, `Failed to publish event: ${event._tag}`, cause)),
+              )
+            : Option.none(),
+        ),
+      ),
+    subscribe: (name) =>
+      Stream.fromPubSub(eventPubSub).pipe(Stream.filter((event) => name === "*" || event._tag === name)),
+    subscribeQueue: PubSub.subscribe(eventPubSub),
+    waitFor: (name, filter) =>
+      eventService.subscribe(name).pipe(
+        Stream.filter((event) => filter?.(event) ?? true),
+        Stream.runHead,
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.fail(eventError(name, `Event stream ended before receiving event: ${name}`)),
+            onSome: Effect.succeed,
+          }),
+        ),
       ),
   };
 
@@ -423,10 +481,23 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   };
 
   const cacheService: Context.Tag.Service<typeof CacheService> = {
-    read: () => Effect.succeed(null),
-    write: () => Effect.void,
-    writeAtomic: () => Effect.void,
-    invalidate: () => Effect.void,
+    read: (key, schema) =>
+      Effect.flatMap(
+        Effect.sync(() => cacheEntries.get(key)),
+        (entry) => (entry === undefined ? Effect.succeed(null) : decodeCacheValue(key, entry.value, schema)),
+      ),
+    write: (key, value) =>
+      Effect.sync(() => {
+        cacheEntries.set(key, { value });
+      }),
+    writeAtomic: (path, content) =>
+      Effect.sync(() => {
+        files.set(path, textFromContent(content));
+      }),
+    invalidate: (key) =>
+      Effect.sync(() => {
+        cacheEntries.delete(key);
+      }),
   };
 
   const fileSystemService: Context.Tag.Service<typeof FileSystem> = {

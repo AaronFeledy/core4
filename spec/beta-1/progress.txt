@@ -460,3 +460,13 @@
   - The deterministic doubles must never hit process streams (renderer-boundary gate) — route Renderer `output.stdout/stderr` into an in-memory call bucket on the runtime's `calls`.
   - The combined `core/test/library` + `core/test/testing` run can spuriously time out under heavy concurrent load on the heavy init-runner scenario; it passes cleanly in isolation. Run heavy scenario suites serially or with generous timeouts rather than treating a timeout as a regression.
 ---
+
+## 2026-06-13 - US-272 Review
+- A 5-agent review (goal/code-quality/context-mining) flagged that the newly-stable `@lando/core/testing` doubles were dishonest: the event bus dropped published events, the cache silently discarded writes, the deterministic time/random primitives were not re-exported, and the per-bootstrap layer return type over-claimed for union `bootstrap` inputs. Fixed all four: `EventService` is now a PubSub-backed in-memory recording bus, `CacheService` is a Map-backed in-memory cache with schema decode, `TestClock`/`TestContext` are re-exported (with workspace + packed-install coverage), and the bootstrap return type is distributive so a union input yields a sound union of layers.
+- Review notes (rejected): keeping `ProcessRunner` at the `minimal` level — it is a pre-existing additive testing convenience consumers rely on, not bootstrap-parity drift, so removal was rejected. Full packed-install *type*-resolution coverage was deemed unnecessary because `tsc -b` already type-resolves the type exports through the workspace test imports; a lightweight compile-time type reference was added instead of a tarball typecheck. Security review found nothing.
+- Verification: typecheck, lint, the focused testing/library suites, and the TestRuntime-consumer regression set passed.
+- **Learnings for future iterations:**
+  - `effect` re-exports `TestClock` and `TestContext` from its root barrel but NOT `TestRandom` (no `effect/TestRandom` subpath); `TestContext` is the combined layer that already provides the deterministic random service, so re-export `TestClock` + `TestContext` to surface Effect's deterministic test primitives.
+  - Per-`bootstrap` conditional return types must be written distributively (`Bootstrap extends any ? … : never`) or a union-typed argument silently widens the provided-service set and lets callers resolve tags that won't exist at runtime.
+  - In-memory service doubles that "succeed but discard" (no-op cache write, no-op event publish) are a correctness trap once the surface is declared stable — back them with real in-memory state so write→read and publish→subscribe round-trip.
+---
