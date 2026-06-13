@@ -31,6 +31,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-06 | US-242 | Update outcome and deprecation telemetry visibility | `docs/guides/telemetry/update-and-deprecation-events.mdx` | Shipped |
 | PRD-03 | US-221 | CLI deprecation warnings and suppression | `docs/guides/deprecations/cli-warnings-and-suppression.mdx` | Shipped |
 | PRD-03 | US-219 | Plugin manifest and globalServices deprecations | `docs/guides/plugins/deprecating-plugin-surfaces.mdx` | Shipped |
+| PRD-04 | US-224 | JSON Schema artifacts for public schemas | `docs/guides/schemas/json-schema-artifacts.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |
 | PRD-02 | US-085 | memcached service type | `docs/guides/services/memcached.mdx` | Shipped |

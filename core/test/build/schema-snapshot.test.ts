@@ -3,12 +3,23 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { JSON_SCHEMA_NAMES } from "../../../sdk/src/schema/index.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const snapshotPath = resolve(repoRoot, "sdk/test/fixtures/schema-snapshot.json");
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
+
+const schemaArtifactPath = (schemaName: string): string =>
+  resolve(
+    repoRoot,
+    "dist/schemas",
+    `${schemaName
+      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+      .toLowerCase()}.json`,
+  );
 
 const runGenerator = (): void => {
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
@@ -47,6 +58,11 @@ describe("schema snapshot gate", () => {
     expect(snapshot.scope.sdkSchemas).toContain("PluginManifest");
     expect(snapshot.scope.sdkSchemas).toContain("DeprecationNotice");
     expect(snapshot.scope.sdkSchemas).toContain("AppPlan");
+    expect(snapshot.scope.sdkSchemas).toEqual(JSON_SCHEMA_NAMES);
+    expect(snapshot.scope.sdkSchemas).toContain("ServiceConfig");
+    expect(snapshot.scope.sdkSchemas).toContain("ExpressionTemplate");
+    expect(snapshot.scope.sdkSchemas).toContain("LandofileExpressionParseError");
+    expect(snapshot.scope.sdkSchemas).toContain("LandoEvent");
 
     const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
     expect(snapshot.scope.bundledPluginManifests).toEqual(bundledNames);
@@ -62,5 +78,18 @@ describe("schema snapshot gate", () => {
     >;
     expect(artifact.$schema).toBe("http://json-schema.org/draft-07/schema#");
     expect(JSON.stringify(artifact)).toContain("Deprecation Notice");
+  });
+
+  test("generator emits a draft-07 schema artifact for every public SDK schema", async () => {
+    runGenerator();
+
+    for (const schemaName of JSON_SCHEMA_NAMES) {
+      const artifact = JSON.parse(await readFile(schemaArtifactPath(schemaName), "utf8")) as Record<
+        string,
+        unknown
+      >;
+
+      expect(artifact.$schema, schemaName).toBe("http://json-schema.org/draft-07/schema#");
+    }
   });
 });

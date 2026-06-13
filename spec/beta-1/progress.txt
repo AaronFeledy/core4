@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Public SDK JSON Schema artifacts are generated from `JSON_SCHEMA_NAMES` via `scripts/build-schema-snapshot.ts`; keep the registry, snapshot scope, and `dist/schemas/<kebab-name>.json` artifact loop in lockstep.
 - Deprecation runtime usage should emit through `EventService` from `DeprecationService.use` after recording the use and before any severity error; telemetry consumes that same event from a scoped subscriber, not a second deprecation path.
 - Deprecation registry population belongs in the plugins bootstrap layer via `DeprecationPluginRegistryLive`; keep the minimal `DeprecationServiceLive` empty and O(1), and call `register` only from registration/bootstrap walks, never from use hot paths.
 - Registry plugin postinstall trust keys on the requested package identity (`plugin:add` spec after version stripping), never package-controlled manifest names; authoring-root trust is only for local/link flows and must not apply to managed registry cache paths.
@@ -407,4 +408,10 @@
 - Fixed two real review blockers in the doctor deprecations report: dropped the write-only `DoctorReport.format` field (never read; it leaked a CLI selector into the data model and diverged between OCLIF default `"text"` and the compiled path's `undefined`), and broadened machine-output suppression so any `--format=json|yaml` doctor run suppresses post-run deprecation diagnostics (previously gated on `--deprecations`, leaving plain-renderer `--format=json` stdout open to contamination).
 - Review notes (rejected): Oracle's "add explicit `global-service` DeprecationSurfaceKind" finding — that union is a frozen/compat-locked SDK literal and §20.4 routes `globalServices: deprecated` through `manifest-contribution`; the report is kind-agnostic so global-service appears when present. Sort tie-breaker / source="core" minors — `summary()` dedups per `(kind,id)` (FR-3) so keys are unique.
 - Verification: typecheck, lint (incl. check:deprecations), doctor-report suite, dispatch-parity, and renderer-flag scenarios all green; oclif compiled-manifest has no drift.
+---
+## 2026-06-13 07:29 CDT - US-224
+- Shipped public SDK JSON Schema artifact publication: the generator now uses the public schema registry scope, covers Landofile/service/tooling/route/healthcheck/expression/error/event/plugin/recipe contracts, emits one stable draft-07 `dist/schemas` artifact per registry entry, and keeps recursive expression schemas exportable through stable `$defs` references.
+- Verification: focused schema export tests, guide coverage/lint/scenario, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:**
+  - Recursive Effect Schema contracts may need explicit reference definitions around `Schema.suspend` before JSON Schema generation can emit stable draft-07 output; lock them with artifact-generation tests, not just type exports.
 ---

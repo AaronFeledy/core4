@@ -141,7 +141,9 @@ export const KeyPathSegment: Schema.Schema<KeyPathSegment> = Schema.Struct({
 
 export const DynamicPathSegment: Schema.Schema<DynamicPathSegment> = Schema.Struct({
   type: Schema.Literal("dynamic"),
-  expr: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
+  expr: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
 });
 
 export const PathSegment: Schema.Schema<PathSegment> = Schema.Union(
@@ -153,12 +155,18 @@ export const PathSegment: Schema.Schema<PathSegment> = Schema.Union(
 
 export const ArrayLiteralExpressionNode: Schema.Schema<ArrayLiteralExpressionNode> = Schema.Struct({
   kind: Schema.Literal("ArrayLiteral"),
-  elements: Schema.Array(Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode)),
+  elements: Schema.Array(
+    Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+      identifier: "ExpressionNode",
+    }),
+  ),
 });
 
 export const ObjectLiteralEntry: Schema.Schema<ObjectLiteralEntry> = Schema.Struct({
   key: Schema.String,
-  value: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
+  value: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
 });
 
 export const ObjectLiteralExpressionNode: Schema.Schema<ObjectLiteralExpressionNode> = Schema.Struct({
@@ -174,21 +182,33 @@ export const PathExpressionNode: Schema.Schema<PathExpressionNode> = Schema.Stru
 
 export const AccessExpressionNode: Schema.Schema<AccessExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Access"),
-  target: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
+  target: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
   segments: Schema.Array(PathSegment),
 });
 
 export const CallExpressionNode: Schema.Schema<CallExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Call"),
   callee: Schema.String,
-  args: Schema.Array(Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode)),
+  args: Schema.Array(
+    Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+      identifier: "ExpressionNode",
+    }),
+  ),
 });
 
 export const ConditionalExpressionNode: Schema.Schema<ConditionalExpressionNode> = Schema.Struct({
   kind: Schema.Literal("Conditional"),
-  test: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
-  consequent: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
-  alternate: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
+  test: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
+  consequent: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
+  alternate: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
 });
 
 export const ExpressionNode: Schema.Schema<ExpressionNode> = Schema.suspend(
@@ -202,7 +222,7 @@ export const ExpressionNode: Schema.Schema<ExpressionNode> = Schema.suspend(
       CallExpressionNode,
       ConditionalExpressionNode,
     ),
-);
+).annotations({ identifier: "ExpressionNode" });
 
 export const LiteralSegment: Schema.Schema<LiteralSegment> = Schema.Struct({
   kind: Schema.Literal("LiteralSegment"),
@@ -211,7 +231,9 @@ export const LiteralSegment: Schema.Schema<LiteralSegment> = Schema.Struct({
 
 export const InterpolationSegment: Schema.Schema<InterpolationSegment> = Schema.Struct({
   kind: Schema.Literal("InterpolationSegment"),
-  expression: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode),
+  expression: Schema.suspend((): Schema.Schema<ExpressionNode> => ExpressionNode).annotations({
+    identifier: "ExpressionNode",
+  }),
   trimLeft: Schema.Boolean,
   trimRight: Schema.Boolean,
 });

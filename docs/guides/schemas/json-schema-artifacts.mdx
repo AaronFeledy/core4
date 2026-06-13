@@ -1,0 +1,31 @@
+---
+id: json-schema-artifacts
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, schemas]
+---
+
+<Guide>
+  <Scenario id="public-schema-artifacts" render={false} reason="The schema artifact generator is covered by core/test/build/schema-snapshot.test.ts to avoid committing generated dist output">
+    <Step name="generate">
+      <Variable name="command" value="bun run scripts/build-schema-snapshot.ts" display="Regenerate the public SDK JSON Schema snapshot and dist/schemas artifacts from the public registry" />
+      <Variable name="dialect" value="http://json-schema.org/draft-07/schema#" display="Every generated artifact uses draft-07 by default" />
+      <Variable name="coverage" value="JSON_SCHEMA_NAMES" display="The generator emits one artifact for every schema in the public SDK schema registry" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="recursive-expression-schemas" render={false} reason="Recursive expression schema output is locked by sdk/test/library/exports.test.ts and schema-snapshot drift tests">
+    <Step name="expression-ast">
+      <Variable name="schema" value="ExpressionTemplate" display="Expression template artifacts include recursive ExpressionNode definitions through stable $defs/$ref output" />
+      <Variable name="errors" value="LandofileExpressionParseError, LandofileExpressionForbiddenError, LandofileExpressionEvalError" display="Expression-resolution error contracts are exported as draft-07 JSON Schema artifacts" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="deprecation-metadata-preserved" render={false} reason="Deprecation x-deprecation validation remains in scripts/build-schema-snapshot.ts and sdk schema tests">
+    <Step name="metadata">
+      <Variable name="source" value="Effect Schema AST traversal" display="Identifiers, descriptions, examples, and x-deprecation metadata are read from the Effect Schema contract source" />
+      <Variable name="failure" value="schema id in generator error" display="Generation or invalid deprecation metadata failures name the schema being emitted" />
+    </Step>
+  </Scenario>
+</Guide>

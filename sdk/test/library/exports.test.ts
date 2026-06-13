@@ -73,6 +73,19 @@ describe("@lando/sdk package exports", () => {
       "ServiceInfo",
       "PluginManifest",
       "Transcript",
+      "ServiceConfig",
+      "RouteInput",
+      "HealthcheckInput",
+      "ToolingTaskShape",
+      "ExpressionTemplate",
+      "ExpressionNode",
+      "LandofileExpressionParseError",
+      "LandofileExpressionForbiddenError",
+      "LandofileExpressionEvalError",
+      "LandoEvent",
+      "PreBootstrapEvent",
+      "DeprecationUsedEvent",
+      "TaskDetailEvent",
     ] as const) {
       const jsonSchema = schema.getJsonSchema(schemaName);
 
