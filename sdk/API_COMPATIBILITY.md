@@ -154,6 +154,8 @@
 - `ToolingVarLiteral`
 - `ToolingVarPrompt`
 - `ToolingVarSh`
+- `PublicTranscript`
+- `PublicTranscriptFrame`
 - `Transcript`
 - `TranscriptCleanupFrame`
 - `TranscriptFixtureFrame`

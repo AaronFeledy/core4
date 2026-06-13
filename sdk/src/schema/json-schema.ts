@@ -16,7 +16,7 @@ import {
   VerifyProps,
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
-import { Transcript } from "../docs/transcript.ts";
+import { PublicTranscript, Transcript } from "../docs/transcript.ts";
 import { AppPlan, FileSyncPlan, ServicePlan } from "./app-plan.ts";
 import { ConfigLintResult, ConfigLintViolation } from "./config-lint.ts";
 import { GlobalConfig } from "./config.ts";
@@ -65,6 +65,7 @@ const JSON_SCHEMA_REGISTRY = {
   UseFixtureProps,
   MatcherSchema,
   Transcript,
+  PublicTranscript,
   BootstrapLevel,
   AppRef,
   AppPlan,
@@ -148,6 +149,8 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
       return getJsonSchemaWithDeprecations(MatcherSchema);
     case "Transcript":
       return getJsonSchemaWithDeprecations(Transcript);
+    case "PublicTranscript":
+      return getJsonSchemaWithDeprecations(PublicTranscript);
     case "AppRef":
       return getJsonSchemaWithDeprecations(AppRef);
     case "AppPlan":

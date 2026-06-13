@@ -47,6 +47,7 @@ const SDK_SCHEMA_NAMES = [
   "UseFixtureProps",
   "MatcherSchema",
   "Transcript",
+  "PublicTranscript",
   "BootstrapLevel",
   "AppRef",
   "AppPlan",
