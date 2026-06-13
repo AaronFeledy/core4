@@ -344,12 +344,15 @@
 - Review feedback: fixed (Cursor Bugbot across 5 rounds — distinct per-export ids for anonymous arrow exports, skip external/type-only re-exports, catch untagged deprecated function re-exports, require imported markDeprecated bindings so local/aliased stubs and fake property-access calls cannot bypass the gate, and reject the two-arg `markDeprecated(notice, "id")` form lacking an implementation argument)
 - Merge: merged (squash)
 ---
-
-## 2026-06-12 22:55 CDT - US-221
-- Completed CLI deprecation warning controls: renderer-boundary diagnostics now emit one human warning per used warn-level surface, summarize info-level uses at command end, preserve JSON `deprecation-used` diagnostics, and source/compiled dispatch both honor `--no-deprecation-warnings` plus `LANDO_DEPRECATION_WARNINGS=0` as renderer-only suppression.
-- Published the CLI deprecation warnings/suppression guide and confirmed the guide scenario path.
-- Verification: renderer-boundary focused tests, typecheck, lint, guide coverage/lint/scenario, build, source+compiled CLI suppression QA, and full tests passed.
-- **Learnings for future iterations:** Deprecation renderer suppression belongs at the CLI output boundary after `DeprecationService.use` records and publishes `deprecation-used`; stripping the suppression flag before OCLIF/compiled parsing keeps it global without weakening machine-readable diagnostics.
+## 2026-06-12 20:55 CDT - US-241
+- Shipped telemetry opt-out controls: `lando config telemetry off` writes `telemetry.enabled: false`, `lando config telemetry status` reports the effective state and source, and CLI runtime telemetry resolution now exposes flag/env/config/default source precedence without changing library default-off behavior.
+- Verification: RED focused command/source tests failed before implementation; focused telemetry/config/parity tests, guide coverage/lint/scenario generation, typecheck, lint, build, source+compiled CLI QA passed. Full `bun test` is blocked by the pre-existing `sdk/test/library/exports.test.ts` DeprecationNotice core-vs-SDK identity failure; deferred-command timeout failures from the full run passed in isolation.
+- **Learnings for future iterations:** Telemetry status should read the same Effect-free config/env resolver used before runtime construction so opt-out reporting does not accidentally build services or touch plugin discovery.
+---
+## 2026-06-12 21:20 CDT - US-241 Verify
+- Verified the freshly compiled binary for telemetry opt-out controls: `config telemetry off` writes `telemetry.enabled: false`, and `meta:config telemetry status` reports env override source correctly.
+- Setup sandbox blocker: `core4-agent2` does not contain `.local/DEV-ENV.md` or `.local/bin/lando4-dev`, so the mandatory `lando setup` sandbox run could not be performed from this worktree without faking host setup verification.
+- **Learnings for future iterations:** Secondary worktrees may not carry `.local/` sandbox helpers; verify steps that require `lando4-dev` must run from a worktree where those local harness files exist.
 ---
 
 ## 2026-06-12 22:52 CDT - US-221 Review
@@ -357,4 +360,11 @@
 - Review notes: AC4 (`doctor --deprecations` / `config --format yaml` ignore suppression) holds because suppression lives only at the renderer warning boundary — command-result output flows through `renderer.output` and is untouched by the `--no-deprecation-warnings` / `LANDO_DEPRECATION_WARNINGS=0` flag; the dedicated reports land in their own stories.
 - Verification: typecheck, lint (incl. check:deprecations), renderer-boundary + deprecation + renderer suites, and the full `core/test/cli` suite passed.
 - **Learnings for future iterations:** Deprecation diagnostics must have exactly one render path. The renderer-boundary end-of-run summary already covers every dispatch path (it runs even when the live event consumer is off); do NOT also mark `deprecation-used` renderable in `format.ts` or json/verbose event-rendering commands double-emit.
+---
+
+## 2026-06-12 22:55 CDT - US-221
+- Completed CLI deprecation warning controls: renderer-boundary diagnostics now emit one human warning per used warn-level surface, summarize info-level uses at command end, preserve JSON `deprecation-used` diagnostics, and source/compiled dispatch both honor `--no-deprecation-warnings` plus `LANDO_DEPRECATION_WARNINGS=0` as renderer-only suppression.
+- Published the CLI deprecation warnings/suppression guide and confirmed the guide scenario path.
+- Verification: renderer-boundary focused tests, typecheck, lint, guide coverage/lint/scenario, build, source+compiled CLI suppression QA, and full tests passed.
+- **Learnings for future iterations:** Deprecation renderer suppression belongs at the CLI output boundary after `DeprecationService.use` records and publishes `deprecation-used`; stripping the suppression flag before OCLIF/compiled parsing keeps it global without weakening machine-readable diagnostics.
 ---

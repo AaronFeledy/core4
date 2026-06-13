@@ -4,9 +4,15 @@ import { join } from "node:path";
 import { envOverlay, resolveConfigFileRoot } from "../config/overlay.ts";
 import { resolveUserConfRoot } from "../config/roots.ts";
 import { parseMinimalYaml } from "../config/yaml-min.ts";
-import { loadGlobalConfigSync } from "../services/config.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
 import type { LandoRuntimeOptions } from "./layer.ts";
+
+export type CliTelemetrySource = "flag" | "env" | "config" | "default";
+
+export interface CliTelemetryState {
+  readonly enabled: boolean;
+  readonly source: CliTelemetrySource;
+}
 
 const telemetryEnabledFromEnvOverlay = (): boolean | undefined => {
   const telemetry = envOverlay().telemetry;
@@ -28,24 +34,30 @@ const telemetryEnabledFromConfigFile = (): boolean | undefined => {
   return typeof enabled === "boolean" ? enabled : undefined;
 };
 
-export const resolveCliTelemetryEnabled = (): boolean => {
+export const resolveCliTelemetryState = (flagEnabled?: boolean): CliTelemetryState => {
+  if (flagEnabled !== undefined) return { enabled: flagEnabled, source: "flag" };
+
   const envEnabled = telemetryEnabledFromEnvOverlay();
-  if (envEnabled !== undefined) return envEnabled;
+  if (envEnabled !== undefined) return { enabled: envEnabled, source: "env" };
 
   try {
-    return loadGlobalConfigSync().telemetry.enabled;
+    const configEnabled = telemetryEnabledFromConfigFile();
+    if (configEnabled !== undefined) return { enabled: configEnabled, source: "config" };
   } catch {
-    try {
-      return telemetryEnabledFromConfigFile() ?? true;
-    } catch {
-      return true;
-    }
+    return { enabled: true, source: "default" };
   }
+
+  return { enabled: true, source: "default" };
 };
+
+export const resolveCliTelemetryEnabled = (): boolean => resolveCliTelemetryState().enabled;
 
 export const cliRuntimeOptions = <TBootstrap extends BootstrapLevel>(
   options: LandoRuntimeOptions & { readonly bootstrap: TBootstrap },
 ): LandoRuntimeOptions & { readonly bootstrap: TBootstrap; readonly telemetry: boolean } => ({
   ...options,
-  telemetry: options.telemetry ?? (options.bootstrap === "none" ? false : resolveCliTelemetryEnabled()),
+  telemetry:
+    options.bootstrap === "none"
+      ? (options.telemetry ?? false)
+      : resolveCliTelemetryState(options.telemetry).enabled,
 });

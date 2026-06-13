@@ -16,7 +16,8 @@ const isSubcommand = (s: unknown): s is ConfigOptions["subcommand"] =>
   s === "unset" ||
   s === "edit" ||
   s === "validate" ||
-  s === "translate";
+  s === "translate" ||
+  s === "telemetry";
 
 const extractOptions = (input: unknown): ConfigOptions => {
   if (typeof input !== "object" || input === null) return {};

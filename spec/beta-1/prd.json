@@ -740,8 +740,8 @@
         "Lint passes."
       ],
       "priority": 42,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Telemetry opt-out controls shipped: config telemetry off writes telemetry.enabled=false, status reports effective enabled/source across env/config/default/flag resolution, and disabled telemetry resolves before runtime construction. Source and compiled CLI QA passed."
     },
     {
       "id": "US-242",

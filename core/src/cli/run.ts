@@ -1054,7 +1054,7 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
   const [subcommand, key] = positionals;
   return runCompiledCommand(
     config({
-      ...(subcommand === "get" || subcommand === "view" ? { subcommand } : {}),
+      ...(subcommand === "get" || subcommand === "view" || subcommand === "telemetry" ? { subcommand } : {}),
       ...(key === undefined ? {} : { key }),
       ...(path === undefined ? {} : { path }),
       format,
