@@ -50,7 +50,13 @@ import {
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "./commands/bun.ts";
 import { config, renderConfigResult } from "./commands/config.ts";
 import { destroyApp, renderDestroyAppResult } from "./commands/destroy.ts";
-import { doctorReport, renderDoctorReport, renderDoctorReportAsNdjson } from "./commands/doctor-report.ts";
+import {
+  doctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsJson,
+  renderDoctorReportAsNdjson,
+  renderDoctorReportAsYaml,
+} from "./commands/doctor-report.ts";
 import { execApp, renderExecAppResult } from "./commands/exec.ts";
 import { infoApp, renderInfoAppResult } from "./commands/info.ts";
 import { initApp } from "./commands/init.ts";
@@ -414,12 +420,18 @@ const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
   runtime: Layer.Layer<Exclude<R, Renderer>, RE>,
   render: (value: A) => string | undefined,
-  options: { readonly renderEvents?: boolean; readonly plainTaskEvents?: "detail-only" } = {},
+  options: {
+    readonly renderEvents?: boolean;
+    readonly plainTaskEvents?: "detail-only";
+    readonly deprecationWarnings?: boolean;
+    readonly suppressDeprecationDiagnostics?: boolean;
+  } = {},
 ): Promise<void> =>
   runWithRendererHandling(operation, {
     runtime,
     rendererMode: activeRendererMode,
-    deprecationWarnings: activeDeprecationWarnings,
+    deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
+    suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     render,
@@ -730,16 +742,36 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const flagProvider = parseProviderFlag(argv);
   const fix = parseFixFlag(argv);
   const app = argv.some((arg) => arg === "--app");
+  const deprecations = argv.some((arg) => arg === "--deprecations");
+  const format = parseDoctorFormatFlag(argv);
   await runCompiledCommand(
     doctorReport({
       ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
       ...(fix ? { fix: true } : {}),
       ...(app ? { app: true } : {}),
+      ...(deprecations ? { deprecations: true } : {}),
+      ...(format === undefined ? {} : { format }),
     }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } })),
-    (value) =>
-      activeRendererMode === "json" ? renderDoctorReportAsNdjson(value) : renderDoctorReport(value),
+    (value) => {
+      if (format === "json") return renderDoctorReportAsJson(value);
+      if (format === "yaml") return renderDoctorReportAsYaml(value);
+      return activeRendererMode === "json" ? renderDoctorReportAsNdjson(value) : renderDoctorReport(value);
+    },
+    {
+      suppressDeprecationDiagnostics: format === "json" || format === "yaml",
+    },
   );
+};
+
+const parseDoctorFormatFlag = (argv: ReadonlyArray<string>): "text" | "json" | "yaml" | undefined => {
+  for (let index = 0; index < argv.length; index += 1) {
+    const match = parseStringFlag(argv, index, "format");
+    if (match === undefined) continue;
+    if (match.value === "text" || match.value === "json" || match.value === "yaml") return match.value;
+    index += match.consumed - 1;
+  }
+  return undefined;
 };
 
 interface ParsedExecArgv {

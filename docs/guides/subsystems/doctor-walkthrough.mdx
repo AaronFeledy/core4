@@ -51,4 +51,14 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
+  <Scenario id="doctor-deprecations-report" render={false} reason="The deprecation registry state is covered by doctor-report unit tests; this guide records the user-facing doctor flags and output shapes">
+    <Step name="deprecations-report">
+      <Variable name="command" value="lando doctor --deprecations" display="Adds the deprecations section to the combined doctor report" />
+      <Variable name="section" value="deprecations" display="The section lists deprecated surfaces used by the current app and loaded plugins" />
+      <Variable name="emptyState" value="No deprecations were used or registered for the app." display="When no deprecations are registered, text output reports an empty deprecations section instead of failing" />
+      <Variable name="entryColumns" value="kind, id, severity, since, removeIn, replacement, note, docsUrl, source, count" display="Text output shows one row per deprecated surface with its source and observed usage count" />
+      <Variable name="machineFormats" value="--format=json | --format=yaml" display="Machine-readable doctor reports include the same deprecations data while suppressing separate deprecation warning diagnostics" />
+    </Step>
+  </Scenario>
+
 </Guide>

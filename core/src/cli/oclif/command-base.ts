@@ -76,6 +76,7 @@ export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   readonly args?: Readonly<Record<string, unknown>>;
   readonly run: (input: unknown) => Effect.Effect<A, E, R>;
   readonly render?: (result: unknown, input?: unknown) => string | undefined;
+  readonly suppressDeprecationDiagnostics?: (input: unknown) => boolean;
 }
 
 const MVP_COMMAND_IDS = new Set([
@@ -276,6 +277,7 @@ export abstract class LandoCommandBase extends Command {
       runtime: runtime as Layer.Layer<Exclude<R, Renderer>, LandoRuntimeBootstrapError>,
       rendererMode,
       deprecationWarnings: deprecationWarnings.enabled,
+      suppressDeprecationDiagnostics: spec.suppressDeprecationDiagnostics?.(input) === true,
       render: (value) => spec.render?.(value, input),
       formatError: (error) =>
         formatCommandError({

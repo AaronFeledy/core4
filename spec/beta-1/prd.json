@@ -421,8 +421,8 @@
         "Lint passes."
       ],
       "priority": 24,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "lando doctor --deprecations now reports deprecation summary entries enriched through lookup(kind,id), renders the required plain section and structured JSON/YAML output, and suppresses post-run deprecation diagnostics only for deprecation machine formats so stdout remains parseable."
     },
     {
       "id": "US-224",
