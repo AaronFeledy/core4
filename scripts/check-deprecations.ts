@@ -15,8 +15,27 @@ export interface DeprecationTsdocResult {
   readonly offenders: ReadonlyArray<DeprecationTsdocOffender>;
 }
 
+export interface DeprecationReleaseOffender {
+  readonly file: string;
+  readonly line: number;
+  readonly exportName: string;
+  readonly reason: string;
+}
+
+export interface DeprecationReleaseResult {
+  readonly ok: boolean;
+  readonly offenders: ReadonlyArray<DeprecationReleaseOffender>;
+}
+
 interface CheckDeprecationTsdocOptions {
   readonly root?: string;
+}
+
+interface CheckDeprecationReleaseGateOptions {
+  readonly root?: string;
+  readonly releasedOrPending?: ReadonlyArray<string>;
+  readonly targetRelease?: string;
+  readonly today?: Date;
 }
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -27,6 +46,24 @@ const MISSING_DEPRECATION_METADATA_REASON = "missing static readonly deprecation
 const STALE_TSDOC_REASON = "@deprecated text must include DeprecationNotice note/replacement";
 const INVALID_DEPRECATION_METADATA_REASON =
   "static readonly deprecation metadata is only accepted on tagged errors";
+const INVALID_SINCE_REASON = "since must match a released or pending semver";
+const MISSING_REMOVE_IN_REASON = "removeIn is required for notices older than 12 months";
+const INVALID_REMOVE_IN_REASON = "removeIn must be a future major or minor release";
+const DEFAULT_RELEASED_OR_PENDING = ["4.0.0", "4.1.0", "4.2.0", "5.0.0"] as const;
+const DEFAULT_TARGET_RELEASE = "4.0.0";
+const RELEASE_DATES = new Map<string, Date>([
+  ["4.0.0", new Date("2024-06-01T00:00:00Z")],
+  ["4.1.0", new Date("2025-01-01T00:00:00Z")],
+  ["4.2.0", new Date("2026-01-01T00:00:00Z")],
+  ["5.0.0", new Date("2027-01-01T00:00:00Z")],
+]);
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+
+interface Semver {
+  readonly major: number;
+  readonly minor: number;
+  readonly patch: number;
+}
 
 const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   try {
@@ -151,9 +188,65 @@ const markDeprecatedTracksExport = (
 ): boolean => markDeprecatedExportId(expression, importedBindings) === exportName;
 
 interface NoticeText {
+  readonly since?: string;
+  readonly removeIn?: string;
   readonly note?: string;
   readonly replacement?: string;
 }
+
+interface ReleaseNotice {
+  readonly since: string;
+  readonly removeIn?: string;
+}
+
+interface ReleaseNoticeUse {
+  readonly file: string;
+  readonly line: number;
+  readonly exportName: string;
+  readonly notice: ReleaseNotice;
+}
+
+export class DeprecationStaleError extends Error {
+  constructor(readonly removeIn: string) {
+    super(`DeprecationStaleError: surface is still present at removeIn ${removeIn}`);
+    this.name = "DeprecationStaleError";
+  }
+}
+
+export class DeprecationOverdueError extends Error {
+  constructor(readonly removeIn: string) {
+    super(`DeprecationOverdueError: surface is still present after removeIn ${removeIn}`);
+    this.name = "DeprecationOverdueError";
+  }
+}
+
+const parseSemver = (value: string): Semver | undefined => {
+  const match = SEMVER_PATTERN.exec(value);
+  if (match === null) return undefined;
+  const [, major, minor, patch] = match;
+  if (major === undefined || minor === undefined || patch === undefined) return undefined;
+  return { major: Number(major), minor: Number(minor), patch: Number(patch) };
+};
+
+const compareSemver = (left: Semver, right: Semver): number => {
+  if (left.major !== right.major) return left.major - right.major;
+  if (left.minor !== right.minor) return left.minor - right.minor;
+  return left.patch - right.patch;
+};
+
+const semverCompare = (left: string, right: string): number => {
+  const parsedLeft = parseSemver(left);
+  const parsedRight = parseSemver(right);
+  if (parsedLeft === undefined || parsedRight === undefined) return left.localeCompare(right);
+  return compareSemver(parsedLeft, parsedRight);
+};
+
+const isTwelveMonthsOld = (since: string, today: Date): boolean => {
+  const releaseDate = RELEASE_DATES.get(since);
+  if (releaseDate === undefined) return false;
+  const elapsedMs = today.getTime() - releaseDate.getTime();
+  return elapsedMs >= 365 * 24 * 60 * 60 * 1000;
+};
 
 const stringLiteralValue = (expression: ts.Expression | undefined): string | undefined => {
   if (expression === undefined) return undefined;
@@ -164,14 +257,26 @@ const stringLiteralValue = (expression: ts.Expression | undefined): string | und
 
 const noticeTextFromObjectLiteral = (expression: ts.Expression | undefined): NoticeText | undefined => {
   if (expression === undefined || !ts.isObjectLiteralExpression(expression)) return undefined;
-  const notice: { note?: string; replacement?: string } = {};
+  const notice: { since?: string; removeIn?: string; note?: string; replacement?: string } = {};
   for (const property of expression.properties) {
     if (!ts.isPropertyAssignment(property)) continue;
     const name = propertyNameText(property.name);
+    if (name === "since") notice.since = stringLiteralValue(property.initializer);
+    if (name === "removeIn") notice.removeIn = stringLiteralValue(property.initializer);
     if (name === "note") notice.note = stringLiteralValue(property.initializer);
     if (name === "replacement") notice.replacement = stringLiteralValue(property.initializer);
   }
-  return notice.note === undefined && notice.replacement === undefined ? undefined : notice;
+  return notice.since === undefined &&
+    notice.removeIn === undefined &&
+    notice.note === undefined &&
+    notice.replacement === undefined
+    ? undefined
+    : notice;
+};
+
+const releaseNoticeFromNoticeText = (notice: NoticeText | undefined): ReleaseNotice | undefined => {
+  if (notice?.since === undefined) return undefined;
+  return { since: notice.since, removeIn: notice.removeIn };
 };
 
 const localNoticeBindings = (source: ts.SourceFile): ReadonlyMap<string, NoticeText> => {
@@ -408,6 +513,219 @@ const scanFile = async (file: string): Promise<ReadonlyArray<DeprecationTsdocOff
   return offenders;
 };
 
+const releaseUse = (
+  source: ts.SourceFile,
+  file: string,
+  node: ts.Node,
+  exportName: string,
+  notice: ReleaseNotice | undefined,
+): ReleaseNoticeUse | undefined => {
+  if (notice === undefined) return undefined;
+  const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+  return { file, line: line + 1, exportName, notice };
+};
+
+const releaseUseFromRegistryObject = (
+  source: ts.SourceFile,
+  file: string,
+  object: ts.ObjectLiteralExpression,
+): ReleaseNoticeUse | undefined => {
+  let id: string | undefined;
+  let notice: ReleaseNotice | undefined;
+  let noticeNode: ts.Node | undefined;
+
+  for (const property of object.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = propertyNameText(property.name);
+    if (name === "id" || name === "name") id ??= stringLiteralValue(property.initializer);
+    if (name === "deprecated") {
+      notice = releaseNoticeFromNoticeText(noticeTextFromObjectLiteral(property.initializer));
+      noticeNode = property;
+    }
+  }
+
+  if (notice === undefined) return undefined;
+  const { line } = source.getLineAndCharacterOfPosition((noticeNode ?? object).getStart(source));
+  return { file, line: line + 1, exportName: id ?? "<deprecated>", notice };
+};
+
+const collectRegistryReleaseNotices = (
+  source: ts.SourceFile,
+  file: string,
+): ReadonlyArray<ReleaseNoticeUse> => {
+  const uses: ReleaseNoticeUse[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isObjectLiteralExpression(node)) {
+      const use = releaseUseFromRegistryObject(source, file, node);
+      if (use !== undefined) uses.push(use);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(source);
+  return uses;
+};
+
+const collectReleaseNoticesFromFile = async (file: string): Promise<ReadonlyArray<ReleaseNoticeUse>> => {
+  const sourceText = await Bun.file(file).text();
+  const source = ts.createSourceFile(file, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const uses: ReleaseNoticeUse[] = [];
+  const notices = localNoticeBindings(source);
+  const markDeprecatedBindings = markDeprecatedImportBindings(source);
+  const localDeclarations = new Map<
+    string,
+    ts.VariableDeclaration | ts.FunctionDeclaration | ts.ClassDeclaration
+  >();
+
+  for (const statement of source.statements) {
+    if (ts.isVariableStatement(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const name = propertyNameText(declaration.name);
+        if (name !== undefined) localDeclarations.set(name, declaration);
+      }
+    }
+    if (ts.isFunctionDeclaration(statement) && statement.name !== undefined) {
+      localDeclarations.set(statement.name.text, statement);
+    }
+    if (ts.isClassDeclaration(statement) && statement.name !== undefined) {
+      localDeclarations.set(statement.name.text, statement);
+    }
+  }
+
+  const noticeFromMarkDeprecated = (expression: ts.Expression | undefined): ReleaseNotice | undefined => {
+    if (expression === undefined || !ts.isCallExpression(expression)) return undefined;
+    if (!isMarkDeprecatedCall(expression, markDeprecatedBindings)) return undefined;
+    return releaseNoticeFromNoticeText(noticeTextFromExpression(expression.arguments[0], notices));
+  };
+
+  for (const statement of source.statements) {
+    if (ts.isVariableStatement(statement) && hasExportModifier(statement)) {
+      for (const declaration of statement.declarationList.declarations) {
+        const exportName = propertyNameText(declaration.name) ?? "<destructured>";
+        const use = releaseUse(
+          source,
+          file,
+          statement,
+          exportName,
+          noticeFromMarkDeprecated(declaration.initializer),
+        );
+        if (use !== undefined) uses.push(use);
+      }
+      continue;
+    }
+
+    if (ts.isClassDeclaration(statement) && hasExportModifier(statement)) {
+      const exportName = statement.name?.text ?? "<default>";
+      const metadata = deprecationMetadata(statement);
+      const use = releaseUse(
+        source,
+        file,
+        statement,
+        exportName,
+        releaseNoticeFromNoticeText(noticeTextFromExpression(metadata?.initializer, notices)),
+      );
+      if (use !== undefined) uses.push(use);
+      continue;
+    }
+
+    if (
+      ts.isExportDeclaration(statement) &&
+      statement.exportClause !== undefined &&
+      ts.isNamedExports(statement.exportClause) &&
+      statement.moduleSpecifier === undefined &&
+      !statement.isTypeOnly
+    ) {
+      for (const element of statement.exportClause.elements) {
+        if (element.isTypeOnly) continue;
+        const exportedName = element.name.text;
+        const localName = element.propertyName?.text ?? exportedName;
+        const declaration = localDeclarations.get(localName);
+        if (declaration === undefined) continue;
+        if (ts.isVariableDeclaration(declaration)) {
+          const use = releaseUse(
+            source,
+            file,
+            statement,
+            exportedName,
+            noticeFromMarkDeprecated(declaration.initializer),
+          );
+          if (use !== undefined) uses.push(use);
+          continue;
+        }
+        if (ts.isClassDeclaration(declaration)) {
+          const metadata = deprecationMetadata(declaration);
+          const use = releaseUse(
+            source,
+            file,
+            statement,
+            exportedName,
+            releaseNoticeFromNoticeText(noticeTextFromExpression(metadata?.initializer, notices)),
+          );
+          if (use !== undefined) uses.push(use);
+        }
+      }
+    }
+  }
+
+  return [...uses, ...collectRegistryReleaseNotices(source, file)].sort(
+    (left, right) => left.line - right.line || left.exportName.localeCompare(right.exportName),
+  );
+};
+
+const releaseOffender = (use: ReleaseNoticeUse, reason: string): DeprecationReleaseOffender => ({
+  file: use.file,
+  line: use.line,
+  exportName: use.exportName,
+  reason,
+});
+
+export const checkDeprecationReleaseGate = async (
+  options: CheckDeprecationReleaseGateOptions = {},
+): Promise<DeprecationReleaseResult> => {
+  const root = resolve(options.root ?? repoRoot);
+  const releasedOrPending = new Set(options.releasedOrPending ?? DEFAULT_RELEASED_OR_PENDING);
+  const targetRelease = options.targetRelease ?? process.env.LANDO_RELEASE_VERSION ?? DEFAULT_TARGET_RELEASE;
+  const today = options.today ?? new Date();
+  const files = (
+    await Promise.all(SCANNED_ROOTS.map((scannedRoot) => collectTsFiles(resolve(root, scannedRoot))))
+  )
+    .flat()
+    .sort();
+  const uses = (await Promise.all(files.map((file) => collectReleaseNoticesFromFile(file))))
+    .flat()
+    .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+  const offenders: DeprecationReleaseOffender[] = [];
+
+  for (const use of uses) {
+    const { notice } = use;
+    if (parseSemver(notice.since) === undefined || !releasedOrPending.has(notice.since)) {
+      offenders.push(releaseOffender(use, INVALID_SINCE_REASON));
+    }
+    if (notice.removeIn === undefined && isTwelveMonthsOld(notice.since, today)) {
+      offenders.push(releaseOffender(use, MISSING_REMOVE_IN_REASON));
+    }
+    if (notice.removeIn !== undefined) {
+      const since = parseSemver(notice.since);
+      const removeIn = parseSemver(notice.removeIn);
+      if (
+        since === undefined ||
+        removeIn === undefined ||
+        removeIn.patch !== 0 ||
+        compareSemver(removeIn, since) <= 0
+      ) {
+        offenders.push(releaseOffender(use, INVALID_REMOVE_IN_REASON));
+      }
+      const releaseComparison = semverCompare(notice.removeIn, targetRelease);
+      if (releaseComparison === 0) {
+        offenders.push(releaseOffender(use, new DeprecationStaleError(notice.removeIn).message));
+      } else if (releaseComparison < 0) {
+        offenders.push(releaseOffender(use, new DeprecationOverdueError(notice.removeIn).message));
+      }
+    }
+  }
+
+  return { ok: offenders.length === 0, offenders };
+};
+
 export const checkDeprecationTsdoc = async (
   options: CheckDeprecationTsdocOptions = {},
 ): Promise<DeprecationTsdocResult> => {
@@ -429,15 +747,25 @@ const formatOffender = (root: string, offender: DeprecationTsdocOffender): strin
   `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}: ${offender.exportName}: ${offender.reason}`;
 
 if (import.meta.main) {
-  const result = await checkDeprecationTsdoc({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Deprecation TSDoc check passed.\n");
+  const tsdoc = await checkDeprecationTsdoc({ root: repoRoot });
+  const release = await checkDeprecationReleaseGate({ root: repoRoot });
+  if (tsdoc.ok && release.ok) {
+    process.stdout.write("Deprecation check passed.\n");
   } else {
-    process.stderr.write(
-      `Deprecation TSDoc check failed. Public @deprecated exports must record runtime deprecations via markDeprecated() or tagged-error metadata.\n${result.offenders
-        .map((entry) => formatOffender(repoRoot, entry))
-        .join("\n")}\n`,
-    );
+    if (!tsdoc.ok) {
+      process.stderr.write(
+        `Deprecation TSDoc check failed. Public @deprecated exports must record runtime deprecations via markDeprecated() or tagged-error metadata.\n${tsdoc.offenders
+          .map((entry) => formatOffender(repoRoot, entry))
+          .join("\n")}\n`,
+      );
+    }
+    if (!release.ok) {
+      process.stderr.write(
+        `Deprecation release gate failed. Notices must use released/pending since versions, schedule old removals, and remove stale surfaces before release.\n${release.offenders
+          .map((entry) => formatOffender(repoRoot, entry))
+          .join("\n")}\n`,
+      );
+    }
     process.exitCode = 1;
   }
 }
