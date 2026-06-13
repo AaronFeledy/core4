@@ -1084,6 +1084,7 @@ const runScratchEffect = <A>(
   runWithRendererHandling(operation, {
     runtime: scratchRuntimeLayer(),
     rendererMode: activeRendererMode,
+    deprecationWarnings: activeDeprecationWarnings,
     render,
     formatError: (error) => commandErrorMessage(error),
   });
