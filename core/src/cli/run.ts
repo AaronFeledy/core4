@@ -759,7 +759,7 @@ const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
       return activeRendererMode === "json" ? renderDoctorReportAsNdjson(value) : renderDoctorReport(value);
     },
     {
-      suppressDeprecationDiagnostics: deprecations && (format === "json" || format === "yaml"),
+      suppressDeprecationDiagnostics: format === "json" || format === "yaml",
     },
   );
 };

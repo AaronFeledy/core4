@@ -311,13 +311,18 @@ describe("meta:doctor combined report", () => {
     expect(parsed.deprecations?.entries[0]).toMatchObject({ kind: "command", id: "app:legacy" });
   });
 
-  test("meta:doctor suppresses renderer diagnostics only for deprecation machine formats", () => {
+  test("meta:doctor suppresses renderer diagnostics for machine output formats", () => {
     expect(
       metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true, format: "json" } }),
     ).toBe(true);
     expect(
       metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true, format: "yaml" } }),
     ).toBe(true);
+    // Machine output must stay parseable even without --deprecations: post-run
+    // deprecation diagnostics would otherwise contaminate JSON/YAML stdout.
+    expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "json" } })).toBe(true);
+    expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "yaml" } })).toBe(true);
     expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { deprecations: true } })).toBe(false);
+    expect(metaDoctorSpec.suppressDeprecationDiagnostics?.({ flags: { format: "text" } })).toBe(false);
   });
 });

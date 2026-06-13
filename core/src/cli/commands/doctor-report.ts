@@ -41,7 +41,6 @@ export interface DoctorReport {
   readonly subsystems: SubsystemDoctorResult;
   readonly globalApp: GlobalAppDoctorResult;
   readonly deprecations?: DoctorDeprecationReport;
-  readonly format?: "text" | "json" | "yaml";
   /** Present only under `lando doctor --app`; reuses the `app:config:lint` pass. */
   readonly appConfig?: ConfigLintResult;
 }
@@ -124,13 +123,11 @@ export const doctorReport = (
     const globalApp = yield* globalAppDoctor().pipe(Effect.provide(DefaultGlobalAppDoctorLayer));
     const deprecations = options.deprecations === true ? yield* doctorDeprecations() : undefined;
     const appConfig = options.app === true ? yield* appConfigForReport() : undefined;
-    const format = options.format === undefined ? undefined : options.format;
     return {
       provider,
       subsystems,
       globalApp,
       ...(deprecations === undefined ? {} : { deprecations }),
-      ...(format === undefined ? {} : { format }),
       ...(appConfig === undefined ? {} : { appConfig }),
     };
   });

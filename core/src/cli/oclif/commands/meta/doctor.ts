@@ -48,7 +48,7 @@ const renderDoctorReportForInput = (report: DoctorReport, input: unknown): strin
 
 const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
   const options = inputDoctorOptions(input);
-  return options.deprecations === true && (options.format === "json" || options.format === "yaml");
+  return options.format === "json" || options.format === "yaml";
 };
 
 export const metaDoctorSpec: LandoCommandSpec<
