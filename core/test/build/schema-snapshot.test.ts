@@ -7,6 +7,7 @@ import {
   JSON_SCHEMA_NAMES,
   publicSchemaMetadataIndex,
   publicSchemaRegistry,
+  renderPublicSchemaReferencePages,
 } from "../../../sdk/src/schema/index.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
@@ -90,6 +91,19 @@ describe("schema snapshot gate", () => {
       jsonSchemaPath: "dist/schemas/deprecation-notice.json",
       docsPath: "docs/reference/schemas/deprecation-notice.mdx",
       deprecated: false,
+    });
+  });
+
+  test("public registry drives generated reference page inputs", () => {
+    const pages = renderPublicSchemaReferencePages();
+
+    expect(pages.map((page) => page.id)).toEqual(JSON_SCHEMA_NAMES);
+    expect(pages.map((page) => page.docsPath)).toEqual(
+      publicSchemaMetadataIndex.map((entry) => entry.docsPath),
+    );
+    expect(pages.find((page) => page.id === "DeprecationNotice")).toMatchObject({
+      docsPath: "docs/reference/schemas/deprecation-notice.mdx",
+      content: expect.stringContaining("# Deprecation Notice"),
     });
   });
 

@@ -110,7 +110,7 @@ import {
   FileSyncSessionInfo,
   FileSyncSessionSpec,
 } from "./file-sync-engine.ts";
-import { getJsonSchemaWithDeprecations } from "./json-schema-deprecations.ts";
+import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
   EndpointInput,
   HealthcheckInput,
@@ -192,6 +192,12 @@ export type PublicSchemaMetadata = {
   readonly jsonSchemaPath: `dist/schemas/${string}.json`;
   readonly docsPath: `docs/reference/schemas/${string}.mdx`;
   readonly deprecated: boolean;
+};
+
+export type PublicSchemaReferencePage = {
+  readonly id: JsonSchemaName;
+  readonly docsPath: PublicSchemaMetadata["docsPath"];
+  readonly content: string;
 };
 
 export const publicSchemaRegistry = {
@@ -372,6 +378,13 @@ const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
 };
 
 export const publicSchemaMetadataIndex = JSON_SCHEMA_NAMES.map(schemaMetadata);
+
+export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaReferencePage> =>
+  publicSchemaMetadataIndex.map((metadata) => ({
+    id: metadata.id,
+    docsPath: metadata.docsPath,
+    content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id]),
+  }));
 
 const landofileJsonSchema = (): JsonObject => {
   const schema = getJsonSchemaWithDeprecations(LandofileShape) as JsonObject;
