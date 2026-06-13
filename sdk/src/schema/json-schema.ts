@@ -361,10 +361,11 @@ const expressionNodeDefinitions = () => {
 
 const expressionJsonSchema = (schemaName: "ExpressionNode" | "ExpressionTemplate") => {
   const schema = schemaName === "ExpressionNode" ? ExpressionNode : ExpressionTemplate;
+  const definitions = expressionNodeDefinitions();
   return {
     $schema: "http://json-schema.org/draft-07/schema#",
-    $defs: expressionNodeDefinitions(),
-    ...JSONSchema.fromAST(schema.ast, { definitions: expressionNodeDefinitions() }),
+    $defs: definitions,
+    ...JSONSchema.fromAST(schema.ast, { definitions }),
   };
 };
 
