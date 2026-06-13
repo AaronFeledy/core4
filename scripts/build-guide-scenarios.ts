@@ -2,7 +2,7 @@
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { Effect, Either } from "effect";
+import { Effect, Either, Schema } from "effect";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
@@ -14,6 +14,7 @@ import {
   type GuideFrontmatter,
   type InlineProps,
   type InspectProps,
+  PublicTranscript,
   type RunProps,
   type UseFixtureProps,
   type VariableProps,
@@ -43,6 +44,7 @@ import {
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const GUIDE_ROOT = "docs/guides";
 const GENERATED_GUIDE_TEST_ROOT = "test/scenarios/generated/guides";
+const PUBLIC_TRANSCRIPT_ROOT = "dist/transcripts/public/guides";
 
 const isNotFound = (cause: unknown): boolean =>
   cause !== null && typeof cause === "object" && (cause as { code?: unknown }).code === "ENOENT";
@@ -853,6 +855,153 @@ export const buildGuideScenarioAst = async (
     .sort((left, right) => left.sourcePath.localeCompare(right.sourcePath));
 };
 
+type PublicTranscriptFrameInput = {
+  kind: "step" | "run" | "verify" | "inspect" | "cleanup" | "inline" | "tab";
+  sourceFile: string;
+  sourceLine: number;
+  displayText?: string;
+  commandDisplay?: string;
+  resultSummary?: string;
+};
+
+const variantStringOf = (variant: GuideVariant | undefined): string =>
+  variant === undefined ? "" : variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ");
+
+const runResultSummary = (props: RunProps): string =>
+  props.command === undefined ? "shell command" : `expected exit ${props.expectExit ?? 0}`;
+
+const verifyResultSummary = (props: VerifyProps, variables: ReadonlyMap<string, VariableProps>): string => {
+  if (props.event !== undefined) return `event ${quote(props.event)} observed`;
+  if (props.file !== undefined)
+    return `file ${quote(interpolate(props.file, variables))} matches expectation`;
+  if (props.command !== undefined) {
+    return `command ${quote(interpolate(props.command, variables))} succeeds`;
+  }
+  return `error tag ${quote(props.errorTag ?? "")} observed`;
+};
+
+const inspectDisplay = (props: InspectProps, variables: ReadonlyMap<string, VariableProps>): string => {
+  if (props.file !== undefined) return `inspect file ${quote(interpolate(props.file, variables))}`;
+  if (props.json !== undefined) return `inspect json ${quote(interpolate(props.json, variables))}`;
+  if (props.events === true) return "inspect events";
+  return "inspect output";
+};
+
+const publicFrameForComponent = (
+  component: GuideStepComponent,
+  sourceFile: string,
+  variables: ReadonlyMap<string, VariableProps>,
+): PublicTranscriptFrameInput | undefined => {
+  const base = { sourceFile, sourceLine: component.line } as const;
+  switch (component.kind) {
+    case "Variable":
+    case "UseFixture":
+      return undefined;
+    case "Run":
+      return {
+        ...base,
+        kind: "run",
+        commandDisplay:
+          component.props.command === undefined
+            ? (component.props.shell ?? "")
+            : interpolate(component.props.command, variables),
+        resultSummary: runResultSummary(component.props),
+      };
+    case "Verify": {
+      const commandDisplay =
+        component.props.command === undefined ? undefined : interpolate(component.props.command, variables);
+      return {
+        ...base,
+        kind: "verify",
+        ...(commandDisplay === undefined ? {} : { commandDisplay }),
+        resultSummary: verifyResultSummary(component.props, variables),
+      };
+    }
+    case "Inspect":
+      return { ...base, kind: "inspect", displayText: inspectDisplay(component.props, variables) };
+    case "Inline":
+      return {
+        ...base,
+        kind: "inline",
+        displayText: `inline ${component.props.lang}`,
+        commandDisplay: component.props.code,
+      };
+    case "Cleanup":
+      return { ...base, kind: "cleanup", displayText: "cleanup" };
+  }
+};
+
+export const buildPublicTranscript = (
+  guide: GuideScenarioAst,
+  scenario: GuideScenarioNode,
+  variant: GuideVariant | undefined,
+): PublicTranscript | undefined => {
+  if (scenario.render === false) return undefined;
+  if (variant?.skip !== undefined) return undefined;
+  const resolved = resolveVariantSteps(scenario, variant);
+  const variables = collectVariables(resolved.steps);
+  const frames: PublicTranscriptFrameInput[] = [];
+  if (variant !== undefined) {
+    for (const pair of variant.pairs) {
+      frames.push({
+        kind: "tab",
+        sourceFile: guide.sourcePath,
+        sourceLine: scenario.line,
+        displayText: `${pair.axis}=${pair.value}`,
+      });
+    }
+  }
+  for (const step of resolved.steps) {
+    if (step.hidden) continue;
+    frames.push({
+      kind: "step",
+      sourceFile: guide.sourcePath,
+      sourceLine: step.line,
+      displayText: step.stepName,
+    });
+    for (const component of step.components) {
+      const frame = publicFrameForComponent(component, guide.sourcePath, variables);
+      if (frame !== undefined) frames.push(frame);
+    }
+  }
+  return {
+    guideId: guide.frontmatter.id,
+    scenarioId: scenario.id,
+    variant: variantStringOf(variant),
+    runtime: "cli",
+    render: true,
+    frames,
+  };
+};
+
+export const emitPublicTranscripts = async (
+  asts: ReadonlyArray<GuideScenarioAst>,
+  root = REPO_ROOT,
+  outputRoot = PUBLIC_TRANSCRIPT_ROOT,
+  options: EmitGuideScenarioOptions = {},
+): Promise<ReadonlyArray<string>> => {
+  await rm(resolve(root, outputRoot, options.clearGuideId ?? ""), { force: true, recursive: true });
+  const written: string[] = [];
+  for (const guide of asts) {
+    const guideId = guide.frontmatter.id;
+    const variants = variantsOf(guide);
+    for (const scenario of [...guide.scenarios].sort((left, right) => left.id.localeCompare(right.id))) {
+      for (const variant of variants) {
+        const transcript = buildPublicTranscript(guide, scenario, variant);
+        if (transcript === undefined) continue;
+        const suffix = variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
+        const relativePath = `${outputRoot}/${guideId}/${scenario.id}${suffix}.json`;
+        const absolutePath = resolve(root, relativePath);
+        await mkdir(dirname(absolutePath), { recursive: true });
+        const encoded = Schema.encodeSync(PublicTranscript)(transcript);
+        await Bun.write(absolutePath, `${JSON.stringify(encoded, null, 2)}\n`);
+        written.push(relativePath);
+      }
+    }
+  }
+  return written.sort((left, right) => left.localeCompare(right));
+};
+
 export const emitGuideScenarioTests = async (
   asts: ReadonlyArray<GuideScenarioAst>,
   root = REPO_ROOT,
@@ -909,11 +1058,11 @@ const parseBuildGuideScenarioArgs = (args: ReadonlyArray<string>): BuildGuideSce
 
 const main = async (): Promise<void> => {
   try {
-    const written = await buildGuideScenarioTests(
-      REPO_ROOT,
-      GENERATED_GUIDE_TEST_ROOT,
-      parseBuildGuideScenarioArgs(Bun.argv.slice(2)),
-    );
+    const options = parseBuildGuideScenarioArgs(Bun.argv.slice(2));
+    const asts = await buildGuideScenarioAst(REPO_ROOT, options);
+    const clearOptions = options.onlyGuide === undefined ? {} : { clearGuideId: options.onlyGuide };
+    const written = await emitGuideScenarioTests(asts, REPO_ROOT, GENERATED_GUIDE_TEST_ROOT, clearOptions);
+    await emitPublicTranscripts(asts, REPO_ROOT, PUBLIC_TRANSCRIPT_ROOT, clearOptions);
     process.stdout.write(`${JSON.stringify(written, null, 2)}\n`);
   } catch (error) {
     process.stderr.write(`${JSON.stringify(error, null, 2)}\n`);

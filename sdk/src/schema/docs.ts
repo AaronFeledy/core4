@@ -30,6 +30,8 @@ export {
   VerifyProps,
 } from "../docs/components/props.ts";
 export {
+  PublicTranscript,
+  PublicTranscriptFrame,
   Transcript,
   TranscriptCleanupFrame,
   TranscriptFixtureFrame,

@@ -108,3 +108,31 @@ export const Transcript = Schema.Struct({
   description: "Internal Alpha 2 guide scenario transcript.",
 });
 export type Transcript = typeof Transcript.Type;
+
+export const PublicTranscriptFrame = Schema.Struct({
+  kind: Schema.Literal("step", "run", "verify", "inspect", "cleanup", "inline", "tab"),
+  sourceFile: Schema.String,
+  sourceLine: Schema.Number.pipe(Schema.int(), Schema.positive()),
+  displayText: Schema.optional(Schema.String),
+  commandDisplay: Schema.optional(Schema.String),
+  resultSummary: Schema.optional(Schema.String),
+}).annotations({
+  identifier: "PublicTranscriptFrame",
+  title: "Public Transcript Frame",
+  description: "Reader-visible guide scenario transcript frame attributed to its authoring MDX source.",
+});
+export type PublicTranscriptFrame = typeof PublicTranscriptFrame.Type;
+
+export const PublicTranscript = Schema.Struct({
+  guideId: GuideId,
+  scenarioId: GuideId,
+  variant: Schema.String,
+  runtime: Schema.String,
+  render: Schema.Boolean,
+  frames: Schema.Array(PublicTranscriptFrame),
+}).annotations({
+  identifier: "PublicTranscript",
+  title: "Public Guide Scenario Transcript",
+  description: "Public reader-scenario transcript emitted by scenario generation for docs output.",
+});
+export type PublicTranscript = typeof PublicTranscript.Type;

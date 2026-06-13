@@ -226,6 +226,7 @@
       "UseFixtureProps",
       "MatcherSchema",
       "Transcript",
+      "PublicTranscript",
       "BootstrapLevel",
       "AppRef",
       "AppPlan",
@@ -3505,6 +3506,78 @@
     "ProviderId": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "string"
+    },
+    "PublicTranscript": {
+      "$defs": {
+        "GuideId": {
+          "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+          "type": "string"
+        },
+        "PublicTranscript": {
+          "additionalProperties": false,
+          "description": "Public reader-scenario transcript emitted by scenario generation for docs output.",
+          "properties": {
+            "frames": {
+              "items": {
+                "$ref": "#/$defs/PublicTranscriptFrame"
+              },
+              "type": "array"
+            },
+            "guideId": {
+              "$ref": "#/$defs/GuideId"
+            },
+            "render": {
+              "type": "boolean"
+            },
+            "runtime": {
+              "type": "string"
+            },
+            "scenarioId": {
+              "$ref": "#/$defs/GuideId"
+            },
+            "variant": {
+              "type": "string"
+            }
+          },
+          "required": ["guideId", "scenarioId", "variant", "runtime", "render", "frames"],
+          "title": "Public Guide Scenario Transcript",
+          "type": "object"
+        },
+        "PublicTranscriptFrame": {
+          "additionalProperties": false,
+          "description": "Reader-visible guide scenario transcript frame attributed to its authoring MDX source.",
+          "properties": {
+            "commandDisplay": {
+              "type": "string"
+            },
+            "displayText": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": ["step", "run", "verify", "inspect", "cleanup", "inline", "tab"],
+              "type": "string"
+            },
+            "resultSummary": {
+              "type": "string"
+            },
+            "sourceFile": {
+              "type": "string"
+            },
+            "sourceLine": {
+              "description": "a positive number",
+              "exclusiveMinimum": 0,
+              "title": "positive",
+              "type": "integer"
+            }
+          },
+          "required": ["kind", "sourceFile", "sourceLine"],
+          "title": "Public Transcript Frame",
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/PublicTranscript",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "RunProps": {
       "$defs": {
