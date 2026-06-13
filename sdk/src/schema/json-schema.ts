@@ -25,6 +25,7 @@ import {
   LandofileExpressionParseError,
 } from "../errors/index.ts";
 import {
+  BeforeExitEvent,
   CliCommandErrorEvent,
   CliCommandInitEvent,
   CliCommandRunEvent,
@@ -277,6 +278,7 @@ const JSON_SCHEMA_REGISTRY = {
   PreBootstrapEvent,
   PostBootstrapEvent,
   ReadyEvent,
+  BeforeExitEvent,
   PreInitEvent,
   PostInitEvent,
   PreStartEvent,

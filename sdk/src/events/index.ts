@@ -9,4 +9,4 @@ export * from "./provider.ts";
 export * from "./renderer.ts";
 export * from "./task.ts";
 export * from "./union.ts";
-export type { AppRef } from "../schema/index.ts";
+export type { AppRef } from "../schema/networking.ts";
