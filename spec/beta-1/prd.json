@@ -776,8 +776,8 @@
         "Lint passes."
       ],
       "priority": 44,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Scenario generation now emits a build-time PUBLIC transcript artifact (additive @lando/sdk PublicTranscript/PublicTranscriptFrame schemas) per rendered scenario+variant to dist/transcripts/public/guides/<id>/<scenario>[.variant].json, derived from the MDX AST in scripts/build-guide-scenarios.ts (emitPublicTranscripts/buildPublicTranscript). Public frames cover step/run/verify/inspect/cleanup/inline/tab with guideId/scenarioId/variant/runtime/sourceFile/sourceLine/displayText/commandDisplay/resultSummary, and exclude Hidden blocks, render=false scenarios, UseFixture, Variable, temp dirs, and internal event traces. The internal runtime transcript is unchanged. Verified: typecheck, lint, focused+codegen+schema-snapshot+backward-compat tests, and a real go.mdx public transcript artifact."
     },
     {
       "id": "US-244",

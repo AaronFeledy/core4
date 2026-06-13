@@ -18,7 +18,7 @@ import {
   VerifyProps,
 } from "../docs/components/props.ts";
 import { GuideFrontmatter } from "../docs/guide-frontmatter.ts";
-import { Transcript } from "../docs/transcript.ts";
+import { PublicTranscript, Transcript } from "../docs/transcript.ts";
 import {
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
@@ -199,6 +199,7 @@ const JSON_SCHEMA_REGISTRY = {
   UseFixtureProps,
   MatcherSchema,
   Transcript,
+  PublicTranscript,
   ExpressionNode,
   ExpressionTemplate,
   BootstrapLevel,

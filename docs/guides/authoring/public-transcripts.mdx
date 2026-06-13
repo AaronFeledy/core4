@@ -1,0 +1,29 @@
+---
+id: public-transcripts
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, authoring, transcripts]
+---
+
+<Guide>
+  <Scenario id="what-public-transcripts-contain" render={false} reason="Scenario generation emits the public transcript artifact at build time; the contents are locked by the generator and schema tests rather than a provider-backed run">
+    <Step name="reader-frames">
+      <Variable name="artifact" value="dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json" display="Scenario generation writes one public transcript per rendered scenario and variant" />
+      <Variable name="frames" value="step, run, verify, inspect, cleanup, inline, tab" display="Public frames cover the reader-visible components of a scenario" />
+      <Variable name="identity" value="guideId, scenarioId, variant, runtime" display="Every transcript records which guide, scenario, variant, and runtime target produced it" />
+      <Variable name="attribution" value="sourceFile, sourceLine" display="Every frame is attributed back to the authoring MDX file and line for source-mapped failures" />
+      <Variable name="reader" value="displayText, commandDisplay, resultSummary" display="Frames preserve the reader label, the displayed command text, and the visible result summary" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="what-public-transcripts-exclude" render={false} reason="Exclusion behavior is enforced by the generator and codegen tests, so this guide documents the contract without running a scenario">
+    <Step name="excluded-internals">
+      <Variable name="hidden" value="<Hidden> blocks and hidden steps" display="Hidden setup never appears in public frames" />
+      <Variable name="testOnly" value="render={false} scenarios" display="Documentation-only scenarios produce no public transcript" />
+      <Variable name="fixtures" value="<UseFixture> and fixture-copy paths" display="Fixture wiring and copied paths stay out of public output" />
+      <Variable name="tempDirs" value="raw temp dirs and event traces" display="Scenario temp directories and internal event traces are never published" />
+      <Variable name="internalTranscript" value="dist/transcripts/guides/<guideId>/<scenarioId>.json" display="The internal transcript keeps full execution data for tests and is separate from the public artifact" />
+    </Step>
+  </Scenario>
+</Guide>

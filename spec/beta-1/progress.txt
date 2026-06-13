@@ -392,6 +392,14 @@
 - **Learnings for future iterations:** Deprecation release-gate checks must inspect both `markDeprecated()` export wrappers and registry-style `{ id|name, deprecated }` objects, because runtime deprecations are registered from plugin/built-in contract manifests as well as public exports.
 ---
 
+## 2026-06-13 03:12 CDT - US-243
+- Scenario generation now emits a build-time PUBLIC reader transcript artifact alongside the existing gitignored generated scenario tests. `scripts/build-guide-scenarios.ts` gained `buildPublicTranscript`/`emitPublicTranscripts`, which walk the MDX AST and write `dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json` for every rendered scenario+variant. Public frames cover step/run/verify/inspect/cleanup/inline/tab and carry guideId, scenarioId, variant, runtime, sourceFile, sourceLine, displayText, commandDisplay, and resultSummary; `<Hidden>` steps, `render={false}` scenarios, `<UseFixture>`, `<Variable>`, temp dirs, and internal event traces are excluded.
+- Added additive `@lando/sdk` schemas `PublicTranscript`/`PublicTranscriptFrame` (registered in the JSON-schema registry, SDK_SCHEMA_NAMES, API_COMPATIBILITY, and the regenerated schema snapshot). The internal runtime transcript (`core/src/testing/scenario-context.ts`) is unchanged. Authored `docs/guides/authoring/public-transcripts.mdx` (doc-only) + INDEX row.
+- Verification: typecheck, lint passed; focused schema, generator/codegen, scenario-context, ci-workflow, codegen-ci, schema-snapshot, and SDK backward-compat suites green (85 targeted tests). Manual QA: ran the generator and confirmed the real `go.mdx` public transcript on disk. Pre-existing unrelated failure noted: `sdk/test/library/exports.test.ts > core schema re-exports the canonical deprecation notice` fails identically with this branch's work stashed (module-identity quirk on main, not introduced here).
+- **Learnings for future iterations:**
+  - Public transcripts are a BUILD-TIME codegen product derived from the MDX AST, deliberately separate from the runtime internal transcript; the "verified" coupling holds because the same MDX generates both the gated asserting test and the public frame, so a static expectation-shaped resultSummary stays truthful. US-244 (Starlight consumption) should read these JSON artifacts rather than re-deriving from runtime.
+  - `<Inline>` requires a `justification` prop; a bare `<Inline lang code />` fails `decodeInlinePropsEither`. Generated guide scenario tests + transcripts live under gitignored `dist/`/`test/scenarios/generated`, so there is no git-diff drift gate for them — they are validated by running the generated tests and the codegen scripts.
+---
 ## 2026-06-13 04:15 CDT - Babysit
 - PR: #345 https://github.com/AaronFeledy/core4/pull/345
 - CI outcome: pass
@@ -422,3 +430,15 @@
 - Verification: typecheck, lint (incl. check:deprecations), full `bun test` (3471 pass, 0 fail), isolated `bun test sdk/test/events/`, and cold `@lando/sdk/events` import all green.
 - **Learnings for future iterations:** When a `schema/` module (re-exported by `schema/index.ts`) needs to import event/other-layer schemas, the importing/imported modules must reference each other through CONCRETE source files, never the `../schema/index.ts` barrel — a barrel back-edge through `json-schema.ts` forms a runtime cycle that only crashes on certain entry orders (cold barrel import / isolated focused tests), passing the full suite via incidental load ordering.
 ---
+
+## 2026-06-13 11:21 CDT - US-243 Review
+- Fixed two confirmed defects in public transcript emission: (1) hidden-step `<Variable>` values could be interpolated into visible public `commandDisplay` (AC2 exclusion leak) — public frame variables are now collected from non-hidden steps only; (2) variant `tab` frames were attributed to the scenario line instead of the authored `<Tab>` source line — they now resolve the matching tab node's line via the existing axis-resolution. Added regression tests for both (hidden-variable non-leak; distinct per-variant tab source lines). Internal runtime transcript untouched.
+- Review notes (rejected): per-frame denormalization of guideId/scenarioId/variant/runtime — AC3 is satisfied at the transcript envelope (constant per scenario+variant), matching the internal Transcript shape, so per-frame duplication is redundant. Security path-safety on `clearGuideId`/`variant` in the `rm`/output path — mirrors the pre-existing `emitGuideScenarioTests` pattern with maintainer-supplied/schema-validated inputs (data-exposure audit: NONE); out of scope for this story. `runtime:"cli"` hardcode and public-transcript redaction — explicitly downstream (US-245/US-249).
+- Verification: typecheck, lint passed; public-transcript + scenario-context + guide-scenarios + schema-snapshot suites green; full codegen re-run emitted 29 artifacts with go/happy-path unchanged.
+---
+
+## 2026-06-13 12:00 CDT - Babysit
+- PR: #347 https://github.com/AaronFeledy/core4/pull/347
+- CI outcome: pass
+- Review feedback: none (Bugbot reported no findings)
+- Merge: merged (squash); resolved a prd.json/progress.txt union conflict from parallel main advancement (US-222/US-223 landed concurrently) before merge
