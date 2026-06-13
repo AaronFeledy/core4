@@ -367,8 +367,8 @@
         "Lint passes."
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added markDeprecated for Effect-returning public exports with runtime DeprecationService.use recording and callable behavior preservation; deprecated tagged errors can carry static deprecation metadata; lint now fails public @deprecated direct exports and named export declarations unless they use markDeprecated or accepted tagged-error metadata, and validates TSDoc note/replacement text for IDE/API output."
     },
     {
       "id": "US-221",

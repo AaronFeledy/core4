@@ -305,3 +305,35 @@
 - Review feedback: fixed (Cursor Bugbot Medium findings: built-in aliases now inherit the canonical command's deprecation notice, and unsupported tooling flags/args/deprecated metadata are rejected via a shared scanner wired through service discovery, config translate, and includes verify/update)
 - Merge: merged (squash)
 ---
+
+## 2026-06-12 14:58 CDT - US-220
+- Shipped TSDoc deprecation enforcement for public TypeScript surfaces: `markDeprecated()` now records Effect-returning export usage through `DeprecationService.use` while preserving the wrapped callable, tagged errors can publish static deprecation metadata, and the lint gate rejects public `@deprecated` exports without runtime metadata or matching note/replacement text.
+- Verification: focused deprecation/export compatibility tests, `check:deprecations`, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Keep deprecated public TypeScript exports Effect-returning when using `markDeprecated()` so runtime recording can ride the ambient `DeprecationService`; the TSDoc text must include the notice note and replacement so IDE/API output stays aligned with machine-readable metadata.
+---
+
+## 2026-06-12 15:23 CDT - US-220 Review
+- Closed a soundness hole in the new `scripts/check-deprecations.ts` lint gate: a public deprecated export whose TSDoc `@deprecated` sat on the local declaration and was re-exported via a bare untagged `export { name }` slipped through unrecorded. The gate now resolves the local declaration's tag node so these exports are enforced like any other; added a regression test.
+- Review notes (rejected): deprecated `interface`/type-only exports stay unflagged (cannot be wrapped by `markDeprecated()` at runtime); imported-notice text parity degrading to "non-empty TSDoc passes" kept as acceptable graceful degradation, not a blocker.
+- Verification: focused deprecation/scripts/exports tests, full `core/test/deprecation` + `core/test/scripts` suites, typecheck, and lint (incl. `check:deprecations`) passed.
+- **Learnings for future iterations:** TypeScript JSDoc attaches to the enclosing `VariableStatement`, not the `VariableDeclaration`, so any AST scanner enforcing tag rules on `const x = ...; export { x }` must resolve the statement, not the declaration.
+---
+
+## 2026-06-12 17:38 CDT - US-220 Build
+- Finished the in-flight deprecation TSDoc enforcement branch by extending the lint gate to catch deprecated local function declarations that are later exposed through named exports without `markDeprecated`, matching the existing local variable/class named-export enforcement.
+- Verification: focused red/green regression, deprecation lint script surface, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Named-export deprecation checks must collect every local declaration shape that can carry TSDoc (`const`, `function`, and `class`), otherwise a deprecated local can bypass runtime `markDeprecated` enforcement simply by being exported separately.
+---
+
+## 2026-06-12 18:35 CDT - US-220 Review
+- Reviewed the build step's deprecation-gate hardening (explicit markDeprecated export-id overload + MISMATCHED enforcement, deprecated-function named-export catch, type-only skip, external re-export skip). No in-scope blockers found; made no code changes.
+- Review notes (rejected): Oracle flagged three lint-gate shapes as unenforced — external re-exports (`export { x } from "./mod"`), `export default` expressions, and `export enum`/`export namespace`. Rejected as theoretical: the scanned source (sdk/src, core/src, plugins) currently has ZERO `@deprecated` tags, no deprecated default exports, and no enums/namespaces, so none is a real false-pass. The external re-export skip is the correct single-file-scan decision (cross-module bindings aren't in same-file localDeclarations, so checking them would false-positive on every source-tagged re-export); real deprecated runtime exports are enforced on their source declaration. Cross-module resolution / default+enum+namespace fail-cases are forward-looking hardening, out of scope for US-220.
+- Verification: typecheck, lint (incl. check:deprecations gate), and full `bun test` (3400 pass / 0 fail) passed.
+- **Learnings for future iterations:** If the deprecation model later tags a barrel-only re-export, `export default`, an enum, or a namespace as `@deprecated`, `scripts/check-deprecations.ts` will silently pass it — harden those AST shapes (and add cross-module resolution for re-exports) at that point.
+---
+
+## 2026-06-12 19:17 CDT - US-220 Verify
+- Verified US-220 against the real compiled binary in `lando4-dev`: fresh `core` build, isolated `setup --provider=podman --yes --no-interactive`, temp-app `app:config:lint`, `list`, `doctor --format=json`, and binary `--version` all completed cleanly; host gates `check:deprecations`, focused deprecation/script suites, typecheck, lint, and full tests passed.
+- Fixed a lint-gate soundness blocker: local functions named `markDeprecated` no longer satisfy the public `@deprecated` runtime-wrapper requirement; only imported `markDeprecated` bindings from the SDK-style import path are accepted, while aliased imports still pass.
+- **Learnings for future iterations:** Deprecation enforcement should treat `markDeprecated` as an imported public SDK helper, not a magic local identifier, or user code can shadow the name and bypass runtime `DeprecationService.use` recording.
+---

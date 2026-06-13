@@ -4,7 +4,13 @@ import { DateTime, Deferred, Effect, Exit, Layer, Option, Queue, Stream } from "
 
 import { DeprecatedSurfaceError, DeprecationContradictionError } from "@lando/sdk/errors";
 import type { DeprecationNotice } from "@lando/sdk/schema";
-import { DeprecationService, EventService, PluginRegistry, Telemetry } from "@lando/sdk/services";
+import {
+  DeprecationService,
+  EventService,
+  PluginRegistry,
+  Telemetry,
+  markDeprecated,
+} from "@lando/sdk/services";
 import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
 import { DeprecationPluginRegistryLive } from "../../src/deprecation/plugin-registry.ts";
 import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
@@ -27,6 +33,42 @@ const timestamp = DateTime.unsafeMake("2026-06-11T16:00:00.000Z");
 const DeprecationServiceWithEventsLive = DeprecationServiceLive.pipe(Layer.provide(EventServiceLive));
 
 describe("DeprecationServiceLive", () => {
+  test("markDeprecated records export usage and preserves callable behavior", async () => {
+    const legacyAdd = markDeprecated(warningNotice, "legacyAdd", (left: number, right: number) =>
+      Effect.succeed(left + right),
+    );
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const sum = yield* legacyAdd(2, 3);
+        const deprecations = yield* DeprecationService;
+        return { sum, summary: yield* deprecations.summary() };
+      }).pipe(Effect.provide(DeprecationServiceLive)),
+    );
+
+    expect(result.sum).toBe(5);
+    expect(result.summary[0]?.kind).toBe("export");
+    expect(result.summary[0]?.id).toBe("legacyAdd");
+    expect(result.summary[0]?.count).toBe(1);
+    expect(legacyAdd.deprecation).toEqual(warningNotice);
+  });
+
+  test("markDeprecated keeps explicit export ids distinct for anonymous implementations", async () => {
+    const oldApi = markDeprecated(warningNotice, "oldApi", () => Effect.succeed("old"));
+    const olderApi = markDeprecated(warningNotice, "olderApi", () => Effect.succeed("older"));
+
+    const summary = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* oldApi();
+        yield* olderApi();
+        const deprecations = yield* DeprecationService;
+        return yield* deprecations.summary();
+      }).pipe(Effect.provide(DeprecationServiceLive)),
+    );
+
+    expect(summary.map((entry) => entry.id).sort()).toEqual(["oldApi", "olderApi"]);
+  });
+
   test("publishes deprecation-used after recording usage", async () => {
     const result = await Effect.runPromise(
       Effect.scoped(

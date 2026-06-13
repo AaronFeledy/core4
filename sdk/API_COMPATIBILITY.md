@@ -236,6 +236,10 @@
 - `UpdateService`
 - `UrlScanner`
 
+## Additive Alpha service helpers
+
+- `markDeprecated`
+
 ## Additive Beta test helper exports
 
 - `ContractMatrixCell`
