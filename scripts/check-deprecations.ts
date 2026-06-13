@@ -74,39 +74,56 @@ const propertyNameText = (name: ts.PropertyName | ts.BindingName | undefined): s
   return undefined;
 };
 
-const markDeprecatedImportBindings = (source: ts.SourceFile): ReadonlySet<string> => {
-  const bindings = new Set<string>();
+interface MarkDeprecatedImportBindings {
+  readonly named: ReadonlySet<string>;
+  readonly namespaces: ReadonlySet<string>;
+}
+
+const markDeprecatedImportBindings = (source: ts.SourceFile): MarkDeprecatedImportBindings => {
+  const named = new Set<string>();
+  const namespaces = new Set<string>();
 
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly === true) continue;
     const namedBindings = statement.importClause?.namedBindings;
-    if (namedBindings === undefined || !ts.isNamedImports(namedBindings)) continue;
+    if (namedBindings === undefined) continue;
+
+    if (ts.isNamespaceImport(namedBindings)) {
+      namespaces.add(namedBindings.name.text);
+      continue;
+    }
 
     for (const element of namedBindings.elements) {
       if (element.isTypeOnly) continue;
       if ((element.propertyName?.text ?? element.name.text) === "markDeprecated") {
-        bindings.add(element.name.text);
+        named.add(element.name.text);
       }
     }
   }
 
-  return bindings;
+  return { named, namespaces };
 };
 
 const isMarkDeprecatedCall = (
   expression: ts.Expression | undefined,
-  importedBindings: ReadonlySet<string>,
+  importedBindings: MarkDeprecatedImportBindings,
 ): boolean => {
   if (expression === undefined || !ts.isCallExpression(expression)) return false;
   const callee = expression.expression;
-  if (ts.isIdentifier(callee)) return importedBindings.has(callee.text);
-  if (ts.isPropertyAccessExpression(callee)) return propertyNameText(callee.name) === "markDeprecated";
+  if (ts.isIdentifier(callee)) return importedBindings.named.has(callee.text);
+  if (ts.isPropertyAccessExpression(callee)) {
+    return (
+      propertyNameText(callee.name) === "markDeprecated" &&
+      ts.isIdentifier(callee.expression) &&
+      importedBindings.namespaces.has(callee.expression.text)
+    );
+  }
   return false;
 };
 
 const markDeprecatedExportId = (
   expression: ts.Expression | undefined,
-  importedBindings: ReadonlySet<string>,
+  importedBindings: MarkDeprecatedImportBindings,
 ): string | undefined => {
   if (
     expression === undefined ||
@@ -117,11 +134,11 @@ const markDeprecatedExportId = (
   }
 
   const explicitId = stringLiteralValue(expression.arguments[1]);
-  if (explicitId !== undefined) return explicitId;
+  if (explicitId !== undefined) return expression.arguments[2] === undefined ? undefined : explicitId;
 
   const impl = expression.arguments[1];
   if (impl === undefined) return undefined;
-  if ((ts.isFunctionExpression(impl) || ts.isFunctionDeclaration(impl)) && impl.name !== undefined) {
+  if (ts.isFunctionExpression(impl) && impl.name !== undefined) {
     return impl.name.text;
   }
   return undefined;
@@ -130,7 +147,7 @@ const markDeprecatedExportId = (
 const markDeprecatedTracksExport = (
   expression: ts.Expression | undefined,
   exportName: string,
-  importedBindings: ReadonlySet<string>,
+  importedBindings: MarkDeprecatedImportBindings,
 ): boolean => markDeprecatedExportId(expression, importedBindings) === exportName;
 
 interface NoticeText {
