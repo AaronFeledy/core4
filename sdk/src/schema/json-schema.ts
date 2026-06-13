@@ -361,7 +361,8 @@ export const schemaArtifactFilename = (schemaName: JsonSchemaName): `${string}.j
 
 const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
   const schema = publicSchemaRegistry[schemaName];
-  const filename = schemaArtifactFilename(schemaName).replace(/\.json$/, "");
+  const artifactFilename = schemaArtifactFilename(schemaName);
+  const docsBasename = artifactFilename.replace(/\.json$/, "");
   return {
     id: schemaName,
     title: AST.getTitleAnnotation(schema.ast).pipe((option) =>
@@ -371,8 +372,8 @@ const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
       option._tag === "Some" ? option.value : "Public Lando schema contract.",
     ),
     packageExport: `@lando/sdk/schema#${schemaName}`,
-    jsonSchemaPath: `dist/schemas/${schemaArtifactFilename(schemaName)}`,
-    docsPath: `docs/reference/schemas/${filename}.mdx`,
+    jsonSchemaPath: `dist/schemas/${artifactFilename}`,
+    docsPath: `docs/reference/schemas/${docsBasename}.mdx`,
     deprecated: getSchemaDeprecation(schema.ast) !== undefined,
   };
 };

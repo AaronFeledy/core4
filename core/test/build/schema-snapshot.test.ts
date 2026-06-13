@@ -2,12 +2,14 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import type { JsonSchemaName } from "../../../sdk/src/schema/index.ts";
 
 import {
   JSON_SCHEMA_NAMES,
   publicSchemaMetadataIndex,
   publicSchemaRegistry,
   renderPublicSchemaReferencePages,
+  schemaArtifactFilename,
 } from "../../../sdk/src/schema/index.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
@@ -17,15 +19,8 @@ const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
 const metadataIndexPath = resolve(repoRoot, "dist/schemas/index.json");
 
-const schemaArtifactPath = (schemaName: string): string =>
-  resolve(
-    repoRoot,
-    "dist/schemas",
-    `${schemaName
-      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-      .toLowerCase()}.json`,
-  );
+const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
+  resolve(repoRoot, "dist/schemas", schemaArtifactFilename(schemaName));
 
 const runGenerator = (): void => {
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
