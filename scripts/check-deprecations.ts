@@ -36,6 +36,7 @@ interface CheckDeprecationReleaseGateOptions {
   readonly releasedOrPending?: ReadonlyArray<string>;
   readonly targetRelease?: string;
   readonly today?: Date;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 const repoRoot = resolve(import.meta.dirname, "..");
@@ -51,6 +52,7 @@ const MISSING_REMOVE_IN_REASON = "removeIn is required for notices older than 12
 const INVALID_REMOVE_IN_REASON = "removeIn must be a future major or minor release";
 const DEFAULT_RELEASED_OR_PENDING = ["4.0.0", "4.1.0", "4.2.0", "5.0.0"] as const;
 const DEFAULT_TARGET_RELEASE = "4.0.0";
+const DEVELOPMENT_PACKAGE_VERSION = "0.0.0";
 const RELEASE_DATES = new Map<string, Date>([
   ["4.0.0", new Date("2024-06-01T00:00:00Z")],
   ["4.1.0", new Date("2025-01-01T00:00:00Z")],
@@ -240,6 +242,33 @@ const semverCompare = (left: string, right: string): number => {
   if (parsedLeft === undefined || parsedRight === undefined) return left.localeCompare(right);
   return compareSemver(parsedLeft, parsedRight);
 };
+const normalizeReleaseVersion = (value: string | undefined): string | undefined => {
+  if (value === undefined || value === "") return undefined;
+  const match = /^v?((?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))(?:[-+].*)?$/.exec(value);
+  return match?.[1];
+};
+
+const packageTargetRelease = async (root: string): Promise<string | undefined> => {
+  try {
+    const packageJson = (await Bun.file(resolve(root, "package.json")).json()) as { version?: unknown };
+    const version =
+      typeof packageJson.version === "string" ? normalizeReleaseVersion(packageJson.version) : undefined;
+    return version === DEVELOPMENT_PACKAGE_VERSION ? undefined : version;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+};
+
+const resolveTargetRelease = async (
+  root: string,
+  options: Pick<CheckDeprecationReleaseGateOptions, "targetRelease" | "env">,
+): Promise<string> =>
+  normalizeReleaseVersion(options.targetRelease) ??
+  normalizeReleaseVersion(options.env?.LANDO_RELEASE_VERSION) ??
+  normalizeReleaseVersion(options.env?.LANDO_NPM_VERSION) ??
+  (await packageTargetRelease(root)) ??
+  DEFAULT_TARGET_RELEASE;
 
 const isTwelveMonthsOld = (since: string, today: Date): boolean => {
   const releaseDate = RELEASE_DATES.get(since);
@@ -683,7 +712,10 @@ export const checkDeprecationReleaseGate = async (
 ): Promise<DeprecationReleaseResult> => {
   const root = resolve(options.root ?? repoRoot);
   const releasedOrPending = new Set(options.releasedOrPending ?? DEFAULT_RELEASED_OR_PENDING);
-  const targetRelease = options.targetRelease ?? process.env.LANDO_RELEASE_VERSION ?? DEFAULT_TARGET_RELEASE;
+  const targetRelease = await resolveTargetRelease(root, {
+    targetRelease: options.targetRelease,
+    env: options.env ?? process.env,
+  });
   const today = options.today ?? new Date();
   const files = (
     await Promise.all(SCANNED_ROOTS.map((scannedRoot) => collectTsFiles(resolve(root, scannedRoot))))

@@ -431,6 +431,57 @@ describe("deprecation release gate", () => {
     });
   });
 
+  test("uses package version as the release target when no explicit release env is set", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(root, "package.json", JSON.stringify({ version: "5.0.0" }));
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.2.0", removeIn: "5.0.0", note: "Use newApi instead.", replacement: "newApi" };
+          /** @deprecated Deprecated since 4.2.0; remove in 5.0.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({ root, env: {} });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:6:oldApi:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
+  test("uses the release env version before package metadata and normalizes prereleases", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(root, "package.json", JSON.stringify({ version: "4.0.0" }));
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.2.0", removeIn: "5.0.0", note: "Use newApi instead.", replacement: "newApi" };
+          /** @deprecated Deprecated since 4.2.0; remove in 5.0.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        env: { LANDO_NPM_VERSION: "5.0.0-beta.1" },
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:6:oldApi:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
   test("fails notices whose since version is not released or pending", async () => {
     await withFixtureRoot(async (root) => {
       await write(
