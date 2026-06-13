@@ -359,3 +359,8 @@
 - Verification: RED focused tests failed before implementation; focused update/deprecation/deferred tests, typecheck, lint, build, guide coverage/lint/scenario generation, source+compiled CLI update QA, and reviewer gate passed. Full tests have one pre-existing unrelated SDK/core `DeprecationNotice` identity failure reproduced in isolation.
 - **Learnings for future iterations:** Telemetry event helpers should own the machine-readable inventory and construct exact payloads before calling `Telemetry.record`; never pass raw event/use/error objects into telemetry sinks.
 ---
+## 2026-06-12 23:05 CDT - US-242 Verify
+- Verified the story's host-safe compiled surfaces earlier in the loop (`bun run build`, source and compiled `lando update` smoke), but the required `lando setup` sandbox verification could not run from `core4-agent2` because `.local/DEV-ENV.md` and `.local/bin/lando4-dev` are absent in this secondary worktree.
+- Blocker/regression fixed: none; this is the same secondary-worktree sandbox limitation recorded by recent telemetry stories, so no host setup run was fabricated.
+- **Learnings for future iterations:** Secondary worktrees without `.local` sandbox helpers cannot satisfy Verify's provider/setup run; use a worktree with the local harness or record the blocker explicitly.
+---
