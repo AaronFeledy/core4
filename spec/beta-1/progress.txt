@@ -337,3 +337,10 @@
 - Fixed a lint-gate soundness blocker: local functions named `markDeprecated` no longer satisfy the public `@deprecated` runtime-wrapper requirement; only imported `markDeprecated` bindings from the SDK-style import path are accepted, while aliased imports still pass.
 - **Learnings for future iterations:** Deprecation enforcement should treat `markDeprecated` as an imported public SDK helper, not a magic local identifier, or user code can shadow the name and bypass runtime `DeprecationService.use` recording.
 ---
+
+## 2026-06-12 20:05 CDT - Babysit
+- PR: #340 https://github.com/AaronFeledy/core4/pull/340
+- CI outcome: pass
+- Review feedback: fixed (Cursor Bugbot across 5 rounds — distinct per-export ids for anonymous arrow exports, skip external/type-only re-exports, catch untagged deprecated function re-exports, require imported markDeprecated bindings so local/aliased stubs and fake property-access calls cannot bypass the gate, and reject the two-arg `markDeprecated(notice, "id")` form lacking an implementation argument)
+- Merge: merged (squash)
+---
