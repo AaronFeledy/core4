@@ -1,10 +1,10 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { checkDeprecationTsdoc } from "../../../scripts/check-deprecations.ts";
+import { checkDeprecationReleaseGate, checkDeprecationTsdoc } from "../../../scripts/check-deprecations.ts";
 
 type DeprecationOffender = Awaited<ReturnType<typeof checkDeprecationTsdoc>>["offenders"][number];
 
@@ -21,6 +21,8 @@ const write = async (root: string, path: string, content: string): Promise<void>
   await mkdir(dirname(join(root, path)), { recursive: true });
   await writeFile(join(root, path), content, "utf8");
 };
+
+const repoRoot = resolve(import.meta.dirname, "../../..");
 
 const offenderSummaries = (root: string, offenders: readonly DeprecationOffender[]): string[] =>
   offenders.map(
@@ -392,6 +394,321 @@ describe("deprecation TSDoc lint gate", () => {
       );
 
       expect(await checkDeprecationTsdoc({ root })).toEqual({ ok: true, offenders: [] });
+    });
+  });
+});
+
+describe("deprecation release gate", () => {
+  test("is wired into codegen:check after codegen and before typecheck", async () => {
+    const packageJson = await Bun.file(resolve(repoRoot, "package.json")).json();
+
+    expect(packageJson.scripts["codegen:check"]).toBe(
+      "bun run codegen && bun run check:deprecations && bun run typecheck",
+    );
+  });
+
+  test("passes current notices with released or pending since versions", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.2.0", removeIn: "5.0.0", note: "Use newApi instead.", replacement: "newApi" };
+          /** @deprecated Deprecated since 4.2.0; remove in 5.0.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      expect(
+        await checkDeprecationReleaseGate({
+          root,
+          targetRelease: "4.2.0",
+          today: new Date("2026-06-01T00:00:00Z"),
+        }),
+      ).toEqual({ ok: true, offenders: [] });
+    });
+  });
+
+  test("uses package version as the release target when no explicit release env is set", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(root, "package.json", JSON.stringify({ version: "5.0.0" }));
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.2.0", removeIn: "5.0.0", note: "Use newApi instead.", replacement: "newApi" };
+          /** @deprecated Deprecated since 4.2.0; remove in 5.0.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({ root, env: {} });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:6:oldApi:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
+  test("uses the release env version before package metadata and normalizes prereleases", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(root, "package.json", JSON.stringify({ version: "4.0.0" }));
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.2.0", removeIn: "5.0.0", note: "Use newApi instead.", replacement: "newApi" };
+          /** @deprecated Deprecated since 4.2.0; remove in 5.0.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        env: { LANDO_NPM_VERSION: "5.0.0-beta.1" },
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:6:oldApi:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
+  test("fails notices whose since version is not released or pending", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.99.0", removeIn: "5.0.0", note: "Use newApi instead." };
+          /** @deprecated Deprecated since 4.99.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({ root, releasedOrPending: ["4.2.0"] });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:6:oldApi:since must match a released or pending semver",
+      ]);
+    });
+  });
+
+  test("requires removeIn for notices older than twelve months", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const notice = { since: "4.1.0", note: "Use newApi instead." };
+          /** @deprecated Deprecated since 4.1.0. Use newApi instead. */
+          export const oldApi = markDeprecated(notice, "oldApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.1.0", "4.2.0"],
+        today: new Date("2026-06-01T00:00:00Z"),
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:6:oldApi:removeIn is required for notices older than 12 months",
+      ]);
+    });
+  });
+
+  test("rejects removeIn values that are not future major or minor releases", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const patchNotice = { since: "4.2.0", removeIn: "4.2.1", note: "Use newApi instead." };
+          const sameNotice = { since: "4.2.0", removeIn: "4.2.0", note: "Use sameApi instead." };
+          /** @deprecated Deprecated since 4.2.0. Use newApi instead. */
+          export const patchApi = markDeprecated(patchNotice, "patchApi", () => Effect.succeed("ok"));
+          /** @deprecated Deprecated since 4.2.0. Use sameApi instead. */
+          export const sameApi = markDeprecated(sameNotice, "sameApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.2.0", "4.2.1"],
+        targetRelease: "4.2.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:7:patchApi:removeIn must be a future major or minor release",
+        "sdk/src/public.ts:9:sameApi:removeIn must be a future major or minor release",
+        "sdk/src/public.ts:9:sameApi:DeprecationStaleError: surface is still present at removeIn 4.2.0",
+      ]);
+    });
+  });
+
+  test("enforces stale registry notices that are not markDeprecated exports", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "plugins/plugin-example/src/index.ts",
+        `
+          export const manifest = {
+            name: "@lando/plugin-example",
+            contributes: {
+              commands: [
+                { id: "example:old", deprecated: { since: "4.2.0", removeIn: "5.0.0", note: "Use example:new." } },
+              ],
+            },
+          };
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.2.0", "5.0.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "plugins/plugin-example/src/index.ts:6:example:old:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
+  test("enforces registry notices bound to local identifiers", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "plugins/plugin-example/src/index.ts",
+        `
+          const commandNotice = { since: "4.2.0", removeIn: "5.0.0", note: "Use example:new." };
+          export const manifest = {
+            name: "@lando/plugin-example",
+            contributes: {
+              commands: [{ id: "example:old", deprecated: commandNotice }],
+            },
+          };
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.2.0", "5.0.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "plugins/plugin-example/src/index.ts:6:example:old:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
+  test("rejects patch, same-release, and past removeIn schedules", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "core/src/deprecated-contracts.ts",
+        `
+          export const surfaces = [
+            { id: "patch", deprecated: { since: "4.2.0", removeIn: "4.2.1", note: "Use newer surface." } },
+            { id: "same", deprecated: { since: "4.2.0", removeIn: "4.2.0", note: "Use newer surface." } },
+            { id: "past", deprecated: { since: "4.2.0", removeIn: "4.1.0", note: "Use newer surface." } },
+          ];
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.1.0", "4.2.0"],
+        targetRelease: "4.2.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "core/src/deprecated-contracts.ts:3:patch:removeIn must be a future major or minor release",
+        "core/src/deprecated-contracts.ts:4:same:removeIn must be a future major or minor release",
+        "core/src/deprecated-contracts.ts:4:same:DeprecationStaleError: surface is still present at removeIn 4.2.0",
+        "core/src/deprecated-contracts.ts:5:past:removeIn must be a future major or minor release",
+        "core/src/deprecated-contracts.ts:5:past:DeprecationOverdueError: surface is still present after removeIn 4.1.0",
+      ]);
+    });
+  });
+
+  test("checks registry-style deprecated contract surfaces that are not exports", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "core/src/deprecation/built-in-contracts.ts",
+        `
+          export const BUILT_IN_CONTRACT_DEPRECATIONS = {
+            commands: [
+              { id: "meta:old", deprecated: { since: "4.1.0", removeIn: "5.0.0", note: "Use meta:new." } },
+            ],
+          };
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.1.0", "5.0.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "core/src/deprecation/built-in-contracts.ts:4:meta:old:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+      ]);
+    });
+  });
+
+  test("fails present surfaces at and after removeIn with stale and overdue errors", async () => {
+    await withFixtureRoot(async (root) => {
+      await write(
+        root,
+        "sdk/src/public.ts",
+        `
+          import { Effect } from "effect";
+          import { markDeprecated } from "@lando/sdk/services";
+          const staleNotice = { since: "4.1.0", removeIn: "5.0.0", note: "Use newApi instead." };
+          const overdueNotice = { since: "4.1.0", removeIn: "4.2.0", note: "Use newerApi instead." };
+          /** @deprecated Deprecated since 4.1.0; remove in 5.0.0. Use newApi instead. */
+          export const staleApi = markDeprecated(staleNotice, "staleApi", () => Effect.succeed("ok"));
+          /** @deprecated Deprecated since 4.1.0; remove in 4.2.0. Use newerApi instead. */
+          export const overdueApi = markDeprecated(overdueNotice, "overdueApi", () => Effect.succeed("ok"));
+        `,
+      );
+
+      const result = await checkDeprecationReleaseGate({
+        root,
+        releasedOrPending: ["4.1.0", "4.2.0", "5.0.0", "5.1.0"],
+        targetRelease: "5.0.0",
+      });
+
+      expect(result.ok).toBe(false);
+      expect(offenderSummaries(root, result.offenders)).toEqual([
+        "sdk/src/public.ts:7:staleApi:DeprecationStaleError: surface is still present at removeIn 5.0.0",
+        "sdk/src/public.ts:9:overdueApi:DeprecationOverdueError: surface is still present after removeIn 4.2.0",
+      ]);
     });
   });
 });

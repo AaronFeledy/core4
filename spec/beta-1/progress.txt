@@ -386,7 +386,29 @@
 - Review feedback: fixed (Bugbot: deprecation suppression now silences only warn-level lines while still emitting the info-severity end-of-run summary, per US-221; earlier passthrough-`--` and scratch-suppression findings already resolved on branch)
 - Merge: merged (squash)
 ---
+## 2026-06-13 02:08 CDT - US-222
+- Shipped the deprecation release gate: `codegen:check` now runs codegen, deprecation validation, and typecheck in order; the gate validates released/pending `since` values, old-notice `removeIn` schedules, future major/minor removal targets, and stale/overdue present surfaces across export wrappers and registry-style deprecation objects.
+- Verification: focused red/green deprecation tests, lint, typecheck, codegen:check, serialized full test suite, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Deprecation release-gate checks must inspect both `markDeprecated()` export wrappers and registry-style `{ id|name, deprecated }` objects, because runtime deprecations are registered from plugin/built-in contract manifests as well as public exports.
+---
 
+## 2026-06-13 04:15 CDT - Babysit
+- PR: #345 https://github.com/AaronFeledy/core4/pull/345
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: registry-style deprecation scanning now resolves identifier-bound notice objects via local notice bindings, not just inline literals; earlier "stale gate uses wrong release" finding already resolved on branch)
+- Merge: merged (squash)
+---
+## 2026-06-13 04:17 CDT - US-223
+- Shipped `lando doctor --deprecations`: doctor now adds a dedicated deprecation report from `DeprecationService.summary()` enriched through `lookup(kind,id)`, with plain columns plus structured JSON/YAML output for machine consumers.
+- Source and compiled doctor dispatch both accept `--deprecations` and `--format=json|yaml|text`; machine formats suppress post-run deprecation diagnostics so stdout stays parseable while the report still contains deprecation data.
+- Verification: red/green doctor report tests, source and compiled CLI QA in `lando4-dev`, build, typecheck, lint, full tests, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Machine-readable commands that intentionally include deprecation data must suppress the renderer's post-run deprecation diagnostics entirely, not only warn-level messages, or info summaries can contaminate JSON/YAML stdout.
+---
+## 2026-06-13 06:05 CDT - US-223 Review
+- Fixed two real review blockers in the doctor deprecations report: dropped the write-only `DoctorReport.format` field (never read; it leaked a CLI selector into the data model and diverged between OCLIF default `"text"` and the compiled path's `undefined`), and broadened machine-output suppression so any `--format=json|yaml` doctor run suppresses post-run deprecation diagnostics (previously gated on `--deprecations`, leaving plain-renderer `--format=json` stdout open to contamination).
+- Review notes (rejected): Oracle's "add explicit `global-service` DeprecationSurfaceKind" finding — that union is a frozen/compat-locked SDK literal and §20.4 routes `globalServices: deprecated` through `manifest-contribution`; the report is kind-agnostic so global-service appears when present. Sort tie-breaker / source="core" minors — `summary()` dedups per `(kind,id)` (FR-3) so keys are unique.
+- Verification: typecheck, lint (incl. check:deprecations), doctor-report suite, dispatch-parity, and renderer-flag scenarios all green; oclif compiled-manifest has no drift.
+---
 ## 2026-06-13 03:12 CDT - US-243
 - Scenario generation now emits a build-time PUBLIC reader transcript artifact alongside the existing gitignored generated scenario tests. `scripts/build-guide-scenarios.ts` gained `buildPublicTranscript`/`emitPublicTranscripts`, which walk the MDX AST and write `dist/transcripts/public/guides/<guideId>/<scenarioId>[.<variant>].json` for every rendered scenario+variant. Public frames cover step/run/verify/inspect/cleanup/inline/tab and carry guideId, scenarioId, variant, runtime, sourceFile, sourceLine, displayText, commandDisplay, and resultSummary; `<Hidden>` steps, `render={false}` scenarios, `<UseFixture>`, `<Variable>`, temp dirs, and internal event traces are excluded.
 - Added additive `@lando/sdk` schemas `PublicTranscript`/`PublicTranscriptFrame` (registered in the JSON-schema registry, SDK_SCHEMA_NAMES, API_COMPATIBILITY, and the regenerated schema snapshot). The internal runtime transcript (`core/src/testing/scenario-context.ts`) is unchanged. Authored `docs/guides/authoring/public-transcripts.mdx` (doc-only) + INDEX row.
@@ -394,7 +416,7 @@
 - **Learnings for future iterations:**
   - Public transcripts are a BUILD-TIME codegen product derived from the MDX AST, deliberately separate from the runtime internal transcript; the "verified" coupling holds because the same MDX generates both the gated asserting test and the public frame, so a static expectation-shaped resultSummary stays truthful. US-244 (Starlight consumption) should read these JSON artifacts rather than re-deriving from runtime.
   - `<Inline>` requires a `justification` prop; a bare `<Inline lang code />` fails `decodeInlinePropsEither`. Generated guide scenario tests + transcripts live under gitignored `dist/`/`test/scenarios/generated`, so there is no git-diff drift gate for them — they are validated by running the generated tests and the codegen scripts.
-
+---
 ## 2026-06-13 11:21 CDT - US-243 Review
 - Fixed two confirmed defects in public transcript emission: (1) hidden-step `<Variable>` values could be interpolated into visible public `commandDisplay` (AC2 exclusion leak) — public frame variables are now collected from non-hidden steps only; (2) variant `tab` frames were attributed to the scenario line instead of the authored `<Tab>` source line — they now resolve the matching tab node's line via the existing axis-resolution. Added regression tests for both (hidden-variable non-leak; distinct per-variant tab source lines). Internal runtime transcript untouched.
 - Review notes (rejected): per-frame denormalization of guideId/scenarioId/variant/runtime — AC3 is satisfied at the transcript envelope (constant per scenario+variant), matching the internal Transcript shape, so per-frame duplication is redundant. Security path-safety on `clearGuideId`/`variant` in the `rm`/output path — mirrors the pre-existing `emitGuideScenarioTests` pattern with maintainer-supplied/schema-validated inputs (data-exposure audit: NONE); out of scope for this story. `runtime:"cli"` hardcode and public-transcript redaction — explicitly downstream (US-245/US-249).

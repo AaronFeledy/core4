@@ -403,8 +403,8 @@
         "Lint passes."
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Deprecation release gate now runs through codegen:check after codegen and before typecheck, validates released/pending since versions, enforces old-notice removeIn schedules and future major/minor removeIn values, and fails present export/registry-style deprecated surfaces with stale/overdue errors."
     },
     {
       "id": "US-223",
@@ -421,8 +421,8 @@
         "Lint passes."
       ],
       "priority": 24,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "lando doctor --deprecations now reports deprecation summary entries enriched through lookup(kind,id), renders the required plain section and structured JSON/YAML output, and suppresses post-run deprecation diagnostics only for deprecation machine formats so stdout remains parseable."
     },
     {
       "id": "US-224",

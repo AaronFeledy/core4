@@ -29,6 +29,7 @@
     "format": "biome format --write .",
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
+    "codegen:check": "bun run codegen && bun run check:deprecations && bun run typecheck",
     "docs:scenario": "bun run scripts/docs-scenario.ts",
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
