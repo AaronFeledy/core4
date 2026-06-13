@@ -456,3 +456,8 @@
 - Verification: typecheck, lint, focused schema/export tests, guide coverage/lint/scenario, and full tests passed.
 - **Learnings for future iterations:** Treat `publicSchemaRegistry` as the single schema-publication source of truth; JSON Schema artifacts, metadata, docs inputs, and core re-exports should derive from it rather than introducing another schema list.
 ---
+## 2026-06-13 18:03 CDT - US-225 Build
+- Finished the in-flight schema registry branch by wiring the public schema registry into generated reference-page inputs and documenting/exporting the final registry helper surface. The SDK schema entry remains the canonical source, core re-exports it by identity, and the schema snapshot gate now locks JSON artifact metadata plus reference-page docs paths to the registry.
+- Verification: focused schema/export/compatibility tests, schema snapshot codegen drift check, guide coverage, guide lint, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Schema reference-page helpers should consume `publicSchemaMetadataIndex` so docs paths, artifact paths, and registry order drift together under the schema snapshot gate rather than a separate hand-maintained docs list.
+---
