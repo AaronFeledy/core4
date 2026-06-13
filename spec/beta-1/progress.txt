@@ -354,6 +354,11 @@
 - Setup sandbox blocker: `core4-agent2` does not contain `.local/DEV-ENV.md` or `.local/bin/lando4-dev`, so the mandatory `lando setup` sandbox run could not be performed from this worktree without faking host setup verification.
 - **Learnings for future iterations:** Secondary worktrees may not carry `.local/` sandbox helpers; verify steps that require `lando4-dev` must run from a worktree where those local harness files exist.
 ---
+## 2026-06-12 22:45 CDT - US-242
+- Shipped update outcome and deprecation telemetry wiring: `lando update` now records sanitized outcome categories through `Telemetry.record`, `deprecation-used` telemetry is consumed from the shared event stream with inventory-approved fields only, and telemetry-disabled runs suppress both telemetry paths without changing deprecation behavior.
+- Verification: RED focused tests failed before implementation; focused update/deprecation/deferred tests, typecheck, lint, build, guide coverage/lint/scenario generation, source+compiled CLI update QA, and reviewer gate passed. Full tests have one pre-existing unrelated SDK/core `DeprecationNotice` identity failure reproduced in isolation.
+- **Learnings for future iterations:** Telemetry event helpers should own the machine-readable inventory and construct exact payloads before calling `Telemetry.record`; never pass raw event/use/error objects into telemetry sinks.
+---
 
 ## 2026-06-12 22:52 CDT - US-221 Review
 - Fixed a latent deprecation double-emission introduced by the build step: `deprecation-used` had been added to the live renderer's `isRenderableEvent`, so a `renderEvents:true` command in json/verbose mode would emit each use live (once per `DeprecationService.use`) AND a deduped end-of-run summary, diverging from the source-mode/no-event dispatch paths. Removed it so the renderer-boundary end-of-run summary is the single authoritative path (Oracle-confirmed; satisfies AC5 alone).
@@ -367,4 +372,9 @@
 - Published the CLI deprecation warnings/suppression guide and confirmed the guide scenario path.
 - Verification: renderer-boundary focused tests, typecheck, lint, guide coverage/lint/scenario, build, source+compiled CLI suppression QA, and full tests passed.
 - **Learnings for future iterations:** Deprecation renderer suppression belongs at the CLI output boundary after `DeprecationService.use` records and publishes `deprecation-used`; stripping the suppression flag before OCLIF/compiled parsing keeps it global without weakening machine-readable diagnostics.
+---
+## 2026-06-12 23:05 CDT - US-242 Verify
+- Verified the story's host-safe compiled surfaces earlier in the loop (`bun run build`, source and compiled `lando update` smoke), but the required `lando setup` sandbox verification could not run from `core4-agent2` because `.local/DEV-ENV.md` and `.local/bin/lando4-dev` are absent in this secondary worktree.
+- Blocker/regression fixed: none; this is the same secondary-worktree sandbox limitation recorded by recent telemetry stories, so no host setup run was fabricated.
+- **Learnings for future iterations:** Secondary worktrees without `.local` sandbox helpers cannot satisfy Verify's provider/setup run; use a worktree with the local harness or record the blocker explicitly.
 ---

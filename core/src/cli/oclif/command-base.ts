@@ -122,6 +122,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:setup",
   "meta:shellenv",
   "meta:uninstall",
+  "meta:update",
   "meta:version",
   "meta:x",
 ]);
