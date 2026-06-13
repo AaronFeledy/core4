@@ -113,11 +113,30 @@ export interface ResolveCliDeprecationWarningsResult {
   readonly remainingArgv: ReadonlyArray<string>;
 }
 
+const NO_DEPRECATION_WARNINGS_FLAG = "--no-deprecation-warnings";
+
 export const resolveCliDeprecationWarnings = (
   options: ResolveCliDeprecationWarningsOptions,
 ): ResolveCliDeprecationWarningsResult => {
-  const disabledByFlag = options.argv.includes("--no-deprecation-warnings");
-  const remainingArgv = options.argv.filter((arg) => arg !== "--no-deprecation-warnings");
+  let disabledByFlag = false;
+  let afterDoubleDash = false;
+  const remainingArgv: string[] = [];
+  for (const arg of options.argv) {
+    if (afterDoubleDash) {
+      remainingArgv.push(arg);
+      continue;
+    }
+    if (arg === "--") {
+      afterDoubleDash = true;
+      remainingArgv.push(arg);
+      continue;
+    }
+    if (arg === NO_DEPRECATION_WARNINGS_FLAG) {
+      disabledByFlag = true;
+      continue;
+    }
+    remainingArgv.push(arg);
+  }
   return {
     enabled: !disabledByFlag && options.env.LANDO_DEPRECATION_WARNINGS !== "0",
     remainingArgv,

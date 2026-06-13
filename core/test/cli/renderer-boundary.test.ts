@@ -270,6 +270,24 @@ describe("resolveCliDeprecationWarnings", () => {
       resolveCliDeprecationWarnings({ argv: ["start"], env: { LANDO_DEPRECATION_WARNINGS: "0" } }),
     ).toEqual({ enabled: false, remainingArgv: ["start"] });
   });
+
+  test("preserves suppression-looking child args after the passthrough separator", () => {
+    expect(
+      resolveCliDeprecationWarnings({
+        argv: ["exec", "--", "child", "--no-deprecation-warnings"],
+        env: {},
+      }),
+    ).toEqual({ enabled: true, remainingArgv: ["exec", "--", "child", "--no-deprecation-warnings"] });
+  });
+
+  test("strips only suppression flags before the passthrough separator", () => {
+    expect(
+      resolveCliDeprecationWarnings({
+        argv: ["exec", "--no-deprecation-warnings", "--", "child", "--no-deprecation-warnings"],
+        env: {},
+      }),
+    ).toEqual({ enabled: false, remainingArgv: ["exec", "--", "child", "--no-deprecation-warnings"] });
+  });
 });
 
 describe("write helpers", () => {
