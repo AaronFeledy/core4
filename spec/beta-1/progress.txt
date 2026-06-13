@@ -422,3 +422,10 @@
 - Review notes (rejected): per-frame denormalization of guideId/scenarioId/variant/runtime — AC3 is satisfied at the transcript envelope (constant per scenario+variant), matching the internal Transcript shape, so per-frame duplication is redundant. Security path-safety on `clearGuideId`/`variant` in the `rm`/output path — mirrors the pre-existing `emitGuideScenarioTests` pattern with maintainer-supplied/schema-validated inputs (data-exposure audit: NONE); out of scope for this story. `runtime:"cli"` hardcode and public-transcript redaction — explicitly downstream (US-245/US-249).
 - Verification: typecheck, lint passed; public-transcript + scenario-context + guide-scenarios + schema-snapshot suites green; full codegen re-run emitted 29 artifacts with go/happy-path unchanged.
 ---
+
+## 2026-06-13 12:00 CDT - Babysit
+- PR: #347 https://github.com/AaronFeledy/core4/pull/347
+- CI outcome: pass
+- Review feedback: none (Bugbot reported no findings)
+- Merge: merged (squash); resolved a prd.json/progress.txt union conflict from parallel main advancement (US-222/US-223 landed concurrently) before merge
+---
