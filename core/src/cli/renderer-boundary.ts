@@ -188,11 +188,11 @@ const renderDeprecationDiagnostics = (enabled: boolean): Effect.Effect<void, nev
       return;
     }
 
-    if (!enabled) return;
-
-    for (const entry of summary) {
-      if (entry.notice.severity === "warn") {
-        yield* renderer.message.warn(warningText(entry)).pipe(Effect.catchAll(() => Effect.void));
+    if (enabled) {
+      for (const entry of summary) {
+        if (entry.notice.severity === "warn") {
+          yield* renderer.message.warn(warningText(entry)).pipe(Effect.catchAll(() => Effect.void));
+        }
       }
     }
 

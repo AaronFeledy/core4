@@ -217,6 +217,7 @@ describe("runWithRendererHandling", () => {
       Effect.gen(function* () {
         const deprecations = yield* DeprecationService;
         yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
         return yield* deprecations.summary();
       }),
       {
@@ -224,12 +225,12 @@ describe("runWithRendererHandling", () => {
         rendererMode: "plain",
         io,
         deprecationWarnings: false,
-        render: (summary) => `summary=${summary.length}:${summary[0]?.count}`,
+        render: (summary) => `summary=${summary.length}`,
         formatError: () => "should not happen",
       },
     );
 
-    expect(io.stdout()).toBe("summary=1:1\n");
+    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use).", "summary=2"]);
   });
 
   test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {
