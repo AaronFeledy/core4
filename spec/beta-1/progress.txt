@@ -344,3 +344,10 @@
 - Review feedback: fixed (Cursor Bugbot across 5 rounds — distinct per-export ids for anonymous arrow exports, skip external/type-only re-exports, catch untagged deprecated function re-exports, require imported markDeprecated bindings so local/aliased stubs and fake property-access calls cannot bypass the gate, and reject the two-arg `markDeprecated(notice, "id")` form lacking an implementation argument)
 - Merge: merged (squash)
 ---
+
+## 2026-06-12 22:55 CDT - US-221
+- Completed CLI deprecation warning controls: renderer-boundary diagnostics now emit one human warning per used warn-level surface, summarize info-level uses at command end, preserve JSON `deprecation-used` diagnostics, and source/compiled dispatch both honor `--no-deprecation-warnings` plus `LANDO_DEPRECATION_WARNINGS=0` as renderer-only suppression.
+- Published the CLI deprecation warnings/suppression guide and confirmed the guide scenario path.
+- Verification: renderer-boundary focused tests, typecheck, lint, guide coverage/lint/scenario, build, source+compiled CLI suppression QA, and full tests passed.
+- **Learnings for future iterations:** Deprecation renderer suppression belongs at the CLI output boundary after `DeprecationService.use` records and publishes `deprecation-used`; stripping the suppression flag before OCLIF/compiled parsing keeps it global without weakening machine-readable diagnostics.
+---

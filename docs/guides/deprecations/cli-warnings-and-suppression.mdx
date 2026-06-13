@@ -1,0 +1,31 @@
+---
+id: cli-warnings-and-suppression
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, deprecations, cli]
+---
+
+<Guide>
+  <Scenario id="cli-deprecation-warning-dedupe" render={false} reason="Focused renderer-boundary tests exercise repeated DeprecationService.use calls without requiring a deprecated public command fixture">
+    <Step name="first-warning-only">
+      <Variable name="surface" value="command app:old" display="The first use of a deprecated warn-level surface renders a human warning through the active renderer" />
+      <Variable name="repeat" value="summary count increments" display="Later uses of the same kind/id do not spam more warnings; the end-of-run summary retains the total use count" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cli-deprecation-suppression" render={false} reason="Suppression is parser-level behavior covered in source and compiled command-boundary tests">
+    <Step name="human-output-only">
+      <Variable name="flag" value="--no-deprecation-warnings" display="Suppress human renderer warning output for the current command invocation" />
+      <Variable name="env" value="LANDO_DEPRECATION_WARNINGS=0" display="Suppress human renderer warning output for scripts and CI" />
+      <Variable name="diagnostics" value="not suppressed" display="Machine-readable summaries and JSON deprecation-used diagnostics remain available to commands that report them" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="cli-deprecation-json-events" render={false} reason="JSON renderer stderr shape is locked by core/test/cli/renderer-boundary.test.ts">
+    <Step name="structured-stderr">
+      <Variable name="renderer" value="--renderer=json" display="JSON renderer writes structured deprecation-used events to stderr" />
+      <Variable name="payload" value="{ _tag: 'deprecation-used', use: { kind, id, notice, timestamp } }" display="The payload is the canonical deprecation use record, without human warning formatting" />
+    </Step>
+  </Scenario>
+</Guide>
