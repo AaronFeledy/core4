@@ -1,10 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Context, Effect, Layer } from "effect";
 
 import { Telemetry } from "@lando/core/services";
-import { cliRuntimeOptions } from "../../src/runtime/cli-options.ts";
+import { cliRuntimeOptions, resolveCliTelemetryState } from "../../src/runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const withEnv = async <T>(vars: Record<string, string>, run: (dir: string) => Promise<T>): Promise<T> => {
@@ -50,10 +51,37 @@ describe("CLI runtime telemetry precedence", () => {
     });
   });
 
+  test("reports config as the source when config disables telemetry", async () => {
+    await withEnv({}, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: false\n");
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: false, source: "config" });
+    });
+  });
+
   test("env false disables CLI telemetry before runtime construction wins over config", async () => {
     await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "0" }, async (dir) => {
       await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
       await expect(readCliTelemetry()).resolves.toBe(false);
+    });
+  });
+
+  test("reports env as the source when the telemetry env overlay is present", async () => {
+    await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "0" }, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: false, source: "env" });
+    });
+  });
+
+  test("reports flag as the source for an explicit runtime telemetry option", async () => {
+    await withEnv({ LANDO_CONFIG__TELEMETRY__ENABLED: "1" }, async (dir) => {
+      await writeFile(join(dir, "config.yml"), "telemetry:\n  enabled: true\n");
+      expect(resolveCliTelemetryState(false)).toMatchObject({ enabled: false, source: "flag" });
+    });
+  });
+
+  test("reports default as the source when config and env are absent", async () => {
+    await withEnv({}, async () => {
+      expect(resolveCliTelemetryState()).toMatchObject({ enabled: true, source: "default" });
     });
   });
 
