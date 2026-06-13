@@ -122,6 +122,7 @@ type MinimalRuntimeServices =
   | CacheService
   | PluginTrustStore
   | PrivilegeService;
+type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;
 type ProviderRuntimeServices =
   | MinimalRuntimeServices
@@ -142,6 +143,8 @@ type RuntimeLayer =
   | Layer.Layer<never>
   | Layer.Layer<MinimalRuntimeServices>
   | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<PluginRuntimeServices>
+  | Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<ToolingRuntimeServices>
   | Layer.Layer<ToolingRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
@@ -232,6 +235,12 @@ type LandoRuntimeOptionsFor<TBootstrap extends BootstrapLevel> = LandoRuntimeOpt
 
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"minimal">,
+): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"plugins">,
+): Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>;
+export function makeLandoRuntime(
+  options: LandoRuntimeOptionsFor<"commands">,
 ): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"tooling">,

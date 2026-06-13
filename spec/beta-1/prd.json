@@ -758,8 +758,8 @@
         "Lint passes."
       ],
       "priority": 43,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Update outcome telemetry now emits only inventory-approved fields through Telemetry.record, deprecation-used telemetry is sanitized and disabled with telemetry off, and source/compiled update dispatch reaches the same plugins-bootstrap command surface."
     },
     {
       "id": "US-243",

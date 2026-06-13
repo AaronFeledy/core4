@@ -170,8 +170,48 @@ describe("DeprecationServiceLive", () => {
     );
 
     expect(recorded).toHaveLength(1);
-    expect(recorded[0]?.event).toBe("deprecation-used");
-    expect((recorded[0]?.data.use as { id?: string } | undefined)?.id).toBe("app:start");
+    expect(recorded[0]).toEqual({
+      event: "deprecation-used",
+      data: {
+        kind: "command",
+        id: "app:start",
+        since: "4.1.0",
+        severity: "warn",
+      },
+    });
+  });
+
+  test("disabled telemetry does not consume deprecation-used events", async () => {
+    const recorded: Array<{ readonly event: string; readonly data: Readonly<Record<string, unknown>> }> = [];
+    const telemetry = {
+      enabled: false,
+      record: (event: string, data: Readonly<Record<string, unknown>>) =>
+        Effect.sync(() => {
+          recorded.push({ event, data });
+        }),
+    };
+    const telemetryDeps = Layer.mergeAll(EventServiceLive, Layer.succeed(Telemetry, telemetry));
+
+    const summary = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const deprecations = yield* DeprecationService;
+          yield* deprecations.use({ kind: "command", id: "app:start", notice: warningNotice, timestamp });
+          return yield* deprecations.summary();
+        }),
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            telemetryDeps,
+            DeprecationServiceLive.pipe(Layer.provide(telemetryDeps)),
+            DeprecationTelemetryLive.pipe(Layer.provide(telemetryDeps)),
+          ),
+        ),
+      ),
+    );
+
+    expect(summary[0]?.id).toBe("app:start");
+    expect(recorded).toEqual([]);
   });
 
   test("registers, looks up, records use, and retains repeated-use counts", async () => {
