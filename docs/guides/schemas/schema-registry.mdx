@@ -1,0 +1,24 @@
+---
+id: schema-registry
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, schemas]
+---
+
+<Guide>
+  <Scenario id="public-schema-registry" render={false} reason="The registry export contract is locked by sdk/test/library/exports.test.ts and core/test/build/schema-snapshot.test.ts">
+    <Step name="registry">
+      <Variable name="entrypoint" value="@lando/sdk/schema" display="Import publicSchemaRegistry, JSON_SCHEMA_NAMES, and publicSchemaMetadataIndex from the canonical SDK schema entry point" />
+      <Variable name="coreReExport" value="@lando/core/schema" display="Core re-exports the same registry and metadata index without owning a second schema list" />
+      <Variable name="input" value="publicSchemaRegistry" display="JSON Schema generation reads from the public registry, so listed schemas and generated artifacts stay in lockstep" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="schema-metadata-index" render={false} reason="The generated metadata index is covered by the schema snapshot generator drift test">
+    <Step name="metadata">
+      <Variable name="artifact" value="dist/schemas/index.json" display="The build-time metadata index maps schema id to title, description, package export, JSON Schema artifact, docs path, and deprecation state" />
+      <Variable name="source" value="Effect Schema annotations" display="Titles, descriptions, and deprecation state are derived from schema annotations rather than a hand-maintained docs table" />
+    </Step>
+  </Scenario>
+</Guide>
