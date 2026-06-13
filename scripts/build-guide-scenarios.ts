@@ -931,6 +931,20 @@ const publicFrameForComponent = (
   }
 };
 
+const tabSourceLine = (
+  scenario: GuideScenarioNode,
+  variant: GuideVariant,
+  pair: GuideVariantPair,
+): number => {
+  for (const item of scenario.body) {
+    if (item.kind !== "tabs") continue;
+    if (effectiveAxisOf(item, variant) !== pair.axis) continue;
+    const tab = item.tabs.find((candidate) => candidate.name === pair.value);
+    if (tab !== undefined) return tab.line;
+  }
+  return scenario.line;
+};
+
 export const buildPublicTranscript = (
   guide: GuideScenarioAst,
   scenario: GuideScenarioNode,
@@ -939,20 +953,20 @@ export const buildPublicTranscript = (
   if (scenario.render === false) return undefined;
   if (variant?.skip !== undefined) return undefined;
   const resolved = resolveVariantSteps(scenario, variant);
-  const variables = collectVariables(resolved.steps);
+  const visibleSteps = resolved.steps.filter((step) => !step.hidden);
+  const variables = collectVariables(visibleSteps);
   const frames: PublicTranscriptFrameInput[] = [];
   if (variant !== undefined) {
     for (const pair of variant.pairs) {
       frames.push({
         kind: "tab",
         sourceFile: guide.sourcePath,
-        sourceLine: scenario.line,
+        sourceLine: tabSourceLine(scenario, variant, pair),
         displayText: `${pair.axis}=${pair.value}`,
       });
     }
   }
-  for (const step of resolved.steps) {
-    if (step.hidden) continue;
+  for (const step of visibleSteps) {
     frames.push({
       kind: "step",
       sourceFile: guide.sourcePath,

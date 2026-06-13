@@ -181,12 +181,59 @@ describe("build-guide-scenarios public transcript emission", () => {
       expect(macos.variant).toBe("default=macos");
 
       const linuxTab = linux.frames.find((frame) => frame.kind === "tab");
+      const macosTab = macos.frames.find((frame) => frame.kind === "tab");
       expect(linuxTab?.displayText).toBe("default=linux");
+      expect(linuxTab?.sourceLine).not.toBe(macosTab?.sourceLine);
+      expect(linuxTab?.sourceLine).toBeGreaterThan(8);
 
       const linuxSteps = linux.frames.filter((frame) => frame.kind === "step").map((f) => f.displayText);
       const macosSteps = macos.frames.filter((frame) => frame.kind === "step").map((f) => f.displayText);
       expect(linuxSteps).toEqual(["prepare", "install"]);
       expect(macosSteps).toEqual(["prepare", "install", "brew"]);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("does not interpolate hidden-step variables into visible public frames", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-hidden-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/leak.mdx"),
+        [
+          "---",
+          "id: leak-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="leak-check" render>',
+          '    <Hidden reason="hidden setup defines a secret variable">',
+          '      <Step name="setup">',
+          '        <Variable name="secret" value="s3cr3t-value" display="secret" />',
+          "      </Step>",
+          "    </Hidden>",
+          '    <Step name="deploy">',
+          '      <Run command="lando deploy {{secret}}" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      await emitPublicTranscripts(asts, root);
+      const transcript = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/leak-guide/leak-check.json",
+      );
+
+      expect(JSON.stringify(transcript)).not.toContain("s3cr3t-value");
+      const runFrame = transcript.frames.find((frame) => frame.kind === "run");
+      expect(runFrame?.commandDisplay).not.toContain("s3cr3t-value");
+      expect(transcript.frames.map((frame) => frame.displayText)).not.toContain("secret");
     } finally {
       await rm(root, { force: true, recursive: true });
     }
