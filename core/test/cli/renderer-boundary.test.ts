@@ -1,15 +1,18 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { DateTime, Effect, Layer } from "effect";
 
-import { EventService, Renderer } from "@lando/sdk/services";
+import type { DeprecationNotice } from "@lando/sdk/schema";
+import { DeprecationService, EventService, Renderer } from "@lando/sdk/services";
 
 import {
   makeRendererServiceLiveForMode,
+  resolveCliDeprecationWarnings,
   runWithRendererHandling,
   writeDiagnosticLine,
   writeResultLine,
 } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 
 beforeEach(() => {
   process.exitCode = undefined;
@@ -34,6 +37,19 @@ describe("makeRendererServiceLiveForMode", () => {
 });
 
 describe("runWithRendererHandling", () => {
+  const warningNotice: DeprecationNotice = {
+    since: "4.1.0",
+    severity: "warn",
+    note: "Use app:up instead.",
+    replacement: "app:up",
+  };
+  const infoNotice: DeprecationNotice = {
+    since: "4.1.0",
+    severity: "info",
+    note: "Prefer the new surface when convenient.",
+  };
+  const timestamp = DateTime.unsafeMake("2026-06-12T12:00:00.000Z");
+
   test("writes render(value) to stdout on success", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(Effect.succeed(42), {
@@ -150,6 +166,128 @@ describe("runWithRendererHandling", () => {
     });
     expect(io.stderr()).toContain("boot: layer-build-failed");
     expect(exitCode).toBe(1);
+  });
+
+  test("emits one deprecation warning per used warn/error surface and keeps the summary count", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+        yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+        return "ok";
+      }),
+      {
+        runtime: DeprecationServiceLive,
+        rendererMode: "plain",
+        io,
+        render: (value) => value,
+        formatError: () => "should not happen",
+      },
+    );
+
+    expect(io.stdoutLines()).toEqual([
+      "⚠ Deprecated command app:old (used 2 times): Use app:up instead. Replacement: app:up.",
+      "ok",
+    ]);
+  });
+
+  test("emits severity info deprecations as an end-of-run summary line", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
+      }),
+      {
+        runtime: DeprecationServiceLive,
+        rendererMode: "plain",
+        io,
+        render: () => undefined,
+        formatError: () => "should not happen",
+      },
+    );
+
+    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use)."]);
+  });
+
+  test("suppresses only renderer warning output when requested", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+        yield* deprecations.use({ kind: "config", id: "legacy.key", notice: infoNotice, timestamp });
+        return yield* deprecations.summary();
+      }),
+      {
+        runtime: DeprecationServiceLive,
+        rendererMode: "plain",
+        io,
+        deprecationWarnings: false,
+        render: (summary) => `summary=${summary.length}`,
+        formatError: () => "should not happen",
+      },
+    );
+
+    expect(io.stdoutLines()).toEqual(["ℹ Deprecated surfaces used: config legacy.key (1 use).", "summary=2"]);
+  });
+
+  test("json renderer emits structured deprecation-used diagnostics on stderr", async () => {
+    const io = createBufferedRendererIO();
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const deprecations = yield* DeprecationService;
+        yield* deprecations.use({ kind: "command", id: "app:old", notice: warningNotice, timestamp });
+      }),
+      {
+        runtime: DeprecationServiceLive,
+        rendererMode: "json",
+        io,
+        render: () => undefined,
+        formatError: () => "should not happen",
+      },
+    );
+
+    const event = JSON.parse(io.stderrLines()[0] ?? "{}");
+    expect(event._tag).toBe("deprecation-used");
+    expect(event.use.id).toBe("app:old");
+    expect(event.use.count).toBeUndefined();
+  });
+});
+
+describe("resolveCliDeprecationWarnings", () => {
+  test("strips --no-deprecation-warnings and disables renderer warnings", () => {
+    expect(
+      resolveCliDeprecationWarnings({
+        argv: ["start", "--no-deprecation-warnings", "--renderer=json"],
+        env: {},
+      }),
+    ).toEqual({ enabled: false, remainingArgv: ["start", "--renderer=json"] });
+  });
+
+  test("LANDO_DEPRECATION_WARNINGS=0 disables renderer warnings without changing argv", () => {
+    expect(
+      resolveCliDeprecationWarnings({ argv: ["start"], env: { LANDO_DEPRECATION_WARNINGS: "0" } }),
+    ).toEqual({ enabled: false, remainingArgv: ["start"] });
+  });
+
+  test("preserves suppression-looking child args after the passthrough separator", () => {
+    expect(
+      resolveCliDeprecationWarnings({
+        argv: ["exec", "--", "child", "--no-deprecation-warnings"],
+        env: {},
+      }),
+    ).toEqual({ enabled: true, remainingArgv: ["exec", "--", "child", "--no-deprecation-warnings"] });
+  });
+
+  test("strips only suppression flags before the passthrough separator", () => {
+    expect(
+      resolveCliDeprecationWarnings({
+        argv: ["exec", "--no-deprecation-warnings", "--", "child", "--no-deprecation-warnings"],
+        env: {},
+      }),
+    ).toEqual({ enabled: false, remainingArgv: ["exec", "--", "child", "--no-deprecation-warnings"] });
   });
 });
 

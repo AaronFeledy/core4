@@ -128,6 +128,7 @@ import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
 import {
   makeRendererServiceLiveForMode,
+  resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
   writeDiagnosticLine,
@@ -307,10 +308,15 @@ ALIASES
 };
 
 let activeRendererMode: RendererMode = "lando";
+let activeDeprecationWarnings = true;
 let activeCommandId = "cli:unknown";
 
 const setActiveRendererMode = (mode: RendererMode): void => {
   activeRendererMode = mode;
+};
+
+const setActiveDeprecationWarnings = (enabled: boolean): void => {
+  activeDeprecationWarnings = enabled;
 };
 
 const setActiveCommandId = (commandId: string): void => {
@@ -413,6 +419,7 @@ const runCompiledCommand = <A, E, R, RE>(
   runWithRendererHandling(operation, {
     runtime,
     rendererMode: activeRendererMode,
+    deprecationWarnings: activeDeprecationWarnings,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     render,
@@ -1078,6 +1085,7 @@ const runScratchEffect = <A>(
   runWithRendererHandling(operation, {
     runtime: scratchRuntimeLayer(),
     rendererMode: activeRendererMode,
+    deprecationWarnings: activeDeprecationWarnings,
     render,
     formatError: (error) => commandErrorMessage(error),
   });
@@ -1449,6 +1457,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       }
       throw error;
     }
+    const deprecationWarnings = resolveCliDeprecationWarnings({ argv, env: process.env });
+    argv = deprecationWarnings.remainingArgv;
+    setActiveDeprecationWarnings(deprecationWarnings.enabled);
   }
 
   setActiveCommandId(resolveCanonicalCommandId(argv[0]));

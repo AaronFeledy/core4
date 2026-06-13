@@ -101,6 +101,14 @@ describe("compiled-binary dispatch parity — structural", () => {
       ).toBe(false);
     }
   });
+
+  test("compiled scratch commands thread resolved deprecation suppression into the renderer boundary", () => {
+    const start = runSource.indexOf("const runScratchEffect =");
+    const end = runSource.indexOf("export const parseScratchStartArgv", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(runSource.slice(start, end)).toContain("deprecationWarnings: activeDeprecationWarnings");
+  });
 });
 
 interface RunResult {

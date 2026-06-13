@@ -385,8 +385,8 @@
         "Lint passes."
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Renderer-boundary deprecation diagnostics now render warn-level uses once per (kind,id), summarize info-level uses, support source/compiled suppression via --no-deprecation-warnings and LANDO_DEPRECATION_WARNINGS=0 without suppressing structured JSON diagnostics, and document the CLI warning/suppression behavior."
     },
     {
       "id": "US-222",

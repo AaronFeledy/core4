@@ -359,6 +359,20 @@
 - Verification: RED focused tests failed before implementation; focused update/deprecation/deferred tests, typecheck, lint, build, guide coverage/lint/scenario generation, source+compiled CLI update QA, and reviewer gate passed. Full tests have one pre-existing unrelated SDK/core `DeprecationNotice` identity failure reproduced in isolation.
 - **Learnings for future iterations:** Telemetry event helpers should own the machine-readable inventory and construct exact payloads before calling `Telemetry.record`; never pass raw event/use/error objects into telemetry sinks.
 ---
+
+## 2026-06-12 22:52 CDT - US-221 Review
+- Fixed a latent deprecation double-emission introduced by the build step: `deprecation-used` had been added to the live renderer's `isRenderableEvent`, so a `renderEvents:true` command in json/verbose mode would emit each use live (once per `DeprecationService.use`) AND a deduped end-of-run summary, diverging from the source-mode/no-event dispatch paths. Removed it so the renderer-boundary end-of-run summary is the single authoritative path (Oracle-confirmed; satisfies AC5 alone).
+- Review notes: AC4 (`doctor --deprecations` / `config --format yaml` ignore suppression) holds because suppression lives only at the renderer warning boundary — command-result output flows through `renderer.output` and is untouched by the `--no-deprecation-warnings` / `LANDO_DEPRECATION_WARNINGS=0` flag; the dedicated reports land in their own stories.
+- Verification: typecheck, lint (incl. check:deprecations), renderer-boundary + deprecation + renderer suites, and the full `core/test/cli` suite passed.
+- **Learnings for future iterations:** Deprecation diagnostics must have exactly one render path. The renderer-boundary end-of-run summary already covers every dispatch path (it runs even when the live event consumer is off); do NOT also mark `deprecation-used` renderable in `format.ts` or json/verbose event-rendering commands double-emit.
+---
+
+## 2026-06-12 22:55 CDT - US-221
+- Completed CLI deprecation warning controls: renderer-boundary diagnostics now emit one human warning per used warn-level surface, summarize info-level uses at command end, preserve JSON `deprecation-used` diagnostics, and source/compiled dispatch both honor `--no-deprecation-warnings` plus `LANDO_DEPRECATION_WARNINGS=0` as renderer-only suppression.
+- Published the CLI deprecation warnings/suppression guide and confirmed the guide scenario path.
+- Verification: renderer-boundary focused tests, typecheck, lint, guide coverage/lint/scenario, build, source+compiled CLI suppression QA, and full tests passed.
+- **Learnings for future iterations:** Deprecation renderer suppression belongs at the CLI output boundary after `DeprecationService.use` records and publishes `deprecation-used`; stripping the suppression flag before OCLIF/compiled parsing keeps it global without weakening machine-readable diagnostics.
+---
 ## 2026-06-12 23:05 CDT - US-242 Verify
 - Verified the story's host-safe compiled surfaces earlier in the loop (`bun run build`, source and compiled `lando update` smoke), but the required `lando setup` sandbox verification could not run from `core4-agent2` because `.local/DEV-ENV.md` and `.local/bin/lando4-dev` are absent in this secondary worktree.
 - Blocker/regression fixed: none; this is the same secondary-worktree sandbox limitation recorded by recent telemetry stories, so no host setup run was fabricated.
