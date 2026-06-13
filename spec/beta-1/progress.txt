@@ -390,3 +390,10 @@
 - Verification: focused red/green deprecation tests, lint, typecheck, codegen:check, serialized full test suite, and Oracle reviewer gate passed.
 - **Learnings for future iterations:** Deprecation release-gate checks must inspect both `markDeprecated()` export wrappers and registry-style `{ id|name, deprecated }` objects, because runtime deprecations are registered from plugin/built-in contract manifests as well as public exports.
 ---
+
+## 2026-06-13 04:15 CDT - Babysit
+- PR: #345 https://github.com/AaronFeledy/core4/pull/345
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: registry-style deprecation scanning now resolves identifier-bound notice objects via local notice bindings, not just inline literals; earlier "stale gate uses wrong release" finding already resolved on branch)
+- Merge: merged (squash)
+---
