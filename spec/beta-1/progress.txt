@@ -349,3 +349,8 @@
 - Verification: RED focused command/source tests failed before implementation; focused telemetry/config/parity tests, guide coverage/lint/scenario generation, typecheck, lint, build, source+compiled CLI QA passed. Full `bun test` is blocked by the pre-existing `sdk/test/library/exports.test.ts` DeprecationNotice core-vs-SDK identity failure; deferred-command timeout failures from the full run passed in isolation.
 - **Learnings for future iterations:** Telemetry status should read the same Effect-free config/env resolver used before runtime construction so opt-out reporting does not accidentally build services or touch plugin discovery.
 ---
+## 2026-06-12 21:20 CDT - US-241 Verify
+- Verified the freshly compiled binary for telemetry opt-out controls: `config telemetry off` writes `telemetry.enabled: false`, and `meta:config telemetry status` reports env override source correctly.
+- Setup sandbox blocker: `core4-agent2` does not contain `.local/DEV-ENV.md` or `.local/bin/lando4-dev`, so the mandatory `lando setup` sandbox run could not be performed from this worktree without faking host setup verification.
+- **Learnings for future iterations:** Secondary worktrees may not carry `.local/` sandbox helpers; verify steps that require `lando4-dev` must run from a worktree where those local harness files exist.
+---
