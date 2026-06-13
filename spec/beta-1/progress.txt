@@ -378,3 +378,10 @@
 - Blocker/regression fixed: none; this is the same secondary-worktree sandbox limitation recorded by recent telemetry stories, so no host setup run was fabricated.
 - **Learnings for future iterations:** Secondary worktrees without `.local` sandbox helpers cannot satisfy Verify's provider/setup run; use a worktree with the local harness or record the blocker explicitly.
 ---
+
+## 2026-06-13 01:14 - Babysit
+- PR: #343 https://github.com/AaronFeledy/core4/pull/343
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: deprecation suppression now silences only warn-level lines while still emitting the info-severity end-of-run summary, per US-221; earlier passthrough-`--` and scratch-suppression findings already resolved on branch)
+- Merge: merged (squash)
+---
