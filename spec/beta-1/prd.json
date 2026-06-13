@@ -403,8 +403,8 @@
         "Lint passes."
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Deprecation release gate now runs through codegen:check after codegen and before typecheck, validates released/pending since versions, enforces old-notice removeIn schedules and future major/minor removeIn values, and fails present export/registry-style deprecated surfaces with stale/overdue errors."
     },
     {
       "id": "US-223",

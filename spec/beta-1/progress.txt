@@ -385,3 +385,8 @@
 - Review feedback: fixed (Bugbot: deprecation suppression now silences only warn-level lines while still emitting the info-severity end-of-run summary, per US-221; earlier passthrough-`--` and scratch-suppression findings already resolved on branch)
 - Merge: merged (squash)
 ---
+## 2026-06-13 02:08 CDT - US-222
+- Shipped the deprecation release gate: `codegen:check` now runs codegen, deprecation validation, and typecheck in order; the gate validates released/pending `since` values, old-notice `removeIn` schedules, future major/minor removal targets, and stale/overdue present surfaces across export wrappers and registry-style deprecation objects.
+- Verification: focused red/green deprecation tests, lint, typecheck, codegen:check, serialized full test suite, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Deprecation release-gate checks must inspect both `markDeprecated()` export wrappers and registry-style `{ id|name, deprecated }` objects, because runtime deprecations are registered from plugin/built-in contract manifests as well as public exports.
+---
