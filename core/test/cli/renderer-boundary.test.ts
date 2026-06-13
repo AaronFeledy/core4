@@ -168,7 +168,7 @@ describe("runWithRendererHandling", () => {
     expect(exitCode).toBe(1);
   });
 
-  test("emits one deprecation warning per used warn/error surface and keeps the summary count", async () => {
+  test("emits one deprecation warning per used warn surface and keeps the summary count", async () => {
     const io = createBufferedRendererIO();
     await runWithRendererHandling(
       Effect.gen(function* () {

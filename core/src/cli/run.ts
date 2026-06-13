@@ -426,22 +426,27 @@ const runCompiledCommand = <A, E, R, RE>(
     formatError: (error) => commandErrorMessage(error),
   });
 
-const runStart = async (): Promise<void> => {
+const runWithProcessAbortSignal = async (run: (signal: AbortSignal) => Promise<void>): Promise<void> => {
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.once("SIGINT", abort);
   process.once("SIGTERM", abort);
   try {
-    await runCompiledCommand(
-      startApp({ signal: controller.signal }),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
-      renderStartAppResult,
-    );
+    await run(controller.signal);
   } finally {
     process.off("SIGINT", abort);
     process.off("SIGTERM", abort);
   }
 };
+
+const runStart = (): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      startApp({ signal }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+      renderStartAppResult,
+    ),
+  );
 
 const runStop = (): Promise<void> =>
   runCompiledCommand(
@@ -529,39 +534,23 @@ const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
   process.exitCode = 1;
 };
 
-const runRestart = async (): Promise<void> => {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  process.once("SIGINT", abort);
-  process.once("SIGTERM", abort);
-  try {
-    await runCompiledCommand(
-      restartApp({ signal: controller.signal }),
+const runRestart = (): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      restartApp({ signal }),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderRestartAppResult,
-    );
-  } finally {
-    process.off("SIGINT", abort);
-    process.off("SIGTERM", abort);
-  }
-};
+    ),
+  );
 
-const runRebuild = async (): Promise<void> => {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  process.once("SIGINT", abort);
-  process.once("SIGTERM", abort);
-  try {
-    await runCompiledCommand(
-      rebuildApp({ signal: controller.signal }),
+const runRebuild = (): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      rebuildApp({ signal }),
       makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
       renderRebuildAppResult,
-    );
-  } finally {
-    process.off("SIGINT", abort);
-    process.off("SIGTERM", abort);
-  }
-};
+    ),
+  );
 
 const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("app:logs", argv);
@@ -1100,19 +1089,11 @@ const scratchCommandInput = (
 ): CompiledCommandInput =>
   compiledCommandInputFromArgv(commandId, argv, { rendererMode: activeRendererMode, ...options });
 
-const runAppsScratchStart = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  process.once("SIGINT", abort);
-  process.once("SIGTERM", abort);
-  try {
-    const input = scratchCommandInput("apps:scratch:start", argv, { signal: controller.signal });
-    await runScratchEffect(scratchStart(scratchStartOptionsFromInput(input)), renderScratchStartResult);
-  } finally {
-    process.off("SIGINT", abort);
-    process.off("SIGTERM", abort);
-  }
-};
+const runAppsScratchStart = (argv: ReadonlyArray<string>): Promise<void> =>
+  runWithProcessAbortSignal((signal) => {
+    const input = scratchCommandInput("apps:scratch:start", argv, { signal });
+    return runScratchEffect(scratchStart(scratchStartOptionsFromInput(input)), renderScratchStartResult);
+  });
 
 const runAppsScratchStop = async (argv: ReadonlyArray<string>): Promise<void> => {
   const input = scratchCommandInput("apps:scratch:stop", argv);
@@ -1151,26 +1132,16 @@ const runAppsScratchGc = async (argv: ReadonlyArray<string>): Promise<void> => {
   await runScratchEffect(scratchGc({ prune: pruneFromInput(input) }), renderScratchGcReport);
 };
 
-const runMetaGlobalStart = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const controller = new AbortController();
-  const abort = () => controller.abort();
-  process.once("SIGINT", abort);
-  process.once("SIGTERM", abort);
-  try {
-    await runCompiledCommand(
+const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>
+  runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
       globalStart(
-        globalStartOptionsFromInput(
-          compiledCommandInputFromArgv("meta:global:start", argv, { signal: controller.signal }),
-        ),
+        globalStartOptionsFromInput(compiledCommandInputFromArgv("meta:global:start", argv, { signal })),
       ),
       globalRuntimeLayer(),
       renderGlobalStartResult,
-    );
-  } finally {
-    process.off("SIGINT", abort);
-    process.off("SIGTERM", abort);
-  }
-};
+    ),
+  );
 
 const runMetaGlobalStop = (): Promise<void> =>
   runCompiledCommand(globalStop(), globalRuntimeLayer(), renderGlobalStopResult);
@@ -1586,16 +1557,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "shell" || argv[0] === "app:shell") {
-    const controller = new AbortController();
-    const abort = () => controller.abort();
-    process.once("SIGINT", abort);
-    process.once("SIGTERM", abort);
-    try {
-      await runShell(argv.slice(1), { signal: controller.signal });
-    } finally {
-      process.off("SIGINT", abort);
-      process.off("SIGTERM", abort);
-    }
+    await runWithProcessAbortSignal((signal) => runShell(argv.slice(1), { signal }));
     return;
   }
 
