@@ -351,3 +351,10 @@
 - Verification: renderer-boundary focused tests, typecheck, lint, guide coverage/lint/scenario, build, source+compiled CLI suppression QA, and full tests passed.
 - **Learnings for future iterations:** Deprecation renderer suppression belongs at the CLI output boundary after `DeprecationService.use` records and publishes `deprecation-used`; stripping the suppression flag before OCLIF/compiled parsing keeps it global without weakening machine-readable diagnostics.
 ---
+
+## 2026-06-12 22:52 CDT - US-221 Review
+- Fixed a latent deprecation double-emission introduced by the build step: `deprecation-used` had been added to the live renderer's `isRenderableEvent`, so a `renderEvents:true` command in json/verbose mode would emit each use live (once per `DeprecationService.use`) AND a deduped end-of-run summary, diverging from the source-mode/no-event dispatch paths. Removed it so the renderer-boundary end-of-run summary is the single authoritative path (Oracle-confirmed; satisfies AC5 alone).
+- Review notes: AC4 (`doctor --deprecations` / `config --format yaml` ignore suppression) holds because suppression lives only at the renderer warning boundary — command-result output flows through `renderer.output` and is untouched by the `--no-deprecation-warnings` / `LANDO_DEPRECATION_WARNINGS=0` flag; the dedicated reports land in their own stories.
+- Verification: typecheck, lint (incl. check:deprecations), renderer-boundary + deprecation + renderer suites, and the full `core/test/cli` suite passed.
+- **Learnings for future iterations:** Deprecation diagnostics must have exactly one render path. The renderer-boundary end-of-run summary already covers every dispatch path (it runs even when the live event consumer is off); do NOT also mark `deprecation-used` renderable in `format.ts` or json/verbose event-rendering commands double-emit.
+---
