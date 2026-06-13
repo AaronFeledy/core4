@@ -249,14 +249,35 @@ describe("meta:doctor combined report", () => {
     expect(text).toContain("manifest-contribution | globalServices.legacy-proxy");
   });
 
-  test("doctor --deprecations empty report states no deprecations were used or registered", async () => {
+  test("doctor --deprecations labels plugin-scoped entries by plugin when app context is also present", async () => {
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* useDeprecation("manifest-contribution", "legacy-plugin:globalServices.legacy-proxy");
+        return yield* doctorReport({ deprecations: true });
+      }).pipe(Effect.provide(buildLayers(provider))),
+    );
+
+    expect(report.deprecations?.entries[0]).toMatchObject({
+      kind: "manifest-contribution",
+      id: "legacy-plugin:globalServices.legacy-proxy",
+      source: "plugin:legacy-plugin",
+    });
+    expect(renderDoctorReport(report)).toContain(
+      "manifest-contribution | legacy-plugin:globalServices.legacy-proxy | warn | 4.1.0 | 5.0.0 | new-surface | Old surface is deprecated. | https://docs.lando.dev/deprecations/old-surface | plugin:legacy-plugin | 1",
+    );
+  });
+
+  test("doctor --deprecations empty report states no deprecations were used at runtime", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await Effect.runPromise(
       doctorReport({ deprecations: true }).pipe(Effect.provide(buildLayers(provider))),
     );
 
     expect(report.deprecations?.entries).toEqual([]);
-    expect(renderDoctorReport(report)).toContain("No deprecations were used or registered for the app.");
+    expect(renderDoctorReport(report)).toContain(
+      "No deprecations were used or triggered at runtime for the app.",
+    );
   });
 
   test("doctor deprecation machine output exposes structured data independent of warning suppression", async () => {

@@ -78,8 +78,8 @@ const sourceForDeprecation = (entry: {
   readonly app?: string | undefined;
   readonly plugin?: string | undefined;
 }): string => {
-  if (entry.app !== undefined && entry.app.length > 0) return `app:${entry.app}`;
   if (entry.plugin !== undefined && entry.plugin.length > 0) return `plugin:${entry.plugin}`;
+  if (entry.app !== undefined && entry.app.length > 0) return `app:${entry.app}`;
   return "core";
 };
 
@@ -149,7 +149,7 @@ const valueOrDash = (value: string | undefined): string =>
 const renderDeprecationsSection = (report: DoctorDeprecationReport): string => {
   const lines = ["deprecations:"];
   if (report.entries.length === 0) {
-    lines.push("No deprecations were used or registered for the app.");
+    lines.push("No deprecations were used or triggered at runtime for the app.");
     return lines.join("\n");
   }
   lines.push("kind | id | severity | since | removeIn | replacement | note | docsUrl | source | count");
