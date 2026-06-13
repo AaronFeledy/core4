@@ -442,3 +442,10 @@
 - CI outcome: pass
 - Review feedback: none (Bugbot reported no findings)
 - Merge: merged (squash); resolved a prd.json/progress.txt union conflict from parallel main advancement (US-222/US-223 landed concurrently) before merge
+
+## 2026-06-13 11:43 CDT - Babysit
+- PR: #348 https://github.com/AaronFeledy/core4/pull/348
+- CI outcome: pass
+- Review feedback: fixed (resolved merge conflict with main across schema/guide/spec files, regenerated schema snapshot, and added a Guide-Coverage-Skip line for the incidental ast.ts import-cycle edit to satisfy the guide-drift gate)
+- Merge: merged (squash)
+---
