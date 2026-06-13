@@ -13,6 +13,7 @@ import { type BugReportContext, type RendererMode, formatBugReport } from "../bu
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import {
   makeRendererServiceLiveForMode,
+  resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
   writeDiagnosticLine,
@@ -222,6 +223,10 @@ export abstract class LandoCommandBase extends Command {
       throw error;
     }
 
+    const deprecationWarnings = resolveCliDeprecationWarnings({ argv: this.argv, env: process.env });
+    this.argv.length = 0;
+    this.argv.push(...deprecationWarnings.remainingArgv);
+
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       const text = formatCommandError({
         error: notImplementedErrorForCommand(spec.id),
@@ -269,6 +274,7 @@ export abstract class LandoCommandBase extends Command {
     await runWithRendererHandling(spec.run(input), {
       runtime: runtime as Layer.Layer<Exclude<R, Renderer>, LandoRuntimeBootstrapError>,
       rendererMode,
+      deprecationWarnings: deprecationWarnings.enabled,
       render: (value) => spec.render?.(value, input),
       formatError: (error) =>
         formatCommandError({
