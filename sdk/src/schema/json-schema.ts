@@ -536,7 +536,7 @@ export const schemaArtifactFilename = (schemaName: JsonSchemaName): `${string}.j
 
 const BUILT_IN_SCHEMA_TITLES = new Set(["string", "number", "boolean", "bigint", "symbol", "object"]);
 
-const BUILT_IN_SCHEMA_DESCRIPTIONS = new Set([
+const BUILT_IN_DESCRIPTIONS = new Set([
   "a string",
   "a number",
   "a boolean",
@@ -562,7 +562,7 @@ const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
         ? titleAnnotation
         : titleFromSchemaName(schemaName),
     description:
-      descriptionAnnotation !== undefined && !BUILT_IN_SCHEMA_DESCRIPTIONS.has(descriptionAnnotation)
+      descriptionAnnotation !== undefined && !BUILT_IN_DESCRIPTIONS.has(descriptionAnnotation)
         ? descriptionAnnotation
         : PUBLIC_SCHEMA_DESCRIPTIONS[schemaName],
     packageExport: `@lando/sdk/schema#${schemaName}`,
@@ -573,15 +573,6 @@ const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
 };
 
 export const publicSchemaMetadataIndex = JSON_SCHEMA_NAMES.map(schemaMetadata);
-
-const BUILT_IN_DESCRIPTIONS = new Set([
-  "a string",
-  "a number",
-  "a boolean",
-  "a bigint",
-  "a symbol",
-  "an object in the TypeScript meaning, i.e. the `object` type",
-]);
 
 const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "AppMountPlan.excludes",
