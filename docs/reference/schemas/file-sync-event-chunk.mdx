@@ -13,7 +13,7 @@ Public Lando schema contract for File Sync Event Chunk.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `_tag` | Yes | `string` | — | — | `progress`, `conflict`, `info` | — | — |
 | `sessionRef` | Yes | `string` | a string | — | — | — | — |
-| `phase` | Yes | `string` | — | — | `initial-scan`, `staging`, `transitioning`, `watching` | — | — |
+| `phase` | No | `string` | — | — | `initial-scan`, `staging`, `transitioning`, `watching` | — | — |
 | `completed` | No | `number` | — | — | — | — | — |
-| `message` | Yes | `string` | — | — | — | — | — |
-| `conflictedPaths` | Yes | `array` | — | — | — | — | — |
+| `message` | No | `string` | — | — | — | — | — |
+| `conflictedPaths` | No | `array` | — | — | — | — | — |
