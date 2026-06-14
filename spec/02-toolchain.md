@@ -334,7 +334,7 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
 - The default entry (`@lando/core`) MUST NOT pull `@oclif/core` into the import graph. An embedding host that never invokes the CLI must not pay for OCLIF in its bundle. This is enforced by an import-boundary test in `test/types/`.
 - `@lando/core/cli` MAY pull OCLIF; it is the programmatic-CLI entry.
 - `@lando/core/schema` MUST be tree-shakeable per-schema. Importing one schema must not pull every schema in the package.
-- `@lando/core/testing` is published only on the `next` and `dev` channels until the testing API is frozen for v4.0.0 GA.
+- `@lando/core/testing` is API-stable and supported on the `next` channel for Beta 1, is also published on `dev`, and still follows §13.7 channel promotion, so it is not published on the `stable` release channel until v4.0.0 GA.
 - `@lando/core/docs/components` and `@lando/core/docs/redactions` exist because executable guides (§19) ship JSX/Astro implementations and a shared redaction list that the docs build consumes. The contracts (prop schemas, frontmatter, matcher schema, transcript schemas) live in `@lando/sdk/docs/components` and `@lando/sdk/docs/redactions`; the runtime implementations live here. They are tree-shakeable and do NOT pull `@oclif/core` or the Effect runtime — the docs site imports them at build time without instantiating a `LandoRuntime`.
 - Every entry point ships its own `.d.ts` file. Type-only re-exports use `export type { ... }`.
 - ESM only at every entry. No CommonJS dual-publish.

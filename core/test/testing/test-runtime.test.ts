@@ -1,12 +1,100 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Fiber, Layer, Queue, Schema } from "effect";
 
-import { ConfigService, FileSystem, Logger, ProcessRunner, RuntimeProvider } from "@lando/core/services";
-import { TestRuntimeProvider, makeTestRuntime, provideTestRuntime } from "@lando/core/testing";
+import {
+  AppPlanner,
+  CacheService,
+  CommandRegistry,
+  ConfigService,
+  DeprecationService,
+  EventService,
+  FileSyncEngine,
+  FileSystem,
+  GlobalAppService,
+  LandofileService,
+  Logger,
+  PluginRegistry,
+  PluginTrustStore,
+  PrivilegeService,
+  ProcessRunner,
+  Renderer,
+  RuntimeProviderRegistry,
+  ScratchAppService,
+  SecretStore,
+  Telemetry,
+  ToolingEngine,
+} from "@lando/core/services";
+import {
+  TestClock,
+  TestContext,
+  TestRuntimeProvider,
+  makeTestRuntime,
+  provideTestRuntime,
+} from "@lando/core/testing";
+import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
+import { ScratchRegistry } from "../../src/scratch-app/registry.ts";
+import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
+
+const CacheValue = Schema.Struct({
+  name: Schema.String,
+  count: Schema.Number,
+});
+
+type LayerOutput<LayerValue> = LayerValue extends Layer.Layer<infer Output, infer _Error, infer _Input>
+  ? Output
+  : never;
+
+type TypeEquals<Left, Right> = (<Value>() => Value extends Left ? 1 : 2) extends <
+  Value,
+>() => Value extends Right ? 1 : 2
+  ? (<Value>() => Value extends Right ? 1 : 2) extends <Value>() => Value extends Left ? 1 : 2
+    ? true
+    : false
+  : false;
+
+type AssertType<Value extends true> = Value;
+
+type ScratchOrAppBootstrap = "scratch" | "app";
+const makeScratchOrAppRuntime = (bootstrap: ScratchOrAppBootstrap) => makeTestRuntime({ bootstrap });
+type ScratchOrAppRuntime = ReturnType<typeof makeScratchOrAppRuntime>;
+type ExpectedScratchOrAppServices =
+  | Logger
+  | Renderer
+  | Telemetry
+  | ConfigService
+  | EventService
+  | DeprecationService
+  | PluginTrustStore
+  | CacheService
+  | FileSystem
+  | PrivilegeService
+  | SecretStore
+  | ProcessRunner
+  | PluginRegistry
+  | RuntimeProviderRegistry
+  | RuntimeProvider
+  | GlobalAppService
+  | AppPlanner
+  | LandofileService
+  | ScratchAppService
+  | ScratchRegistry
+  | ScratchResourceScanner
+  | CommandRegistry
+  | ToolingEngine
+  | FileSyncEngine;
+
+const distributiveBootstrapReturnCheck: AssertType<
+  TypeEquals<LayerOutput<ScratchOrAppRuntime["layer"]>, ExpectedScratchOrAppServices>
+> = true;
 
 describe("@lando/core/testing", () => {
+  test("bootstrap union return types remain distributive", () => {
+    expect(distributiveBootstrapReturnCheck).toBe(true);
+  });
+
   test("makeTestRuntime provides in-memory service doubles and records calls", async () => {
     const runtime = makeTestRuntime({ files: { "/app/.lando.yml": "name: app" } });
 
@@ -52,6 +140,364 @@ describe("@lando/core/testing", () => {
     expect(config.telemetry).toEqual({ enabled: false });
   });
 
+  test("EventService double publishes events to queues and waiters", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+    const firstEvent = { _tag: "test-runtime:event", value: 1 };
+    const secondEvent = { _tag: "test-runtime:event", value: 2 };
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const queue = yield* events.subscribeQueue;
+          const waiter = yield* events
+            .waitFor("test-runtime:event", (event) => event.value === 2)
+            .pipe(Effect.fork);
+
+          yield* Effect.sleep("10 millis");
+          yield* events.publish(firstEvent);
+          const queued = yield* Queue.take(queue);
+          yield* events.publish(secondEvent);
+          const waited = yield* Fiber.join(waiter);
+
+          return { queued, waited };
+        }),
+      ).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result).toEqual({ queued: firstEvent, waited: secondEvent });
+    expect(runtime.calls.events).toEqual([firstEvent, secondEvent]);
+  });
+
+  test("CacheService double stores values in memory and reports misses", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const cache = yield* CacheService;
+
+        yield* cache.write("cache:value", { name: "app", count: 1 });
+        const hit = yield* cache.read("cache:value", CacheValue);
+        const miss = yield* cache.read("cache:missing", CacheValue);
+        yield* cache.writeAtomic("/cache/blob", "payload");
+
+        return { hit, miss, atomic: runtime.files.get("/cache/blob") };
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result).toEqual({ hit: { name: "app", count: 1 }, miss: null, atomic: "payload" });
+  });
+
+  test("CacheService double honors immediate expiry and keeps no-ttl entries", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const cache = yield* CacheService;
+
+        yield* cache.write("cache:expired", { name: "expired", count: 1 }, 0);
+        const expired = yield* cache.read("cache:expired", CacheValue);
+        yield* cache.write("cache:persistent", { name: "persistent", count: 2 });
+        const persistent = yield* cache.read("cache:persistent", CacheValue);
+        yield* cache.write("cache:short-lived", { name: "short-lived", count: 3 }, 1);
+        const beforeClockAdvance = yield* cache.read("cache:short-lived", CacheValue);
+        yield* TestClock.adjust("5 millis");
+        const afterClockAdvance = yield* cache.read("cache:short-lived", CacheValue);
+
+        return { expired, persistent, beforeClockAdvance, afterClockAdvance };
+      }).pipe(Effect.provide(runtime.layer), Effect.provide(TestContext.TestContext)),
+    );
+
+    expect(result).toEqual({
+      expired: null,
+      persistent: { name: "persistent", count: 2 },
+      beforeClockAdvance: { name: "short-lived", count: 3 },
+      afterClockAdvance: null,
+    });
+  });
+
+  test("FileSystem double keeps file and directory state mutually exclusive", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem;
+
+        yield* fileSystem.mkdir("/d");
+        const existsAfterMkdir = yield* fileSystem.exists("/d");
+        const dirStat = yield* fileSystem.stat("/d");
+        const dirLstat = yield* fileSystem.lstat("/d");
+        yield* fileSystem.write("/d", "payload");
+        const fileStat = yield* fileSystem.stat("/d");
+        const fileLstat = yield* fileSystem.lstat("/d");
+        yield* fileSystem.mkdir("/d");
+        const dirAgainStat = yield* fileSystem.stat("/d");
+        const fileAfterMkdir = runtime.files.get("/d");
+
+        return { existsAfterMkdir, dirStat, dirLstat, fileStat, fileLstat, dirAgainStat, fileAfterMkdir };
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result.existsAfterMkdir).toBe(true);
+    expect(result.dirStat).toMatchObject({ isDirectory: true, isFile: false });
+    expect(result.dirLstat).toMatchObject({ isDirectory: true, isFile: false, isSymbolicLink: false });
+    expect(result.fileStat).toMatchObject({ isDirectory: false, isFile: true, size: "payload".length });
+    expect(result.fileLstat).toMatchObject({ isDirectory: false, isFile: true, isSymbolicLink: false });
+    expect(result.dirAgainStat).toMatchObject({ isDirectory: true, isFile: false, size: 0 });
+    expect(result.fileAfterMkdir).toBeUndefined();
+  });
+
+  test("PluginTrustStore double rejects authoring-root path traversal", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const trustStore = yield* PluginTrustStore;
+
+        yield* trustStore.trustAuthoringRoot("/trusted");
+        const root = yield* trustStore.isAuthoringRootTrusted("/trusted");
+        const child = yield* trustStore.isAuthoringRootTrusted("/trusted/sub");
+        const escaped = yield* trustStore.isAuthoringRootTrusted("/trusted/../evil");
+
+        return { root, child, escaped };
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result).toEqual({ root: true, child: true, escaped: false });
+  });
+
+  describe("bootstrap levels provide every tag", () => {
+    const bootstrapCases = [
+      {
+        bootstrap: "minimal",
+        verify: async () => {
+          const context = await Effect.runPromise(
+            Effect.scoped(Layer.build(provideTestRuntime({ bootstrap: "minimal" }))),
+          );
+
+          expect(Context.get(context, Logger)).toBeDefined();
+          expect(Context.get(context, Renderer)).toBeDefined();
+          expect(Context.get(context, Telemetry)).toBeDefined();
+          expect(Context.get(context, ConfigService)).toBeDefined();
+          expect(Context.get(context, EventService)).toBeDefined();
+          expect(Context.get(context, DeprecationService)).toBeDefined();
+          expect(Context.get(context, PluginTrustStore)).toBeDefined();
+          expect(Context.get(context, CacheService)).toBeDefined();
+          expect(Context.get(context, FileSystem)).toBeDefined();
+          expect(Context.get(context, PrivilegeService)).toBeDefined();
+          expect(Context.get(context, SecretStore)).toBeDefined();
+          expect(Context.get(context, ProcessRunner)).toBeDefined();
+        },
+      },
+      {
+        bootstrap: "provider",
+        verify: async () => {
+          const context = await Effect.runPromise(
+            Effect.scoped(Layer.build(provideTestRuntime({ bootstrap: "provider" }))),
+          );
+
+          expect(Context.get(context, Logger)).toBeDefined();
+          expect(Context.get(context, Renderer)).toBeDefined();
+          expect(Context.get(context, Telemetry)).toBeDefined();
+          expect(Context.get(context, ConfigService)).toBeDefined();
+          expect(Context.get(context, EventService)).toBeDefined();
+          expect(Context.get(context, DeprecationService)).toBeDefined();
+          expect(Context.get(context, PluginTrustStore)).toBeDefined();
+          expect(Context.get(context, CacheService)).toBeDefined();
+          expect(Context.get(context, FileSystem)).toBeDefined();
+          expect(Context.get(context, PrivilegeService)).toBeDefined();
+          expect(Context.get(context, SecretStore)).toBeDefined();
+          expect(Context.get(context, ProcessRunner)).toBeDefined();
+          expect(Context.get(context, PluginRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProviderRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProvider)).toBeDefined();
+          expect(Context.get(context, GlobalAppService)).toBeDefined();
+        },
+      },
+      {
+        bootstrap: "global",
+        verify: async () => {
+          const context = await Effect.runPromise(
+            Effect.scoped(Layer.build(provideTestRuntime({ bootstrap: "global" }))),
+          );
+
+          expect(Context.get(context, Logger)).toBeDefined();
+          expect(Context.get(context, Renderer)).toBeDefined();
+          expect(Context.get(context, Telemetry)).toBeDefined();
+          expect(Context.get(context, ConfigService)).toBeDefined();
+          expect(Context.get(context, EventService)).toBeDefined();
+          expect(Context.get(context, DeprecationService)).toBeDefined();
+          expect(Context.get(context, PluginTrustStore)).toBeDefined();
+          expect(Context.get(context, CacheService)).toBeDefined();
+          expect(Context.get(context, FileSystem)).toBeDefined();
+          expect(Context.get(context, PrivilegeService)).toBeDefined();
+          expect(Context.get(context, SecretStore)).toBeDefined();
+          expect(Context.get(context, ProcessRunner)).toBeDefined();
+          expect(Context.get(context, PluginRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProviderRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProvider)).toBeDefined();
+          expect(Context.get(context, GlobalAppService)).toBeDefined();
+          expect(Context.get(context, AppPlanner)).toBeDefined();
+        },
+      },
+      {
+        bootstrap: "scratch",
+        verify: async () => {
+          const context = await Effect.runPromise(
+            Effect.scoped(Layer.build(provideTestRuntime({ bootstrap: "scratch" }))),
+          );
+
+          expect(Context.get(context, Logger)).toBeDefined();
+          expect(Context.get(context, Renderer)).toBeDefined();
+          expect(Context.get(context, Telemetry)).toBeDefined();
+          expect(Context.get(context, ConfigService)).toBeDefined();
+          expect(Context.get(context, EventService)).toBeDefined();
+          expect(Context.get(context, DeprecationService)).toBeDefined();
+          expect(Context.get(context, PluginTrustStore)).toBeDefined();
+          expect(Context.get(context, CacheService)).toBeDefined();
+          expect(Context.get(context, FileSystem)).toBeDefined();
+          expect(Context.get(context, PrivilegeService)).toBeDefined();
+          expect(Context.get(context, SecretStore)).toBeDefined();
+          expect(Context.get(context, ProcessRunner)).toBeDefined();
+          expect(Context.get(context, PluginRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProviderRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProvider)).toBeDefined();
+          expect(Context.get(context, GlobalAppService)).toBeDefined();
+          expect(Context.get(context, AppPlanner)).toBeDefined();
+          expect(Context.get(context, LandofileService)).toBeDefined();
+          expect(Context.get(context, ScratchAppService)).toBeDefined();
+          expect(Context.get(context, ScratchRegistry)).toBeDefined();
+          expect(Context.get(context, ScratchResourceScanner)).toBeDefined();
+        },
+      },
+      {
+        bootstrap: "app",
+        verify: async () => {
+          const context = await Effect.runPromise(
+            Effect.scoped(Layer.build(provideTestRuntime({ bootstrap: "app" }))),
+          );
+
+          expect(Context.get(context, Logger)).toBeDefined();
+          expect(Context.get(context, Renderer)).toBeDefined();
+          expect(Context.get(context, Telemetry)).toBeDefined();
+          expect(Context.get(context, ConfigService)).toBeDefined();
+          expect(Context.get(context, EventService)).toBeDefined();
+          expect(Context.get(context, DeprecationService)).toBeDefined();
+          expect(Context.get(context, PluginTrustStore)).toBeDefined();
+          expect(Context.get(context, CacheService)).toBeDefined();
+          expect(Context.get(context, FileSystem)).toBeDefined();
+          expect(Context.get(context, PrivilegeService)).toBeDefined();
+          expect(Context.get(context, SecretStore)).toBeDefined();
+          expect(Context.get(context, ProcessRunner)).toBeDefined();
+          expect(Context.get(context, PluginRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProviderRegistry)).toBeDefined();
+          expect(Context.get(context, RuntimeProvider)).toBeDefined();
+          expect(Context.get(context, GlobalAppService)).toBeDefined();
+          expect(Context.get(context, AppPlanner)).toBeDefined();
+          expect(Context.get(context, LandofileService)).toBeDefined();
+          expect(Context.get(context, CommandRegistry)).toBeDefined();
+          expect(Context.get(context, ToolingEngine)).toBeDefined();
+          expect(Context.get(context, FileSyncEngine)).toBeDefined();
+        },
+      },
+    ] as const;
+
+    for (const { bootstrap, verify } of bootstrapCases) {
+      test(`${bootstrap} provides every expected tag`, verify);
+    }
+
+    test("independent runtimes are deterministic and stay in memory", async () => {
+      const virtualPath = "/__lando-test-runtime-deterministic__/file.txt";
+
+      const run = async () => {
+        const runtime = makeTestRuntime({ bootstrap: "minimal" });
+        const result = await Effect.runPromise(
+          Effect.gen(function* () {
+            const fileSystem = yield* FileSystem;
+            const logger = yield* Logger;
+            const renderer = yield* Renderer;
+
+            yield* fileSystem.writeFile(virtualPath, "payload");
+            const content = yield* fileSystem.readFile(virtualPath);
+            yield* logger.info("deterministic", { content });
+            yield* renderer.output.stdout(`content=${content}`);
+
+            return { content, fileInMemory: runtime.files.get(virtualPath) };
+          }).pipe(Effect.provide(runtime.layer)),
+        );
+
+        return { result, calls: structuredClone(runtime.calls) };
+      };
+
+      const first = await run();
+      const second = await run();
+
+      expect(first).toEqual(second);
+      expect(first.result).toEqual({ content: "payload", fileInMemory: "payload" });
+      expect(first.calls.logger).toEqual([
+        { level: "info", message: "deterministic", data: { content: "payload" } },
+      ]);
+      expect(first.calls.renderer).toEqual([{ stream: "stdout", chunk: "content=payload" }]);
+      expect(existsSync(virtualPath)).toBe(false);
+    });
+  });
+
+  test("scratch bootstrap keeps scratch service and registry doubles consistent", async () => {
+    const layer = provideTestRuntime({ bootstrap: "scratch" });
+
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const scratch = yield* ScratchAppService;
+          const registry = yield* ScratchRegistry;
+
+          const handle = yield* scratch.acquire({
+            source: { kind: "recipe", ref: "empty" },
+            detached: true,
+            isolate: "full",
+          });
+          const resolved = yield* scratch.resolveById(handle.id);
+          const summaries = yield* scratch.list();
+          const registryEntry = yield* registry.get(handle.id);
+          const registryEntries = yield* registry.list();
+          const registryEnvelope = yield* registry.read();
+          yield* scratch.destroy(handle.id);
+          const summariesAfterDestroy = yield* scratch.list();
+          const registryEntriesAfterDestroy = yield* registry.list();
+
+          return {
+            handle,
+            resolved,
+            summaries,
+            registryEntry,
+            registryEntries,
+            registryEnvelope,
+            summariesAfterDestroy,
+            registryEntriesAfterDestroy,
+          };
+        }),
+      ).pipe(Effect.provide(layer)),
+    );
+
+    expect(result.resolved).toEqual(result.handle);
+    expect(result.summaries).toHaveLength(1);
+    expect(result.summaries[0]?.id).toBe(result.handle.id);
+    expect(result.registryEntry).toEqual(result.registryEntries[0]);
+    expect(result.registryEntries).toEqual(result.registryEnvelope.entries);
+    expect(result.registryEntry).toMatchObject({
+      id: result.handle.id,
+      source: result.summaries[0]?.source,
+      isolate: result.summaries[0]?.mode,
+      detached: true,
+      rootPath: String(result.summaries[0]?.app.root),
+      status: "running",
+      createdAt: result.summaries[0]?.created,
+      updatedAt: result.summaries[0]?.created,
+    });
+    expect(result.summariesAfterDestroy).toEqual([]);
+    expect(result.registryEntriesAfterDestroy).toEqual([]);
+  });
+
   test("provider bootstrap supports RuntimeProvider overrides", async () => {
     const injectedProvider = { ...TestRuntimeProvider, id: "injected-test" };
 
@@ -70,8 +516,55 @@ describe("@lando/core/testing", () => {
     expect(provider.id).toBe("injected-test");
   });
 
-  test("re-exported TestRuntimeProvider passes the provider contract", async () => {
-    await expect(Effect.runPromise(runProviderContract(TestRuntimeProvider))).resolves.toBeUndefined();
+  test("re-exported TestRuntimeProvider passes the provider contract", () =>
+    Effect.runPromise(runProviderContract(TestRuntimeProvider)).then((result) => {
+      expect(result).toBeUndefined();
+    }));
+
+  test("provider bootstrap resolves a contract-valid RuntimeProvider from the layer", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(Layer.build(provideTestRuntime({ bootstrap: "provider" }))),
+    );
+    const provider = Context.get(context, RuntimeProvider);
+
+    const contractResult = await Effect.runPromise(runProviderContract(provider));
+    expect(contractResult).toBeUndefined();
+
+    const matrixReport = await Effect.runPromise(
+      runProviderContractMatrix({
+        providerName: "LayerResolvedTestRuntimeProvider",
+        cells: [
+          {
+            platform: "linux",
+            supported: true,
+            factory: () => Effect.succeed({ ...provider, platform: "linux" }),
+          },
+          {
+            platform: "darwin",
+            supported: false,
+            skipReason: "AC3 only exercises the layer-resolved provider on linux",
+          },
+          {
+            platform: "win32",
+            supported: false,
+            skipReason: "AC3 only exercises the layer-resolved provider on linux",
+          },
+          {
+            platform: "wsl",
+            supported: false,
+            skipReason: "AC3 only exercises the layer-resolved provider on linux",
+          },
+        ],
+      }),
+    );
+
+    expect(matrixReport.providerName).toBe("LayerResolvedTestRuntimeProvider");
+    expect(matrixReport.results.map((r) => `${r.platform}:${r.outcome}`)).toEqual([
+      "linux:passed",
+      "darwin:skipped",
+      "win32:skipped",
+      "wsl:skipped",
+    ]);
   });
 
   test("matrix: TestRuntimeProvider is portable across linux / darwin / win32", async () => {
