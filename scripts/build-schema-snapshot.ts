@@ -97,6 +97,12 @@ const main = async (): Promise<void> => {
     artifactPaths.push(artifactPath);
     await Bun.write(artifactPath, `${JSON.stringify(stable(generateJsonSchema(schemaName)), null, 2)}\n`);
   }
+  const schemaArtifactPaths = new Set(artifactPaths);
+  for (const entry of await readdir(SCHEMA_ARTIFACT_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const path = resolve(SCHEMA_ARTIFACT_DIR, entry.name);
+    if (!schemaArtifactPaths.has(path)) await rm(path);
+  }
   const referencePages = renderPublicSchemaReferencePages();
   const referencePaths = new Set(referencePages.map((page) => resolve(REPO_ROOT, page.docsPath)));
   for (const entry of await readdir(SCHEMA_REFERENCE_DIR, { withFileTypes: true })) {
