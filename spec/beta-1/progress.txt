@@ -501,3 +501,10 @@
 - Verification: typecheck, lint, schema snapshot/export/codegen focused tests, full `bun test`, and Oracle reviewer gate passed.
 - **Learnings for future iterations:** Keep JSON Schema generation on raw schemas when adding registry-only documentation annotations; wrapping the public registry is safe for metadata/docs, but artifacts that assert exact property shape should continue to use the original schema AST.
 ---
+
+## 2026-06-13 21:55 - Babysit
+- PR: #351 https://github.com/AaronFeledy/core4/pull/351
+- CI outcome: pass
+- Review feedback: fixed (resolved CONFLICTING merge state by merging origin/main; only conflict was progress.txt, kept both sides)
+- Merge: merged (squash)
+---
