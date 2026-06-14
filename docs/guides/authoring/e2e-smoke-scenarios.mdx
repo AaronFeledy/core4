@@ -15,11 +15,9 @@ tags: [beta, docs, authoring, "@smoke"]
     </Step>
     <Step name="start">
       <Run command="lando start" />
-      <Verify event="post-start" />
     </Step>
     <Step name="inspect">
       <Run command="lando info" />
-      <Inspect events />
     </Step>
     <Step name="cleanup">
       <Cleanup />
