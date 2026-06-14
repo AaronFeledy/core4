@@ -110,7 +110,8 @@ describe("schema snapshot gate", () => {
   });
 
   test("generated reference pages include Starlight frontmatter, artifact links, and field details", () => {
-    const page = renderPublicSchemaReferencePages().find((entry) => entry.id === "DeprecationNotice");
+    const pages = renderPublicSchemaReferencePages();
+    const page = pages.find((entry) => entry.id === "DeprecationNotice");
 
     expect(page?.content).toContain("---\ntitle: Deprecation Notice");
     expect(page?.content).toContain(
@@ -125,11 +126,11 @@ describe("schema snapshot gate", () => {
       "| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |",
     );
 
-    const primitivePage = renderPublicSchemaReferencePages().find((entry) => entry.id === "AppId");
+    const primitivePage = pages.find((entry) => entry.id === "AppId");
     expect(primitivePage?.content).toContain("---\ntitle: App Id");
     expect(primitivePage?.content).toContain("Public Lando schema contract for App Id.");
 
-    const enumPage = renderPublicSchemaReferencePages().find((entry) => entry.id === "BootstrapLevel");
+    const enumPage = pages.find((entry) => entry.id === "BootstrapLevel");
     expect(enumPage?.content).toContain("| Type | Default | Accepted values | Examples |");
     expect(enumPage?.content).toContain(
       "`none`, `minimal`, `plugins`, `commands`, `tooling`, `provider`, `global`, `scratch`, `app`",
