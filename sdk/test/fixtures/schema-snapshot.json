@@ -10,6 +10,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/file-sync-mutagen",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/file-sync-mutagen"
@@ -24,6 +27,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/logger-pretty",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/logger-pretty"
@@ -38,6 +44,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/provider-docker",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/provider-docker"
@@ -66,6 +75,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/provider-lando",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/provider-lando"
@@ -80,6 +92,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/provider-podman",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/provider-podman"
@@ -105,6 +120,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/proxy-traefik",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/proxy-traefik"
@@ -160,6 +178,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/service-lando",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/service-lando"
@@ -174,6 +195,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/template-handlebars",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/template-handlebars"
@@ -188,6 +212,9 @@
         "enabled": true,
         "entry": "./src/index.ts",
         "name": "@lando/template-mustache",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
         "version": "0.0.0"
       },
       "name": "@lando/template-mustache"
@@ -11045,6 +11072,14 @@
         },
         "name": {
           "type": "string"
+        },
+        "requires": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
         },
         "version": {
           "type": "string"

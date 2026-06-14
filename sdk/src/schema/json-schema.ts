@@ -840,6 +840,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PluginManifest.enabled",
   "PluginManifest.entry",
   "PluginManifest.name",
+  "PluginManifest.requires",
   "PluginManifest.version",
   "PluginSetupContribution.flags",
   "PluginSetupFlagContribution.deprecated",

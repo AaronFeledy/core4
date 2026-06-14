@@ -93,3 +93,73 @@ describe("runPluginContract", () => {
     );
   });
 });
+
+const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0"';
+
+const runCoreContract = (manifest: unknown) =>
+  runPluginContract({ manifest, layers: { logger: Layer.empty } });
+
+const expectCoreContractFailure = async (manifest: unknown, reason: string): Promise<void> => {
+  const result = await Effect.runPromiseExit(runCoreContract(manifest));
+
+  expect(result._tag).toBe("Failure");
+  if (result._tag !== "Failure") return;
+  expect(result.cause._tag).toBe("Fail");
+  if (result.cause._tag !== "Fail") return;
+  const error = result.cause.error;
+  expect(error).toBeInstanceOf(ContractFailure);
+  expect(error._tag).toBe("ContractFailure");
+  expect(error.assertion).toBe(CORE_COMPATIBILITY_ASSERTION);
+  const details = error.details as { reason?: string; remediation?: string } | undefined;
+  expect(details?.reason).toBe(reason);
+  expect(details?.remediation).toBe('Set requires["@lando/core"] to "^4.0.0".');
+};
+
+const manifestWithRequires = (requires: Record<string, string> | undefined): PluginManifest => {
+  const { requires: _omitted, ...base } = TestPluginManifest;
+  return (requires === undefined ? base : { ...base, requires }) as PluginManifest;
+};
+
+describe("runPluginContract @lando/core compatibility", () => {
+  test("accepts a manifest declaring the canonical ^4.0.0 core range", async () => {
+    await expect(Effect.runPromise(runCoreContract(TestPluginManifest))).resolves.toBeUndefined();
+  });
+
+  test("accepts the canonical range with surrounding whitespace", async () => {
+    await expect(
+      Effect.runPromise(runCoreContract(manifestWithRequires({ "@lando/core": "  ^4.0.0  " }))),
+    ).resolves.toBeUndefined();
+  });
+
+  test("rejects a manifest with no requires block as missing", async () => {
+    await expectCoreContractFailure(manifestWithRequires(undefined), "missing");
+  });
+
+  test("rejects a requires block without an @lando/core entry as missing", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/sdk": "^4.0.0" }), "missing");
+  });
+
+  test("rejects a blank @lando/core range as missing", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/core": "  " }), "missing");
+  });
+
+  test("rejects an older core major as incompatible", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/core": "^3.0.0" }), "incompatible");
+  });
+
+  test("rejects a newer core major as incompatible", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/core": "^5.0.0" }), "incompatible");
+  });
+
+  test("rejects a non-canonical equivalent range as incompatible", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/core": "4.x" }), "incompatible");
+  });
+
+  test("rejects a wildcard range as overly broad", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/core": "*" }), "overly-broad");
+  });
+
+  test("rejects an open-ended comparator range as overly broad", async () => {
+    await expectCoreContractFailure(manifestWithRequires({ "@lando/core": ">=4" }), "overly-broad");
+  });
+});

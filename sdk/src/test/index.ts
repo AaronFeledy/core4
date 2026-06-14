@@ -176,6 +176,7 @@ export const TestPluginManifest: PluginManifest = Schema.decodeSync(PluginManife
   enabled: true,
   contributes: { loggers: ["test"] },
   entry: "./src/index.ts",
+  requires: { "@lando/core": "^4.0.0" },
 });
 
 const pluginContractFailure = (assertion: string, details?: unknown): ContractFailure =>
@@ -200,6 +201,33 @@ const hasNonEmptyContributionEntries = (values: ReadonlyArray<unknown> | undefin
 
 const contributionId = (value: string | { readonly id: string }): string =>
   typeof value === "string" ? value : value.id;
+
+const REQUIRED_CORE_RANGE = "^4.0.0";
+
+const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0"';
+
+const CORE_COMPATIBILITY_REMEDIATION = 'Set requires["@lando/core"] to "^4.0.0".';
+
+type CoreRequirementClassification = "compatible" | "missing" | "overly-broad" | "incompatible";
+
+const classifyCoreRequirement = (requires: PluginManifest["requires"]): CoreRequirementClassification => {
+  const raw = requires?.["@lando/core"];
+  if (typeof raw !== "string" || raw.trim() === "") return "missing";
+
+  const range = raw.trim();
+  if (range === REQUIRED_CORE_RANGE) return "compatible";
+
+  if (
+    /^[xX*](?:\.[xX*]){0,2}$/.test(range) ||
+    range.includes("||") ||
+    /^>=\s*(?:0|4(?:\.0(?:\.0)?)?)$/.test(range) ||
+    /^>\s*4(?:\.0(?:\.0)?)?$/.test(range)
+  ) {
+    return "overly-broad";
+  }
+
+  return "incompatible";
+};
 
 /**
  * runPluginContract arguments:
@@ -235,6 +263,13 @@ export const runPluginContract = (input: PluginContractInput): Effect.Effect<voi
       manifest,
     );
     yield* requirePluginContract(manifest.api === 4, "manifest api is 4", manifest);
+
+    const coreCompatibility = classifyCoreRequirement(manifest.requires);
+    yield* requirePluginContract(coreCompatibility === "compatible", CORE_COMPATIBILITY_ASSERTION, {
+      reason: coreCompatibility,
+      declared: manifest.requires?.["@lando/core"],
+      remediation: CORE_COMPATIBILITY_REMEDIATION,
+    });
 
     const contributions = manifest.contributes ?? {};
 
