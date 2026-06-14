@@ -529,8 +529,8 @@
         "Lint passes."
       ],
       "priority": 30,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Existing schema deprecation propagation from US-218 was verified end to end for Beta 1: DeprecationNotice annotations emit deprecated/x-deprecation metadata, the schema gate validates and round-trips emitted notices, generated reference rendering includes deprecation callouts, and DeprecationNotice is present in schema artifacts and metadata."
     },
     {
       "id": "US-230",

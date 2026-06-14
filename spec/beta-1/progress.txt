@@ -592,6 +592,11 @@
 - Merge: merged (squash)
 ---
 
+## 2026-06-14 12:35 CDT - US-229
+- Verified the `x-deprecation` propagation story was already complete from the schema-deprecation work: DeprecationNotice annotations flow into JSON Schema `deprecated`/`x-deprecation`, the schema gate validates emitted notices and regenerated artifacts without drift, generated reference rendering includes deprecation callouts, and the DeprecationNotice artifact/index entry is present.
+- Verification: focused deprecation/schema-snapshot tests, schema snapshot codegen drift check, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** When a later schema-publication story is satisfied by an earlier deprecation-governance implementation, verify the full artifact path (`dist/schemas`, `docs/reference/schemas`, snapshot, and metadata index) before adding new public schema fixtures or artificial deprecations.
+
 ## 2026-06-14 13:20 CDT - US-244
 - Shipped the docs-site consumption/render layer for public transcript frames: a new `@lando/core/docs/render` module loads the generated public transcript artifacts and renders them into deterministic, source-linked guide scenario HTML blocks (view-model + HTML string + artifact loader + Effect-Schema decode helper). Hidden/test-only/fixture/variable content stays out of rendered HTML (those frames are excluded at emit time and proven absent by a render-side exclusion test), and variant/tab frames select and label the correct frame set.
 - Added a merge-blocking gate: `bun run check:public-transcripts` (script `scripts/check-public-transcripts.ts`) fails when a Shipped guide with renderable scenarios is missing its emitted public transcript artifact, wired into the `guide-scenarios-linux-x64` CI job after guide-coverage. Emit and gate now share one source-of-truth path helper (`publicTranscriptRelativePath`) so artifact paths cannot drift.
