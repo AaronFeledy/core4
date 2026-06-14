@@ -5,7 +5,7 @@
 ## Compatibility notes
 
 - `GlobalConfig.telemetry.enabled` and `TelemetryConfig.enabled` decode omitted values as `true` for CLI global-config defaults; embedding hosts still get library-mode telemetry disabled unless they opt in through runtime construction.
-- `@lando/sdk/schema` also exports type-only schema registry contracts: `JsonSchemaName`, `PublicSchema`, `PublicSchemaMetadata`, and `PublicSchemaReferencePage`. These do not appear in the runtime export list below, which is checked with `Object.keys()`.
+- `@lando/sdk/schema` also exports type-only schema registry contracts: `JsonSchemaName`, `PublicSchema`, `PublicSchemaAnnotationIssue`, `PublicSchemaMetadata`, and `PublicSchemaReferencePage`. These do not appear in the runtime export list below, which is checked with `Object.keys()`.
 
 ## Additive Alpha schema exports
 
@@ -14,6 +14,7 @@
 - `ArtifactBuildSpec`
 - `ArtifactRef`
 - `assertJsonSchemaDeprecationsValid`
+- `assertPublicSchemaAnnotations`
 - `BuildBlock`
 - `BuildPhase`
 - `BuildPlan`
@@ -68,6 +69,7 @@
 - `schemaDeprecationsFromJsonSchema`
 - `structuralDeprecationKey`
 - `validateDeprecationNotice`
+- `validatePublicSchemaAnnotations`
 - `FileSyncSessionFilter`
 - `FileSyncSessionInfo`
 - `FileSyncSessionRef`

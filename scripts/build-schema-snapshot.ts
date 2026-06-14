@@ -19,6 +19,7 @@ import {
   JSON_SCHEMA_NAMES,
   PluginManifest,
   assertJsonSchemaDeprecationsValid,
+  assertPublicSchemaAnnotations,
   getJsonSchema,
   publicSchemaMetadataIndex,
   schemaArtifactFilename,
@@ -48,6 +49,7 @@ const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unk
 };
 
 const renderSnapshot = (): string => {
+  assertPublicSchemaAnnotations();
   const sdkSchemas = Object.fromEntries(
     JSON_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(generateJsonSchema(schemaName))]),
   );
