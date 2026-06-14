@@ -102,8 +102,8 @@ const expectDeferredRemediation = (stderr: string, entry: FixtureEntry): void =>
   expectNoStackOrSourcePaths(errorBlock, entry.id);
 };
 
-describe("deferred command remediation contract (US-037)", () => {
-  test("fixture covers every command surface in the AC list", () => {
+describe("deferred command remediation contract", () => {
+  test("fixture covers every required command surface", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
     const requiredPrefixes = ["meta:global:"];
     const requiredExactIds = [
@@ -115,10 +115,10 @@ describe("deferred command remediation contract (US-037)", () => {
     ];
     for (const prefix of requiredPrefixes) {
       const matches = [...ids].filter((id) => id.startsWith(prefix));
-      expect(matches.length, `AC requires at least one fixture entry for ${prefix}*`).toBeGreaterThan(0);
+      expect(matches.length, `requires at least one fixture entry for ${prefix}*`).toBeGreaterThan(0);
     }
     for (const id of requiredExactIds) {
-      expect(ids.has(id), `AC requires fixture entry for ${id}`).toBe(true);
+      expect(ids.has(id), `requires fixture entry for ${id}`).toBe(true);
     }
   });
 

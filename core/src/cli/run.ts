@@ -348,10 +348,8 @@ const emitDiagnosticLine = (text: string): void => {
 };
 
 /**
- * Validate a compiled-dispatch argv against a command's flag/arg definitions the
- * same way OCLIF's parser rejects malformed invocations, so the `$bunfs` binary
- * stays at parity with source mode for setup/shellenv/uninstall. Returns the
- * OCLIF-equivalent diagnostic, or `undefined` when valid.
+ * Validate compiled-dispatch argv against a command's flag/arg definitions before
+ * command execution. Returns the OCLIF-equivalent diagnostic, or `undefined` when valid.
  * Mirrors the consumption rules in `compiledCommandInputFromArgv`: a value flag
  * consumes the following token (even a `-`-prefixed one) as its value, and `--`
  * terminates flag parsing so everything after it is positional.
@@ -388,7 +386,6 @@ const invocationParityError = (commandId: string, argv: ReadonlyArray<string>): 
     if (flagName === undefined) return `Nonexistent flag: ${token}`;
     const definition = flagDefinitions[flagName] ?? {};
     if (definition.type === "boolean") {
-      // A boolean flag takes no value; `--flag=value` is a parse error in OCLIF.
       if (equalsIndex !== -1) return `Unexpected argument: ${arg.slice(equalsIndex + 1)}`;
       continue;
     }
@@ -401,8 +398,6 @@ const invocationParityError = (commandId: string, argv: ReadonlyArray<string>): 
     }
     const next = argv[index + 1];
     const nextIsFlag = next !== undefined && next !== "-" && flagTokens.has(flagTokenOf(next));
-    // OCLIF reports a missing value when the next token is absent or is itself a
-    // recognized flag; an option flag's diagnostic enumerates its allowed values.
     if (next === undefined || nextIsFlag) {
       return definition.options === undefined
         ? `Flag ${token} expects a value`

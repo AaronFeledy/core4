@@ -4,14 +4,12 @@ import { type PluginNewResult, pluginNew, renderPluginNewResult } from "../../..
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
 const extractInput = (input: unknown) => {
-  const args =
+  const parsed =
     typeof input === "object" && input !== null
-      ? ((input as { args?: Record<string, unknown> }).args ?? {})
+      ? (input as { args?: Record<string, unknown>; flags?: Record<string, unknown> })
       : {};
-  const flags =
-    typeof input === "object" && input !== null
-      ? ((input as { flags?: Record<string, unknown> }).flags ?? {})
-      : {};
+  const args = parsed.args ?? {};
+  const flags = parsed.flags ?? {};
   const stringFlag = (name: string): string | undefined =>
     typeof flags[name] === "string" ? flags[name] : undefined;
   const arrayFlag = (name: string): ReadonlyArray<string> | undefined =>

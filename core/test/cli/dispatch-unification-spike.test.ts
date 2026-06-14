@@ -1,21 +1,19 @@
 /**
  * CLI dispatch parity coverage.
  *
- * Two arms:
+ * This file covers both the failed OCLIF-in-compiled-binary route and the
+ * source/compiled parity contract.
  *
- *   Arm A (experiment) — attempts to get `@oclif/core`'s `execute()` to dispatch
- *   inside a `bun build --compile` single-file binary against the static command
- *   registry. The probe (`parity/oclif-static-probe.ts`) is compiled to its own
- *   outfile and run from OUTSIDE the source tree so `Config.load()` → `findRoot()`
- *   cannot reach the repo `package.json` — a faithful deployed-`$bunfs`
- *   reproduction. Its observed failure is the evidence that the naive
- *   OCLIF-in-binary path is not reachable through any supported public API.
+ * The probe (`parity/oclif-static-probe.ts`) is compiled to its own outfile and
+ * run from outside the source tree so `Config.load()` -> `findRoot()` cannot
+ * reach the repo `package.json`, matching the deployed `$bunfs` boundary. Its
+ * observed failure shows that dispatching through `@oclif/core`'s `execute()` is
+ * not reachable from a compiled single-file binary through any supported public
+ * API.
  *
- *   Arm B (parity) — proves the two SHIPPING dispatch paths (source-mode OCLIF
- *   `execute()` and the compiled hand-rolled `runCompiledCli`) produce
- *   semantically identical results for the target commands. This defines the
- *   divergence-surface contract that future dual-dispatch parity coverage can
- *   reuse.
+ * The parity cases compare source-mode OCLIF `execute()` with the compiled
+ * hand-rolled `runCompiledCli` path and require semantically identical results
+ * for the target commands.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -91,8 +89,6 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
     let probeResult: RunResult | undefined;
 
     beforeAll(async () => {
-      // Compile the probe to its OWN outfile OUTSIDE the repo, then run it from
-      // a fresh dir OUTSIDE the repo so findRoot cannot reach the source tree.
       probeDir = mkdtempSync(join(tmpdir(), "lando-oclif-probe-"));
       probeBinary = join(probeDir, "oclif-static-probe");
       probeRunDir = mkdtempSync(join(tmpdir(), "lando-oclif-probe-run-"));
