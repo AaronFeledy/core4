@@ -596,3 +596,9 @@
 - Verification: focused deprecation/schema-snapshot tests, schema snapshot codegen drift check, typecheck, lint, and full tests passed.
 - **Learnings for future iterations:** When a later schema-publication story is satisfied by an earlier deprecation-governance implementation, verify the full artifact path (`dist/schemas`, `docs/reference/schemas`, snapshot, and metadata index) before adding new public schema fixtures or artificial deprecations.
 ---
+
+## 2026-06-14 14:58 CDT - US-230
+- Shipped the plugin scaffold command: `meta:plugin:new` now resolves interactive and non-interactive answers, scaffolds every embedded plugin template with plugin metadata, config schema, starter tests, strict TypeScript config, README, and package scripts for the authoring workflow, and dispatches through both source and compiled CLI paths.
+- Verification: typecheck, lint, build, guide coverage/lint/dev-guide generation, focused scaffold/deferred/parity tests, source+compiled CLI QA, and full tests passed.
+- **Learnings for future iterations:** Promoting a deferred command requires repointing every hard-coded deferred probe to an id that still remains deferred and regenerating the compiled OCLIF manifest in the same change.
+---

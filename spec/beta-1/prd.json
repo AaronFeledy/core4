@@ -546,8 +546,8 @@
         "Lint passes."
       ],
       "priority": 31,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "meta:plugin:new now scaffolds embedded plugin templates with prompt/answer resolution, package/plugin metadata, Effect-Schema config, starter tests, strict tsconfig, README, and source/compiled dispatch parity; guide coverage is shipped."
     },
     {
       "id": "US-231",
