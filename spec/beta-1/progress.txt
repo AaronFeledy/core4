@@ -606,3 +606,10 @@
   - Running the full `bun run codegen` can momentarily show a large `sdk/test/fixtures/schema-snapshot.json` diff mid-run (biome rewriting emitted files); it settles back to zero. Verify snapshot stability with `bun run codegen:schema-snapshot` alone before assuming real drift.
   - The `dev:guides`/scenario test run writes a temp `docs/guides/dev-guides-green.mdx`; remove it if a run is interrupted so it does not leak into git status.
 ---
+
+## 2026-06-14 15:41 CDT - Babysit
+- PR: #358 https://github.com/AaronFeledy/core4/pull/358
+- CI outcome: pass (all platform checks + Cursor Bugbot green)
+- Review feedback: none
+- Merge: merged (squash) — resolved a `spec/beta-1/progress.txt` append conflict against advanced main before merge
+---
