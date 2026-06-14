@@ -1,0 +1,18 @@
+---
+title: File Sync Engine Capabilities
+description: Public Lando schema contract for File Sync Engine Capabilities.
+---
+
+# File Sync Engine Capabilities
+
+Public Lando schema contract for File Sync Engine Capabilities.
+
+[JSON Schema artifact](../../../dist/schemas/file-sync-engine-capabilities.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `modes` | Yes | `array` | an array of at least 1 item(s) | — | — | — | — |
+| `remoteAgentDeployment` | Yes | `string` | — | — | `auto`, `preinstalled`, `none` | — | — |
+| `exclusionPatterns` | Yes | `boolean` | a boolean | — | — | — | — |
+| `conflictReporting` | Yes | `boolean` | a boolean | — | — | — | — |
+| `progressReporting` | Yes | `boolean` | a boolean | — | — | — | — |

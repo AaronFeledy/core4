@@ -1,0 +1,25 @@
+---
+title: Embedding Plugin Policy
+description: Public Lando schema contract for Embedding Plugin Policy.
+---
+
+# Embedding Plugin Policy
+
+Public Lando schema contract for Embedding Plugin Policy.
+
+[JSON Schema artifact](../../../dist/schemas/embedding-plugin-policy.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `mode` | No | `string` | — | — | `none`, `bundled-only`, `explicit`, `discovery` | — | — |
+| `layers` | No | `array` | — | — | — | — | — |
+| `manifests` | No | `array` | — | — | — | — | — |
+| `discovery` | No | `object` | — | — | — | — | — |
+| `externalImports` | No | `boolean` | — | — | — | — | — |
+| `disable` | No | `array` | — | — | — | — | — |
+
+## Schema details
+
+| Type | Default | Accepted values | Examples |
+| --- | --- | --- | --- |
+| `string`, `object` | — | `none`, `bundled-only`, `explicit`, `discovery` | — |

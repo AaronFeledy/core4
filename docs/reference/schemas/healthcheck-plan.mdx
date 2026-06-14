@@ -1,0 +1,21 @@
+---
+title: Healthcheck Plan
+description: Public Lando schema contract for Healthcheck Plan.
+---
+
+# Healthcheck Plan
+
+Public Lando schema contract for Healthcheck Plan.
+
+[JSON Schema artifact](../../../dist/schemas/healthcheck-plan.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `kind` | Yes | `string` | — | — | `command`, `http`, `tcp`, `none` | — | — |
+| `command` | No | `string`, `array` | — | — | — | — | — |
+| `url` | No | `string` | — | — | — | — | — |
+| `port` | No | `number` | — | — | — | — | — |
+| `intervalSeconds` | Yes | `number` | a number | — | — | — | — |
+| `timeoutSeconds` | Yes | `number` | a number | — | — | — | — |
+| `retries` | Yes | `number` | a number | — | — | — | — |
+| `startPeriodSeconds` | No | `number` | — | — | — | — | — |

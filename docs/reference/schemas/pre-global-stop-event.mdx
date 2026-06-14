@@ -1,0 +1,18 @@
+---
+title: Pre Global Stop Event
+description: Public Lando schema contract for Pre Global Stop Event.
+---
+
+# Pre Global Stop Event
+
+Public Lando schema contract for Pre Global Stop Event.
+
+[JSON Schema artifact](../../../dist/schemas/pre-global-stop-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `pre-global-stop` | — | — |
+| `scope` | Yes | `string` | — | — | `global` | — | — |
+| `app` | Yes | `object` | — | — | — | — | — |
+| `triggeredBy` | Yes | `string` | — | — | `meta:global:stop`, `apps:poweroff` | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

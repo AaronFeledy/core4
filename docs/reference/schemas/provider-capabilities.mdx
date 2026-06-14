@@ -1,0 +1,35 @@
+---
+title: Provider Capabilities
+description: Public Lando schema contract for Provider Capabilities.
+---
+
+# Provider Capabilities
+
+Public Lando schema contract for Provider Capabilities.
+
+[JSON Schema artifact](../../../dist/schemas/provider-capabilities.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `artifactBuild` | Yes | `boolean` | a boolean | — | — | — | — |
+| `artifactPull` | Yes | `boolean` | a boolean | — | — | — | — |
+| `buildSecrets` | Yes | `boolean` | a boolean | — | — | — | — |
+| `buildSsh` | Yes | `boolean` | a boolean | — | — | — | — |
+| `multiServiceApply` | Yes | `boolean` | a boolean | — | — | — | — |
+| `serviceExec` | Yes | `boolean` | a boolean | — | — | — | — |
+| `serviceLogs` | Yes | `boolean` | a boolean | — | — | — | — |
+| `serviceHealth` | Yes | `string` | — | — | `native`, `lando`, `none` | — | — |
+| `hostReachability` | Yes | `string` | — | — | `native`, `emulated`, `none` | — | — |
+| `sharedCrossAppNetwork` | Yes | `boolean` | a boolean | — | — | — | — |
+| `persistentStorage` | Yes | `boolean` | a boolean | — | — | — | — |
+| `bindMounts` | Yes | `boolean` | a boolean | — | — | — | — |
+| `bindMountPerformance` | Yes | `string` | — | — | `native`, `slow`, `none` | — | — |
+| `copyMounts` | Yes | `boolean` | a boolean | — | — | — | — |
+| `copyOnWriteAppRoot` | Yes | `boolean` | a boolean | — | — | — | — |
+| `hostPortPublish` | Yes | `string` | — | — | `native`, `proxy`, `manual`, `none` | — | — |
+| `routeProvider` | Yes | `boolean` | a boolean | — | — | — | — |
+| `tlsCertificates` | Yes | `string` | — | — | `native`, `lando`, `none` | — | — |
+| `rootless` | Yes | `boolean` | a boolean | — | — | — | — |
+| `privilegedServices` | Yes | `boolean` | a boolean | — | — | — | — |
+| `composeSpec` | Yes | `string` | — | — | `none`, `portable`, `native` | — | — |
+| `providerExtensions` | Yes | `array` | — | — | — | — | — |

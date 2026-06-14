@@ -1,0 +1,19 @@
+---
+title: File Sync Event Chunk
+description: Public Lando schema contract for File Sync Event Chunk.
+---
+
+# File Sync Event Chunk
+
+Public Lando schema contract for File Sync Event Chunk.
+
+[JSON Schema artifact](../../../dist/schemas/file-sync-event-chunk.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `progress`, `conflict`, `info` | — | — |
+| `sessionRef` | Yes | `string` | a string | — | — | — | — |
+| `phase` | No | `string` | — | — | `initial-scan`, `staging`, `transitioning`, `watching` | — | — |
+| `completed` | No | `number` | — | — | — | — | — |
+| `message` | No | `string` | — | — | — | — | — |
+| `conflictedPaths` | No | `array` | — | — | — | — | — |

@@ -1,0 +1,23 @@
+---
+title: Matcher Schema
+description: Alpha 2 declarative matcher subset for executable-guide verification.
+---
+
+# Matcher Schema
+
+Alpha 2 declarative matcher subset for executable-guide verification.
+
+[JSON Schema artifact](../../../dist/schemas/matcher-schema.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `regex` | No | `string` | a string | — | — | — | — |
+| `schema` | No | `string` | a string | — | — | — | — |
+| `anyOf` | No | `array` | — | — | — | — | — |
+| `not` | No | — | — | — | — | — | — |
+
+## Schema details
+
+| Type | Default | Accepted values | Examples |
+| --- | --- | --- | --- |
+| `string`, `number`, `boolean`, `null`, `array`, `object` | — | `null` | — |

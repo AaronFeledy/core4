@@ -854,48 +854,48 @@
     },
     {
       "deprecated": false,
-      "description": "a string",
+      "description": "Public Lando schema contract for App Id.",
       "docsPath": "docs/reference/schemas/app-id.mdx",
       "id": "AppId",
       "jsonSchemaPath": "dist/schemas/app-id.json",
       "packageExport": "@lando/sdk/schema#AppId",
-      "title": "string"
+      "title": "App Id"
     },
     {
       "deprecated": false,
-      "description": "a string",
+      "description": "Public Lando schema contract for Service Name.",
       "docsPath": "docs/reference/schemas/service-name.mdx",
       "id": "ServiceName",
       "jsonSchemaPath": "dist/schemas/service-name.json",
       "packageExport": "@lando/sdk/schema#ServiceName",
-      "title": "string"
+      "title": "Service Name"
     },
     {
       "deprecated": false,
-      "description": "a string",
+      "description": "Public Lando schema contract for Provider Id.",
       "docsPath": "docs/reference/schemas/provider-id.mdx",
       "id": "ProviderId",
       "jsonSchemaPath": "dist/schemas/provider-id.json",
       "packageExport": "@lando/sdk/schema#ProviderId",
-      "title": "string"
+      "title": "Provider Id"
     },
     {
       "deprecated": false,
-      "description": "a string",
+      "description": "Public Lando schema contract for Plugin Name.",
       "docsPath": "docs/reference/schemas/plugin-name.mdx",
       "id": "PluginName",
       "jsonSchemaPath": "dist/schemas/plugin-name.json",
       "packageExport": "@lando/sdk/schema#PluginName",
-      "title": "string"
+      "title": "Plugin Name"
     },
     {
       "deprecated": false,
-      "description": "a string",
+      "description": "Public Lando schema contract for Portable Path.",
       "docsPath": "docs/reference/schemas/portable-path.mdx",
       "id": "PortablePath",
       "jsonSchemaPath": "dist/schemas/portable-path.json",
       "packageExport": "@lando/sdk/schema#PortablePath",
-      "title": "string"
+      "title": "Portable Path"
     },
     {
       "deprecated": false,

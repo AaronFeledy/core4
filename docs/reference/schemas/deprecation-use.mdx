@@ -1,0 +1,20 @@
+---
+title: Deprecation Use
+description: A recorded runtime use of a deprecated public surface.
+---
+
+# Deprecation Use
+
+A recorded runtime use of a deprecated public surface.
+
+[JSON Schema artifact](../../../dist/schemas/deprecation-use.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `kind` | Yes | `string` | — | — | `command`, `flag`, `arg`, `tooling-task`, `recipe`, `recipe-prompt`, `landofile-key`, `config-key`, `env-override`, `schema`, `schema-field`, `event`, `event-field`, `render-event`, `service-type`, `service-feature`, `route-filter`, `provider-extension`, `manifest-field`, `manifest-contribution`, `plugin`, `export`, `tagged-error` | — | — |
+| `id` | Yes | `string` | a string | — | — | — | — |
+| `notice` | Yes | `object` | A structured deprecation declaration attached to a public surface. | — | — | — | — |
+| `callsite` | No | `string` | — | — | — | — | — |
+| `app` | No | `string` | — | — | — | — | — |
+| `plugin` | No | `string` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

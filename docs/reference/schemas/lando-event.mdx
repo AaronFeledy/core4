@@ -1,0 +1,45 @@
+---
+title: Lando Event
+description: Public Lando schema contract for Lando Event.
+---
+
+# Lando Event
+
+Public Lando schema contract for Lando Event.
+
+[JSON Schema artifact](../../../dist/schemas/lando-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `pre-bootstrap`, `post-bootstrap`, `ready`, `before-exit`, `pre-init`, `post-init`, `pre-start`, `post-start`, `pre-stop`, `post-stop`, `pre-rebuild`, `post-rebuild`, `pre-destroy`, `post-destroy`, `pre-global-start`, `post-global-start`, `pre-global-stop`, `post-global-stop`, `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build`, `pre-provider-apply`, `post-provider-apply`, `pre-provider-exec`, `post-provider-exec`, `cli-command-init`, `cli-command-run`, `cli-command-error`, `deprecation-used`, `task.tree.start`, `task.start`, `task.detail`, `task.detail.expand`, `task.detail.collapse`, `task.complete`, `task.fail`, `task.tree.complete`, `message.info`, `message.warn`, `message.error`, `paint.banner` | — | — |
+| `level` | No | `string` | — | — | `minimal`, `plugins`, `commands`, `provider`, `app`, `tooling` | — | — |
+| `timestamp` | No | `string` | — | — | — | — | — |
+| `exitCode` | No | `number` | a number | — | — | — | — |
+| `app` | No | `object` | — | — | — | — | — |
+| `scope` | No | `string` | — | — | `app`, `global` | — | — |
+| `plan` | No | `object` | — | — | — | — | — |
+| `triggeredBy` | No | `string` | a string | — | `meta:global:start`, `apps:poweroff`, `ensure-running`, `meta:setup`, `meta:global:stop` | — | — |
+| `ensuringServices` | No | `array` | — | — | — | — | — |
+| `cached` | No | `boolean` | a boolean | — | — | — | — |
+| `eventName` | No | `string` | — | — | `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build` | — | — |
+| `appRef` | No | `object` | — | — | — | — | — |
+| `providerId` | No | `string` | a string | — | — | — | — |
+| `serviceName` | No | `string` | a string | — | — | — | — |
+| `service` | No | `string` | a string | — | — | — | — |
+| `commandId` | No | `string` | a string | — | — | — | — |
+| `message` | No | `string` | a string | — | — | — | — |
+| `use` | No | `object` | A recorded runtime use of a deprecated public surface. | — | — | — | — |
+| `parentId` | No | `string` | a string | — | — | — | — |
+| `label` | No | `string` | a string | — | — | — | — |
+| `children` | No | `array` | — | — | — | — | — |
+| `mode` | No | `string` | — | — | `list`, `grid` | — | — |
+| `taskId` | No | `string` | a string | — | — | — | — |
+| `stream` | No | `string` | — | — | `stdout`, `stderr` | — | — |
+| `line` | No | `string` | a string | — | — | — | — |
+| `summary` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |
+| `remediation` | No | `string` | — | — | — | — | — |
+| `succeeded` | No | `number` | a number | — | — | — | — |
+| `failed` | No | `number` | a number | — | — | — | — |
+| `body` | No | `string` | a string | — | — | — | — |
+| `banner` | No | `string` | a string | — | — | — | — |

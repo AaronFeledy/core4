@@ -1,0 +1,21 @@
+---
+title: Guide Scenario Transcript
+description: Internal Alpha 2 guide scenario transcript.
+---
+
+# Guide Scenario Transcript
+
+Internal Alpha 2 guide scenario transcript.
+
+[JSON Schema artifact](../../../dist/schemas/transcript.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `guideId` | Yes | `string` | a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$ | — | — | — | — |
+| `scenarioId` | Yes | `string` | a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$ | — | — | — | — |
+| `render` | Yes | `boolean` | a boolean | — | — | — | — |
+| `startedAt` | Yes | `string` | a string matching the pattern ^\d&#123;4&#125;-\d&#123;2&#125;-\d&#123;2&#125;T\d&#123;2&#125;:\d&#123;2&#125;:\d&#123;2&#125;\.\d&#123;3&#125;Z$ | — | — | — | — |
+| `finishedAt` | Yes | `string` | a string matching the pattern ^\d&#123;4&#125;-\d&#123;2&#125;-\d&#123;2&#125;T\d&#123;2&#125;:\d&#123;2&#125;:\d&#123;2&#125;\.\d&#123;3&#125;Z$ | — | — | — | — |
+| `durationMs` | Yes | `number` | a non-negative number | — | — | — | — |
+| `exitStatus` | Yes | `string` | — | — | `pass`, `fail` | — | — |
+| `frames` | Yes | `array` | — | — | — | — | — |

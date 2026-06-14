@@ -1,0 +1,25 @@
+---
+title: Expression Node
+description: Public Lando schema contract for Expression Node.
+---
+
+# Expression Node
+
+Public Lando schema contract for Expression Node.
+
+[JSON Schema artifact](../../../dist/schemas/expression-node.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `kind` | Yes | `string` | — | — | `Literal`, `ArrayLiteral`, `ObjectLiteral`, `Path`, `Access`, `Call`, `Conditional` | — | — |
+| `value` | No | `string`, `number`, `boolean`, `null` | — | — | `null` | — | — |
+| `elements` | No | `array` | — | — | — | — | — |
+| `entries` | No | `array` | — | — | — | — | — |
+| `head` | No | `string` | a string | — | — | — | — |
+| `segments` | No | `array` | — | — | — | — | — |
+| `target` | No | `object` | — | — | — | — | — |
+| `callee` | No | `string` | a string | — | — | — | — |
+| `args` | No | `array` | — | — | — | — | — |
+| `test` | No | `object` | — | — | — | — | — |
+| `consequent` | No | `object` | — | — | — | — | — |
+| `alternate` | No | `object` | — | — | — | — | — |

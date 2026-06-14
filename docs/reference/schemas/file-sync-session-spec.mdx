@@ -1,0 +1,21 @@
+---
+title: File Sync Session Spec
+description: Public Lando schema contract for File Sync Session Spec.
+---
+
+# File Sync Session Spec
+
+Public Lando schema contract for File Sync Session Spec.
+
+[JSON Schema artifact](../../../dist/schemas/file-sync-session-spec.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `app` | Yes | `object` | — | — | — | — | — |
+| `service` | Yes | `string` | a string | — | — | — | — |
+| `mountKey` | Yes | `string` | a string | — | — | — | — |
+| `source` | Yes | `string` | a string | — | — | — | — |
+| `target` | Yes | `object` | — | — | — | — | — |
+| `mode` | Yes | `string` | — | — | `two-way-safe`, `two-way-resolved`, `one-way-safe`, `one-way-replica` | — | — |
+| `excludes` | Yes | `array` | — | — | — | — | — |
+| `permissions` | No | `object` | — | — | — | — | — |

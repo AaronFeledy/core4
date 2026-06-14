@@ -1,0 +1,34 @@
+---
+title: Service Plan
+description: Public Lando schema contract for Service Plan.
+---
+
+# Service Plan
+
+Public Lando schema contract for Service Plan.
+
+[JSON Schema artifact](../../../dist/schemas/service-plan.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `name` | Yes | `string` | a string | — | — | — | — |
+| `type` | Yes | `string` | a string | — | — | — | — |
+| `provider` | Yes | `string` | a string | — | — | — | — |
+| `primary` | Yes | `boolean` | a boolean | — | — | — | — |
+| `artifact` | No | `object` | — | — | — | — | — |
+| `command` | No | `string`, `array` | — | — | — | — | — |
+| `entrypoint` | No | `string`, `array` | — | — | — | — | — |
+| `environment` | Yes | `object` | — | — | — | — | — |
+| `user` | No | `string` | — | — | — | — | — |
+| `workingDirectory` | No | `string` | — | — | — | — | — |
+| `appMount` | No | `object` | — | — | — | — | — |
+| `mounts` | Yes | `array` | — | — | — | — | — |
+| `storage` | Yes | `array` | — | — | — | — | — |
+| `endpoints` | Yes | `array` | — | — | — | — | — |
+| `routes` | Yes | `array` | — | — | — | — | — |
+| `dependsOn` | Yes | `array` | — | — | — | — | — |
+| `healthcheck` | No | `object` | — | — | — | — | — |
+| `certs` | No | `object` | — | — | — | — | — |
+| `hostAliases` | Yes | `array` | — | — | — | — | — |
+| `metadata` | Yes | `object` | — | — | — | — | — |
+| `extensions` | Yes | `object` | — | — | — | — | — |

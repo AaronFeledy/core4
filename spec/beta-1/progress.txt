@@ -1,4 +1,5 @@
 ## Codebase Patterns
+- Schema snapshot/codegen drift gates must diff every generated schema output together: `sdk/test/fixtures/schema-snapshot.json`, `dist/schemas`, and `docs/reference/schemas`; otherwise generated docs can drift while CI stays green.
 - Public SDK JSON Schema artifacts are generated from `JSON_SCHEMA_NAMES` via `scripts/build-schema-snapshot.ts`; keep the registry, snapshot scope, and `dist/schemas/<kebab-name>.json` artifact loop in lockstep.
 - Deprecation runtime usage should emit through `EventService` from `DeprecationService.use` after recording the use and before any severity error; telemetry consumes that same event from a scoped subscriber, not a second deprecation path.
 - Deprecation registry population belongs in the plugins bootstrap layer via `DeprecationPluginRegistryLive`; keep the minimal `DeprecationServiceLive` empty and O(1), and call `register` only from registration/bootstrap walks, never from use hot paths.
@@ -532,6 +533,13 @@
 - Review feedback: fixed (brought the branch up to date with main — resolved the progress.txt conflict, preserved both stories' prd.json passes flags, regenerated the schema snapshot; then fixed a Cursor Bugbot finding where the guide backtick-prop parser rejected escaped `\${` as interpolation — now only unescaped `${` is rejected, with a regression test)
 - Merge: merged (squash)
 ---
+
+## 2026-06-14 02:47 CDT - US-227
+- Shipped generated schema reference pages: schema publication now writes Starlight MDX pages from the public SDK schema registry/AST traversal, with public metadata frontmatter, field/detail tables, required flags, defaults, accepted values, examples, JSON Schema artifact links, and deprecation callouts.
+- The schema-snapshot drift gate now covers the generated reference tree alongside the snapshot and JSON Schema artifacts, and the schema guide documents the generated-docs acceptance path without hand-maintained public schema tables.
+- Verification: focused RED→GREEN schema reference tests, guide coverage/lint/scenario generation, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:**
+  - Primitive/branded schemas can carry built-in Effect descriptions like `a string`; generated public docs should prefer `publicSchemaMetadataIndex` title/description so reference pages expose the public contract name instead of internal primitive labels.
 
 ## 2026-06-14 - US-275
 - Added an optional `requires` map (package name → semver range) to the SDK `PluginManifest` schema and enforced the `@lando/core` compatibility policy in the `runPluginContract` SDK contract harness: only the canonical `^4.0.0` range is accepted; missing, incompatible (`^3`, `^5`, non-canonical equivalents like `4.x`), and overly-broad (`*`, `>=4`) ranges are rejected with a tagged `ContractFailure` carrying a single remediation ("Set requires[\"@lando/core\"] to \"^4.0.0\".") plus a `reason` discriminator. All nine bundled plugin manifests now declare the field; the generated schema snapshot and bundled-plugin fixture assertions were updated to match. Shipped the `docs/guides/plugins/sdk-compatibility.mdx` authoring guide (shows the scaffolded `package.json`/manifest field and the accept/reject outcomes) plus its INDEX row.

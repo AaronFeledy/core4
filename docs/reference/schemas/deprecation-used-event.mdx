@@ -1,0 +1,15 @@
+---
+title: Deprecation Used Event
+description: "Emitted after a deprecated surface use is recorded; telemetry and embedding subscribers should consume it as a late observer."
+---
+
+# Deprecation Used Event
+
+Emitted after a deprecated surface use is recorded; telemetry and embedding subscribers should consume it as a late observer.
+
+[JSON Schema artifact](../../../dist/schemas/deprecation-used-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `deprecation-used` | — | — |
+| `use` | Yes | `object` | A recorded runtime use of a deprecated public surface. | — | — | — | — |

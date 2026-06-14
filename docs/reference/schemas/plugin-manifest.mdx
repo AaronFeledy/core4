@@ -1,0 +1,23 @@
+---
+title: Plugin Manifest
+description: Public Lando schema contract for Plugin Manifest.
+---
+
+# Plugin Manifest
+
+Public Lando schema contract for Plugin Manifest.
+
+[JSON Schema artifact](../../../dist/schemas/plugin-manifest.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `name` | Yes | `string` | a string | — | — | — | — |
+| `version` | Yes | `string` | a string | — | — | — | — |
+| `api` | Yes | `number` | — | — | `4` | — | — |
+| `description` | No | `string` | — | — | — | — | — |
+| `enabled` | No | `boolean` | — | — | — | — | — |
+| `bundled` | No | `boolean` | — | — | — | — | — |
+| `deprecated` | No | `object` | — | — | — | — | — |
+| `contributes` | No | `object` | — | — | — | — | — |
+| `entry` | No | `string` | — | — | — | — | — |
+| `requires` | No | `object` | — | — | — | — | — |
