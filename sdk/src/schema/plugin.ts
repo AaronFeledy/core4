@@ -124,5 +124,6 @@ export const PluginManifest = Schema.Struct({
   contributes: Schema.optional(PluginContribution),
   /** Entry module path relative to plugin package root. */
   entry: Schema.optional(Schema.String),
+  requires: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
 });
 export type PluginManifest = typeof PluginManifest.Type;

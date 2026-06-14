@@ -81,6 +81,12 @@ describe("BUNDLED_PLUGINS", () => {
     );
   });
 
+  test("every bundled plugin manifest declares the Beta 1 core compatibility range", () => {
+    for (const expected of EXPECTED_BUNDLED_PLUGINS) {
+      expect(expected.manifest.requires?.["@lando/core"]).toBe("^4.0.0");
+    }
+  });
+
   test("generated bundled plugin module is idempotent", async () => {
     const before = await readFile(bundledModulePath, "utf8");
     const proc = Bun.spawnSync([process.execPath, generatorPath], {

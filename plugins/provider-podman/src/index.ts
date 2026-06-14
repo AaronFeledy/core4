@@ -727,6 +727,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
   version: "0.0.0",
   api: 4,
+  requires: { "@lando/core": "^4.0.0" },
   description: "Opt-in user-installed Podman RuntimeProvider implementation.",
   enabled: true,
   contributes: { providers: [PROVIDER_ID] },

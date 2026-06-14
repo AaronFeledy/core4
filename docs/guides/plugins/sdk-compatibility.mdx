@@ -1,0 +1,33 @@
+---
+id: sdk-compatibility
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, compatibility]
+---
+
+<Guide>
+  <Scenario id="declare-core-compatibility" render={false} reason="The plugin SDK compatibility requirement is a static manifest field; core contract tests validate it without installing a live plugin package">
+    <Step name="manifest-field">
+      <Variable name="field" value="requires: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Every Beta 1 plugin manifest MUST declare a requires map pinning the @lando/core major version it targets" />
+      <Variable name="location" value="package.json landoPlugin / plugin manifest" display="The requires map lives alongside name, version, and api on the plugin manifest the SDK decodes before any plugin module loads" />
+    </Step>
+    <Step name="scaffolded-package-json">
+      <Variable name="name" value="&quot;name&quot;: &quot;@acme/lando-plugin-foo&quot;" display="A scaffolded plugin package.json keeps its published package name" />
+      <Variable name="api" value="&quot;api&quot;: 4" display="api: 4 selects the v4 manifest schema" />
+      <Variable name="requires" value="&quot;requires&quot;: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Scaffolded plugins ship the requires map already set to the supported core range so they pass the SDK contract out of the box" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="contract-classifies-core-range" render={false} reason="runPluginContract is exercised by sdk/test/contract/plugin.test.ts across every range class; this guide documents the user-facing outcomes">
+    <Step name="accepted">
+      <Variable name="compatible" value="^4.0.0" display="Only the canonical ^4.0.0 range is accepted as compatible with the Beta 1 core" />
+    </Step>
+    <Step name="rejected">
+      <Variable name="missing" value="no requires['@lando/core']" display="A missing or blank core requirement is rejected as missing" />
+      <Variable name="incompatible" value="^3.0.0 / ^5.0.0 / 4.x" display="A range that targets a different major, or a non-canonical equivalent, is rejected as incompatible" />
+      <Variable name="overly-broad" value="* / &gt;=4" display="An unbounded or wildcard range that would admit a future core major is rejected as overly broad" />
+      <Variable name="remediation" value="Set requires['@lando/core'] to '^4.0.0'." display="Every rejection carries the same tagged remediation telling the author exactly which value to declare" />
+    </Step>
+  </Scenario>
+</Guide>
