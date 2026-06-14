@@ -34,6 +34,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-04 | US-224 | JSON Schema artifacts for public schemas | `docs/guides/schemas/json-schema-artifacts.mdx` | Shipped |
 | PRD-04 | US-225 | `@lando/sdk/schema` registry and metadata index | `docs/guides/schemas/schema-registry.mdx` | Shipped |
 | PRD-04 | US-227 | Generated schema reference pages | `docs/guides/schemas/generated-reference-docs.mdx` | Shipped |
+| PRD-05 | US-230 | Scaffold a plugin from a bundled template | `docs/guides/plugins/authoring-new-plugin.mdx` | Shipped |
 | PRD-07 | US-243 | Public reader-scenario transcripts | `docs/guides/authoring/public-transcripts.mdx` | Shipped |
 | PRD-07 | US-245 | Library-mode guides | `docs/guides/embedding/library-mode-guide-scenarios.mdx` | Shipped |
 | PRD-07 | US-246 | E2e guide-scenario smoke layer | `docs/guides/authoring/e2e-smoke-scenarios.mdx` | Shipped |

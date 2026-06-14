@@ -50,8 +50,8 @@ const isAliasArray = (value: LandoTopLevelAlias): value is ReadonlyArray<LandoAl
 export interface LandoCommandSpec<A = void, E = unknown, R = unknown> {
   /**
    * Canonical, namespace-prefixed command id (e.g. `"app:start"`,
-   * `"meta:config"`). MUST start with one of `LandoCommandNamespace` plus
-   * `:`. The canonical id MUST be namespace-prefixed.
+   * `"meta:config"`). It starts with one of `LandoCommandNamespace` plus
+   * `:`, and the canonical id is namespace-prefixed.
    */
   readonly id: string;
   readonly summary: string;
@@ -117,6 +117,7 @@ const MVP_COMMAND_IDS = new Set([
   "meta:global:uninstall",
   "meta:doctor",
   "meta:plugin:add",
+  "meta:plugin:new",
   "meta:plugin:remove",
   "meta:plugin:trust",
   "meta:plugin:trust-authoring-root",
@@ -155,13 +156,11 @@ const formatRendererSelectionError = (error: unknown): string =>
     rendererMode: "plain",
   });
 
-/** Extract the `AbortSignal` passed into the command Effect. */
 export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>
   typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
     ? input.signal
     : undefined;
 
-/** Resolve the OCLIF `aliases` array from `topLevelAlias` and any explicit aliases. */
 export const resolveTopLevelAliases = (spec: LandoCommandSpec): ReadonlyArray<string> => {
   const explicit = (spec.aliases ?? []).map((alias) => (typeof alias === "string" ? alias : alias.name));
   const top = spec.topLevelAlias;

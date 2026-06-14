@@ -1,11 +1,11 @@
 /**
- * Compiled-binary dispatch parity test layer.
+ * Compiled-binary dispatch parity tests.
  *
  * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
- * single-file binary, so the two dispatch paths — source-mode OCLIF `execute()`
- * and the compiled hand-rolled `runCompiledCli` — are permanent. This layer
- * enforces parity between them across every canonical command id in the compiled
- * registry (`MVP_COMMAND_IDS` plus the deferred-command set).
+ * single-file binary, so source-mode OCLIF `execute()` and the compiled
+ * hand-rolled `runCompiledCli` stay as separate dispatch paths. These tests
+ * enforce parity across every canonical command id in the compiled registry
+ * (`MVP_COMMAND_IDS` plus the deferred-command set).
  *
  * Two parts:
  *
@@ -18,7 +18,7 @@
  *   covers every canonical command id.
  *
  *   Part 2 — behavioral parity (drives the compiled binary on linux-x64). The
- *   two shipping paths are semantically identical for representative implemented commands
+ *   source and compiled paths are semantically identical for representative implemented commands
  *   (including `meta:version` / `meta:shellenv`, whose canonical forms must
  *   dispatch — not emit `NotImplementedError`) and for the deferred set.
  */
@@ -84,7 +84,7 @@ describe("compiled-binary dispatch parity — structural", () => {
     expect(partition.size, "MVP and deferred sets must be disjoint").toBe(
       MVP_IDS.length + DEFERRED_IDS.length,
     );
-    expect([...partition].sort()).toEqual(CANONICAL_IDS);
+    expect([...partition].sort()).toEqual([...CANONICAL_IDS]);
   });
 
   test("every MVP canonical id has a compiled-dispatch branch in run.ts", () => {
@@ -245,7 +245,9 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
-      expect(normalizeOutput(compiled.stderr)).toContain("Invalid --host-proxy value");
+      expect(normalizeOutput(compiled.stderr)).toContain(
+        "Expected --host-proxy=bad to be one of: auto, none",
+      );
     }, 30_000);
 
     test("uninstall dry-run renders the same safety plan on both paths", async () => {
@@ -408,6 +410,25 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
       expect(compiled.stderr).toContain("Unexpected argument: --bad");
+    }, 30_000);
+
+    test("meta:plugin:new rejects invalid template values on both paths", async () => {
+      const args = [
+        "meta:plugin:new",
+        "@acme/lando-plugin-bad",
+        "./bad",
+        "--template=nope",
+        "--cspace=acme",
+        "--description=Bad",
+        "--no-interactive",
+      ];
+      const source = await runSourceCli(args);
+      const compiled = await runCompiledCli(args);
+
+      expect(source.exitCode).toBe(2);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(compiled.stdout).toBe("");
+      expect(compiled.stderr).toContain("Expected --template=nope to be one of:");
     }, 30_000);
 
     test("app:start with no Landofile: both fail with LandofileNotFoundError, not NotImplementedError", async () => {

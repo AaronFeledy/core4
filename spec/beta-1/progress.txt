@@ -631,3 +631,9 @@
   - The sink-contribution surface is a core-internal `TelemetrySinks` tag, not a frozen `PluginContribution` schema field — a later wiring story can map a plugin manifest contribution into this tag without touching the SDK compat surface.
   - Effect finalizers run uninterruptibly; a bounded flush with `Effect.timeout` must be wrapped in `Effect.interruptible` or a stuck sink hangs shutdown (see Codebase Patterns).
 ---
+
+## 2026-06-14 14:58 CDT - US-230
+- Shipped the plugin scaffold command: `meta:plugin:new` now resolves interactive and non-interactive answers, scaffolds every embedded plugin template with plugin metadata, config schema, starter tests, strict TypeScript config, README, and package scripts for the authoring workflow, and dispatches through both source and compiled CLI paths.
+- Verification: typecheck, lint, build, guide coverage/lint/dev-guide generation, focused scaffold/deferred/parity tests, source+compiled CLI QA, and full tests passed.
+- **Learnings for future iterations:** Promoting a deferred command requires repointing every hard-coded deferred probe to an id that still remains deferred and regenerating the compiled OCLIF manifest in the same change.
+---

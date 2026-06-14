@@ -1,0 +1,22 @@
+---
+id: authoring-new-plugin
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, plugins, authoring]
+---
+
+<Guide>
+  <Scenario id="scaffold-plugin-from-template" render={false} reason="Core command tests scaffold every bundled template into an isolated temp directory and verify the emitted package contract without mutating a real user plugin registry">
+    <Step name="new-command">
+      <Variable name="command" value="lando meta:plugin:new @acme/lando-plugin-demo ./demo --template bare --cspace acme --description &quot;Demo plugin&quot; --no-interactive" display="Create a plugin project from an embedded template with every non-interactive answer supplied explicitly" />
+      <Variable name="templates" value="service-type, provider, tooling-engine, template-engine, route-filter, config-translator, recipe, bare" display="Every scaffold template is embedded in core so compiled binaries do not read template files from the runtime filesystem" />
+    </Step>
+    <Step name="scaffolded-files">
+      <Variable name="package" value="package.json landoPlugin.api=4" display="The generated package carries Lando plugin metadata, the @lando/core compatibility requirement, and scripts for meta:plugin:test/build/link" />
+      <Variable name="schema" value="src/config.ts Effect Schema" display="Each scaffold includes an Effect-Schema config entry point for plugin options" />
+      <Variable name="tests" value="test/plugin.test.ts" display="A starter test fixture verifies the exported manifest and core compatibility declaration" />
+      <Variable name="docs" value="README.md and strict tsconfig.json" display="The scaffold is ready for authoring without hand-creating project boilerplate" />
+    </Step>
+  </Scenario>
+</Guide>

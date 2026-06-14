@@ -8,7 +8,6 @@
     { "id": "meta:global:restart" },
     { "id": "meta:plugin:build" },
     { "id": "meta:plugin:link" },
-    { "id": "meta:plugin:new" },
     { "id": "meta:plugin:publish" },
     { "id": "meta:plugin:test" },
     { "id": "meta:plugin:unlink" }
