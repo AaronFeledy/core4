@@ -51,7 +51,8 @@ const parsePackageJson = async (packagePath: string): Promise<Readonly<Record<st
 
 const looksLikePluginPackage = (pkg: Readonly<Record<string, unknown>>): boolean => {
   if ("landoPlugin" in pkg) return true;
-  if (typeof pkg.api === "number" && typeof pkg.entry === "string") return true;
+  // PluginManifest schema: `api` is Literal(4) and `entry` is optional (defaulted).
+  if (pkg.api === 4 && typeof pkg.name === "string") return true;
   const keywords = pkg.keywords;
   return Array.isArray(keywords) && keywords.some((entry) => entry === "lando-plugin");
 };

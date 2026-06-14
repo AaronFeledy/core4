@@ -101,6 +101,30 @@ describe("meta:plugin:test command", () => {
     expect(spawns).toEqual([{ cwd: root }]);
   });
 
+  test("detects a top-level manifest plugin whose optional entry is omitted", async () => {
+    await writeFile(
+      join(root, "package.json"),
+      `${JSON.stringify({ name: "@acme/lando-plugin-bare", version: "0.0.0", api: 4 })}\n`,
+    );
+    const spawns: Array<{ readonly cwd: string }> = [];
+
+    const result = await Effect.runPromise(
+      pluginTest({
+        cwd: root,
+        spawner: {
+          spawn: async ({ cwd }) => {
+            spawns.push({ cwd });
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(result.pluginName).toBe("@acme/lando-plugin-bare");
+    expect(result.pluginRoot).toBe(root);
+    expect(spawns).toEqual([{ cwd: root }]);
+  });
+
   test("passes positional paths before post-dash Bun arguments unchanged", async () => {
     await writePlugin(root);
     const spawns: Array<{ readonly cmd: ReadonlyArray<string> }> = [];
