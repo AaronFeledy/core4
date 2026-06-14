@@ -247,6 +247,25 @@ describe("@lando/core/testing", () => {
     expect(result.fileAfterMkdir).toBeUndefined();
   });
 
+  test("PluginTrustStore double rejects authoring-root path traversal", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const trustStore = yield* PluginTrustStore;
+
+        yield* trustStore.trustAuthoringRoot("/trusted");
+        const root = yield* trustStore.isAuthoringRootTrusted("/trusted");
+        const child = yield* trustStore.isAuthoringRootTrusted("/trusted/sub");
+        const escaped = yield* trustStore.isAuthoringRootTrusted("/trusted/../evil");
+
+        return { root, child, escaped };
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result).toEqual({ root: true, child: true, escaped: false });
+  });
+
   describe("bootstrap levels provide every tag", () => {
     const bootstrapCases = [
       {

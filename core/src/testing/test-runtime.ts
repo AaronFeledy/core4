@@ -1,6 +1,7 @@
 /**
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
+import { isAbsolute, relative, resolve } from "node:path";
 import { Cause, Clock, type Context, DateTime, Effect, Layer, Option, PubSub, Schema, Stream } from "effect";
 
 import {
@@ -302,9 +303,12 @@ const appRefForScratch = (id: string, root: AbsolutePath) => ({
   root,
 });
 
-const matchesTrustedRoot = (trustedRoot: string, candidate: string): boolean =>
-  trustedRoot === candidate ||
-  candidate.startsWith(trustedRoot.endsWith("/") ? trustedRoot : `${trustedRoot}/`);
+const matchesTrustedRoot = (trustedRoot: string, candidate: string): boolean => {
+  const resolvedRoot = resolve(trustedRoot);
+  const resolvedCandidate = resolve(candidate);
+  const relativePath = relative(resolvedRoot, resolvedCandidate);
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
+};
 
 const makeScratchId = (base: string): string => {
   const normalized = slugFromName(base).replace(/^scratch-+/u, "");
