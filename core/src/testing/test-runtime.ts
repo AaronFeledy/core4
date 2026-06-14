@@ -1,7 +1,7 @@
 /**
  * `@lando/core/testing` — deterministic Effect service test fixtures.
  */
-import { Cause, type Context, DateTime, Effect, Layer, Option, PubSub, Schema, Stream } from "effect";
+import { Cause, Clock, type Context, DateTime, Effect, Layer, Option, PubSub, Schema, Stream } from "effect";
 
 import {
   CacheError,
@@ -324,7 +324,11 @@ const registryEntriesFrom = (
 
 interface TestCacheEntry {
   readonly value: unknown;
+  readonly expiresAtMs?: number;
 }
+
+const isExpiredCacheEntry = (entry: TestCacheEntry, nowMs: number): boolean =>
+  entry.expiresAtMs !== undefined && entry.expiresAtMs <= nowMs;
 
 const eventError = (event: string, message: string, cause?: unknown): EventError =>
   new EventError({ message, event, ...(cause === undefined ? {} : { cause }) });
@@ -482,16 +486,29 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
 
   const cacheService: Context.Tag.Service<typeof CacheService> = {
     read: (key, schema) =>
-      Effect.flatMap(
-        Effect.sync(() => cacheEntries.get(key)),
-        (entry) => (entry === undefined ? Effect.succeed(null) : decodeCacheValue(key, entry.value, schema)),
-      ),
-    write: (key, value) =>
-      Effect.sync(() => {
-        cacheEntries.set(key, { value });
+      Effect.gen(function* () {
+        const entry = cacheEntries.get(key);
+        if (entry === undefined) return null;
+
+        const nowMs = yield* Clock.currentTimeMillis;
+        if (isExpiredCacheEntry(entry, nowMs)) {
+          cacheEntries.delete(key);
+          return null;
+        }
+
+        return yield* decodeCacheValue(key, entry.value, schema);
+      }),
+    write: (key, value, ttlMs) =>
+      Effect.gen(function* () {
+        const nowMs = yield* Clock.currentTimeMillis;
+        cacheEntries.set(key, {
+          value,
+          ...(ttlMs === undefined ? {} : { expiresAtMs: nowMs + ttlMs }),
+        });
       }),
     writeAtomic: (path, content) =>
       Effect.sync(() => {
+        directories.delete(path);
         files.set(path, textFromContent(content));
       }),
     invalidate: (key) =>
@@ -515,12 +532,14 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       Effect.sync(() => {
         const text = textFromContent(content);
         calls.fileSystem.push({ operation: "write", path, content: text });
+        directories.delete(path);
         files.set(path, text);
       }),
     writeAtomic: (path: string, content: string | Uint8Array) =>
       Effect.sync(() => {
         const text = textFromContent(content);
         calls.fileSystem.push({ operation: "writeAtomic", path, content: text });
+        directories.delete(path);
         files.set(path, text);
       }),
     exists: (path: string) =>
@@ -532,28 +551,31 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
       Effect.sync(() => {
         calls.fileSystem.push({ operation: "stat", path });
         const fileContent = files.get(path);
+        const isDirectory = directories.has(path);
         return {
-          size: fileContent?.length ?? 0,
+          size: isDirectory ? 0 : (fileContent?.length ?? 0),
           mtimeMs: 0,
-          isFile: fileContent !== undefined,
-          isDirectory: directories.has(path),
+          isFile: !isDirectory && fileContent !== undefined,
+          isDirectory,
         };
       }),
     lstat: (path: string) =>
       Effect.sync(() => {
         calls.fileSystem.push({ operation: "lstat", path });
         const fileContent = files.get(path);
+        const isDirectory = directories.has(path);
         return {
-          size: fileContent?.length ?? 0,
+          size: isDirectory ? 0 : (fileContent?.length ?? 0),
           mtimeMs: 0,
-          isFile: fileContent !== undefined,
-          isDirectory: directories.has(path),
+          isFile: !isDirectory && fileContent !== undefined,
+          isDirectory,
           isSymbolicLink: false,
         };
       }),
     mkdir: (path: string) =>
       Effect.sync(() => {
         calls.fileSystem.push({ operation: "mkdir", path });
+        files.delete(path);
         directories.add(path);
       }),
     remove: (path: string) =>
@@ -583,6 +605,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     writeFile: (path: string, content: string) =>
       Effect.sync(() => {
         calls.fileSystem.push({ operation: "writeFile", path, content });
+        directories.delete(path);
         files.set(path, content);
       }),
   };

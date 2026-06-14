@@ -26,7 +26,13 @@ import {
   Telemetry,
   ToolingEngine,
 } from "@lando/core/services";
-import { TestRuntimeProvider, makeTestRuntime, provideTestRuntime } from "@lando/core/testing";
+import {
+  TestClock,
+  TestContext,
+  TestRuntimeProvider,
+  makeTestRuntime,
+  provideTestRuntime,
+} from "@lando/core/testing";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { runProviderContract, runProviderContractMatrix } from "@lando/sdk/test";
 import { ScratchRegistry } from "../../src/scratch-app/registry.ts";
@@ -170,7 +176,7 @@ describe("@lando/core/testing", () => {
       Effect.gen(function* () {
         const cache = yield* CacheService;
 
-        yield* cache.write("cache:value", { name: "app", count: 1 }, 1);
+        yield* cache.write("cache:value", { name: "app", count: 1 });
         const hit = yield* cache.read("cache:value", CacheValue);
         const miss = yield* cache.read("cache:missing", CacheValue);
         yield* cache.writeAtomic("/cache/blob", "payload");
@@ -180,6 +186,65 @@ describe("@lando/core/testing", () => {
     );
 
     expect(result).toEqual({ hit: { name: "app", count: 1 }, miss: null, atomic: "payload" });
+  });
+
+  test("CacheService double honors immediate expiry and keeps no-ttl entries", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const cache = yield* CacheService;
+
+        yield* cache.write("cache:expired", { name: "expired", count: 1 }, 0);
+        const expired = yield* cache.read("cache:expired", CacheValue);
+        yield* cache.write("cache:persistent", { name: "persistent", count: 2 });
+        const persistent = yield* cache.read("cache:persistent", CacheValue);
+        yield* cache.write("cache:short-lived", { name: "short-lived", count: 3 }, 1);
+        const beforeClockAdvance = yield* cache.read("cache:short-lived", CacheValue);
+        yield* TestClock.adjust("5 millis");
+        const afterClockAdvance = yield* cache.read("cache:short-lived", CacheValue);
+
+        return { expired, persistent, beforeClockAdvance, afterClockAdvance };
+      }).pipe(Effect.provide(runtime.layer), Effect.provide(TestContext.TestContext)),
+    );
+
+    expect(result).toEqual({
+      expired: null,
+      persistent: { name: "persistent", count: 2 },
+      beforeClockAdvance: { name: "short-lived", count: 3 },
+      afterClockAdvance: null,
+    });
+  });
+
+  test("FileSystem double keeps file and directory state mutually exclusive", async () => {
+    const runtime = makeTestRuntime({ bootstrap: "minimal" });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem;
+
+        yield* fileSystem.mkdir("/d");
+        const existsAfterMkdir = yield* fileSystem.exists("/d");
+        const dirStat = yield* fileSystem.stat("/d");
+        const dirLstat = yield* fileSystem.lstat("/d");
+        yield* fileSystem.write("/d", "payload");
+        const fileStat = yield* fileSystem.stat("/d");
+        const fileLstat = yield* fileSystem.lstat("/d");
+        yield* fileSystem.mkdir("/d");
+        const dirAgainStat = yield* fileSystem.stat("/d");
+        const fileAfterMkdir = runtime.files.get("/d");
+
+        return { existsAfterMkdir, dirStat, dirLstat, fileStat, fileLstat, dirAgainStat, fileAfterMkdir };
+      }).pipe(Effect.provide(runtime.layer)),
+    );
+
+    expect(result.existsAfterMkdir).toBe(true);
+    expect(result.dirStat).toMatchObject({ isDirectory: true, isFile: false });
+    expect(result.dirLstat).toMatchObject({ isDirectory: true, isFile: false, isSymbolicLink: false });
+    expect(result.fileStat).toMatchObject({ isDirectory: false, isFile: true, size: "payload".length });
+    expect(result.fileLstat).toMatchObject({ isDirectory: false, isFile: true, isSymbolicLink: false });
+    expect(result.dirAgainStat).toMatchObject({ isDirectory: true, isFile: false, size: 0 });
+    expect(result.fileAfterMkdir).toBeUndefined();
   });
 
   describe("bootstrap levels provide every tag", () => {
