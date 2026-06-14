@@ -539,13 +539,23 @@ const objectUnionFields = (ast: AST.AST, jsonSchema: JsonObject): ReadonlyArray<
     }
   }
 
-  const fields = new Map<string, { required: boolean; jsonSchemas: Array<JsonObject | undefined> }>();
-  for (const branch of unionBranches(jsonSchema).filter((branch) => branch.type === "object")) {
+  const objectBranches = unionBranches(jsonSchema).filter((branch) => branch.type === "object");
+  const fields = new Map<
+    string,
+    { appearances: number; requiredInPresentBranches: boolean; jsonSchemas: Array<JsonObject | undefined> }
+  >();
+  for (const branch of objectBranches) {
     const properties = jsonObject(branch.properties);
     if (properties === undefined) continue;
     for (const name of Object.keys(properties)) {
-      const existing = fields.get(name) ?? { required: false, jsonSchemas: [] };
-      existing.required = existing.required || isRequiredJsonSchemaProperty(branch, name);
+      const branchRequiresField = isRequiredJsonSchemaProperty(branch, name);
+      const existing = fields.get(name) ?? {
+        appearances: 0,
+        requiredInPresentBranches: true,
+        jsonSchemas: [],
+      };
+      existing.appearances += 1;
+      existing.requiredInPresentBranches = existing.requiredInPresentBranches && branchRequiresField;
       existing.jsonSchemas.push(jsonObject(properties[name]));
       fields.set(name, existing);
     }
@@ -554,7 +564,7 @@ const objectUnionFields = (ast: AST.AST, jsonSchema: JsonObject): ReadonlyArray<
     const property = propertiesByName.get(name);
     return {
       name,
-      required: field.required,
+      required: field.appearances === objectBranches.length && field.requiredInPresentBranches,
       ...(property === undefined ? {} : { property }),
       jsonSchemas: field.jsonSchemas,
     };

@@ -212,7 +212,7 @@ describe("schema snapshot gate", () => {
     expect(rendered).toContain("| `string`, `array` | — | — | — |");
   });
 
-  test("reference renderer surfaces root union object branch fields", () => {
+  test("reference renderer surfaces root union object branch fields as optional when branch-specific", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "RunLike",
       Schema.Union(
@@ -245,8 +245,56 @@ describe("schema snapshot gate", () => {
     expect(rendered).toContain(
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
     );
-    expect(rendered).toContain("| `command` | Yes | `string` | Command to execute. | — | — | — | — |");
-    expect(rendered).toContain("| `shell` | Yes | `string` | Shell command to execute. | — | — | — | — |");
+    expect(rendered).toContain("| `command` | No | `string` | Command to execute. | — | — | — | — |");
+    expect(rendered).toContain("| `shell` | No | `string` | Shell command to execute. | — | — | — | — |");
+  });
+
+  test("reference renderer marks root union fields required only when present and required in every branch", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "VariantLike",
+      Schema.Union(
+        Schema.Struct({
+          shared: Schema.String.annotations({ description: "Shared field." }),
+          requiredOnly: Schema.String.annotations({ description: "Required variant field." }),
+        }),
+        Schema.Struct({
+          shared: Schema.optional(Schema.String).annotations({ description: "Shared field." }),
+          optionalOnly: Schema.optional(Schema.String).annotations({
+            description: "Optional variant field.",
+          }),
+        }),
+      ),
+      {
+        jsonSchema: {
+          anyOf: [
+            {
+              type: "object",
+              required: ["shared", "requiredOnly"],
+              properties: {
+                shared: { type: "string" },
+                requiredOnly: { type: "string" },
+              },
+            },
+            {
+              type: "object",
+              required: [],
+              properties: {
+                shared: { type: "string" },
+                optionalOnly: { type: "string" },
+              },
+            },
+          ],
+        },
+      },
+    );
+
+    expect(rendered).toContain("| `shared` | No | `string` | Shared field. | — | — | — | — |");
+    expect(rendered).toContain(
+      "| `requiredOnly` | No | `string` | Required variant field. | — | — | — | — |",
+    );
+    expect(rendered).toContain(
+      "| `optionalOnly` | No | `string` | Optional variant field. | — | — | — | — |",
+    );
   });
 
   test("reference renderer surfaces deprecated schema and field callouts", () => {
