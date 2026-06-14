@@ -37,3 +37,6 @@ contributes:
     - "static:nginx"
     - "static:caddy"
     - "valkey"
+
+requires:
+  "@lando/core": "^4.0.0"

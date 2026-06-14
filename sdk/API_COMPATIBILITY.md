@@ -202,6 +202,7 @@
 - `LandofileShape.version`
 - `LandofileShape.x-*`
 - `PluginManifest.deprecated`
+- `PluginManifest.requires`
 
 ## Additive Alpha errors
 

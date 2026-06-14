@@ -80,6 +80,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-11 | US-168 | system / user / app plugin discovery scopes | `docs/guides/plugins/discovery-scopes.mdx` | Shipped |
 | PRD-11 | US-173 | library-mode defaults | `docs/guides/library/embedding-defaults.mdx` | Shipped |
 | PRD-11 | US-272 | Testing API and deterministic TestRuntime | `docs/guides/library/testing-runtime.mdx` | Shipped |
+| PRD-11 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Shipped |
 
 ## Core service catalog (capability guides — no PRD mapping)
 
