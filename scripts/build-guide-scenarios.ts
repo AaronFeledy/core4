@@ -589,7 +589,8 @@ const expressionToValue = (expression: string): unknown => {
     return trimmed.slice(1, -1);
   }
   if (trimmed.startsWith("`") && trimmed.endsWith("`")) {
-    if (trimmed.includes("${")) {
+    const withoutEscapes = trimmed.replace(/\\./g, "");
+    if (withoutEscapes.includes("${")) {
       throw new Error(
         "Template literal interpolation is not allowed in guide props; use a literal backtick string without `${...}`.",
       );

@@ -964,6 +964,34 @@ describe("build-guide-scenarios MDX walker", () => {
     }
   });
 
+  test("accepts escaped template syntax in library backtick props", async () => {
+    const content = [
+      "---",
+      "id: library-escaped-template-syntax",
+      "provider: test",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="escaped">',
+      '    <Step name="run">',
+      '      <Run runtime="library" code={`expect("\\${LANDO_APP_NAME}").toBe("\\${LANDO_APP_NAME}");`} displayCode={`echo \\${LANDO_APP_NAME}`} />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+
+    const ast = parseGuideScenarioAst("docs/guides/library-escaped-template-syntax.mdx", content);
+    expect(ast.scenarios[0]?.steps[0]?.components[0]).toMatchObject({
+      kind: "Run",
+      props: {
+        runtime: "library",
+        code: 'expect("\\${LANDO_APP_NAME}").toBe("\\${LANDO_APP_NAME}");',
+        displayCode: "echo \\${LANDO_APP_NAME}",
+      },
+    });
+  });
+
   test("rejects library template-literal prop interpolation", async () => {
     const content = [
       "---",
