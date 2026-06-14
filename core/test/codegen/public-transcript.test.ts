@@ -127,6 +127,51 @@ describe("build-guide-scenarios public transcript emission", () => {
     }
   });
 
+  test("emits public transcript frames for e2e smoke scenarios", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-e2e-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/e2e-smoke.mdx"),
+        [
+          "---",
+          "id: e2e-smoke",
+          "provider: test",
+          "defaultLayer: e2e",
+          'tags: ["@smoke"]',
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="provider-path" render>',
+          '    <Step name="version">',
+          '      <Run command="version" />',
+          "    </Step>",
+          '    <Step name="teardown">',
+          "      <Cleanup />",
+          '      <Run command="destroy -y" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      const written = await emitPublicTranscripts(asts, root);
+      const transcript = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/e2e-smoke/provider-path.json",
+      );
+
+      expect(written).toEqual(["dist/transcripts/public/guides/e2e-smoke/provider-path.json"]);
+      expect(transcript.runtime).toBe("e2e");
+      expect(transcript.frames.map((frame) => frame.kind)).toEqual(["step", "run", "step", "cleanup", "run"]);
+      expect(transcript.frames.every((frame) => frame.sourceFile === "docs/guides/e2e-smoke.mdx")).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("emits per-variant public transcripts with tab frames and only the selected tab's steps", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-public-tx-tabs-"));
     try {

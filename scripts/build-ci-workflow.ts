@@ -424,9 +424,9 @@ ${setupBunSteps}
 ${timingNoticeStep("recipe-tests", 15)}
 
   guide-scenarios-linux-x64:
-    needs: [static-checks]
+    needs: [static-checks, build-linux-x64]
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
         with:
@@ -462,6 +462,37 @@ ${setupBunSteps}
       - name: Run generated guide scenarios
         run: bun test test/scenarios/generated/guides/**
 
+      - name: Download Linux x64 binary artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: dist
+
+      - name: Restore binary executable bit
+        run: chmod +x dist/lando
+
+${linuxProviderSetupSteps}
+
+      - name: Run e2e smoke guide scenarios
+        env:
+          LANDO_GUIDE_E2E: "1"
+        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"
+
+      - name: Teardown guide e2e provider
+        if: always()
+        run: |
+          podman ps -aq --filter "name=lando-" | xargs -r podman rm -f || true
+          podman network ls --format '{{.Name}}' | grep '^lando-' | xargs -r podman network rm || true
+          if test -f /tmp/podman-service.pid; then kill "$(cat /tmp/podman-service.pid)" || true; fi
+          rm -f /tmp/podman.sock /tmp/podman-service.pid
+
+      - name: Collect guide e2e provider diagnostics
+        if: failure()
+        run: |
+          mkdir -p guide-e2e-provider-diagnostics
+          cp /tmp/podman-service.log guide-e2e-provider-diagnostics/podman-service.log || true
+          journalctl --no-pager --since "-30 minutes" > guide-e2e-provider-diagnostics/journalctl.log 2>&1 || true
+
       - name: Upload guide scenario transcripts
         if: failure()
         uses: actions/upload-artifact@v4
@@ -471,7 +502,16 @@ ${setupBunSteps}
           if-no-files-found: ignore
           retention-days: 7
 
-${timingNoticeStep("guide-scenarios-linux-x64", 20)}
+      - name: Upload guide e2e provider diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: guide-e2e-provider-diagnostics-\${{ github.run_id }}.zip
+          path: guide-e2e-provider-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+
+${timingNoticeStep("guide-scenarios-linux-x64", 30)}
 
 ${buildJobs}
 ${perfBudgetJob}

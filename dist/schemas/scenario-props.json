@@ -13,7 +13,8 @@
         },
         "layer": {
           "enum": [
-            "scenario"
+            "scenario",
+            "e2e"
           ],
           "type": "string"
         },

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { GuideFrontmatter as CoreGuideFrontmatter } from "@lando/core/schema";
 import { GuideFrontmatter, decodeGuideFrontmatterEither } from "@lando/sdk/docs/components";
-import { NotImplementedError } from "@lando/sdk/errors";
 import { Either, JSONSchema, ParseResult, Schema } from "effect";
 
 const decode = (input: unknown) => decodeGuideFrontmatterEither(input);
@@ -113,15 +112,14 @@ describe("GuideFrontmatter", () => {
     expect(decode({ id: "node-postgres", axes: { OS: ["linux"] } })._tag).toBe("Left");
   });
 
-  test("rejects e2e default layer with remediation", () => {
-    const decoded = decode({ id: "node-postgres", defaultLayer: "e2e" });
-    expect(decoded._tag).toBe("Left");
-    if (Either.isRight(decoded)) return;
-    expect(decoded.left).toBeInstanceOf(NotImplementedError);
-    expect(decoded.left).toMatchObject({
-      _tag: "NotImplementedError",
-      commandId: "guide.frontmatter",
-    });
-    expect(decoded.left.remediation).toContain("not supported yet");
+  test("accepts e2e default layer while rejecting unknown layer values", () => {
+    const decoded = expectRight({ id: "node-postgres", defaultLayer: "e2e" });
+    expect(decoded.defaultLayer).toBe("e2e");
+
+    const invalid = decode({ id: "node-postgres", defaultLayer: "unit" });
+    expect(invalid._tag).toBe("Left");
+    if (Either.isRight(invalid)) return;
+    expect(invalid.left).toBeInstanceOf(ParseResult.ParseError);
+    expect(invalid.left.message).toContain("defaultLayer");
   });
 });

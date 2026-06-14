@@ -114,7 +114,7 @@ export const ScenarioProps = Schema.Struct({
   render: Schema.optionalWith(Schema.Boolean, { default: () => true }),
   reason: Schema.optional(Schema.String),
   tags: Schema.optional(Schema.Array(Schema.String)),
-  layer: Schema.optional(Schema.Literal("scenario")),
+  layer: Schema.optional(Schema.Literal("scenario", "e2e")),
 })
   .pipe(
     Schema.filter(
@@ -298,8 +298,6 @@ const decodeEither = <A, I>(schema: Schema.Schema<A, I>, input: unknown): Either
   Schema.decodeUnknownEither(schema)(input, { onExcessProperty: "error" });
 
 export const decodeScenarioPropsEither = (input: unknown): Either.Either<ScenarioProps, DecodeError> => {
-  const record = asRecord(input);
-  if (record?.layer === "e2e") return Either.left(betaComponentPropsError("Scenario", "layer"));
   return decodeEither(ScenarioProps, input);
 };
 

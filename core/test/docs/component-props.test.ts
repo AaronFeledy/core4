@@ -75,7 +75,7 @@ describe("component prop schemas", () => {
     });
   });
 
-  test("accepts Scenario props, applies render default, and rejects deferred e2e layer", () => {
+  test("accepts Scenario props, applies render default, and validates layer values", () => {
     expect(expectRight(decodeScenarioPropsEither({ id: "reader", tags: ["smoke"] }))).toEqual({
       id: "reader",
       tags: ["smoke"],
@@ -109,7 +109,16 @@ describe("component prop schemas", () => {
       expect(issues.some((issue) => issue.path.includes("id"))).toBe(true);
     }
 
-    expectNotImplemented(decodeScenarioPropsEither({ id: "reader", layer: "e2e" }), "layer");
+    expect(expectRight(decodeScenarioPropsEither({ id: "reader", layer: "e2e", tags: ["@smoke"] }))).toEqual({
+      id: "reader",
+      layer: "e2e",
+      tags: ["@smoke"],
+      render: true,
+    });
+
+    const invalidLayer = decodeScenarioPropsEither({ id: "reader", layer: "unit" });
+    expect(invalidLayer._tag).toBe("Left");
+    if (Either.isLeft(invalidLayer)) expect(invalidLayer.left).toBeInstanceOf(ParseResult.ParseError);
   });
 
   test("accepts Run command, shell, and library forms while rejecting invalid variants", () => {

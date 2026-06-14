@@ -1,0 +1,29 @@
+---
+id: e2e-smoke-scenarios
+provider: test
+defaultLayer: e2e
+platforms: [linux]
+timeout: 300000
+tags: [beta, docs, authoring, "@smoke"]
+---
+
+<Guide>
+  <Scenario id="compiled-provider-smoke" render>
+    <Step name="scaffold">
+      <Variable name="appName" value="guide-e2e-smoke" display="Guide e2e smoke app" />
+      <Run command="lando init --recipe node-postgres --name={{appName}} --yes" />
+    </Step>
+    <Step name="start">
+      <Run command="lando start" />
+      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect">
+      <Run command="lando info" />
+      <Inspect events />
+    </Step>
+    <Step name="cleanup">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+</Guide>

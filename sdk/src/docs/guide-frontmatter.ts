@@ -1,6 +1,5 @@
 import { Either, type ParseResult, Schema } from "effect";
 
-import { NotImplementedError } from "../errors/index.ts";
 import { DeprecationNotice, DeprecationSeverity } from "../schema/deprecation.ts";
 
 const GUIDE_ID_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
@@ -71,7 +70,7 @@ const validVariantKeys = (frontmatter: {
 
 export const GuideFrontmatter = Schema.Struct({
   id: GuideId,
-  defaultLayer: Schema.optional(Schema.Literal("scenario")),
+  defaultLayer: Schema.optional(Schema.Literal("scenario", "e2e")),
   provider: Schema.optional(Schema.Literal("test")),
   timeout: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), { default: () => 60000 }),
   platforms: Schema.optional(Schema.Array(GuidePlatform)),
@@ -111,27 +110,10 @@ const GuideFrontmatterChecked = GuideFrontmatter.pipe(
   ),
 );
 
-const e2eLayerError = (): NotImplementedError =>
-  new NotImplementedError({
-    message: "Guide frontmatter `defaultLayer: e2e` is not supported in Alpha 2.",
-    commandId: "guide.frontmatter",
-    remediation: "Guide e2e scenarios are not supported yet.",
-  });
-
-const findDeferredGuideFrontmatter = (input: unknown): NotImplementedError | undefined => {
-  if (input === null || typeof input !== "object" || Array.isArray(input)) return undefined;
-  const record = input as Record<string, unknown>;
-  if (record.defaultLayer === "e2e") return e2eLayerError();
-  return undefined;
-};
-
 export const decodeGuideFrontmatterEither = (
   input: unknown,
-): Either.Either<GuideFrontmatter, NotImplementedError | ParseResult.ParseError> => {
-  const deferred = findDeferredGuideFrontmatter(input);
-  if (deferred !== undefined) return Either.left(deferred);
-  return Schema.decodeUnknownEither(GuideFrontmatterChecked)(input, { onExcessProperty: "error" });
-};
+): Either.Either<GuideFrontmatter, ParseResult.ParseError> =>
+  Schema.decodeUnknownEither(GuideFrontmatterChecked)(input, { onExcessProperty: "error" });
 
 export const decodeGuideFrontmatter = (input: unknown): GuideFrontmatter => {
   const decoded = decodeGuideFrontmatterEither(input);

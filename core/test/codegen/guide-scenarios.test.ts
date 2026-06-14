@@ -4,11 +4,7 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import {
-  GuideFrontmatterValidationError,
-  GuideHiddenScenarioReasonError,
-  NotImplementedError,
-} from "@lando/core/errors";
+import { GuideFrontmatterValidationError, GuideHiddenScenarioReasonError } from "@lando/core/errors";
 import {
   buildGuideScenarioAst,
   buildGuideScenarioTests,
@@ -104,17 +100,10 @@ describe("build-guide-scenarios MDX walker", () => {
     ]);
   });
 
-  test("unsupported frontmatter exits through the schema-level remediation", async () => {
+  test("e2e default layer parses through guide frontmatter", async () => {
     const content = await fixture("beta-only/beta.mdx");
-    expect(() => parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content)).toThrow(
-      NotImplementedError,
-    );
-
-    try {
-      parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content);
-    } catch (error) {
-      expect(error instanceof NotImplementedError ? error.remediation : "").toContain("not supported yet");
-    }
+    const ast = parseGuideScenarioAst("docs/guides/beta-only/beta.mdx", content);
+    expect(ast.frontmatter.defaultLayer).toBe("e2e");
   });
 
   test("invalid frontmatter raises a tagged validation error with field and rejected value", () => {
@@ -193,6 +182,66 @@ describe("build-guide-scenarios MDX walker", () => {
       ).text();
       expect(readerContent).not.toContain("// @render: false");
       expect(readerContent).toContain("const failureForErrorTag = lastFailure ?? lastRun;");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("emits gated e2e smoke scenario tests from MDX while preserving source headers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-e2e-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/e2e-smoke.mdx"),
+        [
+          "---",
+          "id: e2e-smoke",
+          "provider: test",
+          "defaultLayer: e2e",
+          'tags: ["@smoke"]',
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="provider-path" render>',
+          '    <Step name="version">',
+          '      <Run command="version" />',
+          '      <Verify command="version" expect={{ regex: "[0-9]+" }} />',
+          "    </Step>",
+          '    <Step name="teardown">',
+          "      <Cleanup />",
+          '      <Run command="destroy -y" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      const written = await emitGuideScenarioTests(asts, root);
+      const content = await Bun.file(
+        join(root, "test/scenarios/generated/guides/e2e-smoke/provider-path.test.ts"),
+      ).text();
+
+      expect(written).toEqual(["test/scenarios/generated/guides/e2e-smoke/provider-path.test.ts"]);
+      expect(content).toStartWith(
+        "// @generated\n// @source: docs/guides/e2e-smoke.mdx:9\n// @scenario: provider-path\n// @variant:\n// @tags: @smoke\n// @layer: e2e",
+      );
+      expect(content).toContain('import { ScenarioContextFactory } from "@lando/core/testing";');
+      expect(content).toContain(
+        'const e2eGateEnabled = process.env.LANDO_GUIDE_E2E === "1" && process.env.LANDO_SCENARIO_E2E_BINARY !== undefined && process.env.LANDO_TEST_PODMAN_SOCKET !== undefined;',
+      );
+      expect(content).toContain(
+        '(e2eGateEnabled ? test : test.skip)((e2eGateEnabled ? "@smoke e2e-smoke:provider-path [e2e]"',
+      );
+      expect(content).toContain(
+        '"@smoke e2e-smoke:provider-path [e2e] (skipped: set LANDO_GUIDE_E2E=1, LANDO_SCENARIO_E2E_BINARY, and LANDO_TEST_PODMAN_SOCKET to run e2e guide scenarios)"',
+      );
+      expect(content).toContain(
+        'ScenarioContextFactory.e2e({ guideId: "e2e-smoke", scenarioId: "provider-path", render: true }',
+      );
+      expect(content).toContain("// @source: docs/guides/e2e-smoke.mdx:11");
+      expect(content).toContain("// @source: docs/guides/e2e-smoke.mdx:15");
     } finally {
       await rm(root, { force: true, recursive: true });
     }

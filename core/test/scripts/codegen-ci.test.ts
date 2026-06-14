@@ -351,13 +351,19 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks]");
+      expect(workflow).toContain("needs: [static-checks, build-linux-x64]");
       expect(workflow).toContain("run: bun run codegen");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
       expect(workflow).toContain("run: bun run check:guide-coverage");
       expect(workflow).toContain("run: bun test test/scenarios/generated/guides/**");
+      expect(workflow).toContain("name: lando-linux-x64");
+      expect(workflow).toContain('LANDO_GUIDE_E2E: "1"');
+      expect(workflow).toContain(
+        'run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun test test/scenarios/generated/guides/** --test-name-pattern="@smoke.*\\[e2e\\]"',
+      );
       expect(workflow).toContain("name: guide-scenario-transcripts-${{ github.run_id }}.zip");
+      expect(workflow).toContain("name: guide-e2e-provider-diagnostics-${{ github.run_id }}.zip");
       expect(workflow).toContain("path: dist/transcripts/guides/**/*.json");
       expect(workflow).toContain("retention-days: 7");
 
@@ -386,6 +392,14 @@ describe("ci workflow codegen", () => {
           "run: bun test test/scenarios/generated/guides/**",
           workflow.indexOf("guide-scenarios-linux-x64"),
         ),
+      );
+      expect(
+        workflow.indexOf(
+          "run: bun test test/scenarios/generated/guides/**",
+          workflow.indexOf("guide-scenarios-linux-x64"),
+        ),
+      ).toBeLessThan(
+        workflow.indexOf("Run e2e smoke guide scenarios", workflow.indexOf("guide-scenarios-linux-x64")),
       );
     },
     codegenTestTimeout,
