@@ -524,3 +524,10 @@
 - Review notes (rejected): a context-mining pass flagged "incomplete ScenarioContext: variant hardcoded to `{}`" as blocking. Rejected — `ScenarioContext.variant` is pre-existing shared infrastructure typed `Record<string, never>` in `withScenarioContext`, populated identically for CLI and library scenarios; this story does not touch `scenario-context.ts`. The `variant` field IS present on the context library runs receive (criterion satisfied); populating axis values is a separate cross-runtime infra change, out of scope here.
 - Verification: typecheck, lint, lint:guides, check:guide-coverage passed; full `bun test` shows only the pre-existing, branch-independent `core schema re-exports the canonical deprecation notice` dual-module-instance failure (reproduces identically on origin/main; unrelated to this story).
 ---
+
+## 2026-06-14 02:24 CDT - Babysit
+- PR: #352 https://github.com/AaronFeledy/core4/pull/352
+- CI outcome: pass
+- Review feedback: fixed (brought the branch up to date with main — resolved the progress.txt conflict, preserved both stories' prd.json passes flags, regenerated the schema snapshot; then fixed a Cursor Bugbot finding where the guide backtick-prop parser rejected escaped `\${` as interpolation — now only unescaped `${` is rejected, with a regression test)
+- Merge: merged (squash)
+---
