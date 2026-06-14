@@ -548,3 +548,10 @@
 - Review notes (rejected): "missing API_COMPATIBILITY/schema-snapshot updates" — false positive; the build commit already added `PluginManifest.requires` to `sdk/API_COMPATIBILITY.md`, regenerated the snapshot, and updated the annotation exemption (backward-compat gate passes). Runtime loader enforcement of `requires` at plugin add/load (spec §9.7/§16.9) — real but out of scope for US-275, whose AC is explicitly the SDK contract test; `requires` stays optional in the frozen schema and the loader still decodes it, so this is a separate follow-up, not a regression. `>4`/`>=4` labelled `overly-broad` though they exclude `4.0.0` — kept; those ranges admit a future major so "too broad" is defensible and only affects the diagnostic label, not the (correct) rejection.
 - Verification: typecheck, lint, and the contract/bundled/plugin-package suites passed.
 ---
+
+## 2026-06-14 - Babysit
+- PR: #354 https://github.com/AaronFeledy/core4/pull/354
+- CI outcome: pass (first run's `check:guide-drift` gate failed because the one-line `requires` additions to plugin `src/index.ts` touch surface paths owned by the alpha-3 provider-matrix / file-sync / template-engine PRDs)
+- Review feedback: fixed (added a truthful `Guide-Coverage-Skip:` PR-body line — the change only adds the manifest core-compatibility field and alters no provider/file-sync/template behavior — then pushed an empty commit so CI re-read the body; Cursor Bugbot reported no findings)
+- Merge: merged (squash)
+---
