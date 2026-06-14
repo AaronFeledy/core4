@@ -141,26 +141,27 @@ export const StepProps = Schema.Struct({
 });
 export type StepProps = typeof StepProps.Type;
 
-export const RunProps = Schema.Struct({
-  command: Schema.optional(Schema.String),
-  shell: Schema.optional(Schema.String),
-  answers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-  expectExit: Schema.optional(Schema.Number.pipe(Schema.int())),
-})
-  .pipe(
-    Schema.filter(
-      (input) => [input.command, input.shell].filter((value) => value !== undefined).length === 1,
-      {
-        message: () => "<Run> requires exactly one of `command` or `shell`.",
-        jsonSchema: {},
-      },
-    ),
-  )
-  .annotations({
-    identifier: "RunProps",
-    title: "Run Props",
-    description: "Alpha 2 <Run> component props.",
-  });
+export const RunProps = Schema.Union(
+  Schema.Struct({
+    command: Schema.String,
+    answers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+    expectExit: Schema.optional(Schema.Number.pipe(Schema.int())),
+  }),
+  Schema.Struct({
+    shell: Schema.String,
+    answers: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
+    expectExit: Schema.optional(Schema.Number.pipe(Schema.int())),
+  }),
+  Schema.Struct({
+    runtime: Schema.Literal("library"),
+    code: Schema.String,
+    displayCode: Schema.String,
+  }),
+).annotations({
+  identifier: "RunProps",
+  title: "Run Props",
+  description: "Alpha 2 <Run> component props.",
+});
 export type RunProps = typeof RunProps.Type;
 
 export const VerifyProps = Schema.Struct({
@@ -307,9 +308,8 @@ export const decodeStepPropsEither = (input: unknown): Either.Either<StepProps, 
 
 export const decodeRunPropsEither = (input: unknown): Either.Either<RunProps, DecodeError> => {
   const record = asRecord(input);
-  if (record !== undefined) {
-    if (Object.hasOwn(record, "runtime")) return Either.left(betaComponentPropsError("Run", "runtime"));
-    if (Object.hasOwn(record, "tooling")) return Either.left(betaComponentPropsError("Run", "tooling"));
+  if (record !== undefined && Object.hasOwn(record, "tooling")) {
+    return Either.left(betaComponentPropsError("Run", "tooling"));
   }
   return decodeEither(RunProps, input);
 };

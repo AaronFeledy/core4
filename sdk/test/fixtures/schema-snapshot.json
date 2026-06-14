@@ -16078,32 +16078,73 @@
     "RunProps": {
       "$defs": {
         "RunProps": {
-          "additionalProperties": false,
-          "description": "Alpha 2 <Run> component props.",
-          "properties": {
-            "answers": {
-              "additionalProperties": {
-                "type": "string"
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "answers": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "command": {
+                  "type": "string"
+                },
+                "expectExit": {
+                  "description": "an integer",
+                  "title": "int",
+                  "type": "integer"
+                }
               },
-              "properties": {},
-              "required": [],
+              "required": ["command"],
               "type": "object"
             },
-            "command": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "answers": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "expectExit": {
+                  "description": "an integer",
+                  "title": "int",
+                  "type": "integer"
+                },
+                "shell": {
+                  "type": "string"
+                }
+              },
+              "required": ["shell"],
+              "type": "object"
             },
-            "expectExit": {
-              "description": "an integer",
-              "title": "int",
-              "type": "integer"
-            },
-            "shell": {
-              "type": "string"
+            {
+              "additionalProperties": false,
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "displayCode": {
+                  "type": "string"
+                },
+                "runtime": {
+                  "enum": ["library"],
+                  "type": "string"
+                }
+              },
+              "required": ["runtime", "code", "displayCode"],
+              "type": "object"
             }
-          },
-          "required": [],
-          "title": "Run Props",
-          "type": "object"
+          ],
+          "description": "Alpha 2 <Run> component props.",
+          "title": "Run Props"
         }
       },
       "$ref": "#/$defs/RunProps",
