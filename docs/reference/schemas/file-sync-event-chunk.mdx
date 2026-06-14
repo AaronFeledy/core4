@@ -9,8 +9,11 @@ Public Lando schema contract for File Sync Event Chunk.
 
 [JSON Schema artifact](../../../dist/schemas/file-sync-event-chunk.json)
 
-## Schema details
-
-| Type | Default | Accepted values | Examples |
-| --- | --- | --- | --- |
-| — | — | — | — |
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `progress`, `conflict`, `info` | — | — |
+| `sessionRef` | Yes | `string` | a string | — | — | — | — |
+| `phase` | Yes | `string` | — | — | `initial-scan`, `staging`, `transitioning`, `watching` | — | — |
+| `completed` | No | `number` | — | — | — | — | — |
+| `message` | Yes | `string` | — | — | — | — | — |
+| `conflictedPaths` | Yes | `array` | — | — | — | — | — |

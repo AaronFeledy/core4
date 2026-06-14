@@ -9,8 +9,15 @@ Alpha 2 declarative matcher subset for executable-guide verification.
 
 [JSON Schema artifact](../../../dist/schemas/matcher-schema.json)
 
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `regex` | Yes | `string` | a string | — | — | — | — |
+| `schema` | Yes | `string` | a string | — | — | — | — |
+| `anyOf` | Yes | `array` | — | — | — | — | — |
+| `not` | Yes | — | — | — | — | — | — |
+
 ## Schema details
 
 | Type | Default | Accepted values | Examples |
 | --- | --- | --- | --- |
-| — | — | `null` | — |
+| `string`, `number`, `boolean`, `null`, `array`, `object` | — | `null` | — |

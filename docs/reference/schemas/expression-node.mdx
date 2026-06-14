@@ -9,8 +9,17 @@ Public Lando schema contract for Expression Node.
 
 [JSON Schema artifact](../../../dist/schemas/expression-node.json)
 
-## Schema details
-
-| Type | Default | Accepted values | Examples |
-| --- | --- | --- | --- |
-| — | — | — | — |
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `kind` | Yes | `string` | — | — | `Literal`, `ArrayLiteral`, `ObjectLiteral`, `Path`, `Access`, `Call`, `Conditional` | — | — |
+| `value` | Yes | `string`, `number`, `boolean`, `null` | — | — | `null` | — | — |
+| `elements` | Yes | `array` | — | — | — | — | — |
+| `entries` | Yes | `array` | — | — | — | — | — |
+| `head` | Yes | `string` | a string | — | — | — | — |
+| `segments` | Yes | `array` | — | — | — | — | — |
+| `target` | Yes | — | — | — | — | — | — |
+| `callee` | Yes | `string` | a string | — | — | — | — |
+| `args` | Yes | `array` | — | — | — | — | — |
+| `test` | Yes | — | — | — | — | — | — |
+| `consequent` | Yes | — | — | — | — | — | — |
+| `alternate` | Yes | — | — | — | — | — | — |

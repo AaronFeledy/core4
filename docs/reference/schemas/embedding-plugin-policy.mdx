@@ -9,8 +9,17 @@ Public Lando schema contract for Embedding Plugin Policy.
 
 [JSON Schema artifact](../../../dist/schemas/embedding-plugin-policy.json)
 
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `mode` | No | `string` | — | — | `none`, `bundled-only`, `explicit`, `discovery` | — | — |
+| `layers` | No | `array` | — | — | — | — | — |
+| `manifests` | No | `array` | — | — | — | — | — |
+| `discovery` | No | `object` | — | — | — | — | — |
+| `externalImports` | No | `boolean` | — | — | — | — | — |
+| `disable` | No | `array` | — | — | — | — | — |
+
 ## Schema details
 
 | Type | Default | Accepted values | Examples |
 | --- | --- | --- | --- |
-| — | — | `none`, `bundled-only`, `explicit`, `discovery` | — |
+| `string`, `object` | — | `none`, `bundled-only`, `explicit`, `discovery` | — |

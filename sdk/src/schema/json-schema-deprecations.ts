@@ -332,15 +332,21 @@ const markdownCell = (value: string): string => value.replace(/\|/g, "\\|").repl
 
 const codeValue = (value: unknown): string => `\`${String(value)}\``;
 
+const resolveLocalSchemaRef = (target: JsonObject, root: JsonObject): JsonObject | undefined => {
+  const ref = typeof target.$ref === "string" ? target.$ref : undefined;
+  if (!ref?.startsWith("#/$defs/")) return undefined;
+  const key = ref.slice("#/$defs/".length);
+  const defs = jsonObject(root.$defs);
+  const resolved = jsonObject(defs?.[key]);
+  if (resolved === undefined) return undefined;
+  return defs === undefined ? resolved : { ...resolved, $defs: defs };
+};
+
 const resolveRootJsonSchemaRef = (jsonSchema: JsonObject): JsonObject => {
-  const ref = typeof jsonSchema.$ref === "string" ? jsonSchema.$ref : undefined;
-  if (ref?.startsWith("#/$defs/")) {
-    const key = ref.slice("#/$defs/".length);
-    const defs = jsonObject(jsonSchema.$defs);
-    const resolved = defs === undefined ? undefined : jsonObject(defs[key]);
-    if (resolved !== undefined) return resolved;
-  }
-  return jsonSchema;
+  const resolved = resolveLocalSchemaRef(jsonSchema, jsonSchema);
+  if (resolved === undefined) return jsonSchema;
+  const defs = jsonObject(jsonSchema.$defs);
+  return defs === undefined ? resolved : { ...resolved, $defs: defs };
 };
 
 const schemaReferenceJsonObject = (schema: SchemaLike): JsonObject =>
@@ -379,7 +385,8 @@ const unionBranches = (jsonSchema: JsonObject | undefined): ReadonlyArray<JsonOb
       : [];
   return branches.flatMap((branch) => {
     const branchObject = jsonObject(branch);
-    return branchObject === undefined ? [] : [branchObject];
+    if (branchObject === undefined) return [];
+    return [resolveLocalSchemaRef(branchObject, jsonSchema ?? branchObject) ?? branchObject];
   });
 };
 
@@ -395,26 +402,28 @@ const uniqueValues = (values: ReadonlyArray<unknown>): ReadonlyArray<unknown> =>
   return unique;
 };
 
-const jsonSchemaAcceptedValues = (jsonSchema: JsonObject | undefined): ReadonlyArray<unknown> =>
-  uniqueValues([
-    ...jsonSchemaEnumValues(jsonSchema),
-    ...unionBranches(jsonSchema).flatMap((branch) => jsonSchemaEnumValues(branch)),
-  ]);
+const jsonSchemaAcceptedValues = (jsonSchema: JsonObject | undefined): ReadonlyArray<unknown> => {
+  const values: unknown[] = [];
+  const collect = (schema: JsonObject): void => {
+    values.push(...jsonSchemaEnumValues(schema));
+    for (const branch of unionBranches(schema)) collect(branch);
+  };
+  if (jsonSchema !== undefined) collect(jsonSchema);
+  return uniqueValues(values);
+};
 
 const jsonSchemaTypes = (jsonSchema: JsonObject | undefined): ReadonlyArray<string> => {
   const types = new Set<string>();
   const collect = (schema: JsonObject): void => {
     if (typeof schema.type === "string") types.add(schema.type);
     for (const value of jsonSchemaEnumValues(schema)) types.add(jsonValueType(value));
+    for (const branch of unionBranches(schema)) collect(branch);
   };
   if (jsonSchema !== undefined) collect(jsonSchema);
-  for (const branch of unionBranches(jsonSchema)) collect(branch);
   return [...types];
 };
 
-const fieldType = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
-  const jsonTypes = jsonSchemaTypes(jsonSchema);
-  if (jsonTypes.length > 0) return jsonTypes.map(codeValue).join(", ");
+const astFieldType = (property: AST.PropertySignature): string => {
   const ast = schemaReferenceAst(unwrapUndefinedUnion(property.type));
   if (AST.isUnion(ast) && ast.types.every((member) => member._tag === "Literal")) return "literal";
   if (ast._tag === "StringKeyword") return "`string`";
@@ -425,6 +434,15 @@ const fieldType = (property: AST.PropertySignature, jsonSchema: JsonObject | und
   return "—";
 };
 
+const fieldType = (
+  property: AST.PropertySignature | undefined,
+  jsonSchemas: ReadonlyArray<JsonObject | undefined>,
+): string => {
+  const jsonTypes = uniqueValues(jsonSchemas.flatMap((jsonSchema) => jsonSchemaTypes(jsonSchema)));
+  if (jsonTypes.length > 0) return jsonTypes.map(codeValue).join(", ");
+  return property === undefined ? "—" : astFieldType(property);
+};
+
 const literalValues = (ast: AST.AST): ReadonlyArray<unknown> => {
   const unwrapped = schemaReferenceAst(unwrapUndefinedUnion(ast));
   if (unwrapped._tag === "Literal" && "literal" in unwrapped) return [unwrapped.literal];
@@ -432,9 +450,12 @@ const literalValues = (ast: AST.AST): ReadonlyArray<unknown> => {
   return [];
 };
 
-const acceptedValues = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
-  const values = jsonSchemaAcceptedValues(jsonSchema);
-  const fallbackValues = values.length > 0 ? values : literalValues(property.type);
+const acceptedValues = (
+  property: AST.PropertySignature | undefined,
+  jsonSchemas: ReadonlyArray<JsonObject | undefined>,
+): string => {
+  const values = uniqueValues(jsonSchemas.flatMap((jsonSchema) => jsonSchemaAcceptedValues(jsonSchema)));
+  const fallbackValues = values.length > 0 || property === undefined ? values : literalValues(property.type);
   return fallbackValues.length > 0 ? fallbackValues.map(codeValue).join(", ") : "—";
 };
 
@@ -448,6 +469,15 @@ const examples = (property: AST.PropertySignature): string => {
 const defaultValue = (jsonSchema: JsonObject | undefined): string =>
   Object.hasOwn(jsonSchema ?? {}, "default") ? codeValue(JSON.stringify(jsonSchema?.default)) : "—";
 
+const defaultValues = (jsonSchemas: ReadonlyArray<JsonObject | undefined>): string => {
+  const values = uniqueValues(
+    jsonSchemas.flatMap((jsonSchema) =>
+      Object.hasOwn(jsonSchema ?? {}, "default") ? [JSON.stringify(jsonSchema?.default)] : [],
+    ),
+  );
+  return values.length > 0 ? values.map(codeValue).join(", ") : "—";
+};
+
 const schemaExamples = (ast: AST.AST): string => {
   const values = ast.annotations[AST.ExamplesAnnotationId];
   return !Array.isArray(values) || values.length === 0
@@ -456,8 +486,109 @@ const schemaExamples = (ast: AST.AST): string => {
 };
 
 const schemaAcceptedValues = (ast: AST.AST, jsonSchema: JsonObject): string => {
-  const values = Array.isArray(jsonSchema.enum) ? jsonSchema.enum : literalValues(ast);
-  return values.length > 0 ? values.map(codeValue).join(", ") : "—";
+  const values = jsonSchemaAcceptedValues(jsonSchema);
+  const fallbackValues = values.length > 0 ? values : literalValues(ast);
+  return fallbackValues.length > 0 ? fallbackValues.map(codeValue).join(", ") : "—";
+};
+
+type SchemaReferenceField = {
+  readonly name: string;
+  readonly required: boolean;
+  readonly property?: AST.PropertySignature;
+  readonly jsonSchemas: ReadonlyArray<JsonObject | undefined>;
+};
+
+const isRequiredJsonSchemaProperty = (jsonSchema: JsonObject, name: string): boolean =>
+  Array.isArray(jsonSchema.required) && jsonSchema.required.includes(name);
+
+const typeLiteralFields = (
+  ast: AST.TypeLiteral,
+  jsonSchema: JsonObject,
+): ReadonlyArray<SchemaReferenceField> => {
+  const properties = jsonObject(jsonSchema.properties);
+  return ast.propertySignatures.flatMap((property) => {
+    if (typeof property.name !== "string") return [];
+    return [
+      {
+        name: property.name,
+        required: !property.isOptional,
+        property,
+        jsonSchemas: [properties === undefined ? undefined : jsonObject(properties[property.name])],
+      },
+    ];
+  });
+};
+
+const unionTypeLiterals = (ast: AST.AST): ReadonlyArray<AST.TypeLiteral> => {
+  const referenceAst = schemaReferenceAst(ast);
+  if (AST.isTypeLiteral(referenceAst)) return [referenceAst];
+  if (!AST.isUnion(referenceAst)) return [];
+  return referenceAst.types.flatMap((member) => {
+    const memberAst = schemaReferenceAst(member);
+    return AST.isTypeLiteral(memberAst) ? [memberAst] : [];
+  });
+};
+
+const objectUnionFields = (ast: AST.AST, jsonSchema: JsonObject): ReadonlyArray<SchemaReferenceField> => {
+  const propertiesByName = new Map<string, AST.PropertySignature>();
+  for (const typeLiteral of unionTypeLiterals(ast)) {
+    for (const property of typeLiteral.propertySignatures) {
+      if (typeof property.name === "string" && !propertiesByName.has(property.name)) {
+        propertiesByName.set(property.name, property);
+      }
+    }
+  }
+
+  const fields = new Map<string, { required: boolean; jsonSchemas: Array<JsonObject | undefined> }>();
+  for (const branch of unionBranches(jsonSchema).filter((branch) => branch.type === "object")) {
+    const properties = jsonObject(branch.properties);
+    if (properties === undefined) continue;
+    for (const name of Object.keys(properties)) {
+      const existing = fields.get(name) ?? { required: false, jsonSchemas: [] };
+      existing.required = existing.required || isRequiredJsonSchemaProperty(branch, name);
+      existing.jsonSchemas.push(jsonObject(properties[name]));
+      fields.set(name, existing);
+    }
+  }
+  return [...fields.entries()].map(([name, field]) => {
+    const property = propertiesByName.get(name);
+    return {
+      name,
+      required: field.required,
+      ...(property === undefined ? {} : { property }),
+      jsonSchemas: field.jsonSchemas,
+    };
+  });
+};
+
+const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyArray<string> => {
+  const rows: string[] = [
+    "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+    "| --- | --- | --- | --- | --- | --- | --- | --- |",
+  ];
+  for (const field of fields) {
+    const propertyNotice =
+      field.property === undefined
+        ? undefined
+        : (getSchemaDeprecation(field.property) ?? findSchemaReferenceDeprecation(field.property.type));
+    rows.push(
+      [
+        codeValue(field.name),
+        field.required ? "Yes" : "No",
+        fieldType(field.property, field.jsonSchemas),
+        field.property === undefined ? "—" : (fieldDescription(field.property) ?? "—"),
+        defaultValues(field.jsonSchemas),
+        acceptedValues(field.property, field.jsonSchemas),
+        field.property === undefined ? "—" : examples(field.property),
+        propertyNotice === undefined ? "—" : formatDeprecationNotice(propertyNotice),
+      ]
+        .map(markdownCell)
+        .join(" | ")
+        .replace(/^/, "| ")
+        .replace(/$/, " |"),
+    );
+  }
+  return rows;
 };
 
 export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
@@ -495,40 +626,21 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
       ? schemaReferenceJsonObject(schema)
       : resolveRootJsonSchemaRef(options.jsonSchema);
   const ast = schemaReferenceAst(schema.ast);
-  if (AST.isTypeLiteral(ast)) {
-    const properties = jsonObject(jsonSchema.properties);
-    const rows: string[] = [
-      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
-      "| --- | --- | --- | --- | --- | --- | --- | --- |",
-    ];
-    for (const property of ast.propertySignatures) {
-      if (typeof property.name !== "string") continue;
-      const propertySchema = properties === undefined ? undefined : jsonObject(properties[property.name]);
-      const propertyNotice = getSchemaDeprecation(property) ?? findSchemaReferenceDeprecation(property.type);
-      rows.push(
-        [
-          codeValue(property.name),
-          property.isOptional ? "No" : "Yes",
-          fieldType(property, propertySchema),
-          fieldDescription(property) ?? "—",
-          defaultValue(propertySchema),
-          acceptedValues(property, propertySchema),
-          examples(property),
-          propertyNotice === undefined ? "—" : formatDeprecationNotice(propertyNotice),
-        ]
-          .map(markdownCell)
-          .join(" | ")
-          .replace(/^/, "| ")
-          .replace(/$/, " |"),
-      );
-    }
-    lines.push(...rows, "");
-  } else {
+  const fields = AST.isTypeLiteral(ast)
+    ? typeLiteralFields(ast, jsonSchema)
+    : objectUnionFields(ast, jsonSchema);
+  if (fields.length > 0 || AST.isTypeLiteral(ast)) {
+    lines.push(...renderFieldRows(fields), "");
+  }
+
+  const schemaTypes = jsonSchemaTypes(jsonSchema);
+  const hasNonObjectRootBranch = schemaTypes.some((type) => type !== "object");
+  if (!AST.isTypeLiteral(ast) && (fields.length === 0 || hasNonObjectRootBranch)) {
     const rows = [
       "| Type | Default | Accepted values | Examples |",
       "| --- | --- | --- | --- |",
       [
-        typeof jsonSchema.type === "string" ? codeValue(jsonSchema.type) : "—",
+        schemaTypes.length > 0 ? schemaTypes.map(codeValue).join(", ") : "—",
         defaultValue(jsonSchema),
         schemaAcceptedValues(ast, jsonSchema),
         schemaExamples(schema.ast),

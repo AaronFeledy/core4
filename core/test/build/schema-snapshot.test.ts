@@ -197,6 +197,58 @@ describe("schema snapshot gate", () => {
     );
   });
 
+  test("reference renderer surfaces root union branch types", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "CommandLike",
+      Schema.Union(Schema.String, Schema.Array(Schema.String)),
+      {
+        jsonSchema: {
+          anyOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
+        },
+      },
+    );
+
+    expect(rendered).toContain("## Schema details");
+    expect(rendered).toContain("| `string`, `array` | — | — | — |");
+  });
+
+  test("reference renderer surfaces root union object branch fields", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "RunLike",
+      Schema.Union(
+        Schema.Struct({
+          command: Schema.String.annotations({ description: "Command to execute." }),
+        }),
+        Schema.Struct({
+          shell: Schema.String.annotations({ description: "Shell command to execute." }),
+        }),
+      ),
+      {
+        jsonSchema: {
+          anyOf: [
+            {
+              type: "object",
+              required: ["command"],
+              properties: { command: { type: "string" } },
+            },
+            {
+              type: "object",
+              required: ["shell"],
+              properties: { shell: { type: "string" } },
+            },
+          ],
+        },
+      },
+    );
+
+    expect(rendered).not.toContain("## Schema details");
+    expect(rendered).toContain(
+      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+    );
+    expect(rendered).toContain("| `command` | Yes | `string` | Command to execute. | — | — | — | — |");
+    expect(rendered).toContain("| `shell` | Yes | `string` | Shell command to execute. | — | — | — | — |");
+  });
+
   test("reference renderer surfaces deprecated schema and field callouts", () => {
     const notice = {
       since: "4.2.0",
