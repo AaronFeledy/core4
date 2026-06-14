@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "pre-build"
+      ],
+      "type": "string"
+    },
+    "appRef": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "user",
+            "global",
+            "scratch"
+          ],
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "root"
+      ],
+      "type": "object"
+    },
+    "eventName": {
+      "enum": [
+        "pre-build"
+      ],
+      "type": "string"
+    },
+    "providerId": {
+      "type": "string"
+    },
+    "serviceName": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "eventName",
+    "appRef",
+    "providerId",
+    "timestamp"
+  ],
+  "type": "object"
+}

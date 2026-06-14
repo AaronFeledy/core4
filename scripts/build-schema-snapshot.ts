@@ -25,6 +25,7 @@ import {
   renderPublicSchemaReferencePages,
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
+import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
@@ -52,6 +53,7 @@ const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unk
 
 const renderSnapshot = (): string => {
   assertPublicSchemaAnnotations();
+  assertPublicSchemaContractCoverage(REPO_ROOT);
   const sdkSchemas = Object.fromEntries(
     JSON_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(generateJsonSchema(schemaName))]),
   );

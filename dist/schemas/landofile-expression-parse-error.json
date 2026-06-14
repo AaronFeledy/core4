@@ -1,0 +1,46 @@
+{
+  "$defs": {
+    "LandofileExpressionParseError": {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "LandofileExpressionParseError"
+          ],
+          "type": "string"
+        },
+        "cause": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        },
+        "column": {
+          "type": "number"
+        },
+        "expression": {
+          "type": "string"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "line": {
+          "type": "number"
+        },
+        "message": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "filePath",
+        "remediation",
+        "_tag"
+      ],
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/LandofileExpressionParseError",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "readOnly": {
+      "type": "boolean"
+    },
+    "store": {
+      "type": "string"
+    },
+    "target": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "store",
+    "target",
+    "readOnly"
+  ],
+  "type": "object"
+}

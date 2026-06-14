@@ -1,0 +1,131 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "artifactBuild": {
+      "type": "boolean"
+    },
+    "artifactPull": {
+      "type": "boolean"
+    },
+    "bindMountPerformance": {
+      "enum": [
+        "native",
+        "slow",
+        "none"
+      ],
+      "type": "string"
+    },
+    "bindMounts": {
+      "type": "boolean"
+    },
+    "buildSecrets": {
+      "type": "boolean"
+    },
+    "buildSsh": {
+      "type": "boolean"
+    },
+    "composeSpec": {
+      "enum": [
+        "none",
+        "portable",
+        "native"
+      ],
+      "type": "string"
+    },
+    "copyMounts": {
+      "type": "boolean"
+    },
+    "copyOnWriteAppRoot": {
+      "type": "boolean"
+    },
+    "hostPortPublish": {
+      "enum": [
+        "native",
+        "proxy",
+        "manual",
+        "none"
+      ],
+      "type": "string"
+    },
+    "hostReachability": {
+      "enum": [
+        "native",
+        "emulated",
+        "none"
+      ],
+      "type": "string"
+    },
+    "multiServiceApply": {
+      "type": "boolean"
+    },
+    "persistentStorage": {
+      "type": "boolean"
+    },
+    "privilegedServices": {
+      "type": "boolean"
+    },
+    "providerExtensions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "rootless": {
+      "type": "boolean"
+    },
+    "routeProvider": {
+      "type": "boolean"
+    },
+    "serviceExec": {
+      "type": "boolean"
+    },
+    "serviceHealth": {
+      "enum": [
+        "native",
+        "lando",
+        "none"
+      ],
+      "type": "string"
+    },
+    "serviceLogs": {
+      "type": "boolean"
+    },
+    "sharedCrossAppNetwork": {
+      "type": "boolean"
+    },
+    "tlsCertificates": {
+      "enum": [
+        "native",
+        "lando",
+        "none"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "artifactBuild",
+    "artifactPull",
+    "buildSecrets",
+    "buildSsh",
+    "multiServiceApply",
+    "serviceExec",
+    "serviceLogs",
+    "serviceHealth",
+    "hostReachability",
+    "sharedCrossAppNetwork",
+    "persistentStorage",
+    "bindMounts",
+    "bindMountPerformance",
+    "copyMounts",
+    "copyOnWriteAppRoot",
+    "hostPortPublish",
+    "routeProvider",
+    "tlsCertificates",
+    "rootless",
+    "privilegedServices",
+    "composeSpec",
+    "providerExtensions"
+  ],
+  "type": "object"
+}

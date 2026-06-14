@@ -1,0 +1,33 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "driver": {
+      "type": "string"
+    },
+    "driverOpts": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": {
+      "type": "string"
+    },
+    "scope": {
+      "enum": [
+        "service",
+        "app",
+        "global"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "scope"
+  ],
+  "type": "object"
+}

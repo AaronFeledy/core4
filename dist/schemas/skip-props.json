@@ -1,0 +1,26 @@
+{
+  "$defs": {
+    "SkipProps": {
+      "additionalProperties": false,
+      "description": "Beta <Skip> component props.",
+      "properties": {
+        "reason": {
+          "description": "a string at least 8 character(s) long",
+          "minLength": 8,
+          "title": "minLength(8)",
+          "type": "string"
+        },
+        "until": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "reason"
+      ],
+      "title": "Skip Props",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/SkipProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

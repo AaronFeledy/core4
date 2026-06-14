@@ -511,4 +511,29 @@ describe("schema snapshot gate", () => {
       expect(artifact.$schema, schemaName).toBe("http://json-schema.org/draft-07/schema#");
     }
   });
+
+  test("generated JSON schema artifacts are tracked by git for the drift gate", () => {
+    const ignored = Bun.spawnSync(
+      ["git", "check-ignore", "-q", "--no-index", "dist/schemas/new-schema.json"],
+      {
+        cwd: repoRoot,
+      },
+    );
+    expect(ignored.exitCode).toBe(1);
+
+    const tracked = Bun.spawnSync(["git", "ls-files", "dist/schemas"], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect({ exitCode: tracked.exitCode, stderr: tracked.stderr.toString() }).toMatchObject({
+      exitCode: 0,
+    });
+
+    const trackedFiles = new Set(tracked.stdout.toString().trim().split("\n"));
+    expect(trackedFiles).toContain("dist/schemas/index.json");
+    for (const schemaName of JSON_SCHEMA_NAMES) {
+      expect(trackedFiles).toContain(`dist/schemas/${schemaArtifactFilename(schemaName)}`);
+    }
+  });
 });

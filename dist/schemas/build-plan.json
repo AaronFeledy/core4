@@ -1,0 +1,170 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "appId": {
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "resolvedAt": {
+          "$ref": "#/$defs/DateTimeUtc"
+        },
+        "runtime": {
+          "enum": [
+            4
+          ],
+          "type": "number"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "resolvedAt",
+        "source",
+        "runtime"
+      ],
+      "type": "object"
+    },
+    "steps": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "digest": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "ref"
+                    ],
+                    "type": "string"
+                  },
+                  "ref": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "ref"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "args": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "contentHash": {
+                    "type": "string"
+                  },
+                  "context": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "build"
+                    ],
+                    "type": "string"
+                  },
+                  "spec": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "context"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "buildKey": {
+            "type": "string"
+          },
+          "command": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "dependsOn": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "buildArtifact",
+              "pullArtifact",
+              "execStream"
+            ],
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "artifact",
+              "app"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "service",
+          "phase",
+          "kind",
+          "dependsOn",
+          "buildKey"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "totalSteps": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "appId",
+    "totalSteps",
+    "steps",
+    "metadata"
+  ],
+  "type": "object"
+}

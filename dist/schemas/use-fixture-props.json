@@ -1,0 +1,20 @@
+{
+  "$defs": {
+    "UseFixtureProps": {
+      "additionalProperties": false,
+      "description": "Alpha 2 <UseFixture> component props.",
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Use Fixture Props",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/UseFixtureProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

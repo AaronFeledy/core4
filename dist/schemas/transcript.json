@@ -1,0 +1,289 @@
+{
+  "$defs": {
+    "GuideId": {
+      "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "Transcript": {
+      "additionalProperties": false,
+      "description": "Internal Alpha 2 guide scenario transcript.",
+      "properties": {
+        "durationMs": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "nonNegative",
+          "type": "number"
+        },
+        "exitStatus": {
+          "enum": [
+            "pass",
+            "fail"
+          ],
+          "type": "string"
+        },
+        "finishedAt": {
+          "$ref": "#/$defs/TranscriptTimestamp"
+        },
+        "frames": {
+          "items": {
+            "$ref": "#/$defs/TranscriptFrame"
+          },
+          "type": "array"
+        },
+        "guideId": {
+          "$ref": "#/$defs/GuideId"
+        },
+        "render": {
+          "type": "boolean"
+        },
+        "scenarioId": {
+          "$ref": "#/$defs/GuideId"
+        },
+        "startedAt": {
+          "$ref": "#/$defs/TranscriptTimestamp"
+        }
+      },
+      "required": [
+        "guideId",
+        "scenarioId",
+        "render",
+        "startedAt",
+        "finishedAt",
+        "durationMs",
+        "exitStatus",
+        "frames"
+      ],
+      "title": "Guide Scenario Transcript",
+      "type": "object"
+    },
+    "TranscriptCleanupFrame": {
+      "additionalProperties": false,
+      "description": "Internal guide scenario transcript frame for a cleanup command.",
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "exit": {
+          "description": "an integer",
+          "title": "int",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "cleanup"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "command",
+        "exit"
+      ],
+      "title": "Transcript Cleanup Frame",
+      "type": "object"
+    },
+    "TranscriptFixtureFrame": {
+      "additionalProperties": false,
+      "description": "Internal guide scenario transcript frame for a copied fixture.",
+      "properties": {
+        "copiedTo": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "fixture"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "name",
+        "copiedTo"
+      ],
+      "title": "Transcript Fixture Frame",
+      "type": "object"
+    },
+    "TranscriptFrame": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TranscriptRunFrame"
+        },
+        {
+          "$ref": "#/$defs/TranscriptVerifyFrame"
+        },
+        {
+          "$ref": "#/$defs/TranscriptFixtureFrame"
+        },
+        {
+          "$ref": "#/$defs/TranscriptCleanupFrame"
+        },
+        {
+          "$ref": "#/$defs/TranscriptInspectFrame"
+        },
+        {
+          "$ref": "#/$defs/TranscriptInlineFrame"
+        }
+      ],
+      "description": "Internal guide scenario transcript frame.",
+      "title": "Transcript Frame"
+    },
+    "TranscriptInlineFrame": {
+      "additionalProperties": false,
+      "description": "Internal guide scenario transcript frame for a verbatim, non-executed code sample.",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "inline"
+          ],
+          "type": "string"
+        },
+        "lang": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "lang",
+        "code"
+      ],
+      "title": "Transcript Inline Frame",
+      "type": "object"
+    },
+    "TranscriptInspectFrame": {
+      "additionalProperties": false,
+      "description": "Internal guide scenario transcript frame for a captured inspection.",
+      "properties": {
+        "kind": {
+          "enum": [
+            "inspect"
+          ],
+          "type": "string"
+        },
+        "target": {
+          "enum": [
+            "file",
+            "json",
+            "events",
+            "output"
+          ],
+          "type": "string"
+        },
+        "value": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "value"
+      ],
+      "title": "Transcript Inspect Frame",
+      "type": "object"
+    },
+    "TranscriptRunFrame": {
+      "additionalProperties": false,
+      "description": "Internal guide scenario transcript frame for an executed command.",
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "durationMs": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "nonNegative",
+          "type": "number"
+        },
+        "exit": {
+          "description": "an integer",
+          "title": "int",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "run"
+          ],
+          "type": "string"
+        },
+        "stderr": {
+          "type": "string"
+        },
+        "stdout": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "command",
+        "stdout",
+        "stderr",
+        "exit",
+        "durationMs"
+      ],
+      "title": "Transcript Run Frame",
+      "type": "object"
+    },
+    "TranscriptTimestamp": {
+      "description": "a string matching the pattern ^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$",
+      "type": "string"
+    },
+    "TranscriptVerifyFrame": {
+      "additionalProperties": false,
+      "description": "Internal guide scenario transcript frame for a verification assertion.",
+      "properties": {
+        "actual": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        },
+        "expected": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        },
+        "kind": {
+          "enum": [
+            "verify"
+          ],
+          "type": "string"
+        },
+        "matched": {
+          "type": "boolean"
+        },
+        "target": {
+          "enum": [
+            "event",
+            "file",
+            "errorTag"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "target",
+        "matched",
+        "expected",
+        "actual"
+      ],
+      "title": "Transcript Verify Frame",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/Transcript",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -563,3 +563,23 @@
 - Review feedback: fixed (added a truthful `Guide-Coverage-Skip:` PR-body line — the change only adds the manifest core-compatibility field and alters no provider/file-sync/template behavior — then pushed an empty commit so CI re-read the body; Cursor Bugbot reported no findings)
 - Merge: merged (squash)
 ---
+
+## 2026-06-14 07:50 CDT - Babysit
+- PR: #353 https://github.com/AaronFeledy/core4/pull/353
+- CI outcome: pass (23 checks SUCCESS)
+- Review feedback: fixed (Cursor Bugbot raised 13 findings on the schema-reference MDX generator; triage fixed 3 real ones — property/union `$ref` resolution against the full JSON Schema document root, string defaults no longer JSON-double-quoted in tables, and a safe fallback for undefined index-signature key labels — and verified the remaining union/record/empty-struct/escaping findings were already addressed on HEAD; docs regenerated, Bugbot re-reviewed the new HEAD with no findings)
+- Merge: merged (squash)
+---
+
+## 2026-06-14 08:25 CDT - US-227 Build
+- Verified the in-flight schema reference branch is already complete and merged: US-227 is marked passing with notes, the branch has no code diff from origin/main, and generated schema reference docs are present.
+- Verification: typecheck, lint, tests passed.
+- **Learnings for future iterations:** A squash-merged story branch can still show local commits ahead of origin/main; use the PR merge state plus `origin/main..HEAD` diff and the PRD pass flag to distinguish completed work from unfinished story work.
+---
+
+## 2026-06-14 09:45 CDT - US-228
+- Shipped the merge-blocking schema gate: every public SDK schema now has explicit contract coverage, with generated happy-path fixtures, invalid-input rejection, and encode/decode round-trip checks enforced alongside the existing annotation, example, deprecation, JSON Schema, and reference-doc generation gates.
+- The schema-snapshot CI drift check now blocks changes across the snapshot, tracked `dist/schemas` artifacts, and generated schema reference docs together, so schema artifacts and docs cannot drift independently.
+- Verification: typecheck, lint, full tests passed; focused schema contract/snapshot/codegen/branch-protection tests passed; `bun run codegen:schema-snapshot` left generated schema artifacts clean.
+- **Learnings for future iterations:** The public schema contract gate uses an explicit `Record<JsonSchemaName, ...>` fixture map plus runtime key comparison; adding a schema to `JSON_SCHEMA_NAMES` now requires updating the contract fixture file or both typecheck/codegen fail before merge.
+---

@@ -1,0 +1,25 @@
+{
+  "$defs": {
+    "ComponentId": {
+      "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "StepProps": {
+      "additionalProperties": false,
+      "description": "Alpha 2 <Step> component props.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/ComponentId"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Step Props",
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/StepProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

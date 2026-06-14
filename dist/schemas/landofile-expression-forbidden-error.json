@@ -1,0 +1,40 @@
+{
+  "$defs": {
+    "LandofileExpressionForbiddenError": {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "LandofileExpressionForbiddenError"
+          ],
+          "type": "string"
+        },
+        "cause": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        },
+        "filePath": {
+          "type": "string"
+        },
+        "helper": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "helper",
+        "remediation",
+        "_tag"
+      ],
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/LandofileExpressionForbiddenError",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

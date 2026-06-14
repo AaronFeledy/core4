@@ -1,0 +1,48 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "task.tree.start"
+      ],
+      "type": "string"
+    },
+    "children": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "label": {
+      "type": "string"
+    },
+    "mode": {
+      "enum": [
+        "list",
+        "grid"
+      ],
+      "type": "string"
+    },
+    "parentId": {
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "parentId",
+    "label",
+    "children",
+    "timestamp"
+  ],
+  "type": "object"
+}

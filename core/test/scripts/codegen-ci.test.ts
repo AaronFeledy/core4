@@ -271,7 +271,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("- name: Regenerate schema snapshot");
       expect(workflow).toContain("run: bun run codegen:schema-snapshot");
       expect(workflow).toContain(
-        "run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json docs/reference/schemas",
+        "run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json dist/schemas docs/reference/schemas",
       );
 
       expect(workflow).toContain("bundled-codegen:");

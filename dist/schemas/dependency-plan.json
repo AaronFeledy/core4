@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "condition": {
+      "enum": [
+        "started",
+        "healthy"
+      ],
+      "type": "string"
+    },
+    "service": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "service",
+    "condition"
+  ],
+  "type": "object"
+}

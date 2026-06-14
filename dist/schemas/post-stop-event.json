@@ -1,0 +1,59 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "post-stop"
+      ],
+      "type": "string"
+    },
+    "app": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "user",
+            "global",
+            "scratch"
+          ],
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "root"
+      ],
+      "type": "object"
+    },
+    "scope": {
+      "enum": [
+        "app"
+      ],
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "scope",
+    "app",
+    "timestamp"
+  ],
+  "type": "object"
+}

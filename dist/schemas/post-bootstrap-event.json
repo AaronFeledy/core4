@@ -1,0 +1,38 @@
+{
+  "$defs": {
+    "DateTimeUtc": {
+      "description": "a string to be decoded into a DateTime.Utc",
+      "type": "string"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "post-bootstrap"
+      ],
+      "type": "string"
+    },
+    "level": {
+      "enum": [
+        "minimal",
+        "plugins",
+        "commands",
+        "provider",
+        "app",
+        "tooling"
+      ],
+      "type": "string"
+    },
+    "timestamp": {
+      "$ref": "#/$defs/DateTimeUtc"
+    }
+  },
+  "required": [
+    "_tag",
+    "level",
+    "timestamp"
+  ],
+  "type": "object"
+}

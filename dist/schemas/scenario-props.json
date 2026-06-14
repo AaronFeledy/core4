@@ -1,0 +1,41 @@
+{
+  "$defs": {
+    "ComponentId": {
+      "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+      "type": "string"
+    },
+    "ScenarioProps": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/ComponentId"
+        },
+        "layer": {
+          "enum": [
+            "scenario"
+          ],
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "render": {
+          "type": "boolean"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/ScenarioProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

@@ -1,0 +1,19 @@
+{
+  "$defs": {
+    "GuideProps": {
+      "$id": "/schemas/%7B%7D",
+      "anyOf": [
+        {
+          "type": "object"
+        },
+        {
+          "type": "array"
+        }
+      ],
+      "description": "Alpha 2 <Guide> component props.",
+      "title": "Guide Props"
+    }
+  },
+  "$ref": "#/$defs/GuideProps",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
