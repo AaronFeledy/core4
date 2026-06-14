@@ -328,7 +328,17 @@ const schemaDescription = (ast: AST.AST): string | undefined => {
 const frontmatterString = (value: string): string =>
   /^[A-Za-z0-9 ._-]+$/.test(value) ? value : JSON.stringify(value);
 
+const mdxText = (value: string): string =>
+  value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/{/g, "&#123;")
+    .replace(/}/g, "&#125;");
+
 const markdownCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n+/g, " ");
+
+const markdownTextCell = (value: string): string => mdxText(value);
 
 const codeValue = (value: unknown): string => `\`${String(value)}\``;
 
@@ -586,11 +596,11 @@ const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyA
         codeValue(field.name),
         field.required ? "Yes" : "No",
         fieldType(field.property, field.jsonSchemas),
-        field.property === undefined ? "—" : (fieldDescription(field.property) ?? "—"),
+        field.property === undefined ? "—" : markdownTextCell(fieldDescription(field.property) ?? "—"),
         defaultValues(field.jsonSchemas),
         acceptedValues(field.property, field.jsonSchemas),
         field.property === undefined ? "—" : examples(field.property),
-        propertyNotice === undefined ? "—" : formatDeprecationNotice(propertyNotice),
+        propertyNotice === undefined ? "—" : markdownTextCell(formatDeprecationNotice(propertyNotice)),
       ]
         .map(markdownCell)
         .join(" | ")
@@ -620,16 +630,16 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
     ...(description === undefined ? [] : [`description: ${frontmatterString(description)}`]),
     "---",
     "",
-    `# ${title}`,
+    `# ${mdxText(title)}`,
     "",
   ];
-  if (description !== undefined) lines.push(description, "");
+  if (description !== undefined) lines.push(mdxText(description), "");
   if (jsonSchemaPath !== undefined) {
     lines.push(`[JSON Schema artifact](../../../${jsonSchemaPath})`, "");
   }
 
   const notice = getSchemaDeprecation(schema.ast);
-  if (notice !== undefined) lines.push("> [!WARNING]", `> ${formatDeprecationNotice(notice)}`, "");
+  if (notice !== undefined) lines.push("> [!WARNING]", `> ${mdxText(formatDeprecationNotice(notice))}`, "");
 
   const jsonSchema =
     options.jsonSchema === undefined

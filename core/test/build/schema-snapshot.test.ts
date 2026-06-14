@@ -164,6 +164,29 @@ describe("schema snapshot gate", () => {
     expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
   });
 
+  test("reference renderer escapes MDX-significant body and field text", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "MdxUnsafeShape",
+      Schema.Struct({
+        value: Schema.String.annotations({ description: "Field <Value> uses {template} | pipes." }),
+      }),
+      {
+        title: "Alpha <Guide> {shape} & docs",
+        description: "Body <Guide> uses {children} & props.",
+      },
+    );
+    const body = rendered.split("---").slice(2).join("---");
+
+    expect(body).toContain("# Alpha &lt;Guide&gt; &#123;shape&#125; &amp; docs");
+    expect(body).toContain("Body &lt;Guide&gt; uses &#123;children&#125; &amp; props.");
+    expect(body).toContain(
+      "| `value` | Yes | `string` | Field &lt;Value&gt; uses &#123;template&#125; \\| pipes. | — | — | — | — |",
+    );
+    expect(body).not.toContain("<Guide>");
+    expect(body).not.toContain("{children}");
+    expect(body).not.toContain("<Value>");
+  });
+
   test("reference renderer derives field metadata from JSON Schema union branches", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "UnionBackedShape",
