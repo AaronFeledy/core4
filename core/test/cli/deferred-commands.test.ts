@@ -107,7 +107,6 @@ describe("deferred command remediation contract", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
     const requiredPrefixes = ["meta:global:"];
     const requiredExactIds = [
-      "meta:plugin:test",
       "meta:plugin:build",
       "meta:plugin:link",
       "meta:plugin:unlink",

@@ -563,8 +563,8 @@
         "Lint passes."
       ],
       "priority": 32,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "meta:plugin:test now detects the nearest plugin package root, validates the plugin manifest, runs bun test through BunSelfRunner with positional targets and post--- Bun args preserved, publishes plugin-test plus BunSelfRunner lifecycle events, and renders plugin name/command/result through the renderer seam."
     },
     {
       "id": "US-232",

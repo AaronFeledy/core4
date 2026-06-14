@@ -629,3 +629,21 @@
 - Verification: typecheck, lint, build, guide coverage/lint/dev-guide generation, focused scaffold/deferred/parity tests, source+compiled CLI QA, and full tests passed.
 - **Learnings for future iterations:** Promoting a deferred command requires repointing every hard-coded deferred probe to an id that still remains deferred and regenerating the compiled OCLIF manifest in the same change.
 ---
+
+## 2026-06-14 15:30 CDT - US-230 Verify
+- Built the compiled binary and ran `setup --provider=podman --yes` successfully inside `lando4-dev`; compiled `meta:plugin:new` scaffolded all eight required templates with expected package/plugin/config/test/tsconfig/README files.
+- Verification failed on the real generated-plugin workflow: running compiled `meta:plugin:test` from the scaffold still hits the deferred `NotImplementedError` path, so the generated plugin cannot yet run `meta:plugin:test`, `meta:plugin:build`, and `meta:plugin:link` as US-230 AC4 requires. This is a story-completion blocker spanning the plugin authoring command implementations, so Verify stops for Build to resume rather than papering it over here.
+- **Learnings for future iterations:** US-230 cannot be considered complete by scaffold file assertions alone; the generated scaffold must be exercised with the real compiled plugin authoring commands from inside the generated plugin directory.
+---
+## 2026-06-14 16:55 CDT - Babysit
+- PR: #360 https://github.com/AaronFeledy/core4/pull/360
+- CI outcome: pass
+- Review feedback: fixed (Bugbot Medium: scaffold plugin.yaml now quotes the manifest `name` so scoped `@scope/pkg` names parse correctly; added scoped-name scaffold regression)
+- Merge: merged (squash)
+---
+
+## 2026-06-14 17:29 CDT - US-231
+- Shipped `meta:plugin:test`: the command finds the current plugin package root from nested working directories, validates its manifest, runs `bun test` through BunSelfRunner with positional targets and post-`--` Bun args preserved, publishes plugin-test plus BunSelfRunner lifecycle events, and renders the plugin name, Bun command, and result through the renderer boundary.
+- Verification: red/green focused command tests, source+compiled CLI QA, build, typecheck, lint, guide coverage, and full tests passed.
+- **Learnings for future iterations:** Plugin authoring commands that proxy Bun work should pass only the Bun subcommand argv into BunSelfRunner (`["test", ...targets, ...forwarded]`) and leave user-facing summaries to the renderer result path; lifecycle observers can use the shared BunSelfRunner pre/post events plus command-specific `cli-meta:plugin:*` events.
+---

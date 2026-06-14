@@ -1,0 +1,168 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Effect, Layer, Queue, Stream } from "effect";
+
+import { EventService, type LandoEvent } from "@lando/sdk/services";
+
+import { pluginTest, renderPluginTestResult } from "../../src/cli/commands/plugin-test.ts";
+
+let root: string;
+
+const recordingEventLayer = (events: LandoEvent[]) =>
+  Layer.succeed(EventService, {
+    publish: (event: LandoEvent) => Effect.sync(() => events.push(event)),
+    subscribe: () => Stream.empty,
+    subscribeQueue: Queue.unbounded<LandoEvent>(),
+    waitFor: () => Effect.fail(new Error("not implemented")),
+  } as never);
+
+const writePlugin = async (dir: string, name = "@acme/lando-plugin-test") => {
+  await mkdir(join(dir, "src"), { recursive: true });
+  await mkdir(join(dir, "test"), { recursive: true });
+  await writeFile(
+    join(dir, "package.json"),
+    `${JSON.stringify({
+      name,
+      version: "0.0.0",
+      type: "module",
+      landoPlugin: {
+        name,
+        version: "0.0.0",
+        api: 4,
+        entry: "src/index.ts",
+      },
+    })}\n`,
+  );
+  await writeFile(join(dir, "src", "index.ts"), "export const ok = true;\n");
+  await writeFile(
+    join(dir, "test", "plugin.test.ts"),
+    "import { test } from 'bun:test'; test('ok', () => {});\n",
+  );
+};
+
+beforeEach(async () => {
+  root = await mkdtemp(join(tmpdir(), "lando-plugin-test-"));
+});
+
+afterEach(async () => {
+  if (root !== undefined) await rm(root, { recursive: true, force: true });
+});
+
+describe("meta:plugin:test command", () => {
+  test("detects the plugin root from a subdirectory and runs bun test through BunSelfRunner", async () => {
+    await writePlugin(root);
+    await mkdir(join(root, "src", "nested"), { recursive: true });
+    const spawns: Array<{ readonly cmd: ReadonlyArray<string>; readonly cwd: string }> = [];
+
+    const result = await Effect.runPromise(
+      pluginTest({
+        cwd: join(root, "src", "nested"),
+        execPath: "/opt/bun",
+        spawner: {
+          spawn: async ({ cmd, cwd }) => {
+            spawns.push({ cmd, cwd });
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(result.pluginName).toBe("@acme/lando-plugin-test");
+    expect(result.pluginRoot).toBe(root);
+    expect(result.exitCode).toBe(0);
+    expect(spawns).toEqual([{ cmd: ["/opt/bun", "test"], cwd: root }]);
+    expect(renderPluginTestResult(result)).toContain("plugin-test: @acme/lando-plugin-test");
+    expect(renderPluginTestResult(result)).toContain("result: passed");
+  });
+
+  test("skips nested non-plugin package roots while walking to the plugin package", async () => {
+    await writePlugin(root);
+    const nested = join(root, "fixtures", "plain-package");
+    await mkdir(nested, { recursive: true });
+    await writeFile(join(nested, "package.json"), `${JSON.stringify({ name: "plain-package" })}\n`);
+    const spawns: Array<{ readonly cwd: string }> = [];
+
+    const result = await Effect.runPromise(
+      pluginTest({
+        cwd: nested,
+        spawner: {
+          spawn: async ({ cwd }) => {
+            spawns.push({ cwd });
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(result.pluginRoot).toBe(root);
+    expect(spawns).toEqual([{ cwd: root }]);
+  });
+
+  test("passes positional paths before post-dash Bun arguments unchanged", async () => {
+    await writePlugin(root);
+    const spawns: Array<{ readonly cmd: ReadonlyArray<string> }> = [];
+
+    await Effect.runPromise(
+      pluginTest({
+        cwd: root,
+        argv: ["test/plugin.test.ts", "--", "--watch", "--timeout", "1000"],
+        execPath: "/opt/bun",
+        spawner: {
+          spawn: async ({ cmd }) => {
+            spawns.push({ cmd });
+            return { exitCode: 0 };
+          },
+        },
+      }),
+    );
+
+    expect(spawns[0]?.cmd).toEqual([
+      "/opt/bun",
+      "test",
+      "test/plugin.test.ts",
+      "--watch",
+      "--timeout",
+      "1000",
+    ]);
+  });
+
+  test("publishes plugin-test and BunSelfRunner lifecycle events", async () => {
+    await writePlugin(root, "@acme/lando-plugin-events");
+    const events: LandoEvent[] = [];
+
+    const result = await Effect.runPromise(
+      pluginTest({
+        cwd: root,
+        argv: ["test/plugin.test.ts", "--", "--bail"],
+        execPath: "/opt/bun",
+        spawner: { spawn: async () => ({ exitCode: 7 }) },
+      }).pipe(Effect.provide(recordingEventLayer(events))),
+    );
+
+    expect(result.exitCode).toBe(7);
+    expect(events.map((event) => event._tag)).toEqual([
+      "cli-meta:plugin:test-start",
+      "pre-bun-self-exec",
+      "post-bun-self-exec",
+      "cli-meta:plugin:test-complete",
+    ]);
+    expect(events[0]).toMatchObject({
+      _tag: "cli-meta:plugin:test-start",
+      pluginName: "@acme/lando-plugin-events",
+      argv: ["test", "test/plugin.test.ts", "--bail"],
+    });
+    expect(events[1]).toMatchObject({
+      _tag: "pre-bun-self-exec",
+      verb: "test",
+      callerSubsystem: "plugin-authoring:meta:plugin:test:@acme/lando-plugin-events",
+    });
+    expect(events[3]).toMatchObject({
+      _tag: "cli-meta:plugin:test-complete",
+      pluginName: "@acme/lando-plugin-events",
+      exitCode: 7,
+    });
+  });
+});

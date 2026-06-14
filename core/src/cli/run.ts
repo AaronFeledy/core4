@@ -72,6 +72,7 @@ import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/gl
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
 import { pluginNew, renderPluginNewResult } from "./commands/plugin-new.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
+import { pluginTest, renderPluginTestResult } from "./commands/plugin-test.ts";
 import {
   pluginTrust,
   pluginTrustAuthoringRoot,
@@ -1321,6 +1322,20 @@ const runMetaPluginNew = async (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
+const runMetaPluginTest = async (argv: ReadonlyArray<string>): Promise<void> => {
+  await runCompiledCommand(
+    pluginTest({ argv }).pipe(
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (result.exitCode !== 0) process.exitCode = result.exitCode;
+        }),
+      ),
+    ),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    renderPluginTestResult,
+  );
+};
+
 const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv.find((arg) => !arg.startsWith("-"));
   if (name === undefined) {
@@ -1497,9 +1512,14 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
+  const dashDashIndex = argv.indexOf("--");
+  const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
 
-  if (!isBunOrX && (argv.length === 0 || argv.includes("--help") || argv.includes("-h"))) {
-    const commandArg = argv.find((arg) => !arg.startsWith("-"));
+  if (
+    !isBunOrX &&
+    (dispatchArgv.length === 0 || dispatchArgv.includes("--help") || dispatchArgv.includes("-h"))
+  ) {
+    const commandArg = dispatchArgv.find((arg) => !arg.startsWith("-"));
     if (commandArg === undefined) {
       printRootHelp();
       return;
@@ -1514,7 +1534,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if ((argv.includes("--version") || argv.includes("-v")) && !isBunOrX) {
+  if ((dispatchArgv.includes("--version") || dispatchArgv.includes("-v")) && !isBunOrX) {
     emitResultLine(`${version} ${process.platform}-${process.arch} node-${process.version}`);
     return;
   }
@@ -1748,6 +1768,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "meta:plugin:new") {
     await runMetaPluginNew(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "meta:plugin:test") {
+    await runMetaPluginTest(argv.slice(1));
     return;
   }
 
