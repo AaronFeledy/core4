@@ -1195,10 +1195,8 @@ export type PublicSchemaAnnotationExemptions = {
   readonly fields?: ReadonlySet<string>;
 };
 
-const annotationValue = (annotations: AST.Annotations, key: symbol): unknown => annotations[key];
-
 const hasOwnUsefulDescription = (annotations: AST.Annotations): boolean => {
-  const value = annotationValue(annotations, AST.DescriptionAnnotationId);
+  const value = annotations[AST.DescriptionAnnotationId];
   return typeof value === "string" && value.trim().length > 0 && !BUILT_IN_DESCRIPTIONS.has(value);
 };
 
@@ -1278,7 +1276,6 @@ export const validatePublicSchemaAnnotations = (
         !hasOwnUsefulDescription(property.annotations) &&
         !hasOwnUsefulDescription(property.type.annotations) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&
-        !(exemptions.fields?.has(`${schemaName}.${name}`) ?? false) &&
         !isSelfExplanatoryPublicField(schemaName, name)
       ) {
         issues.push({
