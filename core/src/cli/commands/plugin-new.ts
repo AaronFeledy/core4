@@ -248,7 +248,7 @@ const renderPackageJson = (input: ResolvedPluginNewOptions): string => {
 const renderPluginYaml = (input: ResolvedPluginNewOptions): string => {
   const contributes = contributionForTemplate(input.template, input.cspace);
   const lines = [
-    `name: ${input.name}`,
+    `name: ${JSON.stringify(input.name)}`,
     "version: 0.0.0",
     "api: 4",
     `description: ${JSON.stringify(input.description)}`,

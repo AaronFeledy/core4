@@ -63,6 +63,9 @@ describe("meta:plugin:new command", () => {
     expect(packageJson.scripts?.build).toBe("lando meta:plugin:build");
     expect(packageJson.scripts?.link).toBe("lando meta:plugin:link");
 
+    const pluginYaml = await readFile(join(destination, "plugin.yaml"), "utf8");
+    expect(pluginYaml).toContain('name: "@acme/lando-plugin-demo"');
+
     expect(await exists(join(destination, "src", "index.ts"))).toBe(true);
     expect(await exists(join(destination, "src", "config.ts"))).toBe(true);
     expect(await exists(join(destination, "test", "plugin.test.ts"))).toBe(true);
