@@ -31,7 +31,7 @@ const compiledBinary = resolve(coreRoot, "dist/lando");
 const probeSource = resolve(coreRoot, "test/cli/parity/oclif-static-probe.ts");
 
 /** A command id that remains in the deferred-command registry. */
-const DEFERRED_ID = "meta:plugin:new";
+const DEFERRED_ID = "meta:plugin:build";
 
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
