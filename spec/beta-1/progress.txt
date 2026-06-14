@@ -583,3 +583,10 @@
 - Verification: typecheck, lint, full tests passed; focused schema contract/snapshot/codegen/branch-protection tests passed; `bun run codegen:schema-snapshot` left generated schema artifacts clean.
 - **Learnings for future iterations:** The public schema contract gate uses an explicit `Record<JsonSchemaName, ...>` fixture map plus runtime key comparison; adding a schema to `JSON_SCHEMA_NAMES` now requires updating the contract fixture file or both typecheck/codegen fail before merge.
 ---
+
+## 2026-06-14 11:25 - Babysit
+- PR: #356 https://github.com/AaronFeledy/core4/pull/356
+- CI outcome: pass
+- Review feedback: fixed (Bugbot: build-schema-snapshot.ts pruned stale reference MDX but not stale dist/schemas JSON, so the drift gate could miss removed/renamed schemas — added stale-JSON cleanup)
+- Merge: merged (squash)
+---
