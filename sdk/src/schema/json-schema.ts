@@ -1315,6 +1315,7 @@ export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaRe
     id: metadata.id,
     docsPath: metadata.docsPath,
     content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id], {
+      jsonSchema: getJsonSchema(metadata.id) as JsonObject,
       jsonSchemaPath: metadata.jsonSchemaPath,
       title: metadata.title,
       description: metadata.description,

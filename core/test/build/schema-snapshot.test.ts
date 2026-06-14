@@ -136,6 +136,32 @@ describe("schema snapshot gate", () => {
     );
   });
 
+  test("reference renderer keeps empty structs in the field table shape", () => {
+    const rendered = renderSchemaReferenceMarkdown("EmptyShape", Schema.Struct({}));
+
+    expect(rendered).toContain("| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |");
+    expect(rendered).not.toContain("## Schema details");
+  });
+
+  test("reference renderer uses provided JSON Schema field metadata", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "ArtifactBackedShape",
+      Schema.Struct({
+        value: Schema.String.annotations({ description: "Documented value." }),
+      }),
+      {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            value: { type: "number", default: 7, enum: [7] },
+          },
+        },
+      },
+    );
+
+    expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
+  });
+
   test("reference renderer surfaces deprecated schema and field callouts", () => {
     const notice = {
       since: "4.2.0",

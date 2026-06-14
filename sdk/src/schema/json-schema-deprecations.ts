@@ -332,8 +332,7 @@ const markdownCell = (value: string): string => value.replace(/\|/g, "\\|").repl
 
 const codeValue = (value: unknown): string => `\`${String(value)}\``;
 
-const schemaReferenceJsonObject = (schema: SchemaLike): JsonObject => {
-  const jsonSchema = JSONSchema.make(schema as JsonSchemaInput) as unknown as JsonObject;
+const resolveRootJsonSchemaRef = (jsonSchema: JsonObject): JsonObject => {
   const ref = typeof jsonSchema.$ref === "string" ? jsonSchema.$ref : undefined;
   if (ref?.startsWith("#/$defs/")) {
     const key = ref.slice("#/$defs/".length);
@@ -343,6 +342,9 @@ const schemaReferenceJsonObject = (schema: SchemaLike): JsonObject => {
   }
   return jsonSchema;
 };
+
+const schemaReferenceJsonObject = (schema: SchemaLike): JsonObject =>
+  resolveRootJsonSchemaRef(JSONSchema.make(schema as JsonSchemaInput) as unknown as JsonObject);
 
 const fieldDescription = (property: AST.PropertySignature): string | undefined => {
   const own = property.annotations[AST.DescriptionAnnotationId];
@@ -359,6 +361,10 @@ const unwrapUndefinedUnion = (ast: AST.AST): AST.AST => {
 const fieldType = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
   const type = typeof jsonSchema?.type === "string" ? jsonSchema.type : undefined;
   if (type !== undefined) return codeValue(type);
+  if (Array.isArray(jsonSchema?.enum) && jsonSchema.enum.length > 0) {
+    const enumTypes = new Set(jsonSchema.enum.map((value) => typeof value));
+    if (enumTypes.size === 1) return codeValue(enumTypes.values().next().value);
+  }
   const ast = schemaReferenceAst(unwrapUndefinedUnion(property.type));
   if (AST.isUnion(ast) && ast.types.every((member) => member._tag === "Literal")) return "literal";
   if (ast._tag === "StringKeyword") return "`string`";
@@ -406,7 +412,12 @@ const schemaAcceptedValues = (ast: AST.AST, jsonSchema: JsonObject): string => {
 export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
   name: string,
   schema: S,
-  options: { readonly jsonSchemaPath?: string; readonly title?: string; readonly description?: string } = {},
+  options: {
+    readonly jsonSchema?: JsonObject;
+    readonly jsonSchemaPath?: string;
+    readonly title?: string;
+    readonly description?: string;
+  } = {},
 ): string => {
   const title = options.title ?? schemaTitle(name, schema.ast);
   const description = options.description ?? schemaDescription(schema.ast);
@@ -428,9 +439,10 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
   const notice = getSchemaDeprecation(schema.ast);
   if (notice !== undefined) lines.push("> [!WARNING]", `> ${formatDeprecationNotice(notice)}`, "");
 
-  const jsonSchema = schemaReferenceJsonObject(schema);
+  const jsonSchema =
+    options.jsonSchema === undefined ? schemaReferenceJsonObject(schema) : resolveRootJsonSchemaRef(options.jsonSchema);
   const ast = schemaReferenceAst(schema.ast);
-  if (AST.isTypeLiteral(ast) && ast.propertySignatures.length > 0) {
+  if (AST.isTypeLiteral(ast)) {
     const properties = jsonObject(jsonSchema.properties);
     const rows: string[] = [
       "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
