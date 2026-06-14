@@ -457,8 +457,8 @@
         "Lint passes."
       ],
       "priority": 26,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Public schema publication now exposes publicSchemaRegistry and publicSchemaMetadataIndex from @lando/sdk/schema, re-exported automatically by @lando/core/schema; the schema snapshot generator uses the registry, emits dist/schemas/index.json metadata, and keeps the generated snapshot/artifact scope in lockstep."
     },
     {
       "id": "US-226",

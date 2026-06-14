@@ -1,4 +1,5 @@
-import { JSONSchema } from "effect";
+import { JSONSchema, type Schema } from "effect";
+import * as AST from "effect/SchemaAST";
 
 import {
   CleanupProps,
@@ -97,14 +98,19 @@ import {
   NetworkProxyConfig,
   TelemetryConfig,
 } from "./config.ts";
-import { DeprecationNotice, DeprecationNoticeJsonShape, DeprecationUse } from "./deprecation.ts";
+import {
+  DeprecationNotice,
+  DeprecationNoticeJsonShape,
+  DeprecationUse,
+  getSchemaDeprecation,
+} from "./deprecation.ts";
 import {
   FileSyncEngineCapabilities,
   FileSyncEventChunk,
   FileSyncSessionInfo,
   FileSyncSessionSpec,
 } from "./file-sync-engine.ts";
-import { getJsonSchemaWithDeprecations } from "./json-schema-deprecations.ts";
+import { getJsonSchemaWithDeprecations, renderSchemaReferenceMarkdown } from "./json-schema-deprecations.ts";
 import {
   EndpointInput,
   HealthcheckInput,
@@ -176,7 +182,25 @@ export {
 
 type JsonObject = Record<string, unknown>;
 
-const JSON_SCHEMA_REGISTRY = {
+export type PublicSchema = Schema.Schema<unknown, unknown, never>;
+
+export type PublicSchemaMetadata = {
+  readonly id: JsonSchemaName;
+  readonly title: string;
+  readonly description: string;
+  readonly packageExport: `@lando/sdk/schema#${JsonSchemaName}`;
+  readonly jsonSchemaPath: `dist/schemas/${string}.json`;
+  readonly docsPath: `docs/reference/schemas/${string}.mdx`;
+  readonly deprecated: boolean;
+};
+
+export type PublicSchemaReferencePage = {
+  readonly id: JsonSchemaName;
+  readonly docsPath: PublicSchemaMetadata["docsPath"];
+  readonly content: string;
+};
+
+export const publicSchemaRegistry = {
   DeprecationNotice,
   DeprecationUse,
   LandofileExpressionParseError,
@@ -326,8 +350,42 @@ const JSON_SCHEMA_REGISTRY = {
   PaintBannerEvent,
 } as const;
 
-export type JsonSchemaName = keyof typeof JSON_SCHEMA_REGISTRY;
-export const JSON_SCHEMA_NAMES = Object.keys(JSON_SCHEMA_REGISTRY) as ReadonlyArray<JsonSchemaName>;
+export type JsonSchemaName = keyof typeof publicSchemaRegistry;
+export const JSON_SCHEMA_NAMES = Object.keys(publicSchemaRegistry) as ReadonlyArray<JsonSchemaName>;
+
+export const schemaArtifactFilename = (schemaName: JsonSchemaName): `${string}.json` =>
+  `${schemaName
+    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
+    .toLowerCase()}.json`;
+
+const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
+  const schema = publicSchemaRegistry[schemaName];
+  const artifactFilename = schemaArtifactFilename(schemaName);
+  const docsBasename = artifactFilename.replace(/\.json$/, "");
+  return {
+    id: schemaName,
+    title: AST.getTitleAnnotation(schema.ast).pipe((option) =>
+      option._tag === "Some" ? option.value : schemaName,
+    ),
+    description: AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
+      option._tag === "Some" ? option.value : "Public Lando schema contract.",
+    ),
+    packageExport: `@lando/sdk/schema#${schemaName}`,
+    jsonSchemaPath: `dist/schemas/${artifactFilename}`,
+    docsPath: `docs/reference/schemas/${docsBasename}.mdx`,
+    deprecated: getSchemaDeprecation(schema.ast) !== undefined,
+  };
+};
+
+export const publicSchemaMetadataIndex = JSON_SCHEMA_NAMES.map(schemaMetadata);
+
+export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaReferencePage> =>
+  publicSchemaMetadataIndex.map((metadata) => ({
+    id: metadata.id,
+    docsPath: metadata.docsPath,
+    content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id]),
+  }));
 
 const landofileJsonSchema = (): JsonObject => {
   const schema = getJsonSchemaWithDeprecations(LandofileShape) as JsonObject;
@@ -375,5 +433,5 @@ export const getJsonSchema = (schemaName: JsonSchemaName) => {
   if (schemaName === "LandofileShape") return landofileJsonSchema();
   if (schemaName === "ExpressionNode" || schemaName === "ExpressionTemplate")
     return expressionJsonSchema(schemaName);
-  return getJsonSchemaWithDeprecations(JSON_SCHEMA_REGISTRY[schemaName]);
+  return getJsonSchemaWithDeprecations(publicSchemaRegistry[schemaName]);
 };

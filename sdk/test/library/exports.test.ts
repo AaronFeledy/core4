@@ -47,6 +47,10 @@ describe("@lando/sdk package exports", () => {
     expect(schema.RecipeChoicesFrom).toBeDefined();
     expect(schema.Transcript).toBeDefined();
     expect(schema.getJsonSchema).toBeDefined();
+    expect(schema.publicSchemaRegistry).toBeDefined();
+    expect(schema.publicSchemaMetadataIndex).toBeDefined();
+    expect(schema.renderPublicSchemaReferencePages).toBeDefined();
+    expect(schema.schemaArtifactFilename).toBeDefined();
     expect(schema.getJsonSchemaWithDeprecations).toBeDefined();
     expect(schema.renderSchemaReferenceMarkdown).toBeDefined();
   });
@@ -99,6 +103,9 @@ describe("@lando/sdk package exports", () => {
     const coreSchema = await import("@lando/core/schema");
 
     expect(coreSchema.DeprecationNotice).toBe(sdkSchema.DeprecationNotice);
+    expect(coreSchema.publicSchemaRegistry).toBe(sdkSchema.publicSchemaRegistry);
+    expect(coreSchema.publicSchemaMetadataIndex).toBe(sdkSchema.publicSchemaMetadataIndex);
+    expect(coreSchema.renderPublicSchemaReferencePages).toBe(sdkSchema.renderPublicSchemaReferencePages);
   });
 
   test("errors entry point exports the canonical tagged errors", async () => {
