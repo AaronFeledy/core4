@@ -9,7 +9,7 @@ tags: [beta, docs, plugins, compatibility]
 <Guide>
   <Scenario id="declare-core-compatibility" render={false} reason="The plugin SDK compatibility requirement is a static manifest field; core contract tests validate it without installing a live plugin package">
     <Step name="manifest-field">
-      <Variable name="field" value="requires: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Every Beta 1 plugin manifest MUST declare a requires map pinning the @lando/core major version it targets" />
+      <Variable name="field" value="requires: { &quot;@lando/core&quot;: &quot;^4.0.0&quot; }" display="Every Lando v4 plugin manifest MUST declare a requires map pinning the @lando/core major version it targets" />
       <Variable name="location" value="package.json landoPlugin / plugin manifest" display="The requires map lives alongside name, version, and api on the plugin manifest the SDK decodes before any plugin module loads" />
     </Step>
     <Step name="scaffolded-package-json">
@@ -21,7 +21,7 @@ tags: [beta, docs, plugins, compatibility]
 
   <Scenario id="contract-classifies-core-range" render={false} reason="runPluginContract is exercised by sdk/test/contract/plugin.test.ts across every range class; this guide documents the user-facing outcomes">
     <Step name="accepted">
-      <Variable name="compatible" value="^4.0.0" display="Only the canonical ^4.0.0 range is accepted as compatible with the Beta 1 core" />
+      <Variable name="compatible" value="^4.0.0" display="Only the canonical ^4.0.0 range is accepted as compatible with the Lando v4 core" />
     </Step>
     <Step name="rejected">
       <Variable name="missing" value="no requires['@lando/core']" display="A missing or blank core requirement is rejected as missing" />

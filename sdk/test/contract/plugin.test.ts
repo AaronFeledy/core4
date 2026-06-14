@@ -94,7 +94,7 @@ describe("runPluginContract", () => {
   });
 });
 
-const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0" for Beta 1 compatibility';
+const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0"';
 
 const runCoreContract = (manifest: unknown) =>
   runPluginContract({ manifest, layers: { logger: Layer.empty } });

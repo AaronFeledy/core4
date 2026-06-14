@@ -81,7 +81,7 @@ describe("BUNDLED_PLUGINS", () => {
     );
   });
 
-  test("every bundled plugin manifest declares the Beta 1 core compatibility range", () => {
+  test("every bundled plugin manifest declares the @lando/core compatibility range", () => {
     for (const expected of EXPECTED_BUNDLED_PLUGINS) {
       expect(expected.manifest.requires?.["@lando/core"]).toBe("^4.0.0");
     }

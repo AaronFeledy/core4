@@ -204,7 +204,7 @@ const contributionId = (value: string | { readonly id: string }): string =>
 
 const REQUIRED_CORE_RANGE = "^4.0.0";
 
-const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0" for Beta 1 compatibility';
+const CORE_COMPATIBILITY_ASSERTION = 'manifest requires "@lando/core" "^4.0.0"';
 
 const CORE_COMPATIBILITY_REMEDIATION = 'Set requires["@lando/core"] to "^4.0.0".';
 
@@ -218,7 +218,6 @@ const classifyCoreRequirement = (requires: PluginManifest["requires"]): CoreRequ
   if (range === REQUIRED_CORE_RANGE) return "compatible";
 
   if (
-    range === "*" ||
     /^[xX*](?:\.[xX*]){0,2}$/.test(range) ||
     range.includes("||") ||
     /^>=\s*(?:0|4(?:\.0(?:\.0)?)?)$/.test(range) ||
