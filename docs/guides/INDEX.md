@@ -33,6 +33,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-03 | US-219 | Plugin manifest and globalServices deprecations | `docs/guides/plugins/deprecating-plugin-surfaces.mdx` | Shipped |
 | PRD-04 | US-224 | JSON Schema artifacts for public schemas | `docs/guides/schemas/json-schema-artifacts.mdx` | Shipped |
 | PRD-04 | US-225 | `@lando/sdk/schema` registry and metadata index | `docs/guides/schemas/schema-registry.mdx` | Shipped |
+| PRD-04 | US-227 | Generated schema reference pages | `docs/guides/schemas/generated-reference-docs.mdx` | Shipped |
 | PRD-07 | US-243 | Public reader-scenario transcripts | `docs/guides/authoring/public-transcripts.mdx` | Shipped |
 | PRD-02 | US-083 | go service type | `docs/guides/services/go.mdx` | Shipped |
 | PRD-02 | US-084 | mongodb service type | `docs/guides/services/mongodb.mdx` | Shipped |

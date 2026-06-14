@@ -219,7 +219,7 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.properties?.oldValues?.items?.deprecated).toBe(true);
     expect(jsonSchema.properties?.oldValues?.items?.["x-deprecation"]).toEqual(notice);
     expect(markdown).toContain(
-      "| `oldValues` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldValues` | Yes | `array` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
     );
   });
 
@@ -240,7 +240,7 @@ describe("schema deprecation annotations", () => {
     expect(jsonSchema.properties?.oldField?.["x-deprecation"]).toEqual(notice);
     expect(jsonSchema.properties?.newField?.deprecated).toBeUndefined();
     expect(markdown).toContain(
-      "| `oldField` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldField` | No | `string` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
     );
   });
 
@@ -378,14 +378,17 @@ describe("schema deprecation annotations", () => {
     expect(patternSchema?.["x-deprecation"]).toEqual(notice);
   });
 
-  test("omits generated reference field table when no fields are deprecated", () => {
+  test("renders generated reference field table when no fields are deprecated", () => {
     const markdown = renderSchemaReferenceMarkdown(
       "NoDeprecatedFieldsSchema",
       Schema.Struct({ newField: Schema.String }),
     );
 
-    expect(markdown).toBe("# NoDeprecatedFieldsSchema\n");
-    expect(markdown).not.toContain("| Field | Deprecation |");
+    expect(markdown).toContain("# NoDeprecatedFieldsSchema");
+    expect(markdown).toContain(
+      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+    );
+    expect(markdown).toContain("| `newField` | Yes | `string` | a string | — | — | — | — |");
   });
 
   test("renders generated reference callouts from schema deprecation metadata", () => {
@@ -395,7 +398,7 @@ describe("schema deprecation annotations", () => {
       "> [!WARNING]\n> Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead.",
     );
     expect(markdown).toContain(
-      "| `oldField` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `oldField` | Yes | `string` | a string | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
     );
   });
 
@@ -406,7 +409,7 @@ describe("schema deprecation annotations", () => {
     );
 
     expect(markdown).toContain(
-      "| `optionalOldField` | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
+      "| `optionalOldField` | No | `string` | — | — | — | — | Deprecated since 4.2.0; remove in 5.0.0. Use newField instead. Use newField instead. |",
     );
   });
 

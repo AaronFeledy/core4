@@ -1,0 +1,40 @@
+---
+title: Service Config
+description: Public Lando schema contract for Service Config.
+---
+
+# Service Config
+
+Public Lando schema contract for Service Config.
+
+[JSON Schema artifact](../../../dist/schemas/service-config.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `api` | No | `number` | — | — | `4` | — | — |
+| `type` | No | `string` | — | — | — | — | — |
+| `primary` | No | `boolean` | — | — | — | — | — |
+| `image` | No | `string` | — | — | — | — | — |
+| `build` | No | `object` | — | — | — | — | — |
+| `command` | No | — | — | — | — | — | — |
+| `entrypoint` | No | — | — | — | — | — | — |
+| `user` | No | `string` | — | — | — | — | — |
+| `workingDirectory` | No | `string` | — | — | — | — | — |
+| `database` | No | `string` | — | — | — | — | — |
+| `cores` | No | `array` | — | — | — | — | — |
+| `port` | No | `number` | — | — | — | — | — |
+| `framework` | No | `string` | — | — | — | — | — |
+| `root` | No | `string` | — | — | — | — | — |
+| `environment` | No | `object` | — | — | — | — | — |
+| `ports` | No | `array` | — | — | — | — | — |
+| `volumes` | No | `array` | — | — | — | — | — |
+| `appMount` | No | — | — | — | `false` | — | — |
+| `mounts` | No | `array` | — | — | — | — | — |
+| `storage` | No | `array` | — | — | — | — | — |
+| `endpoints` | No | `array` | — | — | — | — | — |
+| `routes` | No | `array` | — | — | — | — | — |
+| `healthcheck` | No | `object` | — | — | — | — | — |
+| `hostnames` | No | `array` | — | — | — | — | — |
+| `dependsOn` | No | `array` | — | — | — | — | — |
+| `composeBuild` | No | `object` | — | — | — | — | — |
+| `providers` | No | `object` | — | — | — | — | — |

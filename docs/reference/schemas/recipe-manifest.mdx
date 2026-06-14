@@ -1,0 +1,26 @@
+---
+title: Recipe Manifest
+description: Public Lando schema contract for Recipe Manifest.
+---
+
+# Recipe Manifest
+
+Public Lando schema contract for Recipe Manifest.
+
+[JSON Schema artifact](../../../dist/schemas/recipe-manifest.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$ | — | — | — | — |
+| `title` | Yes | `string` | a string | — | — | — | — |
+| `description` | Yes | `string` | a string | — | — | — | — |
+| `version` | Yes | `string` | a string matching the pattern ^(0\|[1-9]\d*)\.(0\|[1-9]\d*)\.(0\|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$ | — | — | — | — |
+| `deprecated` | No | `object` | — | — | — | — | — |
+| `authors` | No | `array` | — | — | — | — | — |
+| `tags` | No | `array` | — | — | — | — | — |
+| `requires` | No | `object` | — | — | — | — | — |
+| `runs` | No | `array` | — | — | — | — | — |
+| `fetchAllowlist` | No | `array` | — | — | — | — | — |
+| `prompts` | No | `array` | — | — | — | — | — |
+| `files` | No | `array` | — | — | — | — | — |
+| `postInit` | No | `array` | — | — | — | — | — |

@@ -393,7 +393,7 @@ ${setupBunSteps}
         run: bun run codegen:schema-snapshot
 
       - name: Verify schema snapshot is current
-        run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json
+        run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json dist/schemas docs/reference/schemas
 
 ${timingNoticeStep("schema-snapshot", 15)}
 

@@ -8,9 +8,12 @@ import type { JsonSchemaName } from "../../../sdk/src/schema/index.ts";
 import {
   JSON_SCHEMA_NAMES,
   assertPublicSchemaAnnotations,
+  deprecateField,
+  deprecateSchema,
   publicSchemaMetadataIndex,
   publicSchemaRegistry,
   renderPublicSchemaReferencePages,
+  renderSchemaReferenceMarkdown,
   schemaArtifactFilename,
   validatePublicSchemaAnnotations,
 } from "../../../sdk/src/schema/index.ts";
@@ -21,6 +24,7 @@ const snapshotPath = resolve(repoRoot, "sdk/test/fixtures/schema-snapshot.json")
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
 const metadataIndexPath = resolve(repoRoot, "dist/schemas/index.json");
+const deprecationNoticeReferencePath = resolve(repoRoot, "docs/reference/schemas/deprecation-notice.mdx");
 
 const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
   resolve(repoRoot, "dist/schemas", schemaArtifactFilename(schemaName));
@@ -103,6 +107,74 @@ describe("schema snapshot gate", () => {
       docsPath: "docs/reference/schemas/deprecation-notice.mdx",
       content: expect.stringContaining("# Deprecation Notice"),
     });
+  });
+
+  test("generated reference pages include Starlight frontmatter, artifact links, and field details", () => {
+    const page = renderPublicSchemaReferencePages().find((entry) => entry.id === "DeprecationNotice");
+
+    expect(page?.content).toContain("---\ntitle: Deprecation Notice");
+    expect(page?.content).toContain(
+      "description: A structured deprecation declaration attached to a public surface.",
+    );
+    expect(page?.content).toContain("[JSON Schema artifact](../../../dist/schemas/deprecation-notice.json)");
+    expect(page?.content).toContain(
+      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+    );
+    expect(page?.content).toContain("| `since` | Yes | `string` | a string matching the pattern");
+    expect(page?.content).toContain(
+      "| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |",
+    );
+
+    const primitivePage = renderPublicSchemaReferencePages().find((entry) => entry.id === "AppId");
+    expect(primitivePage?.content).toContain("---\ntitle: App Id");
+    expect(primitivePage?.content).toContain("Public Lando schema contract for App Id.");
+
+    const enumPage = renderPublicSchemaReferencePages().find((entry) => entry.id === "BootstrapLevel");
+    expect(enumPage?.content).toContain("| Type | Default | Accepted values | Examples |");
+    expect(enumPage?.content).toContain(
+      "`none`, `minimal`, `plugins`, `commands`, `tooling`, `provider`, `global`, `scratch`, `app`",
+    );
+  });
+
+  test("reference renderer surfaces deprecated schema and field callouts", () => {
+    const notice = {
+      since: "4.2.0",
+      note: "Use the replacement schema instead.",
+      replacement: "ReplacementSchema",
+      severity: "warn" as const,
+    };
+    const DeprecatedShape = deprecateSchema(
+      Schema.Struct({
+        oldField: deprecateField(
+          Schema.String.annotations({ description: "Deprecated field retained for compatibility." }),
+          notice,
+        ),
+      }).annotations({
+        identifier: "DeprecatedShape",
+        title: "Deprecated Shape",
+        description: "A schema used to prove deprecation reference rendering.",
+      }),
+      notice,
+    );
+
+    const rendered = renderSchemaReferenceMarkdown("DeprecatedShape", DeprecatedShape, {
+      jsonSchemaPath: "dist/schemas/deprecated-shape.json",
+    });
+
+    expect(rendered).toContain("> [!WARNING]\n> Deprecated since 4.2.0");
+    expect(rendered).toContain(
+      "| `oldField` | Yes | `string` | Deprecated field retained for compatibility. | — | — | — | Deprecated since 4.2.0",
+    );
+  });
+
+  test("generator writes generated schema reference docs", async () => {
+    runGenerator();
+
+    const generated = await Bun.file(deprecationNoticeReferencePath).text();
+    const expected = renderPublicSchemaReferencePages().find(
+      (entry) => entry.id === "DeprecationNotice",
+    )?.content;
+    expect(generated).toBe(expected);
   });
 
   test("public schema registry entries carry required annotations", () => {

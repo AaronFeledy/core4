@@ -1,0 +1,20 @@
+---
+title: Deprecation Notice
+description: A structured deprecation declaration attached to a public surface.
+---
+
+# Deprecation Notice
+
+A structured deprecation declaration attached to a public surface.
+
+[JSON Schema artifact](../../../dist/schemas/deprecation-notice.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `since` | Yes | `string` | a string matching the pattern ^(0\|[1-9]\d*)\.(0\|[1-9]\d*)\.(0\|[1-9]\d*)$ | — | — | — | — |
+| `removeIn` | No | `string` | — | — | — | — | — |
+| `severity` | No | `string` | — | — | `info`, `warn`, `error` | — | — |
+| `replacement` | No | `string` | — | — | — | — | — |
+| `note` | Yes | `string` | a string | — | — | — | — |
+| `docsUrl` | No | `string` | — | — | — | — | — |
+| `ticket` | No | `string` | — | — | — | — | — |

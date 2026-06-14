@@ -1,0 +1,22 @@
+---
+title: Service Info
+description: Public Lando schema contract for Service Info.
+---
+
+# Service Info
+
+Public Lando schema contract for Service Info.
+
+[JSON Schema artifact](../../../dist/schemas/service-info.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `app` | Yes | `string` | a string | — | — | — | — |
+| `service` | Yes | `string` | a string | — | — | — | — |
+| `api` | Yes | `number` | — | — | `4` | — | — |
+| `type` | Yes | `string` | a string | — | — | — | — |
+| `provider` | Yes | `string` | a string | — | — | — | — |
+| `primary` | Yes | `boolean` | a boolean | — | — | — | — |
+| `status` | Yes | `string` | — | — | `unknown`, `stopped`, `starting`, `running`, `healthy`, `unhealthy`, `error` | — | — |
+| `endpoints` | No | `array` | — | — | — | — | — |
+| `routes` | No | `array` | — | — | — | — | — |

@@ -1,0 +1,18 @@
+---
+title: Mount Plan
+description: Public Lando schema contract for Mount Plan.
+---
+
+# Mount Plan
+
+Public Lando schema contract for Mount Plan.
+
+[JSON Schema artifact](../../../dist/schemas/mount-plan.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `type` | Yes | `string` | — | — | `bind`, `tmpfs`, `volume` | — | — |
+| `source` | No | `string` | — | — | — | — | — |
+| `target` | Yes | `string` | a string | — | — | — | — |
+| `readOnly` | Yes | `boolean` | a boolean | — | — | — | — |
+| `realization` | Yes | `string` | — | — | `passthrough`, `accelerated` | — | — |

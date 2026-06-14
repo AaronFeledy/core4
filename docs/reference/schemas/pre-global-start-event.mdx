@@ -1,0 +1,21 @@
+---
+title: Pre Global Start Event
+description: Public Lando schema contract for Pre Global Start Event.
+---
+
+# Pre Global Start Event
+
+Public Lando schema contract for Pre Global Start Event.
+
+[JSON Schema artifact](../../../dist/schemas/pre-global-start-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `pre-global-start` | — | — |
+| `scope` | Yes | `string` | — | — | `global` | — | — |
+| `app` | Yes | `object` | — | — | — | — | — |
+| `plan` | Yes | `object` | — | — | — | — | — |
+| `triggeredBy` | Yes | `string` | — | — | `meta:global:start`, `apps:poweroff`, `ensure-running`, `meta:setup` | — | — |
+| `ensuringServices` | Yes | `array` | — | — | — | — | — |
+| `cached` | Yes | `boolean` | a boolean | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

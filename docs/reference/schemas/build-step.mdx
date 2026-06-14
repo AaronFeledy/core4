@@ -1,0 +1,21 @@
+---
+title: Build Step
+description: Public Lando schema contract for Build Step.
+---
+
+# Build Step
+
+Public Lando schema contract for Build Step.
+
+[JSON Schema artifact](../../../dist/schemas/build-step.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | a string | — | — | — | — |
+| `service` | Yes | `string` | a string | — | — | — | — |
+| `phase` | Yes | `string` | — | — | `artifact`, `app` | — | — |
+| `kind` | Yes | `string` | — | — | `buildArtifact`, `pullArtifact`, `execStream` | — | — |
+| `command` | No | — | — | — | — | — | — |
+| `artifact` | No | — | — | — | — | — | — |
+| `dependsOn` | Yes | `array` | — | — | — | — | — |
+| `buildKey` | Yes | `string` | a string | — | — | — | — |

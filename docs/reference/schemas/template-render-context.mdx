@@ -1,0 +1,20 @@
+---
+title: Template Render Context
+description: Public Lando schema contract for Template Render Context.
+---
+
+# Template Render Context
+
+Public Lando schema contract for Template Render Context.
+
+[JSON Schema artifact](../../../dist/schemas/template-render-context.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bootstrapLevel` | Yes | `string` | — | — | `none`, `minimal`, `plugins`, `commands`, `tooling`, `provider`, `global`, `scratch`, `app` | — | — |
+| `appRoot` | No | `string` | — | — | — | — | — |
+| `env` | Yes | `object` | — | — | — | — | — |
+| `global` | No | `object` | — | — | — | — | — |
+| `landofile` | No | `object` | — | — | — | — | — |
+| `provider` | No | `string` | — | — | — | — | — |
+| `scope` | Yes | `string` | a string | — | — | — | — |

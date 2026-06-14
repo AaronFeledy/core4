@@ -1,0 +1,20 @@
+---
+title: File Sync Session Info
+description: Public Lando schema contract for File Sync Session Info.
+---
+
+# File Sync Session Info
+
+Public Lando schema contract for File Sync Session Info.
+
+[JSON Schema artifact](../../../dist/schemas/file-sync-session-info.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `ref` | Yes | `string` | a string | — | — | — | — |
+| `app` | Yes | `object` | — | — | — | — | — |
+| `service` | Yes | `string` | a string | — | — | — | — |
+| `mountKey` | Yes | `string` | a string | — | — | — | — |
+| `status` | Yes | `string` | — | — | `running`, `paused`, `draining`, `errored` | — | — |
+| `lastUpdatedAt` | Yes | `string` | — | — | — | — | — |
+| `detail` | No | `string` | — | — | — | — | — |

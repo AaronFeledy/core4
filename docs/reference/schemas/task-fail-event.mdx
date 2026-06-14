@@ -1,0 +1,20 @@
+---
+title: Task Fail Event
+description: Public Lando schema contract for Task Fail Event.
+---
+
+# Task Fail Event
+
+Public Lando schema contract for Task Fail Event.
+
+[JSON Schema artifact](../../../dist/schemas/task-fail-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `task.fail` | — | — |
+| `taskId` | Yes | `string` | a string | — | — | — | — |
+| `summary` | No | `string` | — | — | — | — | — |
+| `exitCode` | No | `number` | — | — | — | — | — |
+| `remediation` | No | `string` | — | — | — | — | — |
+| `durationMs` | No | `number` | — | — | — | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

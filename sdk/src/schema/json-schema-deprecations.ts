@@ -325,24 +325,155 @@ const schemaDescription = (ast: AST.AST): string | undefined => {
   return typeof description === "string" ? description : undefined;
 };
 
-export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(name: string, schema: S): string => {
-  const lines: string[] = [`# ${schemaTitle(name, schema.ast)}`, ""];
-  const description = schemaDescription(schema.ast);
+const frontmatterString = (value: string): string =>
+  /^[A-Za-z0-9 ._-]+$/.test(value) ? value : JSON.stringify(value);
+
+const markdownCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n+/g, " ");
+
+const codeValue = (value: unknown): string => `\`${String(value)}\``;
+
+const schemaReferenceJsonObject = (schema: SchemaLike): JsonObject => {
+  const jsonSchema = JSONSchema.make(schema as JsonSchemaInput) as unknown as JsonObject;
+  const ref = typeof jsonSchema.$ref === "string" ? jsonSchema.$ref : undefined;
+  if (ref?.startsWith("#/$defs/")) {
+    const key = ref.slice("#/$defs/".length);
+    const defs = jsonObject(jsonSchema.$defs);
+    const resolved = defs === undefined ? undefined : jsonObject(defs[key]);
+    if (resolved !== undefined) return resolved;
+  }
+  return jsonSchema;
+};
+
+const fieldDescription = (property: AST.PropertySignature): string | undefined => {
+  const own = property.annotations[AST.DescriptionAnnotationId];
+  if (typeof own === "string") return own;
+  return schemaDescription(property.type);
+};
+
+const unwrapUndefinedUnion = (ast: AST.AST): AST.AST => {
+  if (!AST.isUnion(ast)) return ast;
+  const nonUndefined = ast.types.filter((member) => member._tag !== "UndefinedKeyword");
+  return nonUndefined.length === 1 ? (nonUndefined[0] as AST.AST) : ast;
+};
+
+const fieldType = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
+  const type = typeof jsonSchema?.type === "string" ? jsonSchema.type : undefined;
+  if (type !== undefined) return codeValue(type);
+  const ast = schemaReferenceAst(unwrapUndefinedUnion(property.type));
+  if (AST.isUnion(ast) && ast.types.every((member) => member._tag === "Literal")) return "literal";
+  if (ast._tag === "StringKeyword") return "`string`";
+  if (ast._tag === "NumberKeyword") return "`number`";
+  if (ast._tag === "BooleanKeyword") return "`boolean`";
+  if (AST.isTupleType(ast)) return "`array`";
+  if (AST.isTypeLiteral(ast)) return "`object`";
+  return "—";
+};
+
+const literalValues = (ast: AST.AST): ReadonlyArray<unknown> => {
+  const unwrapped = schemaReferenceAst(unwrapUndefinedUnion(ast));
+  if (unwrapped._tag === "Literal" && "literal" in unwrapped) return [unwrapped.literal];
+  if (AST.isUnion(unwrapped)) return unwrapped.types.flatMap(literalValues);
+  return [];
+};
+
+const acceptedValues = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
+  const values = Array.isArray(jsonSchema?.enum) ? jsonSchema.enum : literalValues(property.type);
+  return values.length > 0 ? values.map(codeValue).join(", ") : "—";
+};
+
+const examples = (property: AST.PropertySignature): string => {
+  const values = property.type.annotations[AST.ExamplesAnnotationId];
+  return !Array.isArray(values) || values.length === 0
+    ? "—"
+    : values.map((value) => codeValue(JSON.stringify(value))).join(", ");
+};
+
+const defaultValue = (jsonSchema: JsonObject | undefined): string =>
+  Object.hasOwn(jsonSchema ?? {}, "default") ? codeValue(JSON.stringify(jsonSchema?.default)) : "—";
+
+const schemaExamples = (ast: AST.AST): string => {
+  const values = ast.annotations[AST.ExamplesAnnotationId];
+  return !Array.isArray(values) || values.length === 0
+    ? "—"
+    : values.map((value) => codeValue(JSON.stringify(value))).join(", ");
+};
+
+const schemaAcceptedValues = (ast: AST.AST, jsonSchema: JsonObject): string => {
+  const values = Array.isArray(jsonSchema.enum) ? jsonSchema.enum : literalValues(ast);
+  return values.length > 0 ? values.map(codeValue).join(", ") : "—";
+};
+
+export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
+  name: string,
+  schema: S,
+  options: { readonly jsonSchemaPath?: string; readonly title?: string; readonly description?: string } = {},
+): string => {
+  const title = options.title ?? schemaTitle(name, schema.ast);
+  const description = options.description ?? schemaDescription(schema.ast);
+  const jsonSchemaPath = options.jsonSchemaPath;
+  const lines: string[] = [
+    "---",
+    `title: ${frontmatterString(title)}`,
+    ...(description === undefined ? [] : [`description: ${frontmatterString(description)}`]),
+    "---",
+    "",
+    `# ${title}`,
+    "",
+  ];
   if (description !== undefined) lines.push(description, "");
+  if (jsonSchemaPath !== undefined) {
+    lines.push(`[JSON Schema artifact](../../../${jsonSchemaPath})`, "");
+  }
 
   const notice = getSchemaDeprecation(schema.ast);
   if (notice !== undefined) lines.push("> [!WARNING]", `> ${formatDeprecationNotice(notice)}`, "");
 
+  const jsonSchema = schemaReferenceJsonObject(schema);
   const ast = schemaReferenceAst(schema.ast);
   if (AST.isTypeLiteral(ast) && ast.propertySignatures.length > 0) {
-    const rows: string[] = [];
+    const properties = jsonObject(jsonSchema.properties);
+    const rows: string[] = [
+      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ];
     for (const property of ast.propertySignatures) {
       if (typeof property.name !== "string") continue;
+      const propertySchema = properties === undefined ? undefined : jsonObject(properties[property.name]);
       const propertyNotice = getSchemaDeprecation(property) ?? findSchemaReferenceDeprecation(property.type);
-      if (propertyNotice === undefined) continue;
-      rows.push(`| \`${property.name}\` | ${formatDeprecationNotice(propertyNotice)} |`);
+      rows.push(
+        [
+          codeValue(property.name),
+          property.isOptional ? "No" : "Yes",
+          fieldType(property, propertySchema),
+          fieldDescription(property) ?? "—",
+          defaultValue(propertySchema),
+          acceptedValues(property, propertySchema),
+          examples(property),
+          propertyNotice === undefined ? "—" : formatDeprecationNotice(propertyNotice),
+        ]
+          .map(markdownCell)
+          .join(" | ")
+          .replace(/^/, "| ")
+          .replace(/$/, " |"),
+      );
     }
-    if (rows.length > 0) lines.push("| Field | Deprecation |", "| --- | --- |", ...rows, "");
+    lines.push(...rows, "");
+  } else {
+    const rows = [
+      "| Type | Default | Accepted values | Examples |",
+      "| --- | --- | --- | --- |",
+      [
+        typeof jsonSchema.type === "string" ? codeValue(jsonSchema.type) : "—",
+        defaultValue(jsonSchema),
+        schemaAcceptedValues(ast, jsonSchema),
+        schemaExamples(schema.ast),
+      ]
+        .map(markdownCell)
+        .join(" | ")
+        .replace(/^/, "| ")
+        .replace(/$/, " |"),
+    ];
+    lines.push("## Schema details", "", ...rows, "");
   }
 
   return `${lines.join("\n").trimEnd()}\n`;

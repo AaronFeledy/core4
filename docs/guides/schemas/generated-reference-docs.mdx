@@ -1,0 +1,25 @@
+---
+id: generated-reference-docs
+provider: test
+platforms: [linux, darwin, win32, wsl]
+timeout: 60000
+tags: [beta, docs, schemas]
+---
+
+<Guide>
+  <Scenario id="generated-reference-pages" render={false} reason="The schema reference generator is locked by core/test/build/schema-snapshot.test.ts to avoid duplicating generated reference tables in guide prose">
+    <Step name="generate">
+      <Variable name="command" value="bun run scripts/build-schema-snapshot.ts" display="Regenerate public JSON Schema artifacts and the Starlight schema reference pages from the same public schema registry" />
+      <Variable name="output" value="docs/reference/schemas/*.mdx" display="Generated Starlight MDX pages live in the reference tree declared by publicSchemaMetadataIndex docsPath entries" />
+      <Variable name="source" value="Effect Schema AST traversal" display="Titles, descriptions, required fields, accepted values, examples, defaults, and deprecation callouts are derived from schema annotations and AST nodes" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="reference-drift-gate" render={false} reason="The generated docs drift gate is the schema snapshot generator idempotency test plus the codegen diff gate">
+    <Step name="drift">
+      <Variable name="gate" value="core/test/build/schema-snapshot.test.ts" display="The generator test rewrites schema artifacts and reference pages, then fails when generated output differs from committed source" />
+      <Variable name="coverage" value="JSON_SCHEMA_NAMES" display="One reference page is emitted for every public SDK schema, and stale MDX files under docs/reference/schemas are removed" />
+      <Variable name="manualTables" value="not accepted" display="Public schema field tables come from renderPublicSchemaReferencePages, not hand-maintained guide tables" />
+    </Step>
+  </Scenario>
+</Guide>

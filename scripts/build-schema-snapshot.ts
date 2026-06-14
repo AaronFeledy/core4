@@ -9,7 +9,7 @@
  *
  * Out-of-tree plugin manifests are intentionally not discovered here.
  */
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { Schema } from "effect";
@@ -22,12 +22,14 @@ import {
   assertPublicSchemaAnnotations,
   getJsonSchema,
   publicSchemaMetadataIndex,
+  renderPublicSchemaReferencePages,
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
 const SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/schemas");
+const SCHEMA_REFERENCE_DIR = resolve(REPO_ROOT, "docs/reference/schemas");
 
 const stable = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stable);
@@ -84,6 +86,7 @@ const renderSnapshot = (): string => {
 const main = async (): Promise<void> => {
   await Bun.write(OUTPUT, renderSnapshot());
   await mkdir(SCHEMA_ARTIFACT_DIR, { recursive: true });
+  await mkdir(SCHEMA_REFERENCE_DIR, { recursive: true });
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
   await Bun.write(metadataIndexPath, `${JSON.stringify(stable(publicSchemaMetadataIndex), null, 2)}\n`);
   const artifactPaths: string[] = [metadataIndexPath];
@@ -91,6 +94,18 @@ const main = async (): Promise<void> => {
     const artifactPath = resolve(SCHEMA_ARTIFACT_DIR, schemaArtifactFilename(schemaName));
     artifactPaths.push(artifactPath);
     await Bun.write(artifactPath, `${JSON.stringify(stable(generateJsonSchema(schemaName)), null, 2)}\n`);
+  }
+  const referencePages = renderPublicSchemaReferencePages();
+  const referencePaths = new Set(referencePages.map((page) => resolve(REPO_ROOT, page.docsPath)));
+  for (const entry of await readdir(SCHEMA_REFERENCE_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".mdx")) continue;
+    const path = resolve(SCHEMA_REFERENCE_DIR, entry.name);
+    if (!referencePaths.has(path)) await rm(path);
+  }
+  for (const page of referencePages) {
+    const referencePath = resolve(REPO_ROOT, page.docsPath);
+    artifactPaths.push(referencePath);
+    await Bun.write(referencePath, page.content);
   }
 
   const check = Bun.spawn({

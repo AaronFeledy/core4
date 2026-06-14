@@ -534,18 +534,37 @@ export const schemaArtifactFilename = (schemaName: JsonSchemaName): `${string}.j
     .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
     .toLowerCase()}.json`;
 
+const BUILT_IN_SCHEMA_TITLES = new Set(["string", "number", "boolean", "bigint", "symbol", "object"]);
+
+const BUILT_IN_SCHEMA_DESCRIPTIONS = new Set([
+  "a string",
+  "a number",
+  "a boolean",
+  "a bigint",
+  "a symbol",
+  "an object in the TypeScript meaning, i.e. the `object` type",
+]);
+
 const schemaMetadata = (schemaName: JsonSchemaName): PublicSchemaMetadata => {
   const schema = publicSchemaRegistry[schemaName];
   const artifactFilename = schemaArtifactFilename(schemaName);
   const docsBasename = artifactFilename.replace(/\.json$/, "");
+  const titleAnnotation = AST.getTitleAnnotation(schema.ast).pipe((option) =>
+    option._tag === "Some" ? option.value : undefined,
+  );
+  const descriptionAnnotation = AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
+    option._tag === "Some" ? option.value : undefined,
+  );
   return {
     id: schemaName,
-    title: AST.getTitleAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : schemaName,
-    ),
-    description: AST.getDescriptionAnnotation(schema.ast).pipe((option) =>
-      option._tag === "Some" ? option.value : "Public Lando schema contract.",
-    ),
+    title:
+      titleAnnotation !== undefined && !BUILT_IN_SCHEMA_TITLES.has(titleAnnotation)
+        ? titleAnnotation
+        : titleFromSchemaName(schemaName),
+    description:
+      descriptionAnnotation !== undefined && !BUILT_IN_SCHEMA_DESCRIPTIONS.has(descriptionAnnotation)
+        ? descriptionAnnotation
+        : PUBLIC_SCHEMA_DESCRIPTIONS[schemaName],
     packageExport: `@lando/sdk/schema#${schemaName}`,
     jsonSchemaPath: `dist/schemas/${artifactFilename}`,
     docsPath: `docs/reference/schemas/${docsBasename}.mdx`,
@@ -1304,7 +1323,11 @@ export const renderPublicSchemaReferencePages = (): ReadonlyArray<PublicSchemaRe
   publicSchemaMetadataIndex.map((metadata) => ({
     id: metadata.id,
     docsPath: metadata.docsPath,
-    content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id]),
+    content: renderSchemaReferenceMarkdown(metadata.id, publicSchemaRegistry[metadata.id], {
+      jsonSchemaPath: metadata.jsonSchemaPath,
+      title: metadata.title,
+      description: metadata.description,
+    }),
   }));
 
 const landofileJsonSchema = (): JsonObject => {

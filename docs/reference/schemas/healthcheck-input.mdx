@@ -1,0 +1,21 @@
+---
+title: Healthcheck Input
+description: Public Lando schema contract for Healthcheck Input.
+---
+
+# Healthcheck Input
+
+Public Lando schema contract for Healthcheck Input.
+
+[JSON Schema artifact](../../../dist/schemas/healthcheck-input.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `kind` | No | `string` | — | — | `command`, `http`, `tcp`, `none` | — | — |
+| `command` | No | — | — | — | — | — | — |
+| `url` | No | `string` | — | — | — | — | — |
+| `port` | No | `number` | — | — | — | — | — |
+| `intervalSeconds` | No | `number` | — | — | — | — | — |
+| `timeoutSeconds` | No | `number` | — | — | — | — | — |
+| `retries` | No | `number` | — | — | — | — | — |
+| `startPeriodSeconds` | No | `number` | — | — | — | — | — |

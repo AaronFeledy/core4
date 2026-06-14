@@ -493,8 +493,8 @@
         "Lint passes."
       ],
       "priority": 28,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Generated Starlight MDX reference pages are emitted from the public schema registry/AST traversal, include field/detail tables plus deprecation callouts and JSON Schema links, are covered by the docs guide, and the schema-snapshot CI drift gate now checks snapshot, dist/schemas, and docs/reference/schemas outputs together."
     },
     {
       "id": "US-228",
