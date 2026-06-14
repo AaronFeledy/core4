@@ -2,24 +2,25 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import type { JsonSchemaName } from "../../../sdk/src/schema/index.ts";
 
-import { JSON_SCHEMA_NAMES } from "../../../sdk/src/schema/index.ts";
+import {
+  JSON_SCHEMA_NAMES,
+  publicSchemaMetadataIndex,
+  publicSchemaRegistry,
+  renderPublicSchemaReferencePages,
+  schemaArtifactFilename,
+} from "../../../sdk/src/schema/index.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const snapshotPath = resolve(repoRoot, "sdk/test/fixtures/schema-snapshot.json");
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
+const metadataIndexPath = resolve(repoRoot, "dist/schemas/index.json");
 
-const schemaArtifactPath = (schemaName: string): string =>
-  resolve(
-    repoRoot,
-    "dist/schemas",
-    `${schemaName
-      .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-      .toLowerCase()}.json`,
-  );
+const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
+  resolve(repoRoot, "dist/schemas", schemaArtifactFilename(schemaName));
 
 const runGenerator = (): void => {
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
@@ -67,6 +68,38 @@ describe("schema snapshot gate", () => {
     const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
     expect(snapshot.scope.bundledPluginManifests).toEqual(bundledNames);
     expect(snapshot.bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
+  });
+
+  test("public registry drives schema names and metadata index", async () => {
+    runGenerator();
+
+    const generated = JSON.parse(
+      await readFile(metadataIndexPath, "utf8"),
+    ) as typeof publicSchemaMetadataIndex;
+
+    expect(Object.keys(publicSchemaRegistry)).toEqual(JSON_SCHEMA_NAMES);
+    expect(generated).toEqual(publicSchemaMetadataIndex);
+    expect(generated.map((entry) => entry.id)).toEqual(JSON_SCHEMA_NAMES);
+    expect(generated.find((entry) => entry.id === "DeprecationNotice")).toMatchObject({
+      title: "Deprecation Notice",
+      packageExport: "@lando/sdk/schema#DeprecationNotice",
+      jsonSchemaPath: "dist/schemas/deprecation-notice.json",
+      docsPath: "docs/reference/schemas/deprecation-notice.mdx",
+      deprecated: false,
+    });
+  });
+
+  test("public registry drives generated reference page inputs", () => {
+    const pages = renderPublicSchemaReferencePages();
+
+    expect(pages.map((page) => page.id)).toEqual(JSON_SCHEMA_NAMES);
+    expect(pages.map((page) => page.docsPath)).toEqual(
+      publicSchemaMetadataIndex.map((entry) => entry.docsPath),
+    );
+    expect(pages.find((page) => page.id === "DeprecationNotice")).toMatchObject({
+      docsPath: "docs/reference/schemas/deprecation-notice.mdx",
+      content: expect.stringContaining("# Deprecation Notice"),
+    });
   });
 
   test("generator emits the deprecation notice schema artifact", async () => {

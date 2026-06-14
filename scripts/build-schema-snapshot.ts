@@ -20,17 +20,13 @@ import {
   PluginManifest,
   assertJsonSchemaDeprecationsValid,
   getJsonSchema,
+  publicSchemaMetadataIndex,
+  schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
 const SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/schemas");
-
-const artifactFilename = (schemaName: string): string =>
-  `${schemaName
-    .replace(/([a-z0-9])([A-Z])/g, "$1-$2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1-$2")
-    .toLowerCase()}.json`;
 
 const stable = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(stable);
@@ -71,8 +67,10 @@ const renderSnapshot = (): string => {
       generatedBy: "scripts/build-schema-snapshot.ts",
       scope: {
         sdkSchemas: JSON_SCHEMA_NAMES,
+        schemaMetadata: "dist/schemas/index.json",
         bundledPluginManifests: bundledPluginManifests.map((plugin) => plugin.name),
       },
+      schemaMetadata: publicSchemaMetadataIndex,
       sdkSchemas,
       bundledPluginManifests,
     }),
@@ -84,9 +82,11 @@ const renderSnapshot = (): string => {
 const main = async (): Promise<void> => {
   await Bun.write(OUTPUT, renderSnapshot());
   await mkdir(SCHEMA_ARTIFACT_DIR, { recursive: true });
-  const artifactPaths: string[] = [];
+  const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
+  await Bun.write(metadataIndexPath, `${JSON.stringify(stable(publicSchemaMetadataIndex), null, 2)}\n`);
+  const artifactPaths: string[] = [metadataIndexPath];
   for (const schemaName of JSON_SCHEMA_NAMES) {
-    const artifactPath = resolve(SCHEMA_ARTIFACT_DIR, artifactFilename(schemaName));
+    const artifactPath = resolve(SCHEMA_ARTIFACT_DIR, schemaArtifactFilename(schemaName));
     artifactPaths.push(artifactPath);
     await Bun.write(artifactPath, `${JSON.stringify(stable(generateJsonSchema(schemaName)), null, 2)}\n`);
   }

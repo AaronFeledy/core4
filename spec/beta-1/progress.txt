@@ -450,6 +450,24 @@
 - Merge: merged (squash)
 ---
 
+## 2026-06-13 12:45 CDT - US-225
+- Shipped the central public schema registry and metadata index: `@lando/sdk/schema` now exposes the registry, metadata index, and artifact filename helper; `@lando/core/schema` re-exports the same objects; schema snapshot generation writes the metadata index from that registry.
+- Added the schema-registry guide and coverage row so the public registry surface is documented alongside the generated schema artifacts.
+- Verification: typecheck, lint, focused schema/export tests, guide coverage/lint/scenario, and full tests passed.
+- **Learnings for future iterations:** Treat `publicSchemaRegistry` as the single schema-publication source of truth; JSON Schema artifacts, metadata, docs inputs, and core re-exports should derive from it rather than introducing another schema list.
+---
+## 2026-06-13 18:03 CDT - US-225 Build
+- Finished the in-flight schema registry branch by wiring the public schema registry into generated reference-page inputs and documenting/exporting the final registry helper surface. The SDK schema entry remains the canonical source, core re-exports it by identity, and the schema snapshot gate now locks JSON artifact metadata plus reference-page docs paths to the registry.
+- Verification: focused schema/export/compatibility tests, schema snapshot codegen drift check, guide coverage, guide lint, typecheck, lint, and full tests passed.
+- **Learnings for future iterations:** Schema reference-page helpers should consume `publicSchemaMetadataIndex` so docs paths, artifact paths, and registry order drift together under the schema snapshot gate rather than a separate hand-maintained docs list.
+---
+
+## 2026-06-13 19:20 CDT - US-225 Review
+- Reviewed the central public schema registry + metadata index against PRD-04 acceptance criteria; no code changes required. Confirmed single source of truth (publicSchemaRegistry drives JSON_SCHEMA_NAMES, metadata index, JSON artifacts, reference-page inputs, and core re-export by identity), accurate kebab-case artifact paths, and clean git history.
+- Review notes (deferred/rejected): Oracle flagged that `packageExport` uniformly claims `@lando/sdk/schema#<id>` while 54 registry entries (errors/events/expressions schemas) are not named top-level exports of the schema barrel. Deferred, not fixed: all are reachable from `@lando/sdk/schema` via the exported `publicSchemaRegistry` object (so AC #5's canonical-surface claim holds), spec §07 line 928 + PRD Technical Considerations designate `@lando/sdk/schema` as the documented entry point even when internal module names differ, and "fixing" it (re-export 54 schemas or re-point to subpaths) is an out-of-scope frozen-surface/type change that would churn the §13.2 snapshot and SDK compat fixtures. Future docs-navigation consumer (US-227) should revisit packageExport precision if a literal resolvable import is required.
+- Verification: typecheck, lint, full `bun test` (3482 pass / 0 fail) passed.
+---
+
 ## 2026-06-13 - US-272
 - Promoted `@lando/core/testing` to a declared-stable surface on the `next` channel for Beta 1 (docs/components and docs/redactions stay unstable until GA), and made the deterministic in-memory `TestRuntime` satisfy every default service tag at each bootstrap level.
 - `makeTestRuntime`/`provideTestRuntime` now provide level-precise layers: minimal adds Renderer/Telemetry/EventService/DeprecationService/PluginTrustStore/CacheService/PrivilegeService/SecretStore; provider adds PluginRegistry/RuntimeProviderRegistry/GlobalAppService; global adds AppPlanner; scratch adds AppPlanner/LandofileService/ScratchAppService (+ core-private ScratchRegistry/ScratchResourceScanner); app adds AppPlanner/LandofileService/CommandRegistry/ToolingEngine/FileSyncEngine. All doubles are deterministic, in-memory, and never touch real disk/network or process streams; the Renderer double records output into an in-memory call bucket. Heavy lookup/load methods fail deterministically with their own tagged errors rather than performing IO.
