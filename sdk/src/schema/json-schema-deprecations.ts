@@ -433,15 +433,23 @@ const jsonSchemaTypes = (jsonSchema: JsonObject | undefined): ReadonlyArray<stri
   return [...types];
 };
 
+const astDisplayType = (ast: AST.AST, options: { readonly showUnknown?: boolean } = {}): string => {
+  const unwrapped = schemaReferenceAst(unwrapUndefinedUnion(ast));
+  if (AST.isUnion(unwrapped) && unwrapped.types.every((member) => member._tag === "Literal"))
+    return "literal";
+  if (unwrapped._tag === "StringKeyword") return "`string`";
+  if (unwrapped._tag === "NumberKeyword") return "`number`";
+  if (unwrapped._tag === "BooleanKeyword") return "`boolean`";
+  if (options.showUnknown === true && unwrapped._tag === "UnknownKeyword") return "`unknown`";
+  if (AST.isTupleType(unwrapped)) return "`array`";
+  if (AST.isTypeLiteral(unwrapped)) return "`object`";
+  return "—";
+};
+
 const astFieldType = (property: AST.PropertySignature): string => {
   const ast = schemaReferenceAst(unwrapUndefinedUnion(property.type));
   if (AST.isUnion(ast) && ast.types.every((member) => member._tag === "Literal")) return "literal";
-  if (ast._tag === "StringKeyword") return "`string`";
-  if (ast._tag === "NumberKeyword") return "`number`";
-  if (ast._tag === "BooleanKeyword") return "`boolean`";
-  if (AST.isTupleType(ast)) return "`array`";
-  if (AST.isTypeLiteral(ast)) return "`object`";
-  return "—";
+  return astDisplayType(property.type);
 };
 
 const fieldType = (
@@ -611,6 +619,32 @@ const renderFieldRows = (fields: ReadonlyArray<SchemaReferenceField>): ReadonlyA
   return rows;
 };
 
+const indexSignatureKeyType = (signature: AST.IndexSignature): string => {
+  switch (signature.parameter._tag) {
+    case "StringKeyword":
+    case "SymbolKeyword":
+      return "`string`";
+    case "TemplateLiteral":
+    case "Refinement":
+      return "patterned `string`";
+  }
+};
+
+const renderIndexSignatureRows = (ast: AST.TypeLiteral, jsonSchema: JsonObject): ReadonlyArray<string> => {
+  if (ast.indexSignatures.length === 0) return [];
+  const rows = ["| Keys | Values |", "| --- | --- |"];
+  for (const signature of ast.indexSignatures) {
+    const indexSchema = jsonObject(indexSignatureJsonSchema(jsonSchema, signature));
+    const jsonTypes = jsonSchemaTypes(indexSchema);
+    const valueType =
+      jsonTypes.length > 0
+        ? jsonTypes.map(codeValue).join(", ")
+        : astDisplayType(signature.type, { showUnknown: true });
+    rows.push(`| ${indexSignatureKeyType(signature)} | ${valueType} |`);
+  }
+  return rows;
+};
+
 export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
   name: string,
   schema: S,
@@ -651,6 +685,10 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
     : objectUnionFields(ast, jsonSchema);
   if (fields.length > 0 || AST.isTypeLiteral(ast)) {
     lines.push(...renderFieldRows(fields), "");
+  }
+
+  if (AST.isTypeLiteral(ast) && ast.indexSignatures.length > 0) {
+    lines.push("## Schema details", "", ...renderIndexSignatureRows(ast, jsonSchema), "");
   }
 
   const schemaTypes = jsonSchemaTypes(jsonSchema);

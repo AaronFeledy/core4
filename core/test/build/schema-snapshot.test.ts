@@ -145,6 +145,20 @@ describe("schema snapshot gate", () => {
     expect(rendered).not.toContain("## Schema details");
   });
 
+  test("reference renderer documents root record schemas", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "StringMap",
+      Schema.Record({ key: Schema.String, value: Schema.String }),
+    );
+
+    expect(rendered).toContain(
+      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+    );
+    expect(rendered).toContain("## Schema details");
+    expect(rendered).toContain("| Keys | Values |");
+    expect(rendered).toContain("| `string` | `string` |");
+  });
+
   test("reference renderer uses provided JSON Schema field metadata", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "ArtifactBackedShape",
