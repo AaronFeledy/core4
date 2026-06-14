@@ -125,6 +125,12 @@ describe("runPluginContract @lando/core compatibility", () => {
     await expect(Effect.runPromise(runCoreContract(TestPluginManifest))).resolves.toBeUndefined();
   });
 
+  test("accepts the canonical range with surrounding whitespace", async () => {
+    await expect(
+      Effect.runPromise(runCoreContract(manifestWithRequires({ "@lando/core": "  ^4.0.0  " }))),
+    ).resolves.toBeUndefined();
+  });
+
   test("rejects a manifest with no requires block as missing", async () => {
     await expectCoreContractFailure(manifestWithRequires(undefined), "missing");
   });

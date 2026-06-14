@@ -13,3 +13,6 @@ entry: ./src/index.ts
 contributes:
   loggers:
     - pretty
+
+requires:
+  "@lando/core": "^4.0.0"
