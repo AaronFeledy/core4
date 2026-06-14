@@ -215,30 +215,30 @@
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Landofile Expression Parse Error.",
       "docsPath": "docs/reference/schemas/landofile-expression-parse-error.mdx",
       "id": "LandofileExpressionParseError",
       "jsonSchemaPath": "dist/schemas/landofile-expression-parse-error.json",
       "packageExport": "@lando/sdk/schema#LandofileExpressionParseError",
-      "title": "LandofileExpressionParseError"
+      "title": "Landofile Expression Parse Error"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Landofile Expression Forbidden Error.",
       "docsPath": "docs/reference/schemas/landofile-expression-forbidden-error.mdx",
       "id": "LandofileExpressionForbiddenError",
       "jsonSchemaPath": "dist/schemas/landofile-expression-forbidden-error.json",
       "packageExport": "@lando/sdk/schema#LandofileExpressionForbiddenError",
-      "title": "LandofileExpressionForbiddenError"
+      "title": "Landofile Expression Forbidden Error"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Landofile Expression Eval Error.",
       "docsPath": "docs/reference/schemas/landofile-expression-eval-error.mdx",
       "id": "LandofileExpressionEvalError",
       "jsonSchemaPath": "dist/schemas/landofile-expression-eval-error.json",
       "packageExport": "@lando/sdk/schema#LandofileExpressionEvalError",
-      "title": "LandofileExpressionEvalError"
+      "title": "Landofile Expression Eval Error"
     },
     {
       "deprecated": false,
@@ -404,426 +404,426 @@
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Expression Node.",
       "docsPath": "docs/reference/schemas/expression-node.mdx",
       "id": "ExpressionNode",
       "jsonSchemaPath": "dist/schemas/expression-node.json",
       "packageExport": "@lando/sdk/schema#ExpressionNode",
-      "title": "ExpressionNode"
+      "title": "Expression Node"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Expression Template.",
       "docsPath": "docs/reference/schemas/expression-template.mdx",
       "id": "ExpressionTemplate",
       "jsonSchemaPath": "dist/schemas/expression-template.json",
       "packageExport": "@lando/sdk/schema#ExpressionTemplate",
-      "title": "ExpressionTemplate"
+      "title": "Expression Template"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Bootstrap Level.",
       "docsPath": "docs/reference/schemas/bootstrap-level.mdx",
       "id": "BootstrapLevel",
       "jsonSchemaPath": "dist/schemas/bootstrap-level.json",
       "packageExport": "@lando/sdk/schema#BootstrapLevel",
-      "title": "BootstrapLevel"
+      "title": "Bootstrap Level"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Host Architecture.",
       "docsPath": "docs/reference/schemas/host-architecture.mdx",
       "id": "HostArchitecture",
       "jsonSchemaPath": "dist/schemas/host-architecture.json",
       "packageExport": "@lando/sdk/schema#HostArchitecture",
-      "title": "HostArchitecture"
+      "title": "Host Architecture"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for App Ref.",
       "docsPath": "docs/reference/schemas/app-ref.mdx",
       "id": "AppRef",
       "jsonSchemaPath": "dist/schemas/app-ref.json",
       "packageExport": "@lando/sdk/schema#AppRef",
-      "title": "AppRef"
+      "title": "App Ref"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Artifact Ref.",
       "docsPath": "docs/reference/schemas/artifact-ref.mdx",
       "id": "ArtifactRef",
       "jsonSchemaPath": "dist/schemas/artifact-ref.json",
       "packageExport": "@lando/sdk/schema#ArtifactRef",
-      "title": "ArtifactRef"
+      "title": "Artifact Ref"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Artifact Build Spec.",
       "docsPath": "docs/reference/schemas/artifact-build-spec.mdx",
       "id": "ArtifactBuildSpec",
       "jsonSchemaPath": "dist/schemas/artifact-build-spec.json",
       "packageExport": "@lando/sdk/schema#ArtifactBuildSpec",
-      "title": "ArtifactBuildSpec"
+      "title": "Artifact Build Spec"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Build Script.",
       "docsPath": "docs/reference/schemas/build-script.mdx",
       "id": "BuildScript",
       "jsonSchemaPath": "dist/schemas/build-script.json",
       "packageExport": "@lando/sdk/schema#BuildScript",
-      "title": "BuildScript"
+      "title": "Build Script"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Build Plan.",
       "docsPath": "docs/reference/schemas/build-plan.mdx",
       "id": "BuildPlan",
       "jsonSchemaPath": "dist/schemas/build-plan.json",
       "packageExport": "@lando/sdk/schema#BuildPlan",
-      "title": "BuildPlan"
+      "title": "Build Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Build Step.",
       "docsPath": "docs/reference/schemas/build-step.mdx",
       "id": "BuildStep",
       "jsonSchemaPath": "dist/schemas/build-step.json",
       "packageExport": "@lando/sdk/schema#BuildStep",
-      "title": "BuildStep"
+      "title": "Build Step"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for App Plan.",
       "docsPath": "docs/reference/schemas/app-plan.mdx",
       "id": "AppPlan",
       "jsonSchemaPath": "dist/schemas/app-plan.json",
       "packageExport": "@lando/sdk/schema#AppPlan",
-      "title": "AppPlan"
+      "title": "App Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Service Plan.",
       "docsPath": "docs/reference/schemas/service-plan.mdx",
       "id": "ServicePlan",
       "jsonSchemaPath": "dist/schemas/service-plan.json",
       "packageExport": "@lando/sdk/schema#ServicePlan",
-      "title": "ServicePlan"
+      "title": "Service Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for App Mount Plan.",
       "docsPath": "docs/reference/schemas/app-mount-plan.mdx",
       "id": "AppMountPlan",
       "jsonSchemaPath": "dist/schemas/app-mount-plan.json",
       "packageExport": "@lando/sdk/schema#AppMountPlan",
-      "title": "AppMountPlan"
+      "title": "App Mount Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Mount Plan.",
       "docsPath": "docs/reference/schemas/mount-plan.mdx",
       "id": "MountPlan",
       "jsonSchemaPath": "dist/schemas/mount-plan.json",
       "packageExport": "@lando/sdk/schema#MountPlan",
-      "title": "MountPlan"
+      "title": "Mount Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Data Store Plan.",
       "docsPath": "docs/reference/schemas/data-store-plan.mdx",
       "id": "DataStorePlan",
       "jsonSchemaPath": "dist/schemas/data-store-plan.json",
       "packageExport": "@lando/sdk/schema#DataStorePlan",
-      "title": "DataStorePlan"
+      "title": "Data Store Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Data Store Mount Plan.",
       "docsPath": "docs/reference/schemas/data-store-mount-plan.mdx",
       "id": "DataStoreMountPlan",
       "jsonSchemaPath": "dist/schemas/data-store-mount-plan.json",
       "packageExport": "@lando/sdk/schema#DataStoreMountPlan",
-      "title": "DataStoreMountPlan"
+      "title": "Data Store Mount Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Storage Scope.",
       "docsPath": "docs/reference/schemas/storage-scope.mdx",
       "id": "StorageScope",
       "jsonSchemaPath": "dist/schemas/storage-scope.json",
       "packageExport": "@lando/sdk/schema#StorageScope",
-      "title": "StorageScope"
+      "title": "Storage Scope"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Endpoint Plan.",
       "docsPath": "docs/reference/schemas/endpoint-plan.mdx",
       "id": "EndpointPlan",
       "jsonSchemaPath": "dist/schemas/endpoint-plan.json",
       "packageExport": "@lando/sdk/schema#EndpointPlan",
-      "title": "EndpointPlan"
+      "title": "Endpoint Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Route Ref.",
       "docsPath": "docs/reference/schemas/route-ref.mdx",
       "id": "RouteRef",
       "jsonSchemaPath": "dist/schemas/route-ref.json",
       "packageExport": "@lando/sdk/schema#RouteRef",
-      "title": "RouteRef"
+      "title": "Route Ref"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Route Plan.",
       "docsPath": "docs/reference/schemas/route-plan.mdx",
       "id": "RoutePlan",
       "jsonSchemaPath": "dist/schemas/route-plan.json",
       "packageExport": "@lando/sdk/schema#RoutePlan",
-      "title": "RoutePlan"
+      "title": "Route Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Healthcheck Plan.",
       "docsPath": "docs/reference/schemas/healthcheck-plan.mdx",
       "id": "HealthcheckPlan",
       "jsonSchemaPath": "dist/schemas/healthcheck-plan.json",
       "packageExport": "@lando/sdk/schema#HealthcheckPlan",
-      "title": "HealthcheckPlan"
+      "title": "Healthcheck Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Certificate Plan.",
       "docsPath": "docs/reference/schemas/certificate-plan.mdx",
       "id": "CertificatePlan",
       "jsonSchemaPath": "dist/schemas/certificate-plan.json",
       "packageExport": "@lando/sdk/schema#CertificatePlan",
-      "title": "CertificatePlan"
+      "title": "Certificate Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Host Alias Plan.",
       "docsPath": "docs/reference/schemas/host-alias-plan.mdx",
       "id": "HostAliasPlan",
       "jsonSchemaPath": "dist/schemas/host-alias-plan.json",
       "packageExport": "@lando/sdk/schema#HostAliasPlan",
-      "title": "HostAliasPlan"
+      "title": "Host Alias Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Dependency Plan.",
       "docsPath": "docs/reference/schemas/dependency-plan.mdx",
       "id": "DependencyPlan",
       "jsonSchemaPath": "dist/schemas/dependency-plan.json",
       "packageExport": "@lando/sdk/schema#DependencyPlan",
-      "title": "DependencyPlan"
+      "title": "Dependency Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Network Plan.",
       "docsPath": "docs/reference/schemas/network-plan.mdx",
       "id": "NetworkPlan",
       "jsonSchemaPath": "dist/schemas/network-plan.json",
       "packageExport": "@lando/sdk/schema#NetworkPlan",
-      "title": "NetworkPlan"
+      "title": "Network Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Per App Bridge Plan.",
       "docsPath": "docs/reference/schemas/per-app-bridge-plan.mdx",
       "id": "PerAppBridgePlan",
       "jsonSchemaPath": "dist/schemas/per-app-bridge-plan.json",
       "packageExport": "@lando/sdk/schema#PerAppBridgePlan",
-      "title": "PerAppBridgePlan"
+      "title": "Per App Bridge Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Shared Network Membership Plan.",
       "docsPath": "docs/reference/schemas/shared-network-membership-plan.mdx",
       "id": "SharedNetworkMembershipPlan",
       "jsonSchemaPath": "dist/schemas/shared-network-membership-plan.json",
       "packageExport": "@lando/sdk/schema#SharedNetworkMembershipPlan",
-      "title": "SharedNetworkMembershipPlan"
+      "title": "Shared Network Membership Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Networking Plan.",
       "docsPath": "docs/reference/schemas/networking-plan.mdx",
       "id": "NetworkingPlan",
       "jsonSchemaPath": "dist/schemas/networking-plan.json",
       "packageExport": "@lando/sdk/schema#NetworkingPlan",
-      "title": "NetworkingPlan"
+      "title": "Networking Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Isolate Mode.",
       "docsPath": "docs/reference/schemas/isolate-mode.mdx",
       "id": "IsolateMode",
       "jsonSchemaPath": "dist/schemas/isolate-mode.json",
       "packageExport": "@lando/sdk/schema#IsolateMode",
-      "title": "IsolateMode"
+      "title": "Isolate Mode"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Provider Capabilities.",
       "docsPath": "docs/reference/schemas/provider-capabilities.mdx",
       "id": "ProviderCapabilities",
       "jsonSchemaPath": "dist/schemas/provider-capabilities.json",
       "packageExport": "@lando/sdk/schema#ProviderCapabilities",
-      "title": "ProviderCapabilities"
+      "title": "Provider Capabilities"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Landofile Shape.",
       "docsPath": "docs/reference/schemas/landofile-shape.mdx",
       "id": "LandofileShape",
       "jsonSchemaPath": "dist/schemas/landofile-shape.json",
       "packageExport": "@lando/sdk/schema#LandofileShape",
-      "title": "LandofileShape"
+      "title": "Landofile Shape"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Service Config.",
       "docsPath": "docs/reference/schemas/service-config.mdx",
       "id": "ServiceConfig",
       "jsonSchemaPath": "dist/schemas/service-config.json",
       "packageExport": "@lando/sdk/schema#ServiceConfig",
-      "title": "ServiceConfig"
+      "title": "Service Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Endpoint Input.",
       "docsPath": "docs/reference/schemas/endpoint-input.mdx",
       "id": "EndpointInput",
       "jsonSchemaPath": "dist/schemas/endpoint-input.json",
       "packageExport": "@lando/sdk/schema#EndpointInput",
-      "title": "EndpointInput"
+      "title": "Endpoint Input"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Route Input.",
       "docsPath": "docs/reference/schemas/route-input.mdx",
       "id": "RouteInput",
       "jsonSchemaPath": "dist/schemas/route-input.json",
       "packageExport": "@lando/sdk/schema#RouteInput",
-      "title": "RouteInput"
+      "title": "Route Input"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Healthcheck Input.",
       "docsPath": "docs/reference/schemas/healthcheck-input.mdx",
       "id": "HealthcheckInput",
       "jsonSchemaPath": "dist/schemas/healthcheck-input.json",
       "packageExport": "@lando/sdk/schema#HealthcheckInput",
-      "title": "HealthcheckInput"
+      "title": "Healthcheck Input"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Tooling Var.",
       "docsPath": "docs/reference/schemas/tooling-var.mdx",
       "id": "ToolingVar",
       "jsonSchemaPath": "dist/schemas/tooling-var.json",
       "packageExport": "@lando/sdk/schema#ToolingVar",
-      "title": "ToolingVar"
+      "title": "Tooling Var"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Tooling Flag Shape.",
       "docsPath": "docs/reference/schemas/tooling-flag-shape.mdx",
       "id": "ToolingFlagShape",
       "jsonSchemaPath": "dist/schemas/tooling-flag-shape.json",
       "packageExport": "@lando/sdk/schema#ToolingFlagShape",
-      "title": "ToolingFlagShape"
+      "title": "Tooling Flag Shape"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Tooling Arg Shape.",
       "docsPath": "docs/reference/schemas/tooling-arg-shape.mdx",
       "id": "ToolingArgShape",
       "jsonSchemaPath": "dist/schemas/tooling-arg-shape.json",
       "packageExport": "@lando/sdk/schema#ToolingArgShape",
-      "title": "ToolingArgShape"
+      "title": "Tooling Arg Shape"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Tooling Task Shape.",
       "docsPath": "docs/reference/schemas/tooling-task-shape.mdx",
       "id": "ToolingTaskShape",
       "jsonSchemaPath": "dist/schemas/tooling-task-shape.json",
       "packageExport": "@lando/sdk/schema#ToolingTaskShape",
-      "title": "ToolingTaskShape"
+      "title": "Tooling Task Shape"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Include Entry.",
       "docsPath": "docs/reference/schemas/include-entry.mdx",
       "id": "IncludeEntry",
       "jsonSchemaPath": "dist/schemas/include-entry.json",
       "packageExport": "@lando/sdk/schema#IncludeEntry",
-      "title": "IncludeEntry"
+      "title": "Include Entry"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Telemetry Config.",
       "docsPath": "docs/reference/schemas/telemetry-config.mdx",
       "id": "TelemetryConfig",
       "jsonSchemaPath": "dist/schemas/telemetry-config.json",
       "packageExport": "@lando/sdk/schema#TelemetryConfig",
-      "title": "TelemetryConfig"
+      "title": "Telemetry Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Network Proxy Config.",
       "docsPath": "docs/reference/schemas/network-proxy-config.mdx",
       "id": "NetworkProxyConfig",
       "jsonSchemaPath": "dist/schemas/network-proxy-config.json",
       "packageExport": "@lando/sdk/schema#NetworkProxyConfig",
-      "title": "NetworkProxyConfig"
+      "title": "Network Proxy Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Network Ca Config.",
       "docsPath": "docs/reference/schemas/network-ca-config.mdx",
       "id": "NetworkCaConfig",
       "jsonSchemaPath": "dist/schemas/network-ca-config.json",
       "packageExport": "@lando/sdk/schema#NetworkCaConfig",
-      "title": "NetworkCaConfig"
+      "title": "Network Ca Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Network Config.",
       "docsPath": "docs/reference/schemas/network-config.mdx",
       "id": "NetworkConfig",
       "jsonSchemaPath": "dist/schemas/network-config.json",
       "packageExport": "@lando/sdk/schema#NetworkConfig",
-      "title": "NetworkConfig"
+      "title": "Network Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Global Config.",
       "docsPath": "docs/reference/schemas/global-config.mdx",
       "id": "GlobalConfig",
       "jsonSchemaPath": "dist/schemas/global-config.json",
       "packageExport": "@lando/sdk/schema#GlobalConfig",
-      "title": "GlobalConfig"
+      "title": "Global Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Config Lint Violation.",
       "docsPath": "docs/reference/schemas/config-lint-violation.mdx",
       "id": "ConfigLintViolation",
       "jsonSchemaPath": "dist/schemas/config-lint-violation.json",
       "packageExport": "@lando/sdk/schema#ConfigLintViolation",
-      "title": "ConfigLintViolation"
+      "title": "Config Lint Violation"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Config Lint Result.",
       "docsPath": "docs/reference/schemas/config-lint-result.mdx",
       "id": "ConfigLintResult",
       "jsonSchemaPath": "dist/schemas/config-lint-result.json",
       "packageExport": "@lando/sdk/schema#ConfigLintResult",
-      "title": "ConfigLintResult"
+      "title": "Config Lint Result"
     },
     {
       "deprecated": false,
@@ -872,534 +872,534 @@
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Command Spec.",
       "docsPath": "docs/reference/schemas/command-spec.mdx",
       "id": "CommandSpec",
       "jsonSchemaPath": "dist/schemas/command-spec.json",
       "packageExport": "@lando/sdk/schema#CommandSpec",
-      "title": "CommandSpec"
+      "title": "Command Spec"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Plan Metadata.",
       "docsPath": "docs/reference/schemas/plan-metadata.mdx",
       "id": "PlanMetadata",
       "jsonSchemaPath": "dist/schemas/plan-metadata.json",
       "packageExport": "@lando/sdk/schema#PlanMetadata",
-      "title": "PlanMetadata"
+      "title": "Plan Metadata"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Provider Extension Config.",
       "docsPath": "docs/reference/schemas/provider-extension-config.mdx",
       "id": "ProviderExtensionConfig",
       "jsonSchemaPath": "dist/schemas/provider-extension-config.json",
       "packageExport": "@lando/sdk/schema#ProviderExtensionConfig",
-      "title": "ProviderExtensionConfig"
+      "title": "Provider Extension Config"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Host Platform.",
       "docsPath": "docs/reference/schemas/host-platform.mdx",
       "id": "HostPlatform",
       "jsonSchemaPath": "dist/schemas/host-platform.json",
       "packageExport": "@lando/sdk/schema#HostPlatform",
-      "title": "HostPlatform"
+      "title": "Host Platform"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Service Info.",
       "docsPath": "docs/reference/schemas/service-info.mdx",
       "id": "ServiceInfo",
       "jsonSchemaPath": "dist/schemas/service-info.json",
       "packageExport": "@lando/sdk/schema#ServiceInfo",
-      "title": "ServiceInfo"
+      "title": "Service Info"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Embedding Plugin Policy.",
       "docsPath": "docs/reference/schemas/embedding-plugin-policy.mdx",
       "id": "EmbeddingPluginPolicy",
       "jsonSchemaPath": "dist/schemas/embedding-plugin-policy.json",
       "packageExport": "@lando/sdk/schema#EmbeddingPluginPolicy",
-      "title": "EmbeddingPluginPolicy"
+      "title": "Embedding Plugin Policy"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Contribution Ref.",
       "docsPath": "docs/reference/schemas/contribution-ref.mdx",
       "id": "ContributionRef",
       "jsonSchemaPath": "dist/schemas/contribution-ref.json",
       "packageExport": "@lando/sdk/schema#ContributionRef",
-      "title": "ContributionRef"
+      "title": "Contribution Ref"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Plugin Setup Flag Contribution.",
       "docsPath": "docs/reference/schemas/plugin-setup-flag-contribution.mdx",
       "id": "PluginSetupFlagContribution",
       "jsonSchemaPath": "dist/schemas/plugin-setup-flag-contribution.json",
       "packageExport": "@lando/sdk/schema#PluginSetupFlagContribution",
-      "title": "PluginSetupFlagContribution"
+      "title": "Plugin Setup Flag Contribution"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Plugin Setup Contribution.",
       "docsPath": "docs/reference/schemas/plugin-setup-contribution.mdx",
       "id": "PluginSetupContribution",
       "jsonSchemaPath": "dist/schemas/plugin-setup-contribution.json",
       "packageExport": "@lando/sdk/schema#PluginSetupContribution",
-      "title": "PluginSetupContribution"
+      "title": "Plugin Setup Contribution"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Plugin Contribution.",
       "docsPath": "docs/reference/schemas/plugin-contribution.mdx",
       "id": "PluginContribution",
       "jsonSchemaPath": "dist/schemas/plugin-contribution.json",
       "packageExport": "@lando/sdk/schema#PluginContribution",
-      "title": "PluginContribution"
+      "title": "Plugin Contribution"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Plugin Manifest.",
       "docsPath": "docs/reference/schemas/plugin-manifest.mdx",
       "id": "PluginManifest",
       "jsonSchemaPath": "dist/schemas/plugin-manifest.json",
       "packageExport": "@lando/sdk/schema#PluginManifest",
-      "title": "PluginManifest"
+      "title": "Plugin Manifest"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Plugin Trust State.",
       "docsPath": "docs/reference/schemas/plugin-trust-state.mdx",
       "id": "PluginTrustState",
       "jsonSchemaPath": "dist/schemas/plugin-trust-state.json",
       "packageExport": "@lando/sdk/schema#PluginTrustState",
-      "title": "PluginTrustState"
+      "title": "Plugin Trust State"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Global Service Contribution.",
       "docsPath": "docs/reference/schemas/global-service-contribution.mdx",
       "id": "GlobalServiceContribution",
       "jsonSchemaPath": "dist/schemas/global-service-contribution.json",
       "packageExport": "@lando/sdk/schema#GlobalServiceContribution",
-      "title": "GlobalServiceContribution"
+      "title": "Global Service Contribution"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for File Sync Engine Capabilities.",
       "docsPath": "docs/reference/schemas/file-sync-engine-capabilities.mdx",
       "id": "FileSyncEngineCapabilities",
       "jsonSchemaPath": "dist/schemas/file-sync-engine-capabilities.json",
       "packageExport": "@lando/sdk/schema#FileSyncEngineCapabilities",
-      "title": "FileSyncEngineCapabilities"
+      "title": "File Sync Engine Capabilities"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for File Sync Session Spec.",
       "docsPath": "docs/reference/schemas/file-sync-session-spec.mdx",
       "id": "FileSyncSessionSpec",
       "jsonSchemaPath": "dist/schemas/file-sync-session-spec.json",
       "packageExport": "@lando/sdk/schema#FileSyncSessionSpec",
-      "title": "FileSyncSessionSpec"
+      "title": "File Sync Session Spec"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for File Sync Session Info.",
       "docsPath": "docs/reference/schemas/file-sync-session-info.mdx",
       "id": "FileSyncSessionInfo",
       "jsonSchemaPath": "dist/schemas/file-sync-session-info.json",
       "packageExport": "@lando/sdk/schema#FileSyncSessionInfo",
-      "title": "FileSyncSessionInfo"
+      "title": "File Sync Session Info"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for File Sync Event Chunk.",
       "docsPath": "docs/reference/schemas/file-sync-event-chunk.mdx",
       "id": "FileSyncEventChunk",
       "jsonSchemaPath": "dist/schemas/file-sync-event-chunk.json",
       "packageExport": "@lando/sdk/schema#FileSyncEventChunk",
-      "title": "FileSyncEventChunk"
+      "title": "File Sync Event Chunk"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for File Sync Plan.",
       "docsPath": "docs/reference/schemas/file-sync-plan.mdx",
       "id": "FileSyncPlan",
       "jsonSchemaPath": "dist/schemas/file-sync-plan.json",
       "packageExport": "@lando/sdk/schema#FileSyncPlan",
-      "title": "FileSyncPlan"
+      "title": "File Sync Plan"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Recipe Choices From.",
       "docsPath": "docs/reference/schemas/recipe-choices-from.mdx",
       "id": "RecipeChoicesFrom",
       "jsonSchemaPath": "dist/schemas/recipe-choices-from.json",
       "packageExport": "@lando/sdk/schema#RecipeChoicesFrom",
-      "title": "RecipeChoicesFrom"
+      "title": "Recipe Choices From"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Recipe Manifest.",
       "docsPath": "docs/reference/schemas/recipe-manifest.mdx",
       "id": "RecipeManifest",
       "jsonSchemaPath": "dist/schemas/recipe-manifest.json",
       "packageExport": "@lando/sdk/schema#RecipeManifest",
-      "title": "RecipeManifest"
+      "title": "Recipe Manifest"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Recipe Registry Resolution.",
       "docsPath": "docs/reference/schemas/recipe-registry-resolution.mdx",
       "id": "RecipeRegistryResolution",
       "jsonSchemaPath": "dist/schemas/recipe-registry-resolution.json",
       "packageExport": "@lando/sdk/schema#RecipeRegistryResolution",
-      "title": "RecipeRegistryResolution"
+      "title": "Recipe Registry Resolution"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Recipe Registry Response.",
       "docsPath": "docs/reference/schemas/recipe-registry-response.mdx",
       "id": "RecipeRegistryResponse",
       "jsonSchemaPath": "dist/schemas/recipe-registry-response.json",
       "packageExport": "@lando/sdk/schema#RecipeRegistryResponse",
-      "title": "RecipeRegistryResponse"
+      "title": "Recipe Registry Response"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Template Render Context.",
       "docsPath": "docs/reference/schemas/template-render-context.mdx",
       "id": "TemplateRenderContext",
       "jsonSchemaPath": "dist/schemas/template-render-context.json",
       "packageExport": "@lando/sdk/schema#TemplateRenderContext",
-      "title": "TemplateRenderContext"
+      "title": "Template Render Context"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Lando Event.",
       "docsPath": "docs/reference/schemas/lando-event.mdx",
       "id": "LandoEvent",
       "jsonSchemaPath": "dist/schemas/lando-event.json",
       "packageExport": "@lando/sdk/schema#LandoEvent",
-      "title": "LandoEvent"
+      "title": "Lando Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Bootstrap Event.",
       "docsPath": "docs/reference/schemas/pre-bootstrap-event.mdx",
       "id": "PreBootstrapEvent",
       "jsonSchemaPath": "dist/schemas/pre-bootstrap-event.json",
       "packageExport": "@lando/sdk/schema#PreBootstrapEvent",
-      "title": "PreBootstrapEvent"
+      "title": "Pre Bootstrap Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Bootstrap Event.",
       "docsPath": "docs/reference/schemas/post-bootstrap-event.mdx",
       "id": "PostBootstrapEvent",
       "jsonSchemaPath": "dist/schemas/post-bootstrap-event.json",
       "packageExport": "@lando/sdk/schema#PostBootstrapEvent",
-      "title": "PostBootstrapEvent"
+      "title": "Post Bootstrap Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Ready Event.",
       "docsPath": "docs/reference/schemas/ready-event.mdx",
       "id": "ReadyEvent",
       "jsonSchemaPath": "dist/schemas/ready-event.json",
       "packageExport": "@lando/sdk/schema#ReadyEvent",
-      "title": "ReadyEvent"
+      "title": "Ready Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Before Exit Event.",
       "docsPath": "docs/reference/schemas/before-exit-event.mdx",
       "id": "BeforeExitEvent",
       "jsonSchemaPath": "dist/schemas/before-exit-event.json",
       "packageExport": "@lando/sdk/schema#BeforeExitEvent",
-      "title": "BeforeExitEvent"
+      "title": "Before Exit Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Init Event.",
       "docsPath": "docs/reference/schemas/pre-init-event.mdx",
       "id": "PreInitEvent",
       "jsonSchemaPath": "dist/schemas/pre-init-event.json",
       "packageExport": "@lando/sdk/schema#PreInitEvent",
-      "title": "PreInitEvent"
+      "title": "Pre Init Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Init Event.",
       "docsPath": "docs/reference/schemas/post-init-event.mdx",
       "id": "PostInitEvent",
       "jsonSchemaPath": "dist/schemas/post-init-event.json",
       "packageExport": "@lando/sdk/schema#PostInitEvent",
-      "title": "PostInitEvent"
+      "title": "Post Init Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Start Event.",
       "docsPath": "docs/reference/schemas/pre-start-event.mdx",
       "id": "PreStartEvent",
       "jsonSchemaPath": "dist/schemas/pre-start-event.json",
       "packageExport": "@lando/sdk/schema#PreStartEvent",
-      "title": "PreStartEvent"
+      "title": "Pre Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Start Event.",
       "docsPath": "docs/reference/schemas/post-start-event.mdx",
       "id": "PostStartEvent",
       "jsonSchemaPath": "dist/schemas/post-start-event.json",
       "packageExport": "@lando/sdk/schema#PostStartEvent",
-      "title": "PostStartEvent"
+      "title": "Post Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Stop Event.",
       "docsPath": "docs/reference/schemas/pre-stop-event.mdx",
       "id": "PreStopEvent",
       "jsonSchemaPath": "dist/schemas/pre-stop-event.json",
       "packageExport": "@lando/sdk/schema#PreStopEvent",
-      "title": "PreStopEvent"
+      "title": "Pre Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Stop Event.",
       "docsPath": "docs/reference/schemas/post-stop-event.mdx",
       "id": "PostStopEvent",
       "jsonSchemaPath": "dist/schemas/post-stop-event.json",
       "packageExport": "@lando/sdk/schema#PostStopEvent",
-      "title": "PostStopEvent"
+      "title": "Post Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Rebuild Event.",
       "docsPath": "docs/reference/schemas/pre-rebuild-event.mdx",
       "id": "PreRebuildEvent",
       "jsonSchemaPath": "dist/schemas/pre-rebuild-event.json",
       "packageExport": "@lando/sdk/schema#PreRebuildEvent",
-      "title": "PreRebuildEvent"
+      "title": "Pre Rebuild Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Rebuild Event.",
       "docsPath": "docs/reference/schemas/post-rebuild-event.mdx",
       "id": "PostRebuildEvent",
       "jsonSchemaPath": "dist/schemas/post-rebuild-event.json",
       "packageExport": "@lando/sdk/schema#PostRebuildEvent",
-      "title": "PostRebuildEvent"
+      "title": "Post Rebuild Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Destroy Event.",
       "docsPath": "docs/reference/schemas/pre-destroy-event.mdx",
       "id": "PreDestroyEvent",
       "jsonSchemaPath": "dist/schemas/pre-destroy-event.json",
       "packageExport": "@lando/sdk/schema#PreDestroyEvent",
-      "title": "PreDestroyEvent"
+      "title": "Pre Destroy Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Destroy Event.",
       "docsPath": "docs/reference/schemas/post-destroy-event.mdx",
       "id": "PostDestroyEvent",
       "jsonSchemaPath": "dist/schemas/post-destroy-event.json",
       "packageExport": "@lando/sdk/schema#PostDestroyEvent",
-      "title": "PostDestroyEvent"
+      "title": "Post Destroy Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Global Start Event.",
       "docsPath": "docs/reference/schemas/pre-global-start-event.mdx",
       "id": "PreGlobalStartEvent",
       "jsonSchemaPath": "dist/schemas/pre-global-start-event.json",
       "packageExport": "@lando/sdk/schema#PreGlobalStartEvent",
-      "title": "PreGlobalStartEvent"
+      "title": "Pre Global Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Global Start Event.",
       "docsPath": "docs/reference/schemas/post-global-start-event.mdx",
       "id": "PostGlobalStartEvent",
       "jsonSchemaPath": "dist/schemas/post-global-start-event.json",
       "packageExport": "@lando/sdk/schema#PostGlobalStartEvent",
-      "title": "PostGlobalStartEvent"
+      "title": "Post Global Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Global Stop Event.",
       "docsPath": "docs/reference/schemas/pre-global-stop-event.mdx",
       "id": "PreGlobalStopEvent",
       "jsonSchemaPath": "dist/schemas/pre-global-stop-event.json",
       "packageExport": "@lando/sdk/schema#PreGlobalStopEvent",
-      "title": "PreGlobalStopEvent"
+      "title": "Pre Global Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Global Stop Event.",
       "docsPath": "docs/reference/schemas/post-global-stop-event.mdx",
       "id": "PostGlobalStopEvent",
       "jsonSchemaPath": "dist/schemas/post-global-stop-event.json",
       "packageExport": "@lando/sdk/schema#PostGlobalStopEvent",
-      "title": "PostGlobalStopEvent"
+      "title": "Post Global Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre App Start Event.",
       "docsPath": "docs/reference/schemas/pre-app-start-event.mdx",
       "id": "PreAppStartEvent",
       "jsonSchemaPath": "dist/schemas/pre-app-start-event.json",
       "packageExport": "@lando/sdk/schema#PreAppStartEvent",
-      "title": "PreAppStartEvent"
+      "title": "Pre App Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post App Start Event.",
       "docsPath": "docs/reference/schemas/post-app-start-event.mdx",
       "id": "PostAppStartEvent",
       "jsonSchemaPath": "dist/schemas/post-app-start-event.json",
       "packageExport": "@lando/sdk/schema#PostAppStartEvent",
-      "title": "PostAppStartEvent"
+      "title": "Post App Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre App Stop Event.",
       "docsPath": "docs/reference/schemas/pre-app-stop-event.mdx",
       "id": "PreAppStopEvent",
       "jsonSchemaPath": "dist/schemas/pre-app-stop-event.json",
       "packageExport": "@lando/sdk/schema#PreAppStopEvent",
-      "title": "PreAppStopEvent"
+      "title": "Pre App Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post App Stop Event.",
       "docsPath": "docs/reference/schemas/post-app-stop-event.mdx",
       "id": "PostAppStopEvent",
       "jsonSchemaPath": "dist/schemas/post-app-stop-event.json",
       "packageExport": "@lando/sdk/schema#PostAppStopEvent",
-      "title": "PostAppStopEvent"
+      "title": "Post App Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Service Start Event.",
       "docsPath": "docs/reference/schemas/pre-service-start-event.mdx",
       "id": "PreServiceStartEvent",
       "jsonSchemaPath": "dist/schemas/pre-service-start-event.json",
       "packageExport": "@lando/sdk/schema#PreServiceStartEvent",
-      "title": "PreServiceStartEvent"
+      "title": "Pre Service Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Service Start Event.",
       "docsPath": "docs/reference/schemas/post-service-start-event.mdx",
       "id": "PostServiceStartEvent",
       "jsonSchemaPath": "dist/schemas/post-service-start-event.json",
       "packageExport": "@lando/sdk/schema#PostServiceStartEvent",
-      "title": "PostServiceStartEvent"
+      "title": "Post Service Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Service Stop Event.",
       "docsPath": "docs/reference/schemas/pre-service-stop-event.mdx",
       "id": "PreServiceStopEvent",
       "jsonSchemaPath": "dist/schemas/pre-service-stop-event.json",
       "packageExport": "@lando/sdk/schema#PreServiceStopEvent",
-      "title": "PreServiceStopEvent"
+      "title": "Pre Service Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Service Stop Event.",
       "docsPath": "docs/reference/schemas/post-service-stop-event.mdx",
       "id": "PostServiceStopEvent",
       "jsonSchemaPath": "dist/schemas/post-service-stop-event.json",
       "packageExport": "@lando/sdk/schema#PostServiceStopEvent",
-      "title": "PostServiceStopEvent"
+      "title": "Post Service Stop Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Build Event.",
       "docsPath": "docs/reference/schemas/pre-build-event.mdx",
       "id": "PreBuildEvent",
       "jsonSchemaPath": "dist/schemas/pre-build-event.json",
       "packageExport": "@lando/sdk/schema#PreBuildEvent",
-      "title": "PreBuildEvent"
+      "title": "Pre Build Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Build Event.",
       "docsPath": "docs/reference/schemas/post-build-event.mdx",
       "id": "PostBuildEvent",
       "jsonSchemaPath": "dist/schemas/post-build-event.json",
       "packageExport": "@lando/sdk/schema#PostBuildEvent",
-      "title": "PostBuildEvent"
+      "title": "Post Build Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Provider Apply Event.",
       "docsPath": "docs/reference/schemas/pre-provider-apply-event.mdx",
       "id": "PreProviderApplyEvent",
       "jsonSchemaPath": "dist/schemas/pre-provider-apply-event.json",
       "packageExport": "@lando/sdk/schema#PreProviderApplyEvent",
-      "title": "PreProviderApplyEvent"
+      "title": "Pre Provider Apply Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Provider Apply Event.",
       "docsPath": "docs/reference/schemas/post-provider-apply-event.mdx",
       "id": "PostProviderApplyEvent",
       "jsonSchemaPath": "dist/schemas/post-provider-apply-event.json",
       "packageExport": "@lando/sdk/schema#PostProviderApplyEvent",
-      "title": "PostProviderApplyEvent"
+      "title": "Post Provider Apply Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Pre Provider Exec Event.",
       "docsPath": "docs/reference/schemas/pre-provider-exec-event.mdx",
       "id": "PreProviderExecEvent",
       "jsonSchemaPath": "dist/schemas/pre-provider-exec-event.json",
       "packageExport": "@lando/sdk/schema#PreProviderExecEvent",
-      "title": "PreProviderExecEvent"
+      "title": "Pre Provider Exec Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Post Provider Exec Event.",
       "docsPath": "docs/reference/schemas/post-provider-exec-event.mdx",
       "id": "PostProviderExecEvent",
       "jsonSchemaPath": "dist/schemas/post-provider-exec-event.json",
       "packageExport": "@lando/sdk/schema#PostProviderExecEvent",
-      "title": "PostProviderExecEvent"
+      "title": "Post Provider Exec Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Cli Command Init Event.",
       "docsPath": "docs/reference/schemas/cli-command-init-event.mdx",
       "id": "CliCommandInitEvent",
       "jsonSchemaPath": "dist/schemas/cli-command-init-event.json",
       "packageExport": "@lando/sdk/schema#CliCommandInitEvent",
-      "title": "CliCommandInitEvent"
+      "title": "Cli Command Init Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Cli Command Run Event.",
       "docsPath": "docs/reference/schemas/cli-command-run-event.mdx",
       "id": "CliCommandRunEvent",
       "jsonSchemaPath": "dist/schemas/cli-command-run-event.json",
       "packageExport": "@lando/sdk/schema#CliCommandRunEvent",
-      "title": "CliCommandRunEvent"
+      "title": "Cli Command Run Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Cli Command Error Event.",
       "docsPath": "docs/reference/schemas/cli-command-error-event.mdx",
       "id": "CliCommandErrorEvent",
       "jsonSchemaPath": "dist/schemas/cli-command-error-event.json",
       "packageExport": "@lando/sdk/schema#CliCommandErrorEvent",
-      "title": "CliCommandErrorEvent"
+      "title": "Cli Command Error Event"
     },
     {
       "deprecated": false,
@@ -1412,111 +1412,111 @@
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Tree Start Event.",
       "docsPath": "docs/reference/schemas/task-tree-start-event.mdx",
       "id": "TaskTreeStartEvent",
       "jsonSchemaPath": "dist/schemas/task-tree-start-event.json",
       "packageExport": "@lando/sdk/schema#TaskTreeStartEvent",
-      "title": "TaskTreeStartEvent"
+      "title": "Task Tree Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Start Event.",
       "docsPath": "docs/reference/schemas/task-start-event.mdx",
       "id": "TaskStartEvent",
       "jsonSchemaPath": "dist/schemas/task-start-event.json",
       "packageExport": "@lando/sdk/schema#TaskStartEvent",
-      "title": "TaskStartEvent"
+      "title": "Task Start Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Detail Event.",
       "docsPath": "docs/reference/schemas/task-detail-event.mdx",
       "id": "TaskDetailEvent",
       "jsonSchemaPath": "dist/schemas/task-detail-event.json",
       "packageExport": "@lando/sdk/schema#TaskDetailEvent",
-      "title": "TaskDetailEvent"
+      "title": "Task Detail Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Detail Expand Event.",
       "docsPath": "docs/reference/schemas/task-detail-expand-event.mdx",
       "id": "TaskDetailExpandEvent",
       "jsonSchemaPath": "dist/schemas/task-detail-expand-event.json",
       "packageExport": "@lando/sdk/schema#TaskDetailExpandEvent",
-      "title": "TaskDetailExpandEvent"
+      "title": "Task Detail Expand Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Detail Collapse Event.",
       "docsPath": "docs/reference/schemas/task-detail-collapse-event.mdx",
       "id": "TaskDetailCollapseEvent",
       "jsonSchemaPath": "dist/schemas/task-detail-collapse-event.json",
       "packageExport": "@lando/sdk/schema#TaskDetailCollapseEvent",
-      "title": "TaskDetailCollapseEvent"
+      "title": "Task Detail Collapse Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Complete Event.",
       "docsPath": "docs/reference/schemas/task-complete-event.mdx",
       "id": "TaskCompleteEvent",
       "jsonSchemaPath": "dist/schemas/task-complete-event.json",
       "packageExport": "@lando/sdk/schema#TaskCompleteEvent",
-      "title": "TaskCompleteEvent"
+      "title": "Task Complete Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Fail Event.",
       "docsPath": "docs/reference/schemas/task-fail-event.mdx",
       "id": "TaskFailEvent",
       "jsonSchemaPath": "dist/schemas/task-fail-event.json",
       "packageExport": "@lando/sdk/schema#TaskFailEvent",
-      "title": "TaskFailEvent"
+      "title": "Task Fail Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Task Tree Complete Event.",
       "docsPath": "docs/reference/schemas/task-tree-complete-event.mdx",
       "id": "TaskTreeCompleteEvent",
       "jsonSchemaPath": "dist/schemas/task-tree-complete-event.json",
       "packageExport": "@lando/sdk/schema#TaskTreeCompleteEvent",
-      "title": "TaskTreeCompleteEvent"
+      "title": "Task Tree Complete Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Message Info Event.",
       "docsPath": "docs/reference/schemas/message-info-event.mdx",
       "id": "MessageInfoEvent",
       "jsonSchemaPath": "dist/schemas/message-info-event.json",
       "packageExport": "@lando/sdk/schema#MessageInfoEvent",
-      "title": "MessageInfoEvent"
+      "title": "Message Info Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Message Warn Event.",
       "docsPath": "docs/reference/schemas/message-warn-event.mdx",
       "id": "MessageWarnEvent",
       "jsonSchemaPath": "dist/schemas/message-warn-event.json",
       "packageExport": "@lando/sdk/schema#MessageWarnEvent",
-      "title": "MessageWarnEvent"
+      "title": "Message Warn Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Message Error Event.",
       "docsPath": "docs/reference/schemas/message-error-event.mdx",
       "id": "MessageErrorEvent",
       "jsonSchemaPath": "dist/schemas/message-error-event.json",
       "packageExport": "@lando/sdk/schema#MessageErrorEvent",
-      "title": "MessageErrorEvent"
+      "title": "Message Error Event"
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract.",
+      "description": "Public Lando schema contract for Paint Banner Event.",
       "docsPath": "docs/reference/schemas/paint-banner-event.mdx",
       "id": "PaintBannerEvent",
       "jsonSchemaPath": "dist/schemas/paint-banner-event.json",
       "packageExport": "@lando/sdk/schema#PaintBannerEvent",
-      "title": "PaintBannerEvent"
+      "title": "Paint Banner Event"
     }
   ],
   "scope": {

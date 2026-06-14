@@ -475,8 +475,8 @@
         "Lint passes."
       ],
       "priority": 27,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Public schema annotation enforcement now runs in the schema snapshot gate: registry schemas receive required metadata annotations, public field descriptions are checked with path-scoped exemptions, schema and field examples decode during generation, and missing annotations report actionable schema/field paths."
     },
     {
       "id": "US-227",

@@ -497,6 +497,19 @@
 - Merge: merged (squash)
 ---
 
+## 2026-06-13 20:33 CDT - US-226
+- Implemented the public schema annotation gate: registry schemas now carry required metadata for generated references, field descriptions are enforced with path-scoped exemptions, schema and field examples decode during schema snapshot generation, and failures name the schema/field path.
+- Verification: typecheck, lint, schema snapshot/export/codegen focused tests, full `bun test`, and Oracle reviewer gate passed.
+- **Learnings for future iterations:** Keep JSON Schema generation on raw schemas when adding registry-only documentation annotations; wrapping the public registry is safe for metadata/docs, but artifacts that assert exact property shape should continue to use the original schema AST.
+---
+
+## 2026-06-13 21:55 - Babysit
+- PR: #351 https://github.com/AaronFeledy/core4/pull/351
+- CI outcome: pass
+- Review feedback: fixed (resolved CONFLICTING merge state by merging origin/main; only conflict was progress.txt, kept both sides)
+- Merge: merged (squash)
+---
+
 ## 2026-06-13 - US-245
 - Shipped library-mode executable guides: `<Run runtime="library" code={`...`} displayCode={`...`} />` now generates scenario tests that import and execute `@lando/core` library APIs directly through the provided `ScenarioContext` (`context.runtime` / `@lando/core/testing` helpers) instead of routing through `runCli`. `RunProps` became a three-form union (command | shell | library); the library form requires explicit `code` (executed) and `displayCode` (reader-visible), keeping display-vs-execute binding explicit and never inferred. Generated files that contain a library run switch to namespaced `import * as LandoCore`/`import * as LandoTesting` + `LandoTesting.withScenarioContext`, while CLI-only scenarios keep their existing imports unchanged. Public transcripts derive `runtime: "library"` when every run in a scenario is library-mode, emit the run frame with `commandDisplay = displayCode` + `resultSummary = "library code executed"`, and the generator rejects scenarios that mix cli/shell and library runs. Shipped the `docs/guides/embedding/library-mode-guide-scenarios.mdx` acceptance guide (host-safe `FileSystem.readText` via `context.runtime.layer` + `makeTestRuntime`) and its INDEX row; failures still source-map back to the authoring MDX `<Run>` line.
 - Verification: typecheck, lint (biome + check:deprecations), lint:guides, check:guide-coverage, codegen:schema-snapshot determinism, and `bun test` (3507 pass / 27 skip) all green. The single failing test (`sdk/test/library/exports.test.ts` "core schema re-exports the canonical deprecation notice") is a pre-existing core-vs-SDK `DeprecationNotice` identity failure unrelated to this story — it reproduces on a clean tree with these changes stashed.
