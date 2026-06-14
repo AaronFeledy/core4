@@ -178,6 +178,36 @@ describe("schema snapshot gate", () => {
     expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
   });
 
+  test("reference renderer formats examples without double-encoding strings", () => {
+    const fieldRendered = renderSchemaReferenceMarkdown(
+      "ExampleShape",
+      Schema.Struct({
+        value: Schema.String.annotations({
+          description: "Documented value.",
+          examples: ["alpha", { nested: true }],
+        }),
+      }),
+      {
+        jsonSchema: {
+          type: "object",
+          properties: { value: { type: "string" } },
+        },
+      },
+    );
+    const rootRendered = renderSchemaReferenceMarkdown(
+      "RootExample",
+      Schema.String.annotations({ examples: ["root", { nested: true }] }),
+      { jsonSchema: { type: "string" } },
+    );
+
+    expect(fieldRendered).toContain(
+      '| `value` | Yes | `string` | Documented value. | — | — | `alpha`, `{"nested":true}` | — |',
+    );
+    expect(rootRendered).toContain('| `string` | — | — | `root`, `{"nested":true}` |');
+    expect(fieldRendered).not.toContain('`"alpha"`');
+    expect(rootRendered).not.toContain('`"root"`');
+  });
+
   test("reference renderer escapes MDX-significant body and field text", () => {
     const rendered = renderSchemaReferenceMarkdown(
       "MdxUnsafeShape",

@@ -477,15 +477,17 @@ const acceptedValues = (
   return fallbackValues.length > 0 ? fallbackValues.map(codeValue).join(", ") : "—";
 };
 
-const examples = (property: AST.PropertySignature): string => {
-  const values = property.type.annotations[AST.ExamplesAnnotationId];
-  return !Array.isArray(values) || values.length === 0
-    ? "—"
-    : values.map((value) => codeValue(JSON.stringify(value))).join(", ");
-};
-
 const defaultValue = (jsonSchema: JsonObject | undefined): string =>
   Object.hasOwn(jsonSchema ?? {}, "default") ? codeValue(JSON.stringify(jsonSchema?.default)) : "—";
+
+const exampleValue = (value: unknown): string =>
+  typeof value === "string" ? codeValue(value) : codeValue(JSON.stringify(value));
+
+const exampleValues = (values: unknown): string =>
+  !Array.isArray(values) || values.length === 0 ? "—" : values.map(exampleValue).join(", ");
+
+const examples = (property: AST.PropertySignature): string =>
+  exampleValues(property.type.annotations[AST.ExamplesAnnotationId]);
 
 const defaultValues = (jsonSchemas: ReadonlyArray<JsonObject | undefined>): string => {
   const values = uniqueValues(
@@ -496,12 +498,7 @@ const defaultValues = (jsonSchemas: ReadonlyArray<JsonObject | undefined>): stri
   return values.length > 0 ? values.map(codeValue).join(", ") : "—";
 };
 
-const schemaExamples = (ast: AST.AST): string => {
-  const values = ast.annotations[AST.ExamplesAnnotationId];
-  return !Array.isArray(values) || values.length === 0
-    ? "—"
-    : values.map((value) => codeValue(JSON.stringify(value))).join(", ");
-};
+const schemaExamples = (ast: AST.AST): string => exampleValues(ast.annotations[AST.ExamplesAnnotationId]);
 
 const schemaAcceptedValues = (ast: AST.AST, jsonSchema: JsonObject): string => {
   const values = jsonSchemaAcceptedValues(jsonSchema);
