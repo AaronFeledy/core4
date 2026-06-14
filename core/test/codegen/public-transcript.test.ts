@@ -238,4 +238,120 @@ describe("build-guide-scenarios public transcript emission", () => {
       await rm(root, { force: true, recursive: true });
     }
   });
+
+  test("emits library runtime public transcripts for all-library scenarios", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-library-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/library.mdx"),
+        [
+          "---",
+          "id: public-library-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path" render>',
+          '    <Step name="read">',
+          '      <Run runtime="library" code={`expect(1).toBe(1);`} displayCode={`import { FileSystem } from "@lando/core";`} />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      const written = await emitPublicTranscripts(asts, root);
+      expect(written).toEqual(["dist/transcripts/public/guides/public-library-guide/reader-path.json"]);
+      const transcript = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/public-library-guide/reader-path.json",
+      );
+
+      expect(transcript.runtime).toBe("library");
+      const runFrame = transcript.frames.find((frame) => frame.kind === "run");
+      expect(runFrame?.kind).toBe("run");
+      expect(runFrame?.commandDisplay).toBe('import { FileSystem } from "@lando/core";');
+      expect(runFrame?.resultSummary).toBe("library code executed");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("keeps cli runtime public transcripts for all-cli scenarios", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-cli-runtime-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/cli.mdx"),
+        [
+          "---",
+          "id: public-cli-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path" render>',
+          '    <Step name="run">',
+          '      <Run command="lando version" />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      const written = await emitPublicTranscripts(asts, root);
+      expect(written).toEqual(["dist/transcripts/public/guides/public-cli-guide/reader-path.json"]);
+      const transcript = await readTranscript(
+        root,
+        "dist/transcripts/public/guides/public-cli-guide/reader-path.json",
+      );
+      expect(transcript.runtime).toBe("cli");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("rejects mixed cli and library run scenarios", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-mixed-runtime-"));
+    try {
+      await mkdir(join(root, "docs/guides"), { recursive: true });
+      await Bun.write(
+        join(root, "docs/guides/mixed.mdx"),
+        [
+          "---",
+          "id: public-mixed-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="reader-path" render>',
+          '    <Step name="run-cli">',
+          '      <Run command="lando version" />',
+          "    </Step>",
+          '    <Step name="run-library">',
+          '      <Run runtime="library" code={`expect(1).toBe(1);`} displayCode={`library sample`} />',
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      const asts = await buildGuideScenarioAst(root);
+      let message = "";
+      try {
+        await emitPublicTranscripts(asts, root);
+      } catch (error) {
+        message = String(error);
+      }
+      expect(message).toMatch(/mixed|library|cli|public-mixed-guide|reader-path/i);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
 });

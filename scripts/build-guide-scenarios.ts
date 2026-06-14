@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import type { Dirent } from "node:fs";
 import { mkdir, readdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -175,6 +176,31 @@ const interpolate = (value: string, variables: ReadonlyMap<string, VariableProps
 
 const sourceComment = (sourcePath: string, line: number): string => `  // @source: ${sourcePath}:${line}`;
 
+const isLibraryRunProps = (props: RunProps): props is Extract<RunProps, { runtime: "library" }> =>
+  "runtime" in props && props.runtime === "library";
+
+const assertScenarioRunMode = (
+  guide: GuideScenarioAst,
+  scenario: GuideScenarioNode,
+  steps: ReadonlyArray<GuideStepNode>,
+): "cli" | "library" => {
+  let hasCli = false;
+  let hasLibrary = false;
+  for (const step of steps) {
+    for (const component of step.components) {
+      if (component.kind !== "Run") continue;
+      if (isLibraryRunProps(component.props)) hasLibrary = true;
+      else hasCli = true;
+    }
+  }
+  if (hasCli && hasLibrary) {
+    throw new Error(
+      `Guide ${guide.sourcePath} scenario ${guide.frontmatter.id}:${scenario.id} mixes cli/shell and library <Run> steps; mixed runtime scenarios are not supported.`,
+    );
+  }
+  return hasLibrary ? "library" : "cli";
+};
+
 const collectVariables = (steps: ReadonlyArray<GuideStepNode>): ReadonlyMap<string, VariableProps> => {
   const variables = new Map<string, VariableProps>();
   for (const step of steps) {
@@ -308,11 +334,28 @@ const renderCleanupFinalizers = (steps: ReadonlyArray<GuideStepNode>, sourcePath
     })
     .join("\n");
 
+const indentLibraryCode = (code: string): string =>
+  code
+    .split("\n")
+    .map((line) => `      ${line}`)
+    .join("\n");
+
 const renderRun = (
   component: Extract<GuideStepComponent, { kind: "Run" }>,
   variables: ReadonlyMap<string, VariableProps>,
+  sourcePath: string,
 ): string => {
-  if (component.props.command !== undefined) {
+  if (isLibraryRunProps(component.props)) {
+    return [
+      sourceComment(sourcePath, component.line),
+      "    {",
+      "      void LandoCore;",
+      "      void LandoTesting;",
+      indentLibraryCode(component.props.code),
+      "    }",
+    ].join("\n");
+  }
+  if ("command" in component.props) {
     const answers = component.props.answers ?? {};
     return [
       `    const runAttempt = yield* Effect.either(context.runCli(${quote(interpolate(component.props.command, variables))}, {`,
@@ -326,7 +369,7 @@ const renderRun = (
       "    }",
     ].join("\n");
   }
-  return `    yield* context.shell(${quote(component.props.shell ?? "")});`;
+  return `    yield* context.shell(${quote("shell" in component.props ? component.props.shell : "")});`;
 };
 
 const renderVerify = (
@@ -344,8 +387,9 @@ const renderVerify = (
     ].join("\n");
   }
   if (component.props.command !== undefined) {
+    const command = component.props.command;
     return [
-      `    const verifyRun = yield* context.runCli(${quote(interpolate(component.props.command, variables))});`,
+      `    const verifyRun = yield* context.runCli(${quote(interpolate(command, variables))});`,
       "    expect(verifyRun.exitCode).toBe(0);",
       ...(expected === undefined
         ? []
@@ -400,10 +444,13 @@ const renderStepComponent = (
   variables: ReadonlyMap<string, VariableProps>,
 ): string => {
   if (component.kind === "Variable" || component.kind === "Cleanup") return "";
+  if (component.kind === "Run" && isLibraryRunProps(component.props)) {
+    return renderRun(component, variables, sourcePath);
+  }
   const body = (() => {
     switch (component.kind) {
       case "Run":
-        return renderRun(component, variables);
+        return renderRun(component, variables, sourcePath);
       case "Verify":
         return renderVerify(component, variables);
       case "UseFixture":
@@ -426,6 +473,8 @@ const renderScenarioTest = (
   variant: GuideVariant | undefined,
 ): string => {
   const resolved = resolveVariantSteps(scenario, variant);
+  const runMode = assertScenarioRunMode(guide, scenario, resolved.steps);
+  const usesLibraryRuntime = runMode === "library";
   const variables = collectVariables(resolved.steps);
   const variableSetup = renderVariableSetup(variables);
   const cleanupFinalizers = renderCleanupFinalizers(resolved.steps, guide.sourcePath);
@@ -467,8 +516,11 @@ import { join } from "node:path";
 
 import { expect, test } from "bun:test";
 import { Effect, Either } from "effect";
-
-import { withScenarioContext } from "@lando/core/testing";
+${
+  usesLibraryRuntime
+    ? 'import * as LandoCore from "@lando/core";\nimport * as LandoTesting from "@lando/core/testing";'
+    : 'import { withScenarioContext } from "@lando/core/testing";'
+}
 
 const matchesExpected = (actual: unknown, expected: unknown): boolean => {
   if (expected === undefined) return actual !== undefined;
@@ -489,7 +541,7 @@ const matchesExpected = (actual: unknown, expected: unknown): boolean => {
 
 ${testFn}(${quote(`${guide.frontmatter.id}:${scenario.id}`)}, async () => {
   await Effect.runPromise(
-    withScenarioContext({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
+    ${usesLibraryRuntime ? "LandoTesting.withScenarioContext" : "withScenarioContext"}({ guideId: ${quote(guide.frontmatter.id)}, scenarioId: ${quote(scenario.id)}, render: ${scenario.render} }, (context) =>
       Effect.gen(function* () {
         let lastRun: unknown;
         let lastFailure: unknown;
@@ -534,6 +586,14 @@ const expressionToValue = (expression: string): unknown => {
     (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
     (trimmed.startsWith("'") && trimmed.endsWith("'"))
   ) {
+    return trimmed.slice(1, -1);
+  }
+  if (trimmed.startsWith("`") && trimmed.endsWith("`")) {
+    if (trimmed.includes("${")) {
+      throw new Error(
+        "Template literal interpolation is not allowed in guide props; use a literal backtick string without `${...}`.",
+      );
+    }
     return trimmed.slice(1, -1);
   }
   if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
@@ -797,7 +857,7 @@ export const parseGuideScenarioAst = (sourcePath: string, content: string): Guid
 
 const walkMdx = async (root: string, dir: string): Promise<ReadonlyArray<string>> => {
   const absolute = resolve(root, dir);
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(absolute, { withFileTypes: true });
   } catch (cause) {
@@ -816,7 +876,7 @@ const walkMdx = async (root: string, dir: string): Promise<ReadonlyArray<string>
 
 const discoverRecipeReadmes = async (root: string): Promise<ReadonlyArray<string>> => {
   const recipesRoot = resolve(root, "recipes");
-  let entries: Awaited<ReturnType<typeof readdir>>;
+  let entries: Dirent[];
   try {
     entries = await readdir(recipesRoot, { withFileTypes: true });
   } catch (cause) {
@@ -867,8 +927,11 @@ type PublicTranscriptFrameInput = {
 const variantStringOf = (variant: GuideVariant | undefined): string =>
   variant === undefined ? "" : variant.pairs.map((pair) => `${pair.axis}=${pair.value}`).join(" ");
 
-const runResultSummary = (props: RunProps): string =>
-  props.command === undefined ? "shell command" : `expected exit ${props.expectExit ?? 0}`;
+const runResultSummary = (props: RunProps): string => {
+  if (isLibraryRunProps(props)) return "library code executed";
+  if ("command" in props) return `expected exit ${props.expectExit ?? 0}`;
+  return "shell command";
+};
 
 const verifyResultSummary = (props: VerifyProps, variables: ReadonlyMap<string, VariableProps>): string => {
   if (props.event !== undefined) return `event ${quote(props.event)} observed`;
@@ -901,15 +964,16 @@ const publicFrameForComponent = (
       return {
         ...base,
         kind: "run",
-        commandDisplay:
-          component.props.command === undefined
-            ? (component.props.shell ?? "")
-            : interpolate(component.props.command, variables),
+        commandDisplay: isLibraryRunProps(component.props)
+          ? component.props.displayCode
+          : "command" in component.props
+            ? interpolate(component.props.command, variables)
+            : component.props.shell,
         resultSummary: runResultSummary(component.props),
       };
     case "Verify": {
-      const commandDisplay =
-        component.props.command === undefined ? undefined : interpolate(component.props.command, variables);
+      const command = component.props.command;
+      const commandDisplay = command === undefined ? undefined : interpolate(command, variables);
       return {
         ...base,
         kind: "verify",
@@ -953,6 +1017,7 @@ export const buildPublicTranscript = (
   if (scenario.render === false) return undefined;
   if (variant?.skip !== undefined) return undefined;
   const resolved = resolveVariantSteps(scenario, variant);
+  const runMode = assertScenarioRunMode(guide, scenario, resolved.steps);
   const visibleSteps = resolved.steps.filter((step) => !step.hidden);
   const variables = collectVariables(visibleSteps);
   const frames: PublicTranscriptFrameInput[] = [];
@@ -982,7 +1047,7 @@ export const buildPublicTranscript = (
     guideId: guide.frontmatter.id,
     scenarioId: scenario.id,
     variant: variantStringOf(variant),
-    runtime: "cli",
+    runtime: runMode,
     render: true,
     frames,
   };

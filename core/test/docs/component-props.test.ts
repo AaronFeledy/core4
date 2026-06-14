@@ -39,10 +39,20 @@ const expectRight = <A>(decoded: Either.Either<A, unknown>): A => {
 const expectNotImplemented = (decoded: Either.Either<unknown, unknown>, key: string) => {
   expect(decoded._tag).toBe("Left");
   if (Either.isRight(decoded)) return;
-  expect(decoded.left).toBeInstanceOf(NotImplementedError);
-  expect(decoded.left).toMatchObject({ _tag: "NotImplementedError" });
-  expect(String(decoded.left.message)).toContain(key);
-  expect(String(decoded.left.remediation)).toContain("Unsupported guide component prop");
+  const left = decoded.left;
+  expect(left).toBeInstanceOf(NotImplementedError);
+  if (!(left instanceof NotImplementedError)) throw left;
+  expect(left).toMatchObject({ _tag: "NotImplementedError" });
+  expect(String(left.message)).toContain(key);
+  expect(String(left.remediation)).toContain("Unsupported guide component prop");
+};
+
+const expectParseError = (decoded: Either.Either<unknown, unknown>): ParseResult.ParseError => {
+  expect(decoded._tag).toBe("Left");
+  if (Either.isRight(decoded)) throw decoded.right;
+  expect(decoded.left).toBeInstanceOf(ParseResult.ParseError);
+  if (!(decoded.left instanceof ParseResult.ParseError)) throw decoded.left;
+  return decoded.left;
 };
 
 describe("component prop schemas", () => {
@@ -85,7 +95,7 @@ describe("component prop schemas", () => {
     expect(missingReason._tag).toBe("Left");
     if (Either.isLeft(missingReason)) {
       expect(missingReason.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(missingReason.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(missingReason));
       expect(issues.map((issue) => issue.message)).toContain(
         "<Scenario render={false}> requires a `reason` of at least 8 characters.",
       );
@@ -95,14 +105,14 @@ describe("component prop schemas", () => {
     expect(missingId._tag).toBe("Left");
     if (Either.isLeft(missingId)) {
       expect(missingId.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(missingId.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(missingId));
       expect(issues.some((issue) => issue.path.includes("id"))).toBe(true);
     }
 
     expectNotImplemented(decodeScenarioPropsEither({ id: "reader", layer: "e2e" }), "layer");
   });
 
-  test("accepts Run command or shell and rejects runtime/tooling variants", () => {
+  test("accepts Run command, shell, and library forms while rejecting invalid variants", () => {
     expect(
       expectRight(decodeRunPropsEither({ command: "lando start", answers: { name: "node-postgres" } })),
     ).toEqual({
@@ -113,14 +123,30 @@ describe("component prop schemas", () => {
       shell: "echo ok",
       expectExit: 0,
     });
+    expect(
+      expectRight(
+        decodeRunPropsEither({
+          runtime: "library",
+          code: "expect(true).toBe(true);",
+          displayCode: "await Effect.runPromise(...)",
+        }),
+      ),
+    ).toEqual({
+      runtime: "library",
+      code: "expect(true).toBe(true);",
+      displayCode: "await Effect.runPromise(...)",
+    });
 
     const both = decodeRunPropsEither({ command: "lando start", shell: "lando start" });
     expect(both._tag).toBe("Left");
     if (Either.isLeft(both)) {
       expect(both.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(both.left);
-      expect(issues.map((issue) => issue.message)).toContain(
-        "<Run> requires exactly one of `command` or `shell`.",
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(both));
+      expect(issues.some((issue) => issue._tag === "Unexpected" && issue.path.join(".") === "shell")).toBe(
+        true,
+      );
+      expect(issues.some((issue) => issue._tag === "Unexpected" && issue.path.join(".") === "command")).toBe(
+        true,
       );
     }
 
@@ -128,11 +154,46 @@ describe("component prop schemas", () => {
     expect(invalidAnswers._tag).toBe("Left");
     if (Either.isLeft(invalidAnswers)) {
       expect(invalidAnswers.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(invalidAnswers.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(invalidAnswers));
       expect(issues.some((issue) => issue.path.join(".") === "answers.name")).toBe(true);
     }
 
-    expectNotImplemented(decodeRunPropsEither({ runtime: "appStart" }), "runtime");
+    const excess = decodeRunPropsEither({ command: "lando start", extra: true });
+    expect(excess._tag).toBe("Left");
+    if (Either.isLeft(excess)) {
+      expect(excess.left).toBeInstanceOf(ParseResult.ParseError);
+    }
+
+    const unsupportedRuntime = decodeRunPropsEither({ runtime: "appStart", code: "x", displayCode: "y" });
+    expect(unsupportedRuntime._tag).toBe("Left");
+    if (Either.isLeft(unsupportedRuntime)) {
+      expect(unsupportedRuntime.left).toBeInstanceOf(ParseResult.ParseError);
+      expect(unsupportedRuntime.left).not.toBeInstanceOf(NotImplementedError);
+    }
+
+    const missingCode = decodeRunPropsEither({ runtime: "library", displayCode: "y" });
+    expect(missingCode._tag).toBe("Left");
+    if (Either.isLeft(missingCode)) {
+      expect(missingCode.left).toBeInstanceOf(ParseResult.ParseError);
+    }
+
+    const missingDisplayCode = decodeRunPropsEither({ runtime: "library", code: "x" });
+    expect(missingDisplayCode._tag).toBe("Left");
+    if (Either.isLeft(missingDisplayCode)) {
+      expect(missingDisplayCode.left).toBeInstanceOf(ParseResult.ParseError);
+    }
+
+    const commandAndRuntime = decodeRunPropsEither({
+      command: "lando start",
+      runtime: "library",
+      code: "x",
+      displayCode: "y",
+    });
+    expect(commandAndRuntime._tag).toBe("Left");
+    if (Either.isLeft(commandAndRuntime)) {
+      expect(commandAndRuntime.left).toBeInstanceOf(ParseResult.ParseError);
+    }
+
     expectNotImplemented(decodeRunPropsEither({ tooling: "npm" }), "tooling");
   });
 
@@ -161,7 +222,7 @@ describe("component prop schemas", () => {
     expect(multipleTargets._tag).toBe("Left");
     if (Either.isLeft(multipleTargets)) {
       expect(multipleTargets.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(multipleTargets.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(multipleTargets));
       expect(issues.map((issue) => issue.message)).toContain("<Verify> requires exactly one target.");
     }
 
@@ -196,7 +257,7 @@ describe("component prop schemas", () => {
     expect(none._tag).toBe("Left");
     if (Either.isLeft(none)) {
       expect(none.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(none.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(none));
       expect(issues.map((issue) => issue.message)).toContain(
         "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
       );
@@ -206,7 +267,7 @@ describe("component prop schemas", () => {
     expect(multiple._tag).toBe("Left");
     if (Either.isLeft(multiple)) {
       expect(multiple.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(multiple.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(multiple));
       expect(issues.map((issue) => issue.message)).toContain(
         "<Inspect> requires exactly one of `file`, `json`, `events`, or `output`.",
       );
@@ -214,27 +275,29 @@ describe("component prop schemas", () => {
   });
 
   test("round-trips every component schema through encode/decode and JSON Schema", () => {
-    const examples = [
-      ["GuideProps", GuideProps, {}],
-      ["ScenarioProps", ScenarioProps, { id: "reader", render: true }],
-      ["StepProps", StepProps, { name: "start-app" }],
-      ["RunProps", RunProps, { command: "lando start" }],
-      ["VerifyProps", VerifyProps, { event: "post-start", expect: { regex: "ready" } }],
-      ["CleanupProps", CleanupProps, {}],
-      ["VariableProps", VariableProps, { name: "siteName", value: "node-postgres" }],
-      ["HiddenProps", HiddenProps, { reason: "prepare shared context" }],
-      ["InspectProps", InspectProps, { file: "package.json" }],
-      ["UseFixtureProps", UseFixtureProps, { name: "invalid-service-type" }],
-      ["TabsProps", TabsProps, { axis: "default" }],
-      ["TabProps", TabProps, { name: "linux" }],
-      ["MatcherSchema", MatcherSchema, { anyOf: ["ready", { not: false }] }],
-    ] as const;
-
-    for (const [name, schema, value] of examples) {
+    const expectSchemaRoundTrip = <S extends Schema.Schema.AnyNoContext>(
+      name: string,
+      schema: S,
+      value: Schema.Schema.Encoded<S>,
+    ) => {
       const decoded = Schema.decodeUnknownSync(schema)(value);
       expect(Schema.encodeSync(schema)(decoded)).toEqual(value);
       expect(JSONSchema.make(schema)).toHaveProperty(["$defs", name]);
-    }
+    };
+
+    expectSchemaRoundTrip("GuideProps", GuideProps, {});
+    expectSchemaRoundTrip("ScenarioProps", ScenarioProps, { id: "reader", render: true });
+    expectSchemaRoundTrip("StepProps", StepProps, { name: "start-app" });
+    expectSchemaRoundTrip("RunProps", RunProps, { command: "lando start" });
+    expectSchemaRoundTrip("VerifyProps", VerifyProps, { event: "post-start", expect: { regex: "ready" } });
+    expectSchemaRoundTrip("CleanupProps", CleanupProps, {});
+    expectSchemaRoundTrip("VariableProps", VariableProps, { name: "siteName", value: "node-postgres" });
+    expectSchemaRoundTrip("HiddenProps", HiddenProps, { reason: "prepare shared context" });
+    expectSchemaRoundTrip("InspectProps", InspectProps, { file: "package.json" });
+    expectSchemaRoundTrip("UseFixtureProps", UseFixtureProps, { name: "invalid-service-type" });
+    expectSchemaRoundTrip("TabsProps", TabsProps, { axis: "default" });
+    expectSchemaRoundTrip("TabProps", TabProps, { name: "linux" });
+    expectSchemaRoundTrip("MatcherSchema", MatcherSchema, { anyOf: ["ready", { not: false }] });
   });
 
   test("accepts Hidden props and rejects reasons shorter than eight characters", () => {
@@ -246,7 +309,7 @@ describe("component prop schemas", () => {
     expect(shortReason._tag).toBe("Left");
     if (Either.isLeft(shortReason)) {
       expect(shortReason.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(shortReason.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(shortReason));
       expect(issues.some((issue) => issue.path.includes("reason"))).toBe(true);
     }
 
@@ -276,7 +339,7 @@ describe("component prop schemas", () => {
     expect(missing._tag).toBe("Left");
     if (Either.isLeft(missing)) {
       expect(missing.left).toBeInstanceOf(ParseResult.ParseError);
-      const issues = ParseResult.ArrayFormatter.formatErrorSync(missing.left);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(expectParseError(missing));
       expect(issues.some((issue) => issue.path.includes("name"))).toBe(true);
     }
 

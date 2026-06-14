@@ -164,6 +164,8 @@ describe("build-guide-scenarios MDX walker", () => {
         "// @generated\n// @source: docs/guides/happy-path/node-postgres.mdx:9\n// @scenario: start-app\n// @variant:",
       );
       expect(firstContent).toContain('import { withScenarioContext } from "@lando/core/testing";');
+      expect(firstContent).not.toContain('import * as LandoCore from "@lando/core";');
+      expect(firstContent).not.toContain('import * as LandoTesting from "@lando/core/testing";');
       expect(firstContent).toContain(
         'withScenarioContext({ guideId: "node-postgres", scenarioId: "start-app", render: true }',
       );
@@ -898,5 +900,89 @@ describe("build-guide-scenarios MDX walker", () => {
     } finally {
       await rm(root, { force: true, recursive: true });
     }
+  });
+
+  test("emits and executes all-library scenario tests with library imports", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-guide-library-"));
+    try {
+      const guidePath = "docs/guides/library-mode/library-mode.mdx";
+      await mkdir(join(root, "docs/guides/library-mode"), { recursive: true });
+      await Bun.write(
+        join(root, guidePath),
+        [
+          "---",
+          "id: library-mode-guide",
+          "provider: test",
+          "---",
+          "",
+          "<Guide>",
+          '  <Scenario id="library-read">',
+          '    <Step name="read-file">',
+          "      <Run",
+          '        runtime="library"',
+          '        code={`context.runtime.files.set("/app/.lando.yml", "name: LIBRARY_MARKER\\n");',
+          "const fileSystem = yield* LandoCore.FileSystem.pipe(Effect.provide(context.runtime.layer));",
+          'const text = yield* fileSystem.readText("/app/.lando.yml");',
+          'expect(text).toContain("LIBRARY_MARKER");`}',
+          '        displayCode={`import { FileSystem } from "@lando/core";`}',
+          "      />",
+          "    </Step>",
+          "  </Scenario>",
+          "</Guide>",
+          "",
+        ].join("\n"),
+      );
+
+      await linkNodeModules(root);
+
+      const written = await buildGuideScenarioTests(root);
+      expect(written).toEqual(["test/scenarios/generated/guides/library-mode-guide/library-read.test.ts"]);
+      const generatedPath = join(root, written[0] ?? "");
+      const generated = await Bun.file(generatedPath).text();
+      expect(generated).toContain('import * as LandoCore from "@lando/core";');
+      expect(generated).toContain('import * as LandoTesting from "@lando/core/testing";');
+      expect(generated).toContain("LandoTesting.withScenarioContext(");
+      expect(generated).toContain("void LandoCore;");
+      expect(generated).toContain("void LandoTesting;");
+      expect(generated).toContain("LIBRARY_MARKER");
+      expect(generated).toContain(
+        'context.runtime.files.set("/app/.lando.yml", "name: LIBRARY_MARKER\\n");\n      const fileSystem = yield* LandoCore.FileSystem.pipe(Effect.provide(context.runtime.layer));\n      const text = yield* fileSystem.readText("/app/.lando.yml");\n      expect(text).toContain("LIBRARY_MARKER");',
+      );
+      expect(generated).not.toContain("context.runCli");
+      expect(generated).not.toContain("context.shell(");
+      expect(generated).toContain(`// @source: ${guidePath}:9`);
+
+      const proc = Bun.spawnSync({
+        cmd: [process.execPath, "test", generatedPath],
+        cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      expect(proc.exitCode, `${proc.stdout.toString()}\n${proc.stderr.toString()}`).toBe(0);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("rejects library template-literal prop interpolation", async () => {
+    const content = [
+      "---",
+      "id: library-interpolation",
+      "provider: test",
+      "---",
+      "",
+      "<Guide>",
+      '  <Scenario id="bad">',
+      '    <Step name="run">',
+      '      <Run runtime="library" code={`a${b}c`} displayCode={`x`} />',
+      "    </Step>",
+      "  </Scenario>",
+      "</Guide>",
+      "",
+    ].join("\n");
+
+    expect(() => parseGuideScenarioAst("docs/guides/library-interpolation.mdx", content)).toThrow(
+      /interpolation|\$\{/i,
+    );
   });
 });

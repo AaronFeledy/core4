@@ -1,0 +1,72 @@
+---
+id: library-mode-guide-scenarios
+provider: test
+platforms: [darwin, linux, win32, wsl]
+tags: [beta, docs, library, embedding]
+---
+
+# Library-mode guide scenarios
+
+Executable guides usually drive the `lando` CLI through `<Run command="...">`. When a
+guide documents the embedding API instead of the binary, author the executable step with
+`<Run runtime="library">`: the generated scenario imports and executes `@lando/core`
+library APIs directly through the `ScenarioContext`, never routing through `runCli`.
+
+A library run carries two explicit views. `code` is the TypeScript the scenario executes
+against the live `ScenarioContext`; `displayCode` is the host TypeScript a reader sees in
+the rendered docs. The two are bound only by the author writing both — prose is never
+inferred from the executed code.
+
+<Guide>
+  <Scenario id="library-filesystem-read">
+    <Step name="read-landofile-through-runtime">
+      <Run
+        runtime="library"
+        code={`expect(context.guideId).toBe("library-mode-guide-scenarios");
+expect(context.scenarioId).toBe("library-filesystem-read");
+expect(context.testDir.length).toBeGreaterThan(0);
+expect(context.runtime.layer).toBeDefined();
+context.runtime.files.set("/app/.lando.yml", "name: library-mode-demo");
+const fileSystem = yield* LandoCore.FileSystem.pipe(Effect.provide(context.runtime.layer));
+const landofile = yield* fileSystem.readText("/app/.lando.yml");
+expect(landofile).toContain("name: library-mode-demo");`}
+        displayCode={`import { Effect } from "effect";
+import { FileSystem } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime({ files: { "/app/.lando.yml": "name: library-mode-demo" } });
+const landofile = await Effect.runPromise(
+  Effect.gen(function* () {
+    const files = yield* FileSystem;
+    return yield* files.readText("/app/.lando.yml");
+  }).pipe(Effect.provide(runtime.layer)),
+);
+console.log(landofile);`}
+      />
+    </Step>
+  </Scenario>
+
+  <Scenario id="library-isolated-runtime">
+    <Step name="construct-isolated-runtime">
+      <Run
+        runtime="library"
+        code={`const isolated = LandoTesting.makeTestRuntime({ files: { "/host.txt": "ready" } });
+const isolatedFs = yield* LandoCore.FileSystem.pipe(Effect.provide(isolated.layer));
+const hostText = yield* isolatedFs.readText("/host.txt");
+expect(hostText).toBe("ready");`}
+        displayCode={`import { Effect } from "effect";
+import { FileSystem } from "@lando/core";
+import { makeTestRuntime } from "@lando/core/testing";
+
+const runtime = makeTestRuntime({ files: { "/host.txt": "ready" } });
+const hostText = await Effect.runPromise(
+  Effect.gen(function* () {
+    const files = yield* FileSystem;
+    return yield* files.readText("/host.txt");
+  }).pipe(Effect.provide(runtime.layer)),
+);
+console.log(hostText);`}
+      />
+    </Step>
+  </Scenario>
+</Guide>
