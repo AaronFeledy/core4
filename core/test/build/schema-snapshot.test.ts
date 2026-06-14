@@ -164,6 +164,39 @@ describe("schema snapshot gate", () => {
     expect(rendered).toContain("| `value` | Yes | `number` | Documented value. | `7` | `7` | — | — |");
   });
 
+  test("reference renderer derives field metadata from JSON Schema union branches", () => {
+    const rendered = renderSchemaReferenceMarkdown(
+      "UnionBackedShape",
+      Schema.Struct({
+        value: Schema.Union(
+          Schema.Literal(false),
+          Schema.String,
+          Schema.Struct({ id: Schema.String }),
+        ).annotations({
+          description: "Documented union value.",
+        }),
+      }),
+      {
+        jsonSchema: {
+          type: "object",
+          properties: {
+            value: {
+              anyOf: [
+                { const: false },
+                { enum: ["ready", "done"] },
+                { type: "object", properties: { id: { type: "string" } } },
+              ],
+            },
+          },
+        },
+      },
+    );
+
+    expect(rendered).toContain(
+      "| `value` | Yes | `boolean`, `string`, `object` | Documented union value. | — | `false`, `ready`, `done` | — | — |",
+    );
+  });
+
   test("reference renderer surfaces deprecated schema and field callouts", () => {
     const notice = {
       since: "4.2.0",

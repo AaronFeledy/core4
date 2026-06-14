@@ -15,7 +15,7 @@ Public Lando schema contract for Build Step.
 | `service` | Yes | `string` | a string | — | — | — | — |
 | `phase` | Yes | `string` | — | — | `artifact`, `app` | — | — |
 | `kind` | Yes | `string` | — | — | `buildArtifact`, `pullArtifact`, `execStream` | — | — |
-| `command` | No | — | — | — | — | — | — |
-| `artifact` | No | — | — | — | — | — | — |
+| `command` | No | `string`, `array` | — | — | — | — | — |
+| `artifact` | No | `object` | — | — | — | — | — |
 | `dependsOn` | Yes | `array` | — | — | — | — | — |
 | `buildKey` | Yes | `string` | a string | — | — | — | — |

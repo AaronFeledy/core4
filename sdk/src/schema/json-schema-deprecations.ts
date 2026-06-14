@@ -358,13 +358,63 @@ const unwrapUndefinedUnion = (ast: AST.AST): AST.AST => {
   return nonUndefined.length === 1 ? (nonUndefined[0] as AST.AST) : ast;
 };
 
-const fieldType = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
-  const type = typeof jsonSchema?.type === "string" ? jsonSchema.type : undefined;
-  if (type !== undefined) return codeValue(type);
-  if (Array.isArray(jsonSchema?.enum) && jsonSchema.enum.length > 0) {
-    const enumTypes = new Set(jsonSchema.enum.map((value) => typeof value));
-    if (enumTypes.size === 1) return codeValue(enumTypes.values().next().value);
+const jsonValueType = (value: unknown): string => {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "array";
+  return typeof value;
+};
+
+const jsonSchemaEnumValues = (jsonSchema: JsonObject | undefined): ReadonlyArray<unknown> => {
+  if (jsonSchema === undefined) return [];
+  const values = Array.isArray(jsonSchema.enum) ? [...jsonSchema.enum] : [];
+  if (Object.hasOwn(jsonSchema, "const")) values.push(jsonSchema.const);
+  return values;
+};
+
+const unionBranches = (jsonSchema: JsonObject | undefined): ReadonlyArray<JsonObject> => {
+  const branches = Array.isArray(jsonSchema?.anyOf)
+    ? jsonSchema.anyOf
+    : Array.isArray(jsonSchema?.oneOf)
+      ? jsonSchema.oneOf
+      : [];
+  return branches.flatMap((branch) => {
+    const branchObject = jsonObject(branch);
+    return branchObject === undefined ? [] : [branchObject];
+  });
+};
+
+const uniqueValues = (values: ReadonlyArray<unknown>): ReadonlyArray<unknown> => {
+  const seen = new Set<string>();
+  const unique: unknown[] = [];
+  for (const value of values) {
+    const key = JSON.stringify(value) ?? String(value);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(value);
   }
+  return unique;
+};
+
+const jsonSchemaAcceptedValues = (jsonSchema: JsonObject | undefined): ReadonlyArray<unknown> =>
+  uniqueValues([
+    ...jsonSchemaEnumValues(jsonSchema),
+    ...unionBranches(jsonSchema).flatMap((branch) => jsonSchemaEnumValues(branch)),
+  ]);
+
+const jsonSchemaTypes = (jsonSchema: JsonObject | undefined): ReadonlyArray<string> => {
+  const types = new Set<string>();
+  const collect = (schema: JsonObject): void => {
+    if (typeof schema.type === "string") types.add(schema.type);
+    for (const value of jsonSchemaEnumValues(schema)) types.add(jsonValueType(value));
+  };
+  if (jsonSchema !== undefined) collect(jsonSchema);
+  for (const branch of unionBranches(jsonSchema)) collect(branch);
+  return [...types];
+};
+
+const fieldType = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
+  const jsonTypes = jsonSchemaTypes(jsonSchema);
+  if (jsonTypes.length > 0) return jsonTypes.map(codeValue).join(", ");
   const ast = schemaReferenceAst(unwrapUndefinedUnion(property.type));
   if (AST.isUnion(ast) && ast.types.every((member) => member._tag === "Literal")) return "literal";
   if (ast._tag === "StringKeyword") return "`string`";
@@ -383,8 +433,9 @@ const literalValues = (ast: AST.AST): ReadonlyArray<unknown> => {
 };
 
 const acceptedValues = (property: AST.PropertySignature, jsonSchema: JsonObject | undefined): string => {
-  const values = Array.isArray(jsonSchema?.enum) ? jsonSchema.enum : literalValues(property.type);
-  return values.length > 0 ? values.map(codeValue).join(", ") : "—";
+  const values = jsonSchemaAcceptedValues(jsonSchema);
+  const fallbackValues = values.length > 0 ? values : literalValues(property.type);
+  return fallbackValues.length > 0 ? fallbackValues.map(codeValue).join(", ") : "—";
 };
 
 const examples = (property: AST.PropertySignature): string => {

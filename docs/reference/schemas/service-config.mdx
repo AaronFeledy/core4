@@ -16,8 +16,8 @@ Public Lando schema contract for Service Config.
 | `primary` | No | `boolean` | — | — | — | — | — |
 | `image` | No | `string` | — | — | — | — | — |
 | `build` | No | `object` | — | — | — | — | — |
-| `command` | No | — | — | — | — | — | — |
-| `entrypoint` | No | — | — | — | — | — | — |
+| `command` | No | `string`, `array` | — | — | — | — | — |
+| `entrypoint` | No | `string`, `array` | — | — | — | — | — |
 | `user` | No | `string` | — | — | — | — | — |
 | `workingDirectory` | No | `string` | — | — | — | — | — |
 | `database` | No | `string` | — | — | — | — | — |
@@ -28,7 +28,7 @@ Public Lando schema contract for Service Config.
 | `environment` | No | `object` | — | — | — | — | — |
 | `ports` | No | `array` | — | — | — | — | — |
 | `volumes` | No | `array` | — | — | — | — | — |
-| `appMount` | No | — | — | — | `false` | — | — |
+| `appMount` | No | `boolean`, `object` | — | — | `false` | — | — |
 | `mounts` | No | `array` | — | — | — | — | — |
 | `storage` | No | `array` | — | — | — | — | — |
 | `endpoints` | No | `array` | — | — | — | — | — |

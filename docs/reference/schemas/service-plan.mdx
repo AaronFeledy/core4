@@ -15,9 +15,9 @@ Public Lando schema contract for Service Plan.
 | `type` | Yes | `string` | a string | — | — | — | — |
 | `provider` | Yes | `string` | a string | — | — | — | — |
 | `primary` | Yes | `boolean` | a boolean | — | — | — | — |
-| `artifact` | No | — | — | — | — | — | — |
-| `command` | No | — | — | — | — | — | — |
-| `entrypoint` | No | — | — | — | — | — | — |
+| `artifact` | No | `object` | — | — | — | — | — |
+| `command` | No | `string`, `array` | — | — | — | — | — |
+| `entrypoint` | No | `string`, `array` | — | — | — | — | — |
 | `environment` | Yes | `object` | — | — | — | — | — |
 | `user` | No | `string` | — | — | — | — | — |
 | `workingDirectory` | No | `string` | — | — | — | — | — |
