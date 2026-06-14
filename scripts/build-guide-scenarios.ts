@@ -221,7 +221,7 @@ const axisEntriesOf = (
   return [];
 };
 
-const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant | undefined> => {
+export const variantsOf = (guide: GuideScenarioAst): ReadonlyArray<GuideVariant | undefined> => {
   const entries = axisEntriesOf(guide.frontmatter);
   if (entries.length === 0) return [undefined];
   let combinations: ReadonlyArray<ReadonlyArray<GuideVariantPair>> = [[]];
@@ -1054,6 +1054,24 @@ export const buildPublicTranscript = (
   };
 };
 
+export const publicTranscriptVariantSuffix = (variant: GuideVariant | undefined): string =>
+  variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
+
+export const publicTranscriptSuffixFromVariantString = (variant: string): string =>
+  variant === ""
+    ? ""
+    : `.${variant
+        .split(" ")
+        .map((pair) => pair.split("=")[1] ?? "")
+        .join(".")}`;
+
+export const publicTranscriptRelativePath = (
+  guideId: string,
+  scenarioId: string,
+  variant: GuideVariant | undefined,
+  outputRoot = PUBLIC_TRANSCRIPT_ROOT,
+): string => `${outputRoot}/${guideId}/${scenarioId}${publicTranscriptVariantSuffix(variant)}.json`;
+
 export const emitPublicTranscripts = async (
   asts: ReadonlyArray<GuideScenarioAst>,
   root = REPO_ROOT,
@@ -1069,8 +1087,7 @@ export const emitPublicTranscripts = async (
       for (const variant of variants) {
         const transcript = buildPublicTranscript(guide, scenario, variant);
         if (transcript === undefined) continue;
-        const suffix = variant === undefined ? "" : `.${variant.pairs.map((pair) => pair.value).join(".")}`;
-        const relativePath = `${outputRoot}/${guideId}/${scenario.id}${suffix}.json`;
+        const relativePath = publicTranscriptRelativePath(guideId, scenario.id, variant, outputRoot);
         const absolutePath = resolve(root, relativePath);
         await mkdir(dirname(absolutePath), { recursive: true });
         const encoded = Schema.encodeSync(PublicTranscript)(transcript);

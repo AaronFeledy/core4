@@ -67,6 +67,12 @@ const documentedAuxiliaryEntryPoints = [
     assertSymbol: (mod: Record<string, unknown>) => expect(mod.GuideFrontmatter).toBeDefined(),
   },
   {
+    specifier: "@lando/core/docs/render",
+    exportKey: "./docs/render",
+    target: "./src/docs/render/index.ts",
+    assertSymbol: (mod: Record<string, unknown>) => expect(mod.renderPublicTranscriptHtml).toBeFunction(),
+  },
+  {
     specifier: "@lando/core/cli/operations",
     exportKey: "./cli/operations",
     target: "./src/cli/operations.ts",

@@ -36,6 +36,7 @@
     "check:renderer-boundary": "bun run scripts/check-renderer-boundary.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
+    "check:public-transcripts": "bun run scripts/check-public-transcripts.ts",
     "check:guide-drift": "bun run scripts/check-guide-drift.ts",
     "codegen:bootstrap-layers": "bun run scripts/build-bootstrap-layers.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",

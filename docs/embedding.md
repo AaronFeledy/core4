@@ -17,6 +17,7 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | `@lando/core/cli` | Programmatic CLI runner surface. |
 | `@lando/core/cli/operations` | Built-in command operations for hosts that want command logic without argv parsing. |
 | `@lando/core/docs/components` | Executable-guide component contracts and decode helpers. |
+| `@lando/core/docs/render` | Public transcript view-model and deterministic HTML renderer for docs pipelines. |
 | `@lando/core/oclif` | Internal OCLIF adapter for alternate CLI distributions; embedding hosts should not import it. |
 
 The default `@lando/core` entry and stable subpaths avoid pulling the OCLIF adapter into embedding bundles. Import OCLIF glue only from `@lando/core/oclif` when building an OCLIF-based CLI distribution.
