@@ -13,7 +13,7 @@
 
 import { Layer } from "effect";
 
-import { Renderer, Telemetry } from "@lando/sdk/services";
+import { Renderer } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
@@ -24,14 +24,11 @@ import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { PrivilegeServiceLive } from "../../../services/privilege.ts";
 import { SecretStoreLive } from "../../../services/secret-store.ts";
-import {
-  type BootstrapLayerInputs,
-  makeLibraryRenderer,
-  makeLibraryTelemetry,
-} from "../../bootstrap-layer-support.ts";
+import { makeTelemetryLayer } from "../../../telemetry/service.ts";
+import { type BootstrapLayerInputs, makeLibraryRenderer } from "../../bootstrap-layer-support.ts";
 
 export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
-  const telemetryLive = Layer.succeed(Telemetry, makeLibraryTelemetry(inputs.telemetryEnabled));
+  const telemetryLive = makeTelemetryLayer(inputs.telemetryEnabled);
 
   return Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
