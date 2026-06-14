@@ -488,3 +488,10 @@
   - Per-`bootstrap` conditional return types must be written distributively (`Bootstrap extends any ? … : never`) or a union-typed argument silently widens the provided-service set and lets callers resolve tags that won't exist at runtime.
   - In-memory service doubles that "succeed but discard" (no-op cache write, no-op event publish) are a correctness trap once the surface is declared stable — back them with real in-memory state so write→read and publish→subscribe round-trip.
 ---
+
+## 2026-06-13 19:51 CDT - Babysit
+- PR: #349 https://github.com/AaronFeledy/core4/pull/349
+- CI outcome: pass
+- Review feedback: fixed (four Cursor Bugbot findings across three triage rounds — scratch-registry double out of sync with the scratch service, cache double ignoring TTL, filesystem double allowing a path to be both file and directory, and trust-store path containment using naive prefix matching instead of resolve/relative; each backed by a regression test) plus a main-advancement merge-conflict resolution in the coordination files (prd.json/progress.txt/INDEX.md)
+- Merge: merged (squash)
+---
