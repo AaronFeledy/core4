@@ -54,7 +54,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:logs", META_GLOBAL_PLAN],
   ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:global:restart", META_GLOBAL_PLAN],
-  ["meta:plugin:new", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:test", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:build", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:link", META_PLUGIN_AUTHORING_PLAN],
