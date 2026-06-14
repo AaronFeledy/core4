@@ -70,6 +70,7 @@ import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-s
 import { globalStop, renderGlobalStopResult } from "./commands/meta/global-stop.ts";
 import { globalUninstall, renderGlobalUninstallResult } from "./commands/meta/global-uninstall.ts";
 import { pluginAdd, renderPluginAddResult } from "./commands/plugin-add.ts";
+import { pluginNew, renderPluginNewResult } from "./commands/plugin-new.ts";
 import { pluginRemove, renderPluginRemoveResult } from "./commands/plugin-remove.ts";
 import {
   pluginTrust,
@@ -347,10 +348,8 @@ const emitDiagnosticLine = (text: string): void => {
 };
 
 /**
- * Validate a compiled-dispatch argv against a command's flag/arg definitions the
- * same way OCLIF's parser rejects malformed invocations, so the `$bunfs` binary
- * stays at parity with source mode for setup/shellenv/uninstall. Returns the
- * OCLIF-equivalent diagnostic, or `undefined` when valid.
+ * Validate compiled-dispatch argv against a command's flag/arg definitions before
+ * command execution. Returns the OCLIF-equivalent diagnostic, or `undefined` when valid.
  * Mirrors the consumption rules in `compiledCommandInputFromArgv`: a value flag
  * consumes the following token (even a `-`-prefixed one) as its value, and `--`
  * terminates flag parsing so everything after it is positional.
@@ -387,19 +386,25 @@ const invocationParityError = (commandId: string, argv: ReadonlyArray<string>): 
     if (flagName === undefined) return `Nonexistent flag: ${token}`;
     const definition = flagDefinitions[flagName] ?? {};
     if (definition.type === "boolean") {
-      // A boolean flag takes no value; `--flag=value` is a parse error in OCLIF.
       if (equalsIndex !== -1) return `Unexpected argument: ${arg.slice(equalsIndex + 1)}`;
       continue;
     }
-    if (equalsIndex !== -1) continue;
+    if (equalsIndex !== -1) {
+      const value = arg.slice(equalsIndex + 1);
+      if (definition.options !== undefined && !definition.options.includes(value)) {
+        return `Expected ${token}=${value} to be one of: ${definition.options.join(", ")}`;
+      }
+      continue;
+    }
     const next = argv[index + 1];
     const nextIsFlag = next !== undefined && next !== "-" && flagTokens.has(flagTokenOf(next));
-    // OCLIF reports a missing value when the next token is absent or is itself a
-    // recognized flag; an option flag's diagnostic enumerates its allowed values.
     if (next === undefined || nextIsFlag) {
       return definition.options === undefined
         ? `Flag ${token} expects a value`
         : `Flag ${token} expects one of these values: ${definition.options.join(", ")}`;
+    }
+    if (definition.options !== undefined && !definition.options.includes(next)) {
+      return `Expected ${token}=${next} to be one of: ${definition.options.join(", ")}`;
     }
     index += 1;
   }
@@ -1293,6 +1298,29 @@ const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
+const runMetaPluginNew = async (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:plugin:new", argv)) return;
+  const input = compiledCommandInputFromArgv("meta:plugin:new", argv);
+  const answerFlag = input.flags.answer;
+  await runCompiledCommand(
+    pluginNew({
+      name: typeof input.args.name === "string" ? input.args.name : undefined,
+      destination: typeof input.args.destination === "string" ? input.args.destination : undefined,
+      template: typeof input.flags.template === "string" ? input.flags.template : undefined,
+      cspace: typeof input.flags.cspace === "string" ? input.flags.cspace : undefined,
+      description: typeof input.flags.description === "string" ? input.flags.description : undefined,
+      answers:
+        Array.isArray(answerFlag) && answerFlag.every((entry) => typeof entry === "string")
+          ? answerFlag
+          : undefined,
+      answersFile: typeof input.flags.answers === "string" ? input.flags.answers : undefined,
+      nonInteractive: input.flags["no-interactive"] === true || process.stdin.isTTY !== true,
+    }),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+    renderPluginNewResult,
+  );
+};
+
 const runMetaPluginRemove = async (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv.find((arg) => !arg.startsWith("-"));
   if (name === undefined) {
@@ -1715,6 +1743,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "plugin:add" || argv[0] === "meta:plugin:add") {
     await runMetaPluginAdd(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "meta:plugin:new") {
+    await runMetaPluginNew(argv.slice(1));
     return;
   }
 

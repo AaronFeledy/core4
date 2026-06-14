@@ -1,11 +1,8 @@
 /**
- * Per-command deferral plans for canonical Lando command ids that are not
- * implemented yet.
+ * Per-command deferral plans for canonical Lando command ids.
  *
- * Each plan names the command grouping, a short "why deferred" summary, and
- * remediation safe to print to stderr. The single
- * `notImplementedErrorForCommand()` function below is consumed by both the
- * source OCLIF guard and the compiled `$bunfs` dispatcher so the two paths
+ * The single `notImplementedErrorForCommand()` function is consumed by both
+ * the source OCLIF guard and the compiled `$bunfs` dispatcher so the two paths
  * produce identical remediation text for the same command id.
  */
 import { NotImplementedError } from "@lando/sdk/errors";
@@ -54,7 +51,6 @@ export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = 
   ["meta:global:logs", META_GLOBAL_PLAN],
   ["meta:global:rebuild", META_GLOBAL_PLAN],
   ["meta:global:restart", META_GLOBAL_PLAN],
-  ["meta:plugin:new", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:test", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:build", META_PLUGIN_AUTHORING_PLAN],
   ["meta:plugin:link", META_PLUGIN_AUTHORING_PLAN],
@@ -72,9 +68,6 @@ export const deferredCommandPlan = (commandId: string): DeferredCommandPlan | un
 export const allDeferredCommandIds = (): ReadonlyArray<string> =>
   Array.from(DEFERRED_COMMAND_PLANS.keys()).sort((left, right) => left.localeCompare(right));
 
-/**
- * Build the deferred-command `NotImplementedError` for a command id.
- */
 export const notImplementedErrorForCommand = (commandId: string): NotImplementedError => {
   const plan = DEFERRED_COMMAND_PLANS.get(commandId);
   if (plan !== undefined) {
