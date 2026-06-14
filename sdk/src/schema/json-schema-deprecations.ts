@@ -440,7 +440,9 @@ export const renderSchemaReferenceMarkdown = <S extends SchemaLike>(
   if (notice !== undefined) lines.push("> [!WARNING]", `> ${formatDeprecationNotice(notice)}`, "");
 
   const jsonSchema =
-    options.jsonSchema === undefined ? schemaReferenceJsonObject(schema) : resolveRootJsonSchemaRef(options.jsonSchema);
+    options.jsonSchema === undefined
+      ? schemaReferenceJsonObject(schema)
+      : resolveRootJsonSchemaRef(options.jsonSchema);
   const ast = schemaReferenceAst(schema.ast);
   if (AST.isTypeLiteral(ast)) {
     const properties = jsonObject(jsonSchema.properties);

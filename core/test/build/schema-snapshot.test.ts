@@ -139,7 +139,9 @@ describe("schema snapshot gate", () => {
   test("reference renderer keeps empty structs in the field table shape", () => {
     const rendered = renderSchemaReferenceMarkdown("EmptyShape", Schema.Struct({}));
 
-    expect(rendered).toContain("| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |");
+    expect(rendered).toContain(
+      "| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |",
+    );
     expect(rendered).not.toContain("## Schema details");
   });
 
