@@ -58,7 +58,7 @@ const listJsonFiles = async (root: string, relativeDir: string): Promise<Readonl
 };
 
 export const checkPublicTranscripts = (input: CheckPublicTranscriptsInput): PublicTranscriptCheckResult => {
-  const missing = [...input.expected]
+  const missing = input.expected
     .filter((path) => !input.actual.has(path))
     .sort((left, right) => left.localeCompare(right));
   return {
